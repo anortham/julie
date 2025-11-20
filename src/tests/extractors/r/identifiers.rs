@@ -140,14 +140,8 @@ process <- function(data) {
         );
 
         let call_names: Vec<&str> = call_identifiers.iter().map(|id| id.name.as_str()).collect();
-        assert!(
-            call_names.contains(&"filter"),
-            "Should extract filter call"
-        );
-        assert!(
-            call_names.contains(&"select"),
-            "Should extract select call"
-        );
+        assert!(call_names.contains(&"filter"), "Should extract filter call");
+        assert!(call_names.contains(&"select"), "Should extract select call");
         assert!(
             call_names.contains(&"arrange"),
             "Should extract arrange call"

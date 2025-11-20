@@ -103,9 +103,7 @@ process_data <- function(data) {
         // Pipe operators create "Uses" or "Calls" relationships
         let pipe_relationships: Vec<&Relationship> = relationships
             .iter()
-            .filter(|r| {
-                r.kind == RelationshipKind::Calls || r.kind == RelationshipKind::Uses
-            })
+            .filter(|r| r.kind == RelationshipKind::Calls || r.kind == RelationshipKind::Uses)
             .collect();
 
         assert!(

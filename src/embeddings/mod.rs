@@ -107,7 +107,10 @@ impl EmbeddingEngine {
         cache_dir: PathBuf,
         db: Arc<Mutex<SymbolDatabase>>,
     ) -> Result<Self> {
-        tracing::info!("🚀 Initializing EmbeddingEngine with GPU acceleration (quantized: {})...", USE_QUANTIZED_MODELS);
+        tracing::info!(
+            "🚀 Initializing EmbeddingEngine with GPU acceleration (quantized: {})...",
+            USE_QUANTIZED_MODELS
+        );
 
         // 1. Set up model manager and download model if needed
         let model_manager = ModelManager::new(cache_dir.clone())?;
@@ -158,7 +161,10 @@ impl EmbeddingEngine {
     /// Use this when you only need `embed_text()` and don't need persistence.
     /// This avoids the dummy database overhead in tools like `julie-semantic query`.
     pub async fn new_standalone(model_name: &str, cache_dir: PathBuf) -> Result<Self> {
-        tracing::info!("🚀 Initializing standalone EmbeddingEngine (no database, quantized: {})...", USE_QUANTIZED_MODELS);
+        tracing::info!(
+            "🚀 Initializing standalone EmbeddingEngine (no database, quantized: {})...",
+            USE_QUANTIZED_MODELS
+        );
 
         // 1. Set up model manager and download model if needed
         let model_manager = ModelManager::new(cache_dir.clone())?;
@@ -233,7 +239,10 @@ impl EmbeddingEngine {
 
         // Replace the crashed GPU model with CPU model
         {
-            let mut model_guard = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+            let mut model_guard = self
+                .model
+                .write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
             *model_guard = new_model;
         }
 
@@ -294,14 +303,20 @@ impl EmbeddingEngine {
         let enriched_text = self.build_embedding_text(symbol);
 
         // Generate embedding using GPU-accelerated ORT model
-        let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+        let mut model = self
+            .model
+            .write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
         model.encode_single(enriched_text)
     }
 
     /// Generate embedding for arbitrary text
     pub fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
         // Generate embedding using GPU-accelerated ORT model
-        let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+        let mut model = self
+            .model
+            .write()
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
         model.encode_single(text.to_string())
     }
 
@@ -323,7 +338,10 @@ impl EmbeddingEngine {
 
         // If input is within batch size, process directly
         if texts.len() <= batch_size {
-            let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+            let mut model = self
+                .model
+                .write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
             return model.encode_batch(texts);
         }
 
@@ -339,8 +357,11 @@ impl EmbeddingEngine {
         for chunk in texts.chunks(batch_size) {
             // Create a vector of strings for this chunk
             let chunk_vec = chunk.to_vec();
-            
-            let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+
+            let mut model = self
+                .model
+                .write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
             match model.encode_batch(chunk_vec) {
                 Ok(mut chunk_results) => {
                     all_results.append(&mut chunk_results);
@@ -519,10 +540,7 @@ impl EmbeddingEngine {
 
     /// Internal batch embedding logic - processes a single batch WITHOUT splitting
     /// This is the actual ONNX batch call - caller must ensure batch size is safe!
-    fn embed_symbols_batch_internal(
-        &self,
-        symbols: &[Symbol],
-    ) -> Result<Vec<(String, Vec<f32>)>> {
+    fn embed_symbols_batch_internal(&self, symbols: &[Symbol]) -> Result<Vec<(String, Vec<f32>)>> {
         // Collect all embedding texts and contexts for this batch
         // Phase 2: Filter out symbols with empty embedding text (e.g., non-description memory symbols)
         let mut batch_texts = Vec::new();
@@ -545,7 +563,10 @@ impl EmbeddingEngine {
         // Generate embeddings for this batch in one GPU-accelerated call
         // Acquire write lock for the model (inference requires mutability)
         let batch_result = {
-            let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+            let mut model = self
+                .model
+                .write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
             model.encode_batch(batch_texts.clone())
         };
 
@@ -580,7 +601,9 @@ impl EmbeddingEngine {
                             );
                             // Retry the batch with CPU mode now active
                             // Re-acquire write lock (new model is now in place)
-                            let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+                            let mut model = self.model.write().map_err(|e| {
+                                anyhow::anyhow!("Failed to acquire write lock on model: {}", e)
+                            })?;
                             match model.encode_batch(batch_texts) {
                                 Ok(batch_embeddings) => {
                                     let results =
@@ -628,7 +651,8 @@ impl EmbeddingEngine {
                             let is_gpu_crash = error_msg.contains("887A0005")
                                 || error_msg.contains("GPU device instance has been suspended");
 
-                            if is_gpu_crash && !self.cpu_fallback_triggered.load(Ordering::Relaxed) {
+                            if is_gpu_crash && !self.cpu_fallback_triggered.load(Ordering::Relaxed)
+                            {
                                 tracing::error!(
                                     "🚨 GPU crash on individual embedding - triggering fallback"
                                 );
@@ -674,11 +698,7 @@ impl EmbeddingEngine {
     }
 
     /// Update embeddings for all symbols in a file (database-only, no in-memory cache)
-    pub async fn upsert_file_embeddings(
-        &self,
-        file_path: &str,
-        symbols: &[Symbol],
-    ) -> Result<()> {
+    pub async fn upsert_file_embeddings(&self, file_path: &str, symbols: &[Symbol]) -> Result<()> {
         // Require database for persistence operations
         if self.db.is_none() {
             anyhow::bail!(
@@ -703,7 +723,10 @@ impl EmbeddingEngine {
 
         // Generate embeddings for all symbols in one GPU-accelerated batch call
         let batch_result = {
-            let mut model = self.model.write().map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
+            let mut model = self
+                .model
+                .write()
+                .map_err(|e| anyhow::anyhow!("Failed to acquire write lock on model: {}", e))?;
             model.encode_batch(batch_texts)
         };
 

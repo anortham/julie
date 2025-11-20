@@ -31,6 +31,43 @@ pub fn format_optimized_results(query: &str, optimized: &OptimizedResponse<Symbo
     }
 }
 
+/// Ultra-compact output for MCP responses (no JSON, token-lean)
+///
+/// Format:
+/// `<file_path>:<start_line>-<end_line>`
+/// `<code snippet>`
+pub fn format_dense_results(optimized: &OptimizedResponse<Symbol>) -> String {
+    if optimized.results.is_empty() {
+        return "No results".to_string();
+    }
+
+    let mut lines = Vec::new();
+
+    for symbol in &optimized.results {
+        // Always include full path and the span so the client can locate the code.
+        // Include name/kind inline to retain useful metadata without a JSON blob.
+        lines.push(format!(
+            "{}:{}-{} | {} | {}",
+            symbol.file_path, symbol.start_line, symbol.end_line, symbol.name, symbol.kind
+        ));
+
+        if let Some(ctx) = &symbol.code_context {
+            let snippet = ctx.trim();
+
+            // Avoid empty context lines; keep as few tokens as possible.
+            if !snippet.is_empty() {
+                lines.push(snippet.to_string());
+            }
+        }
+
+        // Blank line between entries for easy parsing
+        lines.push(String::new());
+    }
+
+    // Avoid trailing blank line
+    lines.join("\n").trim_end().to_string()
+}
+
 /// Truncate code_context field to save massive tokens in search results
 ///
 /// Formula: max_lines = context_lines * 2 + 1

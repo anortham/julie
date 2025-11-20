@@ -212,7 +212,10 @@ impl FastSearchTool {
         // Auto-detect search method if needed
         let search_method = if self.search_method == "auto" {
             let detected = detect_search_method(&self.query);
-            debug!("🔍 Auto-detected search method: {} (query: {})", detected, self.query);
+            debug!(
+                "🔍 Auto-detected search method: {} (query: {})",
+                detected, self.query
+            );
             detected
         } else {
             self.search_method.as_str()
@@ -335,24 +338,10 @@ impl FastSearchTool {
                         // Optimize for tokens
                         optimized.optimize_for_tokens(Some(self.limit as usize));
 
-                        // Return structured + human-readable output
-                        let markdown =
-                            formatting::format_optimized_results(&self.query, &optimized);
+                        // Return ultra-compact output (no JSON payload)
+                        let dense = formatting::format_dense_results(&optimized);
 
-                        // Serialize to JSON for structured_content
-                        let structured = serde_json::to_value(&optimized)
-                            .map_err(|e| anyhow::anyhow!("Failed to serialize response: {}", e))?;
-
-                        let structured_map = if let serde_json::Value::Object(map) = structured {
-                            map
-                        } else {
-                            return Err(anyhow::anyhow!("Expected JSON object"));
-                        };
-
-                        return Ok(
-                            CallToolResult::text_content(vec![TextContent::from(markdown)])
-                                .with_structured_content(structured_map),
-                        );
+                        return Ok(CallToolResult::text_content(vec![TextContent::from(dense)]));
                     }
                     Ok(_) => {
                         debug!("⚠️ Semantic fallback also returned 0 results");
@@ -374,24 +363,10 @@ impl FastSearchTool {
             )]));
         }
 
-        // Return structured + human-readable output
-        // Agents parse structured_content, format markdown for humans
-        let markdown = formatting::format_optimized_results(&self.query, &optimized);
+        // Return ultra-compact output (no JSON payload)
+        let dense = formatting::format_dense_results(&optimized);
 
-        // Serialize to JSON for structured_content
-        let structured = serde_json::to_value(&optimized)
-            .map_err(|e| anyhow::anyhow!("Failed to serialize response: {}", e))?;
-
-        let structured_map = if let serde_json::Value::Object(map) = structured {
-            map
-        } else {
-            return Err(anyhow::anyhow!("Expected JSON object"));
-        };
-
-        Ok(
-            CallToolResult::text_content(vec![TextContent::from(markdown)])
-                .with_structured_content(structured_map),
-        )
+        Ok(CallToolResult::text_content(vec![TextContent::from(dense)]))
     }
 
     /// Resolve workspace filtering parameter to a list of workspace IDs

@@ -28,8 +28,10 @@
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
+use crate::tests::tools::search_quality::helpers::parse_dense_output;
 use crate::tools::search::FastSearchTool;
 use crate::tools::workspace::ManageWorkspaceTool;
+use rust_mcp_sdk::schema::ContentBlock;
 use anyhow::Result;
 use rust_mcp_sdk::schema::CallToolResult;
 use std::fs;
@@ -308,7 +310,15 @@ async fn semantic_search_with_pattern(
 
 /// Extract symbols from CallToolResult
 fn parse_search_results(result: &CallToolResult) -> Result<Vec<Symbol>> {
-    // Extract "results" from structured_content
+    // Prefer lean text output from the new dense format
+    if let Some(ContentBlock::TextContent(text)) = result.content.first() {
+        let dense = parse_dense_output(&text.text);
+        if !dense.is_empty() {
+            return Ok(dense);
+        }
+    }
+
+    // Fallback: legacy structured content parsing
     let symbols = result
         .structured_content
         .as_ref()

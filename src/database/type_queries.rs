@@ -10,9 +10,9 @@ use anyhow::Result;
 use rusqlite::OptionalExtension;
 use tracing::debug;
 
-use crate::extractors::Symbol;
 use crate::database::SymbolDatabase;
 use crate::database::helpers::SYMBOL_COLUMNS;
+use crate::extractors::Symbol;
 
 impl SymbolDatabase {
     /// Find all symbols that implement a given interface/trait
@@ -78,7 +78,11 @@ impl SymbolDatabase {
             }
         }
 
-        debug!("Found {} implementations of {}", implementations.len(), type_name);
+        debug!(
+            "Found {} implementations of {}",
+            implementations.len(),
+            type_name
+        );
         Ok(implementations)
     }
 
@@ -134,7 +138,8 @@ impl SymbolDatabase {
         let mut returners = Vec::new();
 
         if let Some(lang) = language {
-            let rows = stmt.query_map([&type_pattern as &str, lang], |row| self.row_to_symbol(row))?;
+            let rows =
+                stmt.query_map([&type_pattern as &str, lang], |row| self.row_to_symbol(row))?;
             for row in rows {
                 returners.push(row?);
             }
@@ -145,7 +150,11 @@ impl SymbolDatabase {
             }
         }
 
-        debug!("Found {} functions returning {}", returners.len(), type_name);
+        debug!(
+            "Found {} functions returning {}",
+            returners.len(),
+            type_name
+        );
         Ok(returners)
     }
 
@@ -192,7 +201,8 @@ impl SymbolDatabase {
         let mut acceptors = Vec::new();
 
         if let Some(lang) = language {
-            let rows = stmt.query_map([&type_pattern as &str, lang], |row| self.row_to_symbol(row))?;
+            let rows =
+                stmt.query_map([&type_pattern as &str, lang], |row| self.row_to_symbol(row))?;
             for row in rows {
                 acceptors.push(row?);
             }
@@ -203,7 +213,11 @@ impl SymbolDatabase {
             }
         }
 
-        debug!("Found {} functions with parameter type {}", acceptors.len(), type_name);
+        debug!(
+            "Found {} functions with parameter type {}",
+            acceptors.len(),
+            type_name
+        );
         Ok(acceptors)
     }
 
@@ -275,13 +289,17 @@ impl SymbolDatabase {
         let mut ids = Vec::new();
 
         if let Some(lang) = language {
-            let mut stmt = self.conn.prepare("SELECT id FROM symbols WHERE name = ?1 AND language = ?2")?;
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id FROM symbols WHERE name = ?1 AND language = ?2")?;
             let rows = stmt.query_map([name, lang], |row| row.get::<_, String>(0))?;
             for row in rows {
                 ids.push(row?);
             }
         } else {
-            let mut stmt = self.conn.prepare("SELECT id FROM symbols WHERE name = ?1")?;
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id FROM symbols WHERE name = ?1")?;
             let rows = stmt.query_map([name], |row| row.get::<_, String>(0))?;
             for row in rows {
                 ids.push(row?);
@@ -302,7 +320,9 @@ impl SymbolDatabase {
     /// // Returns: Some("Promise<UserProfile>") or None
     /// ```
     pub fn get_type_for_symbol(&self, symbol_id: &str) -> Result<Option<String>> {
-        let mut stmt = self.conn.prepare("SELECT resolved_type FROM types WHERE symbol_id = ?1")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT resolved_type FROM types WHERE symbol_id = ?1")?;
         let type_result = stmt.query_row([symbol_id], |row| row.get(0)).optional()?;
         Ok(type_result)
     }

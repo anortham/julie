@@ -60,9 +60,7 @@ Item {
 
         let call_rel = call_relationships
             .iter()
-            .find(|r| {
-                r.from_symbol_id == calculate_total.id && r.to_symbol_id == sum_values.id
-            })
+            .find(|r| r.from_symbol_id == calculate_total.id && r.to_symbol_id == sum_values.id)
             .expect("Should find call relationship from calculateTotal to sumValues");
 
         assert_eq!(call_rel.kind, RelationshipKind::Calls);

@@ -30,7 +30,8 @@ mod python_extractor_tests {
             .unwrap();
         let tree = parser.parse(code, None).unwrap();
         let workspace_root = PathBuf::from("/tmp/test");
-        let extractor = PythonExtractor::new("test.py".to_string(), code.to_string(), &workspace_root);
+        let extractor =
+            PythonExtractor::new("test.py".to_string(), code.to_string(), &workspace_root);
         (extractor, tree)
     }
 
@@ -53,26 +54,32 @@ class Admin(User):
         assert!(user_class.is_some());
         let user_class = user_class.unwrap();
         assert_eq!(user_class.kind, SymbolKind::Class);
-        assert!(user_class
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("class User"));
-        assert!(user_class
-            .doc_comment
-            .as_ref()
-            .unwrap()
-            .contains("A user class for managing user data"));
+        assert!(
+            user_class
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("class User")
+        );
+        assert!(
+            user_class
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("A user class for managing user data")
+        );
 
         let admin_class = symbols.iter().find(|s| s.name == "Admin");
         assert!(admin_class.is_some());
         let admin_class = admin_class.unwrap();
         assert_eq!(admin_class.kind, SymbolKind::Class);
-        assert!(admin_class
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("class Admin extends User"));
+        assert!(
+            admin_class
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("class Admin extends User")
+        );
     }
 
     #[test]
@@ -90,12 +97,14 @@ class Product:
 
         let product_class = symbols.iter().find(|s| s.name == "Product");
         assert!(product_class.is_some());
-        assert!(product_class
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@dataclass @final class Product"));
+        assert!(
+            product_class
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@dataclass @final class Product")
+        );
     }
 
     #[test]
@@ -117,31 +126,39 @@ async def fetch_data(url: str) -> dict:
         assert!(calculate_tax.is_some());
         let calculate_tax = calculate_tax.unwrap();
         assert_eq!(calculate_tax.kind, SymbolKind::Function);
-        assert!(calculate_tax
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("def calculate_tax(amount: float, rate: float = 0.1): float"));
-        assert!(calculate_tax
-            .doc_comment
-            .as_ref()
-            .unwrap()
-            .contains("Calculate tax amount."));
+        assert!(
+            calculate_tax
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("def calculate_tax(amount: float, rate: float = 0.1): float")
+        );
+        assert!(
+            calculate_tax
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("Calculate tax amount.")
+        );
 
         let fetch_data = symbols.iter().find(|s| s.name == "fetch_data");
         assert!(fetch_data.is_some());
         let fetch_data = fetch_data.unwrap();
         assert_eq!(fetch_data.kind, SymbolKind::Function);
-        assert!(fetch_data
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("async def fetch_data(url: str): dict"));
-        assert!(fetch_data
-            .doc_comment
-            .as_ref()
-            .unwrap()
-            .contains("Async function to fetch data."));
+        assert!(
+            fetch_data
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("async def fetch_data(url: str): dict")
+        );
+        assert!(
+            fetch_data
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("Async function to fetch data.")
+        );
     }
 
     #[test]
@@ -162,21 +179,25 @@ def full_name(self) -> str:
 
         let get_config = symbols.iter().find(|s| s.name == "get_config");
         assert!(get_config.is_some());
-        assert!(get_config
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@staticmethod @cached def get_config"));
+        assert!(
+            get_config
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@staticmethod @cached def get_config")
+        );
 
         let full_name = symbols.iter().find(|s| s.name == "full_name");
         assert!(full_name.is_some());
-        assert!(full_name
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@property def full_name"));
+        assert!(
+            full_name
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@property def full_name")
+        );
     }
 
     #[test]
@@ -217,16 +238,20 @@ class Calculator:
         assert!(add_method.is_some());
         let add_method = add_method.unwrap();
         assert_eq!(add_method.kind, SymbolKind::Method);
-        assert!(add_method
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("def add(self, a: float, b: float): float"));
-        assert!(add_method
-            .doc_comment
-            .as_ref()
-            .unwrap()
-            .contains("Add two numbers."));
+        assert!(
+            add_method
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("def add(self, a: float, b: float): float")
+        );
+        assert!(
+            add_method
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("Add two numbers.")
+        );
 
         let internal_method = symbols.iter().find(|s| s.name == "_internal_method");
         assert!(internal_method.is_some());
@@ -265,11 +290,13 @@ class Config:
         assert!(api_url.is_some());
         let api_url = api_url.unwrap();
         assert_eq!(api_url.kind, SymbolKind::Constant);
-        assert!(api_url
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(": str = \"https://api.example.com\""));
+        assert!(
+            api_url
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(": str = \"https://api.example.com\"")
+        );
 
         let max_retries = symbols.iter().find(|s| s.name == "MAX_RETRIES");
         assert!(max_retries.is_some());
@@ -279,11 +306,13 @@ class Config:
         assert!(database_url.is_some());
         let database_url = database_url.unwrap();
         assert_eq!(database_url.kind, SymbolKind::Property); // self.attribute = property
-        assert!(database_url
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains(": str = \"postgresql://localhost\""));
+        assert!(
+            database_url
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains(": str = \"postgresql://localhost\"")
+        );
 
         let secret_key = symbols.iter().find(|s| s.name == "_secret_key");
         assert!(secret_key.is_some());
@@ -601,31 +630,37 @@ class Container(Generic[T]):
 
         let t_var = symbols.iter().find(|s| s.name == "T");
         assert!(t_var.is_some());
-        assert!(t_var
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("TypeVar('T', bound='Comparable')"));
+        assert!(
+            t_var
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("TypeVar('T', bound='Comparable')")
+        );
 
         let api_version = symbols.iter().find(|s| s.name == "API_VERSION");
         assert!(api_version.is_some());
-        assert!(api_version
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("Final[str] = \"v1.2.3\""));
+        assert!(
+            api_version
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("Final[str] = \"v1.2.3\"")
+        );
 
         let color_enum = symbols.iter().find(|s| s.name == "Color");
         assert!(color_enum.is_some());
         let color_enum = color_enum.unwrap();
         assert_eq!(color_enum.kind, SymbolKind::Enum);
-        assert!(color_enum
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("class Color extends Enum"));
+        assert!(
+            color_enum
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("class Color extends Enum")
+        );
 
         let red_value = symbols.iter().find(|s| s.name == "RED");
         assert!(red_value.is_some());
@@ -635,34 +670,42 @@ class Container(Generic[T]):
         assert!(comparable.is_some());
         let comparable = comparable.unwrap();
         assert_eq!(comparable.kind, SymbolKind::Interface); // Protocol = Interface
-        assert!(comparable
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("class Comparable extends Protocol"));
+        assert!(
+            comparable
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("class Comparable extends Protocol")
+        );
 
         let point = symbols.iter().find(|s| s.name == "Point");
         assert!(point.is_some());
         let point = point.unwrap();
-        assert!(point
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@dataclass class Point"));
-        assert!(point
-            .doc_comment
-            .as_ref()
-            .unwrap()
-            .contains("Immutable point with slots."));
+        assert!(
+            point
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@dataclass class Point")
+        );
+        assert!(
+            point
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("Immutable point with slots.")
+        );
 
         let container = symbols.iter().find(|s| s.name == "Container");
         assert!(container.is_some());
-        assert!(container
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("class Container extends Generic[T]"));
+        assert!(
+            container
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("class Container extends Generic[T]")
+        );
     }
 
     #[test]
@@ -718,29 +761,35 @@ def process_users(users: List[User]) -> List[str]:
         assert!(symbols.iter().find(|s| s.name == "display_name").is_some());
         assert!(symbols.iter().find(|s| s.name == "create_admin").is_some());
         assert!(symbols.iter().find(|s| s.name == "fetch_user").is_some());
-        assert!(symbols
-            .iter()
-            .find(|s| s.name == "_validate_user")
-            .is_some());
+        assert!(
+            symbols
+                .iter()
+                .find(|s| s.name == "_validate_user")
+                .is_some()
+        );
         assert!(symbols.iter().find(|s| s.name == "DEBUG").is_some());
         assert!(symbols.iter().find(|s| s.name == "process_users").is_some());
 
         // Check specific features
         let user_class = symbols.iter().find(|s| s.name == "User");
-        assert!(user_class
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("@dataclass class User"));
+        assert!(
+            user_class
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("@dataclass class User")
+        );
 
         let fetch_user = symbols.iter().find(|s| s.name == "fetch_user");
-        assert!(fetch_user
-            .unwrap()
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("async def fetch_user"));
+        assert!(
+            fetch_user
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("async def fetch_user")
+        );
 
         let validate_user = symbols.iter().find(|s| s.name == "_validate_user");
         assert_eq!(

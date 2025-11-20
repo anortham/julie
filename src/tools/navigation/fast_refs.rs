@@ -301,7 +301,8 @@ impl FastRefsTool {
                     };
                     // Single batch query, optionally filtered by identifier kind
                     if let Some(kind) = reference_kind_filter {
-                        db_lock.get_relationships_to_symbols_filtered_by_kind(&definition_ids, &kind)
+                        db_lock
+                            .get_relationships_to_symbols_filtered_by_kind(&definition_ids, &kind)
                     } else {
                         db_lock.get_relationships_to_symbols(&definition_ids)
                     }

@@ -140,9 +140,7 @@ mod wal_growth_prevention {
     /// Returns 0 if WAL file doesn't exist
     fn get_wal_file_size(db_path: &std::path::Path) -> u64 {
         let wal_path = db_path.with_extension("db-wal");
-        fs::metadata(&wal_path)
-            .map(|m| m.len())
-            .unwrap_or(0)
+        fs::metadata(&wal_path).map(|m| m.len()).unwrap_or(0)
     }
 
     /// Test that bulk_store_embeddings() doesn't cause unbounded WAL growth
@@ -348,9 +346,7 @@ mod batch_size_caching {
             .expect("Should create engine");
 
         // Get cached batch size multiple times (simulating 239 batches during indexing)
-        let batch_sizes: Vec<usize> = (0..239)
-            .map(|_| engine.get_cached_batch_size())
-            .collect();
+        let batch_sizes: Vec<usize> = (0..239).map(|_| engine.get_cached_batch_size()).collect();
 
         // CRITICAL: All calls should return the SAME value (cached, not recalculated)
         let first_value = batch_sizes[0];

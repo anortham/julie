@@ -69,7 +69,11 @@ impl JavaScriptExtractor {
         type_map
     }
 
-    fn extract_jsdoc_type(&self, doc_comment: &str, kind: &crate::extractors::base::SymbolKind) -> Option<String> {
+    fn extract_jsdoc_type(
+        &self,
+        doc_comment: &str,
+        kind: &crate::extractors::base::SymbolKind,
+    ) -> Option<String> {
         use crate::extractors::base::SymbolKind;
 
         match kind {

@@ -594,13 +594,23 @@ async fn sqlite_fts_search(
                     poisoned.into_inner()
                 }
             };
-        if let Ok(Some(content)) = db_lock.get_file_content(&result.path) {
-            // 🔥 FIX: Extract the actual matched term from <mark> tags instead of trying to match entire snippet
-            // FTS5 snippets can be multi-line, but we search line-by-line, so matching entire snippet fails.
-            // Instead, extract the text inside <mark>...</mark> tags and search for that.
-            let marked_term = if let Some(start) = result.snippet.find("<mark>") {
-                if let Some(end) = result.snippet[start..].find("</mark>") {
-                    result.snippet[start + 6..start + end].trim().to_string()
+            if let Ok(Some(content)) = db_lock.get_file_content(&result.path) {
+                // 🔥 FIX: Extract the actual matched term from <mark> tags instead of trying to match entire snippet
+                // FTS5 snippets can be multi-line, but we search line-by-line, so matching entire snippet fails.
+                // Instead, extract the text inside <mark>...</mark> tags and search for that.
+                let marked_term = if let Some(start) = result.snippet.find("<mark>") {
+                    if let Some(end) = result.snippet[start..].find("</mark>") {
+                        result.snippet[start + 6..start + end].trim().to_string()
+                    } else {
+                        // Fallback: use cleaned snippet
+                        result
+                            .snippet
+                            .replace("...", "")
+                            .replace("<mark>", "")
+                            .replace("</mark>", "")
+                            .trim()
+                            .to_string()
+                    }
                 } else {
                     // Fallback: use cleaned snippet
                     result
@@ -610,145 +620,135 @@ async fn sqlite_fts_search(
                         .replace("</mark>", "")
                         .trim()
                         .to_string()
-                }
-            } else {
-                // Fallback: use cleaned snippet
-                result
-                    .snippet
-                    .replace("...", "")
-                    .replace("<mark>", "")
-                    .replace("</mark>", "")
-                    .trim()
-                    .to_string()
-            };
+                };
 
-            debug!(
-                "🔍 Searching for marked term '{}' in {}",
-                marked_term, result.path
-            );
+                debug!(
+                    "🔍 Searching for marked term '{}' in {}",
+                    marked_term, result.path
+                );
 
-            // Search for the marked term in file content
-            let content_lines: Vec<&str> = content.lines().collect();
-            let mut found_line: Option<(usize, String)> = None;
+                // Search for the marked term in file content
+                let content_lines: Vec<&str> = content.lines().collect();
+                let mut found_line: Option<(usize, String)> = None;
 
-            for (line_idx, line) in content_lines.iter().enumerate() {
-                // Check for non-empty trimmed lines before matching
-                let trimmed = line.trim();
-                if !trimmed.is_empty() && line.contains(&marked_term) {
-                    let initial_line_num = line_idx + 1; // 1-indexed
-                    let initial_line_content = line.to_string();
+                for (line_idx, line) in content_lines.iter().enumerate() {
+                    // Check for non-empty trimmed lines before matching
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() && line.contains(&marked_term) {
+                        let initial_line_num = line_idx + 1; // 1-indexed
+                        let initial_line_content = line.to_string();
 
-                    // Phase 3: Intelligent line selection
-                    // If the matched line is useless (just punctuation), find better context nearby
-                    if !is_useful_line(line) {
-                        debug!(
-                            "⚠️ Matched line {} in {} is not useful ('{}'), searching for better context",
-                            initial_line_num, result.path, trimmed
-                        );
-
-                        if let Some((better_line_num, better_content)) =
-                            find_intelligent_context(&content_lines, line_idx)
-                        {
+                        // Phase 3: Intelligent line selection
+                        // If the matched line is useless (just punctuation), find better context nearby
+                        if !is_useful_line(line) {
                             debug!(
-                                "✓ Found better context at line {} in {}",
-                                better_line_num, result.path
+                                "⚠️ Matched line {} in {} is not useful ('{}'), searching for better context",
+                                initial_line_num, result.path, trimmed
                             );
-                            found_line = Some((better_line_num, better_content));
+
+                            if let Some((better_line_num, better_content)) =
+                                find_intelligent_context(&content_lines, line_idx)
+                            {
+                                debug!(
+                                    "✓ Found better context at line {} in {}",
+                                    better_line_num, result.path
+                                );
+                                found_line = Some((better_line_num, better_content));
+                            } else {
+                                // No better context found, use original
+                                found_line = Some((initial_line_num, initial_line_content));
+                            }
                         } else {
-                            // No better context found, use original
+                            // Line is already useful, use it
                             found_line = Some((initial_line_num, initial_line_content));
                         }
-                    } else {
-                        // Line is already useful, use it
-                        found_line = Some((initial_line_num, initial_line_content));
+                        break;
                     }
-                    break;
+                }
+
+                if let Some((line_num, _line_content)) = found_line {
+                    // Phase 2: Multi-line context extraction
+                    // Extract context based on context_lines parameter (default: 1 = ±1 line)
+                    let num_context_lines = context_lines.unwrap_or(1);
+                    let code_context_text = if num_context_lines == 0 {
+                        // Single line only - use the line content directly
+                        content_lines
+                            .get(line_num - 1)
+                            .map(|l| l.to_string())
+                            .unwrap_or_default()
+                    } else {
+                        // Multi-line with grep-style formatting (line numbers + arrow indicator)
+                        extract_context_lines(&content, line_num, num_context_lines)
+                    };
+
+                    // Create a proper symbol with real line location
+                    let symbol = crate::extractors::Symbol {
+                        id: format!("fts_{}_{}", result.path.replace(['/', '\\'], "_"), line_num),
+                        name: format!(
+                            "{}:{}",
+                            std::path::Path::new(&result.path)
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy(),
+                            line_num
+                        ),
+                        kind: crate::extractors::SymbolKind::Module,
+                        language: "text".to_string(),
+                        file_path: result.path.clone(),
+                        start_line: line_num as u32,
+                        start_column: 0,
+                        end_line: line_num as u32,
+                        end_column: code_context_text.len() as u32,
+                        start_byte: 0,
+                        end_byte: 0,
+                        signature: Some(format!("FTS5 match (relevance: {:.4})", result.rank)),
+                        doc_comment: None,
+                        visibility: None,
+                        parent_id: None,
+                        metadata: None,
+                        semantic_group: Some("fts_match".to_string()),
+                        confidence: Some(result.rank),
+                        code_context: Some(code_context_text),
+                        content_type: None,
+                    };
+                    symbols.push(symbol);
+                } else {
+                    // Fallback: couldn't find exact line, use snippet as context
+                    debug!(
+                        "⚠️ Could not locate exact line for FTS match in {}",
+                        result.path
+                    );
+                    let symbol = crate::extractors::Symbol {
+                        id: format!("fts_result_{}", result.path.replace(['/', '\\'], "_")),
+                        name: format!(
+                            "FILE_CONTENT: {}",
+                            std::path::Path::new(&result.path)
+                                .file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                        ),
+                        kind: crate::extractors::SymbolKind::Module,
+                        language: "text".to_string(),
+                        file_path: result.path.clone(),
+                        start_line: 1,
+                        start_column: 0,
+                        end_line: 1,
+                        end_column: 0,
+                        start_byte: 0,
+                        end_byte: 0,
+                        signature: Some(format!("FTS5 match (relevance: {:.4})", result.rank)),
+                        doc_comment: Some(result.snippet.clone()),
+                        visibility: None,
+                        parent_id: None,
+                        metadata: None,
+                        semantic_group: Some("file_content".to_string()),
+                        confidence: Some(result.rank),
+                        code_context: Some(result.snippet),
+                        content_type: None,
+                    };
+                    symbols.push(symbol);
                 }
             }
-
-            if let Some((line_num, _line_content)) = found_line {
-                // Phase 2: Multi-line context extraction
-                // Extract context based on context_lines parameter (default: 1 = ±1 line)
-                let num_context_lines = context_lines.unwrap_or(1);
-                let code_context_text = if num_context_lines == 0 {
-                    // Single line only - use the line content directly
-                    content_lines
-                        .get(line_num - 1)
-                        .map(|l| l.to_string())
-                        .unwrap_or_default()
-                } else {
-                    // Multi-line with grep-style formatting (line numbers + arrow indicator)
-                    extract_context_lines(&content, line_num, num_context_lines)
-                };
-
-                // Create a proper symbol with real line location
-                let symbol = crate::extractors::Symbol {
-                    id: format!("fts_{}_{}", result.path.replace(['/', '\\'], "_"), line_num),
-                    name: format!(
-                        "{}:{}",
-                        std::path::Path::new(&result.path)
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy(),
-                        line_num
-                    ),
-                    kind: crate::extractors::SymbolKind::Module,
-                    language: "text".to_string(),
-                    file_path: result.path.clone(),
-                    start_line: line_num as u32,
-                    start_column: 0,
-                    end_line: line_num as u32,
-                    end_column: code_context_text.len() as u32,
-                    start_byte: 0,
-                    end_byte: 0,
-                    signature: Some(format!("FTS5 match (relevance: {:.4})", result.rank)),
-                    doc_comment: None,
-                    visibility: None,
-                    parent_id: None,
-                    metadata: None,
-                    semantic_group: Some("fts_match".to_string()),
-                    confidence: Some(result.rank),
-                    code_context: Some(code_context_text),
-                    content_type: None,
-                };
-                symbols.push(symbol);
-            } else {
-                // Fallback: couldn't find exact line, use snippet as context
-                debug!(
-                    "⚠️ Could not locate exact line for FTS match in {}",
-                    result.path
-                );
-                let symbol = crate::extractors::Symbol {
-                    id: format!("fts_result_{}", result.path.replace(['/', '\\'], "_")),
-                    name: format!(
-                        "FILE_CONTENT: {}",
-                        std::path::Path::new(&result.path)
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                    ),
-                    kind: crate::extractors::SymbolKind::Module,
-                    language: "text".to_string(),
-                    file_path: result.path.clone(),
-                    start_line: 1,
-                    start_column: 0,
-                    end_line: 1,
-                    end_column: 0,
-                    start_byte: 0,
-                    end_byte: 0,
-                    signature: Some(format!("FTS5 match (relevance: {:.4})", result.rank)),
-                    doc_comment: Some(result.snippet.clone()),
-                    visibility: None,
-                    parent_id: None,
-                    metadata: None,
-                    semantic_group: Some("file_content".to_string()),
-                    confidence: Some(result.rank),
-                    code_context: Some(result.snippet),
-                    content_type: None,
-                };
-                symbols.push(symbol);
-            }
-        }
         }
         symbols // Return symbols from block_in_place
     }); // End of block_in_place - all DB access now properly isolated

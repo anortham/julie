@@ -31,14 +31,9 @@ func GetUserScores() map[string]int {
         let tree = parser.parse(code, None).expect("Error parsing code");
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.go",
-            code,
-            "go",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.go", code, "go", &workspace_root)
+                .expect("Extraction failed");
 
         assert!(
             !results.types.is_empty(),
@@ -47,7 +42,10 @@ func GetUserScores() map[string]int {
 
         println!("Extracted {} types from Go code", results.types.len());
         for (symbol_id, type_info) in &results.types {
-            println!("  {} -> {} (inferred: {})", symbol_id, type_info.resolved_type, type_info.is_inferred);
+            println!(
+                "  {} -> {} (inferred: {})",
+                symbol_id, type_info.resolved_type, type_info.is_inferred
+            );
         }
 
         assert!(results.types.len() >= 1);

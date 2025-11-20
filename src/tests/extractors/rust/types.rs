@@ -43,7 +43,10 @@ fn process_data() -> Result<Vec<u8>, std::io::Error> {
     assert!(!types.is_empty(), "Should extract at least one type");
 
     // Find the process_data symbol (known to have return type in signature)
-    let process_data_symbol = symbols.iter().find(|s| s.name == "process_data").expect("Should find process_data");
+    let process_data_symbol = symbols
+        .iter()
+        .find(|s| s.name == "process_data")
+        .expect("Should find process_data");
 
     // Verify the type was extracted correctly
     assert_eq!(

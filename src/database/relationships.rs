@@ -165,7 +165,8 @@ impl SymbolDatabase {
             .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
             .collect();
 
-        let relationship_iter = stmt.query_map(&param_refs[..], |row| self.row_to_relationship(row))?;
+        let relationship_iter =
+            stmt.query_map(&param_refs[..], |row| self.row_to_relationship(row))?;
 
         let mut relationships = Vec::new();
         for relationship_result in relationship_iter {

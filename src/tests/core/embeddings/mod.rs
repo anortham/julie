@@ -1602,7 +1602,8 @@ fn test_get_type_for_symbol_database_helper() {
     db.bulk_store_files(&[file_info]).unwrap();
 
     // Store symbol
-    db.bulk_store_symbols(&[symbol.clone()], "test_workspace").unwrap();
+    db.bulk_store_symbols(&[symbol.clone()], "test_workspace")
+        .unwrap();
 
     // Store type using bulk_store_types
     let type_info = TypeInfo {
@@ -1673,16 +1674,18 @@ async fn test_build_embedding_text_includes_type_information() {
     }
 
     // Store type information for this symbol
-    db.conn.execute(
-        "INSERT INTO types (symbol_id, resolved_type, is_inferred, language)
+    db.conn
+        .execute(
+            "INSERT INTO types (symbol_id, resolved_type, is_inferred, language)
          VALUES (?1, ?2, ?3, ?4)",
-        (
-            &symbol.id,
-            "Promise<UserProfile>",  // This is the return type we want in embeddings
-            0,  // is_inferred = false (explicit type)
-            "typescript",
-        ),
-    ).unwrap();
+            (
+                &symbol.id,
+                "Promise<UserProfile>", // This is the return type we want in embeddings
+                0,                      // is_inferred = false (explicit type)
+                "typescript",
+            ),
+        )
+        .unwrap();
 
     // Create EmbeddingEngine with database containing type info
     let db_arc = Arc::new(Mutex::new(db));
@@ -1697,9 +1700,18 @@ async fn test_build_embedding_text_includes_type_information() {
     println!("Embedding text: {}", embedding_text);
 
     // Should include the basic symbol info (existing behavior)
-    assert!(embedding_text.contains("fetchUserProfile"), "Should include function name");
-    assert!(embedding_text.contains("function"), "Should include symbol kind");
-    assert!(embedding_text.contains("Fetches a user profile"), "Should include doc comment");
+    assert!(
+        embedding_text.contains("fetchUserProfile"),
+        "Should include function name"
+    );
+    assert!(
+        embedding_text.contains("function"),
+        "Should include symbol kind"
+    );
+    assert!(
+        embedding_text.contains("Fetches a user profile"),
+        "Should include doc comment"
+    );
 
     // NEW BEHAVIOR: Should include type information from types table
     assert!(
@@ -1823,20 +1835,37 @@ async fn test_semantic_grouper_batching() {
         content_type: None,
     };
 
-    let all_symbols = vec![target.clone(), candidate1.clone(), candidate2.clone(), candidate3.clone()];
+    let all_symbols = vec![
+        target.clone(),
+        candidate1.clone(),
+        candidate2.clone(),
+        candidate3.clone(),
+    ];
 
     // This call uses the new batching logic internally
-    let groups = grouper.find_semantic_group(&target, &all_symbols, &mut engine).await.unwrap();
+    let groups = grouper
+        .find_semantic_group(&target, &all_symbols, &mut engine)
+        .await
+        .unwrap();
 
     // Should find at least one group
     assert!(!groups.is_empty(), "Should find a semantic group");
-    
+
     let group = &groups[0];
-    
+
     // Group should contain candidate1 (C# User) and candidate2 (SQL users), but NOT candidate3
     let symbol_ids: Vec<String> = group.symbols.iter().map(|s| s.id.clone()).collect();
-    
-    assert!(symbol_ids.contains(&"cs_user".to_string()), "Group should contain C# User");
-    assert!(symbol_ids.contains(&"sql_users".to_string()), "Group should contain SQL users");
-    assert!(!symbol_ids.contains(&"random".to_string()), "Group should NOT contain unrelated symbol");
+
+    assert!(
+        symbol_ids.contains(&"cs_user".to_string()),
+        "Group should contain C# User"
+    );
+    assert!(
+        symbol_ids.contains(&"sql_users".to_string()),
+        "Group should contain SQL users"
+    );
+    assert!(
+        !symbol_ids.contains(&"random".to_string()),
+        "Group should NOT contain unrelated symbol"
+    );
 }

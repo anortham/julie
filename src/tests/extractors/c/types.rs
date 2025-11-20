@@ -47,16 +47,34 @@ void process_data() {
     assert!(!types.is_empty(), "Should extract at least one type");
 
     // Find function symbols
-    let get_count_symbol = symbols.iter().find(|s| s.name == "get_count").expect("Should find get_count");
-    let get_name_symbol = symbols.iter().find(|s| s.name == "get_name").expect("Should find get_name");
-    let get_user_symbol = symbols.iter().find(|s| s.name == "get_user").expect("Should find get_user");
-    let process_data_symbol = symbols.iter().find(|s| s.name == "process_data").expect("Should find process_data");
+    let get_count_symbol = symbols
+        .iter()
+        .find(|s| s.name == "get_count")
+        .expect("Should find get_count");
+    let get_name_symbol = symbols
+        .iter()
+        .find(|s| s.name == "get_name")
+        .expect("Should find get_name");
+    let get_user_symbol = symbols
+        .iter()
+        .find(|s| s.name == "get_user")
+        .expect("Should find get_user");
+    let process_data_symbol = symbols
+        .iter()
+        .find(|s| s.name == "process_data")
+        .expect("Should find process_data");
 
     // Verify types were extracted
     assert_eq!(types.get(&get_count_symbol.id), Some(&"int".to_string()));
     assert_eq!(types.get(&get_name_symbol.id), Some(&"char*".to_string()));
-    assert_eq!(types.get(&get_user_symbol.id), Some(&"struct User*".to_string()));
-    assert_eq!(types.get(&process_data_symbol.id), Some(&"void".to_string()));
+    assert_eq!(
+        types.get(&get_user_symbol.id),
+        Some(&"struct User*".to_string())
+    );
+    assert_eq!(
+        types.get(&process_data_symbol.id),
+        Some(&"void".to_string())
+    );
 }
 
 #[test]

@@ -19,8 +19,8 @@ mod migrations;
 mod relationships;
 mod schema;
 mod symbols;
-pub mod types;
 mod type_queries;
+pub mod types;
 mod workspace;
 
 // Re-export public types
