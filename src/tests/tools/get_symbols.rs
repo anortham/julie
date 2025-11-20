@@ -10,20 +10,30 @@ use crate::handler::JulieServerHandler;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
 use rust_mcp_sdk::schema::CallToolResult;
 
-/// Extract text from CallToolResult safely
+/// Extract text from CallToolResult safely (handles both TOON and JSON modes)
 fn extract_text_from_result(result: &CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|content_block| {
-            serde_json::to_value(content_block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
+    // Try extracting from .content first (TOON mode)
+    if !result.content.is_empty() {
+        return result
+            .content
+            .iter()
+            .filter_map(|content_block| {
+                serde_json::to_value(content_block).ok().and_then(|json| {
+                    json.get("text")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
             })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+
+    // Fall back to .structured_content (JSON mode)
+    if let Some(structured) = &result.structured_content {
+        return serde_json::to_string_pretty(structured).unwrap_or_default();
+    }
+
+    String::new()
 }
 
 #[tokio::test]
@@ -366,15 +376,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
     assert_eq!(returned_symbols, 5, "Should return exactly 5 symbols");
     assert_eq!(total_symbols, 20, "Total should still be 20");
     assert!(truncated, "Should indicate truncation occurred");
-    assert!(
-        text_with_limit.contains("⚠️"),
-        "Text should show truncation warning"
-    );
-    assert!(
-        text_with_limit.contains("Showing 5 of 20"),
-        "Should show truncation summary: {}",
-        text_with_limit
-    );
+    // Note: Text representation is in JSON format, structured_content has all info
 
     Ok(())
 }

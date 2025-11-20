@@ -12,17 +12,28 @@ use crate::tools::refactoring::SmartRefactorTool;
 
 /// Extract text from CallToolResult
 fn extract_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
-    result
-        .content
-        .iter()
-        .filter_map(|block| {
-            serde_json::to_value(block).ok().and_then(|json| {
-                json.get("text")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()))
+    // Try extracting from .content first (TOON mode)
+    if !result.content.is_empty() {
+        return result
+            .content
+            .iter()
+            .filter_map(|block| {
+                serde_json::to_value(block).ok().and_then(|json| {
+                    json.get("text")
+                        .and_then(|v| v.as_str().map(|s| s.to_string()))
+                })
             })
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+            .collect::<Vec<_>>()
+            .join("
+");
+    }
+
+    // Fall back to .structured_content (JSON mode)
+    if let Some(structured) = &result.structured_content {
+        return serde_json::to_string_pretty(structured).unwrap_or_default();
+    }
+
+    String::new()
 }
 
 #[tokio::test]
@@ -71,7 +82,7 @@ export function getUserData(userId: number): Promise<User> {
 
     // This assertion would FAIL if the operation returned "coming soon"
     assert!(
-        response.contains("Successfully replaced"),
+        result.structured_content.as_ref().and_then(|s| s.get("success")).and_then(|v| v.as_bool()).unwrap_or(false),
         "Expected success message, got: {}",
         response
     );
@@ -136,7 +147,7 @@ class UserService:
 
     let response = extract_text(&result);
     assert!(
-        response.contains("Successfully replaced"),
+        result.structured_content.as_ref().and_then(|s| s.get("success")).and_then(|v| v.as_bool()).unwrap_or(false),
         "Expected success, got: {}",
         response
     );
@@ -187,7 +198,7 @@ pub fn calculate_total(items: &[Item]) -> f64 {
 
     let response = extract_text(&result);
     assert!(
-        response.contains("Successfully replaced"),
+        result.structured_content.as_ref().and_then(|s| s.get("success")).and_then(|v| v.as_bool()).unwrap_or(false),
         "Expected success, got: {}",
         response
     );
@@ -220,8 +231,13 @@ async fn test_replace_symbol_body_dry_run() -> Result<()> {
     let handler = JulieServerHandler::new().await?;
     let result = tool.call_tool(&handler).await?;
 
-    let response = extract_text(&result);
-    assert!(response.contains("DRY RUN"));
+    // Verify dry_run mode in structured_content
+    assert!(result.structured_content.is_some(), "Should have structured content");
+    let structured = result.structured_content.as_ref().unwrap();
+    assert!(
+        structured.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false),
+        "Should indicate dry run mode"
+    );
 
     // File should be unchanged
     let actual = fs::read_to_string(&file_path)?;

@@ -236,6 +236,7 @@ mod navigation_tools_tests {
             context_file: None,
             line_number: None,
             workspace: Some("primary".to_string()),
+            output_format: None,
         };
 
         // Create a small number of definitions for the symbol
@@ -287,6 +288,7 @@ mod navigation_tools_tests {
             context_file: None,
             line_number: None,
             workspace: Some("primary".to_string()),
+            output_format: None,
         };
 
         // Create many definitions across a large codebase to trigger progressive reduction
@@ -346,6 +348,7 @@ mod navigation_tools_tests {
             context_file: Some("src/main.rs".to_string()),
             line_number: Some(42),
             workspace: Some("primary".to_string()),
+            output_format: None,
         };
 
         // Create 100 definitions with extensive signatures and documentation
@@ -407,6 +410,7 @@ mod navigation_tools_tests {
             context_file: None,
             line_number: None,
             workspace: Some("primary".to_string()),
+            output_format: None,
         };
 
         // Create symbols that would match semantically

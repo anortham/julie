@@ -477,14 +477,13 @@ mod multi_file_tests {
         };
 
         let result = tool.call_tool(&handler).await?;
-        let result_text = format!("{:?}", result);
 
-        // Should show preview (case-insensitive)
-        let result_text_lower = result_text.to_lowercase();
+        // Verify dry_run mode in structured_content
+        assert!(result.structured_content.is_some(), "Should have structured content");
+        let structured = result.structured_content.as_ref().unwrap();
         assert!(
-            result_text_lower.contains("preview") || result_text_lower.contains("would"),
-            "Expected 'preview' or 'would' in result: {}",
-            result_text
+            structured.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false),
+            "Should indicate dry run mode"
         );
 
         // File should NOT be modified

@@ -53,8 +53,13 @@ async fn test_edit_symbol_replace_body_basic() -> Result<()> {
     assert!(!content.contains("1 + 1"), "Old body should be gone");
 
     // Verify result indicates success
-    let result_text = format!("{:?}", result);
-    assert!(result_text.contains("Success") || result_text.contains("✅"));
+    // Verify result indicates success (check structured_content for success field)
+    assert!(result.structured_content.is_some(), "Result should have structured content");
+    let structured = result.structured_content.as_ref().unwrap();
+    assert!(
+        structured.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
+        "Result should indicate success"
+    );
 
     Ok(())
 }

@@ -106,7 +106,7 @@ async fn cross_language_callers_found_via_naming_variant() {
         max_depth: 3,
         context_file: None,
         workspace: Some(workspace_id.to_string()),
-        output_format: "json".to_string(),
+        output_format: Some("json".to_string()),
     };
 
     let callers = tool

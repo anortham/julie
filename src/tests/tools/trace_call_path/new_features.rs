@@ -18,10 +18,10 @@ fn test_output_format_parameter_json() {
         max_depth: 3,
         context_file: None,
         workspace: Some("primary".to_string()),
-        output_format: "json".to_string(),
+        output_format: Some("json".to_string()),
     };
 
-    assert_eq!(tool.output_format, "json");
+    assert_eq!(tool.output_format, Some("json".to_string()));
 }
 
 #[test]
@@ -33,10 +33,10 @@ fn test_output_format_parameter_tree() {
         max_depth: 3,
         context_file: None,
         workspace: Some("primary".to_string()),
-        output_format: "tree".to_string(),
+        output_format: Some("tree".to_string()),
     };
 
-    assert_eq!(tool.output_format, "tree");
+    assert_eq!(tool.output_format, Some("tree".to_string()));
 }
 
 #[test]
@@ -48,7 +48,7 @@ fn test_semantic_limit_parameter() {
         max_depth: 3,
         context_file: None,
         workspace: Some("primary".to_string()),
-        output_format: "json".to_string(),
+        output_format: Some("json".to_string()),
     };
 }
 
@@ -61,7 +61,7 @@ fn test_semantic_limit_default() {
         max_depth: 3,
         context_file: None,
         workspace: Some("primary".to_string()),
-        output_format: "json".to_string(),
+        output_format: Some("json".to_string()),
     };
 }
 
@@ -74,7 +74,7 @@ fn test_cross_language_max_depth_parameter() {
         max_depth: 5,
         context_file: None,
         workspace: Some("primary".to_string()),
-        output_format: "json".to_string(),
+        output_format: Some("json".to_string()),
     };
 }
 
@@ -87,7 +87,7 @@ fn test_cross_language_max_depth_default() {
         max_depth: 5,
         context_file: None,
         workspace: Some("primary".to_string()),
-        output_format: "json".to_string(),
+        output_format: Some("json".to_string()),
     };
 }
 
@@ -100,9 +100,9 @@ fn test_all_new_parameters_together() {
         max_depth: 5,
         context_file: Some("src/payment.ts".to_string()),
         workspace: Some("reference_workspace_id".to_string()),
-        output_format: "tree".to_string(),
+        output_format: Some("tree".to_string()),
     };
 
-    assert_eq!(tool.output_format, "tree");
+    assert_eq!(tool.output_format, Some("tree".to_string()));
     assert_eq!(tool.workspace, Some("reference_workspace_id".to_string()));
 }

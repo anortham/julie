@@ -16,6 +16,11 @@
 pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
 
 // ============================================================================
+// SHARED INFRASTRUCTURE TESTS - Shared tool helpers and utilities
+// ============================================================================
+pub mod shared_tests; // Shared tool infrastructure tests (create_toonable_result, etc.)
+
+// ============================================================================
 // MAIN SERVER TESTS - Entry point error handling
 // ============================================================================
 pub mod main_error_handling; // MCP server initialization and runtime error handling

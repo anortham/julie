@@ -15,6 +15,7 @@ use tracing::{debug, warn};
 
 use crate::extractors::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
+use crate::tools::shared::create_toonable_result;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
 use super::reference_workspace;
@@ -120,68 +121,15 @@ impl FastRefsTool {
             next_actions,
         };
 
-        // Return based on output_format: TOON uses text only, JSON uses structured
-        match self.output_format.as_deref() {
-            Some("toon") => {
-                // TOON mode: Return ONLY TOON in text, NO structured content
-                match toon_format::encode_default(&result) {
-                    Ok(toon) => {
-                        debug!("✅ Encoded fast_refs results to TOON ({} chars)", toon.len());
-                        Ok(CallToolResult::text_content(vec![TextContent::from(toon)]))
-                    }
-                    Err(e) => {
-                        warn!("❌ TOON encoding failed for fast_refs: {}, falling back to JSON", e);
-                        let structured = serde_json::to_value(&result)?;
-                        let structured_map = if let serde_json::Value::Object(map) = structured {
-                            map
-                        } else {
-                            return Err(anyhow::anyhow!("Expected JSON object"));
-                        };
-                        Ok(CallToolResult::text_content(vec![])
-                            .with_structured_content(structured_map))
-                    }
-                }
-            }
-            Some("auto") => {
-                // Auto mode: TOON for 5+ results (text only), JSON for small responses
-                let total_results = result.definition_count + result.reference_count;
-                if total_results >= 5 {
-                    match toon_format::encode_default(&result) {
-                        Ok(toon) => {
-                            debug!("✅ Auto-selected TOON for {} results ({} chars)", total_results, toon.len());
-                            return Ok(CallToolResult::text_content(vec![TextContent::from(toon)]));
-                        }
-                        Err(e) => {
-                            warn!("❌ TOON encoding failed for fast_refs: {}, falling back to JSON", e);
-                            // Fall through to JSON
-                        }
-                    }
-                }
-
-                // Small response or TOON failed: use JSON-only (no redundant text)
-                let structured = serde_json::to_value(&result)?;
-                let structured_map = if let serde_json::Value::Object(map) = structured {
-                    map
-                } else {
-                    return Err(anyhow::anyhow!("Expected JSON object"));
-                };
-                debug!("✅ Auto-selected JSON for {} results (no redundant text_content)", total_results);
-                Ok(CallToolResult::text_content(vec![])
-                    .with_structured_content(structured_map))
-            }
-            _ => {
-                // Default (JSON/None): ONLY structured content (no redundant text)
-                let structured = serde_json::to_value(&result)?;
-                let structured_map = if let serde_json::Value::Object(map) = structured {
-                    map
-                } else {
-                    return Err(anyhow::anyhow!("Expected JSON object"));
-                };
-                debug!("✅ Returning fast_refs results as JSON-only (no redundant text_content)");
-                Ok(CallToolResult::text_content(vec![])
-                    .with_structured_content(structured_map))
-            }
-        }
+        // Use shared TOON/JSON formatter
+        let total_results = result.definition_count + result.reference_count;
+        create_toonable_result(
+            &result,
+            self.output_format.as_deref(),
+            5,  // Auto threshold: 5+ results use TOON
+            total_results,
+            "fast_refs"
+        )
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {

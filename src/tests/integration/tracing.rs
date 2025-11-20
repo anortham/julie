@@ -594,7 +594,7 @@ mod dogfooding_tests {
             symbol: "process_files_optimized".to_string(),
             direction: "downstream".to_string(), // Follow callees
             max_depth: 3,
-            output_format: "json".to_string(),
+            output_format: Some("json".to_string()),
             context_file: None,
             workspace: Some("primary".to_string()),
         };
@@ -614,7 +614,7 @@ mod dogfooding_tests {
 
         // Verify we got a response (even if empty)
         assert!(
-            !trace_result.content.is_empty(),
+            !trace_result.content.is_empty() || trace_result.structured_content.is_some(),
             "Trace should return a response"
         );
 
@@ -648,7 +648,7 @@ mod dogfooding_tests {
             symbol: "FastSearchTool".to_string(),
             direction: "downstream".to_string(), // Follow callees
             max_depth: 3,
-            output_format: "tree".to_string(), // Test tree output format
+            output_format: Some("tree".to_string()), // Test tree output format
             context_file: None,
             workspace: Some("primary".to_string()),
         };
@@ -668,7 +668,7 @@ mod dogfooding_tests {
 
         // Verify we got a response (even if empty)
         assert!(
-            !trace_result.content.is_empty(),
+            !trace_result.content.is_empty() || trace_result.structured_content.is_some(),
             "Trace should return a response"
         );
 

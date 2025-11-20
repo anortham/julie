@@ -6,6 +6,7 @@ use tracing::{debug, warn};
 
 use crate::extractors::base::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
+use crate::tools::shared::create_toonable_result;
 
 use super::types::{BusinessLogicSymbol, FindLogicResult};
 
@@ -115,63 +116,14 @@ impl FindLogicTool {
             next_actions,
         };
 
-        // Return based on output_format: TOON uses text only, JSON uses structured only
-        match output_format {
-            Some("toon") => {
-                // TOON mode: Return ONLY TOON in text, NO structured content
-                match toon_format::encode_default(&result) {
-                    Ok(toon) => {
-                        debug!("✅ Returning find_logic in TOON-only mode ({} chars)", toon.len());
-                        Ok(CallToolResult::text_content(vec![toon.into()]))
-                    }
-                    Err(e) => {
-                        warn!("❌ TOON encoding failed: {}, falling back to JSON", e);
-                        let structured = serde_json::to_value(&result)?;
-                        let structured_map = if let serde_json::Value::Object(map) = structured {
-                            map
-                        } else {
-                            return Err(anyhow::anyhow!("Expected JSON object"));
-                        };
-                        Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
-                    }
-                }
-            }
-            Some("auto") => {
-                // Auto mode: TOON for 5+ results, JSON for small responses
-                if result.found_count >= 5 {
-                    match toon_format::encode_default(&result) {
-                        Ok(toon) => {
-                            debug!("✅ Auto-selected TOON for {} results ({} chars)", result.found_count, toon.len());
-                            return Ok(CallToolResult::text_content(vec![toon.into()]));
-                        }
-                        Err(e) => {
-                            debug!("⚠️ TOON encoding failed: {}, falling back to JSON", e);
-                            // Fall through to JSON
-                        }
-                    }
-                }
-                // Small response or TOON failed: use JSON-only
-                let structured = serde_json::to_value(&result)?;
-                let structured_map = if let serde_json::Value::Object(map) = structured {
-                    map
-                } else {
-                    return Err(anyhow::anyhow!("Expected JSON object"));
-                };
-                debug!("✅ Auto-selected JSON for {} results (no redundant text_content)", result.found_count);
-                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
-            }
-            _ => {
-                // Default (JSON/None): ONLY structured content (no redundant text)
-                let structured = serde_json::to_value(&result)?;
-                let structured_map = if let serde_json::Value::Object(map) = structured {
-                    map
-                } else {
-                    return Err(anyhow::anyhow!("Expected JSON object"));
-                };
-                debug!("✅ Returning find_logic as JSON-only (no redundant text_content)");
-                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
-            }
-        }
+        // Use shared TOON/JSON formatter
+        create_toonable_result(
+            &result,
+            output_format,
+            5,  // Auto threshold: 5+ results use TOON
+            result.found_count,
+            "find_logic"
+        )
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {

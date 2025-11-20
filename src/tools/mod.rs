@@ -32,9 +32,10 @@ pub use symbols::GetSymbolsTool;
 pub use trace_call_path::TraceCallPathTool;
 pub use workspace::ManageWorkspaceTool;
 
-// Re-export shared types
+// Re-export shared types and helpers
 pub use shared::{
-    BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS, KNOWN_CODE_EXTENSIONS, OptimizedResponse,
+    create_toonable_result, BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS,
+    KNOWN_CODE_EXTENSIONS, OptimizedResponse,
 };
 
 // Generate the JulieTools enum with tool_box! macro (gradually add tools as they are migrated)

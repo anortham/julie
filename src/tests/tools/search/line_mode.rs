@@ -17,20 +17,30 @@ mod search_line_mode_tests {
     use tempfile::TempDir;
     use tokio::time::{Duration, sleep};
 
-    /// Extract text from CallToolResult safely
+    /// Extract text from CallToolResult safely (handles both TOON and JSON modes)
     fn extract_text_from_result(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
-        result
-            .content
-            .iter()
-            .filter_map(|content_block| {
-                serde_json::to_value(content_block).ok().and_then(|json| {
-                    json.get("text")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
+        // Try extracting from .content first (TOON mode)
+        if !result.content.is_empty() {
+            return result
+                .content
+                .iter()
+                .filter_map(|content_block| {
+                    serde_json::to_value(content_block).ok().and_then(|json| {
+                        json.get("text")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
                 })
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
+                .collect::<Vec<_>>()
+                .join("\n");
+        }
+
+        // Fall back to .structured_content (JSON mode)
+        if let Some(structured) = &result.structured_content {
+            return serde_json::to_string_pretty(structured).unwrap_or_default();
+        }
+
+        String::new()
     }
 
     #[allow(dead_code)]

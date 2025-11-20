@@ -1,4 +1,8 @@
+use anyhow::{anyhow, Result};
+use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
+use toon_format;
+use tracing::{debug, warn};
 
 /// Token-optimized response wrapper with confidence-based limiting
 /// Inspired by codesearch's AIOptimizedResponse pattern
@@ -207,3 +211,102 @@ pub const KNOWN_CODE_EXTENSIONS: &[&str] = &[
     ".cabal",
     ".stack",
 ];
+
+/// Generic helper for TOON/JSON output formatting
+///
+/// Centralizes TOON encoding, auto mode logic, and fallback handling across all tools.
+/// Eliminates ~120 lines of duplicated code across fast_refs, fast_goto, find_logic, and trace_call_path.
+///
+/// # Parameters
+/// - `result_data`: The serializable result data to encode
+/// - `output_format`: Output format option ("toon", "auto", "json", None)
+/// - `auto_threshold`: Threshold for auto mode (if result_count >= threshold, use TOON)
+/// - `result_count`: Number of results (used for auto mode decision)
+/// - `tool_name`: Name of the tool (for debug logging)
+///
+/// # Returns
+/// - TOON mode: `CallToolResult` with text_content only (no structured_content)
+/// - JSON mode: `CallToolResult` with structured_content only (empty text_content)
+/// - Auto mode: TOON if >= threshold, otherwise JSON
+/// - Fallback: Always falls back to structured JSON if TOON encoding fails
+///
+/// # Example
+/// ```rust
+/// let result = MyToolResult { /* ... */ };
+/// let call_result = create_toonable_result(
+///     &result,
+///     Some("auto"),
+///     5,
+///     result.items.len(),
+///     "my_tool"
+/// )?;
+/// ```
+pub fn create_toonable_result<T: Serialize>(
+    result_data: &T,
+    output_format: Option<&str>,
+    auto_threshold: usize,
+    result_count: usize,
+    tool_name: &str,
+) -> Result<CallToolResult> {
+    match output_format {
+        Some("toon") => {
+            // TOON mode: Return ONLY TOON in text, NO structured content
+            match toon_format::encode_default(result_data) {
+                Ok(toon) => {
+                    debug!("✅ Encoded {} results to TOON ({} chars)", tool_name, toon.len());
+                    Ok(CallToolResult::text_content(vec![TextContent::from(toon)]))
+                }
+                Err(e) => {
+                    warn!("❌ TOON encoding failed for {}: {}, falling back to JSON", tool_name, e);
+                    // Fallback to structured JSON
+                    let structured = serde_json::to_value(result_data)?;
+                    let structured_map = if let serde_json::Value::Object(map) = structured {
+                        map
+                    } else {
+                        return Err(anyhow!("Expected JSON object"));
+                    };
+                    Ok(CallToolResult::text_content(vec![])
+                        .with_structured_content(structured_map))
+                }
+            }
+        }
+        Some("auto") => {
+            // Auto mode: TOON for >= threshold results (text only), JSON for small responses
+            if result_count >= auto_threshold {
+                match toon_format::encode_default(result_data) {
+                    Ok(toon) => {
+                        debug!("✅ Auto-selected TOON for {} results ({} chars)", result_count, toon.len());
+                        return Ok(CallToolResult::text_content(vec![TextContent::from(toon)]));
+                    }
+                    Err(e) => {
+                        debug!("⚠️ TOON encoding failed: {}, falling back to JSON", e);
+                        // Fall through to JSON
+                    }
+                }
+            }
+
+            // Small response or TOON failed: use JSON-only (no redundant text)
+            let structured = serde_json::to_value(result_data)?;
+            let structured_map = if let serde_json::Value::Object(map) = structured {
+                map
+            } else {
+                return Err(anyhow!("Expected JSON object"));
+            };
+            debug!("✅ Auto-selected JSON for {} results (no redundant text_content)", result_count);
+            Ok(CallToolResult::text_content(vec![])
+                .with_structured_content(structured_map))
+        }
+        _ => {
+            // Default (JSON/None): ONLY structured content (no redundant text)
+            let structured = serde_json::to_value(result_data)?;
+            let structured_map = if let serde_json::Value::Object(map) = structured {
+                map
+            } else {
+                return Err(anyhow!("Expected JSON object"));
+            };
+            debug!("✅ Returning {} as JSON-only (no redundant text_content)", tool_name);
+            Ok(CallToolResult::text_content(vec![])
+                .with_structured_content(structured_map))
+        }
+    }
+}

@@ -200,7 +200,7 @@ async fn test_naming_variants_respect_workspace_database() {
         max_depth: 3,
         context_file: None,
         workspace: Some("reference_workspace_123".to_string()), // Reference workspace
-        output_format: "json".to_string(),
+        output_format: Some("json".to_string()),
     };
 
     // Call find_cross_language_callers with REFERENCE database

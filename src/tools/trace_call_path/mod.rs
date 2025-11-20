@@ -22,6 +22,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use crate::handler::JulieServerHandler;
+use crate::tools::shared::create_toonable_result;
 
 pub use types::{CallPath, SerializablePathNode, TraceCallPathResult};
 use types::{default_depth, default_output_format, default_upstream, default_workspace};
@@ -95,63 +96,14 @@ impl TraceCallPathTool {
             call_paths,
         };
 
-        // Return based on output_format: TOON uses text only, JSON uses structured only
-        match output_format {
-            Some("toon") => {
-                // TOON mode: Return ONLY TOON in text, NO structured content
-                match toon_format::encode_default(&result) {
-                    Ok(toon) => {
-                        ::tracing::debug!("✅ Returning trace_call_path in TOON-only mode ({} chars)", toon.len());
-                        Ok(CallToolResult::text_content(vec![toon.into()]))
-                    }
-                    Err(e) => {
-                        ::tracing::warn!("❌ TOON encoding failed: {}, falling back to JSON", e);
-                        let structured = serde_json::to_value(&result)?;
-                        let structured_map = if let serde_json::Value::Object(map) = structured {
-                            map
-                        } else {
-                            return Err(anyhow::anyhow!("Expected JSON object"));
-                        };
-                        Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
-                    }
-                }
-            }
-            Some("auto") => {
-                // Auto mode: TOON for 5+ paths, JSON for small responses
-                if result.paths_found >= 5 {
-                    match toon_format::encode_default(&result) {
-                        Ok(toon) => {
-                            ::tracing::debug!("✅ Auto-selected TOON for {} paths ({} chars)", result.paths_found, toon.len());
-                            return Ok(CallToolResult::text_content(vec![toon.into()]));
-                        }
-                        Err(e) => {
-                            ::tracing::debug!("⚠️ TOON encoding failed: {}, falling back to JSON", e);
-                            // Fall through to JSON
-                        }
-                    }
-                }
-                // Small response or TOON failed: use JSON-only
-                let structured = serde_json::to_value(&result)?;
-                let structured_map = if let serde_json::Value::Object(map) = structured {
-                    map
-                } else {
-                    return Err(anyhow::anyhow!("Expected JSON object"));
-                };
-                ::tracing::debug!("✅ Auto-selected JSON for {} paths (no redundant text_content)", result.paths_found);
-                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
-            }
-            _ => {
-                // Default (JSON/tree/None): ONLY structured content (no redundant text)
-                let structured = serde_json::to_value(&result)?;
-                let structured_map = if let serde_json::Value::Object(map) = structured {
-                    map
-                } else {
-                    return Err(anyhow::anyhow!("Expected JSON object"));
-                };
-                ::tracing::debug!("✅ Returning trace_call_path as JSON-only (no redundant text_content)");
-                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
-            }
-        }
+        // Use shared TOON/JSON formatter
+        create_toonable_result(
+            &result,
+            output_format,
+            5,  // Auto threshold: 5+ results use TOON
+            result.paths_found,
+            "trace_call_path"
+        )
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
