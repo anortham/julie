@@ -58,23 +58,32 @@ pub struct Symbol {
     /// End byte offset in file
     pub end_byte: u32,
     /// Function/method signature
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
     /// Documentation comment (using extraction algorithm)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub doc_comment: Option<String>,
     /// Visibility (public, private, protected)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub visibility: Option<Visibility>,
     /// Parent symbol ID (for methods in classes, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<String>,
     /// Additional language-specific metadata
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
     /// Semantic group for cross-language linking
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub semantic_group: Option<String>,
     /// Confidence score for symbol extraction (0.0 to 1.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f32>,
     /// Code context lines around the symbol (3 lines before + match + 3 lines after)
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub code_context: Option<String>,
     /// Content type to distinguish documentation from code
     /// None = code (default), Some("documentation") = markdown docs
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
 }
 

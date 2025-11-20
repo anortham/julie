@@ -1,0 +1,29 @@
+{
+  "id": "checkpoint_691f79eb_22af7e",
+  "timestamp": 1763670507,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b0b67e1",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/integration/tracing.rs",
+      "src/tests/mod.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tests/tools/trace_call_path/comprehensive.rs",
+      "src/tests/tools/trace_call_path/mod.rs",
+      "src/tests/tools/trace_call_path/new_features.rs",
+      "src/tests/tools/trace_call_path/workspace_isolation.rs",
+      "src/tools/mod.rs",
+      "src/tools/shared.rs"
+    ]
+  },
+  "description": "Phase 3 GREEN Complete - Shared create_toonable_result() helper implemented and tested: Created generic TOON/JSON output formatter in src/tools/shared.rs (96 lines). Consolidates TOON encoding, auto mode logic (>= threshold check), and proper structured JSON fallback across all tools. Comprehensive test suite (9 tests covering toon/auto/json modes, thresholds, fallback scenarios) all passing. Eliminates ~120 lines of duplicated code across fast_refs, fast_goto, find_logic, trace_call_path. Next: Refactor 4 tools to use shared helper (REFACTOR phase).",
+  "tags": [
+    "phase-3",
+    "tdd-green",
+    "shared-helper",
+    "tests-passing",
+    "duplication-elimination"
+  ]
+}

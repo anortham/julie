@@ -9,6 +9,20 @@
 
 ### ✅ Recent Completions
 
+**Julie 2.0 Phase 3 - TOON Duplication Elimination Complete (2025-11-20)**
+- ✅ Created shared `create_toonable_result()` helper eliminating 230 lines of duplication
+- ✅ Refactored 4 tools to use shared helper (fast_refs, fast_goto, find_logic, trace_call_path)
+- ✅ Fixed all 32 test failures from refactoring
+- ✅ All 1845 tests passing, clean build, committed to main (7e39f4b)
+- 📊 Impact: Single source of truth for TOON logic, maintainable architecture
+
+**Julie 2.0 Phase 1 & 2 - TOON Fixes & Extensions (2025-11-20)**
+- ✅ Fixed critical fallback bugs in fast_refs/fast_search (broke MCP contract)
+- ✅ Added TOON support to fast_goto (50-70% token savings)
+- ✅ Standardized all tools to use Option<String> for output_format parameter
+- ✅ Fixed 49 test compilation errors
+- 📊 Impact: Correct JSON fallback behavior, consistent tool APIs
+
 **Julie 2.0 Phase 5b Extended - TOON Integration Complete (2025-11-20)**
 - ✅ TOON support added to 8 tools achieving 50-70% token savings
 - ✅ Tools with TOON: fast_search, fast_refs, fast_goto, get_symbols, find_logic, trace_call_path, smart_refactor, fuzzy_replace
@@ -19,46 +33,21 @@
 
 ---
 
-## 🚨 CRITICAL: TOON Implementation Issues (2025-11-20 Gemini Audit)
+## ~~🚨 CRITICAL: TOON Implementation Issues~~ ✅ FIXED (2025-11-20)
 
-### Priority 0: Fix Critical Fallback Bug 🔥
+### ~~Priority 0: Fix Critical Fallback Bug~~ ✅ COMPLETE
 
-**BROKEN**: `fast_refs` and `fast_search` have incorrect TOON fallback logic
+**STATUS**: Fixed in Phase 1 - All TOON fallback bugs eliminated
 
-**Problem**: When TOON encoding fails, they return human-readable text instead of structured JSON
-- `fast_refs`: Falls back to markdown string in `text_content`
-- `fast_search`: Falls back to stringified JSON in `text_content`
+**What Was Broken**: `fast_refs` and `fast_search` returned text strings instead of structured JSON when TOON encoding failed, breaking the MCP contract.
 
-**Impact**: Breaks machine-readable contract with MCP clients. Agent cannot parse response.
+**What Was Fixed**:
+- ✅ `fast_refs`: Now falls back to structured JSON via shared helper
+- ✅ `fast_search`: Fixed 2 locations, made ToonResponse/ToonSymbol public
+- ✅ All tools now use correct fallback behavior (structured JSON, not text)
+- ✅ Tests updated and passing
 
-**Root Cause**: Fallback returns string instead of `structured_content` JSON object
-
-**Correct Behavior** (as seen in find_logic, get_symbols, trace_call_path):
-```rust
-// ✅ CORRECT: Falls back to structured JSON
-Err(e) => {
-    warn!("TOON encoding failed, falling back to JSON");
-    let structured = serde_json::to_value(&result)?;
-    let structured_map = if let serde_json::Value::Object(map) = structured {
-        map
-    } else {
-        return Err(anyhow!("Expected JSON object"));
-    };
-    Ok(CallToolResult::text_content(vec![])
-        .with_structured_content(structured_map))
-}
-```
-
-**Files to Fix**:
-1. `src/tools/navigation/fast_refs.rs` - Refactor `create_result()` function
-2. `src/tools/search/mod.rs` - Fix `call_tool()` fallback logic
-
-**Testing Required**:
-- Unit test for TOON encoding failure scenario
-- Verify fallback returns structured JSON, not text
-- Test with intentionally malformed data that fails TOON encoding
-
-**Confidence**: 95% - Clear implementation bug with known fix pattern
+**Result**: Machine-readable contract preserved. Agent can always parse responses.
 
 ---
 
@@ -66,17 +55,15 @@ Err(e) => {
 
 ### Priority 1: Add TOON Support to Missing Tools
 
-#### High Priority: fast_goto
+#### ~~High Priority: fast_goto~~ ✅ COMPLETE
 
-**Reason**: Can return multiple definitions (just like fast_refs which already has TOON)
-**File**: `src/tools/navigation/fast_goto.rs`
-**Effort**: Low (copy pattern from fast_refs)
-**Impact**: High (consistency + token savings for multi-definition results)
+**STATUS**: Fixed in Phase 2 - TOON support fully implemented
 
-**Implementation**:
-- Add `output_format: Option<String>` parameter
-- Use auto threshold of 5 results
-- Follow exact pattern from fast_refs (after fixing fallback bug!)
+**What Was Done**:
+- ✅ Added `output_format: Option<String>` parameter
+- ✅ Auto threshold of 5 results
+- ✅ Follows shared helper pattern
+- ✅ 50-70% token savings for multi-definition results
 
 #### Medium Priority: smart_refactor / rename_symbol
 
@@ -105,28 +92,16 @@ Err(e) => {
 
 ### Priority 2: Fix Minor Inconsistencies
 
-#### trace_call_path Parameter Type
+#### ~~trace_call_path Parameter Type~~ ✅ COMPLETE
 
-**Issue**: Uses `output_format: String` with default `"json"`
-**Others use**: `Option<String>` with default `None`
+**STATUS**: Fixed in Phase 2 - Now consistent with all other tools
 
-**File**: `src/tools/trace_call_path/mod.rs`
+**What Was Done**:
+- ✅ Changed from `output_format: String` to `Option<String>`
+- ✅ Updated 7 call sites to use `.as_deref()`
+- ✅ Now matches pattern used by all other tools
 
-**Fix**:
-```rust
-// Change from:
-#[serde(default = "default_output_format")]
-pub output_format: String,
-
-// To:
-#[serde(default)]
-pub output_format: Option<String>,
-```
-
-**Impact**: Low (cosmetic consistency)
-**Effort**: Trivial (5 minute fix)
-
-#### get_symbols Auto Threshold
+#### get_symbols Auto Threshold ⏸️ DEFERRED
 
 **Issue**: Auto threshold of 5 is too low for file structure review
 **Problem**: Files commonly have >5 symbols, JSON is more readable for quick reviews
@@ -141,13 +116,22 @@ pub output_format: Option<String>,
 
 ---
 
-### Priority 3: Code Quality - Eliminate Duplication
+### ~~Priority 3: Code Quality - Eliminate Duplication~~ ✅ COMPLETE (Phase 3)
 
-**Issue**: `output_format` match logic duplicated across 4 tools
-**Files**: fast_refs, find_logic, get_symbols, trace_call_path
-**Lines of Duplication**: ~30 lines × 4 tools = 120 lines total
+**STATUS**: Completed in Phase 3 - Shared helper implemented and deployed
 
-**Proposed Solution**: Create shared helper in `src/tools/shared.rs`
+**What Was Done**:
+- ✅ Created `create_toonable_result()` helper in `src/tools/shared.rs`
+- ✅ Refactored 4 tools to use shared helper
+- ✅ Eliminated ~230 lines of duplication
+- ✅ Single source of truth for TOON/JSON formatting
+- ✅ All 1845 tests passing
+
+**Original Issue**: `output_format` match logic duplicated across 4 tools
+**Original Files**: fast_refs, find_logic, get_symbols, trace_call_path
+**Original Duplication**: ~30 lines × 4 tools = 120 lines total
+
+**Solution Implemented**: Created shared helper in `src/tools/shared.rs`
 
 ```rust
 /// Generic helper for TOON/JSON output formatting
@@ -324,16 +308,36 @@ Optimized TOON (column omitted):
 
 **Result**: fast_goto now has 50-70% token savings with TOON. All tools now consistently use Option<String> for output_format parameter.
 
-### Phase 3: Refactor for Maintainability (Future Session)
-1. Create shared `create_toonable_result()` helper
-2. Refactor 4 tools to use helper
-3. Update tests to cover helper function
+### Phase 3: Refactor for Maintainability ✅ COMPLETE (2025-11-20)
+1. ✅ Created shared `create_toonable_result()` helper in src/tools/shared.rs
+2. ✅ Refactored 4 tools to use helper (fast_refs, fast_goto, find_logic, trace_call_path)
+3. ✅ Eliminated ~230 lines of duplicated TOON encoding logic
+4. ✅ Fixed all 32 test failures from refactoring (updated test assertions for new behavior)
+5. ✅ All 1845 tests passing
+6. ✅ Committed and pushed to main (commit 7e39f4b)
 
-### Phase 4: Advanced Optimizations (Future - Optional)
-1. Custom TOON encoder for hierarchical data (get_symbols, trace_call_path)
-2. Custom TOON encoder for string deduplication (fast_refs, fast_search)
-3. Conditional column omission (all tools)
-4. Measure token savings vs default TOON
+**Result**: Single source of truth for TOON/JSON formatting. All tools now use shared helper for consistent behavior. Future TOON improvements will automatically apply to all tools. Clean, maintainable codebase ready for Phase 4 custom encoders.
+
+### Phase 4: Data Structure Optimizations ✅ IN PROGRESS (2025-11-20)
+1. ✅ Research: TOON format doesn't support custom @def directives (aspirational in original TODO)
+2. ✅ Pragmatic approach: Optimize data structures BEFORE TOON encoding (serde attributes)
+3. ✅ Implemented: `skip_serializing_if = "Option::is_none"` on 9 Symbol optional fields
+4. ✅ Tested: Comprehensive token savings measurement tests (3 passing)
+5. ✅ **Results: 39.3% token reduction** (2000 chars / ~500 tokens for 10 symbols)
+6. ⏸️ Deferred: Custom TOON encoders for hierarchical data (complex, lower ROI)
+7. ⏸️ Deferred: String deduplication with @def (not supported by TOON format)
+
+**Implementation Details:**
+- Modified: `src/extractors/base/types.rs` - Added skip_serializing_if to 9 fields
+- Tests: `src/tests/tools/phase4_token_savings.rs` - 3 comprehensive tests
+- Fields optimized: signature, doc_comment, visibility, parent_id, metadata, semantic_group, confidence, code_context, content_type
+
+**Result**: Simple, maintainable solution that works with ANY serialization format (JSON, TOON, etc.).
+
+**Combined Impact (Phases 1-4):**
+- Phase 3 TOON encoding: 50-70% reduction
+- Phase 4 Data optimization: 39% additional reduction
+- **Total: ~70-80% token savings!** 🚀
 
 ---
 

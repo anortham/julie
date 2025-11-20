@@ -1,0 +1,47 @@
+{
+  "id": "checkpoint_691f7d9d_7396bf",
+  "timestamp": 1763671453,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b0b67e1",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/tracing.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs",
+      "src/tests/mod.rs",
+      "src/tests/tools/exploration/find_logic.rs",
+      "src/tests/tools/get_symbols.rs",
+      "src/tests/tools/get_symbols_reference_workspace.rs",
+      "src/tests/tools/get_symbols_smart_read.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tests/tools/refactoring/edit_symbol.rs",
+      "src/tests/tools/refactoring/extract_to_file_tests.rs",
+      "src/tests/tools/refactoring/insert_relative_tests.rs",
+      "src/tests/tools/refactoring/rename_symbol.rs",
+      "src/tests/tools/refactoring/replace_symbol_body_tests.rs",
+      "src/tests/tools/refactoring/scope_test.rs",
+      "src/tests/tools/refactoring/smart_refactor.rs",
+      "src/tests/tools/search/line_mode.rs",
+      "src/tests/tools/trace_call_path/comprehensive.rs",
+      "src/tests/tools/trace_call_path/mod.rs",
+      "src/tests/tools/trace_call_path/new_features.rs",
+      "src/tests/tools/trace_call_path/workspace_isolation.rs",
+      "src/tests/tools/workspace/mod_tests.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/shared.rs",
+      "src/tools/trace_call_path/mod.rs"
+    ]
+  },
+  "description": "Phase 3 Test Fixes - Major Progress: Fixed 18 of 32 failing tests (56% complete). Systematic fix: Updated extract_text_from_result() helpers in 9 test files to handle both TOON mode (.content) and JSON mode (.structured_content fallback). Fixed find_logic tests (4/4 ✅), get_symbols tests (5/6 ✅), refactoring tests (7/16 partial). Test suite now: 1831 passing (up from 1813), 14 failing (down from 32). Remaining: 9 insert/replace tests checking string assertions in structured JSON, 2 trace dogfooding tests, 1 fuzzy_replace test, 1 get_symbols test, 1 extract test. Core refactoring working correctly - failures are test assertions checking wrong fields after dual-output elimination.",
+  "tags": [
+    "test-fixes",
+    "progress",
+    "phase-3",
+    "18-of-32-fixed"
+  ]
+}
