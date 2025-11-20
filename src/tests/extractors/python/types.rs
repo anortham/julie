@@ -34,14 +34,9 @@ class UserService:
 
         // Extract through factory
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.py",
-            code,
-            "python",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.py", code, "python", &workspace_root)
+                .expect("Extraction failed");
 
         // CRITICAL: Verify types HashMap is NOT empty
         assert!(
@@ -89,14 +84,9 @@ def old_style_function(x, y):
         let tree = parser.parse(code, None).expect("Error parsing code");
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.py",
-            code,
-            "python",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.py", code, "python", &workspace_root)
+                .expect("Extraction failed");
 
         // For untyped Python, types may be empty or minimal
         // This is expected - not all code has type annotations

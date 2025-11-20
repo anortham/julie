@@ -115,11 +115,7 @@ impl QmlExtractor {
         }
     }
 
-    pub fn extract_relationships(
-        &self,
-        tree: &Tree,
-        symbols: &[Symbol],
-    ) -> Vec<Relationship> {
+    pub fn extract_relationships(&self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         relationships::extract_relationships(self, tree, symbols)
     }
 

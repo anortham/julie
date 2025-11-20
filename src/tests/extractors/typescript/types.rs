@@ -55,7 +55,10 @@ interface User {
         );
 
         // Verify we got TypeInfo for the typed symbols
-        println!("Extracted {} types from TypeScript code", results.types.len());
+        println!(
+            "Extracted {} types from TypeScript code",
+            results.types.len()
+        );
         for (symbol_id, type_info) in &results.types {
             println!(
                 "  {} -> {} (inferred: {})",

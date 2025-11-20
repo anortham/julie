@@ -541,7 +541,10 @@ async fn test_transaction_leak_on_error() {
                 );
             } else {
                 // Some other error - not the bug we're testing
-                println!("DEBUG: Different error (not transaction leak): {}", error_msg);
+                println!(
+                    "DEBUG: Different error (not transaction leak): {}",
+                    error_msg
+                );
             }
         }
     }
@@ -576,9 +579,11 @@ async fn test_transaction_leak_on_error() {
                     error_msg
                 );
             } else {
-                println!("DEBUG: Second file failed with different error: {}", error_msg);
+                println!(
+                    "DEBUG: Second file failed with different error: {}",
+                    error_msg
+                );
             }
         }
     }
 }
-

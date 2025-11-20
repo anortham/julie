@@ -39,14 +39,9 @@ public class UserService
         let tree = parser.parse(code, None).expect("Error parsing code");
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.cs",
-            code,
-            "csharp",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.cs", code, "csharp", &workspace_root)
+                .expect("Extraction failed");
 
         // CRITICAL: Verify types HashMap is NOT empty
         assert!(

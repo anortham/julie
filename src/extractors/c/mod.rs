@@ -74,7 +74,9 @@ impl CExtractor {
 
         for symbol in symbols {
             if let Some(ref signature) = symbol.signature {
-                if let Some(inferred_type) = self.extract_type_from_signature(signature, &symbol.kind, &symbol.name) {
+                if let Some(inferred_type) =
+                    self.extract_type_from_signature(signature, &symbol.kind, &symbol.name)
+                {
                     type_map.insert(symbol.id.clone(), inferred_type);
                 }
             }
@@ -83,7 +85,12 @@ impl CExtractor {
         type_map
     }
 
-    fn extract_type_from_signature(&self, signature: &str, kind: &crate::extractors::base::SymbolKind, name: &str) -> Option<String> {
+    fn extract_type_from_signature(
+        &self,
+        signature: &str,
+        kind: &crate::extractors::base::SymbolKind,
+        name: &str,
+    ) -> Option<String> {
         use crate::extractors::base::SymbolKind;
 
         match kind {

@@ -14,6 +14,7 @@ use serde_json::json;
 use tracing::debug;
 
 use crate::database::SymbolDatabase;
+use crate::extractors::Symbol;
 use crate::extractors::base::{Relationship, RelationshipKind};
 use crate::handler::JulieServerHandler;
 use crate::tools::exploration::find_logic::FindLogicTool;
@@ -42,6 +43,67 @@ pub enum ExploreMode {
 
 fn default_mode() -> ExploreMode {
     ExploreMode::Logic
+}
+
+/// Build a compact, token-lean block for a symbol.
+/// Format: `<file_path>:<start>-<end> | <name> | <kind> | <extra?>\n<snippet?>`
+pub(crate) fn dense_symbol_block(symbol: &Symbol, extra: Option<&str>) -> String {
+    let mut header = format!(
+        "{}:{}-{} | {} | {}",
+        symbol.file_path, symbol.start_line, symbol.end_line, symbol.name, symbol.kind
+    );
+
+    if let Some(extra) = extra {
+        if !extra.is_empty() {
+            header.push_str(" | ");
+            header.push_str(extra);
+        }
+    }
+
+    let mut block = Vec::new();
+    block.push(header);
+
+    if let Some(snippet) = symbol_snippet(symbol) {
+        block.push(snippet);
+    }
+
+    block.join("\n")
+}
+
+/// Extract a short snippet for context (prioritize code_context, then signature/doc comment).
+fn symbol_snippet(symbol: &Symbol) -> Option<String> {
+    if let Some(ctx) = &symbol.code_context {
+        let trimmed = ctx.trim();
+        if !trimmed.is_empty() {
+            // Keep it very short (first few lines)
+            let snippet = trimmed
+                .lines()
+                .take(6)
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string();
+            if !snippet.is_empty() {
+                return Some(snippet);
+            }
+        }
+    }
+
+    if let Some(sig) = &symbol.signature {
+        let trimmed = sig.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    if let Some(doc) = &symbol.doc_comment {
+        let trimmed = doc.lines().next().unwrap_or("").trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    None
 }
 
 #[mcp_tool(
@@ -202,14 +264,12 @@ impl FastExploreTool {
 
         if !has_hnsw {
             use rust_mcp_sdk::schema::TextContent;
+            let message = format!(
+                "Embeddings not ready yet for '{}'. HNSW index is still building.",
+                symbol_name
+            );
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                serde_json::to_string(&json!({
-                    "error": "Embeddings not yet ready",
-                    "message": "HNSW index is still building in the background. Please try again in a few moments.",
-                    "symbol": symbol_name,
-                    "total_found": 0,
-                    "results": []
-                }))?,
+                message,
             )]));
         }
 
@@ -343,8 +403,8 @@ impl FastExploreTool {
             Vec::new()
         };
 
-        // Step 4: Combine symbols with their similarity scores
-        let results: Vec<serde_json::Value> = symbols
+        // Step 4: Combine symbols with their similarity scores (internal structure)
+        let _results: Vec<serde_json::Value> = symbols
             .iter()
             .enumerate()
             .filter_map(|(idx, symbol)| {
@@ -363,18 +423,31 @@ impl FastExploreTool {
             })
             .collect();
 
-        // Step 5: Format response
-        let response = json!({
-            "query_symbol": symbol_name,
-            "threshold": threshold,
-            "total_found": results.len(),
-            "results": results,
-            "tip": "Similarity scores range from 0.0 (unrelated) to 1.0 (identical). High scores (>0.8) indicate likely code duplicates.",
-        });
-
+        // Step 5: Format dense response (no JSON payload)
         use rust_mcp_sdk::schema::TextContent;
+        let mut blocks = Vec::new();
+        blocks.push(format!(
+            "similar:{} | threshold:{:.2} | found:{}",
+            symbol_name,
+            threshold,
+            symbols.len()
+        ));
+
+        for (idx, symbol) in symbols.iter().enumerate() {
+            let sim = similar_results
+                .get(idx)
+                .map(|s| s.similarity_score)
+                .unwrap_or(0.0);
+            blocks.push(dense_symbol_block(symbol, Some(&format!("sim:{:.2}", sim))));
+            blocks.push(String::new());
+        }
+
+        while matches!(blocks.last(), Some(line) if line.is_empty()) {
+            blocks.pop();
+        }
+
         Ok(CallToolResult::text_content(vec![TextContent::from(
-            serde_json::to_string(&response)?,
+            blocks.join("\n"),
         )]))
     }
 
@@ -417,15 +490,9 @@ impl FastExploreTool {
         if symbols.is_empty() {
             // Symbol not found - return empty result
             use rust_mcp_sdk::schema::TextContent;
+            let message = format!("Symbol '{}' not found in workspace", symbol_name);
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                serde_json::to_string(&json!({
-                    "symbol": symbol_name,
-                    "found": false,
-                    "message": format!("Symbol '{}' not found in workspace", symbol_name),
-                    "depth": max_depth,
-                    "total_dependencies": 0,
-                    "dependencies": []
-                }))?,
+                message,
             )]));
         }
 
@@ -494,18 +561,23 @@ impl FastExploreTool {
 
         let total_dependencies = visited.len() - 1; // Exclude root symbol
 
-        let response = json!({
-            "symbol": symbol_name,
-            "found": true,
-            "depth": max_depth,
-            "total_dependencies": total_dependencies,
-            "dependencies": dependencies,
-            "tip": "Dependencies show what this symbol imports, uses, calls, or references. Use depth parameter to control how deep the analysis goes."
-        });
-
+        // Render dense dependency lines from dependency tree
         use rust_mcp_sdk::schema::TextContent;
+        let mut blocks = Vec::new();
+        blocks.push(dense_symbol_block(
+            root_symbol,
+            Some(&format!(
+                "root | deps:{} depth:{}",
+                total_dependencies, max_depth
+            )),
+        ));
+
+        for line in flatten_dependency_tree(&dependencies) {
+            blocks.push(line);
+        }
+
         Ok(CallToolResult::text_content(vec![TextContent::from(
-            serde_json::to_string(&response)?,
+            blocks.join("\n\n"),
         )]))
     }
 
@@ -534,7 +606,6 @@ impl FastExploreTool {
                         current_depth + 1,
                         max_depth,
                     )?;
-
                     result.push(json!({
                         "name": target_symbol.name,
                         "kind": format!("{}", rel.kind),
@@ -647,21 +718,105 @@ impl FastExploreTool {
         let total_found =
             implementations.len() + returns.len() + parameters.len() + hierarchy_count;
 
-        let result = json!({
-            "type_name": type_name,
-            "exploration_type": exploration_type,
-            "limit": limit,
-            "results": {
-                "implementations": implementations,
-                "hierarchy": hierarchy,
-                "returns": returns,
-                "parameters": parameters
-            },
-            "total_found": total_found,
-        });
+        // Dense format per category (MCP-facing)
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "type:{} | mode:{} | total:{}",
+            type_name, exploration_type, total_found
+        ));
+
+        if !implementations.is_empty() {
+            lines.push("implementations:".to_string());
+            for sym in &implementations {
+                lines.push(dense_symbol_block(sym, Some("implements")));
+                lines.push(String::new());
+            }
+        }
+
+        if !hierarchy.is_empty() {
+            lines.push("hierarchy:".to_string());
+            for entry in hierarchy
+                .get("parents")
+                .and_then(|v| v.as_array())
+                .into_iter()
+                .flatten()
+            {
+                if let (Some(file), Some(line), Some(name)) = (
+                    entry.get("file_path").and_then(|v| v.as_str()),
+                    entry.get("line_number").and_then(|v| v.as_u64()),
+                    entry.get("name").and_then(|v| v.as_str()),
+                ) {
+                    lines.push(format!("{}:{} | parent | {}", file, line, name));
+                }
+            }
+            for entry in hierarchy
+                .get("children")
+                .and_then(|v| v.as_array())
+                .into_iter()
+                .flatten()
+            {
+                if let (Some(file), Some(line), Some(name)) = (
+                    entry.get("file_path").and_then(|v| v.as_str()),
+                    entry.get("line_number").and_then(|v| v.as_u64()),
+                    entry.get("name").and_then(|v| v.as_str()),
+                ) {
+                    lines.push(format!("{}:{} | child | {}", file, line, name));
+                }
+            }
+            lines.push(String::new());
+        }
+
+        if !returns.is_empty() {
+            lines.push("returns:".to_string());
+            for sym in &returns {
+                lines.push(dense_symbol_block(sym, Some("returns")));
+                lines.push(String::new());
+            }
+        }
+
+        if !parameters.is_empty() {
+            lines.push("parameters:".to_string());
+            for sym in &parameters {
+                lines.push(dense_symbol_block(sym, Some("param")));
+                lines.push(String::new());
+            }
+        }
+
+        // Remove trailing blank lines
+        while matches!(lines.last(), Some(s) if s.is_empty()) {
+            lines.pop();
+        }
 
         Ok(CallToolResult::text_content(vec![TextContent::from(
-            serde_json::to_string_pretty(&result)?,
+            lines.join("\n"),
         )]))
     }
+}
+
+/// Flatten dependency JSON tree into dense lines
+fn flatten_dependency_tree(tree: &[serde_json::Value]) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    for node in tree {
+        if let (Some(name), Some(file_path), Some(line), Some(kind)) = (
+            node.get("name").and_then(|v| v.as_str()),
+            node.get("file_path").and_then(|v| v.as_str()),
+            node.get("line").and_then(|v| v.as_i64()),
+            node.get("kind").and_then(|v| v.as_str()),
+        ) {
+            let depth_str = node
+                .get("depth")
+                .and_then(|v| v.as_i64())
+                .map(|d| format!(" depth:{}", d))
+                .unwrap_or_default();
+            let extra = format!("rel:{}{}", kind, depth_str);
+            lines.push(format!("{}:{} | {} | {}", file_path, line, name, extra));
+        }
+
+        if let Some(children) = node.get("children").and_then(|v| v.as_array()) {
+            lines.extend(flatten_dependency_tree(children));
+        }
+    }
+
+    lines
 }

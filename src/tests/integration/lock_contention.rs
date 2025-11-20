@@ -336,7 +336,11 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
     let mut tasks = vec![];
     for i in 0..10 {
         let handler_clone = handler.clone();
-        let query = if i % 2 == 0 { "summary findings" } else { "recommendations" };
+        let query = if i % 2 == 0 {
+            "summary findings"
+        } else {
+            "recommendations"
+        };
 
         let task = tokio::spawn(async move {
             // Use LINE MODE with file pattern - this is what triggers the bug!

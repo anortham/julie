@@ -56,17 +56,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "typescript" | "tsx" => {
@@ -84,17 +90,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "javascript" | "jsx" => {
@@ -113,17 +125,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "python" => {
@@ -139,24 +157,35 @@ pub fn extract_symbols_and_relationships(
 
             // DEBUG: Log what we extracted
             if !_identifiers.is_empty() || !_types.is_empty() {
-                eprintln!("🔍 PYTHON {}: {} identifiers, {} types", file_path, _identifiers.len(), _types.len());
+                eprintln!(
+                    "🔍 PYTHON {}: {} identifiers, {} types",
+                    file_path,
+                    _identifiers.len(),
+                    _types.len()
+                );
             }
 
             Ok(ExtractionResults {
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "java" => {
@@ -174,17 +203,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "csharp" => {
@@ -202,17 +237,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "php" => {
@@ -230,17 +271,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "ruby" => {
@@ -251,7 +298,8 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults {
                 symbols,
                 relationships,
                 identifiers: _identifiers,
@@ -273,17 +321,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "kotlin" => {
@@ -301,17 +355,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "dart" => {
@@ -329,17 +389,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "go" => {
@@ -357,17 +423,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "c" => {
@@ -386,17 +458,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "cpp" => {
@@ -413,17 +491,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: "cpp".to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: "cpp".to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "lua" => {
@@ -435,7 +519,8 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults {
                 symbols,
                 relationships,
                 identifiers: _identifiers,
@@ -451,7 +536,8 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults {
                 symbols,
                 relationships,
                 identifiers: _identifiers,
@@ -467,7 +553,8 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults {
                 symbols,
                 relationships,
                 identifiers: _identifiers,
@@ -489,17 +576,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "html" => {
@@ -517,17 +610,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "css" => {
@@ -538,10 +637,9 @@ pub fn extract_symbols_and_relationships(
                 workspace_root,
             );
             let symbols = extractor.extract_symbols(tree);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            // CSSExtractor doesn't have extract_relationships method yet
+            let _identifiers = extractor.extract_identifiers(tree, &symbols); // CSSExtractor doesn't have extract_relationships method yet
 
             Ok(ExtractionResults {
-
                 symbols,
 
                 relationships: Vec::new(),
@@ -549,7 +647,6 @@ pub fn extract_symbols_and_relationships(
                 identifiers: _identifiers,
 
                 types: HashMap::new(),
-
             })
         }
         "vue" => {
@@ -567,17 +664,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "razor" => {
@@ -595,17 +698,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "bash" => {
@@ -623,17 +732,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "powershell" => {
@@ -651,17 +766,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "gdscript" => {
@@ -673,7 +794,8 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults {
                 symbols,
                 relationships,
                 identifiers: _identifiers,
@@ -695,17 +817,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "regex" => {
@@ -723,17 +851,23 @@ pub fn extract_symbols_and_relationships(
                 symbols,
                 relationships,
                 identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
+                types: _types
+                    .into_iter()
+                    .map(|(symbol_id, type_string)| {
+                        (
+                            symbol_id.clone(),
+                            TypeInfo {
+                                symbol_id,
+                                resolved_type: type_string,
+                                generic_params: None,
+                                constraints: None,
+                                is_inferred: true,
+                                language: language.to_string(),
+                                metadata: None,
+                            },
+                        )
                     })
-                }).collect(),
+                    .collect(),
             })
         }
         "markdown" => {
@@ -744,10 +878,9 @@ pub fn extract_symbols_and_relationships(
                 workspace_root,
             );
             let symbols = extractor.extract_symbols(tree);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            // Markdown is documentation - no code relationships
+            let _identifiers = extractor.extract_identifiers(tree, &symbols); // Markdown is documentation - no code relationships
 
             Ok(ExtractionResults {
-
                 symbols,
 
                 relationships: Vec::new(),
@@ -755,7 +888,6 @@ pub fn extract_symbols_and_relationships(
                 identifiers: _identifiers,
 
                 types: HashMap::new(),
-
             })
         }
         "json" => {
@@ -770,7 +902,6 @@ pub fn extract_symbols_and_relationships(
             // JSON is configuration data - no code relationships
 
             Ok(ExtractionResults {
-
                 symbols,
 
                 relationships: Vec::new(),
@@ -778,7 +909,6 @@ pub fn extract_symbols_and_relationships(
                 identifiers: _identifiers,
 
                 types: HashMap::new(),
-
             })
         }
         "toml" => {
@@ -793,7 +923,6 @@ pub fn extract_symbols_and_relationships(
             // TOML is configuration data - no code relationships
 
             Ok(ExtractionResults {
-
                 symbols,
 
                 relationships: Vec::new(),
@@ -801,7 +930,6 @@ pub fn extract_symbols_and_relationships(
                 identifiers: _identifiers,
 
                 types: HashMap::new(),
-
             })
         }
         "yaml" => {
@@ -816,7 +944,6 @@ pub fn extract_symbols_and_relationships(
             // YAML is configuration data - no code relationships
 
             Ok(ExtractionResults {
-
                 symbols,
 
                 relationships: Vec::new(),
@@ -824,7 +951,6 @@ pub fn extract_symbols_and_relationships(
                 identifiers: _identifiers,
 
                 types: HashMap::new(),
-
             })
         }
 
@@ -854,7 +980,11 @@ mod factory_consistency_tests {
         let supported = manager.supported_languages();
 
         // Verify we have all 27 languages
-        assert_eq!(supported.len(), 29, "Expected 29 language entries (27 languages, 2 with aliases)");
+        assert_eq!(
+            supported.len(),
+            29,
+            "Expected 29 language entries (27 languages, 2 with aliases)"
+        );
 
         let workspace_root = PathBuf::from("/tmp/test");
 
@@ -934,15 +1064,15 @@ def foo():
     bar()
     x.method()
 "#;
-        
+
         let workspace_root = PathBuf::from("/tmp");
-        
+
         // Parse the code
         let mut parser = Parser::new();
         let language = tree_sitter_python::LANGUAGE;
         parser.set_language(&language.into()).unwrap();
         let tree = parser.parse(code, None).unwrap();
-        
+
         // Call the factory
         let results = crate::extractors::factory::extract_symbols_and_relationships(
             &tree,
@@ -950,14 +1080,18 @@ def foo():
             code,
             "python",
             &workspace_root,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Assert we got identifiers
         println!("Symbols: {}", results.symbols.len());
         println!("Identifiers: {}", results.identifiers.len());
         println!("Types: {}", results.types.len());
-        
+
         assert!(results.symbols.len() > 0, "Should extract symbols");
-        assert!(results.identifiers.len() > 0, "Factory should return identifiers from Python code!");
+        assert!(
+            results.identifiers.len() > 0,
+            "Factory should return identifiers from Python code!"
+        );
     }
 }

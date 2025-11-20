@@ -3,8 +3,8 @@
 
 use crate::extractors::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
-use crate::tools::workspace::commands::ManageWorkspaceTool;
 use crate::tools::workspace::LanguageParserPool;
+use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -22,7 +22,7 @@ impl ManageWorkspaceTool {
         files_to_index: Vec<PathBuf>,
         is_primary_workspace: bool,
         total_files: &mut usize,
-        workspace_id: String, // Pass workspace_id instead of re-looking it up
+        workspace_id: String,  // Pass workspace_id instead of re-looking it up
         workspace_path: &Path, // Path of workspace being indexed (primary OR reference)
     ) -> Result<()> {
         // Group files by language for batch processing
@@ -116,7 +116,12 @@ impl ManageWorkspaceTool {
                     // Has parser: full symbol extraction + text indexing for all files
                     for file_path in file_paths {
                         match self
-                            .process_file_with_parser(&file_path, &language, parser, &workspace_root)
+                            .process_file_with_parser(
+                                &file_path,
+                                &language,
+                                parser,
+                                &workspace_root,
+                            )
                             .await
                         {
                             Ok((symbols, relationships, identifiers, types, file_info)) => {
@@ -132,8 +137,11 @@ impl ManageWorkspaceTool {
                                 // Track this file for cleanup (remove old symbols/data before adding new)
                                 // MUST use relative path to match how symbols are stored in database
                                 let relative_path = if file_path.is_absolute() {
-                                    crate::utils::paths::to_relative_unix_style(&file_path, &workspace_root)
-                                        .unwrap_or_else(|_| file_path.to_string_lossy().to_string())
+                                    crate::utils::paths::to_relative_unix_style(
+                                        &file_path,
+                                        &workspace_root,
+                                    )
+                                    .unwrap_or_else(|_| file_path.to_string_lossy().to_string())
                                 } else {
                                     // Already relative - use as-is (just normalize to Unix-style)
                                     file_path.to_string_lossy().replace('\\', "/")
@@ -179,8 +187,11 @@ impl ManageWorkspaceTool {
                                 *total_files += 1;
                                 // MUST use relative path to match how symbols are stored in database
                                 let relative_path = if file_path.is_absolute() {
-                                    crate::utils::paths::to_relative_unix_style(&file_path, &workspace_root)
-                                        .unwrap_or_else(|_| file_path.to_string_lossy().to_string())
+                                    crate::utils::paths::to_relative_unix_style(
+                                        &file_path,
+                                        &workspace_root,
+                                    )
+                                    .unwrap_or_else(|_| file_path.to_string_lossy().to_string())
                                 } else {
                                     // Already relative - use as-is (just normalize to Unix-style)
                                     file_path.to_string_lossy().replace('\\', "/")
@@ -230,7 +241,10 @@ impl ManageWorkspaceTool {
                 let mut db_lock = match db.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
-                        warn!("Database mutex poisoned during atomic incremental update, recovering: {}", poisoned);
+                        warn!(
+                            "Database mutex poisoned during atomic incremental update, recovering: {}",
+                            poisoned
+                        );
                         poisoned.into_inner()
                     }
                 };
@@ -255,7 +269,10 @@ impl ManageWorkspaceTool {
                     .count();
 
                 if doc_count > 0 {
-                    debug!("📚 Stored {} documentation symbols in symbols table", doc_count);
+                    debug!(
+                        "📚 Stored {} documentation symbols in symbols table",
+                        doc_count
+                    );
                 }
 
                 drop(db_lock);
@@ -272,7 +289,10 @@ impl ManageWorkspaceTool {
                 let mut db_lock = match db.lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => {
-                        warn!("Database mutex poisoned during fresh bulk storage, recovering: {}", poisoned);
+                        warn!(
+                            "Database mutex poisoned during fresh bulk storage, recovering: {}",
+                            poisoned
+                        );
                         poisoned.into_inner()
                     }
                 };
@@ -309,7 +329,10 @@ impl ManageWorkspaceTool {
                     .count();
 
                 if doc_count > 0 {
-                    debug!("📚 Stored {} documentation symbols in symbols table", doc_count);
+                    debug!(
+                        "📚 Stored {} documentation symbols in symbols table",
+                        doc_count
+                    );
                 }
 
                 drop(db_lock);
@@ -344,7 +367,13 @@ impl ManageWorkspaceTool {
         language: &str,
         _parser: &mut Parser, // Unused: Creating new parser inside spawn_blocking for Send requirement
         workspace_root: &Path, // NEW: Phase 2 - workspace root for relative paths
-    ) -> Result<(Vec<Symbol>, Vec<Relationship>, Vec<crate::extractors::Identifier>, HashMap<String, crate::extractors::base::TypeInfo>, crate::database::FileInfo)> {
+    ) -> Result<(
+        Vec<Symbol>,
+        Vec<Relationship>,
+        Vec<crate::extractors::Identifier>,
+        HashMap<String, crate::extractors::base::TypeInfo>,
+        crate::database::FileInfo,
+    )> {
         // 🚨 CRITICAL FIX: Wrap ALL blocking filesystem I/O in spawn_blocking to prevent tokio deadlock
         // When processing hundreds of large files (500KB+), blocking I/O in async functions
         // starves the tokio runtime and causes silent hangs (discovered in PsychiatricIntake workspace)
@@ -371,7 +400,11 @@ impl ManageWorkspaceTool {
             // Blocking operation 3: create file info (does metadata, hash, etc)
             // This also reads the file, but we do it here to keep ALL blocking I/O in one place
             tracing::trace!("📊 Creating file info...");
-            let info = crate::database::create_file_info(&file_path_clone, &language_clone, &workspace_root_clone)?;
+            let info = crate::database::create_file_info(
+                &file_path_clone,
+                &language_clone,
+                &workspace_root_clone,
+            )?;
             tracing::trace!("✅ File info created");
 
             Ok::<_, anyhow::Error>((canonical, file_content, info))
@@ -384,7 +417,13 @@ impl ManageWorkspaceTool {
         // Skip empty files for symbol extraction
         if content.trim().is_empty() {
             // Return empty symbol list but include file_info (already created in spawn_blocking)
-            return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
+            return Ok((
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                HashMap::new(),
+                file_info,
+            ));
         }
 
         // Skip symbol extraction for CSS/HTML (text search only)
@@ -396,7 +435,13 @@ impl ManageWorkspaceTool {
             );
 
             // Return file info without symbols (file_info already created in spawn_blocking)
-            return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
+            return Ok((
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                HashMap::new(),
+                file_info,
+            ));
         }
 
         // 🚨 CRITICAL: Skip symbol extraction for very large files (likely data/minified)
@@ -410,7 +455,13 @@ impl ManageWorkspaceTool {
                 MAX_FILE_SIZE_FOR_SYMBOLS / 1024,
                 file_path.display()
             );
-            return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
+            return Ok((
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                HashMap::new(),
+                file_info,
+            ));
         }
 
         // 🔥 CRITICAL: Convert to relative Unix-style path for storage
@@ -439,12 +490,13 @@ impl ManageWorkspaceTool {
                 // Create a new parser inside spawn_blocking (Parser isn't Send, so we can't move it in)
                 let mut local_parser = tree_sitter::Parser::new();
                 let tree_sitter_lang = crate::language::get_tree_sitter_language(&language_clone2)?;
-                local_parser.set_language(&tree_sitter_lang)
+                local_parser
+                    .set_language(&tree_sitter_lang)
                     .map_err(|e| anyhow::anyhow!("Failed to set parser language: {}", e))?;
 
-                let tree = local_parser
-                    .parse(&content_clone, None)
-                    .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", relative_path_clone))?;
+                let tree = local_parser.parse(&content_clone, None).ok_or_else(|| {
+                    anyhow::anyhow!("Failed to parse file: {}", relative_path_clone)
+                })?;
 
                 let parse_elapsed = parse_start.elapsed();
 
@@ -455,7 +507,7 @@ impl ManageWorkspaceTool {
                     &relative_path_clone,
                     &content_clone,
                     &language_clone2,
-                    &workspace_root_clone2
+                    &workspace_root_clone2,
                 )?;
 
                 let extract_elapsed = extract_start.elapsed();
@@ -478,8 +530,17 @@ impl ManageWorkspaceTool {
                     return Err(anyhow::anyhow!("Spawn blocking task panicked: {}", e));
                 }
                 Err(_) => {
-                    warn!("⏱️  Symbol extraction timed out after 30s for file: {} - skipping", relative_path);
-                    return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
+                    warn!(
+                        "⏱️  Symbol extraction timed out after 30s for file: {} - skipping",
+                        relative_path
+                    );
+                    return Ok((
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        HashMap::new(),
+                        file_info,
+                    ));
                 }
             }
         };
@@ -526,7 +587,10 @@ impl ManageWorkspaceTool {
         let workspace_root_clone = workspace_root.to_path_buf();
 
         let (_canonical_file_path, content, file_info) = tokio::task::spawn_blocking(move || {
-            tracing::trace!("🔄 Inside spawn_blocking (no parser) for: {:?}", file_path_clone);
+            tracing::trace!(
+                "🔄 Inside spawn_blocking (no parser) for: {:?}",
+                file_path_clone
+            );
             // Blocking operation 1: canonicalize (resolves symlinks: macOS /var -> /private/var)
             let canonical = file_path_clone
                 .canonicalize()
@@ -537,7 +601,11 @@ impl ManageWorkspaceTool {
                 .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical, e))?;
 
             // Blocking operation 3: create file info (does metadata, hash, etc)
-            let info = crate::database::create_file_info(&file_path_clone, &language_clone, &workspace_root_clone)?;
+            let info = crate::database::create_file_info(
+                &file_path_clone,
+                &language_clone,
+                &workspace_root_clone,
+            )?;
 
             Ok::<_, anyhow::Error>((canonical, file_content, info))
         })

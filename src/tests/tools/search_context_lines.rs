@@ -9,11 +9,19 @@ use tempfile::TempDir;
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
+use crate::tests::tools::search_quality::helpers::parse_dense_output;
 use crate::tools::{FastSearchTool, ManageWorkspaceTool};
-use rust_mcp_sdk::schema::CallToolResult;
+use rust_mcp_sdk::schema::{CallToolResult, ContentBlock};
 
 /// Extract structured content as symbols from CallToolResult
 fn extract_symbols_from_result(result: &CallToolResult) -> Vec<Symbol> {
+    if let Some(ContentBlock::TextContent(text)) = result.content.first() {
+        let dense = parse_dense_output(&text.text);
+        if !dense.is_empty() {
+            return dense;
+        }
+    }
+
     result
         .structured_content
         .as_ref()

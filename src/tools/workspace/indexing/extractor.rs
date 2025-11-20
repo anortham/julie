@@ -42,7 +42,12 @@ impl ManageWorkspaceTool {
 
         debug!(
             "🎯 extract_symbols_static returning: {} symbols, {} relationships, {} identifiers, {} types for {} file: {}",
-            results.symbols.len(), results.relationships.len(), results.identifiers.len(), results.types.len(), language, file_path
+            results.symbols.len(),
+            results.relationships.len(),
+            results.identifiers.len(),
+            results.types.len(),
+            language,
+            file_path
         );
 
         Ok(results)

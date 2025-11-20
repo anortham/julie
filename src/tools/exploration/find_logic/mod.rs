@@ -6,6 +6,7 @@ use tracing::{debug, warn};
 
 use crate::extractors::base::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
+use crate::tools::exploration::fast_explore::dense_symbol_block;
 
 use super::types::{BusinessLogicSymbol, FindLogicResult};
 
@@ -267,26 +268,29 @@ impl FindLogicTool {
             })
             .collect();
 
-        // Format with intelligence insights
-        let mut message = "🧠 SUPER GENIUS Business Logic Discovery\n".to_string();
-        message.push_str(&format!(
-            "🔬 Intelligence Layers: {}\n\n",
-            search_insights.join(" | ")
+        // Format dense, token-lean output for the MCP response
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "business_logic | layers:{} | results:{}",
+            search_insights.join(","),
+            business_symbols.len()
         ));
-        message.push_str(
-            &self.format_optimized_results(&business_logic_symbols, &business_relationships),
-        );
 
-        self.create_result(
-            business_logic_symbols,
-            search_insights,
-            vec![
-                "Review business logic symbols".to_string(),
-                "Use fast_goto to navigate to definitions".to_string(),
-                "Use fast_refs to see usage patterns".to_string(),
-            ],
-            message,
-        )
+        for symbol in &business_symbols {
+            lines.push(dense_symbol_block(
+                symbol,
+                Some(&format!("conf:{:.2}", symbol.confidence.unwrap_or(0.0))),
+            ));
+            lines.push(String::new());
+        }
+
+        while matches!(lines.last(), Some(l) if l.is_empty()) {
+            lines.pop();
+        }
+
+        Ok(CallToolResult::text_content(vec![TextContent::from(
+            lines.join("\n"),
+        )]))
     }
 
     /// Get relationships between business logic symbols using intelligent queries

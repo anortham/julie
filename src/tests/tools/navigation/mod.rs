@@ -810,8 +810,11 @@ mod navigation_tools_tests {
         };
 
         // Store identifiers
-        db.bulk_store_identifiers(&vec![call_identifier.clone(), member_access_identifier.clone()], "test_workspace")
-            .expect("Failed to store identifiers");
+        db.bulk_store_identifiers(
+            &vec![call_identifier.clone(), member_access_identifier.clone()],
+            "test_workspace",
+        )
+        .expect("Failed to store identifiers");
 
         // Create relationships matching the identifiers
         let call_relationship = Relationship {
@@ -836,8 +839,11 @@ mod navigation_tools_tests {
             metadata: None,
         };
 
-        db.bulk_store_relationships(&vec![call_relationship.clone(), member_relationship.clone()])
-            .expect("Failed to store relationships");
+        db.bulk_store_relationships(&vec![
+            call_relationship.clone(),
+            member_relationship.clone(),
+        ])
+        .expect("Failed to store relationships");
 
         // Test 1: Filter by "call" - should return only call relationship
         let call_refs = db
@@ -846,14 +852,13 @@ mod navigation_tools_tests {
 
         println!("DEBUG: Found {} call references", call_refs.len());
         for r in &call_refs {
-            println!("  - {} at {}:{}", r.to_symbol_id, r.file_path, r.line_number);
+            println!(
+                "  - {} at {}:{}",
+                r.to_symbol_id, r.file_path, r.line_number
+            );
         }
 
-        assert_eq!(
-            call_refs.len(),
-            1,
-            "Should find exactly 1 call reference"
-        );
+        assert_eq!(call_refs.len(), 1, "Should find exactly 1 call reference");
         assert_eq!(call_refs[0].id, "rel1");
         assert_eq!(call_refs[0].file_path, "caller1.rs");
         assert_eq!(call_refs[0].line_number, 10);

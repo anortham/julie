@@ -38,14 +38,9 @@ export default {
         let tree = parser.parse(code, None).expect("Error parsing code");
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.vue",
-            code,
-            "vue",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.vue", code, "vue", &workspace_root)
+                .expect("Extraction failed");
 
         // Vue should extract types from prop definitions and other metadata
         println!("Extracted {} types from Vue code", results.types.len());

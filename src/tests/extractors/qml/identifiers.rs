@@ -85,7 +85,9 @@ Rectangle {
 
         // Should find property access patterns
         assert!(
-            member_names.iter().any(|&name| name == "width" || name == "height"),
+            member_names
+                .iter()
+                .any(|&name| name == "width" || name == "height"),
             "Should extract property access identifiers"
         );
     }

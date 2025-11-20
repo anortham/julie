@@ -116,8 +116,12 @@ fn extract_identifier_from_node(
             // Only create variable reference if not already handled by call or member access
             if let Some(parent) = node.parent() {
                 match parent.kind() {
-                    "call_expression" | "member_expression" | "function_declaration"
-                    | "ui_object_definition" | "ui_property" | "ui_signal" => {
+                    "call_expression"
+                    | "member_expression"
+                    | "function_declaration"
+                    | "ui_object_definition"
+                    | "ui_property"
+                    | "ui_signal" => {
                         return; // Skip - handled elsewhere or is a definition
                     }
                     _ => {

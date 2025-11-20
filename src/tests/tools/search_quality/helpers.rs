@@ -1,10 +1,10 @@
 //! Test Helpers - Shared utilities for search quality tests
 
-use crate::extractors::Symbol;
+use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::tools::search::FastSearchTool;
 use anyhow::{Result, anyhow};
-use rust_mcp_sdk::schema::CallToolResult;
+use rust_mcp_sdk::schema::{CallToolResult, ContentBlock};
 use std::sync::atomic::Ordering;
 
 /// Search Julie's codebase (file content search)
@@ -53,21 +53,80 @@ pub async fn search_definitions(
 
 /// Parse search results from MCP CallToolResult
 fn parse_search_results(result: &CallToolResult) -> Result<Vec<Symbol>> {
-    // Extract structured_content from CallToolResult
-    // The search tool returns OptimizedResponse in structured_content with format:
-    // { "tool": "fast_search", "results": [Symbol, ...], "confidence": 0.85, ... }
+    // Prefer lean text output (dense format) to avoid JSON bloat
+    if let Some(ContentBlock::TextContent(text)) = result.content.first() {
+        let dense = parse_dense_output(&text.text);
+        if !dense.is_empty() {
+            return Ok(dense);
+        }
+    }
 
+    // Fallback: legacy structured_content parsing
     if let Some(structured) = &result.structured_content {
         if let Some(results_value) = structured.get("results") {
-            // Parse the results array as Vec<Symbol>
             let symbols: Vec<Symbol> = serde_json::from_value(results_value.clone())
                 .map_err(|e| anyhow!("Failed to parse symbols from results: {}", e))?;
             return Ok(symbols);
         }
     }
 
-    // Fallback: no structured content
     Ok(Vec::new())
+}
+
+/// Parse lean dense search output into Symbols for testing
+pub fn parse_dense_output(text: &str) -> Vec<Symbol> {
+    text.split("\n\n")
+        .filter_map(|block| {
+            let mut lines = block.lines();
+            let header = lines.next()?.trim();
+            if header.is_empty() {
+                return None;
+            }
+
+            // Header format: <file_path>:<start>-<end> | <name> | <kind>
+            let mut header_parts = header.split('|').map(|s| s.trim());
+
+            let span_part = header_parts.next()?;
+            let (file_path, span) = span_part.rsplit_once(':')?;
+            let (start_str, end_str) = span.split_once('-')?;
+
+            let start_line: u32 = start_str.trim().parse().ok()?;
+            let end_line: u32 = end_str.trim().parse().ok()?;
+
+            let name = header_parts.next().unwrap_or("").to_string();
+            let kind_str = header_parts.next().unwrap_or("variable");
+            let kind = SymbolKind::from_string(kind_str);
+
+            let snippet = lines.collect::<Vec<_>>().join("\n").trim().to_string();
+
+            Some(Symbol {
+                id: format!("{}:{}-{}", file_path, start_line, end_line),
+                name,
+                kind,
+                language: String::new(),
+                file_path: file_path.to_string(),
+                start_line,
+                start_column: 0,
+                end_line,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 0,
+                signature: None,
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                code_context: if snippet.is_empty() {
+                    None
+                } else {
+                    Some(snippet)
+                },
+                content_type: None,
+            })
+        })
+        .collect()
 }
 
 /// Assert that results contain a file path matching the pattern

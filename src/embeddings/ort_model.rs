@@ -662,14 +662,14 @@ impl OrtEmbeddingModel {
                 Some(memory_bytes)
             }
             Ok(result) => {
-                tracing::warn!(
-                    "nvidia-smi command failed with status: {}",
-                    result.status
-                );
+                tracing::warn!("nvidia-smi command failed with status: {}", result.status);
                 None
             }
             Err(e) => {
-                tracing::warn!("Failed to execute nvidia-smi: {} - using fallback batch size", e);
+                tracing::warn!(
+                    "Failed to execute nvidia-smi: {} - using fallback batch size",
+                    e
+                );
                 None
             }
         }

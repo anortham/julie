@@ -1988,7 +1988,10 @@ fn test_wal_checkpoint_restart_mode() {
     let (busy, log, checkpointed) = result.unwrap();
 
     // Verify checkpoint results
-    assert_eq!(busy, 0, "RESTART mode should successfully checkpoint all frames");
+    assert_eq!(
+        busy, 0,
+        "RESTART mode should successfully checkpoint all frames"
+    );
     assert!(log >= 0, "Log should contain frames");
     assert!(checkpointed >= 0, "Should checkpoint frames");
 

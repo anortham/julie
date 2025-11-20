@@ -70,14 +70,20 @@ impl ModelManager {
             ("BAAI/bge-small-en-v1.5", "onnx/model.onnx")
         };
 
-        info!("📥 Ensuring BGE-Small-EN-V1.5 model is available (quantized: {})...", USE_QUANTIZED_MODELS);
+        info!(
+            "📥 Ensuring BGE-Small-EN-V1.5 model is available (quantized: {})...",
+            USE_QUANTIZED_MODELS
+        );
 
         // Get the repository handle
         let repo = self.api.model(repo_id.to_string());
 
         // Download required files with timeout (Issue #5 fix)
         // HuggingFace Hub will cache these and skip download if already present
-        info!("📥 Downloading {} (this may take a while on first run)...", model_filename);
+        info!(
+            "📥 Downloading {} (this may take a while on first run)...",
+            model_filename
+        );
         let model_path = tokio::time::timeout(
             std::time::Duration::from_secs(300), // 5 minute timeout
             repo.get(model_filename),

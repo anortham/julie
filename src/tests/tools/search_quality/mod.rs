@@ -23,4 +23,4 @@
 //! 3. Test passes - regression prevented!
 
 mod dogfood_tests;
-mod helpers;
+pub mod helpers;
