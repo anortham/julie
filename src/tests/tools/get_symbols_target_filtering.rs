@@ -42,7 +42,7 @@ mod tests {
             limit: None,
             mode: None,
             workspace: None,
-        };
+        output_format: None,        };
 
         let result = tool.call_tool(&handler).await?;
 
@@ -110,7 +110,7 @@ mod tests {
             limit: None,
             mode: None,
             workspace: None,
-        };
+        output_format: None,        };
 
         let result = tool.call_tool(&handler).await?;
 
@@ -170,7 +170,7 @@ mod tests {
             limit: None,
             mode: None,
             workspace: None,
-        };
+        output_format: None,        };
 
         let result = tool.call_tool(&handler).await?;
 
@@ -222,7 +222,7 @@ mod tests {
             limit: None,
             mode: None,
             workspace: None,
-        };
+        output_format: None,        };
 
         let result = tool.call_tool(&handler).await?;
 

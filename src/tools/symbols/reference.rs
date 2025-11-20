@@ -21,6 +21,7 @@ pub async fn get_symbols_from_reference(
     limit: Option<u32>,
     mode: &str,
     ref_workspace_id: String,
+    output_format: Option<&str>,
 ) -> Result<CallToolResult> {
     info!(
         "📋 Getting symbols from reference workspace: {} in file: {} (depth: {})",
@@ -138,5 +139,6 @@ pub async fn get_symbols_from_reference(
         limit,
         was_truncated,
         Some(ref_workspace_id),
+        output_format,
     )
 }

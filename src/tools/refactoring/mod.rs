@@ -276,10 +276,10 @@ impl SmartRefactorTool {
             metadata,
         };
 
-        // Apply token optimization to prevent context overflow
-        let optimized_markdown = self.optimize_response(&markdown);
+        // Apply token optimization to prevent context overflow (unused now since we return JSON-only)
+        let _optimized_markdown = self.optimize_response(&markdown);
 
-        // Serialize to JSON
+        // Return ONLY structured JSON (no redundant text)
         let structured = serde_json::to_value(&result)?;
         let structured_map = if let serde_json::Value::Object(map) = structured {
             map
@@ -287,8 +287,9 @@ impl SmartRefactorTool {
             return Err(anyhow::anyhow!("Expected JSON object"));
         };
 
+        debug!("✅ Returning smart_refactor results as JSON-only (no redundant text_content)");
         Ok(
-            CallToolResult::text_content(vec![TextContent::from(optimized_markdown)])
+            CallToolResult::text_content(vec![])
                 .with_structured_content(structured_map),
         )
     }

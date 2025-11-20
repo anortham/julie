@@ -74,6 +74,9 @@ pub struct GetSymbolsTool {
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
+    /// Output format: "json" (default), "toon", or "auto" (TOON for 5+ symbols)
+    #[serde(default)]
+    pub output_format: Option<String>,
 }
 
 impl GetSymbolsTool {
@@ -92,6 +95,7 @@ impl GetSymbolsTool {
                 self.limit,
                 self.mode.as_deref().unwrap_or("structure"),
                 ref_workspace_id,
+                self.output_format.as_deref(),
             )
             .await;
         }
@@ -104,6 +108,7 @@ impl GetSymbolsTool {
             self.target.as_deref(),
             self.limit,
             self.mode.as_deref().unwrap_or("structure"),
+            self.output_format.as_deref(),
         )
         .await
     }

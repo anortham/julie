@@ -143,6 +143,7 @@ mod workspace_isolation_smoke_tests {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_primary_for_ref.call_tool(&handler).await?;
@@ -167,6 +168,7 @@ mod workspace_isolation_smoke_tests {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result2 = search_ref_for_primary.call_tool(&handler).await?;
@@ -274,6 +276,7 @@ mod workspace_isolation_smoke_tests {
             search_target: "definitions".to_string(),
             output: Some("symbols".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result1 = search_primary_string.call_tool(&handler).await?;
@@ -296,6 +299,7 @@ mod workspace_isolation_smoke_tests {
             search_target: "definitions".to_string(),
             output: Some("symbols".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result2 = search_ref_id.call_tool(&handler).await?;
@@ -351,6 +355,7 @@ mod workspace_isolation_smoke_tests {
             search_target: "definitions".to_string(),
             output: Some("symbols".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_invalid.call_tool(&handler).await;

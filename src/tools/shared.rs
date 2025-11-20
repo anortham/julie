@@ -1,10 +1,10 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Token-optimized response wrapper with confidence-based limiting
 /// Inspired by codesearch's AIOptimizedResponse pattern
 ///
 /// Designed for structured MCP output - agents parse JSON, format for humans
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OptimizedResponse<T> {
     /// Tool that generated this response (enables routing and schema detection)
     /// Examples: "fast_search", "fast_refs", "fast_goto", "fuzzy_replace", "rename_symbol", "edit_symbol"

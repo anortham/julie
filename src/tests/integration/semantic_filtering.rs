@@ -271,6 +271,7 @@ async fn semantic_search_with_language(
         file_pattern: None,
         language: Some(language.to_string()),
         context_lines: None,
+        output_format: None,
         workspace: None,
         output: None,
     };
@@ -296,6 +297,7 @@ async fn semantic_search_with_pattern(
         file_pattern: Some(pattern.to_string()),
         language: None,
         context_lines: None,
+        output_format: None,
         workspace: None,
         output: None,
     };

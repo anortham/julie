@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use rust_mcp_sdk::schema::CallToolResult;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
@@ -66,6 +66,9 @@ pub struct FindLogicTool {
     /// Recommended: 0.3 for broad coverage, 0.7 for core business logic only
     #[serde(default = "default_min_score")]
     pub min_business_score: f32,
+    /// Output format: "json" (default), "toon", or "auto" (TOON for 5+ results)
+    #[serde(default)]
+    pub output_format: Option<String>,
 }
 
 impl FindLogicTool {
@@ -97,7 +100,8 @@ impl FindLogicTool {
         business_logic_symbols: Vec<BusinessLogicSymbol>,
         intelligence_layers: Vec<String>,
         next_actions: Vec<String>,
-        markdown: String,
+        _markdown: String,
+        output_format: Option<&str>,
     ) -> Result<CallToolResult> {
         let result = FindLogicResult {
             tool: "find_logic".to_string(),
@@ -111,18 +115,63 @@ impl FindLogicTool {
             next_actions,
         };
 
-        // Serialize to JSON
-        let structured = serde_json::to_value(&result)?;
-        let structured_map = if let serde_json::Value::Object(map) = structured {
-            map
-        } else {
-            return Err(anyhow::anyhow!("Expected JSON object"));
-        };
-
-        Ok(
-            CallToolResult::text_content(vec![TextContent::from(markdown)])
-                .with_structured_content(structured_map),
-        )
+        // Return based on output_format: TOON uses text only, JSON uses structured only
+        match output_format {
+            Some("toon") => {
+                // TOON mode: Return ONLY TOON in text, NO structured content
+                match toon_format::encode_default(&result) {
+                    Ok(toon) => {
+                        debug!("✅ Returning find_logic in TOON-only mode ({} chars)", toon.len());
+                        Ok(CallToolResult::text_content(vec![toon.into()]))
+                    }
+                    Err(e) => {
+                        warn!("❌ TOON encoding failed: {}, falling back to JSON", e);
+                        let structured = serde_json::to_value(&result)?;
+                        let structured_map = if let serde_json::Value::Object(map) = structured {
+                            map
+                        } else {
+                            return Err(anyhow::anyhow!("Expected JSON object"));
+                        };
+                        Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
+                    }
+                }
+            }
+            Some("auto") => {
+                // Auto mode: TOON for 5+ results, JSON for small responses
+                if result.found_count >= 5 {
+                    match toon_format::encode_default(&result) {
+                        Ok(toon) => {
+                            debug!("✅ Auto-selected TOON for {} results ({} chars)", result.found_count, toon.len());
+                            return Ok(CallToolResult::text_content(vec![toon.into()]));
+                        }
+                        Err(e) => {
+                            debug!("⚠️ TOON encoding failed: {}, falling back to JSON", e);
+                            // Fall through to JSON
+                        }
+                    }
+                }
+                // Small response or TOON failed: use JSON-only
+                let structured = serde_json::to_value(&result)?;
+                let structured_map = if let serde_json::Value::Object(map) = structured {
+                    map
+                } else {
+                    return Err(anyhow::anyhow!("Expected JSON object"));
+                };
+                debug!("✅ Auto-selected JSON for {} results (no redundant text_content)", result.found_count);
+                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
+            }
+            _ => {
+                // Default (JSON/None): ONLY structured content (no redundant text)
+                let structured = serde_json::to_value(&result)?;
+                let structured_map = if let serde_json::Value::Object(map) = structured {
+                    map
+                } else {
+                    return Err(anyhow::anyhow!("Expected JSON object"));
+                };
+                debug!("✅ Returning find_logic as JSON-only (no redundant text_content)");
+                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
+            }
+        }
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -286,6 +335,7 @@ impl FindLogicTool {
                 "Use fast_refs to see usage patterns".to_string(),
             ],
             message,
+            self.output_format.as_deref(),
         )
     }
 

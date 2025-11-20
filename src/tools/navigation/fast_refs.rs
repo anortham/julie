@@ -36,6 +36,10 @@ fn default_workspace() -> Option<String> {
     Some("primary".to_string())
 }
 
+fn default_output_format() -> Option<String> {
+    None // Default to JSON for backwards compatibility
+}
+
 #[mcp_tool(
     name = "fast_refs",
     description = "Find all references and usages of a symbol across the workspace. Julie 2.0: Default limit 10 (optimized for token efficiency, showing most relevant references first).",
@@ -62,17 +66,20 @@ pub struct FastRefsTool {
     /// Reference kind filter: "call", "variable_ref", "type_usage", "member_access", "import"
     #[serde(default)]
     pub reference_kind: Option<String>,
+    /// Output format: "json" (default), "toon", or "auto" (smart selection)
+    #[serde(default = "default_output_format")]
+    pub output_format: Option<String>,
 }
 
 impl FastRefsTool {
-    /// Helper: Create structured result with markdown for dual output
+    /// Helper: Create structured result with TOON encoding and proper fallback
     fn create_result(
         &self,
         found: bool,
         definitions: Vec<Symbol>,
         references: Vec<Relationship>,
         next_actions: Vec<String>,
-        markdown: String,
+        _markdown: String,
     ) -> Result<CallToolResult> {
         let definition_results: Vec<DefinitionResult> = definitions
             .iter()
@@ -113,18 +120,68 @@ impl FastRefsTool {
             next_actions,
         };
 
-        // Serialize to JSON
-        let structured = serde_json::to_value(&result)?;
-        let structured_map = if let serde_json::Value::Object(map) = structured {
-            map
-        } else {
-            return Err(anyhow::anyhow!("Expected JSON object"));
-        };
+        // Return based on output_format: TOON uses text only, JSON uses structured
+        match self.output_format.as_deref() {
+            Some("toon") => {
+                // TOON mode: Return ONLY TOON in text, NO structured content
+                match toon_format::encode_default(&result) {
+                    Ok(toon) => {
+                        debug!("✅ Encoded fast_refs results to TOON ({} chars)", toon.len());
+                        Ok(CallToolResult::text_content(vec![TextContent::from(toon)]))
+                    }
+                    Err(e) => {
+                        warn!("❌ TOON encoding failed for fast_refs: {}, falling back to JSON", e);
+                        let structured = serde_json::to_value(&result)?;
+                        let structured_map = if let serde_json::Value::Object(map) = structured {
+                            map
+                        } else {
+                            return Err(anyhow::anyhow!("Expected JSON object"));
+                        };
+                        Ok(CallToolResult::text_content(vec![])
+                            .with_structured_content(structured_map))
+                    }
+                }
+            }
+            Some("auto") => {
+                // Auto mode: TOON for 5+ results (text only), JSON for small responses
+                let total_results = result.definition_count + result.reference_count;
+                if total_results >= 5 {
+                    match toon_format::encode_default(&result) {
+                        Ok(toon) => {
+                            debug!("✅ Auto-selected TOON for {} results ({} chars)", total_results, toon.len());
+                            return Ok(CallToolResult::text_content(vec![TextContent::from(toon)]));
+                        }
+                        Err(e) => {
+                            warn!("❌ TOON encoding failed for fast_refs: {}, falling back to JSON", e);
+                            // Fall through to JSON
+                        }
+                    }
+                }
 
-        Ok(
-            CallToolResult::text_content(vec![TextContent::from(markdown)])
-                .with_structured_content(structured_map),
-        )
+                // Small response or TOON failed: use JSON-only (no redundant text)
+                let structured = serde_json::to_value(&result)?;
+                let structured_map = if let serde_json::Value::Object(map) = structured {
+                    map
+                } else {
+                    return Err(anyhow::anyhow!("Expected JSON object"));
+                };
+                debug!("✅ Auto-selected JSON for {} results (no redundant text_content)", total_results);
+                Ok(CallToolResult::text_content(vec![])
+                    .with_structured_content(structured_map))
+            }
+            _ => {
+                // Default (JSON/None): ONLY structured content (no redundant text)
+                let structured = serde_json::to_value(&result)?;
+                let structured_map = if let serde_json::Value::Object(map) = structured {
+                    map
+                } else {
+                    return Err(anyhow::anyhow!("Expected JSON object"));
+                };
+                debug!("✅ Returning fast_refs results as JSON-only (no redundant text_content)");
+                Ok(CallToolResult::text_content(vec![])
+                    .with_structured_content(structured_map))
+            }
+        }
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {

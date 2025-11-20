@@ -16,7 +16,7 @@ pub mod types;
 use anyhow::{Result, anyhow};
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use rust_mcp_sdk::schema::CallToolResult;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -56,9 +56,9 @@ pub struct TraceCallPathTool {
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Output format: "json" (default) or "tree"
+    /// Output format: "json" (default), "toon", or "auto" (smart selection)
     #[serde(default = "default_output_format")]
-    pub output_format: String,
+    pub output_format: Option<String>,
 }
 
 impl TraceCallPathTool {
@@ -77,9 +77,10 @@ impl TraceCallPathTool {
         success: bool,
         paths_found: usize,
         next_actions: Vec<String>,
-        markdown: String,
+        _markdown: String,
         error_message: Option<String>,
         call_paths: Option<Vec<CallPath>>,
+        output_format: Option<&str>,
     ) -> Result<CallToolResult> {
         let result = TraceCallPathResult {
             tool: "trace_call_path".to_string(),
@@ -94,18 +95,63 @@ impl TraceCallPathTool {
             call_paths,
         };
 
-        // Serialize to JSON
-        let structured = serde_json::to_value(&result)?;
-        let structured_map = if let serde_json::Value::Object(map) = structured {
-            map
-        } else {
-            return Err(anyhow::anyhow!("Expected JSON object"));
-        };
-
-        Ok(
-            CallToolResult::text_content(vec![TextContent::from(markdown)])
-                .with_structured_content(structured_map),
-        )
+        // Return based on output_format: TOON uses text only, JSON uses structured only
+        match output_format {
+            Some("toon") => {
+                // TOON mode: Return ONLY TOON in text, NO structured content
+                match toon_format::encode_default(&result) {
+                    Ok(toon) => {
+                        ::tracing::debug!("✅ Returning trace_call_path in TOON-only mode ({} chars)", toon.len());
+                        Ok(CallToolResult::text_content(vec![toon.into()]))
+                    }
+                    Err(e) => {
+                        ::tracing::warn!("❌ TOON encoding failed: {}, falling back to JSON", e);
+                        let structured = serde_json::to_value(&result)?;
+                        let structured_map = if let serde_json::Value::Object(map) = structured {
+                            map
+                        } else {
+                            return Err(anyhow::anyhow!("Expected JSON object"));
+                        };
+                        Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
+                    }
+                }
+            }
+            Some("auto") => {
+                // Auto mode: TOON for 5+ paths, JSON for small responses
+                if result.paths_found >= 5 {
+                    match toon_format::encode_default(&result) {
+                        Ok(toon) => {
+                            ::tracing::debug!("✅ Auto-selected TOON for {} paths ({} chars)", result.paths_found, toon.len());
+                            return Ok(CallToolResult::text_content(vec![toon.into()]));
+                        }
+                        Err(e) => {
+                            ::tracing::debug!("⚠️ TOON encoding failed: {}, falling back to JSON", e);
+                            // Fall through to JSON
+                        }
+                    }
+                }
+                // Small response or TOON failed: use JSON-only
+                let structured = serde_json::to_value(&result)?;
+                let structured_map = if let serde_json::Value::Object(map) = structured {
+                    map
+                } else {
+                    return Err(anyhow::anyhow!("Expected JSON object"));
+                };
+                ::tracing::debug!("✅ Auto-selected JSON for {} paths (no redundant text_content)", result.paths_found);
+                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
+            }
+            _ => {
+                // Default (JSON/tree/None): ONLY structured content (no redundant text)
+                let structured = serde_json::to_value(&result)?;
+                let structured_map = if let serde_json::Value::Object(map) = structured {
+                    map
+                } else {
+                    return Err(anyhow::anyhow!("Expected JSON object"));
+                };
+                ::tracing::debug!("✅ Returning trace_call_path as JSON-only (no redundant text_content)");
+                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
+            }
+        }
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -126,6 +172,7 @@ impl TraceCallPathTool {
                 message.clone(),
                 Some(message),
                 None,
+                self.output_format.as_deref(),
             );
         }
 
@@ -163,6 +210,7 @@ impl TraceCallPathTool {
                         message.clone(),
                         Some(format!("Workspace not found: {}", workspace_id)),
                         None,
+                self.output_format.as_deref(),
                     );
                 }
 
@@ -247,6 +295,7 @@ impl TraceCallPathTool {
                 message.clone(),
                 Some(format!("Symbol not found: {}", self.symbol)),
                 None,
+                self.output_format.as_deref(),
             );
         }
 
@@ -265,6 +314,7 @@ impl TraceCallPathTool {
                     message.clone(),
                     Some(format!("Symbol not found in file: {}", context_file)),
                     None,
+                self.output_format.as_deref(),
                 );
             }
         }
@@ -336,6 +386,7 @@ impl TraceCallPathTool {
                         message.clone(),
                         Some(format!("Invalid direction: {}", self.direction)),
                         None,
+                self.output_format.as_deref(),
                     );
                 }
             };
@@ -351,7 +402,7 @@ impl TraceCallPathTool {
             &self.symbol,
             &self.direction,
             self.max_depth,
-            &self.output_format,
+            self.output_format.as_deref().unwrap_or("json"),
         )?;
 
         // Convert trees to serializable format for structured content
@@ -371,6 +422,7 @@ impl TraceCallPathTool {
             output,
             None,
             call_paths,
+            self.output_format.as_deref(),
         )
     }
 }

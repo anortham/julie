@@ -1,0 +1,16 @@
+{
+  "id": "checkpoint_691f4d23_df9a19",
+  "timestamp": 1763659043,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "e126e76",
+    "dirty": true,
+    "files_changed": [
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs"
+    ]
+  },
+  "description": "Julie 2.0 Phase 5b: Implemented TOON formatting for fast_search tool. Added Deserialize trait to OptimizedResponse, created encode_to_toon_with_fallback helper with error handling and JSON fallback, added output_format parameter to FastSearchTool (\"json\", \"toon\", \"auto\" modes). Smart auto mode uses TOON for 5+ results. Maintains backwards compatibility with JSON in structured_content. Code compiles successfully."
+}

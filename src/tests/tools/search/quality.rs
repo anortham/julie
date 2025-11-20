@@ -137,6 +137,7 @@ mod search_quality_tests {
             search_target: "content".to_string(),
             output: None,
             context_lines: None,
+        output_format: None,
         };
 
         // Test the integrated behavior by verifying that PathRelevanceScorer is properly imported

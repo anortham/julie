@@ -63,6 +63,7 @@ async fn test_get_symbols_with_relative_path() -> Result<()> {
         limit: None,
         target: None,
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -134,6 +135,7 @@ async fn test_get_symbols_with_absolute_path() -> Result<()> {
         limit: None,
         target: None,
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;

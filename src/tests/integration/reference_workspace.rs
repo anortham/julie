@@ -178,6 +178,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let primary_result = search_primary.call_tool(&handler).await?;
@@ -203,6 +204,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let reference_result = search_reference.call_tool(&handler).await?;
@@ -229,6 +231,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let cross_result = cross_search.call_tool(&handler).await?;
@@ -282,6 +285,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_tool.call_tool(&handler).await;
@@ -373,6 +377,7 @@ mod reference_workspace_tests {
             search_target: "definitions".to_string(), // Use symbols scope (doesn't need FTS5)
             output: Some("symbols".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let reference_result = search_reference.call_tool(&handler).await?;
@@ -438,6 +443,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let initial_result = initial_search.call_tool(&handler).await?;
@@ -480,6 +486,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let deleted_result = search_deleted.call_tool(&handler).await?;

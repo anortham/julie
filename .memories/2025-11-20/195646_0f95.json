@@ -1,0 +1,53 @@
+{
+  "id": "checkpoint_691f727e_e30b91",
+  "timestamp": 1763668606,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "e126e76",
+    "dirty": true,
+    "files_changed": [
+      "TODO.md",
+      "src/tests/integration/fts5_minimal_repro.rs",
+      "src/tests/integration/lock_contention.rs",
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/semantic_filtering.rs",
+      "src/tests/integration/vector_store_reload.rs",
+      "src/tests/integration/watcher_embeddings.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tests/tools/search/line_mode.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/primary_workspace_bug.rs",
+      "src/tests/tools/search/quality.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search_context_lines.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/fuzzy_replace.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/refactoring/mod.rs",
+      "src/tools/refactoring/rename.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/symbols/mod.rs",
+      "src/tools/symbols/primary.rs",
+      "src/tools/symbols/reference.rs",
+      "src/tools/trace_call_path/mod.rs"
+    ]
+  },
+  "description": "Fixed critical TOON fallback bugs in fast_refs and fast_search: Both tools were returning human-readable text (markdown/JSON strings) instead of structured JSON on TOON encoding failures, breaking machine-readable contract with MCP clients. Refactored fast_refs by removing broken format_results_text() helper and handling TOON encoding inline in create_result() with proper structured_content fallback. Fixed fast_search in two locations (semantic fallback early return + main return) by replacing encode_to_toon_with_fallback() calls with inline TOON encoding and structured JSON fallback. Made ToonResponse and ToonSymbol public in formatting.rs. Release build compiles cleanly. Test compilation failures are pre-existing (missing output_format fields from Phase 5b). Next: Fix test struct initializations, then add TOON encoding failure tests.",
+  "tags": [
+    "toon",
+    "bug-fix",
+    "fallback",
+    "fast-refs",
+    "fast-search",
+    "phase-1-complete"
+  ]
+}

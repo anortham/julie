@@ -9,6 +9,7 @@ mod quality;
 mod race_condition;
 mod semantic_error_handling_tests;
 mod semantic_scoring_tests;
+mod toon_formatting_tests;
 mod tools;
 
 use crate::tools::search::*;
@@ -25,6 +26,7 @@ fn test_preprocess_fallback_query_multi_word() {
         search_target: "content".to_string(),
         output: None,
         context_lines: None,
+        output_format: None,
     };
 
     assert_eq!(
@@ -46,6 +48,7 @@ fn test_preprocess_fallback_query_single_word() {
         search_target: "content".to_string(),
         output: None,
         context_lines: None,
+        output_format: None,
     };
 
     assert_eq!(
@@ -67,6 +70,7 @@ fn test_preprocess_fallback_query_quoted() {
         search_target: "content".to_string(),
         output: None,
         context_lines: None,
+        output_format: None,
     };
 
     assert_eq!(
@@ -88,6 +92,7 @@ fn test_preprocess_fallback_query_exclusion() {
         search_target: "content".to_string(),
         output: None,
         context_lines: None,
+        output_format: None,
     };
 
     assert_eq!(
@@ -109,6 +114,7 @@ fn test_preprocess_fallback_query_wildcard() {
         search_target: "content".to_string(),
         output: None,
         context_lines: None,
+        output_format: None,
     };
 
     assert_eq!(
@@ -130,6 +136,7 @@ fn test_preprocess_fallback_query_explicit_or() {
         search_target: "content".to_string(),
         output: None,
         context_lines: None,
+        output_format: None,
     };
 
     assert_eq!(
@@ -151,6 +158,7 @@ fn test_preprocess_fallback_query_explicit_and() {
         search_target: "content".to_string(),
         output: None,
         context_lines: None,
+        output_format: None,
     };
 
     assert_eq!(

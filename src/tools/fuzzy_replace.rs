@@ -238,8 +238,8 @@ impl FuzzyReplaceTool {
                 ],
             };
 
-            // Minimal 2-line summary
-            let markdown = format!(
+            // Minimal 2-line summary (unused since we return JSON-only now)
+            let _markdown = format!(
                 "Fuzzy match preview: {} matches found in {}\nPattern: '{}' → Replacement: '{}' (threshold: {}, dry_run: true)",
                 result.matches_found,
                 result.file_path.as_ref().unwrap(),
@@ -248,7 +248,7 @@ impl FuzzyReplaceTool {
                 result.threshold
             );
 
-            // Serialize to JSON
+            // Return ONLY structured JSON (no redundant text)
             let structured = serde_json::to_value(&result)
                 .map_err(|e| anyhow!("Failed to serialize result: {}", e))?;
 
@@ -258,8 +258,9 @@ impl FuzzyReplaceTool {
                 return Err(anyhow!("Expected JSON object"));
             };
 
+            debug!("✅ Returning fuzzy_replace results as JSON-only (no redundant text_content)");
             return Ok(
-                CallToolResult::text_content(vec![TextContent::from(markdown)])
+                CallToolResult::text_content(vec![])
                     .with_structured_content(structured_map),
             );
         }
@@ -528,7 +529,7 @@ impl FuzzyReplaceTool {
             }
         }
 
-        // Serialize to JSON
+        // Return ONLY structured JSON (no redundant text)
         let structured = serde_json::to_value(&result)
             .map_err(|e| anyhow!("Failed to serialize result: {}", e))?;
 
@@ -538,8 +539,9 @@ impl FuzzyReplaceTool {
             return Err(anyhow!("Expected JSON object"));
         };
 
+        debug!("✅ Returning fuzzy_replace (multi-file) results as JSON-only (no redundant text_content)");
         Ok(
-            CallToolResult::text_content(vec![TextContent::from(markdown)])
+            CallToolResult::text_content(vec![])
                 .with_structured_content(structured_map),
         )
     }

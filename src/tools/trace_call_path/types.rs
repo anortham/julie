@@ -93,6 +93,6 @@ pub fn default_workspace() -> Option<String> {
     Some("primary".to_string())
 }
 
-pub fn default_output_format() -> String {
-    "json".to_string()
+pub fn default_output_format() -> Option<String> {
+    None // Default to JSON for backwards compatibility
 }

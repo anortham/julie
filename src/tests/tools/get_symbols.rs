@@ -112,6 +112,7 @@ pub const MAX_USERS: usize = 100;
         limit: None,
         mode: None,
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -186,6 +187,7 @@ pub fn process_data(input: &str) -> String {
         limit: None,
         mode: None,
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -249,7 +251,7 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
             limit: None,
             mode: None,
             workspace: None,
-        };
+        output_format: None,        };
 
         let result = tool.call_tool(&handler).await?;
         let text_content = extract_text_from_result(&result);
@@ -314,6 +316,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
+        output_format: None,
     };
 
     let result_no_limit = tool_no_limit.call_tool(&handler).await?;
@@ -336,6 +339,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: Some(5),
         mode: None,
         workspace: None,
+        output_format: None,
     };
 
     let result_with_limit = tool_with_limit.call_tool(&handler).await?;
@@ -415,6 +419,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
+        output_format: None,
     };
 
     let result_not_found = tool_not_found.call_tool(&handler).await?;
@@ -439,6 +444,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
+        output_format: None,
     };
 
     let result_exists = tool_exists.call_tool(&handler).await?;
@@ -472,6 +478,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
+        output_format: None,
     };
 
     let result_empty = tool_empty.call_tool(&handler).await?;

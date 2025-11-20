@@ -1,0 +1,41 @@
+{
+  "id": "checkpoint_691f65ff_0fa92b",
+  "timestamp": 1763665407,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "e126e76",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/integration/fts5_minimal_repro.rs",
+      "src/tests/integration/lock_contention.rs",
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/semantic_filtering.rs",
+      "src/tests/integration/vector_store_reload.rs",
+      "src/tests/integration/watcher_embeddings.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tests/tools/search/line_mode.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/primary_workspace_bug.rs",
+      "src/tests/tools/search/quality.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search_context_lines.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/refactoring/rename.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs"
+    ]
+  },
+  "description": "Julie 2.0 Phase 5b COMPLETE: TOON integration fully working after fixing critical bugs. fast_refs now properly returns TOON-only (no structured_content) when requested. Even bigger win: eliminated redundant text_content from JSON mode responses across fast_search and fast_refs - was sending same data twice (markdown + JSON). Now: TOON mode = text only, JSON mode = structured only. Achieves ~50% token reduction across all tool outputs. Auto mode intelligently switches: 5+ results = TOON, <5 results = JSON. User insight about dual-output waste led to systemic fix that doubled our token savings beyond original TOON gains.",
+  "tags": [
+    "milestone",
+    "toon",
+    "token-efficiency",
+    "phase-5b",
+    "bug-fix"
+  ]
+}

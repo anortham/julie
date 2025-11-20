@@ -1,0 +1,40 @@
+{
+  "id": "checkpoint_691f57fb_04cadd",
+  "timestamp": 1763661819,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "e126e76",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/integration/fts5_minimal_repro.rs",
+      "src/tests/integration/lock_contention.rs",
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/semantic_filtering.rs",
+      "src/tests/integration/vector_store_reload.rs",
+      "src/tests/integration/watcher_embeddings.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tests/tools/search/line_mode.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/primary_workspace_bug.rs",
+      "src/tests/tools/search/quality.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search_context_lines.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/refactoring/rename.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs"
+    ]
+  },
+  "description": "Fixed critical TOON integration bugs: (1) Removed structured_content when using TOON to avoid double-sending data (was wasting tokens not saving them!), (2) Created ToonSymbol/ToonResponse structs with primitives-only to trigger compact CSV-style encoding instead of verbose YAML (metadata HashMap was causing fallback). Consulted Gemini + toon-rust source to understand uniform array detection logic. Ready for testing after rebuild.",
+  "tags": [
+    "toon",
+    "bug-fix",
+    "token-optimization",
+    "phase-5b"
+  ]
+}

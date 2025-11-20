@@ -1,0 +1,33 @@
+{
+  "id": "checkpoint_691f506d_4b3e91",
+  "timestamp": 1763659885,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "e126e76",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/integration/fts5_minimal_repro.rs",
+      "src/tests/integration/lock_contention.rs",
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/semantic_filtering.rs",
+      "src/tests/integration/vector_store_reload.rs",
+      "src/tests/integration/watcher_embeddings.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs",
+      "src/tests/tools/search/line_mode.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/primary_workspace_bug.rs",
+      "src/tests/tools/search/quality.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search_context_lines.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/refactoring/rename.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs"
+    ]
+  },
+  "description": "Julie 2.0 Phase 5b: TOON formatting extended to fast_refs tool. Added output_format parameter, format_results_text helper method with auto/toon/json modes, smart TOON selection for 5+ results. Code compiles successfully. Fixed FastRefsTool instantiation in rename.rs. Two tools complete (fast_search, fast_refs), fast_explore remains."
+}

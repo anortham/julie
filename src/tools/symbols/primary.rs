@@ -19,6 +19,7 @@ pub async fn get_symbols_from_primary(
     target: Option<&str>,
     limit: Option<u32>,
     mode: &str,
+    output_format: Option<&str>,
 ) -> Result<CallToolResult> {
     info!(
         "📋 Getting symbols for file: {} (depth: {})",
@@ -136,5 +137,6 @@ pub async fn get_symbols_from_primary(
         limit,
         was_truncated,
         None,
+        output_format,
     )
 }

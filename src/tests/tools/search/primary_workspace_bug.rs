@@ -76,6 +76,7 @@ async fn test_fast_search_recognizes_indexed_primary_workspace() -> Result<()> {
         language: None,
         output: None,
         context_lines: None,
+        output_format: None,
         workspace: Some("primary".to_string()), // Using "primary" should work!
     };
 
@@ -164,6 +165,7 @@ async fn test_fast_search_with_explicit_workspace_id() -> Result<()> {
         language: None,
         output: None,
         context_lines: None,
+        output_format: None,
         workspace: Some(workspace_id), // Using actual workspace ID
     };
 

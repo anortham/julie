@@ -22,6 +22,7 @@ pub async fn search_content(
         workspace: Some("primary".to_string()),
         output: None, // Use default (symbols mode)
         context_lines: None,
+        output_format: None,
         search_target: "content".to_string(),
     };
 
@@ -44,6 +45,7 @@ pub async fn search_definitions(
         workspace: Some("primary".to_string()),
         output: None,
         context_lines: None,
+        output_format: None,
         search_target: "definitions".to_string(),
     };
 

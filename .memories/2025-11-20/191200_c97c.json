@@ -1,0 +1,47 @@
+{
+  "id": "checkpoint_691f6800_693dfa",
+  "timestamp": 1763665920,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "e126e76",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/integration/fts5_minimal_repro.rs",
+      "src/tests/integration/lock_contention.rs",
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/semantic_filtering.rs",
+      "src/tests/integration/vector_store_reload.rs",
+      "src/tests/integration/watcher_embeddings.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tests/tools/search/line_mode.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/primary_workspace_bug.rs",
+      "src/tests/tools/search/quality.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search_context_lines.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/fuzzy_replace.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/refactoring/mod.rs",
+      "src/tools/refactoring/rename.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/trace_call_path/mod.rs"
+    ]
+  },
+  "description": "Julie 2.0 Phase 5b COMPLETE - Systemic Token Optimization: Eliminated dual-output waste across ALL 8 tools (fast_search, fast_refs, fast_goto, trace_call_path, get_symbols, find_logic, smart_refactor, fuzzy_replace). Every tool was sending data twice (markdown + JSON), MCP clients ignored text when JSON present. Now: TOON mode = text only (60-70% savings), JSON mode = structured only (50% savings). Fixed copy-paste pattern from create_result helper that spread waste codebase-wide. Build successful, ready for production. User insight about redundancy uncovered architectural flaw affecting every tool output.",
+  "tags": [
+    "milestone",
+    "token-optimization",
+    "phase-5b",
+    "systemic-fix",
+    "architecture"
+  ]
+}

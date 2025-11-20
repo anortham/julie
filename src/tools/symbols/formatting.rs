@@ -2,7 +2,7 @@
 //!
 //! Handles formatting symbol data into structured responses for MCP clients.
 
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use rust_mcp_sdk::schema::CallToolResult;
 use tracing::debug;
 
 use crate::extractors::base::Symbol;
@@ -17,6 +17,7 @@ pub fn format_symbol_response(
     limit: Option<u32>,
     was_truncated: bool,
     workspace_id: Option<String>,
+    output_format: Option<&str>,
 ) -> anyhow::Result<CallToolResult> {
     let top_level_count = symbols.iter().filter(|s| s.parent_id.is_none()).count();
 
@@ -38,7 +39,7 @@ pub fn format_symbol_response(
         String::new()
     };
 
-    let text_summary = if let Some(target) = target {
+    let _text_summary = if let Some(target) = target {
         format!(
             "{} ({} total symbols, {} matching '{}'){}",
             file_path,
@@ -67,7 +68,7 @@ pub fn format_symbol_response(
         )
     };
 
-    // Return structured content with symbol data (agents parse this)
+    // Build structured response
     let mut structured_json = serde_json::json!({
         "file_path": file_path,
         "total_symbols": total_symbols,
@@ -86,12 +87,57 @@ pub fn format_symbol_response(
         }
     }
 
-    let mut result = CallToolResult::text_content(vec![TextContent::from(text_summary)]);
-
-    // Convert JSON Value to Map
-    if let serde_json::Value::Object(map) = structured_json {
-        result.structured_content = Some(map);
+    // Return based on output_format: TOON uses text only, JSON uses structured only
+    match output_format {
+        Some("toon") => {
+            // TOON mode: Return ONLY TOON in text, NO structured content
+            match toon_format::encode_default(&structured_json) {
+                Ok(toon_text) => {
+                    debug!("✅ Returning get_symbols results in TOON-only mode ({} chars, no structured_content)", toon_text.len());
+                    Ok(CallToolResult::text_content(vec![toon_text.into()]))
+                }
+                Err(e) => {
+                    debug!("⚠️  TOON encoding failed: {}, falling back to JSON", e);
+                    let mut result = CallToolResult::text_content(vec![]);
+                    if let serde_json::Value::Object(map) = structured_json {
+                        result.structured_content = Some(map);
+                    }
+                    Ok(result)
+                }
+            }
+        }
+        Some("auto") => {
+            // Auto mode: TOON for 5+ symbols, JSON for smaller responses
+            if symbols.len() >= 5 {
+                match toon_format::encode_default(&structured_json) {
+                    Ok(toon_text) => {
+                        debug!("✅ Auto-selected TOON for {} symbols ({} chars, no structured_content)", symbols.len(), toon_text.len());
+                        return Ok(CallToolResult::text_content(vec![toon_text.into()]));
+                    }
+                    Err(e) => {
+                        debug!("⚠️  TOON encoding failed: {}, falling back to JSON", e);
+                        // Fall through to JSON mode
+                    }
+                }
+            }
+            {
+                // Small response: use JSON-only (no redundant text)
+                let mut result = CallToolResult::text_content(vec![]);
+                if let serde_json::Value::Object(map) = structured_json {
+                    result.structured_content = Some(map);
+                }
+                debug!("✅ Auto-selected JSON for {} symbols (no redundant text_content)", symbols.len());
+                Ok(result)
+            }
+        }
+        _ => {
+            // Default (JSON/None): ONLY structured content (no redundant text)
+            let mut result = CallToolResult::text_content(vec![]);
+            if let serde_json::Value::Object(map) = structured_json {
+                result.structured_content = Some(map);
+            }
+            debug!("✅ Returning get_symbols results as JSON-only (no redundant text_content)");
+            Ok(result)
+        }
     }
-
-    Ok(result)
 }

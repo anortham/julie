@@ -90,6 +90,7 @@ mod fts5_minimal_tests {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let search_result = search.call_tool(&handler).await?;
@@ -158,6 +159,7 @@ mod fts5_minimal_tests {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result1 = search.call_tool(&handler).await?;

@@ -151,6 +151,7 @@ async fn test_tier1_keyword_search_finds_payment_symbols() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let results = tool.search_by_keywords(&handler).await?;
@@ -192,6 +193,7 @@ async fn test_tier1_keyword_search_empty_domain() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let results = tool.search_by_keywords(&handler).await?;
@@ -214,6 +216,7 @@ async fn test_tier1_keyword_search_multi_word_domain() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let results = tool.search_by_keywords(&handler).await?;
@@ -240,6 +243,7 @@ async fn test_tier2_finds_service_pattern() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let results = tool.find_architectural_patterns(&handler).await?;
@@ -291,6 +295,7 @@ async fn test_tier2_finds_controller_pattern() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let results = tool.find_architectural_patterns(&handler).await?;
@@ -317,6 +322,7 @@ async fn test_tier2_finds_business_method_patterns() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let results = tool.find_architectural_patterns(&handler).await?;
@@ -364,6 +370,7 @@ async fn test_tier3_path_intelligence_boosts_services() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let mut symbols = vec![Symbol {
@@ -410,6 +417,7 @@ async fn test_tier3_path_intelligence_boosts_controllers() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let mut symbols = vec![Symbol {
@@ -455,6 +463,7 @@ async fn test_tier3_path_intelligence_penalizes_utils() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let mut symbols = vec![Symbol {
@@ -501,6 +510,7 @@ async fn test_tier3_path_intelligence_penalizes_tests() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let mut symbols = vec![Symbol {
@@ -553,6 +563,7 @@ async fn test_tier4_semantic_search_graceful_degradation() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     // Should return empty results without error when embeddings unavailable
@@ -586,6 +597,7 @@ async fn test_tier5_graph_centrality_boosts_referenced_symbols() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     // Get some symbols
@@ -627,6 +639,7 @@ async fn test_deduplicate_removes_duplicate_symbols() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let symbol1 = Symbol {
@@ -674,6 +687,7 @@ async fn test_ranking_sorts_by_business_score() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let low_score = Symbol {
@@ -741,6 +755,7 @@ async fn test_filters_by_min_business_score() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.5, // Filter threshold
+        output_format: None,
     };
 
     let low_score = Symbol {
@@ -824,6 +839,7 @@ async fn test_integration_full_tool_call() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     // Full MCP tool call
@@ -847,6 +863,7 @@ async fn test_integration_finds_service_layer_business_logic() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -873,6 +890,7 @@ async fn test_integration_filters_test_files() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3, // Test files get penalized to 0.0
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -899,6 +917,7 @@ async fn test_integration_groups_by_architectural_layer() -> Result<()> {
         max_results: 50,
         group_by_layer: true,
         min_business_score: 0.3,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -924,6 +943,7 @@ async fn test_integration_respects_max_results_limit() -> Result<()> {
         max_results: 2, // Strict limit
         group_by_layer: false,
         min_business_score: 0.0, // Include everything
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;

@@ -109,6 +109,7 @@ async fn test_default_behavior_strips_context() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -157,6 +158,7 @@ async fn test_structure_mode_strips_context() -> Result<()> {
         limit: None,
         mode: Some("structure".to_string()),
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -204,6 +206,7 @@ async fn test_mode_structure_always_strips() -> Result<()> {
         limit: None,
         mode: Some("structure".to_string()),
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -250,6 +253,7 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -313,6 +317,7 @@ async fn test_mode_full_all_symbols() -> Result<()> {
         limit: None,
         mode: Some("full".to_string()),
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -366,6 +371,7 @@ async fn test_target_with_minimal_mode() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -433,6 +439,7 @@ async fn test_file_read_error_handling() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await;
@@ -487,6 +494,7 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;

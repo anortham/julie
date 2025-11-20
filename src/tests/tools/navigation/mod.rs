@@ -15,6 +15,7 @@ mod navigation_tools_tests {
             limit: 10,
             workspace: Some("primary".to_string()),
             reference_kind: None,
+            output_format: None,
         };
 
         // Create a small number of symbols and relationships
@@ -79,6 +80,7 @@ mod navigation_tools_tests {
             limit: 200, // Large limit to test token optimization
             workspace: Some("primary".to_string()),
             reference_kind: None,
+            output_format: None,
         };
 
         // Create many symbols and relationships to trigger token optimization
@@ -157,6 +159,7 @@ mod navigation_tools_tests {
             limit: 50,
             workspace: Some("primary".to_string()),
             reference_kind: None,
+            output_format: None,
         };
 
         // Create 300 references with extremely long file paths and names to trigger token limits

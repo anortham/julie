@@ -230,6 +230,7 @@ async fn semantic_search(
         file_pattern: None,
         language: None,
         context_lines: None,
+        output_format: None,
         workspace: None,
         output: None,
     };
@@ -254,6 +255,7 @@ async fn text_search(handler: &JulieServerHandler, query: &str, limit: u32) -> R
         file_pattern: None,
         language: None,
         context_lines: None,
+        output_format: None,
         workspace: None,
         output: None,
     };

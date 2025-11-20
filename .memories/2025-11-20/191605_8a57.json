@@ -1,0 +1,45 @@
+{
+  "id": "checkpoint_691f68f5_12e53b",
+  "timestamp": 1763666165,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "e126e76",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/integration/fts5_minimal_repro.rs",
+      "src/tests/integration/lock_contention.rs",
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/semantic_filtering.rs",
+      "src/tests/integration/vector_store_reload.rs",
+      "src/tests/integration/watcher_embeddings.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tests/tools/search/line_mode.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/primary_workspace_bug.rs",
+      "src/tests/tools/search/quality.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search_context_lines.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/fuzzy_replace.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/refactoring/mod.rs",
+      "src/tools/refactoring/rename.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/trace_call_path/mod.rs"
+    ]
+  },
+  "description": "Code cleanup complete: Fixed all build warnings (unused imports and variables) from token optimization refactor. Removed TextContent imports from 3 files, removed unused Symbol import, prefixed 6 unused markdown/text variables with underscore (were used for dual-output before optimization). Clean build with zero warnings. Codebase now pristine after systemic token optimization changes.",
+  "tags": [
+    "cleanup",
+    "warnings",
+    "code-quality"
+  ]
+}

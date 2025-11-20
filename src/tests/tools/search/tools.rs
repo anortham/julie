@@ -21,6 +21,7 @@ mod search_tools_tests {
             search_target: "content".to_string(),
             output: None,
             context_lines: None,
+        output_format: None,
         };
 
         let symbols = vec![Symbol {
@@ -83,6 +84,7 @@ mod search_tools_tests {
             search_target: "content".to_string(),
             output: None,
             context_lines: None,
+        output_format: None,
         };
 
         // Create a symbol with more than 10 lines of context
@@ -151,6 +153,7 @@ mod search_tools_tests {
             search_target: "content".to_string(),
             output: None,
             context_lines: None,
+        output_format: None,
         };
 
         // Create many symbols - text output will remain minimal
@@ -226,6 +229,7 @@ mod search_tools_tests {
             search_target: "content".to_string(),
             output: None,
             context_lines: None,
+        output_format: None,
         };
 
         // Create 80 symbols - text output will remain minimal
@@ -308,6 +312,7 @@ mod search_tools_tests {
             search_target: "content".to_string(),
             output: None,
             context_lines: None,
+        output_format: None,
         };
 
         // Test 2: workspace="all" - this works because it routes to FTS5
@@ -321,6 +326,7 @@ mod search_tools_tests {
             search_target: "content".to_string(),
             output: None,
             context_lines: None,
+        output_format: None,
         };
 
         // Note: This test documents the bug but doesn't actually test the routing logic

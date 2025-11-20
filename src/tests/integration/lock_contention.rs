@@ -351,7 +351,7 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
                 search_target: "content".to_string(),
                 output: Some("lines".to_string()), // LINE MODE - triggers unsafe db.lock() path!
                 context_lines: Some(1),
-            };
+        output_format: None,            };
             tool.call_tool(&handler_clone).await
         });
         tasks.push(task);

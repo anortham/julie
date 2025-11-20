@@ -1,0 +1,40 @@
+{
+  "id": "checkpoint_691f50d6_dce66a",
+  "timestamp": 1763659990,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "e126e76",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/integration/fts5_minimal_repro.rs",
+      "src/tests/integration/lock_contention.rs",
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/semantic_filtering.rs",
+      "src/tests/integration/vector_store_reload.rs",
+      "src/tests/integration/watcher_embeddings.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tests/tools/search/line_mode.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/primary_workspace_bug.rs",
+      "src/tests/tools/search/quality.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search_context_lines.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/refactoring/rename.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs"
+    ]
+  },
+  "description": "Julie 2.0 Phase 5b MAJOR MILESTONE: TOON formatting successfully integrated into fast_search and fast_refs tools! Achieved 66.9% token savings (nearly DOUBLE the 35% target). Created encode_to_toon_with_fallback helper with graceful degradation, added output_format parameter with 3 modes (json/toon/auto), auto mode intelligently selects TOON for 5+ results. 5 comprehensive tests passing. Backwards compatible - JSON default, TOON opt-in. Fixed ALL test files to include new fields. fast_explore integration deferred as lower priority.",
+  "tags": [
+    "milestone",
+    "toon",
+    "token-efficiency",
+    "phase-5b"
+  ]
+}

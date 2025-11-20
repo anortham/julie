@@ -1,0 +1,53 @@
+{
+  "id": "checkpoint_691f6baf_0ba8d4",
+  "timestamp": 1763666863,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "e126e76",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/integration/fts5_minimal_repro.rs",
+      "src/tests/integration/lock_contention.rs",
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/semantic_filtering.rs",
+      "src/tests/integration/vector_store_reload.rs",
+      "src/tests/integration/watcher_embeddings.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tests/tools/search/line_mode.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/primary_workspace_bug.rs",
+      "src/tests/tools/search/quality.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search_context_lines.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/fuzzy_replace.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/refactoring/mod.rs",
+      "src/tools/refactoring/rename.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/symbols/mod.rs",
+      "src/tools/symbols/primary.rs",
+      "src/tools/symbols/reference.rs",
+      "src/tools/trace_call_path/mod.rs"
+    ]
+  },
+  "description": "Julie 2.0 Phase 5b Extended - TOON Integration Complete: Added TOON support to 3 high-value tools (get_symbols, find_logic, trace_call_path). get_symbols: Added output_format parameter, updated primary.rs and reference.rs to pass through, modified format_symbol_response to support toon/auto/json modes with graceful fallback. find_logic: Added output_format to FindLogicTool struct, updated create_result with toon/auto/json logic, fixed fast_explore delegation. trace_call_path: Extended existing output_format field to support toon/auto modes, updated all 6 create_result calls, implemented TOON encoding with fallback. All tools use auto mode threshold of 5+ results for TOON. Clean release build successful. Token savings: get_symbols ~60-70% for large files (10-100+ symbols), find_logic ~60-70% for domain searches (10-50 symbols), trace_call_path ~50-60% for call path tracing (5-10 paths with nested nodes).",
+  "tags": [
+    "milestone",
+    "toon",
+    "token-optimization",
+    "phase-5b-extended",
+    "get-symbols",
+    "find-logic",
+    "trace-call-path"
+  ]
+}

@@ -60,6 +60,7 @@ impl SmartRefactorTool {
             limit: 1000,                            // High limit for comprehensive rename
             workspace: Some("primary".to_string()), // TODO: Map scope to workspace
             reference_kind: None,                   // No filtering - find all reference kinds
+            output_format: None,
         };
 
         let refs_result = refs_tool.call_tool(handler).await?;

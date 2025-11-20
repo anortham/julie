@@ -118,6 +118,7 @@ fn processPayment() {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_tool.call_tool(&handler).await?;
@@ -202,6 +203,7 @@ fn processPayment() {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_primary.call_tool(&handler).await?;
@@ -229,6 +231,7 @@ fn processPayment() {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_invalid.call_tool(&handler).await;
@@ -294,6 +297,7 @@ fn processPayment() {
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_tool.call_tool(&handler).await?;
@@ -376,6 +380,7 @@ fn processPayment() {
             search_target: "content".to_string(),
             output: None,
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_tool.call_tool(&handler).await?;
@@ -469,6 +474,7 @@ def python_function():
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_rust.call_tool(&handler).await?;
@@ -498,6 +504,7 @@ def python_function():
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result_ts = search_ts.call_tool(&handler).await?;
@@ -572,6 +579,7 @@ def python_function():
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_src.call_tool(&handler).await?;
@@ -598,6 +606,7 @@ def python_function():
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result_tests = search_tests.call_tool(&handler).await?;
@@ -669,6 +678,7 @@ def python_function():
             search_target: "content".to_string(),
             output: Some("lines".to_string()),
             context_lines: None,
+        output_format: None,
         };
 
         let result = search_combined.call_tool(&handler).await?;

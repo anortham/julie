@@ -1,0 +1,53 @@
+{
+  "id": "checkpoint_691f70ec_6f3caf",
+  "timestamp": 1763668204,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "e126e76",
+    "dirty": true,
+    "files_changed": [
+      "TODO.md",
+      "src/tests/integration/fts5_minimal_repro.rs",
+      "src/tests/integration/lock_contention.rs",
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/semantic_filtering.rs",
+      "src/tests/integration/vector_store_reload.rs",
+      "src/tests/integration/watcher_embeddings.rs",
+      "src/tests/integration/workspace_isolation_smoke.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tests/tools/search/line_mode.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/primary_workspace_bug.rs",
+      "src/tests/tools/search/quality.rs",
+      "src/tests/tools/search/race_condition.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search_context_lines.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/fuzzy_replace.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/refactoring/mod.rs",
+      "src/tools/refactoring/rename.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/shared.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/symbols/mod.rs",
+      "src/tools/symbols/primary.rs",
+      "src/tools/symbols/reference.rs",
+      "src/tools/trace_call_path/mod.rs"
+    ]
+  },
+  "description": "TOON Implementation Audit Complete: Comprehensive Gemini review identified critical fallback bug in fast_refs/fast_search (returns text instead of structured JSON on TOON failure), missing TOON support in fast_goto (high priority), minor inconsistencies in trace_call_path parameter type, code duplication across 4 tools (120 lines), and 3 advanced optimization opportunities (hierarchical data flattening with parent IDs for 30-50% more savings, string deduplication with @def directives for 20-40% savings, conditional column omission for 10-20% savings). All findings documented in TODO.md with implementation plan across 4 phases. Phase 1 priority: Fix critical fallback bugs that break machine-readable contract with MCP clients.",
+  "tags": [
+    "toon",
+    "audit",
+    "gemini",
+    "token-optimization",
+    "bug-fix",
+    "roadmap"
+  ]
+}
