@@ -34,7 +34,7 @@ fn default_limit() -> Option<u32> {
 }
 
 fn default_mode() -> Option<String> {
-    Some("structure".to_string())
+    Some("minimal".to_string()) // Default to minimal for code output
 }
 
 fn default_workspace() -> Option<String> {
@@ -47,7 +47,7 @@ fn default_workspace() -> Option<String> {
 
 #[mcp_tool(
     name = "get_symbols",
-    description = "Get file structure and symbols with optional body extraction. Supports TOON format (output_format='toon' or 'auto'): compact tabular representation achieving 50-70% token savings for files with multiple symbols. Auto mode uses TOON for 5+ symbols.",
+    description = "Get file structure and symbols with optional body extraction. Supports output_format='code' for raw source code (optimal for AI reading - default when code bodies available), 'json' for structured metadata, 'toon' for compact tabular format (50-70% token savings), or 'auto' (TOON for 5+ symbols). Default: mode='minimal' with output_format='code' - returns readable source code.",
     title = "Get File Symbols",
     idempotent_hint = true,
     destructive_hint = false,
@@ -68,13 +68,21 @@ pub struct GetSymbolsTool {
     /// Maximum symbols to return (default: 50)
     #[serde(default = "default_limit")]
     pub limit: Option<u32>,
-    /// Reading mode: "structure" (default), "minimal", or "full"
+    /// Reading mode: "structure", "minimal" (default), or "full"
+    /// - "structure": Symbol names/signatures only (no code bodies)
+    /// - "minimal": Code bodies for top-level symbols (default - enables code output)
+    /// - "full": Code bodies for all symbols including nested
     #[serde(default = "default_mode")]
     pub mode: Option<String>,
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Output format: "json" (default), "toon", or "auto" (TOON for 5+ symbols)
+    /// Output format: "json", "toon", "auto", or "code"
+    /// Default: "code" when mode=minimal/full (code bodies available), otherwise "auto"
+    /// - "code": Raw source code without metadata (optimal for AI reading)
+    /// - "json": Full structured JSON with all metadata
+    /// - "toon": Compact tabular format (35-70% token savings)
+    /// - "auto": TOON for 5+ symbols, JSON otherwise
     #[serde(default)]
     pub output_format: Option<String>,
 }

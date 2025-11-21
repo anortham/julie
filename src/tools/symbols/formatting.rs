@@ -70,6 +70,35 @@ impl GetSymbolsResult {
     }
 }
 
+/// Format raw code output - just the source code, no metadata wrapper
+///
+/// This format is optimal for AI agents that can read code directly.
+/// Returns code bodies separated by blank lines with a minimal file header.
+fn format_code_output(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
+    use rust_mcp_sdk::schema::TextContent;
+
+    let mut output = String::new();
+
+    // Minimal file header
+    output.push_str(&format!("// === {} ===\n\n", file_path));
+
+    // Extract code from each symbol
+    for (i, symbol) in symbols.iter().enumerate() {
+        if let Some(code) = &symbol.code_context {
+            output.push_str(code);
+            // Add separator between symbols (but not after the last one)
+            if i < symbols.len() - 1 {
+                output.push_str("\n\n");
+            }
+        }
+    }
+
+    // Trim trailing whitespace but ensure single newline at end
+    let output = output.trim_end().to_string() + "\n";
+
+    CallToolResult::text_content(vec![TextContent::from(output)])
+}
+
 /// Format symbol query response with structured content
 pub fn format_symbol_response(
     file_path: &str,
@@ -82,6 +111,25 @@ pub fn format_symbol_response(
     workspace_id: Option<String>,
     output_format: Option<&str>,
 ) -> anyhow::Result<CallToolResult> {
+    // Smart default: use "code" format when code bodies are available
+    // Fall back to structured output (TOON/JSON) when only metadata exists
+    let has_code_bodies = symbols.iter().any(|s| s.code_context.is_some());
+    let effective_format = match output_format {
+        Some(fmt) => fmt,                  // Explicit format wins
+        None if has_code_bodies => "code", // Default to code when available
+        None => "auto",                    // Fall back to structured output
+    };
+
+    // Handle "code" format - returns raw code without metadata
+    if effective_format == "code" {
+        debug!(
+            "📋 Returning {} symbols as raw code (target: {:?})",
+            symbols.len(),
+            target
+        );
+        return Ok(format_code_output(file_path, &symbols));
+    }
+
     let top_level_count = symbols.iter().filter(|s| s.parent_id.is_none()).count();
 
     debug!(
@@ -109,10 +157,10 @@ pub fn format_symbol_response(
 
     // Use shared helper for consistent TOON/JSON encoding
     create_toonable_result(
-        &result,       // JSON gets full metadata
-        &toon_flat,    // TOON gets flat optimized array
-        output_format,
-        5,             // Auto threshold: use TOON for 5+ symbols
+        &result,                 // JSON gets full metadata
+        &toon_flat,              // TOON gets flat optimized array
+        Some(effective_format),  // Pass resolved format (already handled "code" above)
+        5,                       // Auto threshold: use TOON for 5+ symbols
         toon_flat.len(),
         "get_symbols",
     )

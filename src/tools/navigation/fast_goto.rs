@@ -28,12 +28,12 @@ fn default_workspace() -> Option<String> {
 }
 
 fn default_output_format() -> Option<String> {
-    None // Default to JSON for backwards compatibility
+    None // Defaults to "auto" (TOON for 5+ results, JSON otherwise)
 }
 
 #[mcp_tool(
     name = "fast_goto",
-    description = "Navigate to symbol definitions with fuzzy matching across languages. Supports TOON format (output_format='toon' or 'auto'): compact tabular representation achieving 50-70% token savings for multiple definitions. Auto mode uses TOON for 5+ results.",
+    description = "Navigate to symbol definitions with fuzzy matching across languages. Supports TOON format (output_format='toon' or 'auto'): compact tabular representation with 50-70% token savings vs JSON. Auto mode uses TOON for 5+ results.",
     title = "Navigate to Definition",
     idempotent_hint = true,
     destructive_hint = false,
@@ -54,7 +54,11 @@ pub struct FastGotoTool {
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Output format: "json" (default), "toon", or "auto" (smart selection)
+    /// Output format: "json", "toon", or "auto"
+    /// Default: "auto" (TOON for 5+ definitions, JSON otherwise)
+    /// - "json": Full structured JSON with all metadata
+    /// - "toon": Compact tabular format (50-70% token savings)
+    /// - "auto": TOON for 5+ definitions, JSON otherwise
     #[serde(default = "default_output_format")]
     pub output_format: Option<String>,
 }
@@ -68,6 +72,9 @@ impl FastGotoTool {
         next_actions: Vec<String>,
         _markdown: String,
     ) -> Result<CallToolResult> {
+        // Resolve output format (default: "auto")
+        let effective_format = self.output_format.as_deref().unwrap_or("auto");
+
         let definition_results: Vec<DefinitionResult> = definitions
             .iter()
             .map(|symbol| DefinitionResult {
@@ -93,10 +100,10 @@ impl FastGotoTool {
 
         // Use shared TOON/JSON formatter
         create_toonable_result(
-            &result,  // JSON data
-            &result,  // TOON data (same structure for this tool)
-            self.output_format.as_deref(),
-            5,  // Auto threshold: 5+ results use TOON
+            &result,                 // JSON data
+            &result,                 // TOON data (same structure for this tool)
+            Some(effective_format),  // Pass resolved format
+            5,                       // Auto threshold: 5+ results use TOON
             result.definitions.len(),
             "fast_goto"
         )

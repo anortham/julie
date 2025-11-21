@@ -319,6 +319,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Test 1: No limit - should return all 20 symbols
+    // Use explicit JSON format to get structured_content for metadata inspection
     let tool_no_limit = GetSymbolsTool {
         file_path: "src/many_symbols.rs".to_string(),
         max_depth: 1,
@@ -326,7 +327,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
-        output_format: None,
+        output_format: Some("json".to_string()),
     };
 
     let result_no_limit = tool_no_limit.call_tool(&handler).await?;
@@ -342,6 +343,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
     assert_eq!(total_symbols_no_limit, 20, "Should find all 20 symbols");
 
     // Test 2: With limit=5 - should return only 5 symbols
+    // Use explicit JSON format to get structured_content for metadata inspection
     let tool_with_limit = GetSymbolsTool {
         file_path: "src/many_symbols.rs".to_string(),
         max_depth: 1,
@@ -349,7 +351,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: Some(5),
         mode: None,
         workspace: None,
-        output_format: None,
+        output_format: Some("json".to_string()),
     };
 
     let result_with_limit = tool_with_limit.call_tool(&handler).await?;
@@ -496,6 +498,118 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         text_empty.contains("No symbols found"),
         "Empty file should say 'No symbols found', got: {}",
         text_empty
+    );
+
+    Ok(())
+}
+
+/// Test output_format="code" returns raw code without JSON/TOON wrapper
+///
+/// TDD: This test WILL FAIL initially because output_format="code" is not yet implemented.
+///
+/// Expected behavior: When output_format="code" is specified, get_symbols should return
+/// the raw source code of the symbols, not wrapped in JSON or TOON format.
+/// This is optimal for AI agents that can read code directly.
+#[tokio::test]
+async fn test_get_symbols_output_format_code() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path().to_path_buf();
+
+    // Create a simple Rust file with symbols
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+
+    let test_file = src_dir.join("example.rs");
+    fs::write(
+        &test_file,
+        r#"pub struct User {
+    pub id: String,
+    pub name: String,
+}
+
+pub fn get_user(id: &str) -> User {
+    User {
+        id: id.to_string(),
+        name: "Test".to_string(),
+    }
+}
+"#,
+    )?;
+
+    // Initialize handler and index the workspace
+    let handler = JulieServerHandler::new().await?;
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await?;
+
+    // Index the workspace
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Query with output_format="code" and mode="minimal" (to get code bodies)
+    let tool = GetSymbolsTool {
+        file_path: "src/example.rs".to_string(),
+        max_depth: 2,
+        target: None,
+        limit: None,
+        mode: Some("minimal".to_string()), // Need minimal/full to get code bodies
+        workspace: None,
+        output_format: Some("code".to_string()), // NEW: Request raw code output
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text_content = extract_text_from_result(&result);
+
+    println!("DEBUG: output_format=code result:\n{}", text_content);
+
+    // Should contain actual code
+    assert!(
+        text_content.contains("pub struct User"),
+        "Should contain the actual struct definition, got: {}",
+        text_content
+    );
+    assert!(
+        text_content.contains("pub fn get_user"),
+        "Should contain the actual function definition, got: {}",
+        text_content
+    );
+
+    // Should NOT contain JSON/TOON structural markers
+    assert!(
+        !text_content.contains("\"id\":"),
+        "Should not contain JSON field markers, got: {}",
+        text_content
+    );
+    assert!(
+        !text_content.contains("\"file_path\":"),
+        "Should not contain JSON file_path field, got: {}",
+        text_content
+    );
+    assert!(
+        !text_content.contains("total_symbols"),
+        "Should not contain metadata wrapper fields, got: {}",
+        text_content
+    );
+    assert!(
+        !text_content.contains("returned_symbols"),
+        "Should not contain metadata wrapper fields, got: {}",
+        text_content
+    );
+
+    // Should be readable code, not wrapped metadata
+    // The output should look like clean source code with maybe file headers
+    assert!(
+        text_content.lines().count() < 50,
+        "Raw code output should be concise, got {} lines",
+        text_content.lines().count()
     );
 
     Ok(())
