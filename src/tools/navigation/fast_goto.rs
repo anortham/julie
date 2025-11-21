@@ -33,7 +33,7 @@ fn default_output_format() -> Option<String> {
 
 #[mcp_tool(
     name = "fast_goto",
-    description = "Navigate to symbol definitions with fuzzy matching across languages.",
+    description = "Navigate to symbol definitions with fuzzy matching across languages. Supports TOON format (output_format='toon' or 'auto'): compact tabular representation achieving 50-70% token savings for multiple definitions. Auto mode uses TOON for 5+ results.",
     title = "Navigate to Definition",
     idempotent_hint = true,
     destructive_hint = false,

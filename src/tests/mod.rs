@@ -107,6 +107,8 @@ pub mod tools {
     pub mod trace_call_path; // TraceCallPathTool tests (core + comprehensive)
 
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
+
+    pub mod toon_struct_verification; // TOON struct field mapping verification (data drift prevention)
 }
 
 // ============================================================================

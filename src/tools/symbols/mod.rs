@@ -47,7 +47,7 @@ fn default_workspace() -> Option<String> {
 
 #[mcp_tool(
     name = "get_symbols",
-    description = "Get file structure and symbols with optional body extraction.",
+    description = "Get file structure and symbols with optional body extraction. Supports TOON format (output_format='toon' or 'auto'): compact tabular representation achieving 50-70% token savings for files with multiple symbols. Auto mode uses TOON for 5+ symbols.",
     title = "Get File Symbols",
     idempotent_hint = true,
     destructive_hint = false,

@@ -43,7 +43,7 @@ use crate::tools::shared::OptimizedResponse;
 
 #[mcp_tool(
     name = "fast_search",
-    description = "Search for code patterns and content. Auto-detects search method from query (code patterns use text search, natural language uses hybrid). Manual override available: text, semantic, or hybrid. Julie 2.0: Default limit 10 (optimized for token efficiency with intelligent filtering).",
+    description = "Search for code patterns and content. Auto-detects search method from query (code patterns use text search, natural language uses hybrid). Manual override available: text, semantic, or hybrid. Julie 2.0: Default limit 10 (optimized for token efficiency with intelligent filtering). Supports TOON format (output_format='toon' or 'auto'): compact tabular representation achieving 35-70% token savings vs JSON. Auto mode uses TOON for 5+ results. Example: `results[10]{id,name,kind,...}: value1,value2,...`",
     title = "Fast Unified Search",
     idempotent_hint = true,
     destructive_hint = false,

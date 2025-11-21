@@ -15,6 +15,7 @@ pub struct ToonSymbol {
     file_path: String,
     start_line: u32,
     end_line: u32,
+    parent_id: Option<String>, // CRITICAL: enables class.method relationships in search results
     signature: Option<String>,
     doc_comment: Option<String>,
     visibility: Option<String>, // Enum formatted as string
@@ -32,6 +33,7 @@ impl From<&Symbol> for ToonSymbol {
             file_path: s.file_path.clone(),
             start_line: s.start_line,
             end_line: s.end_line,
+            parent_id: s.parent_id.clone(),
             signature: s.signature.clone(),
             doc_comment: s.doc_comment.clone(),
             visibility: s.visibility.as_ref().map(|v| format!("{:?}", v)),

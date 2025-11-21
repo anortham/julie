@@ -43,7 +43,7 @@ fn default_output_format() -> Option<String> {
 
 #[mcp_tool(
     name = "fast_refs",
-    description = "Find all references and usages of a symbol across the workspace. Julie 2.0: Default limit 10 (optimized for token efficiency, showing most relevant references first).",
+    description = "Find all references and usages of a symbol across the workspace. Julie 2.0: Default limit 10 (optimized for token efficiency, showing most relevant references first). Supports TOON format (output_format='toon' or 'auto'): compact tabular representation achieving 35-70% token savings vs JSON. Auto mode uses TOON for 5+ results.",
     title = "Find All References",
     idempotent_hint = true,
     destructive_hint = false,

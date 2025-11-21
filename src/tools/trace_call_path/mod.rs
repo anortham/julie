@@ -32,7 +32,7 @@ use types::{default_depth, default_output_format, default_upstream, default_work
 
 #[mcp_tool(
     name = "trace_call_path",
-    description = "Trace execution flow across language boundaries (TypeScript, Go, Python, SQL).",
+    description = "Trace execution flow across language boundaries (TypeScript, Go, Python, SQL). Supports TOON format (output_format='toon' or 'auto'): compact hierarchical representation with 43% token savings vs JSON for call trees. Auto mode uses TOON for 5+ paths.",
     title = "Cross-Language Call Path Tracer",
     idempotent_hint = true,
     destructive_hint = false,

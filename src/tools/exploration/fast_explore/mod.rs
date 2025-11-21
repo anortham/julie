@@ -46,7 +46,7 @@ fn default_mode() -> ExploreMode {
 
 #[mcp_tool(
     name = "fast_explore",
-    description = "Explore codebases with modes: logic (business logic), similar (duplicates), dependencies (graph), types (type analysis). Julie 2.0: Default limit 10 per mode (optimized for token efficiency with focused results).",
+    description = "Explore codebases with modes: logic (business logic), similar (duplicates), dependencies (graph), types (type analysis). Julie 2.0: Default limit 10 per mode (optimized for token efficiency with focused results). Logic mode supports TOON format: compact tabular representation achieving 35-70% token savings vs JSON. Auto mode uses TOON for 5+ results.",
     title = "Multi-Mode Code Exploration"
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
