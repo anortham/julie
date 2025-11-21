@@ -46,3 +46,4 @@ cache/
 .code/*.bak
 .test_watcher/
 .memories/
+poc_output.txt
