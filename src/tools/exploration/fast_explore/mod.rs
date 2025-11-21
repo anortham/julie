@@ -158,7 +158,7 @@ impl FastExploreTool {
             max_results: self.max_results.unwrap_or(10), // Julie 2.0: Reduced from 50 for token efficiency
             group_by_layer: self.group_by_layer.unwrap_or(true),
             min_business_score: self.min_business_score.unwrap_or(0.3),
-            output_format: None, // fast_explore delegates to find_logic, uses find_logic's default
+            output_format: Some("auto".to_string()), // Auto mode: TOON for 5+ results, JSON for <5
         };
 
         // Delegate to existing implementation

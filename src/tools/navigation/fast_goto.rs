@@ -8,7 +8,7 @@
 use anyhow::Result;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use rust_mcp_sdk::schema::CallToolResult;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
@@ -93,7 +93,8 @@ impl FastGotoTool {
 
         // Use shared TOON/JSON formatter
         create_toonable_result(
-            &result,
+            &result,  // JSON data
+            &result,  // TOON data (same structure for this tool)
             self.output_format.as_deref(),
             5,  // Auto threshold: 5+ results use TOON
             result.definitions.len(),

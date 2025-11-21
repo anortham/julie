@@ -212,13 +212,23 @@ pub const KNOWN_CODE_EXTENSIONS: &[&str] = &[
     ".stack",
 ];
 
-/// Generic helper for TOON/JSON output formatting
+/// Generic helper for TOON/JSON output formatting with flexible data structures.
 ///
 /// Centralizes TOON encoding, auto mode logic, and fallback handling across all tools.
-/// Eliminates ~120 lines of duplicated code across fast_refs, fast_goto, find_logic, and trace_call_path.
+/// Accepts separate data structures for JSON and TOON, allowing for optimized
+/// representations for each format.
+///
+/// # Why Separate JSON and TOON Data?
+///
+/// Tools often need different representations:
+/// - **JSON**: Full result with metadata (file_path, total_count, workspace_id, etc.)
+/// - **TOON**: Flat array of primitives-only structs (no skip_serializing_if, uniform keys)
+///
+/// This flexibility eliminates code duplication and enables optimal token efficiency.
 ///
 /// # Parameters
-/// - `result_data`: The serializable result data to encode
+/// - `json_data`: The serializable data for JSON output (can include metadata)
+/// - `toon_data`: The serializable, TOON-optimized data for TOON output (flat, uniform keys)
 /// - `output_format`: Output format option ("toon", "auto", "json", None)
 /// - `auto_threshold`: Threshold for auto mode (if result_count >= threshold, use TOON)
 /// - `result_count`: Number of results (used for auto mode decision)
@@ -232,81 +242,73 @@ pub const KNOWN_CODE_EXTENSIONS: &[&str] = &[
 ///
 /// # Example
 /// ```rust
-/// let result = MyToolResult { /* ... */ };
+/// let full_result = GetSymbolsResult { /* metadata + symbols */ };
+/// let flat_symbols = full_result.to_toon_flat(); // Vec<ToonFlatSymbol>
+///
 /// let call_result = create_toonable_result(
-///     &result,
+///     &full_result,  // JSON gets full metadata
+///     &flat_symbols, // TOON gets optimized flat array
 ///     Some("auto"),
 ///     5,
-///     result.items.len(),
-///     "my_tool"
+///     flat_symbols.len(),
+///     "get_symbols"
 /// )?;
 /// ```
-pub fn create_toonable_result<T: Serialize>(
-    result_data: &T,
+pub fn create_toonable_result<J: Serialize, T: Serialize>(
+    json_data: &J,
+    toon_data: &T,
     output_format: Option<&str>,
     auto_threshold: usize,
     result_count: usize,
     tool_name: &str,
 ) -> Result<CallToolResult> {
+    // Helper to create JSON result
+    let make_json_result = |data: &J| -> Result<CallToolResult> {
+        let structured = serde_json::to_value(data)?;
+        let structured_map = if let serde_json::Value::Object(map) = structured {
+            map
+        } else {
+            return Err(anyhow!("Expected JSON object for {}", tool_name));
+        };
+        Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
+    };
+
     match output_format {
         Some("toon") => {
-            // TOON mode: Return ONLY TOON in text, NO structured content
-            match toon_format::encode_default(result_data) {
+            // TOON mode: Encode toon_data (optimized structure)
+            match toon_format::encode_default(toon_data) {
                 Ok(toon) => {
-                    debug!("✅ Encoded {} results to TOON ({} chars)", tool_name, toon.len());
+                    debug!("✅ Encoded {} to TOON ({} chars)", tool_name, toon.len());
                     Ok(CallToolResult::text_content(vec![TextContent::from(toon)]))
                 }
                 Err(e) => {
                     warn!("❌ TOON encoding failed for {}: {}, falling back to JSON", tool_name, e);
-                    // Fallback to structured JSON
-                    let structured = serde_json::to_value(result_data)?;
-                    let structured_map = if let serde_json::Value::Object(map) = structured {
-                        map
-                    } else {
-                        return Err(anyhow!("Expected JSON object"));
-                    };
-                    Ok(CallToolResult::text_content(vec![])
-                        .with_structured_content(structured_map))
+                    make_json_result(json_data)
                 }
             }
         }
         Some("auto") => {
-            // Auto mode: TOON for >= threshold results (text only), JSON for small responses
+            // Auto mode: TOON for >= threshold results, JSON for small responses
             if result_count >= auto_threshold {
-                match toon_format::encode_default(result_data) {
+                match toon_format::encode_default(toon_data) {
                     Ok(toon) => {
                         debug!("✅ Auto-selected TOON for {} results ({} chars)", result_count, toon.len());
                         return Ok(CallToolResult::text_content(vec![TextContent::from(toon)]));
                     }
                     Err(e) => {
-                        debug!("⚠️ TOON encoding failed: {}, falling back to JSON", e);
+                        debug!("⚠️  TOON encoding failed: {}, falling back to JSON", e);
                         // Fall through to JSON
                     }
                 }
             }
-
-            // Small response or TOON failed: use JSON-only (no redundant text)
-            let structured = serde_json::to_value(result_data)?;
-            let structured_map = if let serde_json::Value::Object(map) = structured {
-                map
-            } else {
-                return Err(anyhow!("Expected JSON object"));
-            };
-            debug!("✅ Auto-selected JSON for {} results (no redundant text_content)", result_count);
-            Ok(CallToolResult::text_content(vec![])
-                .with_structured_content(structured_map))
+            debug!("✅ Auto-selected JSON for {} results", result_count);
+            make_json_result(json_data)
         }
         _ => {
-            // Default (JSON/None): ONLY structured content (no redundant text)
-            let structured = serde_json::to_value(result_data)?;
-            let structured_map = if let serde_json::Value::Object(map) = structured {
-                map
-            } else {
-                return Err(anyhow!("Expected JSON object"));
-            };
-            debug!("✅ Returning {} as JSON-only (no redundant text_content)", tool_name);
-            Ok(CallToolResult::text_content(vec![])
-                .with_structured_content(structured_map))
+            // Default (JSON/None): ONLY structured content
+            debug!("✅ Returning {} as JSON-only", tool_name);
+            make_json_result(json_data)
         }
     }
 }
+

@@ -1,11 +1,9 @@
 //! Result formatting for search responses
 //!
-//! Provides formatting utilities for converting search results into human and AI-friendly formats.
+//! Provides formatting utilities for search tool responses.
 
 use crate::extractors::Symbol;
-use crate::tools::shared::OptimizedResponse;
 use serde::Serialize;
-use tracing::{debug, error, warn};
 
 /// Simplified Symbol for TOON encoding (primitives only for compact CSV-style)
 #[derive(Debug, Clone, Serialize)]
@@ -54,32 +52,6 @@ pub struct ToonResponse {
     pub next_actions: Vec<String>,
 }
 
-/// Format minimal summary for AI agents (structured_content has all data)
-///
-/// AI agents parse structured_content (JSON), not text output.
-/// Keep text minimal to save massive context tokens.
-pub fn format_optimized_results(query: &str, optimized: &OptimizedResponse<Symbol>) -> String {
-    // Line 1: Summary with count and confidence
-    let summary = format!(
-        "Found {} results for '{}' (confidence: {:.1})",
-        optimized.total_found, query, optimized.confidence
-    );
-
-    // Line 2: Top 5 result names (quick scan)
-    let top_names: Vec<String> = optimized
-        .results
-        .iter()
-        .take(5)
-        .map(|s| s.name.clone())
-        .collect();
-
-    if top_names.is_empty() {
-        summary
-    } else {
-        format!("{}\nTop results: {}", summary, top_names.join(", "))
-    }
-}
-
 /// Truncate code_context field to save massive tokens in search results
 ///
 /// Formula: max_lines = context_lines * 2 + 1
@@ -108,49 +80,4 @@ pub fn truncate_code_context(symbols: Vec<Symbol>, context_lines: Option<u32>) -
             symbol
         })
         .collect()
-}
-
-/// Encode OptimizedResponse to TOON format with automatic JSON fallback
-///
-/// TOON (Token-Oriented Object Notation) provides ~35-67% token reduction vs JSON
-/// by using compact CSV-style encoding for uniform arrays.
-///
-/// This function converts Symbol to ToonSymbol (primitives only) so TOON can
-/// use compact tabular format instead of verbose YAML-style.
-///
-/// ## Returns
-/// TOON-encoded string on success, JSON on fallback
-pub fn encode_to_toon_with_fallback(
-    data: &OptimizedResponse<Symbol>,
-    format_name: &str,
-) -> String {
-    // Convert to simplified ToonResponse (primitives only for compact encoding)
-    let toon_response = ToonResponse {
-        tool: data.tool.clone(),
-        results: data.results.iter().map(ToonSymbol::from).collect(),
-        confidence: data.confidence,
-        total_found: data.total_found,
-        insights: data.insights.clone(),
-        next_actions: data.next_actions.clone(),
-    };
-
-    match toon_format::encode_default(&toon_response) {
-        Ok(toon) => {
-            debug!("✅ Encoded {} to TOON ({} chars)", format_name, toon.len());
-            toon
-        }
-        Err(e) => {
-            warn!("❌ TOON encoding failed for {}: {}", format_name, e);
-            warn!("   Falling back to JSON format");
-
-            // Fallback to pretty JSON of original data
-            match serde_json::to_string_pretty(data) {
-                Ok(json) => json,
-                Err(e2) => {
-                    error!("💥 Both TOON and JSON serialization failed: {}", e2);
-                    format!("Error: Unable to serialize {}", format_name)
-                }
-            }
-        }
-    }
 }

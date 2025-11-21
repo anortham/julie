@@ -339,6 +339,138 @@ Optimized TOON (column omitted):
 - Phase 4 Data optimization: 39% additional reduction
 - **Total: ~70-80% token savings!** 🚀
 
+### Phase 5: Hierarchical TOON Optimization 🚧 READY TO IMPLEMENT (2025-11-20)
+
+**Status**: Design complete, ready for implementation
+
+**Problem**: trace_call_path is a "token monster" - returns recursive tree structures that don't fit TOON's tabular model, causing fallback to YAML-ish format with repeated keys at every level. Can easily hit 10,000-30,000+ characters on large queries.
+
+**Impact Analysis**:
+```
+Current (YAML-ish with repeated keys):
+- 32 paths × 6 nodes × 150 chars/node ≈ 28,800 chars
+
+With Flat Table Optimization:
+- Header: nodes[192]{id,parent_id,group,level,...} ≈ 120 chars
+- Data rows: 192 rows × 55 chars/row ≈ 10,560 chars
+- Total: ~10,680 chars
+
+Savings: 63% reduction! 🚀
+Combined with Phase 4: ~77% total savings!
+```
+
+**Design Decision - Single Flat Table (Option A)**:
+
+**Key Insight**: Both JSON and TOON are for AI/machine consumption, not humans. Optimize purely for:
+1. Token efficiency (smaller = better)
+2. Parseability (structured, unambiguous)
+3. Information preservation (lossless)
+4. Reconstruction capability (parent_id pointers)
+
+Human readability is **irrelevant** - if debugging needed, use `output_format: "json"`.
+
+**Architecture**:
+
+```rust
+/// Generic trait for hierarchical data that can be flattened to TOON format
+pub trait HierarchicalToonable {
+    type NodeData: Serialize;
+
+    /// Flatten recursive tree into single flat table with parent_id references
+    fn flatten(&self) -> Vec<FlatNode<Self::NodeData>>;
+}
+
+/// Flattened node for hierarchical TOON encoding
+#[derive(Debug, Clone, Serialize)]
+pub struct FlatNode<T> {
+    /// Unique ID within this result set
+    pub id: usize,
+
+    /// Parent node ID (null for root nodes)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<usize>,
+
+    /// Group ID (e.g., which call path this belongs to)
+    pub group: usize,
+
+    /// Depth level in tree (0 = root)
+    pub level: u32,
+
+    /// The actual node data (inlined via #[serde(flatten)])
+    #[serde(flatten)]
+    pub data: T,
+}
+```
+
+**Example Output**:
+```
+nodes[192]{id,parent_id,group,level,symbol_name,file_path,language,line,match_type}:
+  0,null,0,0,extract_symbols,src/tests/bash/mod.rs,rust,22,direct
+  1,0,0,1,test_extract_bash_functions,src/tests/bash/mod.rs,rust,53,direct
+  2,0,0,1,test_extract_control_flow,src/tests/bash/mod.rs,rust,321,direct
+  3,null,1,0,extract_symbols,src/tests/c/mod.rs,rust,27,direct
+  4,3,1,1,test_extract_c_functions,src/tests/c/mod.rs,rust,54,direct
+```
+
+**Implementation Steps**:
+
+1. **Create Generic Infrastructure** (`src/tools/hierarchical_toon.rs`):
+   - `HierarchicalToonable` trait
+   - `FlatNode<T>` struct
+   - Helper functions for flattening recursive trees
+
+2. **Implement for TraceCallPathResult**:
+   - Create `FlatCallPathNode` data type
+   - Implement `flatten()` using depth-first traversal
+   - Track id, parent_id, group (path_id), level
+
+3. **Integrate with Encoding**:
+   - Create `create_hierarchical_toon_result()` helper
+   - Use shared pattern from Phase 3 (auto mode, fallback, etc.)
+   - Reusable for other hierarchical tools (get_symbols)
+
+4. **Comprehensive Testing**:
+   - Unit tests for flattening logic
+   - Round-trip tests (flatten → reconstruct tree)
+   - Token savings measurement vs current output
+   - Edge cases: empty trees, single node, deep nesting
+
+**Benefits**:
+- ✅ Maximum token efficiency (single table, no redundancy)
+- ✅ Simpler for AI agents (uniform schema, easy to parse)
+- ✅ Trivial reconstruction (parent_id references)
+- ✅ Reusable pattern (trait-based, works for any tree)
+- ✅ Same TDD methodology from previous phases
+
+**Why Not Multi-Table (Option B)?**
+- Unnecessary complexity (two tables vs one)
+- Token overhead from two headers
+- Only benefit was "visual grouping" which AI doesn't need
+
+**Affected Tools**:
+- trace_call_path (primary - biggest offender)
+- get_symbols (nested symbols: classes → methods → nested functions)
+- Any future hierarchical data
+
+**Files to Create/Modify**:
+- NEW: `src/tools/hierarchical_toon.rs` - Generic infrastructure
+- MODIFY: `src/tools/trace_call_path/mod.rs` - Implement trait
+- NEW: `src/tests/tools/hierarchical_toon_tests.rs` - Comprehensive tests
+
+**Success Criteria**:
+- [ ] Generic `HierarchicalToonable` trait implemented
+- [ ] trace_call_path returns flat tabular TOON (no repeated keys)
+- [ ] Token savings: 60-70% reduction vs current YAML-ish output
+- [ ] All existing tests pass
+- [ ] New tests verify flattening correctness
+- [ ] Round-trip reconstruction tests pass
+
+**Next Steps**:
+- Implement in fresh context following TDD methodology
+- Start with trait definition and tests
+- Implement for trace_call_path first (biggest impact)
+- Extend to get_symbols once proven
+
 ---
 
 ## 🧠 Key Learnings from TOON Audit

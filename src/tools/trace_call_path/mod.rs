@@ -22,7 +22,6 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use crate::handler::JulieServerHandler;
-use crate::tools::shared::create_toonable_result;
 
 pub use types::{CallPath, SerializablePathNode, TraceCallPathResult};
 use types::{default_depth, default_output_format, default_upstream, default_workspace};
@@ -96,14 +95,49 @@ impl TraceCallPathTool {
             call_paths,
         };
 
-        // Use shared TOON/JSON formatter
-        create_toonable_result(
-            &result,
-            output_format,
-            5,  // Auto threshold: 5+ results use TOON
-            result.paths_found,
-            "trace_call_path"
-        )
+        // Phase 5: Use TOON-specific flat encoding (no serde magic!)
+        match output_format {
+            Some("toon") => {
+                let toon_flat = result.to_toon_flat();
+                match toon_format::encode_default(&toon_flat) {
+                    Ok(toon) => Ok(CallToolResult::text_content(vec![
+                        rust_mcp_sdk::schema::TextContent::from(toon),
+                    ])),
+                    Err(_) => {
+                        let structured = serde_json::to_value(&result)?;
+                        let map = match structured {
+                            serde_json::Value::Object(m) => m,
+                            _ => return Err(anyhow!("Expected object")),
+                        };
+                        Ok(CallToolResult::text_content(vec![]).with_structured_content(map))
+                    }
+                }
+            }
+            Some("auto") => {
+                let toon_flat = result.to_toon_flat();
+                if toon_flat.len() >= 5 {
+                    if let Ok(toon) = toon_format::encode_default(&toon_flat) {
+                        return Ok(CallToolResult::text_content(vec![
+                            rust_mcp_sdk::schema::TextContent::from(toon),
+                        ]));
+                    }
+                }
+                let structured = serde_json::to_value(&result)?;
+                let map = match structured {
+                    serde_json::Value::Object(m) => m,
+                    _ => return Err(anyhow!("Expected object")),
+                };
+                Ok(CallToolResult::text_content(vec![]).with_structured_content(map))
+            }
+            _ => {
+                let structured = serde_json::to_value(&result)?;
+                let map = match structured {
+                    serde_json::Value::Object(m) => m,
+                    _ => return Err(anyhow!("Expected object")),
+                };
+                Ok(CallToolResult::text_content(vec![]).with_structured_content(map))
+            }
+        }
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {

@@ -3,9 +3,72 @@
 //! Handles formatting symbol data into structured responses for MCP clients.
 
 use rust_mcp_sdk::schema::CallToolResult;
+use serde::Serialize;
 use tracing::debug;
 
 use crate::extractors::base::Symbol;
+use crate::tools::shared::create_toonable_result;
+
+/// Simplified symbol for TOON encoding (primitives only, no skip_serializing_if)
+///
+/// CRITICAL: No #[serde(skip_serializing_if)] attributes!
+/// TOON requires ALL objects to have IDENTICAL key sets for tabular encoding.
+#[derive(Debug, Clone, Serialize)]
+pub struct ToonFlatSymbol {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub language: String,
+    pub file_path: String,
+    pub start_line: u32,
+    pub end_line: u32,
+    pub parent_id: Option<String>, // Always serialized (null for top-level)
+    pub signature: Option<String>,
+    pub doc_comment: Option<String>,
+    pub visibility: Option<String>,
+}
+
+impl From<&Symbol> for ToonFlatSymbol {
+    fn from(s: &Symbol) -> Self {
+        Self {
+            id: s.id.clone(),
+            name: s.name.clone(),
+            kind: format!("{:?}", s.kind), // Convert enum to string
+            language: s.language.clone(),
+            file_path: s.file_path.clone(),
+            start_line: s.start_line,
+            end_line: s.end_line,
+            parent_id: s.parent_id.clone(),
+            signature: s.signature.clone(),
+            doc_comment: s.doc_comment.clone(),
+            visibility: s.visibility.as_ref().map(|v| format!("{:?}", v)),
+        }
+    }
+}
+
+/// Result structure for get_symbols that supports hierarchical TOON encoding
+#[derive(Debug, Clone, Serialize)]
+pub struct GetSymbolsResult {
+    pub file_path: String,
+    pub total_symbols: usize,
+    pub returned_symbols: usize,
+    pub top_level_count: usize,
+    pub max_depth: u32,
+    pub truncated: bool,
+    pub limit: Option<u32>,
+    pub workspace_id: Option<String>, // Always serialized
+    pub symbols: Vec<Symbol>,
+}
+
+impl GetSymbolsResult {
+    /// Convert to completely flat structure for TOON encoding
+    ///
+    /// TOON can't handle Symbol's complex structure (skip_serializing_if, metadata HashMap),
+    /// so we convert to ToonFlatSymbol with primitives only and uniform keys.
+    pub fn to_toon_flat(&self) -> Vec<ToonFlatSymbol> {
+        self.symbols.iter().map(ToonFlatSymbol::from).collect()
+    }
+}
 
 /// Format symbol query response with structured content
 pub fn format_symbol_response(
@@ -28,116 +91,29 @@ pub fn format_symbol_response(
         was_truncated
     );
 
-    // Minimal text output for AI agents (structured_content has all data)
-    let truncation_warning = if was_truncated {
-        format!(
-            "\n\n⚠️  Showing {} of {} symbols (truncated)\n💡 Use 'target' parameter to filter to specific symbols",
-            symbols.len(),
-            total_symbols
-        )
-    } else {
-        String::new()
+    // Build GetSymbolsResult
+    let result = GetSymbolsResult {
+        file_path: file_path.to_string(),
+        total_symbols,
+        returned_symbols: symbols.len(),
+        top_level_count,
+        max_depth,
+        truncated: was_truncated,
+        limit,
+        workspace_id,
+        symbols,
     };
 
-    let _text_summary = if let Some(target) = target {
-        format!(
-            "{} ({} total symbols, {} matching '{}'){}",
-            file_path,
-            total_symbols,
-            symbols
-                .iter()
-                .filter(|s| s.name.to_lowercase().contains(&target.to_lowercase()))
-                .count(),
-            target,
-            truncation_warning
-        )
-    } else {
-        let top_names: Vec<String> = symbols
-            .iter()
-            .filter(|s| s.parent_id.is_none())
-            .take(5)
-            .map(|s| s.name.clone())
-            .collect();
+    // Convert to flat structure for TOON
+    let toon_flat = result.to_toon_flat();
 
-        format!(
-            "{} ({} symbols)\nTop-level: {}{}",
-            file_path,
-            symbols.len(),
-            top_names.join(", "),
-            truncation_warning
-        )
-    };
-
-    // Build structured response
-    let mut structured_json = serde_json::json!({
-        "file_path": file_path,
-        "total_symbols": total_symbols,
-        "returned_symbols": symbols.len(),
-        "top_level_count": top_level_count,
-        "symbols": symbols,
-        "max_depth": max_depth,
-        "truncated": was_truncated,
-        "limit": limit,
-    });
-
-    // Add workspace_id to response if it's a reference workspace
-    if let Some(ref ws_id) = workspace_id {
-        if let serde_json::Value::Object(ref mut obj) = structured_json {
-            obj.insert("workspace_id".to_string(), serde_json::json!(ws_id));
-        }
-    }
-
-    // Return based on output_format: TOON uses text only, JSON uses structured only
-    match output_format {
-        Some("toon") => {
-            // TOON mode: Return ONLY TOON in text, NO structured content
-            match toon_format::encode_default(&structured_json) {
-                Ok(toon_text) => {
-                    debug!("✅ Returning get_symbols results in TOON-only mode ({} chars, no structured_content)", toon_text.len());
-                    Ok(CallToolResult::text_content(vec![toon_text.into()]))
-                }
-                Err(e) => {
-                    debug!("⚠️  TOON encoding failed: {}, falling back to JSON", e);
-                    let mut result = CallToolResult::text_content(vec![]);
-                    if let serde_json::Value::Object(map) = structured_json {
-                        result.structured_content = Some(map);
-                    }
-                    Ok(result)
-                }
-            }
-        }
-        Some("auto") => {
-            // Auto mode: TOON for 5+ symbols, JSON for smaller responses
-            if symbols.len() >= 5 {
-                match toon_format::encode_default(&structured_json) {
-                    Ok(toon_text) => {
-                        debug!("✅ Auto-selected TOON for {} symbols ({} chars, no structured_content)", symbols.len(), toon_text.len());
-                        return Ok(CallToolResult::text_content(vec![toon_text.into()]));
-                    }
-                    Err(e) => {
-                        debug!("⚠️  TOON encoding failed: {}, falling back to JSON", e);
-                        // Fall through to JSON mode
-                    }
-                }
-            }
-            {
-                // Small response: use JSON-only (no redundant text)
-                let mut result = CallToolResult::text_content(vec![]);
-                if let serde_json::Value::Object(map) = structured_json {
-                    result.structured_content = Some(map);
-                }
-                debug!("✅ Auto-selected JSON for {} symbols (no redundant text_content)", symbols.len());
-                Ok(result)
-            }
-        }
-        _ => {
-            // Default (JSON/None): ONLY structured content (no redundant text)
-            let mut result = CallToolResult::text_content(vec![]);
-            if let serde_json::Value::Object(map) = structured_json {
-                result.structured_content = Some(map);
-            }
-            debug!("✅ Returning get_symbols results as JSON-only (no redundant text_content)");
-            Ok(result)
-        }
-    }
+    // Use shared helper for consistent TOON/JSON encoding
+    create_toonable_result(
+        &result,       // JSON gets full metadata
+        &toon_flat,    // TOON gets flat optimized array
+        output_format,
+        5,             // Auto threshold: use TOON for 5+ symbols
+        toon_flat.len(),
+        "get_symbols",
+    )
 }

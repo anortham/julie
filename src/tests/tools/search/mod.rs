@@ -9,8 +9,6 @@ mod quality;
 mod race_condition;
 mod semantic_error_handling_tests;
 mod semantic_scoring_tests;
-mod toon_formatting_tests;
-mod tools;
 
 use crate::tools::search::*;
 

@@ -1,6 +1,12 @@
 use serde::Serialize;
 
 /// Business logic symbol result (simpler than full Symbol)
+///
+/// CRITICAL: No #[serde(skip_serializing_if)] attributes!
+/// TOON requires ALL objects to have IDENTICAL key sets for tabular encoding.
+///
+/// NOTE: confidence is Option<f32> not f32 because TOON library can't encode bare f32!
+/// This matches ToonSymbol pattern from fast_search.
 #[derive(Debug, Clone, Serialize)]
 pub struct BusinessLogicSymbol {
     pub name: String,
@@ -8,9 +14,8 @@ pub struct BusinessLogicSymbol {
     pub language: String,
     pub file_path: String,
     pub start_line: u32,
-    pub confidence: f32, // Business relevance score
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signature: Option<String>,
+    pub confidence: Option<f32>, // MUST be Option for TOON compatibility (always Some in practice)
+    pub signature: Option<String>, // Always serialized (null if None) for TOON compatibility
 }
 
 /// Structured result from find_logic operation
@@ -25,4 +30,16 @@ pub struct FindLogicResult {
     pub intelligence_layers: Vec<String>,
     pub business_symbols: Vec<BusinessLogicSymbol>,
     pub next_actions: Vec<String>,
+}
+
+impl FindLogicResult {
+    /// Convert to flat structure for TOON encoding
+    ///
+    /// TOON can't handle the full result structure with multiple Vec fields.
+    /// Extract just the business_symbols array for efficient tabular encoding.
+    ///
+    /// Returns owned Vec to match pattern of get_symbols and trace_call_path.
+    pub fn to_toon_flat(&self) -> Vec<BusinessLogicSymbol> {
+        self.business_symbols.clone()
+    }
 }

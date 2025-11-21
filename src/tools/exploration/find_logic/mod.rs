@@ -27,6 +27,10 @@ fn default_min_score() -> f32 {
     0.3
 }
 
+fn default_output_format() -> Option<String> {
+    Some("auto".to_string())
+}
+
 #[mcp_tool(
     name = "find_logic",
     description = concat!(
@@ -67,8 +71,8 @@ pub struct FindLogicTool {
     /// Recommended: 0.3 for broad coverage, 0.7 for core business logic only
     #[serde(default = "default_min_score")]
     pub min_business_score: f32,
-    /// Output format: "json" (default), "toon", or "auto" (TOON for 5+ results)
-    #[serde(default)]
+    /// Output format: "json", "toon", or "auto" (default - TOON for 5+ results)
+    #[serde(default = "default_output_format")]
     pub output_format: Option<String>,
 }
 
@@ -117,8 +121,10 @@ impl FindLogicTool {
         };
 
         // Use shared TOON/JSON formatter
+        let toon_flat = result.to_toon_flat();
         create_toonable_result(
-            &result,
+            &result,      // JSON data (full metadata + results)
+            &toon_flat,   // TOON data (just the business_symbols array)
             output_format,
             5,  // Auto threshold: 5+ results use TOON
             result.found_count,
@@ -263,7 +269,7 @@ impl FindLogicTool {
                 language: symbol.language.clone(),
                 file_path: symbol.file_path.clone(),
                 start_line: symbol.start_line,
-                confidence: symbol.confidence.unwrap_or(0.0),
+                confidence: Some(symbol.confidence.unwrap_or(0.0)), // Wrapped in Some for TOON compatibility
                 signature: symbol.signature.clone(),
             })
             .collect();
@@ -437,7 +443,7 @@ impl FindLogicTool {
                     symbol.language,
                     symbol.file_path,
                     symbol.start_line,
-                    symbol.confidence
+                    symbol.confidence.unwrap_or(0.0)
                 ));
                 if let Some(sig) = &symbol.signature {
                     if !sig.is_empty() {

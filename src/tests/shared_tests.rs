@@ -32,6 +32,7 @@ fn test_create_toonable_result_toon_mode_success() {
     // Act
     let call_result = create_toonable_result(
         &result,
+        &result,
         Some("toon"),
         5,
         result.count,
@@ -53,6 +54,7 @@ fn test_create_toonable_result_auto_mode_above_threshold() {
 
     // Act
     let call_result = create_toonable_result(
+        &result,
         &result,
         Some("auto"),
         5,
@@ -76,6 +78,7 @@ fn test_create_toonable_result_auto_mode_below_threshold() {
     // Act
     let call_result = create_toonable_result(
         &result,
+        &result,
         Some("auto"),
         5,
         result.count,
@@ -98,6 +101,7 @@ fn test_create_toonable_result_auto_mode_at_threshold() {
     // Act
     let call_result = create_toonable_result(
         &result,
+        &result,
         Some("auto"),
         5,
         result.count,
@@ -117,6 +121,7 @@ fn test_create_toonable_result_json_mode() {
 
     // Act
     let call_result = create_toonable_result(
+        &result,
         &result,
         Some("json"),
         5,
@@ -138,6 +143,7 @@ fn test_create_toonable_result_none_mode_defaults_to_json() {
 
     // Act
     let call_result = create_toonable_result(
+        &result,
         &result,
         None,
         5,
@@ -166,6 +172,7 @@ fn test_create_toonable_result_fallback_to_json_on_toon_failure() {
     // Act
     let call_result = create_toonable_result(
         &result,
+        &result,
         Some("toon"),
         5,
         result.count,
@@ -187,6 +194,7 @@ fn test_create_toonable_result_validates_json_structure() {
 
     // Act
     let call_result = create_toonable_result(
+        &result,
         &result,
         Some("json"),
         5,
@@ -214,6 +222,7 @@ fn test_create_toonable_result_different_thresholds() {
     // Act & Assert with threshold 5 → should use TOON
     let result_threshold_5 = create_toonable_result(
         &result,
+        &result,
         Some("auto"),
         5,
         result.count,
@@ -223,6 +232,7 @@ fn test_create_toonable_result_different_thresholds() {
 
     // Act & Assert with threshold 10 → should use JSON
     let result_threshold_10 = create_toonable_result(
+        &result,
         &result,
         Some("auto"),
         10,
