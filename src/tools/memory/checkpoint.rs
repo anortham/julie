@@ -178,39 +178,10 @@ impl CheckpointTool {
         };
 
         // Save to disk
-        let saved_path =
-            save_memory(&workspace_root, &memory).context("Failed to save memory checkpoint")?;
+        save_memory(&workspace_root, &memory).context("Failed to save memory checkpoint")?;
 
-        // Format response
-        let git_info = if let Some(git) = git_context {
-            // Use the commit hash as-is (already shortened by git rev-parse --short)
-            let commit_display = git.commit.chars().take(8).collect::<String>();
-            format!("\n📍 Git: {} @ {}", git.branch, commit_display)
-        } else {
-            String::new()
-        };
-
-        let tags_info = self
-            .tags
-            .as_ref()
-            .map(|tags| format!("\n🏷️  Tags: {}", tags.join(", ")))
-            .unwrap_or_default();
-
-        let relative_path = saved_path
-            .strip_prefix(&workspace_root)
-            .unwrap_or(&saved_path)
-            .display()
-            .to_string()
-            .replace('\\', "/");
-
-        let message = format!(
-            "✅ Checkpoint saved successfully!\n\n\
-             📝 {}\n\
-             🆔 {}\n\
-             📂 {}{}{}\n\n\
-             Memory will be indexed automatically and searchable via fast_search.",
-            self.description, id, relative_path, git_info, tags_info
-        );
+        // Keep output minimal - AI already knows what it saved
+        let message = format!("✅ Checkpoint saved: {}", id);
 
         Ok(CallToolResult::text_content(vec![TextContent::from(
             message,
