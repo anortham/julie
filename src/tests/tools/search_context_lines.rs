@@ -81,7 +81,7 @@ pub fn process_user_data(input: &str) -> String {
         search_target: "definitions".to_string(),
         output: Some("symbols".to_string()),
         context_lines: None, // Use default (1)
-        output_format: None,
+        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -170,7 +170,7 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
         search_target: "definitions".to_string(),
         output: Some("symbols".to_string()),
         context_lines: Some(0), // 0 = just match line
-        output_format: None,
+        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -262,7 +262,7 @@ pub fn validate_input(data: &str) -> bool {
         search_target: "definitions".to_string(),
         output: Some("symbols".to_string()),
         context_lines: Some(3), // 3 = grep default (7 total lines)
-        output_format: None,
+        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -343,7 +343,7 @@ pub fn short_func() -> i32 { 42 }
         search_target: "definitions".to_string(),
         output: Some("symbols".to_string()),
         context_lines: None, // Default (1)
-        output_format: None,
+        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
     };
 
     let result = tool.call_tool(&handler).await?;

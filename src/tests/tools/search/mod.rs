@@ -3,6 +3,7 @@
 
 mod auto_detection_tests;
 mod hybrid_search_tests;
+mod lean_format_tests;
 mod line_mode;
 mod primary_workspace_bug;
 mod quality;

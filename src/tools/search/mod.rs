@@ -443,14 +443,28 @@ impl FastSearchTool {
             )]));
         }
 
-        // Return based on output_format: TOON uses text only, JSON uses structured
+        // Return based on output_format
+        // Default is "lean" - optimized text format for AI agent consumption
         match self.output_format.as_deref() {
+            None | Some("lean") => {
+                // Lean mode (DEFAULT): Grep-style text output, minimal tokens, maximum readability
+                let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
+                debug!(
+                    "✅ Returning lean search results ({} chars, {} results)",
+                    lean_output.len(),
+                    optimized.results.len()
+                );
+                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+            }
             Some("toon") => {
-                // TOON mode: Return ONLY TOON in text, NO structured content
-                // Convert to ToonResponse for TOON encoding
+                // TOON mode: Compact tabular format for structured data needs
                 let toon_response = formatting::ToonResponse {
                     tool: optimized.tool.clone(),
-                    results: optimized.results.iter().map(formatting::ToonSymbol::from).collect(),
+                    results: optimized
+                        .results
+                        .iter()
+                        .map(formatting::ToonSymbol::from)
+                        .collect(),
                     confidence: optimized.confidence,
                     total_found: optimized.total_found,
                     insights: optimized.insights.clone(),
@@ -463,25 +477,27 @@ impl FastSearchTool {
                         Ok(CallToolResult::text_content(vec![TextContent::from(toon)]))
                     }
                     Err(e) => {
-                        warn!("❌ TOON encoding failed for search results: {}, falling back to JSON", e);
-                        let structured = serde_json::to_value(&optimized)?;
-                        let structured_map = if let serde_json::Value::Object(map) = structured {
-                            map
-                        } else {
-                            return Err(anyhow::anyhow!("Expected JSON object"));
-                        };
-                        Ok(CallToolResult::text_content(vec![])
-                            .with_structured_content(structured_map))
+                        warn!(
+                            "❌ TOON encoding failed: {}, falling back to lean format",
+                            e
+                        );
+                        // Fall back to lean instead of JSON
+                        let lean_output =
+                            formatting::format_lean_search_results(&self.query, &optimized);
+                        Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
                     }
                 }
             }
             Some("auto") => {
-                // Auto mode: TOON for 5+ results, JSON for small responses
-                if optimized.results.len() >= 5 {
-                    // Convert to ToonResponse for TOON encoding
+                // Auto mode: Lean for most cases, TOON only for very large results (10+)
+                if optimized.results.len() >= 10 {
                     let toon_response = formatting::ToonResponse {
                         tool: optimized.tool.clone(),
-                        results: optimized.results.iter().map(formatting::ToonSymbol::from).collect(),
+                        results: optimized
+                            .results
+                            .iter()
+                            .map(formatting::ToonSymbol::from)
+                            .collect(),
                         confidence: optimized.confidence,
                         total_found: optimized.total_found,
                         insights: optimized.insights.clone(),
@@ -490,38 +506,51 @@ impl FastSearchTool {
 
                     match toon_format::encode_default(&toon_response) {
                         Ok(toon) => {
-                            debug!("✅ Auto-selected TOON for {} results ({} chars)", optimized.results.len(), toon.len());
+                            debug!(
+                                "✅ Auto-selected TOON for {} results ({} chars)",
+                                optimized.results.len(),
+                                toon.len()
+                            );
                             return Ok(CallToolResult::text_content(vec![TextContent::from(toon)]));
                         }
                         Err(e) => {
-                            warn!("❌ TOON encoding failed for search results: {}, falling back to JSON", e);
-                            // Fall through to JSON
+                            warn!("❌ TOON encoding failed: {}, using lean format", e);
+                            // Fall through to lean
                         }
                     }
                 }
 
-                // Small response or TOON failed: use JSON-only (no redundant text)
-                let structured = serde_json::to_value(&optimized)?;
-                let structured_map = if let serde_json::Value::Object(map) = structured {
-                    map
-                } else {
-                    return Err(anyhow::anyhow!("Expected JSON object"));
-                };
-                debug!("✅ Auto-selected JSON for {} results (no redundant text_content)", optimized.results.len());
-                Ok(CallToolResult::text_content(vec![])
-                    .with_structured_content(structured_map))
+                // Default to lean for small/medium responses
+                let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
+                debug!(
+                    "✅ Auto-selected lean for {} results ({} chars)",
+                    optimized.results.len(),
+                    lean_output.len()
+                );
+                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
             }
-            _ => {
-                // Default (JSON/None): ONLY structured content (no redundant text)
+            Some("json") => {
+                // JSON mode: Full structured content for programmatic access
                 let structured = serde_json::to_value(&optimized)?;
                 let structured_map = if let serde_json::Value::Object(map) = structured {
                     map
                 } else {
                     return Err(anyhow::anyhow!("Expected JSON object"));
                 };
-                debug!("✅ Returning search results as JSON-only (no redundant text_content)");
-                Ok(CallToolResult::text_content(vec![])
-                    .with_structured_content(structured_map))
+                debug!(
+                    "✅ Returning search results as JSON ({} results)",
+                    optimized.results.len()
+                );
+                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
+            }
+            Some(unknown) => {
+                // Unknown format - warn and use lean
+                warn!(
+                    "⚠️ Unknown output_format '{}', using lean format",
+                    unknown
+                );
+                let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
+                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
             }
         }
     }
