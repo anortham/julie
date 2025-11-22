@@ -1,0 +1,44 @@
+use crate::base::{Symbol, SymbolKind};
+use crate::c::CExtractor;
+use std::path::PathBuf;
+use tree_sitter::{Parser, Tree};
+
+fn init_parser() -> Parser {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_c::LANGUAGE.into())
+        .expect("Error loading C grammar");
+    parser
+}
+
+pub fn parse_c(code: &str, file_name: &str) -> (CExtractor, Tree) {
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).expect("Failed to parse C code");
+    let workspace_root = PathBuf::from("/tmp/test");
+    let extractor = CExtractor::new(
+        "c".to_string(),
+        file_name.to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    (extractor, tree)
+}
+
+pub fn extract_symbols_with_name(code: &str, file_name: &str) -> Vec<Symbol> {
+    let (mut extractor, tree) = parse_c(code, file_name);
+    extractor.extract_symbols(&tree)
+}
+
+pub fn extract_symbols(code: &str) -> Vec<Symbol> {
+    extract_symbols_with_name(code, "test.c")
+}
+
+pub mod advanced;
+pub mod basics;
+pub mod cross_file_relationships;
+pub mod doxygen_comments;
+pub mod identifier_extraction;
+pub mod pointers;
+pub mod preprocessor;
+pub mod relationships;
+pub mod types;

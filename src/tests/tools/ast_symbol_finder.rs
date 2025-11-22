@@ -21,9 +21,8 @@ const service = new UserService();
 "#;
 
     let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_typescript::LANGUAGE_TSX.into())
-        .unwrap();
+    let tsx_lang = crate::language::get_tree_sitter_language("tsx").unwrap();
+    parser.set_language(&tsx_lang).unwrap();
     let tree = parser.parse(code, None).unwrap();
 
     let finder = ASTSymbolFinder::new(code.to_string(), tree, "typescript".to_string());

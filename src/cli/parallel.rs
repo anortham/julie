@@ -248,7 +248,8 @@ impl ParallelExtractor {
 
         // Get language and create parser
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&tree_sitter_rust::LANGUAGE.into())?;
+        let rust_lang = crate::language::get_tree_sitter_language("rust")?;
+        parser.set_language(&rust_lang)?;
 
         // Parse the file
         let tree = parser

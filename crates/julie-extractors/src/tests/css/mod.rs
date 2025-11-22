@@ -1,0 +1,38 @@
+use crate::base::Symbol;
+use crate::css::CSSExtractor;
+use std::path::PathBuf;
+use tree_sitter::Parser;
+
+pub fn init_parser() -> Parser {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_css::LANGUAGE.into())
+        .expect("Error loading CSS grammar");
+    parser
+}
+
+pub fn extract_symbols(code: &str) -> Vec<Symbol> {
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = CSSExtractor::new(
+        "css".to_string(),
+        "test.css".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    extractor.extract_symbols(&tree)
+}
+
+pub mod advanced;
+pub mod animations;
+pub mod at_rules;
+pub mod basic;
+pub mod custom;
+pub mod doc_comments;
+pub mod identifier_extraction;
+pub mod media_queries;
+pub mod modern;
+pub mod pseudo_elements;
+pub mod responsive;
+pub mod utilities;

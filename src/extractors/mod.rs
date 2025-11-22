@@ -1,64 +1,20 @@
-//! Julie's Language Extractors Module
+//! Julie's Language Extractors Module (re-exports from julie-extractors crate)
 //!
-//! This module contains all the tree-sitter based extractors for various programming languages.
-//! Each extractor is responsible for parsing source code and extracting symbols, relationships,
-//! and type information using tree-sitter parsers.
-//!
-//! # Architecture
-//!
-//! The module is organized into several sub-modules:
-//! - `base.rs` - Base extractor trait and common types
-//! - `manager.rs` - ExtractorManager public API
-//! - `routing_symbols.rs` - Symbol extraction routing (private)
-//! - `routing_identifiers.rs` - Identifier extraction routing (private)
-//! - `routing_relationships.rs` - Relationship extraction routing (private)
-//! - `factory.rs` - Shared factory function and tests
-//! - Language modules (rust, typescript, python, etc.)
+//! This module re-exports the julie-extractors crate for backward compatibility.
+//! All extractor functionality is now in the separate `julie-extractors` crate.
 
-pub mod base;
-pub mod factory;
-pub mod manager;
-pub mod routing_identifiers;
-pub mod routing_relationships;
-pub mod routing_symbols;
+// Re-export everything from the julie-extractors crate
+pub use julie_extractors::*;
 
-// Language extractors (31 total - including documentation/config languages)
-pub mod bash;
-pub mod c;
-pub mod cpp;
-pub mod csharp;
-pub mod css;
-pub mod dart;
-pub mod gdscript;
-pub mod go;
-pub mod html;
-pub mod java;
-pub mod javascript;
-pub mod json;
-pub mod kotlin;
-pub mod lua;
-pub mod markdown;
-pub mod php;
-pub mod powershell;
-pub mod python;
-pub mod qml;
-pub mod r;
-pub mod razor;
-pub mod regex;
-pub mod ruby;
-pub mod rust;
-pub mod sql;
-pub mod swift;
-pub mod toml;
-pub mod typescript;
-pub mod vue;
-pub mod yaml;
-pub mod zig;
-
-// Re-export the public API
-pub use base::{
-    ExtractionResults, Identifier, IdentifierKind, PendingRelationship, Relationship,
-    RelationshipKind, Symbol, SymbolKind,
+// Re-export language modules for code that uses `crate::extractors::rust::RustExtractor` etc.
+pub use julie_extractors::{
+    bash, c, cpp, csharp, css, dart, gdscript, go, html, java, javascript, json, kotlin, lua,
+    markdown, php, powershell, python, qml, r, razor, regex, ruby, rust, sql, swift, toml,
+    typescript, vue, yaml, zig,
 };
-pub use factory::extract_symbols_and_relationships;
-pub use manager::ExtractorManager;
+
+// Re-export base module for code that uses `crate::extractors::base::*`
+pub use julie_extractors::base;
+
+// Re-export factory and manager
+pub use julie_extractors::{factory, manager, routing_identifiers, routing_relationships, routing_symbols};

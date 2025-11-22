@@ -235,9 +235,8 @@ fn test_bulk_store_symbols_for_existing_file_paths() {
     db.bulk_store_files(&[file_info]).unwrap();
 
     let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_go::LANGUAGE.into())
-        .unwrap();
+    let go_lang = crate::language::get_tree_sitter_language("go").unwrap();
+    parser.set_language(&go_lang).unwrap();
     let tree = parser.parse(&fixture_content, None).unwrap();
     let mut extractor = crate::extractors::go::GoExtractor::new(
         "go".to_string(),

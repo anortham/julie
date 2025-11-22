@@ -1,0 +1,71 @@
+[package]
+name = "julie-extractors"
+version = "1.16.0"
+edition = "2024"
+authors = ["Alan"]
+description = "Cross-platform code intelligence extractors for 31 programming languages"
+license = "MIT"
+repository = "https://github.com/your-org/julie"
+keywords = ["tree-sitter", "code-intelligence", "parsing", "extractors"]
+categories = ["development-tools", "parsing"]
+
+[lib]
+name = "julie_extractors"
+path = "src/lib.rs"
+
+[dependencies]
+# Tree-sitter for parsing (latest version to match harper-dart)
+# ⚠️  WARNING: DO NOT CHANGE THESE TREE-SITTER VERSIONS! ⚠️
+# ⚠️  CHANGING THESE WILL BREAK EVERYTHING DUE TO API INCOMPATIBILITIES ⚠️
+# ⚠️  WE SPENT HOURS GETTING THESE VERSIONS TO WORK TOGETHER ⚠️
+tree-sitter = "0.25"
+tree-sitter-bash = "0.23"
+tree-sitter-c = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-c-sharp = "0.23"
+tree-sitter-css = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-html = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-javascript = "0.23"
+# ⚠️  WARNING: THESE PARSER VERSIONS ARE LOCKED TO TREE-SITTER 0.25 ⚠️
+tree-sitter-kotlin-ng = "1.1.0"  # ⚠️ DO NOT CHANGE - USES MODERN API ⚠️
+tree-sitter-lua = "0.2"
+tree-sitter-php = "0.24"
+tree-sitter-python = "0.23"
+tree-sitter-r = "1.2.0"
+tree-sitter-ruby = "0.23"
+tree-sitter-rust = "0.24"
+tree-sitter-swift = "0.7"
+tree-sitter-typescript = "0.23"
+
+tree-sitter-gdscript = "5.0"
+tree-sitter-qmljs = { git = "https://github.com/yuja/tree-sitter-qmljs" }
+tree-sitter-regex = "0.23"
+tree-sitter-razor = { git = "https://github.com/tris203/tree-sitter-razor" }
+tree-sitter-powershell = { git = "https://github.com/airbus-cert/tree-sitter-powershell" }
+
+harper-tree-sitter-dart = "0.0.5"  # ⚠️ DO NOT CHANGE - REQUIRES TREE-SITTER 0.25.6+ ⚠️
+tree-sitter-sequel = "0.3.10"
+tree-sitter-zig = "1.1.2"
+
+# Documentation and configuration languages (extractors #28-31)
+tree-sitter-md = "0.5.1"
+tree-sitter-json = "0.24.8"
+tree-sitter-toml-ng = "0.7.0"
+tree-sitter-yaml = "0.7"
+
+# Serialization (for Symbol, Identifier, Relationship types)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Utilities
+md5 = "0.7"
+regex = "1.11"
+anyhow = "1.0"
+
+# Logging (for debug/warn macros)
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3.13"

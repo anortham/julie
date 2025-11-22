@@ -22,37 +22,11 @@ mod real_world_tests {
     fn init_parser(code: &str, language: &str) -> Tree {
         let mut parser = Parser::new();
 
-        let lang = match language {
-            "kotlin" => tree_sitter_kotlin_ng::LANGUAGE,
-            "ruby" => tree_sitter_ruby::LANGUAGE,
-            "rust" => tree_sitter_rust::LANGUAGE,
-            "typescript" | "tsx" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
-            "javascript" | "jsx" => tree_sitter_javascript::LANGUAGE,
-            "python" => tree_sitter_python::LANGUAGE,
-            "java" => tree_sitter_java::LANGUAGE,
-            "csharp" => tree_sitter_c_sharp::LANGUAGE,
-            // "go" => tree_sitter_go::LANGUAGE, // Disabled
-            "php" => tree_sitter_php::LANGUAGE_PHP,
-            "swift" => tree_sitter_swift::LANGUAGE,
-            "razor" => tree_sitter_c_sharp::LANGUAGE, // Razor uses C# parser
-            "vue" => tree_sitter_javascript::LANGUAGE, // Vue uses JS parser
-            "bash" => tree_sitter_bash::LANGUAGE,
-            "css" => tree_sitter_css::LANGUAGE,
-            "dart" => harper_tree_sitter_dart::LANGUAGE,
-            "gdscript" => tree_sitter_gdscript::LANGUAGE,
-            "html" => tree_sitter_html::LANGUAGE,
-            "powershell" => tree_sitter_powershell::LANGUAGE,
-            "regex" => tree_sitter_regex::LANGUAGE,
-            "sql" => tree_sitter_sequel::LANGUAGE,
-            "zig" => tree_sitter_zig::LANGUAGE,
-            "c" => tree_sitter_c::LANGUAGE,
-            "cpp" => tree_sitter_cpp::LANGUAGE,
-            "go" => tree_sitter_go::LANGUAGE,
-            "lua" => tree_sitter_lua::LANGUAGE,
-            _ => panic!("Unsupported language: {}", language),
-        };
+        // Use the language module to get tree-sitter language
+        let lang = crate::language::get_tree_sitter_language(language)
+            .unwrap_or_else(|_| panic!("Unsupported language: {}", language));
 
-        parser.set_language(&lang.into()).unwrap();
+        parser.set_language(&lang).unwrap();
         parser.parse(code, None).unwrap()
     }
 
