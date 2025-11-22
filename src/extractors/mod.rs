@@ -57,8 +57,8 @@ pub mod zig;
 
 // Re-export the public API
 pub use base::{
-    ExtractionResults, Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol,
-    SymbolKind,
+    ExtractionResults, Identifier, IdentifierKind, PendingRelationship, Relationship,
+    RelationshipKind, Symbol, SymbolKind,
 };
 pub use factory::extract_symbols_and_relationships;
 pub use manager::ExtractorManager;

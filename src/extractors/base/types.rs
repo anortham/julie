@@ -309,6 +309,32 @@ pub struct Relationship {
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
+/// A pending relationship that needs cross-file resolution after indexing.
+///
+/// During extraction, when a call target cannot be resolved within the current file
+/// (e.g., calling an imported function), we create a PendingRelationship with the
+/// callee's NAME. After all files are indexed, a resolution pass matches these names
+/// to actual symbol IDs and creates real Relationship records.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PendingRelationship {
+    /// Source symbol ID (the caller - this IS known during extraction)
+    #[serde(rename = "fromSymbolId")]
+    pub from_symbol_id: String,
+    /// Target symbol NAME (not ID - we don't know which file defines this yet)
+    #[serde(rename = "calleeName")]
+    pub callee_name: String,
+    /// Type of relationship (typically Calls for function calls)
+    pub kind: RelationshipKind,
+    /// File where this call occurs
+    #[serde(rename = "filePath")]
+    pub file_path: String,
+    /// Line number where the call occurs (1-based)
+    #[serde(rename = "lineNumber")]
+    pub line_number: u32,
+    /// Confidence level (0.0 to 1.0)
+    pub confidence: f32,
+}
+
 /// Relationship kinds - direct port from RelationshipKind enum
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -414,6 +440,8 @@ pub struct SymbolOptions {
 pub struct ExtractionResults {
     pub symbols: Vec<Symbol>,
     pub relationships: Vec<Relationship>,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pub pending_relationships: Vec<PendingRelationship>,
     pub types: HashMap<String, TypeInfo>,
     pub identifiers: Vec<Identifier>, // Include identifiers for LSP-quality tools
 }

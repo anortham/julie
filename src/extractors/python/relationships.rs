@@ -1,13 +1,13 @@
 /// Relationship extraction
 /// Handles inheritance relationships and function call relationships
-use super::super::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use super::super::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use super::{PythonExtractor, helpers};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 /// Extract relationships from Python code
 pub(crate) fn extract_relationships(
-    extractor: &PythonExtractor,
+    extractor: &mut PythonExtractor,
     tree: &Tree,
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
@@ -25,7 +25,7 @@ pub(crate) fn extract_relationships(
 
 /// Visit a node and extract relationships from it
 fn visit_node_for_relationships(
-    extractor: &PythonExtractor,
+    extractor: &mut PythonExtractor,
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
     relationships: &mut Vec<Relationship>,
@@ -49,7 +49,7 @@ fn visit_node_for_relationships(
 
 /// Extract inheritance relationships from a class definition
 fn extract_class_relationships(
-    extractor: &PythonExtractor,
+    extractor: &mut PythonExtractor,
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
     relationships: &mut Vec<Relationship>,
@@ -106,7 +106,7 @@ fn extract_class_relationships(
 
 /// Extract call relationships from a function call
 fn extract_call_relationships(
-    extractor: &PythonExtractor,
+    extractor: &mut PythonExtractor,
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
     relationships: &mut Vec<Relationship>,
@@ -118,27 +118,59 @@ fn extract_call_relationships(
         let called_method_name = extract_method_name_from_call(base, &function_node);
 
         if !called_method_name.is_empty() {
-            if let Some(called_symbol) = symbol_map.get(&called_method_name) {
-                // Find the enclosing function/method that contains this call
-                if let Some(caller_symbol) = find_containing_function(extractor, node, symbol_map) {
-                    let relationship = Relationship {
-                        id: format!(
-                            "{}_{}_{:?}_{}",
-                            caller_symbol.id,
-                            called_symbol.id,
-                            RelationshipKind::Calls,
-                            node.start_position().row
-                        ),
-                        from_symbol_id: caller_symbol.id.clone(),
-                        to_symbol_id: called_symbol.id.clone(),
-                        kind: RelationshipKind::Calls,
-                        file_path: base.file_path.clone(),
-                        line_number: (node.start_position().row + 1) as u32,
-                        confidence: 0.90,
-                        metadata: None,
-                    };
+            // Find the enclosing function/method that contains this call
+            if let Some(caller_symbol) = find_containing_function(extractor, node, symbol_map) {
+                let line_number = (node.start_position().row + 1) as u32;
+                let file_path = base.file_path.clone();
 
-                    relationships.push(relationship);
+                // Check if we can resolve the callee locally
+                match symbol_map.get(&called_method_name) {
+                    Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
+                        // Target is an Import symbol - need cross-file resolution
+                        // Don't create relationship pointing to Import (useless for trace_call_path)
+                        // Instead, create a PendingRelationship with the callee name
+                        extractor.add_pending_relationship(PendingRelationship {
+                            from_symbol_id: caller_symbol.id.clone(),
+                            callee_name: called_method_name.clone(),
+                            kind: RelationshipKind::Calls,
+                            file_path,
+                            line_number,
+                            confidence: 0.8, // Lower confidence - needs resolution
+                        });
+                    }
+                    Some(called_symbol) => {
+                        // Target is a local function/method - create resolved Relationship
+                        let relationship = Relationship {
+                            id: format!(
+                                "{}_{}_{:?}_{}",
+                                caller_symbol.id,
+                                called_symbol.id,
+                                RelationshipKind::Calls,
+                                node.start_position().row
+                            ),
+                            from_symbol_id: caller_symbol.id.clone(),
+                            to_symbol_id: called_symbol.id.clone(),
+                            kind: RelationshipKind::Calls,
+                            file_path,
+                            line_number,
+                            confidence: 0.9,
+                            metadata: None,
+                        };
+
+                        relationships.push(relationship);
+                    }
+                    None => {
+                        // Target not found in local symbols - likely a method on imported type
+                        // Create PendingRelationship for cross-file resolution
+                        extractor.add_pending_relationship(PendingRelationship {
+                            from_symbol_id: caller_symbol.id.clone(),
+                            callee_name: called_method_name.clone(),
+                            kind: RelationshipKind::Calls,
+                            file_path,
+                            line_number,
+                            confidence: 0.7, // Lower confidence - unknown target
+                        });
+                    }
                 }
             }
         }
@@ -169,7 +201,7 @@ fn extract_method_name_from_call(
 
 /// Find the containing function of a node
 fn find_containing_function<'a>(
-    extractor: &'a PythonExtractor,
+    extractor: &PythonExtractor,
     node: Node,
     symbol_map: &HashMap<String, &'a Symbol>,
 ) -> Option<&'a Symbol> {

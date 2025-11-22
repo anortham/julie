@@ -1367,5 +1367,6 @@ collect_files() {
     }
 }
 
+mod cross_file_relationships;
 mod doc_comments;
 mod types; // Phase 4: Type extraction verification tests

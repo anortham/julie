@@ -3,7 +3,7 @@
 //! This module handles extraction of relationships between symbols, such as function calls
 //! and header file imports.
 
-use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::extractors::c::CExtractor;
 use std::collections::HashMap;
 
@@ -41,13 +41,15 @@ fn extract_function_call_relationships(
 ) {
     if let Some(function_node) = node.child_by_field_name("function") {
         if function_node.kind() == "identifier" {
-            let function_name = extractor.base.get_node_text(&function_node);
+            let function_name = extractor.get_base_mut().get_node_text(&function_node);
+
             if let Some(called_symbol) = symbols
                 .iter()
                 .find(|s| s.name == function_name && s.kind == SymbolKind::Function)
             {
+                // Target function found locally - create resolved Relationship
                 if let Some(containing_symbol) = find_containing_symbol(extractor, node, symbols) {
-                    relationships.push(extractor.base.create_relationship(
+                    relationships.push(extractor.get_base_mut().create_relationship(
                         containing_symbol.id.clone(),
                         called_symbol.id.clone(),
                         RelationshipKind::Calls,
@@ -55,6 +57,21 @@ fn extract_function_call_relationships(
                         None,
                         None,
                     ));
+                }
+            } else {
+                // Target not found in local symbols - likely a function from included header
+                // Create PendingRelationship for cross-file resolution
+                if let Some(containing_symbol) = find_containing_symbol(extractor, node, symbols) {
+                    let file_path = extractor.get_base_mut().file_path.clone();
+                    let line_number = node.start_position().row as u32 + 1;
+                    extractor.add_pending_relationship(PendingRelationship {
+                        from_symbol_id: containing_symbol.id.clone(),
+                        callee_name: function_name,
+                        kind: RelationshipKind::Calls,
+                        file_path,
+                        line_number,
+                        confidence: 0.7, // Lower confidence - unknown target
+                    });
                 }
             }
         }

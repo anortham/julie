@@ -94,7 +94,7 @@ pub fn default_workspace() -> Option<String> {
 }
 
 pub fn default_output_format() -> Option<String> {
-    None // Default to JSON for backwards compatibility
+    None // None = lean format (ASCII tree). Override with "json", "toon", or "auto"
 }
 
 // ============================================================================

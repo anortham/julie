@@ -1,6 +1,8 @@
 // Implementation of comprehensive Swift extractor tests
 // Following TDD pattern: RED phase - tests should compile but fail
 
+mod cross_file_relationships;
+
 use crate::extractors::base::{RelationshipKind, SymbolKind, Visibility};
 use crate::extractors::swift::SwiftExtractor;
 use tree_sitter::Tree;

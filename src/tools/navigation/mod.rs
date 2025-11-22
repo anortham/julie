@@ -12,6 +12,7 @@
 
 mod fast_goto;
 mod fast_refs;
+mod formatting;
 mod reference_workspace;
 pub mod resolution; // Public for use by other tools
 mod semantic_matching;

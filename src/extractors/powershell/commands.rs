@@ -38,8 +38,9 @@ pub(super) fn extract_command(
         return None; // Handled in imports module
     }
 
-    // Focus on Azure, Windows, and cross-platform DevOps commands
-    let devops_commands = [
+    // Extract well-known DevOps commands and PowerShell cmdlets as symbols
+    // This preserves the original design intent of tracking important tool usage
+    let wellknown_commands = [
         // Azure PowerShell
         "Connect-AzAccount",
         "Set-AzContext",
@@ -64,13 +65,11 @@ pub(super) fn extract_command(
         "Invoke-Command",
     ];
 
-    let is_interesting = devops_commands.contains(&command_name.as_str())
+    let is_wellknown = wellknown_commands.contains(&command_name.as_str())
         || command_name.starts_with("Connect-")
-        || command_name.starts_with("New-")
-        || command_name.starts_with("Set-")
-        || command_name.starts_with("Get-");
+        || command_name.starts_with("Connect-Az");
 
-    if is_interesting {
+    if is_wellknown {
         let signature = extract_command_signature(base, node);
         let doc_comment = get_command_documentation(&command_name);
 

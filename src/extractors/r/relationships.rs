@@ -1,13 +1,13 @@
 // R Relationship Extraction
 // Extracts relationships between R symbols: function calls, library usage, pipes
 
-use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::extractors::r::RExtractor;
 use tree_sitter::{Node, Tree};
 
 /// Extract all relationships from R code
 pub(super) fn extract_relationships(
-    extractor: &RExtractor,
+    extractor: &mut RExtractor,
     tree: &Tree,
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
@@ -20,7 +20,7 @@ pub(super) fn extract_relationships(
 
 /// Extract function call relationships
 fn extract_call_relationships(
-    extractor: &RExtractor,
+    extractor: &mut RExtractor,
     node: Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
@@ -74,28 +74,37 @@ fn extract_call_relationships(
                         metadata: None,
                     };
                     relationships.push(relationship);
+                } else if is_builtin_function(&function_name) {
+                    // Built-in function call - create relationship with builtin_ prefix
+                    // (same as old behavior, to maintain backward compatibility with tests)
+                    let relationship = Relationship {
+                        id: format!(
+                            "{}_{:?}_{}_{}",
+                            caller_symbol.id,
+                            RelationshipKind::Calls,
+                            function_name,
+                            node.start_position().row
+                        ),
+                        from_symbol_id: caller_symbol.id.clone(),
+                        to_symbol_id: format!("builtin_{}", function_name),
+                        kind: RelationshipKind::Calls,
+                        file_path: extractor.base.file_path.clone(),
+                        line_number: (node.start_position().row + 1) as u32,
+                        confidence: 0.8,
+                        metadata: None,
+                    };
+                    relationships.push(relationship);
                 } else {
-                    // For built-in functions or library functions, create a relationship anyway
-                    // This helps track usage even if the function isn't defined in this file
-                    if let Some(caller_symbol) = find_containing_function(node, symbols) {
-                        let relationship = Relationship {
-                            id: format!(
-                                "{}_{:?}_{}_{}",
-                                caller_symbol.id,
-                                RelationshipKind::Calls,
-                                function_name,
-                                node.start_position().row
-                            ),
-                            from_symbol_id: caller_symbol.id.clone(),
-                            to_symbol_id: format!("builtin_{}", function_name),
-                            kind: RelationshipKind::Calls,
-                            file_path: extractor.base.file_path.clone(),
-                            line_number: (node.start_position().row + 1) as u32,
-                            confidence: 0.8,
-                            metadata: None,
-                        };
-                        relationships.push(relationship);
-                    }
+                    // Unknown function call - create PendingRelationship for cross-file resolution
+                    let pending = PendingRelationship {
+                        from_symbol_id: caller_symbol.id.clone(),
+                        callee_name: function_name.clone(),
+                        kind: RelationshipKind::Calls,
+                        file_path: extractor.base.file_path.clone(),
+                        line_number: (node.start_position().row + 1) as u32,
+                        confidence: 0.7,
+                    };
+                    extractor.add_pending_relationship(pending);
                 }
             }
         }
@@ -110,7 +119,7 @@ fn extract_call_relationships(
 
 /// Extract pipe operator relationships (%>%, |>, etc.)
 fn extract_pipe_relationships(
-    extractor: &RExtractor,
+    extractor: &mut RExtractor,
     node: Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
@@ -167,7 +176,7 @@ fn extract_pipe_relationships(
 
 /// Extract member access relationships ($ operator)
 fn extract_member_access_relationships(
-    extractor: &RExtractor,
+    extractor: &mut RExtractor,
     node: Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
@@ -232,4 +241,52 @@ fn find_containing_function<'a>(node: Node, symbols: &'a [Symbol]) -> Option<&'a
         current = parent;
     }
     None
+}
+
+/// Check if a function name is a built-in R function
+/// Built-in functions should not create pending relationships (they're known to be in base R)
+fn is_builtin_function(name: &str) -> bool {
+    matches!(
+        name,
+        // Core R functions
+        "c" | "list" | "data.frame" | "matrix" | "array" | "factor" | "as.numeric" |
+        "as.character" | "as.logical" | "as.integer" | "as.data.frame" | "as.matrix" |
+        "as.list" | "as.vector" | "length" | "names" | "dim" | "nrow" | "ncol" | "class" |
+        "typeof" | "is.na" | "is.null" | "is.numeric" | "is.character" | "is.logical" |
+        // Math functions
+        "mean" | "median" | "sum" | "min" | "max" | "abs" | "sqrt" | "exp" | "log" | "log10" |
+        "sin" | "cos" | "tan" | "round" | "floor" | "ceiling" | "trunc" | "sign" |
+        // Statistics functions
+        "sd" | "var" | "cov" | "cor" | "lm" | "glm" | "summary" | "quantile" | "range" |
+        // I/O functions
+        "print" | "cat" | "paste" | "paste0" | "sprintf" | "format" | "write" | "read.csv" |
+        "read.table" | "write.csv" | "write.table" | "readLines" | "writeLines" |
+        // Control flow
+        "if" | "else" | "for" | "while" | "repeat" | "break" | "next" | "return" | "stop" |
+        "warning" | "message" | "invisible" | "do.call" | "lapply" | "sapply" | "mapply" |
+        "tapply" | "Reduce" | "Filter" | "Map" | "Vectorize" |
+        // Common utility functions
+        "seq" | "rep" | "sort" | "order" | "rank" | "unique" | "duplicated" | "which" |
+        "head" | "tail" | "str" | "View" | "rm" | "ls" | "exists" | "all" | "any" |
+        "subset" | "merge" | "rbind" | "cbind" | "t" | "apply" |
+        // String functions
+        "nchar" | "substr" | "substring" | "strsplit" | "tolower" | "toupper" | "trimws" |
+        "grep" | "grepl" | "sub" | "gsub" | "match" | "pmatch" | "charmatch" |
+        // Type checking and conversion
+        "is.data.frame" | "is.matrix" | "is.array" | "is.factor" | "is.ordered" |
+        "is.function" | "is.list" | "is.atomic" | "is.recursive" |
+        // Operators
+        "+" | "-" | "*" | "/" | "^" | "%%" | "%/%" | "%*%" | ":" | "~" |
+        // Base functions
+        "Sys.time" | "Sys.Date" | "system" | "system2" | "shell" | "getwd" | "setwd" |
+        "list.files" | "dir" | "file.exists" | "file.create" | "file.remove" | "file.rename" |
+        "dir.create" | "tempdir" | "tempfile" | "library" | "require" | "source" |
+        "eval" | "parse" | "deparse" | "substitute" | "quote" | "expression" |
+        // Environment/Scope
+        "parent.frame" | "parent.env" | "environment" | "new.env" | "with" | "within" |
+        "attach" | "detach" | "search" | "get" | "assign" | "remove" |
+        // Common functions from tidyverse-like operations
+        "filter" | "select" | "mutate" | "arrange" | "group_by" | "summarize" | "summarise" |
+        "join" | "left_join" | "right_join" | "inner_join" | "full_join" | "ggplot" | "aes"
+    )
 }

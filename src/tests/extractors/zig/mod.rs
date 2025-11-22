@@ -1959,3 +1959,4 @@ fn example() !void {
     }
 }
 mod types; // Phase 4: Type extraction verification tests
+pub mod cross_file_relationships;

@@ -11,13 +11,15 @@ pub(super) mod relationships;
 pub(super) mod signatures;
 pub(super) mod types;
 
-use crate::extractors::base::{BaseExtractor, Symbol};
+use crate::extractors::base::{BaseExtractor, PendingRelationship, Symbol};
 use tree_sitter::{Node, Tree};
 
 /// Swift extractor for extracting symbols and relationships from Swift source code
 /// Implementation of comprehensive Swift extractor with full Swift language support
 pub struct SwiftExtractor {
     base: BaseExtractor,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<PendingRelationship>,
 }
 
 impl SwiftExtractor {
@@ -29,7 +31,18 @@ impl SwiftExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
+            pending_relationships: Vec::new(),
         }
+    }
+
+    /// Get pending relationships that need cross-file resolution
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
+    }
+
+    /// Add a pending relationship (used during extraction)
+    pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
     }
 
     /// Extract all symbols from Swift source code

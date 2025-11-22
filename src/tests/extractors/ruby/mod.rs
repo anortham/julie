@@ -2,6 +2,7 @@
 // Following TDD pattern: RED phase - tests should compile but fail
 
 // Submodule declarations
+pub mod cross_file_relationships;
 pub mod doc_comments;
 pub mod extractor;
 

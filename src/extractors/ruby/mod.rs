@@ -24,6 +24,8 @@ mod symbols;
 pub struct RubyExtractor {
     base: BaseExtractor,
     current_visibility: Visibility,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<crate::extractors::base::PendingRelationship>,
 }
 
 impl RubyExtractor {
@@ -31,6 +33,7 @@ impl RubyExtractor {
         Self {
             base: BaseExtractor::new("ruby".to_string(), file_path, content, workspace_root),
             current_visibility: Visibility::Public,
+            pending_relationships: Vec::new(),
         }
     }
 
@@ -60,8 +63,8 @@ impl RubyExtractor {
     }
 
     /// Extract relationships between symbols (inheritance, module inclusion, etc.)
-    pub fn extract_relationships(&self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
-        relationships::extract_relationships(&self.base, tree, symbols)
+    pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
+        relationships::extract_relationships(self, tree, symbols)
     }
 
     /// Extract identifier usages for LSP-quality references
@@ -188,5 +191,27 @@ impl RubyExtractor {
             self.traverse_tree_with_parent(child, symbols, current_parent_id.clone());
         }
         self.current_visibility = old_visibility; // Restore previous visibility
+    }
+
+    // ========================================================================
+    // Accessors for sub-modules
+    // ========================================================================
+
+    pub(crate) fn base(&self) -> &BaseExtractor {
+        &self.base
+    }
+
+    // ========================================================================
+    // Pending Relationship Management
+    // ========================================================================
+
+    /// Add a pending relationship that needs cross-file resolution
+    pub(crate) fn add_pending_relationship(&mut self, pending: crate::extractors::base::PendingRelationship) {
+        self.pending_relationships.push(pending);
+    }
+
+    /// Get all pending relationships collected during extraction
+    pub fn get_pending_relationships(&self) -> Vec<crate::extractors::base::PendingRelationship> {
+        self.pending_relationships.clone()
     }
 }

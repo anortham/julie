@@ -5,12 +5,14 @@
 mod identifiers;
 mod relationships;
 
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
+use crate::extractors::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
 use tree_sitter::Tree;
 
 pub struct RExtractor {
     base: BaseExtractor,
     symbols: Vec<Symbol>,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<PendingRelationship>,
 }
 
 impl RExtractor {
@@ -23,6 +25,7 @@ impl RExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             symbols: Vec::new(),
+            pending_relationships: Vec::new(),
         }
     }
 
@@ -112,7 +115,7 @@ impl RExtractor {
     }
 
     pub fn extract_relationships(
-        &self,
+        &mut self,
         tree: &Tree,
         symbols: &[Symbol],
     ) -> Vec<Relationship> {
@@ -121,5 +124,19 @@ impl RExtractor {
 
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(self, tree, symbols)
+    }
+
+    // ========================================================================
+    // Pending Relationship Management
+    // ========================================================================
+
+    /// Add a pending relationship that needs cross-file resolution
+    pub(crate) fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
+    }
+
+    /// Get all pending relationships collected during extraction
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
     }
 }

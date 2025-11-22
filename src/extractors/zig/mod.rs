@@ -1,4 +1,4 @@
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
+use crate::extractors::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
 use tree_sitter::{Node, Tree};
 
 // Sub-modules
@@ -13,6 +13,8 @@ mod variables;
 
 pub struct ZigExtractor {
     base: BaseExtractor,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<PendingRelationship>,
 }
 
 impl ZigExtractor {
@@ -24,7 +26,23 @@ impl ZigExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
+            pending_relationships: Vec::new(),
         }
+    }
+
+    /// Get pending relationships that need cross-file resolution
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
+    }
+
+    /// Add a pending relationship (used during extraction)
+    pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
+    }
+
+    /// Get mutable access to the base extractor
+    pub(crate) fn get_base_mut(&mut self) -> &mut BaseExtractor {
+        &mut self.base
     }
 
     /// Main entry point for symbol extraction
@@ -122,7 +140,7 @@ impl ZigExtractor {
 
     /// Extract relationships between symbols (calls, composition, etc.)
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
-        relationships::extract_relationships(&mut self.base, tree, symbols)
+        relationships::extract_relationships(self, tree, symbols)
     }
 
     /// Infer types from symbols using Zig-specific rules

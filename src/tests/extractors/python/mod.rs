@@ -3,6 +3,7 @@
 
 // Submodule declarations
 pub mod assignments;
+pub mod cross_file_relationships;
 pub mod decorators;
 pub mod extractor;
 pub mod functions;

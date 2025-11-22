@@ -20,11 +20,13 @@ mod signatures;
 mod types;
 mod variables;
 
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
+use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind, PendingRelationship};
 use tree_sitter::Tree;
 
 pub struct BashExtractor {
     pub(super) base: BaseExtractor,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<PendingRelationship>,
 }
 
 impl BashExtractor {
@@ -36,6 +38,7 @@ impl BashExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
+            pending_relationships: Vec::new(),
         }
     }
 
@@ -203,5 +206,19 @@ impl BashExtractor {
         self.base
             .find_containing_symbol(&node, &file_symbols)
             .map(|s| s.id.clone())
+    }
+
+    // ========================================================================
+    // Pending Relationship Management
+    // ========================================================================
+
+    /// Add a pending relationship that needs cross-file resolution
+    pub(crate) fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
+    }
+
+    /// Get all pending relationships collected during extraction
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
     }
 }

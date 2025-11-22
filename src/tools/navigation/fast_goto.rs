@@ -8,7 +8,7 @@
 use anyhow::Result;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::CallToolResult;
+use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
@@ -17,6 +17,7 @@ use crate::handler::JulieServerHandler;
 use crate::tools::shared::create_toonable_result;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
+use super::formatting::format_lean_goto_results;
 use super::reference_workspace;
 use super::resolution::{compare_symbols_by_priority_and_context, resolve_workspace_filter};
 use super::semantic_matching;
@@ -28,12 +29,12 @@ fn default_workspace() -> Option<String> {
 }
 
 fn default_output_format() -> Option<String> {
-    None // Defaults to "auto" (TOON for 5+ results, JSON otherwise)
+    None // None = lean format (definition list). Override with "json", "toon", or "auto"
 }
 
 #[mcp_tool(
     name = "fast_goto",
-    description = "Navigate to symbol definitions with fuzzy matching across languages. Supports TOON format (output_format='toon' or 'auto'): compact tabular representation with 50-70% token savings vs JSON. Auto mode uses TOON for 5+ results.",
+    description = "Navigate to symbol definitions with fuzzy matching across languages. Default output is lean text format (70% token savings vs JSON). Alternative formats: output_format='json' for structured data, 'toon' for compact tabular, 'auto' for smart selection.",
     title = "Navigate to Definition",
     idempotent_hint = true,
     destructive_hint = false,
@@ -54,59 +55,77 @@ pub struct FastGotoTool {
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Output format: "json", "toon", or "auto"
-    /// Default: "auto" (TOON for 5+ definitions, JSON otherwise)
-    /// - "json": Full structured JSON with all metadata
-    /// - "toon": Compact tabular format (50-70% token savings)
-    /// - "auto": TOON for 5+ definitions, JSON otherwise
+    /// Output format: "lean" (default - text list), "json", "toon", or "auto"
     #[serde(default = "default_output_format")]
     pub output_format: Option<String>,
 }
 
 impl FastGotoTool {
-    /// Helper: Create structured result with TOON encoding and proper fallback
+    /// Helper: Create result with lean format as default, JSON/TOON as alternatives
     fn create_result(
         &self,
-        found: bool,
+        _found: bool,
         definitions: Vec<Symbol>,
         next_actions: Vec<String>,
         _markdown: String,
     ) -> Result<CallToolResult> {
-        // Resolve output format (default: "auto")
-        let effective_format = self.output_format.as_deref().unwrap_or("auto");
+        // Return based on output_format - lean is default
+        match self.output_format.as_deref() {
+            None | Some("lean") => {
+                // Lean mode (DEFAULT): Simple text list of definitions
+                let lean_output = format_lean_goto_results(&self.symbol, &definitions);
+                debug!(
+                    "✅ Returning lean goto results ({} chars, {} definitions)",
+                    lean_output.len(),
+                    definitions.len()
+                );
+                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+            }
+            Some("toon") | Some("auto") | Some("json") => {
+                // Structured formats: Build full result object
+                let definition_results: Vec<DefinitionResult> = definitions
+                    .iter()
+                    .map(|symbol| DefinitionResult {
+                        name: symbol.name.clone(),
+                        kind: format!("{:?}", symbol.kind),
+                        language: symbol.language.clone(),
+                        file_path: symbol.file_path.clone(),
+                        start_line: symbol.start_line,
+                        start_column: symbol.start_column,
+                        end_line: symbol.end_line,
+                        end_column: symbol.end_column,
+                        signature: symbol.signature.clone(),
+                    })
+                    .collect();
 
-        let definition_results: Vec<DefinitionResult> = definitions
-            .iter()
-            .map(|symbol| DefinitionResult {
-                name: symbol.name.clone(),
-                kind: format!("{:?}", symbol.kind),
-                language: symbol.language.clone(),
-                file_path: symbol.file_path.clone(),
-                start_line: symbol.start_line,
-                start_column: symbol.start_column,
-                end_line: symbol.end_line,
-                end_column: symbol.end_column,
-                signature: symbol.signature.clone(),
-            })
-            .collect();
+                let result = FastGotoResult {
+                    tool: "fast_goto".to_string(),
+                    symbol: self.symbol.clone(),
+                    found: !definitions.is_empty(),
+                    definitions: definition_results,
+                    next_actions,
+                };
 
-        let result = FastGotoResult {
-            tool: "fast_goto".to_string(),
-            symbol: self.symbol.clone(),
-            found,
-            definitions: definition_results,
-            next_actions,
-        };
-
-        // Use shared TOON/JSON formatter
-        create_toonable_result(
-            &result,                 // JSON data
-            &result,                 // TOON data (same structure for this tool)
-            Some(effective_format),  // Pass resolved format
-            5,                       // Auto threshold: 5+ results use TOON
-            result.definitions.len(),
-            "fast_goto"
-        )
+                // Use shared TOON/JSON formatter
+                create_toonable_result(
+                    &result,
+                    &result,
+                    self.output_format.as_deref(),
+                    10, // Auto threshold: 10+ results use TOON
+                    result.definitions.len(),
+                    "fast_goto",
+                )
+            }
+            Some(unknown) => {
+                // Unknown format - warn and use lean
+                warn!(
+                    "⚠️ Unknown output_format '{}', using lean format",
+                    unknown
+                );
+                let lean_output = format_lean_goto_results(&self.symbol, &definitions);
+                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+            }
+        }
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {

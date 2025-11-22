@@ -19,6 +19,6 @@ pub mod types;
 // Re-export key types for external use
 pub use extractor::BaseExtractor;
 pub use types::{
-    ContextConfig, ExtractionResults, Identifier, IdentifierKind, Relationship, RelationshipKind,
-    Symbol, SymbolKind, SymbolOptions, TypeInfo, Visibility,
+    ContextConfig, ExtractionResults, Identifier, IdentifierKind, PendingRelationship,
+    Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, TypeInfo, Visibility,
 };

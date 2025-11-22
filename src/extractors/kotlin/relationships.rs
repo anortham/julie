@@ -1,9 +1,12 @@
-//! Relationship extraction for Kotlin (inheritance, implementation)
+//! Relationship extraction for Kotlin (inheritance, implementation, calls)
 //!
-//! This module handles extraction of inheritance and interface implementation
-//! relationships between types.
+//! This module handles extraction of inheritance, interface implementation,
+//! and method/function call relationships.
 
-use crate::extractors::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::base::{
+    BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
+};
+use crate::extractors::kotlin::KotlinExtractor;
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -162,4 +165,191 @@ fn find_class_symbol<'a>(
             && matches!(s.kind, SymbolKind::Class | SymbolKind::Interface)
             && s.file_path == base.file_path
     })
+}
+
+/// Extract function/method call relationships
+///
+/// Creates resolved Relationship when target is a local function.
+/// Creates PendingRelationship when target is:
+/// - Not found in local symbol_map (e.g., method on imported type)
+pub(super) fn extract_call_relationships(
+    extractor: &mut KotlinExtractor,
+    node: Node,
+    symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
+    // Build a map of symbols by name for quick lookup
+    let symbol_map: HashMap<String, &Symbol> =
+        symbols.iter().map(|s| (s.name.clone(), s)).collect();
+
+    // Find call expression nodes in this subtree
+    walk_tree_for_calls(extractor, node, &symbol_map, symbols, relationships);
+}
+
+fn walk_tree_for_calls(
+    extractor: &mut KotlinExtractor,
+    node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+    all_symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
+    if node.kind() == "call_expression" {
+        extract_function_call_relationship(
+            extractor,
+            node,
+            symbol_map,
+            all_symbols,
+            relationships,
+        );
+    }
+
+    // Recursively process children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        walk_tree_for_calls(extractor, child, symbol_map, all_symbols, relationships);
+    }
+}
+
+fn extract_function_call_relationship(
+    extractor: &mut KotlinExtractor,
+    node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+    all_symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
+    // Extract the function name being called
+    // In a call_expression, the function name is typically the first identifier
+    let function_name = {
+        let base = extractor.base();
+        let mut result = None;
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "identifier" || child.kind() == "simple_identifier" {
+                result = Some(base.get_node_text(&child));
+                break;
+            }
+            // Handle navigation expressions (obj.method) - get the last identifier
+            if child.kind() == "navigation_expression" {
+                let mut last_id = None;
+                let mut nav_cursor = child.walk();
+                for nav_child in child.children(&mut nav_cursor) {
+                    if nav_child.kind() == "identifier" || nav_child.kind() == "simple_identifier" {
+                        last_id = Some(base.get_node_text(&nav_child));
+                    }
+                }
+                if last_id.is_some() {
+                    result = last_id;
+                    break;
+                }
+            }
+        }
+        result
+    };
+
+    let Some(function_name) = function_name else {
+        return;
+    };
+
+    // Find the calling function context
+    let calling_function = find_containing_function(extractor, node, all_symbols);
+    let caller_symbol = calling_function
+        .as_ref()
+        .and_then(|name| symbol_map.get(name));
+
+    // No caller context means we can't create a meaningful relationship
+    let Some(caller) = caller_symbol else {
+        return;
+    };
+
+    let line_number = node.start_position().row as u32 + 1;
+    let file_path = extractor.base().file_path.clone();
+
+    // Check if we can resolve the callee locally
+    match symbol_map.get(function_name.as_str()) {
+        Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
+            // Target is an Import symbol - need cross-file resolution
+            extractor.add_pending_relationship(PendingRelationship {
+                from_symbol_id: caller.id.clone(),
+                callee_name: function_name,
+                kind: RelationshipKind::Calls,
+                file_path,
+                line_number,
+                confidence: 0.8,
+            });
+        }
+        Some(called_symbol) => {
+            // Target is a local function - create resolved Relationship
+            relationships.push(Relationship {
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    caller.id,
+                    called_symbol.id,
+                    RelationshipKind::Calls,
+                    node.start_position().row
+                ),
+                from_symbol_id: caller.id.clone(),
+                to_symbol_id: called_symbol.id.clone(),
+                kind: RelationshipKind::Calls,
+                file_path,
+                line_number,
+                confidence: 0.9,
+                metadata: None,
+            });
+        }
+        None => {
+            // Target not found in local symbols - likely a method on imported type
+            // Create PendingRelationship for cross-file resolution
+            extractor.add_pending_relationship(PendingRelationship {
+                from_symbol_id: caller.id.clone(),
+                callee_name: function_name,
+                kind: RelationshipKind::Calls,
+                file_path,
+                line_number,
+                confidence: 0.7,
+            });
+        }
+    }
+}
+
+/// Find the function that contains this node
+fn find_containing_function(
+    extractor: &KotlinExtractor,
+    node: Node,
+    symbols: &[Symbol],
+) -> Option<String> {
+    let base = extractor.base();
+    let file_path = &base.file_path;
+
+    // Walk up the tree to find a function_declaration node
+    let mut current = Some(node);
+    while let Some(n) = current {
+        if n.kind() == "function_declaration" {
+            // Extract function name from the declaration
+            let function_name = {
+                let mut found_name = None;
+                let mut cursor = n.walk();
+                for child in n.children(&mut cursor) {
+                    if child.kind() == "identifier" {
+                        found_name = Some(base.get_node_text(&child));
+                        break;
+                    }
+                }
+                found_name
+            };
+
+            if let Some(name) = function_name {
+                // Verify this symbol exists in our symbol list
+                if symbols
+                    .iter()
+                    .any(|s| s.name == name && &s.file_path == file_path)
+                {
+                    return Some(name);
+                }
+            }
+            break;
+        }
+        current = n.parent();
+    }
+
+    None
 }

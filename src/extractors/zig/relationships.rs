@@ -1,23 +1,25 @@
-use crate::extractors::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::base::{BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::zig::ZigExtractor;
 use tree_sitter::{Node, Tree};
 
 /// Extract relationships between symbols (calls, composition, inheritance)
 pub(super) fn extract_relationships(
-    base: &mut BaseExtractor,
+    extractor: &mut ZigExtractor,
     tree: &Tree,
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
-    traverse_for_relationships(base, tree.root_node(), symbols, &mut relationships);
+    traverse_for_relationships(extractor, tree.root_node(), symbols, &mut relationships);
     relationships
 }
 
 fn traverse_for_relationships(
-    base: &mut BaseExtractor,
+    extractor: &mut ZigExtractor,
     node: Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
+    let base = extractor.get_base_mut();
     match node.kind() {
         "struct_declaration" => {
             extract_struct_relationships(base, node, symbols, relationships);
@@ -32,7 +34,7 @@ fn traverse_for_relationships(
             }
         }
         "call_expression" => {
-            extract_function_call_relationships(base, node, symbols, relationships);
+            extract_function_call_relationships(extractor, node, symbols, relationships);
         }
         _ => {}
     }
@@ -40,7 +42,7 @@ fn traverse_for_relationships(
     // Recursively traverse children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        traverse_for_relationships(base, child, symbols, relationships);
+        traverse_for_relationships(extractor, child, symbols, relationships);
     }
 }
 
@@ -143,11 +145,12 @@ fn traverse_struct_fields(
 }
 
 fn extract_function_call_relationships(
-    base: &mut BaseExtractor,
+    extractor: &mut ZigExtractor,
     node: Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
+    let base = extractor.get_base_mut();
     let mut called_func_name: Option<String> = None;
 
     // Check for direct function call (identifier + arguments)
@@ -163,48 +166,70 @@ fn extract_function_call_relationships(
     }
 
     if let Some(called_func_name) = called_func_name {
-        let called_symbol = symbols
-            .iter()
-            .find(|s| s.name == called_func_name && s.kind == SymbolKind::Function);
-
-        if let Some(called_symbol) = called_symbol {
-            // Find the calling function
-            let mut current = node.parent();
-            while let Some(parent) = current {
-                if matches!(
+        // Find the calling function first
+        let mut current = node.parent();
+        let caller_symbol = loop {
+            match current {
+                Some(parent) if matches!(
                     parent.kind(),
                     "function_declaration" | "function_definition"
-                ) {
+                ) => {
                     if let Some(caller_name_node) = base.find_child_by_type(&parent, "identifier") {
                         let caller_name = base.get_node_text(&caller_name_node);
-                        let caller_symbol = symbols
+                        break symbols
                             .iter()
                             .find(|s| s.name == caller_name && s.kind == SymbolKind::Function);
-
-                        if let Some(caller_symbol) = caller_symbol {
-                            if caller_symbol.id != called_symbol.id {
-                                relationships.push(Relationship {
-                                    id: format!(
-                                        "{}_{}_{:?}_{}",
-                                        caller_symbol.id,
-                                        called_symbol.id,
-                                        RelationshipKind::Calls,
-                                        node.start_position().row
-                                    ),
-                                    from_symbol_id: caller_symbol.id.clone(),
-                                    to_symbol_id: called_symbol.id.clone(),
-                                    kind: RelationshipKind::Calls,
-                                    file_path: base.file_path.clone(),
-                                    line_number: (node.start_position().row + 1) as u32,
-                                    confidence: 0.9,
-                                    metadata: None,
-                                });
-                            }
-                        }
                     }
-                    break;
+                    break None;
                 }
-                current = parent.parent();
+                Some(parent) => current = parent.parent(),
+                None => break None,
+            }
+        };
+
+        if let Some(caller_symbol) = caller_symbol {
+            // Now check if the called function exists locally
+            let called_symbol = symbols
+                .iter()
+                .find(|s| s.name == called_func_name && s.kind == SymbolKind::Function);
+
+            let line_number = (node.start_position().row + 1) as u32;
+            let file_path = base.file_path.clone();
+
+            match called_symbol {
+                Some(called_symbol) => {
+                    // Called function found locally - create resolved relationship
+                    if caller_symbol.id != called_symbol.id {
+                        relationships.push(Relationship {
+                            id: format!(
+                                "{}_{}_{:?}_{}",
+                                caller_symbol.id,
+                                called_symbol.id,
+                                RelationshipKind::Calls,
+                                node.start_position().row
+                            ),
+                            from_symbol_id: caller_symbol.id.clone(),
+                            to_symbol_id: called_symbol.id.clone(),
+                            kind: RelationshipKind::Calls,
+                            file_path,
+                            line_number,
+                            confidence: 0.9,
+                            metadata: None,
+                        });
+                    }
+                }
+                None => {
+                    // Called function not found locally - likely from another file
+                    // Create pending relationship for cross-file resolution
+                    extractor.add_pending_relationship(PendingRelationship {
+                        from_symbol_id: caller_symbol.id.clone(),
+                        callee_name: called_func_name.clone(),
+                        kind: RelationshipKind::Calls,
+                        file_path,
+                        line_number,
+                        confidence: 0.7,
+                    });
+                }
             }
         }
     }

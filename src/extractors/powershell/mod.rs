@@ -24,12 +24,14 @@ pub mod relationships;
 pub mod types;
 pub mod variables;
 
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
+use crate::extractors::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
 use tree_sitter::Tree;
 
 /// PowerShell language extractor that handles PowerShell-specific constructs for Windows/Azure DevOps
 pub struct PowerShellExtractor {
     pub base: BaseExtractor,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<PendingRelationship>,
 }
 
 impl PowerShellExtractor {
@@ -41,6 +43,7 @@ impl PowerShellExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
+            pending_relationships: Vec::new(),
         }
     }
 
@@ -216,12 +219,22 @@ impl PowerShellExtractor {
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         let mut relationships = Vec::new();
         relationships::walk_tree_for_relationships(
-            &self.base,
+            self,
             tree.root_node(),
             symbols,
             &mut relationships,
         );
         relationships
+    }
+
+    /// Get pending relationships that need cross-file resolution
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
+    }
+
+    /// Add a pending relationship for cross-file resolution
+    pub(crate) fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
     }
 
     /// Infer types for symbols

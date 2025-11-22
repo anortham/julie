@@ -19,13 +19,14 @@ mod relationships;
 mod tables;
 mod variables;
 
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
+use crate::extractors::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
 use tree_sitter::Tree;
 
 pub struct LuaExtractor {
     base: BaseExtractor,
     symbols: Vec<Symbol>,
-    relationships: Vec<Relationship>,
+    pub(crate) relationships: Vec<Relationship>,
+    pending_relationships: Vec<PendingRelationship>,
 }
 
 impl LuaExtractor {
@@ -39,12 +40,14 @@ impl LuaExtractor {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             symbols: Vec::new(),
             relationships: Vec::new(),
+            pending_relationships: Vec::new(),
         }
     }
 
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         self.symbols.clear();
         self.relationships.clear();
+        self.pending_relationships.clear();
 
         // Use core module to traverse and extract symbols
         core::traverse_tree(&mut self.symbols, &mut self.base, tree.root_node(), None);
@@ -57,7 +60,7 @@ impl LuaExtractor {
 
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         self.relationships.clear();
-        relationships::extract_relationships(&mut self.relationships, &self.base, tree, symbols);
+        relationships::extract_relationships(self, tree, symbols);
         self.relationships.clone()
     }
 
@@ -77,5 +80,19 @@ impl LuaExtractor {
 
     pub(crate) fn base_mut(&mut self) -> &mut BaseExtractor {
         &mut self.base
+    }
+
+    // ========================================================================
+    // Pending Relationship Management
+    // ========================================================================
+
+    /// Add a pending relationship that needs cross-file resolution
+    pub(crate) fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
+    }
+
+    /// Get all pending relationships collected during extraction
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
     }
 }

@@ -35,30 +35,34 @@ pub fn format_call_trees(
     };
 
     // Choose output format based on parameter
-    if output_format == "tree" {
-        // ASCII tree visualization for humans
-        build_ascii_tree(
-            trees,
-            total_nodes,
-            &all_languages,
-            direction_label,
-            symbol,
-            direction,
-            max_depth,
-        )
-    } else {
-        // JSON-focused summary for AI agents (default)
-        Ok(format!(
-            "Traced {} call paths for '{}' (direction: {}, depth: {}, cross_language: {})\nFound {} {} across {} languages\n\nFull call path details are in structured_content.call_paths",
-            trees.len(),
-            symbol,
-            direction,
-            max_depth,
-            true, // Cross-language always enabled
-            total_nodes,
-            direction_label,
-            all_languages.len()
-        ))
+    // "lean" or "tree" = ASCII tree (default), others = summary for structured formats
+    match output_format {
+        "lean" | "tree" => {
+            // ASCII tree visualization (DEFAULT) - optimal for AI agents
+            build_ascii_tree(
+                trees,
+                total_nodes,
+                &all_languages,
+                direction_label,
+                symbol,
+                direction,
+                max_depth,
+            )
+        }
+        _ => {
+            // Summary for JSON/TOON structured formats
+            Ok(format!(
+                "Traced {} call paths for '{}' (direction: {}, depth: {}, cross_language: {})\nFound {} {} across {} languages\n\nFull call path details are in structured_content.call_paths",
+                trees.len(),
+                symbol,
+                direction,
+                max_depth,
+                true, // Cross-language always enabled
+                total_nodes,
+                direction_label,
+                all_languages.len()
+            ))
+        }
     }
 }
 

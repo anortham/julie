@@ -4,6 +4,7 @@
 
 use super::helpers::*;
 use crate::extractors::base::{BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind};
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract relationships from the tree
@@ -13,13 +14,15 @@ pub(super) fn extract_relationships(
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
     let mut relationships = Vec::new();
+    let symbol_map: HashMap<String, &Symbol> =
+        symbols.iter().map(|s| (s.name.clone(), s)).collect();
 
     traverse_tree(node, &mut |current_node| match current_node.kind() {
         "class_definition" => {
             extract_class_relationships(base, &current_node, symbols, &mut relationships);
         }
-        "method_invocation" => {
-            extract_method_call_relationships(base, &current_node, symbols, &mut relationships);
+        "member_access" | "assignable_expression" => {
+            extract_method_call_relationships(base, &current_node, symbols, &symbol_map, &mut relationships);
         }
         _ => {}
     });
@@ -152,11 +155,101 @@ fn extract_class_relationships(
 }
 
 fn extract_method_call_relationships(
-    _base: &mut BaseExtractor,
-    _node: &Node,
-    _symbols: &[Symbol],
-    _relationships: &mut Vec<Relationship>,
+    base: &mut BaseExtractor,
+    node: &Node,
+    symbols: &[Symbol],
+    symbol_map: &HashMap<String, &Symbol>,
+    relationships: &mut Vec<Relationship>,
 ) {
-    // Extract method call relationships for cross-method dependencies
-    // This could be expanded for more detailed call graph analysis
+    // Check if this is actually a function call (has argument_part)
+    let is_call = if let Some(selector_node) = find_child_by_type(node, "selector") {
+        find_child_by_type(&selector_node, "argument_part").is_some()
+    } else {
+        false
+    };
+
+    // Only process if this is a function call
+    if !is_call {
+        return;
+    }
+
+    // Extract the function/method name being called
+    let function_name = if let Some(object_node) = node.child_by_field_name("object") {
+        // For object.method(), get just "method"
+        if let Some(selector_node) = node.child_by_field_name("selector") {
+            if let Some(id_node) = find_child_by_type(&selector_node, "identifier") {
+                get_node_text(&id_node)
+            } else {
+                get_node_text(&selector_node)
+            }
+        } else {
+            get_node_text(&object_node)
+        }
+    } else if let Some(selector_node) = node.child_by_field_name("selector") {
+        if let Some(id_node) = find_child_by_type(&selector_node, "identifier") {
+            get_node_text(&id_node)
+        } else {
+            get_node_text(&selector_node)
+        }
+    } else {
+        return;
+    };
+
+    // Find the called function in our symbols
+    if let Some(called_symbol) = symbol_map.get(function_name.as_str()) {
+        // Find the containing function that's making this call
+        if let Some(caller_symbol) = find_containing_function(base, node, symbols) {
+            // Create a Relationship for this call
+            relationships.push(Relationship {
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    caller_symbol.id,
+                    called_symbol.id,
+                    RelationshipKind::Calls,
+                    node.start_position().row
+                ),
+                from_symbol_id: caller_symbol.id.clone(),
+                to_symbol_id: called_symbol.id.clone(),
+                kind: RelationshipKind::Calls,
+                file_path: base.file_path.clone(),
+                line_number: node.start_position().row as u32 + 1,
+                confidence: 0.9,
+                metadata: None,
+            });
+        }
+    }
+}
+
+/// Find the containing function for a node by walking up the tree
+fn find_containing_function<'a>(
+    base: &BaseExtractor,
+    node: &Node,
+    symbols: &'a [Symbol],
+) -> Option<&'a Symbol> {
+    let mut current = node.parent();
+
+    while let Some(current_node) = current {
+        // Check for function or method declarations
+        if current_node.kind() == "function_declaration"
+            || current_node.kind() == "method_signature"
+            || current_node.kind() == "function_signature"
+        {
+            // Get the function name
+            if let Some(name_node) = find_child_by_type(&current_node, "identifier") {
+                let func_name = get_node_text(&name_node);
+                // Find this function in symbols, but only from the current file
+                if let Some(symbol) = symbols.iter().find(|s| {
+                    s.name == func_name
+                        && s.file_path == base.file_path
+                        && matches!(s.kind, SymbolKind::Function | SymbolKind::Method)
+                }) {
+                    return Some(symbol);
+                }
+            }
+        }
+
+        current = current_node.parent();
+    }
+
+    None
 }

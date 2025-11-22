@@ -17,12 +17,14 @@ mod properties;
 mod relationships;
 mod types;
 
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
+use crate::extractors::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 pub struct KotlinExtractor {
     base: BaseExtractor,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<PendingRelationship>,
 }
 
 impl KotlinExtractor {
@@ -34,7 +36,18 @@ impl KotlinExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
+            pending_relationships: Vec::new(),
         }
+    }
+
+    /// Get pending relationships that need cross-file resolution
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
+    }
+
+    /// Add a pending relationship (used during extraction)
+    pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
     }
 
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
@@ -168,7 +181,7 @@ impl KotlinExtractor {
     }
 
     fn visit_node_for_relationships(
-        &self,
+        &mut self,
         node: Node,
         symbols: &[Symbol],
         relationships: &mut Vec<Relationship>,
@@ -184,6 +197,12 @@ impl KotlinExtractor {
                     symbols,
                     relationships,
                 );
+                // Also extract method calls from within this type
+                relationships::extract_call_relationships(self, node, symbols, relationships);
+            }
+            "function_declaration" => {
+                // Extract function calls from within this function
+                relationships::extract_call_relationships(self, node, symbols, relationships);
             }
             _ => {}
         }
@@ -196,5 +215,13 @@ impl KotlinExtractor {
 
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, tree, symbols)
+    }
+
+    // ========================================================================
+    // Accessors for sub-modules
+    // ========================================================================
+
+    pub(crate) fn base(&self) -> &BaseExtractor {
+        &self.base
     }
 }

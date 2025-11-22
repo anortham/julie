@@ -58,6 +58,7 @@ pub mod animations; // States, transitions, animations
 pub mod basics; // Core QML: imports, objects, basic properties
 pub mod bindings; // Property bindings and expressions
 pub mod components; // Custom components, loaders, repeaters
+pub mod cross_file_relationships; // Cross-file relationship resolution (pending relationships)
 pub mod functions; // Functions and JavaScript code
 pub mod identifiers; // Identifier extraction (calls, member access, variable refs)
 pub mod layouts; // Anchors, layouts, positioning

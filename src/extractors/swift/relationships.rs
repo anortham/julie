@@ -1,13 +1,13 @@
-use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use serde_json;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
 use super::SwiftExtractor;
 
-/// Extracts inheritance and protocol conformance relationships between Swift types
+/// Extracts inheritance, protocol conformance, and call relationships in Swift
 impl SwiftExtractor {
-    /// Extract relationships between Swift types (inheritance and protocol conformance)
+    /// Extract relationships between Swift types and function calls
     /// Implementation of extractRelationships method
     pub fn extract_relationships(
         &mut self,
@@ -20,7 +20,7 @@ impl SwiftExtractor {
     }
 
     fn visit_node_for_relationships(
-        &self,
+        &mut self,
         node: Node,
         symbols: &[Symbol],
         relationships: &mut Vec<Relationship>,
@@ -28,6 +28,9 @@ impl SwiftExtractor {
         match node.kind() {
             "class_declaration" | "struct_declaration" | "extension_declaration" => {
                 self.extract_inheritance_relationships(node, symbols, relationships);
+            }
+            "call_expression" => {
+                self.extract_call_relationship(node, symbols, relationships);
             }
             _ => {}
         }
@@ -219,5 +222,162 @@ impl SwiftExtractor {
         } else {
             None
         }
+    }
+
+    /// Extract function/method call relationships
+    ///
+    /// Creates resolved Relationship when target is a local function/method.
+    /// Creates PendingRelationship when target is not found in local symbol_map.
+    fn extract_call_relationship(
+        &mut self,
+        node: Node,
+        symbols: &[Symbol],
+        relationships: &mut Vec<Relationship>,
+    ) {
+        // Build a map of symbols by name for quick lookup
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.name.clone(), s)).collect();
+
+        // Extract the function/method name being called
+        let function_name = self.extract_call_target_name(node);
+
+        let Some(function_name) = function_name else {
+            return;
+        };
+
+        // Find the calling function context
+        let calling_function = self.find_containing_function(node, symbols);
+        let caller_symbol = calling_function
+            .as_ref()
+            .and_then(|name| symbol_map.get(name));
+
+        // No caller context means we can't create a meaningful relationship
+        let Some(caller) = caller_symbol else {
+            return;
+        };
+
+        let line_number = node.start_position().row as u32 + 1;
+        let file_path = self.base.file_path.clone();
+
+        // Check if we can resolve the callee locally
+        match symbol_map.get(function_name.as_str()) {
+            Some(called_symbol) => {
+                // Target is a local function/method - create resolved Relationship
+                relationships.push(Relationship {
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        caller.id,
+                        called_symbol.id,
+                        RelationshipKind::Calls,
+                        node.start_position().row
+                    ),
+                    from_symbol_id: caller.id.clone(),
+                    to_symbol_id: called_symbol.id.clone(),
+                    kind: RelationshipKind::Calls,
+                    file_path,
+                    line_number,
+                    confidence: 0.9,
+                    metadata: None,
+                });
+            }
+            None => {
+                // Target not found in local symbols - likely a method on imported type or cross-file call
+                // Create PendingRelationship for cross-file resolution
+                self.add_pending_relationship(PendingRelationship {
+                    from_symbol_id: caller.id.clone(),
+                    callee_name: function_name,
+                    kind: RelationshipKind::Calls,
+                    file_path,
+                    line_number,
+                    confidence: 0.7,
+                });
+            }
+        }
+    }
+
+    /// Extract the name of the function/method being called
+    fn extract_call_target_name(&self, node: Node) -> Option<String> {
+        // Try to extract the function/method name from a call_expression
+        // A call_expression can be:
+        // 1. function_name(...) -> simple_identifier
+        // 2. object.method(...) -> postfix_expression with member_access
+
+        // Get the first child that's not a comment or whitespace
+        let mut cursor = node.walk();
+        let first_child = node.children(&mut cursor).next()?;
+
+        match first_child.kind() {
+            "simple_identifier" => {
+                // Direct function call
+                Some(self.base.get_node_text(&first_child))
+            }
+            "postfix_expression" => {
+                // Method call or qualified call
+                self.extract_rightmost_call_identifier(first_child)
+            }
+            _ => None,
+        }
+    }
+
+    /// Extract the rightmost simple_identifier from a call node
+    fn extract_rightmost_call_identifier(&self, node: Node) -> Option<String> {
+        let mut result = None;
+        let mut cursor = node.walk();
+
+        for child in node.children(&mut cursor) {
+            if child.kind() == "simple_identifier" {
+                result = Some(self.base.get_node_text(&child));
+            } else if child.kind() == "postfix_expression" || child.kind() == "member_access_expression" {
+                // Recursively look in nested expressions
+                if let Some(inner) = self.extract_rightmost_call_identifier(child) {
+                    result = Some(inner);
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Find the function/method that contains this node
+    fn find_containing_function(
+        &self,
+        node: Node,
+        symbols: &[Symbol],
+    ) -> Option<String> {
+        let file_path = &self.base.file_path;
+
+        // Walk up the tree to find a function_declaration or init_declaration
+        let mut current = Some(node);
+        while let Some(n) = current {
+            match n.kind() {
+                "function_declaration" | "init_declaration" | "deinit_declaration" => {
+                    // Extract function/method name
+                    let func_name = {
+                        let mut found_name = None;
+                        let mut cursor = n.walk();
+                        for child in n.children(&mut cursor) {
+                            if child.kind() == "simple_identifier" {
+                                found_name = Some(self.base.get_node_text(&child));
+                                break;
+                            }
+                        }
+                        found_name
+                    };
+
+                    if let Some(name) = func_name {
+                        // Verify this symbol exists in our symbol list
+                        if symbols.iter().any(|s| s.name == name && &s.file_path == file_path)
+                        {
+                            return Some(name);
+                        }
+                    }
+                    break;
+                }
+                _ => {}
+            }
+            current = n.parent();
+        }
+
+        None
     }
 }

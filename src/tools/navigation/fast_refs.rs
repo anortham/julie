@@ -8,7 +8,7 @@
 use anyhow::Result;
 use rust_mcp_sdk::macros::JsonSchema;
 use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::CallToolResult;
+use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};
@@ -18,6 +18,7 @@ use crate::handler::JulieServerHandler;
 use crate::tools::shared::create_toonable_result;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
+use super::formatting::format_lean_refs_results;
 use super::reference_workspace;
 use super::resolution::resolve_workspace_filter;
 use super::semantic_matching;
@@ -38,12 +39,12 @@ fn default_workspace() -> Option<String> {
 }
 
 fn default_output_format() -> Option<String> {
-    None // Default to JSON for backwards compatibility
+    None // None = lean format (reference list). Override with "json", "toon", or "auto"
 }
 
 #[mcp_tool(
     name = "fast_refs",
-    description = "Find all references and usages of a symbol across the workspace. Julie 2.0: Default limit 10 (optimized for token efficiency, showing most relevant references first). Supports TOON format (output_format='toon' or 'auto'): compact tabular representation achieving 35-70% token savings vs JSON. Auto mode uses TOON for 5+ results.",
+    description = "Find all references and usages of a symbol across the workspace. Julie 2.0: Default limit 10 (optimized for token efficiency, showing most relevant references first). Default output is lean text format (70% token savings vs JSON). Alternative formats: output_format='json' for structured data, 'toon' for compact tabular, 'auto' for smart selection.",
     title = "Find All References",
     idempotent_hint = true,
     destructive_hint = false,
@@ -67,70 +68,96 @@ pub struct FastRefsTool {
     /// Reference kind filter: "call", "variable_ref", "type_usage", "member_access", "import"
     #[serde(default)]
     pub reference_kind: Option<String>,
-    /// Output format: "json" (default), "toon", or "auto" (smart selection)
+    /// Output format: "lean" (default - text list), "json", "toon", or "auto"
     #[serde(default = "default_output_format")]
     pub output_format: Option<String>,
 }
 
 impl FastRefsTool {
-    /// Helper: Create structured result with TOON encoding and proper fallback
+    /// Helper: Create result with lean format as default, JSON/TOON as alternatives
     fn create_result(
         &self,
-        found: bool,
+        _found: bool,
         definitions: Vec<Symbol>,
         references: Vec<Relationship>,
         next_actions: Vec<String>,
         _markdown: String,
     ) -> Result<CallToolResult> {
-        let definition_results: Vec<DefinitionResult> = definitions
-            .iter()
-            .map(|symbol| DefinitionResult {
-                name: symbol.name.clone(),
-                kind: format!("{:?}", symbol.kind),
-                language: symbol.language.clone(),
-                file_path: symbol.file_path.clone(),
-                start_line: symbol.start_line,
-                start_column: symbol.start_column,
-                end_line: symbol.end_line,
-                end_column: symbol.end_column,
-                signature: symbol.signature.clone(),
-            })
-            .collect();
+        // Return based on output_format - lean is default
+        match self.output_format.as_deref() {
+            None | Some("lean") => {
+                // Lean mode (DEFAULT): Simple text list
+                let lean_output = format_lean_refs_results(&self.symbol, &definitions, &references);
+                debug!(
+                    "✅ Returning lean refs results ({} chars, {} defs, {} refs)",
+                    lean_output.len(),
+                    definitions.len(),
+                    references.len()
+                );
+                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+            }
+            Some("toon") | Some("auto") | Some("json") => {
+                // Structured formats: Build full result object
+                let definition_results: Vec<DefinitionResult> = definitions
+                    .iter()
+                    .map(|symbol| DefinitionResult {
+                        name: symbol.name.clone(),
+                        kind: format!("{:?}", symbol.kind),
+                        language: symbol.language.clone(),
+                        file_path: symbol.file_path.clone(),
+                        start_line: symbol.start_line,
+                        start_column: symbol.start_column,
+                        end_line: symbol.end_line,
+                        end_column: symbol.end_column,
+                        signature: symbol.signature.clone(),
+                    })
+                    .collect();
 
-        let reference_results: Vec<ReferenceResult> = references
-            .iter()
-            .map(|rel| ReferenceResult {
-                from_symbol_id: rel.from_symbol_id.clone(),
-                to_symbol_id: rel.to_symbol_id.clone(),
-                kind: format!("{:?}", rel.kind),
-                file_path: rel.file_path.clone(),
-                line_number: rel.line_number,
-                confidence: rel.confidence,
-            })
-            .collect();
+                let reference_results: Vec<ReferenceResult> = references
+                    .iter()
+                    .map(|rel| ReferenceResult {
+                        from_symbol_id: rel.from_symbol_id.clone(),
+                        to_symbol_id: rel.to_symbol_id.clone(),
+                        kind: format!("{:?}", rel.kind),
+                        file_path: rel.file_path.clone(),
+                        line_number: rel.line_number,
+                        confidence: rel.confidence,
+                    })
+                    .collect();
 
-        let result = FastRefsResult {
-            tool: "fast_refs".to_string(),
-            symbol: self.symbol.clone(),
-            found,
-            include_definition: self.include_definition,
-            definition_count: definitions.len(),
-            reference_count: references.len(),
-            definitions: definition_results,
-            references: reference_results,
-            next_actions,
-        };
+                let result = FastRefsResult {
+                    tool: "fast_refs".to_string(),
+                    symbol: self.symbol.clone(),
+                    found: !definitions.is_empty() || !references.is_empty(),
+                    include_definition: self.include_definition,
+                    definition_count: definitions.len(),
+                    reference_count: references.len(),
+                    definitions: definition_results,
+                    references: reference_results,
+                    next_actions,
+                };
 
-        // Use shared TOON/JSON formatter
-        let total_results = result.definition_count + result.reference_count;
-        create_toonable_result(
-            &result,  // JSON data
-            &result,  // TOON data (same structure for this tool)
-            self.output_format.as_deref(),
-            5,  // Auto threshold: 5+ results use TOON
-            total_results,
-            "fast_refs"
-        )
+                // Use shared TOON/JSON formatter
+                let total_results = result.definition_count + result.reference_count;
+                create_toonable_result(
+                    &result,
+                    &result,
+                    self.output_format.as_deref(),
+                    10, // Auto threshold: 10+ results use TOON
+                    total_results,
+                    "fast_refs",
+                )
+            }
+            Some(unknown) => {
+                // Unknown format - warn and use lean
+                warn!(
+                    "⚠️ Unknown output_format '{}', using lean format",
+                    unknown
+                );
+                let lean_output = format_lean_refs_results(&self.symbol, &definitions, &references);
+                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+            }
+        }
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {

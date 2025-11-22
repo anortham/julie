@@ -31,12 +31,15 @@ use tree_sitter::{Node, Tree};
 /// Python extractor for extracting symbols and relationships from Python source code
 pub struct PythonExtractor {
     base: BaseExtractor,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<crate::extractors::base::PendingRelationship>,
 }
 
 impl PythonExtractor {
     pub fn new(file_path: String, content: String, workspace_root: &std::path::Path) -> Self {
         Self {
             base: BaseExtractor::new("python".to_string(), file_path, content, workspace_root),
+            pending_relationships: Vec::new(),
         }
     }
 
@@ -148,5 +151,19 @@ impl PythonExtractor {
 
     pub(crate) fn base_mut(&mut self) -> &mut BaseExtractor {
         &mut self.base
+    }
+
+    // ========================================================================
+    // Pending Relationship Management
+    // ========================================================================
+
+    /// Add a pending relationship that needs cross-file resolution
+    pub(crate) fn add_pending_relationship(&mut self, pending: crate::extractors::base::PendingRelationship) {
+        self.pending_relationships.push(pending);
+    }
+
+    /// Get all pending relationships collected during extraction
+    pub fn get_pending_relationships(&self) -> Vec<crate::extractors::base::PendingRelationship> {
+        self.pending_relationships.clone()
     }
 }

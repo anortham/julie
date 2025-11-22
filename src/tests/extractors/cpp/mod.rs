@@ -33,6 +33,7 @@ pub fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relati
 
 pub mod classes;
 pub mod concurrency;
+pub mod cross_file_relationships;
 pub mod doxygen_comments;
 pub mod exceptions;
 pub mod functions;

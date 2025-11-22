@@ -6,7 +6,9 @@
 /// - Two-phase processing: extract symbols → process impl blocks
 ///
 /// Implementation of comprehensive Rust extractor
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
+use crate::extractors::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
+};
 use tree_sitter::{Node, Tree};
 
 // Private modules
@@ -28,6 +30,8 @@ pub struct RustExtractor {
     base: BaseExtractor,
     impl_blocks: Vec<ImplBlockInfo>,
     is_processing_impl_blocks: bool,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<PendingRelationship>,
 }
 
 impl RustExtractor {
@@ -41,7 +45,18 @@ impl RustExtractor {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             impl_blocks: Vec::new(),
             is_processing_impl_blocks: false,
+            pending_relationships: Vec::new(),
         }
+    }
+
+    /// Get pending relationships that need cross-file resolution
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
+    }
+
+    /// Add a pending relationship (used during extraction)
+    pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
     }
 
     /// Extract symbols using two-phase approach

@@ -3,6 +3,7 @@
 // Direct Implementation of JavaScript extractor tests (TDD RED phase)
 
 // Submodule declarations
+pub mod cross_file_relationships;
 pub mod error_handling;
 pub mod identifier_extraction;
 pub mod jsdoc_comments;

@@ -21,13 +21,17 @@ mod methods;
 mod relationships;
 mod types;
 
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
+use crate::extractors::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol,
+};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 /// Java extractor for extracting symbols and relationships from Java source code
 pub struct JavaExtractor {
     base: BaseExtractor,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<PendingRelationship>,
 }
 
 impl JavaExtractor {
@@ -39,7 +43,18 @@ impl JavaExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
+            pending_relationships: Vec::new(),
         }
+    }
+
+    /// Get pending relationships that need cross-file resolution
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
+    }
+
+    /// Add a pending relationship (used during extraction)
+    pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
     }
 
     /// Extract all symbols from Java source code
@@ -107,6 +122,12 @@ impl JavaExtractor {
                     symbols,
                     relationships,
                 );
+                // Also extract method calls from within this type
+                relationships::extract_call_relationships(self, node, symbols, relationships);
+            }
+            "method_declaration" | "constructor_declaration" => {
+                // Extract method calls from within this method/constructor
+                relationships::extract_call_relationships(self, node, symbols, relationships);
             }
             _ => {}
         }

@@ -51,10 +51,12 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
 
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -80,9 +82,11 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -108,10 +112,12 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
 
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -136,15 +142,11 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
-
-            // DEBUG: Log what we extracted
-            if !_identifiers.is_empty() || !_types.is_empty() {
-                eprintln!("🔍 PYTHON {}: {} identifiers, {} types", file_path, _identifiers.len(), _types.len());
-            }
-
+            let pending = extractor.get_pending_relationships();
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -170,9 +172,11 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -198,9 +202,12 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
+
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -226,9 +233,11 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -251,9 +260,12 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let pending = extractor.get_pending_relationships();
+            Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: HashMap::new(),
             })
@@ -269,9 +281,11 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -300,6 +314,7 @@ pub fn extract_symbols_and_relationships(
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: extractor.get_pending_relationships(),
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -325,9 +340,11 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -353,9 +370,11 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -381,10 +400,12 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
 
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -409,9 +430,11 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -435,9 +458,12 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let pending = extractor.get_pending_relationships();
+            Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: HashMap::new(),
             })
@@ -454,6 +480,7 @@ pub fn extract_symbols_and_relationships(
             let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: extractor.get_pending_relationships(),
                 identifiers: _identifiers,
                 types: HashMap::new(),
             })
@@ -467,9 +494,12 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let pending_relationships = extractor.get_pending_relationships();
+            Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships,
                 identifiers: _identifiers,
                 types: HashMap::new(),
             })
@@ -488,6 +518,7 @@ pub fn extract_symbols_and_relationships(
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: Vec::new(),
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -516,6 +547,7 @@ pub fn extract_symbols_and_relationships(
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: Vec::new(),
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -545,6 +577,7 @@ pub fn extract_symbols_and_relationships(
                 symbols,
 
                 relationships: Vec::new(),
+                pending_relationships: Vec::new(),
 
                 identifiers: _identifiers,
 
@@ -566,6 +599,7 @@ pub fn extract_symbols_and_relationships(
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: Vec::new(),
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -594,6 +628,7 @@ pub fn extract_symbols_and_relationships(
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: Vec::new(),
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -622,6 +657,7 @@ pub fn extract_symbols_and_relationships(
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: extractor.get_pending_relationships(),
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -647,9 +683,11 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending = extractor.get_pending_relationships();
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -673,9 +711,12 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
+            let _identifiers = extractor.extract_identifiers(tree, &symbols);
+            let pending = extractor.get_pending_relationships();
+            Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: pending,
                 identifiers: _identifiers,
                 types: HashMap::new(),
             })
@@ -691,9 +732,11 @@ pub fn extract_symbols_and_relationships(
             let relationships = extractor.extract_relationships(tree, &symbols);
             let _identifiers = extractor.extract_identifiers(tree, &symbols);
             let _types = extractor.infer_types(&symbols);
+            let pending_relationships = extractor.get_pending_relationships();
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships,
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -722,6 +765,7 @@ pub fn extract_symbols_and_relationships(
             Ok(ExtractionResults {
                 symbols,
                 relationships,
+                pending_relationships: Vec::new(),
                 identifiers: _identifiers,
                 types: _types.into_iter().map(|(symbol_id, type_string)| {
                     (symbol_id.clone(), TypeInfo {
@@ -751,6 +795,7 @@ pub fn extract_symbols_and_relationships(
                 symbols,
 
                 relationships: Vec::new(),
+                pending_relationships: Vec::new(),
 
                 identifiers: _identifiers,
 
@@ -774,6 +819,7 @@ pub fn extract_symbols_and_relationships(
                 symbols,
 
                 relationships: Vec::new(),
+                pending_relationships: Vec::new(),
 
                 identifiers: _identifiers,
 
@@ -797,6 +843,7 @@ pub fn extract_symbols_and_relationships(
                 symbols,
 
                 relationships: Vec::new(),
+                pending_relationships: Vec::new(),
 
                 identifiers: _identifiers,
 
@@ -820,6 +867,7 @@ pub fn extract_symbols_and_relationships(
                 symbols,
 
                 relationships: Vec::new(),
+                pending_relationships: Vec::new(),
 
                 identifiers: _identifiers,
 
@@ -951,11 +999,6 @@ def foo():
             "python",
             &workspace_root,
         ).unwrap();
-        
-        // Assert we got identifiers
-        println!("Symbols: {}", results.symbols.len());
-        println!("Identifiers: {}", results.identifiers.len());
-        println!("Types: {}", results.types.len());
         
         assert!(results.symbols.len() > 0, "Should extract symbols");
         assert!(results.identifiers.len() > 0, "Factory should return identifiers from Python code!");

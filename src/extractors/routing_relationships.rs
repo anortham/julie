@@ -85,7 +85,7 @@ pub(crate) fn extract_relationships_for_language(
             Ok(extractor.extract_relationships(tree, symbols))
         }
         "ruby" => {
-            let extractor = crate::extractors::ruby::RubyExtractor::new(
+            let mut extractor = crate::extractors::ruby::RubyExtractor::new(
                 file_path.to_string(),
                 content.to_string(),
                 &tmp_path,

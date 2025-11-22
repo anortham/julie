@@ -5,6 +5,7 @@
 // Port Status: RED phase - All tests should fail initially until extractor is implemented
 
 // Submodule declarations
+pub mod cross_file_relationships;
 pub mod edge_cases;
 pub mod identifiers;
 pub mod phpdoc_comments;

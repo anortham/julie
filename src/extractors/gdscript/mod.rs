@@ -15,11 +15,12 @@ mod enums;
 mod functions;
 mod helpers;
 mod identifiers;
+mod relationships;
 mod signals;
 mod types;
 mod variables;
 
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
+use crate::extractors::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
 
@@ -28,6 +29,7 @@ pub struct GDScriptExtractor {
     pending_inheritance: HashMap<String, String>, // className -> baseClassName
     processed_positions: HashSet<String>,         // Track processed node positions
     current_class_context: Option<String>,        // Current class ID for scope tracking
+    pending_relationships: Vec<PendingRelationship>, // Cross-file relationships needing resolution
 }
 
 impl GDScriptExtractor {
@@ -42,6 +44,7 @@ impl GDScriptExtractor {
             pending_inheritance: HashMap::new(),
             processed_positions: HashSet::new(),
             current_class_context: None,
+            pending_relationships: Vec::new(),
         }
     }
 
@@ -107,11 +110,10 @@ impl GDScriptExtractor {
 
     pub fn extract_relationships(
         &mut self,
-        _tree: &Tree,
-        _symbols: &[Symbol],
+        tree: &Tree,
+        symbols: &[Symbol],
     ) -> Vec<Relationship> {
-        // For now, return empty relationships - this can be extended later
-        Vec::new()
+        relationships::extract_relationships(self, tree, symbols)
     }
 
     /// Extract all identifier usages (function calls, member access, etc.)
@@ -312,5 +314,19 @@ impl GDScriptExtractor {
 
         // Otherwise, use the provided parent_id
         parent_id.cloned()
+    }
+
+    // ========================================================================
+    // Pending Relationships Management
+    // ========================================================================
+
+    /// Add a pending relationship that needs cross-file resolution
+    pub(crate) fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
+    }
+
+    /// Get all pending relationships collected during extraction
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
     }
 }

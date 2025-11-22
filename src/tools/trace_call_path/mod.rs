@@ -32,7 +32,7 @@ use types::{default_depth, default_output_format, default_upstream, default_work
 
 #[mcp_tool(
     name = "trace_call_path",
-    description = "Trace execution flow across language boundaries (TypeScript, Go, Python, SQL). Supports TOON format (output_format='toon' or 'auto'): compact hierarchical representation with 43% token savings vs JSON for call trees. Auto mode uses TOON for 5+ paths.",
+    description = "Trace execution flow across language boundaries (TypeScript, Go, Python, SQL). Default output is lean ASCII tree visualization (60% token savings vs JSON). Alternative formats: output_format='json' for structured data, 'toon' for compact tabular, 'auto' for smart selection.",
     title = "Cross-Language Call Path Tracer",
     idempotent_hint = true,
     destructive_hint = false,
@@ -56,7 +56,7 @@ pub struct TraceCallPathTool {
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Output format: "json" (default), "toon", or "auto" (smart selection)
+    /// Output format: "lean" (default - ASCII tree), "json", "toon", or "auto"
     #[serde(default = "default_output_format")]
     pub output_format: Option<String>,
 }
@@ -71,39 +71,78 @@ impl TraceCallPathTool {
         cross_language::find_cross_language_callers(db, symbol).await
     }
 
-    /// Helper: Create structured result with markdown for dual output
+    /// Helper: Create result with lean format as default, JSON/TOON as alternatives
     fn create_result(
         &self,
-        success: bool,
-        paths_found: usize,
-        next_actions: Vec<String>,
-        _markdown: String,
-        error_message: Option<String>,
+        _success: bool,
+        _paths_found: usize,
+        _next_actions: Vec<String>,
+        ascii_tree: String,
+        _error_message: Option<String>,
         call_paths: Option<Vec<CallPath>>,
         output_format: Option<&str>,
     ) -> Result<CallToolResult> {
-        let result = TraceCallPathResult {
-            tool: "trace_call_path".to_string(),
-            symbol: self.symbol.clone(),
-            direction: self.direction.clone(),
-            max_depth: self.max_depth,
-            cross_language: true, // Always enabled - this is Julie's superpower!
-            success,
-            paths_found,
-            next_actions,
-            error_message,
-            call_paths,
-        };
-
-        // Phase 5: Use TOON-specific flat encoding (no serde magic!)
+        // Return based on output_format - lean (ASCII tree) is default
         match output_format {
-            Some("toon") => {
-                let toon_flat = result.to_toon_flat();
-                match toon_format::encode_default(&toon_flat) {
-                    Ok(toon) => Ok(CallToolResult::text_content(vec![
-                        rust_mcp_sdk::schema::TextContent::from(toon),
-                    ])),
-                    Err(_) => {
+            None | Some("lean") | Some("tree") => {
+                // Lean mode (DEFAULT): ASCII tree visualization
+                ::tracing::debug!(
+                    "✅ Returning lean trace results ({} chars)",
+                    ascii_tree.len()
+                );
+                Ok(CallToolResult::text_content(vec![
+                    rust_mcp_sdk::schema::TextContent::from(ascii_tree),
+                ]))
+            }
+            Some("toon") | Some("auto") | Some("json") => {
+                // Structured formats: Build full result object
+                let result = TraceCallPathResult {
+                    tool: "trace_call_path".to_string(),
+                    symbol: self.symbol.clone(),
+                    direction: self.direction.clone(),
+                    max_depth: self.max_depth,
+                    cross_language: true,
+                    success: call_paths.is_some(),
+                    paths_found: call_paths.as_ref().map(|p| p.len()).unwrap_or(0),
+                    next_actions: vec![
+                        "Review call paths to understand execution flow".to_string(),
+                        "Use fast_goto to navigate to specific symbols".to_string(),
+                    ],
+                    error_message: None,
+                    call_paths,
+                };
+
+                match output_format {
+                    Some("toon") => {
+                        let toon_flat = result.to_toon_flat();
+                        match toon_format::encode_default(&toon_flat) {
+                            Ok(toon) => Ok(CallToolResult::text_content(vec![
+                                rust_mcp_sdk::schema::TextContent::from(toon),
+                            ])),
+                            Err(_) => {
+                                // Fall back to lean on TOON error
+                                Ok(CallToolResult::text_content(vec![
+                                    rust_mcp_sdk::schema::TextContent::from(ascii_tree),
+                                ]))
+                            }
+                        }
+                    }
+                    Some("auto") => {
+                        let toon_flat = result.to_toon_flat();
+                        if toon_flat.len() >= 10 {
+                            if let Ok(toon) = toon_format::encode_default(&toon_flat) {
+                                return Ok(CallToolResult::text_content(vec![
+                                    rust_mcp_sdk::schema::TextContent::from(toon),
+                                ]));
+                            }
+                        }
+                        // Fall back to lean for small results
+                        Ok(CallToolResult::text_content(vec![
+                            rust_mcp_sdk::schema::TextContent::from(ascii_tree),
+                        ]))
+                    }
+                    _ => {
+                        // JSON mode
                         let structured = serde_json::to_value(&result)?;
                         let map = match structured {
                             serde_json::Value::Object(m) => m,
@@ -113,29 +152,15 @@ impl TraceCallPathTool {
                     }
                 }
             }
-            Some("auto") => {
-                let toon_flat = result.to_toon_flat();
-                if toon_flat.len() >= 5 {
-                    if let Ok(toon) = toon_format::encode_default(&toon_flat) {
-                        return Ok(CallToolResult::text_content(vec![
-                            rust_mcp_sdk::schema::TextContent::from(toon),
-                        ]));
-                    }
-                }
-                let structured = serde_json::to_value(&result)?;
-                let map = match structured {
-                    serde_json::Value::Object(m) => m,
-                    _ => return Err(anyhow!("Expected object")),
-                };
-                Ok(CallToolResult::text_content(vec![]).with_structured_content(map))
-            }
-            _ => {
-                let structured = serde_json::to_value(&result)?;
-                let map = match structured {
-                    serde_json::Value::Object(m) => m,
-                    _ => return Err(anyhow!("Expected object")),
-                };
-                Ok(CallToolResult::text_content(vec![]).with_structured_content(map))
+            Some(unknown) => {
+                // Unknown format - warn and use lean
+                ::tracing::warn!(
+                    "⚠️ Unknown output_format '{}', using lean format",
+                    unknown
+                );
+                Ok(CallToolResult::text_content(vec![
+                    rust_mcp_sdk::schema::TextContent::from(ascii_tree),
+                ]))
             }
         }
     }
@@ -382,13 +407,13 @@ impl TraceCallPathTool {
             }
         }
 
-        // Format output
+        // Format output - "lean" (ASCII tree) is default
         let output = formatting::format_call_trees(
             &all_trees,
             &self.symbol,
             &self.direction,
             self.max_depth,
-            self.output_format.as_deref().unwrap_or("json"),
+            self.output_format.as_deref().unwrap_or("lean"),
         )?;
 
         // Convert trees to serializable format for structured content

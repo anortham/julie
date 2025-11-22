@@ -544,5 +544,131 @@ The agent submits the checkpoint description and we're returning the whole thing
 
 ---
 
-*Last Updated: 2025-11-20*
-*Status: Julie 2.0 Phase 5b Extended Complete - TOON optimization in progress*
+## ✅ FIXED: Cross-File Relationship Resolution (2025-11-22)
+
+### Problem Discovery
+
+`trace_call_path` returned semantic matches from markdown docs instead of actual code callers because **cross-file call relationships were broken**.
+
+**Two distinct bugs were identified and fixed:**
+
+1. **Import Resolution Bug**: Calls to imported functions created relationships pointing to the `Import` symbol (use statement), NOT the actual `Function` definition in another file.
+
+2. **Method Call Bug**: Calls to methods on imported types (`calc.double()`) created NO relationships at all.
+
+### Root Cause
+
+In `src/extractors/rust/relationships.rs`, the `extract_call_relationships` function builds a `symbol_map` from **only the current file's symbols**:
+
+```rust
+// Line ~15 in extract_relationships()
+let symbol_map: HashMap<String, &Symbol> =
+    symbols.iter().map(|s| (s.name.clone(), s)).collect();
+
+// Later, when resolving a call:
+if let Some(called_symbol) = symbol_map.get(&function_name) {
+    // FAILS silently if function is from another file!
+    // Or resolves to Import symbol instead of actual Function
+}
+```
+
+### Database Evidence
+
+```sql
+-- We have 2,491 call relationships, but they're all intra-file
+SELECT kind, COUNT(*) FROM relationships GROUP BY kind;
+-- calls|2491, uses|312, implements|3, etc.
+
+-- Cross-file calls like resolve_workspace_filter have NO relationships TO them
+SELECT * FROM relationships WHERE to_symbol_id IN
+  (SELECT id FROM symbols WHERE name = 'resolve_workspace_filter');
+-- Empty result!
+```
+
+### Failing Tests Created
+
+**File**: `src/tests/extractors/rust/cross_file_relationships.rs`
+
+Three tests document the bugs:
+
+| Test | Status | Documents |
+|------|--------|-----------|
+| `test_same_file_function_call_creates_relationship` | ✅ PASS | Baseline works |
+| `test_cross_file_function_call_creates_relationship` | ❌ FAIL | Points to Import, not Function |
+| `test_cross_file_method_call_creates_relationship` | ❌ FAIL | No relationships created |
+
+### Fix Approach: Option A (Post-Indexing Resolution)
+
+**This is the professional long-term fix.**
+
+1. **Add `PendingRelationship` struct** - stores unresolved calls during extraction:
+   ```rust
+   pub struct PendingRelationship {
+       pub caller_symbol_id: String,      // Known - the function making the call
+       pub callee_name: String,           // The function NAME being called
+       pub call_site_file: String,
+       pub call_site_line: u32,
+       pub relationship_kind: RelationshipKind,
+   }
+   ```
+
+2. **Modify extraction** - when callee not in local `symbol_map`:
+   - Instead of silently dropping OR pointing to Import symbol
+   - Create `PendingRelationship` with the callee name
+
+3. **Add resolution pass** - after workspace indexing completes:
+   - Query all symbols by name
+   - Match pending calls to actual definitions
+   - Create real `Relationship` records pointing to actual `Function` symbols
+   - Handle ambiguity (multiple symbols with same name) using heuristics
+
+4. **Update `ExtractionResults`** to include pending relationships:
+   ```rust
+   pub struct ExtractionResults {
+       pub symbols: Vec<Symbol>,
+       pub relationships: Vec<Relationship>,
+       pub pending_relationships: Vec<PendingRelationship>,  // NEW
+       pub identifiers: Vec<Identifier>,
+   }
+   ```
+
+### Files to Modify
+
+1. `src/extractors/base/types.rs` - Add `PendingRelationship` struct
+2. `src/extractors/rust/relationships.rs` - Create pending instead of dropping
+3. `src/extractors/factory.rs` - Include pending in `ExtractionResults`
+4. `src/database/mod.rs` - Add resolution pass after bulk insert
+5. `src/workspace/indexing.rs` - Trigger resolution after all files indexed
+
+### Success Criteria ✅ ALL COMPLETE
+
+- [x] `test_cross_file_function_call_creates_pending_relationship` passes
+- [x] `test_cross_file_method_call_creates_pending_relationship` passes
+- [x] `trace_call_path` returns actual code callers after re-indexing (resolved relationships)
+- [x] All 1,862 tests pass (no regressions)
+- [ ] Same pattern can extend to other languages (TypeScript imports, Python imports) - *future work*
+
+### Implementation Summary
+
+**Files Modified:**
+1. `src/extractors/base/types.rs` - Added `PendingRelationship` struct
+2. `src/extractors/base/mod.rs` - Re-exported `PendingRelationship`
+3. `src/extractors/mod.rs` - Re-exported `PendingRelationship`
+4. `src/extractors/rust/mod.rs` - Added `pending_relationships` field and getter
+5. `src/extractors/rust/relationships.rs` - Modified to create `PendingRelationship` for cross-file calls
+6. `src/extractors/factory.rs` - Added `pending_relationships` to `ExtractionResults` for all languages
+7. `src/tools/workspace/indexing/processor.rs` - Added resolution pass after bulk storage
+8. `src/tests/extractors/rust/cross_file_relationships.rs` - Updated tests to verify new behavior
+
+**How It Works:**
+1. During extraction, calls to imported symbols create `PendingRelationship` (with callee NAME)
+2. After all files are indexed and stored, a resolution pass runs
+3. Resolution looks up each `callee_name` in the symbols table
+4. Filters to find actual Function/Method/Constructor definitions (not Imports)
+5. Creates resolved `Relationship` records pointing to actual definitions
+6. Stores resolved relationships in the database
+
+---
+
+*Last Updated: 2025-11-22*
+*Status: ✅ FIXED - Cross-file relationship resolution implemented and tested*

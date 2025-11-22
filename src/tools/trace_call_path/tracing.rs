@@ -15,6 +15,11 @@ use super::cross_language::{
 };
 use super::types::{CallPathNode, MatchType};
 
+/// Safety limits to prevent explosion on "hub" symbols (e.g., commonly-used functions)
+/// These limits ensure trace_call_path remains responsive even for symbols with hundreds of callers
+const MAX_CALLERS_PER_LEVEL: usize = 50;
+const MAX_TOTAL_NODES: usize = 500;
+
 /// Find semantic neighbors using vector similarity search
 pub async fn semantic_neighbors(
     handler: &JulieServerHandler,
@@ -204,6 +209,18 @@ pub async fn trace_upstream(
         result
     }; // Guard dropped here automatically
 
+    // Safety limit: truncate callers to prevent explosion on hub symbols
+    let total_callers = callers.len();
+    let callers: Vec<_> = if total_callers > MAX_CALLERS_PER_LEVEL {
+        debug!(
+            "⚠️  Hub symbol detected: {} has {} callers, truncating to {} (depth {})",
+            symbol.name, total_callers, MAX_CALLERS_PER_LEVEL, current_depth
+        );
+        callers.into_iter().take(MAX_CALLERS_PER_LEVEL).collect()
+    } else {
+        callers
+    };
+
     // Process callers recursively
     for (caller_symbol, rel_kind) in callers {
         let mut node = CallPathNode {
@@ -233,11 +250,17 @@ pub async fn trace_upstream(
     }
 
     // Step 2: Cross-language matching (always enabled - this is Julie's superpower!)
-    if current_depth < max_depth {
+    // Skip if we've already hit the node limit from direct callers
+    if current_depth < max_depth && nodes.len() < MAX_TOTAL_NODES {
         debug!("Finding cross-language callers for: {}", symbol.name);
         let cross_lang_callers = find_cross_language_callers(db, symbol).await?;
 
         for caller_symbol in cross_lang_callers {
+            // Safety: stop if we've hit the total node limit
+            if nodes.len() >= MAX_TOTAL_NODES {
+                debug!("⚠️  Hit MAX_TOTAL_NODES limit ({}), stopping cross-language search", MAX_TOTAL_NODES);
+                break;
+            }
             // Skip if already found as direct caller
             if nodes.iter().any(|n| n.symbol.id == caller_symbol.id) {
                 continue;
@@ -270,38 +293,48 @@ pub async fn trace_upstream(
             nodes.push(node);
         }
 
-        let semantic_callers =
-            find_semantic_cross_language_callers(handler, db, vector_store, symbol).await?;
+        // Skip semantic search if we've already hit the limit
+        if nodes.len() >= MAX_TOTAL_NODES {
+            debug!("⚠️  Skipping semantic search - already at MAX_TOTAL_NODES limit");
+        } else {
+            let semantic_callers =
+                find_semantic_cross_language_callers(handler, db, vector_store, symbol).await?;
 
-        for semantic in semantic_callers {
-            if nodes.iter().any(|n| n.symbol.id == semantic.symbol.id) {
-                continue;
+            for semantic in semantic_callers {
+                // Safety: stop if we've hit the total node limit
+                if nodes.len() >= MAX_TOTAL_NODES {
+                    debug!("⚠️  Hit MAX_TOTAL_NODES limit ({}), stopping semantic search", MAX_TOTAL_NODES);
+                    break;
+                }
+                if nodes.iter().any(|n| n.symbol.id == semantic.symbol.id) {
+                    continue;
+                }
+
+                let mut node = CallPathNode {
+                    symbol: semantic.symbol.clone(),
+                    level: current_depth,
+                    match_type: MatchType::Semantic,
+                    relationship_kind: Some(semantic.relationship_kind.clone()),
+                    similarity: Some(semantic.similarity),
+                    children: vec![],
+                };
+
+                let cross_lang_limit = get_cross_language_depth_limit(max_depth);
+                if current_depth + 1 < cross_lang_limit {
+                    node.children = trace_upstream(
+                        handler,
+                        db,
+                        vector_store,
+                        &semantic.symbol,
+                        current_depth + 1,
+                        visited,
+                        max_depth,
+                    )
+                    .await?;
+                }
+
+                nodes.push(node);
             }
-
-            let mut node = CallPathNode {
-                symbol: semantic.symbol.clone(),
-                level: current_depth,
-                match_type: MatchType::Semantic,
-                relationship_kind: Some(semantic.relationship_kind.clone()),
-                similarity: Some(semantic.similarity),
-                children: vec![],
-            };
-
-            let cross_lang_limit = get_cross_language_depth_limit(max_depth);
-            if current_depth + 1 < cross_lang_limit {
-                node.children = trace_upstream(
-                    handler,
-                    db,
-                    vector_store,
-                    &semantic.symbol,
-                    current_depth + 1,
-                    visited,
-                    max_depth,
-                )
-                .await?;
-            }
-
-            nodes.push(node);
         }
     }
 
@@ -386,6 +419,18 @@ pub async fn trace_downstream(
         result
     }; // Guard dropped here automatically
 
+    // Safety limit: truncate callees to prevent explosion on hub symbols
+    let total_callees = callees.len();
+    let callees: Vec<_> = if total_callees > MAX_CALLERS_PER_LEVEL {
+        debug!(
+            "⚠️  Hub symbol detected: {} has {} callees, truncating to {} (depth {})",
+            symbol.name, total_callees, MAX_CALLERS_PER_LEVEL, current_depth
+        );
+        callees.into_iter().take(MAX_CALLERS_PER_LEVEL).collect()
+    } else {
+        callees
+    };
+
     // Process callees recursively
     for (callee_symbol, rel_kind) in callees {
         let mut node = CallPathNode {
@@ -415,11 +460,17 @@ pub async fn trace_downstream(
     }
 
     // Step 2: Cross-language matching (always enabled - this is Julie's superpower!)
-    if current_depth < max_depth {
+    // Skip if we've already hit the node limit from direct callees
+    if current_depth < max_depth && nodes.len() < MAX_TOTAL_NODES {
         debug!("Finding cross-language callees for: {}", symbol.name);
         let cross_lang_callees = find_cross_language_callees(db, symbol).await?;
 
         for callee_symbol in cross_lang_callees {
+            // Safety: stop if we've hit the total node limit
+            if nodes.len() >= MAX_TOTAL_NODES {
+                debug!("⚠️  Hit MAX_TOTAL_NODES limit ({}), stopping cross-language search", MAX_TOTAL_NODES);
+                break;
+            }
             // Skip if already found as direct callee
             if nodes.iter().any(|n| n.symbol.id == callee_symbol.id) {
                 continue;
@@ -452,38 +503,48 @@ pub async fn trace_downstream(
             nodes.push(node);
         }
 
-        let semantic_callees =
-            find_semantic_cross_language_callees(handler, db, vector_store, symbol).await?;
+        // Skip semantic search if we've already hit the limit
+        if nodes.len() >= MAX_TOTAL_NODES {
+            debug!("⚠️  Skipping semantic search - already at MAX_TOTAL_NODES limit");
+        } else {
+            let semantic_callees =
+                find_semantic_cross_language_callees(handler, db, vector_store, symbol).await?;
 
-        for semantic in semantic_callees {
-            if nodes.iter().any(|n| n.symbol.id == semantic.symbol.id) {
-                continue;
+            for semantic in semantic_callees {
+                // Safety: stop if we've hit the total node limit
+                if nodes.len() >= MAX_TOTAL_NODES {
+                    debug!("⚠️  Hit MAX_TOTAL_NODES limit ({}), stopping semantic search", MAX_TOTAL_NODES);
+                    break;
+                }
+                if nodes.iter().any(|n| n.symbol.id == semantic.symbol.id) {
+                    continue;
+                }
+
+                let mut node = CallPathNode {
+                    symbol: semantic.symbol.clone(),
+                    level: current_depth,
+                    match_type: MatchType::Semantic,
+                    relationship_kind: Some(semantic.relationship_kind.clone()),
+                    similarity: Some(semantic.similarity),
+                    children: vec![],
+                };
+
+                let cross_lang_limit = get_cross_language_depth_limit(max_depth);
+                if current_depth + 1 < cross_lang_limit {
+                    node.children = trace_downstream(
+                        handler,
+                        db,
+                        vector_store,
+                        &semantic.symbol,
+                        current_depth + 1,
+                        visited,
+                        max_depth,
+                    )
+                    .await?;
+                }
+
+                nodes.push(node);
             }
-
-            let mut node = CallPathNode {
-                symbol: semantic.symbol.clone(),
-                level: current_depth,
-                match_type: MatchType::Semantic,
-                relationship_kind: Some(semantic.relationship_kind.clone()),
-                similarity: Some(semantic.similarity),
-                children: vec![],
-            };
-
-            let cross_lang_limit = get_cross_language_depth_limit(max_depth);
-            if current_depth + 1 < cross_lang_limit {
-                node.children = trace_downstream(
-                    handler,
-                    db,
-                    vector_store,
-                    &semantic.symbol,
-                    current_depth + 1,
-                    visited,
-                    max_depth,
-                )
-                .await?;
-            }
-
-            nodes.push(node);
         }
     }
 

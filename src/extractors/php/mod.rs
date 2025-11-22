@@ -9,7 +9,7 @@ mod namespaces;
 mod relationships;
 mod types;
 
-use crate::extractors::base::{BaseExtractor, Identifier, Relationship, Symbol};
+use crate::extractors::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -19,11 +19,13 @@ use helpers::{determine_visibility, extract_modifiers, find_child, find_child_te
 use identifiers::extract_identifier_from_node;
 use members::{extract_constant, extract_property};
 use namespaces::{extract_namespace, extract_use, extract_variable_assignment};
-use relationships::{extract_class_relationships, extract_interface_relationships};
+use relationships::{extract_call_relationships, extract_class_relationships, extract_interface_relationships};
 use types::{extract_class, extract_enum, extract_enum_case, extract_interface, extract_trait};
 
 pub struct PhpExtractor {
     base: BaseExtractor,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<PendingRelationship>,
 }
 
 impl PhpExtractor {
@@ -35,6 +37,7 @@ impl PhpExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
+            pending_relationships: Vec::new(),
         }
     }
 
@@ -146,6 +149,9 @@ impl PhpExtractor {
             "interface_declaration" => {
                 extract_interface_relationships(self, node, symbols, relationships);
             }
+            "function_call_expression" | "member_call_expression" | "scoped_call_expression" => {
+                extract_call_relationships(self, node, symbols, relationships);
+            }
             _ => {}
         }
 
@@ -174,5 +180,19 @@ impl PhpExtractor {
 
     pub(super) fn get_base_mut(&mut self) -> &mut BaseExtractor {
         &mut self.base
+    }
+
+    // ========================================================================
+    // Pending Relationship Management
+    // ========================================================================
+
+    /// Add a pending relationship that needs cross-file resolution
+    pub(crate) fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
+    }
+
+    /// Get all pending relationships collected during extraction
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
     }
 }

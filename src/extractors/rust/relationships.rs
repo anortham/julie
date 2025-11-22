@@ -3,7 +3,9 @@ use super::helpers::find_containing_function;
 /// - Trait implementations
 /// - Type references in fields
 /// - Function calls
-use crate::extractors::base::{Relationship, RelationshipKind, Symbol};
+use crate::extractors::base::{
+    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
+};
 use crate::extractors::rust::RustExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -172,71 +174,114 @@ fn extract_field_type_references(
 }
 
 /// Extract function call relationships
+///
+/// Creates resolved Relationship when target is a local function/method.
+/// Creates PendingRelationship when target is:
+/// - An Import symbol (needs cross-file resolution)
+/// - Not found in local symbol_map (e.g., method on imported type)
 fn extract_call_relationships(
     extractor: &mut RustExtractor,
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
     relationships: &mut Vec<Relationship>,
 ) {
-    let base = extractor.get_base_mut();
-    // Extract function/method call relationships
     let function_node = node.child_by_field_name("function");
     if let Some(func_node) = function_node {
         // Handle method calls (receiver.method())
         if func_node.kind() == "field_expression" {
             let method_node = func_node.child_by_field_name("field");
             if let Some(method_node) = method_node {
-                let method_name = base.get_node_text(&method_node);
-                if let Some(called_symbol) = symbol_map.get(&method_name) {
-                    // Find the calling function context
-                    if let Some(calling_function) = find_containing_function(base, node) {
-                        if let Some(caller_symbol) = symbol_map.get(&calling_function) {
-                            relationships.push(Relationship {
-                                id: format!(
-                                    "{}_{}_{:?}_{}",
-                                    caller_symbol.id,
-                                    called_symbol.id,
-                                    RelationshipKind::Calls,
-                                    node.start_position().row
-                                ),
-                                from_symbol_id: caller_symbol.id.clone(),
-                                to_symbol_id: called_symbol.id.clone(),
-                                kind: RelationshipKind::Calls,
-                                file_path: base.file_path.clone(),
-                                line_number: node.start_position().row as u32 + 1,
-                                confidence: 0.9,
-                                metadata: None,
-                            });
-                        }
-                    }
-                }
+                let method_name = extractor.get_base_mut().get_node_text(&method_node);
+                handle_call_target(
+                    extractor,
+                    node,
+                    &method_name,
+                    symbol_map,
+                    relationships,
+                );
             }
         }
         // Handle direct function calls
         else if func_node.kind() == "identifier" {
-            let function_name = base.get_node_text(&func_node);
-            if let Some(called_symbol) = symbol_map.get(&function_name) {
-                if let Some(calling_function) = find_containing_function(base, node) {
-                    if let Some(caller_symbol) = symbol_map.get(&calling_function) {
-                        relationships.push(Relationship {
-                            id: format!(
-                                "{}_{}_{:?}_{}",
-                                caller_symbol.id,
-                                called_symbol.id,
-                                RelationshipKind::Calls,
-                                node.start_position().row
-                            ),
-                            from_symbol_id: caller_symbol.id.clone(),
-                            to_symbol_id: called_symbol.id.clone(),
-                            kind: RelationshipKind::Calls,
-                            file_path: base.file_path.clone(),
-                            line_number: node.start_position().row as u32 + 1,
-                            confidence: 0.9,
-                            metadata: None,
-                        });
-                    }
-                }
-            }
+            let function_name = extractor.get_base_mut().get_node_text(&func_node);
+            handle_call_target(
+                extractor,
+                node,
+                &function_name,
+                symbol_map,
+                relationships,
+            );
+        }
+    }
+}
+
+/// Handle a call target - create Relationship or PendingRelationship based on target type
+fn handle_call_target(
+    extractor: &mut RustExtractor,
+    call_node: Node,
+    callee_name: &str,
+    symbol_map: &HashMap<String, &Symbol>,
+    relationships: &mut Vec<Relationship>,
+) {
+    // Find the calling function context
+    let calling_function = find_containing_function(extractor.get_base_mut(), call_node);
+    let caller_symbol = calling_function
+        .as_ref()
+        .and_then(|name| symbol_map.get(name));
+
+    // No caller context means we can't create a meaningful relationship
+    let Some(caller) = caller_symbol else {
+        return;
+    };
+
+    let line_number = call_node.start_position().row as u32 + 1;
+    let file_path = extractor.get_base_mut().file_path.clone();
+
+    // Check if we can resolve the callee locally
+    match symbol_map.get(callee_name) {
+        Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
+            // Target is an Import symbol - need cross-file resolution
+            // Don't create relationship pointing to Import (useless for trace_call_path)
+            // Instead, create a PendingRelationship with the callee name
+            extractor.add_pending_relationship(PendingRelationship {
+                from_symbol_id: caller.id.clone(),
+                callee_name: callee_name.to_string(),
+                kind: RelationshipKind::Calls,
+                file_path,
+                line_number,
+                confidence: 0.8, // Lower confidence - needs resolution
+            });
+        }
+        Some(called_symbol) => {
+            // Target is a local function/method - create resolved Relationship
+            relationships.push(Relationship {
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    caller.id,
+                    called_symbol.id,
+                    RelationshipKind::Calls,
+                    call_node.start_position().row
+                ),
+                from_symbol_id: caller.id.clone(),
+                to_symbol_id: called_symbol.id.clone(),
+                kind: RelationshipKind::Calls,
+                file_path,
+                line_number,
+                confidence: 0.9,
+                metadata: None,
+            });
+        }
+        None => {
+            // Target not found in local symbols - likely a method on imported type
+            // Create PendingRelationship for cross-file resolution
+            extractor.add_pending_relationship(PendingRelationship {
+                from_symbol_id: caller.id.clone(),
+                callee_name: callee_name.to_string(),
+                kind: RelationshipKind::Calls,
+                file_path,
+                line_number,
+                confidence: 0.7, // Lower confidence - unknown target
+            });
         }
     }
 }

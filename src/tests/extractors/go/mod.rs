@@ -1,6 +1,7 @@
 // Test modules for specific Go features
 mod build_tags;
 mod concurrency;
+mod cross_file_relationships;
 mod edge_cases;
 mod error_handling;
 mod generics;

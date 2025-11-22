@@ -13,7 +13,7 @@ mod signatures;
 mod types;
 
 use crate::extractors::base::{
-    BaseExtractor, Identifier, Relationship, Symbol, SymbolOptions, Visibility,
+    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolOptions, Visibility,
 };
 use helpers::{find_child_by_type, get_node_text};
 use regex::Regex;
@@ -39,6 +39,10 @@ static TYPE_SIGNATURE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\w+)
 /// - Imports and library dependencies
 pub struct DartExtractor {
     pub(crate) base: BaseExtractor,
+    /// Pending relationships that need cross-file resolution after workspace indexing
+    pending_relationships: Vec<PendingRelationship>,
+    /// Same-file calls detected during pending relationship extraction (caller_id, callee_id, line)
+    same_file_calls: Vec<(String, String, u32)>,
 }
 
 impl DartExtractor {
@@ -50,6 +54,8 @@ impl DartExtractor {
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
+            pending_relationships: Vec::new(),
+            same_file_calls: Vec::new(),
         }
     }
 
@@ -204,7 +210,206 @@ impl DartExtractor {
     // === Relationship and Type Extraction (Implementation of methods) ===
 
     pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
-        relationships::extract_relationships(&mut self.base, tree.root_node(), symbols)
+        let mut rels = relationships::extract_relationships(&mut self.base, tree.root_node(), symbols);
+        // Extract pending relationships (cross-file calls) and same-file calls
+        self.same_file_calls.clear();
+        self.extract_pending_relationships(tree, symbols);
+
+        // Add same-file calls as resolved relationships
+        for (caller_id, callee_id, line_number) in self.same_file_calls.drain(..) {
+            rels.push(crate::extractors::base::Relationship {
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    caller_id,
+                    callee_id,
+                    crate::extractors::base::RelationshipKind::Calls,
+                    line_number
+                ),
+                from_symbol_id: caller_id,
+                to_symbol_id: callee_id,
+                kind: crate::extractors::base::RelationshipKind::Calls,
+                file_path: self.base.file_path.clone(),
+                line_number,
+                confidence: 0.9,
+                metadata: None,
+            });
+        }
+
+        rels
+    }
+
+    /// Extract pending relationships from the syntax tree
+    /// This handles cross-file function calls that need resolution
+    fn extract_pending_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) {
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.name.clone(), s)).collect();
+
+        self.walk_for_pending_calls(tree.root_node(), &symbol_map);
+    }
+
+    /// Walk the tree looking for function calls that reference unknown symbols
+    fn walk_for_pending_calls(&mut self, node: tree_sitter::Node, symbol_map: &HashMap<String, &Symbol>) {
+        // Check for identifier nodes that represent function calls
+        // In Dart, simple function calls like helper() are identifier nodes
+        // that have an argument_part/selector sibling
+        if node.kind() == "identifier" {
+            // Check if this identifier is followed by argument_part (function call)
+            if let Some(next_sibling) = node.next_sibling() {
+                if next_sibling.kind() == "selector" || next_sibling.kind() == "argument_part" || next_sibling.kind() == "arguments" {
+                    let function_name = self.base.get_node_text(&node);
+
+                    // Check if this is a call to an unknown function (cross-file) or a known function (same-file)
+                    if let Some(called_symbol) = symbol_map.get(function_name.as_str()) {
+                        // Known function - same-file call, create resolved Relationship
+                        if let Some(caller_symbol) = self.find_containing_function_in_symbols(node, symbol_map) {
+                            // Only create relationship if caller != callee (avoid self-recursion noise)
+                            if caller_symbol.id != called_symbol.id {
+                                let line_number = node.start_position().row as u32 + 1;
+                                // Store for later - we'll add to relationships in extract_relationships
+                                self.same_file_calls.push((
+                                    caller_symbol.id.clone(),
+                                    called_symbol.id.clone(),
+                                    line_number,
+                                ));
+                            }
+                        }
+                    } else {
+                        // Unknown function - could be from another file
+                        if let Some(caller_symbol) = self.find_containing_function_in_symbols(node, symbol_map) {
+                            let line_number = node.start_position().row as u32 + 1;
+                            self.add_pending_relationship(PendingRelationship {
+                                from_symbol_id: caller_symbol.id.clone(),
+                                callee_name: function_name.clone(),
+                                kind: crate::extractors::base::RelationshipKind::Calls,
+                                file_path: self.base.file_path.clone(),
+                                line_number,
+                                confidence: 0.7,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Also look for member_access nodes (for obj.method() style calls)
+        if node.kind() == "member_access" {
+            // Check if this is actually a function call (has argument_part)
+            let is_call = if let Some(selector_node) = find_child_by_type(&node, "selector") {
+                find_child_by_type(&selector_node, "argument_part").is_some()
+            } else {
+                false
+            };
+
+            if is_call {
+                // Extract the function/method name
+                // For simple calls like helper(), object is the function name
+                // For method calls like obj.method(), we need the method name from selector
+                let function_name = if let Some(object_node) = node.child_by_field_name("object") {
+                    // Check if there's a method name in the selector (for obj.method() pattern)
+                    if let Some(selector_node) = node.child_by_field_name("selector") {
+                        if let Some(id_node) = find_child_by_type(&selector_node, "identifier") {
+                            // obj.method() pattern - extract "method"
+                            Some(self.base.get_node_text(&id_node))
+                        } else if object_node.kind() == "identifier" {
+                            // Simple helper() call - the object IS the function name
+                            Some(self.base.get_node_text(&object_node))
+                        } else {
+                            None // Can't determine function name
+                        }
+                    } else if object_node.kind() == "identifier" {
+                        // Simple function call - object is the name
+                        Some(self.base.get_node_text(&object_node))
+                    } else {
+                        None
+                    }
+                } else if let Some(selector_node) = node.child_by_field_name("selector") {
+                    if let Some(id_node) = find_child_by_type(&selector_node, "identifier") {
+                        Some(self.base.get_node_text(&id_node))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(function_name) = function_name {
+                    // Check if this is a call to an unknown function
+                    if !symbol_map.contains_key(function_name.as_str()) {
+                        // Unknown function - could be from another file
+                        if let Some(caller_symbol) = self.find_containing_function_in_symbols(node, symbol_map) {
+                            let line_number = node.start_position().row as u32 + 1;
+                            self.add_pending_relationship(PendingRelationship {
+                                from_symbol_id: caller_symbol.id.clone(),
+                                callee_name: function_name.clone(),
+                                kind: crate::extractors::base::RelationshipKind::Calls,
+                                file_path: self.base.file_path.clone(),
+                                line_number,
+                                confidence: 0.7,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively process children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_for_pending_calls(child, symbol_map);
+        }
+    }
+
+    /// Find the containing function for a node by walking up the tree
+    fn find_containing_function_in_symbols<'a>(
+        &self,
+        node: tree_sitter::Node,
+        symbol_map: &'a HashMap<String, &'a Symbol>,
+    ) -> Option<&'a Symbol> {
+        let mut current = node.parent();
+
+        while let Some(current_node) = current {
+            // Check for function body - in Dart, function_body is a sibling to function_signature
+            // which contains the function name
+            if current_node.kind() == "function_body" || current_node.kind() == "lambda_expression" {
+                // Look at parent and find function_signature sibling
+                if let Some(parent) = current_node.parent() {
+                    // Search for function_signature in parent's children
+                    let mut cursor = parent.walk();
+                    for sibling in parent.children(&mut cursor) {
+                        if sibling.kind() == "function_signature" {
+                            if let Some(name_node) = find_child_by_type(&sibling, "identifier") {
+                                let func_name = self.base.get_node_text(&name_node);
+                                if let Some(symbol) = symbol_map.get(&func_name) {
+                                    if matches!(symbol.kind, crate::extractors::base::SymbolKind::Function | crate::extractors::base::SymbolKind::Method) {
+                                        return Some(symbol);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Also check traditional function declaration patterns
+            if current_node.kind() == "function_declaration"
+                || current_node.kind() == "method_signature"
+                || current_node.kind() == "function_signature"
+            {
+                // Get the function name
+                if let Some(name_node) = find_child_by_type(&current_node, "identifier") {
+                    let func_name = self.base.get_node_text(&name_node);
+                    if let Some(symbol) = symbol_map.get(&func_name) {
+                        if matches!(symbol.kind, crate::extractors::base::SymbolKind::Function | crate::extractors::base::SymbolKind::Method) {
+                            return Some(symbol);
+                        }
+                    }
+                }
+            }
+
+            current = current_node.parent();
+        }
+
+        None
     }
 
     pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
@@ -253,6 +458,16 @@ impl DartExtractor {
 
         // Return the collected identifiers
         self.base.identifiers.clone()
+    }
+
+    /// Get pending relationships that need cross-file resolution
+    pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
+        self.pending_relationships.clone()
+    }
+
+    /// Add a pending relationship (used during extraction)
+    pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
+        self.pending_relationships.push(pending);
     }
 }
 

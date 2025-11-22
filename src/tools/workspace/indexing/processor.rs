@@ -1,7 +1,7 @@
 //! File processing for indexing
 //! Handles reading, parsing, and extracting symbols from individual files
 
-use crate::extractors::{Relationship, Symbol};
+use crate::extractors::{PendingRelationship, Relationship, Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use crate::tools::workspace::LanguageParserPool;
@@ -93,6 +93,7 @@ impl ManageWorkspaceTool {
         // 🔥 COLLECT ALL DATA FIRST for bulk operations
         let mut all_symbols = Vec::new();
         let mut all_relationships = Vec::new();
+        let mut all_pending_relationships: Vec<PendingRelationship> = Vec::new();
         let mut all_identifiers = Vec::new();
         let mut all_types = Vec::new();
         let mut all_file_infos = Vec::new();
@@ -119,14 +120,15 @@ impl ManageWorkspaceTool {
                             .process_file_with_parser(&file_path, &language, parser, &workspace_root)
                             .await
                         {
-                            Ok((symbols, relationships, identifiers, types, file_info)) => {
+                            Ok((symbols, relationships, pending_rels, identifiers, types, file_info)) => {
                                 *total_files += 1;
 
                                 // Per-file processing details at trace level
                                 trace!(
-                                    "File {} extracted {} symbols",
+                                    "File {} extracted {} symbols, {} pending relationships",
                                     file_path.display(),
-                                    symbols.len()
+                                    symbols.len(),
+                                    pending_rels.len()
                                 );
 
                                 // Track this file for cleanup (remove old symbols/data before adding new)
@@ -143,6 +145,7 @@ impl ManageWorkspaceTool {
                                 // Collect data for bulk storage
                                 all_symbols.extend(symbols);
                                 all_relationships.extend(relationships);
+                                all_pending_relationships.extend(pending_rels);
                                 all_identifiers.extend(identifiers);
                                 all_types.extend(types.into_iter().map(|(_, v)| v));
                                 all_file_infos.push(file_info);
@@ -315,6 +318,92 @@ impl ManageWorkspaceTool {
                 drop(db_lock);
             }
 
+            // ═══════════════════════════════════════════════════════════════════
+            // 🔗 PHASE 2: Resolve pending cross-file relationships
+            // After all symbols are stored, resolve pending relationships by
+            // looking up callee names and finding actual Function definitions
+            // ═══════════════════════════════════════════════════════════════════
+            if !all_pending_relationships.is_empty() {
+                info!(
+                    "🔗 Resolving {} pending cross-file relationships...",
+                    all_pending_relationships.len()
+                );
+
+                let mut resolved_relationships = Vec::new();
+
+                // Re-acquire database lock for resolution queries
+                let mut db_lock = match db.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during relationship resolution, recovering");
+                        poisoned.into_inner()
+                    }
+                };
+
+                for pending in &all_pending_relationships {
+                    // Look up all symbols with this name
+                    match db_lock.find_symbols_by_name(&pending.callee_name) {
+                        Ok(candidates) => {
+                            // Filter to find actual Function/Method definitions (not Imports)
+                            let definition = candidates.iter().find(|s| {
+                                matches!(
+                                    s.kind,
+                                    SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
+                                )
+                            });
+
+                            if let Some(target) = definition {
+                                // Create resolved relationship
+                                let resolved = Relationship {
+                                    id: format!(
+                                        "{}_{}_{:?}_resolved",
+                                        pending.from_symbol_id,
+                                        target.id,
+                                        pending.kind
+                                    ),
+                                    from_symbol_id: pending.from_symbol_id.clone(),
+                                    to_symbol_id: target.id.clone(),
+                                    kind: pending.kind.clone(),
+                                    file_path: pending.file_path.clone(),
+                                    line_number: pending.line_number,
+                                    confidence: pending.confidence,
+                                    metadata: None,
+                                };
+                                resolved_relationships.push(resolved);
+                            } else {
+                                trace!(
+                                    "Could not resolve '{}' - no Function/Method definition found ({} candidates)",
+                                    pending.callee_name,
+                                    candidates.len()
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            trace!(
+                                "Failed to look up callee '{}': {}",
+                                pending.callee_name,
+                                e
+                            );
+                        }
+                    }
+                }
+
+                // Store resolved relationships
+                if !resolved_relationships.is_empty() {
+                    if let Err(e) = db_lock.bulk_store_relationships(&resolved_relationships) {
+                        warn!("Failed to store resolved relationships: {}", e);
+                    } else {
+                        info!(
+                            "✅ Resolved {} cross-file relationships (from {} pending)",
+                            resolved_relationships.len(),
+                            all_pending_relationships.len()
+                        );
+                    }
+                }
+
+                drop(db_lock);
+            }
+
             let bulk_duration = bulk_start.elapsed();
             info!(
                 "✅ Bulk storage complete in {:.2}s - data now persisted in SQLite!",
@@ -344,7 +433,7 @@ impl ManageWorkspaceTool {
         language: &str,
         _parser: &mut Parser, // Unused: Creating new parser inside spawn_blocking for Send requirement
         workspace_root: &Path, // NEW: Phase 2 - workspace root for relative paths
-    ) -> Result<(Vec<Symbol>, Vec<Relationship>, Vec<crate::extractors::Identifier>, HashMap<String, crate::extractors::base::TypeInfo>, crate::database::FileInfo)> {
+    ) -> Result<(Vec<Symbol>, Vec<Relationship>, Vec<PendingRelationship>, Vec<crate::extractors::Identifier>, HashMap<String, crate::extractors::base::TypeInfo>, crate::database::FileInfo)> {
         // 🚨 CRITICAL FIX: Wrap ALL blocking filesystem I/O in spawn_blocking to prevent tokio deadlock
         // When processing hundreds of large files (500KB+), blocking I/O in async functions
         // starves the tokio runtime and causes silent hangs (discovered in PsychiatricIntake workspace)
@@ -384,7 +473,7 @@ impl ManageWorkspaceTool {
         // Skip empty files for symbol extraction
         if content.trim().is_empty() {
             // Return empty symbol list but include file_info (already created in spawn_blocking)
-            return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
+            return Ok((Vec::new(), Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
         }
 
         // Skip symbol extraction for CSS/HTML (text search only)
@@ -396,7 +485,7 @@ impl ManageWorkspaceTool {
             );
 
             // Return file info without symbols (file_info already created in spawn_blocking)
-            return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
+            return Ok((Vec::new(), Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
         }
 
         // 🚨 CRITICAL: Skip symbol extraction for very large files (likely data/minified)
@@ -410,7 +499,7 @@ impl ManageWorkspaceTool {
                 MAX_FILE_SIZE_FOR_SYMBOLS / 1024,
                 file_path.display()
             );
-            return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
+            return Ok((Vec::new(), Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
         }
 
         // 🔥 CRITICAL: Convert to relative Unix-style path for storage
@@ -479,16 +568,17 @@ impl ManageWorkspaceTool {
                 }
                 Err(_) => {
                     warn!("⏱️  Symbol extraction timed out after 30s for file: {} - skipping", relative_path);
-                    return Ok((Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
+                    return Ok((Vec::new(), Vec::new(), Vec::new(), Vec::new(), HashMap::new(), file_info));
                 }
             }
         };
 
         // file_info already created in spawn_blocking above - no need to recreate
 
-        // Destructure ExtractionResults into all 4 fields
+        // Destructure ExtractionResults into all fields
         let symbols = results.symbols;
         let relationships = results.relationships;
+        let pending_relationships = results.pending_relationships;
         let identifiers = results.identifiers;
         let types = results.types;
 
@@ -501,8 +591,17 @@ impl ManageWorkspaceTool {
             );
         }
 
+        // Log pending relationships for cross-file resolution
+        if !pending_relationships.is_empty() {
+            debug!(
+                "📎 Found {} pending relationships in {} (need cross-file resolution)",
+                pending_relationships.len(),
+                relative_path
+            );
+        }
+
         // Return data for bulk operations (SQLite storage)
-        Ok((symbols, relationships, identifiers, types, file_info))
+        Ok((symbols, relationships, pending_relationships, identifiers, types, file_info))
     }
 
     /// Process a file without a tree-sitter parser (no symbol extraction)

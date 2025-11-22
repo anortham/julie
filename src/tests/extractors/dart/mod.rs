@@ -4,6 +4,7 @@
 
 // Submodule declarations
 pub mod extractor;
+pub mod cross_file_relationships;
 
 use crate::extractors::base::SymbolKind;
 use crate::extractors::dart::DartExtractor;

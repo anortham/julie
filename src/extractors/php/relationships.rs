@@ -1,7 +1,7 @@
-// PHP Extractor - Relationship extraction (inheritance, implementation)
+// PHP Extractor - Relationship extraction (inheritance, implementation, function calls)
 
 use super::{PhpExtractor, find_child};
-use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -188,4 +188,132 @@ pub(super) fn find_interface_symbol<'a>(
             && s.kind == SymbolKind::Interface
             && s.file_path == extractor.get_base().file_path
     })
+}
+
+/// Extract function and method call relationships
+pub(super) fn extract_call_relationships(
+    extractor: &mut PhpExtractor,
+    node: Node,
+    symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
+    let base = extractor.get_base();
+
+    // For function calls and method calls, extract the function/method being called
+    let called_function_name = match node.kind() {
+        "function_call_expression" => {
+            // Function call: foo()
+            if let Some(name_node) = node.child_by_field_name("function") {
+                base.get_node_text(&name_node)
+            } else {
+                return;
+            }
+        }
+        "member_call_expression" => {
+            // Method call: $obj->method() - uses "name" field not "member"
+            if let Some(name_node) = node.child_by_field_name("name") {
+                base.get_node_text(&name_node)
+            } else {
+                return;
+            }
+        }
+        "scoped_call_expression" => {
+            // Static method call: Class::method()
+            if let Some(name_node) = node.child_by_field_name("name") {
+                base.get_node_text(&name_node)
+            } else {
+                return;
+            }
+        }
+        _ => return,
+    };
+
+    if called_function_name.is_empty() {
+        return;
+    }
+
+    // Find the enclosing function/method that contains this call
+    if let Some(caller_symbol) = find_containing_function(extractor, node, symbols) {
+        let line_number = (node.start_position().row + 1) as u32;
+        let file_path = base.file_path.clone();
+
+        // Create a symbol map for fast lookups
+        let symbol_map: HashMap<String, &Symbol> =
+            symbols.iter().map(|s| (s.name.clone(), s)).collect();
+
+        // Check if we can resolve the callee locally
+        match symbol_map.get(&called_function_name) {
+            Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
+                // Target is an Import symbol - need cross-file resolution
+                // Don't create relationship pointing to Import (useless for trace_call_path)
+                // Instead, create a PendingRelationship with the callee name
+                extractor.add_pending_relationship(PendingRelationship {
+                    from_symbol_id: caller_symbol.id.clone(),
+                    callee_name: called_function_name.clone(),
+                    kind: RelationshipKind::Calls,
+                    file_path,
+                    line_number,
+                    confidence: 0.8, // Lower confidence - needs resolution
+                });
+            }
+            Some(called_symbol) => {
+                // Target is a local function/method - create resolved Relationship
+                let relationship = Relationship {
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        caller_symbol.id,
+                        called_symbol.id,
+                        RelationshipKind::Calls,
+                        node.start_position().row
+                    ),
+                    from_symbol_id: caller_symbol.id.clone(),
+                    to_symbol_id: called_symbol.id.clone(),
+                    kind: RelationshipKind::Calls,
+                    file_path,
+                    line_number,
+                    confidence: 0.9,
+                    metadata: None,
+                };
+
+                relationships.push(relationship);
+            }
+            None => {
+                // Target not found in local symbols - likely a method on imported type
+                // Create PendingRelationship for cross-file resolution
+                extractor.add_pending_relationship(PendingRelationship {
+                    from_symbol_id: caller_symbol.id.clone(),
+                    callee_name: called_function_name.clone(),
+                    kind: RelationshipKind::Calls,
+                    file_path,
+                    line_number,
+                    confidence: 0.7, // Lower confidence - unknown target
+                });
+            }
+        }
+    }
+}
+
+/// Find the containing function of a node
+fn find_containing_function<'a>(
+    extractor: &PhpExtractor,
+    node: Node,
+    symbols: &'a [Symbol],
+) -> Option<&'a Symbol> {
+    let base = extractor.get_base();
+
+    // Walk up the tree to find the containing function or method
+    let mut current = node;
+    while let Some(parent) = current.parent() {
+        if parent.kind() == "function_definition" || parent.kind() == "method_declaration" {
+            // Found a function, extract its name
+            if let Some(name_node) = parent.child_by_field_name("name") {
+                let function_name = base.get_node_text(&name_node);
+                let symbol_map: HashMap<String, &Symbol> =
+                    symbols.iter().map(|s| (s.name.clone(), s)).collect();
+                return symbol_map.get(&function_name).copied();
+            }
+        }
+        current = parent;
+    }
+    None
 }
