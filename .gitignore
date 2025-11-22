@@ -4,7 +4,7 @@
 *.pdb
 *.rlib
 *.rmeta
-Cargo.lock
+# Note: Cargo.lock IS committed (applications should lock deps for reproducible builds)
 
 # IDE
 .vscode/
