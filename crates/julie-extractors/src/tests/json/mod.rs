@@ -1076,4 +1076,180 @@ mod json_extractor_tests {
         assert!(key_names.contains("include"), "Should extract 'include'");
         assert!(key_names.contains("exclude"), "Should extract 'exclude'");
     }
+
+    // ========================================================================
+    // String Value Extraction for Semantic Search
+    // ========================================================================
+    // String values should be captured in doc_comment for semantic search.
+    // This enables searching memory files by description content.
+
+    #[test]
+    fn test_string_values_in_doc_comment() {
+        let json = r#"{
+  "description": "Fixed authentication bug - was missing await on token validation",
+  "name": "my-project",
+  "version": "1.0.0"
+}"#;
+
+        let symbols = extract_symbols(json);
+
+        // Find the description key
+        let description = symbols.iter().find(|s| s.name == "description");
+        assert!(description.is_some(), "Should find 'description' key");
+
+        let desc_sym = description.unwrap();
+        assert!(
+            desc_sym.doc_comment.is_some(),
+            "String value should be captured in doc_comment"
+        );
+        assert!(
+            desc_sym.doc_comment.as_ref().unwrap().contains("authentication bug"),
+            "doc_comment should contain the string value"
+        );
+
+        // Verify name and version also have their values
+        let name = symbols.iter().find(|s| s.name == "name").unwrap();
+        assert_eq!(
+            name.doc_comment.as_ref().unwrap(),
+            "my-project",
+            "name should have its value in doc_comment"
+        );
+
+        let version = symbols.iter().find(|s| s.name == "version").unwrap();
+        assert_eq!(
+            version.doc_comment.as_ref().unwrap(),
+            "1.0.0",
+            "version should have its value in doc_comment"
+        );
+    }
+
+    #[test]
+    fn test_memory_checkpoint_format() {
+        // Real memory checkpoint format from .memories/ files
+        let json = r#"{
+  "id": "checkpoint_abc123",
+  "timestamp": 1699999999,
+  "type": "checkpoint",
+  "description": "Implemented semantic search with TRUE vector similarity - now finds similar code patterns across naming conventions",
+  "tags": ["semantic-search", "vector-store", "embeddings"],
+  "git": {
+    "branch": "main",
+    "commit": "abc123def"
+  }
+}"#;
+
+        let symbols = extract_symbols(json);
+
+        // The description should have its full text in doc_comment for semantic search
+        let description = symbols.iter().find(|s| s.name == "description").unwrap();
+        assert!(
+            description.doc_comment.is_some(),
+            "Memory description should have doc_comment"
+        );
+        let doc = description.doc_comment.as_ref().unwrap();
+        assert!(
+            doc.contains("semantic search"),
+            "Should contain 'semantic search'"
+        );
+        assert!(
+            doc.contains("vector similarity"),
+            "Should contain 'vector similarity'"
+        );
+
+        // type should also have its value
+        let type_sym = symbols.iter().find(|s| s.name == "type").unwrap();
+        assert_eq!(
+            type_sym.doc_comment.as_ref().unwrap(),
+            "checkpoint",
+            "type should have 'checkpoint' in doc_comment"
+        );
+
+        // Nested string values should also be captured
+        let branch = symbols.iter().find(|s| s.name == "branch").unwrap();
+        assert_eq!(
+            branch.doc_comment.as_ref().unwrap(),
+            "main",
+            "Nested branch should have 'main' in doc_comment"
+        );
+    }
+
+    #[test]
+    fn test_non_string_values_no_doc_comment() {
+        let json = r#"{
+  "count": 42,
+  "enabled": true,
+  "data": null,
+  "nested": {"key": "value"},
+  "list": [1, 2, 3]
+}"#;
+
+        let symbols = extract_symbols(json);
+
+        // Non-string values should NOT have doc_comment
+        let count = symbols.iter().find(|s| s.name == "count").unwrap();
+        assert!(
+            count.doc_comment.is_none(),
+            "Number value should not have doc_comment"
+        );
+
+        let enabled = symbols.iter().find(|s| s.name == "enabled").unwrap();
+        assert!(
+            enabled.doc_comment.is_none(),
+            "Boolean value should not have doc_comment"
+        );
+
+        let data = symbols.iter().find(|s| s.name == "data").unwrap();
+        assert!(
+            data.doc_comment.is_none(),
+            "Null value should not have doc_comment"
+        );
+
+        let nested = symbols.iter().find(|s| s.name == "nested").unwrap();
+        assert!(
+            nested.doc_comment.is_none(),
+            "Object value should not have doc_comment"
+        );
+
+        let list = symbols.iter().find(|s| s.name == "list").unwrap();
+        assert!(
+            list.doc_comment.is_none(),
+            "Array value should not have doc_comment"
+        );
+
+        // But nested string value SHOULD have doc_comment
+        let key = symbols.iter().find(|s| s.name == "key").unwrap();
+        assert_eq!(
+            key.doc_comment.as_ref().unwrap(),
+            "value",
+            "Nested string value should have doc_comment"
+        );
+    }
+
+    #[test]
+    fn test_empty_string_no_doc_comment() {
+        let json = r#"{"empty": ""}"#;
+
+        let symbols = extract_symbols(json);
+
+        let empty = symbols.iter().find(|s| s.name == "empty").unwrap();
+        assert!(
+            empty.doc_comment.is_none(),
+            "Empty string should not have doc_comment"
+        );
+    }
+
+    #[test]
+    fn test_long_string_truncated() {
+        // Create a string longer than 2000 chars
+        let long_value = "x".repeat(2500);
+        let json = format!(r#"{{"long": "{}"}}"#, long_value);
+
+        let symbols = extract_symbols(&json);
+
+        let long = symbols.iter().find(|s| s.name == "long").unwrap();
+        assert!(
+            long.doc_comment.is_none(),
+            "Very long strings should not be captured (avoid base64, etc.)"
+        );
+    }
 }

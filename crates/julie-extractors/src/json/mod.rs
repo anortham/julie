@@ -88,11 +88,26 @@ impl JsonExtractor {
             _ => SymbolKind::Variable,                // Treat primitives as variables
         };
 
+        // Extract string values as doc_comment for semantic search
+        // This enables searching memory files by description content, config values, etc.
+        let doc_comment = if value_node.kind() == "string" {
+            let value_text = self.base.get_node_text(&value_node);
+            let trimmed = value_text.trim_matches('"');
+            // Only include non-empty strings that aren't too long (avoid huge base64, etc.)
+            if !trimmed.is_empty() && trimmed.len() <= 2000 {
+                Some(trimmed.to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let options = SymbolOptions {
             signature: None,
             visibility: None,
             parent_id: parent_id.map(|s| s.to_string()),
-            doc_comment: None,
+            doc_comment,
             ..Default::default()
         };
 
