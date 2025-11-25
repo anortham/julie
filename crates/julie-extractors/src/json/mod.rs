@@ -93,9 +93,14 @@ impl JsonExtractor {
         let doc_comment = if value_node.kind() == "string" {
             let value_text = self.base.get_node_text(&value_node);
             let trimmed = value_text.trim_matches('"');
-            // Only include non-empty strings that aren't too long (avoid huge base64, etc.)
-            if !trimmed.is_empty() && trimmed.len() <= 2000 {
-                Some(trimmed.to_string())
+            // Include non-empty strings, truncating to 2000 chars (for semantic search)
+            if !trimmed.is_empty() {
+                if trimmed.len() <= 2000 {
+                    Some(trimmed.to_string())
+                } else {
+                    // Truncate long strings (e.g., plan content) instead of skipping
+                    Some(trimmed[..2000].to_string())
+                }
             } else {
                 None
             }

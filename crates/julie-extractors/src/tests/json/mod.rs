@@ -1247,9 +1247,20 @@ mod json_extractor_tests {
         let symbols = extract_symbols(&json);
 
         let long = symbols.iter().find(|s| s.name == "long").unwrap();
+        // Long strings should be truncated to 2000 chars (not skipped)
+        // This enables semantic search over plan content, which is often >2000 chars
         assert!(
-            long.doc_comment.is_none(),
-            "Very long strings should not be captured (avoid base64, etc.)"
+            long.doc_comment.is_some(),
+            "Long strings should be captured (truncated to 2000 chars)"
+        );
+        assert_eq!(
+            long.doc_comment.as_ref().unwrap().len(),
+            2000,
+            "Long strings should be truncated to exactly 2000 chars"
+        );
+        assert!(
+            long.doc_comment.as_ref().unwrap().chars().all(|c| c == 'x'),
+            "Truncated content should be the first 2000 chars"
         );
     }
 }
