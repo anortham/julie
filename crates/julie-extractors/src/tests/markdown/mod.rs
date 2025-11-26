@@ -753,4 +753,339 @@ More content.
             );
         }
     }
+
+    // ========================================================================
+    // YAML Frontmatter Extraction (--- delimited)
+    // ========================================================================
+
+    #[test]
+    fn test_yaml_frontmatter_basic() {
+        let markdown = r#"---
+title: My Document
+author: Jane Doe
+date: 2024-01-15
+---
+
+# Main Content
+
+Some text here.
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        // Should extract frontmatter as a symbol
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(
+            frontmatter.is_some(),
+            "Should extract YAML frontmatter as symbol. Got symbols: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        let fm = frontmatter.unwrap();
+        // Frontmatter should be treated as metadata/property
+        assert_eq!(fm.kind, SymbolKind::Property, "Frontmatter should be Property kind");
+
+        // doc_comment should contain the YAML content for semantic search
+        let doc = fm.doc_comment.as_ref();
+        assert!(doc.is_some(), "Frontmatter should have doc_comment with YAML content");
+        let content = doc.unwrap();
+        assert!(content.contains("title: My Document"), "Should contain title field");
+        assert!(content.contains("author: Jane Doe"), "Should contain author field");
+        assert!(content.contains("date:"), "Should contain date field");
+
+        // Heading should still be extracted
+        let heading = symbols.iter().find(|s| s.name == "Main Content");
+        assert!(heading.is_some(), "Should still extract heading after frontmatter");
+    }
+
+    #[test]
+    fn test_yaml_frontmatter_complex_fields() {
+        let markdown = r#"---
+title: Advanced Guide
+tags:
+  - rust
+  - tree-sitter
+  - parsing
+description: |
+  A comprehensive guide to parsing
+  markdown with tree-sitter.
+metadata:
+  version: 1.0
+  draft: false
+---
+
+# Introduction
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(frontmatter.is_some(), "Should extract complex YAML frontmatter");
+
+        let content = frontmatter.unwrap().doc_comment.as_ref().unwrap();
+        assert!(content.contains("tags:"), "Should capture list fields");
+        assert!(content.contains("rust"), "Should capture list items");
+        assert!(content.contains("description:"), "Should capture multiline fields");
+        assert!(content.contains("metadata:"), "Should capture nested objects");
+    }
+
+    #[test]
+    fn test_yaml_frontmatter_empty() {
+        let markdown = r#"---
+---
+
+# Content After Empty Frontmatter
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        // Empty frontmatter might or might not be extracted - implementation choice
+        // But headings should still work
+        let heading = symbols.iter().find(|s| s.name.contains("Empty Frontmatter"));
+        assert!(heading.is_some(), "Should extract heading after empty frontmatter");
+    }
+
+    #[test]
+    fn test_yaml_frontmatter_position_tracking() {
+        let markdown = r#"---
+title: Test
+---
+
+# Heading
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(frontmatter.is_some(), "Should extract frontmatter");
+
+        let fm = frontmatter.unwrap();
+        // Frontmatter starts at line 1
+        assert_eq!(fm.start_line, 1, "Frontmatter should start at line 1");
+        // Frontmatter ends at line 3 (the closing ---)
+        assert!(fm.end_line >= 3, "Frontmatter should end at or after line 3");
+
+        // Heading should start after frontmatter
+        let heading = symbols.iter().find(|s| s.name == "Heading");
+        if let Some(h) = heading {
+            assert!(
+                h.start_line > fm.end_line,
+                "Heading should start after frontmatter ends"
+            );
+        }
+    }
+
+    #[test]
+    fn test_yaml_frontmatter_real_world_blog_post() {
+        let markdown = r#"---
+title: "Building a Code Intelligence Server in Rust"
+date: 2024-11-15
+author: Murphy
+categories:
+  - Programming
+  - Rust
+  - Developer Tools
+tags: [rust, tree-sitter, mcp, code-intelligence]
+draft: false
+summary: Learn how to build a production-grade code intelligence server using Rust and tree-sitter.
+---
+
+# Introduction
+
+In this post, we'll explore how to build Julie, a code intelligence server.
+
+## Prerequisites
+
+- Rust 1.70+
+- Basic tree-sitter knowledge
+
+## Getting Started
+
+Let's dive in!
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        // Should have frontmatter + multiple headings
+        assert!(
+            symbols.len() >= 4,
+            "Should extract frontmatter and all headings, got {}",
+            symbols.len()
+        );
+
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(frontmatter.is_some(), "Should extract blog post frontmatter");
+
+        let content = frontmatter.unwrap().doc_comment.as_ref().unwrap();
+        assert!(
+            content.contains("Building a Code Intelligence Server"),
+            "Should capture title"
+        );
+        assert!(content.contains("categories:"), "Should capture categories");
+        assert!(content.contains("summary:"), "Should capture summary");
+
+        // Verify headings are still extracted correctly
+        let intro = symbols.iter().find(|s| s.name == "Introduction");
+        assert!(intro.is_some(), "Should find Introduction heading");
+
+        let prereq = symbols.iter().find(|s| s.name == "Prerequisites");
+        assert!(prereq.is_some(), "Should find Prerequisites heading");
+    }
+
+    // ========================================================================
+    // TOML Frontmatter Extraction (+++ delimited)
+    // ========================================================================
+
+    #[test]
+    fn test_toml_frontmatter_basic() {
+        let markdown = r#"+++
+title = "My Document"
+author = "Jane Doe"
+date = 2024-01-15
++++
+
+# Main Content
+
+Some text here.
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        // Should extract TOML frontmatter as a symbol
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(
+            frontmatter.is_some(),
+            "Should extract TOML frontmatter as symbol. Got symbols: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        let fm = frontmatter.unwrap();
+        assert_eq!(fm.kind, SymbolKind::Property, "TOML frontmatter should be Property kind");
+
+        let content = fm.doc_comment.as_ref().unwrap();
+        assert!(content.contains("title = "), "Should contain TOML title");
+        assert!(content.contains("author = "), "Should contain TOML author");
+    }
+
+    #[test]
+    fn test_toml_frontmatter_hugo_style() {
+        // Hugo static site generator uses TOML frontmatter
+        let markdown = r#"+++
+title = "Hugo Page"
+weight = 10
+[menu]
+  [menu.main]
+    parent = "docs"
+    weight = 1
++++
+
+# Documentation
+
+Welcome to the docs.
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(frontmatter.is_some(), "Should extract Hugo TOML frontmatter");
+
+        let content = frontmatter.unwrap().doc_comment.as_ref().unwrap();
+        assert!(content.contains("[menu]"), "Should capture TOML sections");
+    }
+
+    // ========================================================================
+    // Frontmatter Edge Cases
+    // ========================================================================
+
+    #[test]
+    fn test_no_frontmatter() {
+        let markdown = r#"# Just a Heading
+
+No frontmatter here, just regular content.
+
+## Another Section
+
+More content.
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        // Should NOT find frontmatter
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(
+            frontmatter.is_none(),
+            "Should not extract frontmatter when none exists"
+        );
+
+        // But should still extract headings
+        assert!(symbols.len() >= 2, "Should still extract headings");
+    }
+
+    #[test]
+    fn test_frontmatter_must_be_at_start() {
+        // Frontmatter-like content in middle of document should NOT be treated as frontmatter
+        let markdown = r#"# Introduction
+
+Some content first.
+
+---
+title: Not frontmatter
+---
+
+## Real Section
+
+More content.
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        // The --- block in the middle should NOT be extracted as frontmatter
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(
+            frontmatter.is_none(),
+            "Should not extract frontmatter-like block from middle of document"
+        );
+
+        // Headings should still work
+        let intro = symbols.iter().find(|s| s.name == "Introduction");
+        assert!(intro.is_some(), "Should extract Introduction heading");
+    }
+
+    #[test]
+    fn test_frontmatter_with_special_characters() {
+        let markdown = r#"---
+title: "Quotes: 'single' and \"double\""
+path: /users/murphy/docs
+emoji: 🚀
+unicode: "日本語タイトル"
+---
+
+# Content
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(frontmatter.is_some(), "Should handle special characters in frontmatter");
+
+        let content = frontmatter.unwrap().doc_comment.as_ref().unwrap();
+        assert!(content.contains("path:"), "Should preserve paths");
+    }
+
+    #[test]
+    fn test_frontmatter_only_document() {
+        let markdown = r#"---
+title: Metadata Only
+description: This document has only frontmatter
+---
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(
+            frontmatter.is_some(),
+            "Should extract frontmatter from document with no other content"
+        );
+    }
 }

@@ -60,8 +60,76 @@ impl MarkdownExtractor {
         match node.kind() {
             // tree-sitter-md uses "section" nodes for headings
             "section" => self.extract_section(node, parent_id),
+            // YAML frontmatter (--- delimited)
+            "minus_metadata" => self.extract_frontmatter(node),
+            // TOML frontmatter (+++ delimited)
+            "plus_metadata" => self.extract_frontmatter(node),
             _ => None,
         }
+    }
+
+    /// Extract frontmatter (YAML or TOML) as a symbol
+    ///
+    /// Frontmatter contains document metadata like title, author, tags, etc.
+    /// This is valuable for:
+    /// 1. Semantic search (find docs by metadata)
+    /// 2. Documentation organization
+    /// 3. Blog/static site content discovery
+    fn extract_frontmatter(&mut self, node: tree_sitter::Node) -> Option<Symbol> {
+        use crate::base::SymbolOptions;
+
+        let raw_text = self.base.get_node_text(&node);
+
+        // Strip the delimiters (--- or +++) from start and end
+        let content = self.strip_frontmatter_delimiters(&raw_text);
+
+        // Skip empty frontmatter
+        if content.trim().is_empty() {
+            return None;
+        }
+
+        let options = SymbolOptions {
+            signature: None,
+            visibility: None,
+            parent_id: None, // Frontmatter is always top-level
+            doc_comment: Some(content),
+            ..Default::default()
+        };
+
+        let symbol = self.base.create_symbol(
+            &node,
+            "frontmatter".to_string(),
+            SymbolKind::Property, // Metadata property
+            options,
+        );
+
+        Some(symbol)
+    }
+
+    /// Strip frontmatter delimiters (--- or +++) from raw text
+    fn strip_frontmatter_delimiters(&self, text: &str) -> String {
+        let lines: Vec<&str> = text.lines().collect();
+
+        if lines.len() < 2 {
+            return String::new();
+        }
+
+        // Skip first line (opening delimiter) and last line (closing delimiter)
+        // The closing delimiter might be on the last line or second-to-last if there's a trailing newline
+        let start = 1;
+        let end = if lines.last().map(|l| l.trim()).unwrap_or("") == "---"
+            || lines.last().map(|l| l.trim()).unwrap_or("") == "+++"
+        {
+            lines.len() - 1
+        } else if lines.len() > 2
+            && (lines[lines.len() - 2].trim() == "---" || lines[lines.len() - 2].trim() == "+++")
+        {
+            lines.len() - 2
+        } else {
+            lines.len()
+        };
+
+        lines[start..end].join("\n")
     }
 
     /// Extract a section (heading) as a symbol
