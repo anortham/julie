@@ -1088,4 +1088,81 @@ description: This document has only frontmatter
             "Should extract frontmatter from document with no other content"
         );
     }
+
+    #[test]
+    fn test_frontmatter_captures_body_content() {
+        // This test verifies that body content following frontmatter
+        // (but before any heading) is captured for semantic search.
+        // Critical for memory files that have descriptions after frontmatter.
+        let markdown = r#"---
+id: checkpoint_abc123
+type: checkpoint
+tags:
+- bugfix
+- auth
+---
+
+Fixed authentication bug - was missing await on token validation.
+This caused intermittent failures in production.
+
+Multiple paragraphs should also be captured.
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(frontmatter.is_some(), "Should extract frontmatter");
+
+        let doc = frontmatter.unwrap().doc_comment.as_ref().unwrap();
+
+        // Should contain the frontmatter YAML
+        assert!(doc.contains("id: checkpoint_abc123"), "Should have frontmatter");
+        assert!(doc.contains("type: checkpoint"), "Should have type field");
+
+        // Should ALSO contain the body content after frontmatter
+        assert!(
+            doc.contains("Fixed authentication bug"),
+            "Should capture body content after frontmatter: got: {}",
+            doc
+        );
+        assert!(
+            doc.contains("missing await on token validation"),
+            "Should capture full description"
+        );
+        assert!(
+            doc.contains("Multiple paragraphs"),
+            "Should capture multiple paragraphs"
+        );
+    }
+
+    #[test]
+    fn test_frontmatter_body_stops_at_heading() {
+        // Body capture should stop when a heading is encountered
+        let markdown = r#"---
+title: Test
+---
+
+Body content here.
+
+# Heading
+
+Content under heading should NOT be in frontmatter doc_comment.
+"#;
+
+        let symbols = extract_symbols(markdown);
+
+        let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
+        assert!(frontmatter.is_some(), "Should extract frontmatter");
+
+        let doc = frontmatter.unwrap().doc_comment.as_ref().unwrap();
+
+        // Should have body content
+        assert!(doc.contains("Body content here"), "Should capture body before heading");
+
+        // Should NOT have content under heading
+        assert!(
+            !doc.contains("under heading should NOT"),
+            "Should stop at heading boundary"
+        );
+    }
 }
