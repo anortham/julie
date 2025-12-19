@@ -8,9 +8,10 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::StructuredContentExt;
 use crate::tools::refactoring::SmartRefactorTool;
 
-fn extract_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
+fn extract_text(result: &crate::mcp_compat::CallToolResult) -> String {
     // Try extracting from .content first (TOON mode)
     if !result.content.is_empty() {
         return result
@@ -27,8 +28,8 @@ fn extract_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
     }
 
     // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = &result.structured_content {
-        return serde_json::to_string_pretty(structured).unwrap_or_default();
+    if let Some(structured) = result.structured_content() {
+        return serde_json::to_string_pretty(&structured).unwrap_or_default();
     }
 
     String::new()
@@ -72,7 +73,7 @@ export function processUser(userId: number) {
 
     let response = extract_text(&result);
     assert!(
-        result.structured_content.as_ref().and_then(|s| s.get("success")).and_then(|v| v.as_bool()).unwrap_or(false),
+        result.structured_content().and_then(|s| s.get("success").and_then(|v| v.as_bool())).unwrap_or(false),
         "Expected success, got: {}",
         response
     );
@@ -122,7 +123,7 @@ def calculate_average(numbers):
     let result = tool.call_tool(&handler).await?;
 
     let response = extract_text(&result);
-    assert!(result.structured_content.as_ref().and_then(|s| s.get("success")).and_then(|v| v.as_bool()).unwrap_or(false), "Should indicate success");
+    assert!(result.structured_content().and_then(|s| s.get("success").and_then(|v| v.as_bool())).unwrap_or(false), "Should indicate success");
 
     let actual = fs::read_to_string(&file_path)?;
     assert_eq!(actual.trim(), expected.trim());
@@ -179,7 +180,7 @@ impl User {
     let result = tool.call_tool(&handler).await?;
 
     let response = extract_text(&result);
-    assert!(result.structured_content.as_ref().and_then(|s| s.get("success")).and_then(|v| v.as_bool()).unwrap_or(false), "Should indicate success");
+    assert!(result.structured_content().and_then(|s| s.get("success").and_then(|v| v.as_bool())).unwrap_or(false), "Should indicate success");
 
     let actual = fs::read_to_string(&file_path)?;
     assert_eq!(actual.trim(), expected.trim());
@@ -228,7 +229,7 @@ class Service {
     let result = tool.call_tool(&handler).await?;
 
     let response = extract_text(&result);
-    assert!(result.structured_content.as_ref().and_then(|s| s.get("success")).and_then(|v| v.as_bool()).unwrap_or(false), "Should indicate success");
+    assert!(result.structured_content().and_then(|s| s.get("success").and_then(|v| v.as_bool())).unwrap_or(false), "Should indicate success");
 
     let actual = fs::read_to_string(&file_path)?;
     assert_eq!(actual.trim(), expected.trim());
@@ -260,8 +261,8 @@ async fn test_insert_dry_run() -> Result<()> {
     let result = tool.call_tool(&handler).await?;
 
     // Verify dry_run mode in structured_content
-    assert!(result.structured_content.is_some(), "Should have structured content");
-    let structured = result.structured_content.as_ref().unwrap();
+    assert!(result.structured_content().is_some(), "Should have structured content");
+    let structured = result.structured_content().unwrap();
     assert!(
         structured.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false),
         "Should indicate dry run mode"

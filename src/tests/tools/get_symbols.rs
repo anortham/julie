@@ -8,7 +8,7 @@ use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
-use rust_mcp_sdk::schema::CallToolResult;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
 
 /// Extract text from CallToolResult safely (handles both TOON and JSON modes)
 fn extract_text_from_result(result: &CallToolResult) -> String {
@@ -29,8 +29,8 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
     }
 
     // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = &result.structured_content {
-        return serde_json::to_string_pretty(structured).unwrap_or_default();
+    if let Some(structured) = result.structured_content() {
+        return serde_json::to_string_pretty(&structured).unwrap_or_default();
     }
 
     String::new()
@@ -332,7 +332,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
 
     let result_no_limit = tool_no_limit.call_tool(&handler).await?;
     let structured_content_no_limit = result_no_limit
-        .structured_content
+        .structured_content()
         .expect("Should have structured content");
 
     let total_symbols_no_limit = structured_content_no_limit
@@ -357,7 +357,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
     let result_with_limit = tool_with_limit.call_tool(&handler).await?;
     let text_with_limit = extract_text_from_result(&result_with_limit);
     let structured_content_with_limit = result_with_limit
-        .structured_content
+        .structured_content()
         .expect("Should have structured content");
 
     let returned_symbols = structured_content_with_limit

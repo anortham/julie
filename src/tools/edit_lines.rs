@@ -4,8 +4,8 @@
 //! Following TDD methodology with SOURCE/CONTROL golden master pattern.
 
 use anyhow::{Result, anyhow};
-use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
-use rust_mcp_sdk::schema::CallToolResult;
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{env, fs};
@@ -18,16 +18,6 @@ fn default_dry_run() -> bool {
     true
 }
 
-#[mcp_tool(
-    name = "edit_lines",
-    description = "Precise line-level file modifications (insert, replace, delete).",
-    title = "Surgical Line Editing",
-    idempotent_hint = false,
-    destructive_hint = true,
-    open_world_hint = false,
-    read_only_hint = false,
-    meta = r#"{"category": "editing", "safety": "line_precise"}"#
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct EditLinesTool {
     /// File path (relative to workspace root)
@@ -330,7 +320,7 @@ impl EditLinesTool {
             )
         };
 
-        Ok(CallToolResult::text_content(vec![message.into()]))
+        Ok(CallToolResult::text_content(vec![Content::text(message)]))
     }
 
     async fn resolve_file_path(&self, handler: &JulieServerHandler) -> Result<PathBuf> {

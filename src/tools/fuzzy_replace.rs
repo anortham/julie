@@ -16,9 +16,8 @@
 
 use anyhow::{Result, anyhow};
 use diff_match_patch_rs::{DiffMatchPatch, Efficient};
-use rust_mcp_sdk::macros::JsonSchema;
-use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt, WithStructuredContent};
 use serde::{Deserialize, Serialize};
 use tokio::fs; // Use async file I/O
 use tracing::{debug, info};
@@ -61,16 +60,6 @@ fn default_dry_run() -> bool {
 //   Fuzzy Replace Tool //
 //**********************//
 
-#[mcp_tool(
-    name = "fuzzy_replace",
-    description = "Replace patterns across files with fuzzy matching (single-file or multi-file mode).",
-    title = "Fuzzy Pattern Replacement",
-    idempotent_hint = false,
-    destructive_hint = true,
-    open_world_hint = false,
-    read_only_hint = false,
-    meta = r#"{"category": "editing", "safety": "dmp_fuzzy"}"#
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FuzzyReplaceTool {
     /// File path for single-file mode (omit when using file_pattern)
@@ -107,12 +96,12 @@ impl FuzzyReplaceTool {
         // VALIDATION: Require exactly ONE of file_path or file_pattern
         match (&self.file_path, &self.file_pattern) {
             (None, None) => {
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                return Ok(CallToolResult::text_content(vec![Content::text(
                     "Error: Must provide exactly one of file_path (single-file mode) or file_pattern (multi-file mode)".to_string(),
                 )]));
             }
             (Some(_), Some(_)) => {
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                return Ok(CallToolResult::text_content(vec![Content::text(
                     "Error: Cannot provide both file_path and file_pattern. Use file_path for single-file mode OR file_pattern for multi-file mode.".to_string(),
                 )]));
             }
@@ -160,13 +149,13 @@ impl FuzzyReplaceTool {
 
         // Validate parameters
         if self.threshold < 0.0 || self.threshold > 1.0 {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 "Error: threshold must be between 0.0 and 1.0 (recommended: 0.8)".to_string(),
             )]));
         }
 
         if self.distance < 0 {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 "Error: distance must be positive (recommended: 1000)".to_string(),
             )]));
         }
@@ -177,7 +166,7 @@ impl FuzzyReplaceTool {
             .map_err(|e| anyhow!("Failed to read file '{}': {}", resolved_path.display(), e))?;
 
         if original_content.is_empty() {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 format!("Error: File is empty: {}", resolved_path.display()),
             )]));
         }
@@ -186,7 +175,7 @@ impl FuzzyReplaceTool {
         let (modified_content, matches_found) = self.fuzzy_search_replace(&original_content)?;
 
         if matches_found == 0 {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 format!(
                     "No fuzzy matches found for pattern in: {}\nPattern: '{}', Threshold: {} (try increasing threshold or distance)",
                     file_path, self.pattern, self.threshold
@@ -208,7 +197,7 @@ impl FuzzyReplaceTool {
                 let pattern_balance = self.calculate_balance(&self.pattern);
 
                 if replacement_balance != pattern_balance {
-                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    return Ok(CallToolResult::text_content(vec![Content::text(
                         format!(
                             "Validation failed: Replacement changes bracket/paren balance\nPattern balance: {:?}, Replacement balance: {:?}",
                             pattern_balance, replacement_balance
@@ -311,7 +300,7 @@ impl FuzzyReplaceTool {
         };
 
         Ok(
-            CallToolResult::text_content(vec![TextContent::from(markdown)])
+            CallToolResult::text_content(vec![Content::text(markdown)])
                 .with_structured_content(structured_map),
         )
     }
@@ -331,13 +320,13 @@ impl FuzzyReplaceTool {
 
         // Validate parameters
         if self.threshold < 0.0 || self.threshold > 1.0 {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 "Error: threshold must be between 0.0 and 1.0 (recommended: 0.8)".to_string(),
             )]));
         }
 
         if self.distance < 0 {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 "Error: distance must be positive (recommended: 1000)".to_string(),
             )]));
         }
@@ -372,7 +361,7 @@ impl FuzzyReplaceTool {
         }
 
         if matching_files.is_empty() {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 format!("No files found matching pattern: '{}'", file_pattern),
             )]));
         }

@@ -1,18 +1,28 @@
 use anyhow::{Context, Result};
-use async_trait::async_trait;
-use rust_mcp_sdk::schema::{
-    CallToolRequest, CallToolResult, ListToolsRequest, ListToolsResult, RpcError,
-    schema_utils::CallToolError,
+use rmcp::{
+    ServerHandler, RoleServer,
+    model::{CallToolResult, ServerCapabilities, ServerInfo, Implementation},
+    service::NotificationContext,
+    handler::server::tool::ToolRouter,
+    handler::server::wrapper::Parameters,
+    tool, tool_router, tool_handler,
+    ErrorData as McpError,
 };
-use rust_mcp_sdk::{McpServer, mcp_server::ServerHandler};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use crate::embeddings::EmbeddingEngine;
-use crate::tools::JulieTools;
 use crate::workspace::{JulieWorkspace, WorkspaceConfig};
 use tokio::sync::RwLock;
+
+// Import tool parameter types (we'll convert these from the tool modules)
+use crate::tools::{
+    FastSearchTool, FastGotoTool, FastRefsTool, GetSymbolsTool, TraceCallPathTool,
+    FastExploreTool, FindLogicTool, EditLinesTool, FuzzyReplaceTool,
+    RenameSymbolTool, EditSymbolTool, CheckpointTool, RecallTool, PlanTool,
+    ManageWorkspaceTool,
+};
 
 /// Tracks which indexes are ready for search operations
 ///
@@ -63,11 +73,13 @@ pub struct JulieServerHandler {
     /// Tracks which indexes are ready for search operations
     pub indexing_status: Arc<IndexingStatus>,
     /// 🔒 CRITICAL FIX: Serializes tool execution to prevent stdout interleaving
-    /// The rust-mcp-sdk's StdioTransport doesn't synchronize writes to stdout.
+    /// The MCP StdioTransport doesn't synchronize writes to stdout.
     /// When multiple tool calls complete concurrently, their JSON responses can
     /// interleave on stdout, causing client parsing errors.
     /// This mutex ensures only one tool writes its response at a time.
     tool_execution_lock: Arc<tokio::sync::Mutex<()>>,
+    /// rmcp tool router for handling tool calls
+    tool_router: ToolRouter<Self>,
 }
 
 impl JulieServerHandler {
@@ -83,6 +95,7 @@ impl JulieServerHandler {
             embedding_engine_last_used: Arc::new(tokio::sync::Mutex::new(None)),
             indexing_status: Arc::new(IndexingStatus::new()),
             tool_execution_lock: Arc::new(tokio::sync::Mutex::new(())),
+            tool_router: Self::tool_router(),
         })
     }
 
@@ -427,176 +440,389 @@ impl JulieServerHandler {
             Err(_) => false,
         }
     }
-}
 
-#[async_trait]
-impl ServerHandler for JulieServerHandler {
-    /// Called after MCP handshake completes - run auto-indexing here
-    async fn on_initialized(&self, _runtime: Arc<dyn McpServer>) {
-        info!("🔗 MCP connection established - client initialized");
+    /// Run auto-indexing in background (called after MCP handshake)
+    async fn run_auto_indexing(&self) {
+        use crate::startup::check_if_indexing_needed;
 
-        // Run auto-indexing in background task after handshake completes
-        // This ensures the MCP server is responsive immediately
-        let handler = self.clone();
-        tokio::spawn(async move {
-            use crate::startup::check_if_indexing_needed;
+        info!("🔍 Starting background auto-indexing check...");
 
-            info!("🔍 Starting background auto-indexing check...");
+        // Check if indexing is needed
+        match check_if_indexing_needed(self).await {
+            Ok(true) => {
+                info!("📚 Workspace needs indexing - starting auto-indexing...");
 
-            // Check if indexing is needed
-            match check_if_indexing_needed(&handler).await {
-                Ok(true) => {
-                    info!("📚 Workspace needs indexing - starting auto-indexing...");
+                // Run indexing via manage_workspace tool
+                let index_tool = ManageWorkspaceTool {
+                    operation: "index".to_string(),
+                    path: None, // Use default workspace path
+                    name: None,
+                    workspace_id: None,
+                    force: Some(false),
+                    detailed: None,
+                };
 
-                    // Run indexing via manage_workspace tool
-                    use crate::tools::workspace::ManageWorkspaceTool;
-                    let index_tool = ManageWorkspaceTool {
-                        operation: "index".to_string(),
-                        path: None, // Use default workspace path
-                        name: None,
-                        workspace_id: None,
-                        force: Some(false),
-                        detailed: None,
-                    };
-
-                    if let Err(e) = index_tool.call_tool(&handler).await {
-                        warn!(
-                            "⚠️ Background auto-indexing failed: {} (use manage_workspace tool to retry)",
-                            e
-                        );
-                    } else {
-                        info!("✅ Background auto-indexing completed successfully");
-                    }
-                }
-                Ok(false) => {
-                    info!("✅ Workspace already indexed - skipping auto-indexing");
-                }
-                Err(e) => {
-                    warn!("⚠️ Failed to check indexing status: {}", e);
+                if let Err(e) = index_tool.call_tool(self).await {
+                    warn!(
+                        "⚠️ Background auto-indexing failed: {} (use manage_workspace tool to retry)",
+                        e
+                    );
+                } else {
+                    info!("✅ Background auto-indexing completed successfully");
                 }
             }
-        });
+            Ok(false) => {
+                info!("✅ Workspace already indexed - skipping auto-indexing");
+            }
+            Err(e) => {
+                warn!("⚠️ Failed to check indexing status: {}", e);
+            }
+        }
+    }
+}
+
+// Load agent instructions for server info
+fn load_agent_instructions() -> Option<String> {
+    match std::fs::read_to_string("JULIE_AGENT_INSTRUCTIONS.md") {
+        Ok(content) => Some(content),
+        Err(_) => None,
+    }
+}
+
+/// Tool router implementation - defines all available tools
+#[tool_router]
+impl JulieServerHandler {
+    pub fn new_router() -> Self {
+        // This is used by rmcp to create the tool router
+        // We need to provide a way to construct with proper state
+        panic!("Use JulieServerHandler::new() instead")
     }
 
-    /// Handle ListToolsRequest - return all available Julie tools
-    async fn handle_list_tools_request(
-        &self,
-        _request: ListToolsRequest,
-        _runtime: Arc<dyn McpServer>,
-    ) -> std::result::Result<ListToolsResult, RpcError> {
-        debug!("📋 Listing available Julie tools");
+    // ========== Search & Navigation Tools ==========
 
-        let tools = JulieTools::tools();
-        info!("📊 Returning {} available tools", tools.len());
-
-        Ok(ListToolsResult {
-            meta: None,
-            next_cursor: None,
-            tools,
+    #[tool(
+        name = "fast_search",
+        description = "Search code using text or semantic search. Supports multi-word queries with AND/OR logic.",
+        annotations(
+            title = "Fast Code Search",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn fast_search(&self, Parameters(params): Parameters<FastSearchTool>) -> Result<CallToolResult, McpError> {
+        debug!("⚡ Fast search: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("fast_search failed: {}", e), None)
         })
     }
 
-    /// Handle CallToolRequest - execute the requested Julie tool
-    async fn handle_call_tool_request(
-        &self,
-        request: CallToolRequest,
-        _runtime: Arc<dyn McpServer>,
-    ) -> std::result::Result<CallToolResult, CallToolError> {
-        debug!("🛠️  Executing tool: {}", request.params.name);
+    #[tool(
+        name = "fast_goto",
+        description = "Navigate to symbol definition. Finds where a symbol is defined in the codebase.",
+        annotations(
+            title = "Go to Definition",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn fast_goto(&self, Parameters(params): Parameters<FastGotoTool>) -> Result<CallToolResult, McpError> {
+        debug!("⚡ Fast goto definition: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("fast_goto failed: {}", e), None)
+        })
+    }
 
-        // Convert request parameters to JulieTools enum
-        let tool_params: JulieTools = JulieTools::try_from(request.params).map_err(|e| {
-            error!("❌ Failed to parse tool parameters: {}", e);
-            CallToolError::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid tool parameters: {}", e),
-            ))
-        })?;
+    #[tool(
+        name = "fast_refs",
+        description = "Find all references to a symbol across the codebase.",
+        annotations(
+            title = "Find References",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn fast_refs(&self, Parameters(params): Parameters<FastRefsTool>) -> Result<CallToolResult, McpError> {
+        debug!("⚡ Fast find references: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("fast_refs failed: {}", e), None)
+        })
+    }
 
-        // Execute the requested tool
-        let result = match &tool_params {
-            JulieTools::ManageWorkspaceTool(tool) => {
-                info!("🏗️ Managing workspace: {}", tool.operation);
-                tool.call_tool(self).await
-            }
-            // Consolidated fast tools with appealing names
-            JulieTools::FastSearchTool(tool) => {
-                debug!("⚡ Fast search: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::FastGotoTool(tool) => {
-                debug!("⚡ Fast goto definition: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::FastRefsTool(tool) => {
-                debug!("⚡ Fast find references: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::GetSymbolsTool(tool) => {
-                debug!("📋 Get symbols for file: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::TraceCallPathTool(tool) => {
-                debug!("🔍 Trace call path: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::EditLinesTool(tool) => {
-                debug!("✂️  Surgical line edit: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::FuzzyReplaceTool(tool) => {
-                debug!("🔍 Fuzzy replace: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::FastExploreTool(tool) => {
-                debug!("🔍 Fast explore (mode={:?}): {:?}", tool.mode, tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::FindLogicTool(tool) => {
-                debug!(
-                    "🏢 Find business logic (deprecated - use fast_explore): {:?}",
-                    tool
-                );
-                tool.call_tool(self).await
-            }
-            JulieTools::RenameSymbolTool(tool) => {
-                debug!("✏️  Rename symbol: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::EditSymbolTool(tool) => {
-                debug!("✂️  Edit symbol: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::CheckpointTool(tool) => {
-                debug!("💾 Checkpoint: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::RecallTool(tool) => {
-                debug!("🔍 Recall: {:?}", tool);
-                tool.call_tool(self).await
-            }
-            JulieTools::PlanTool(tool) => {
-                debug!("📋 Plan: {:?}", tool);
-                tool.call_tool(self).await
-            }
-        };
+    #[tool(
+        name = "get_symbols",
+        description = "Get symbols (functions, classes, etc.) from a file without reading full content.",
+        annotations(
+            title = "Get File Symbols",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn get_symbols(&self, Parameters(params): Parameters<GetSymbolsTool>) -> Result<CallToolResult, McpError> {
+        debug!("📋 Get symbols for file: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("get_symbols failed: {}", e), None)
+        })
+    }
 
-        // 🔒 Serialize transport writes ONLY while returning the result.
-        // Tool logic executes without the mutex to preserve concurrency.
-        let _execution_guard = self.tool_execution_lock.lock().await;
+    #[tool(
+        name = "trace_call_path",
+        description = "Trace execution flow between symbols across languages. Unique cross-language analysis.",
+        annotations(
+            title = "Trace Call Path",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn trace_call_path(&self, Parameters(params): Parameters<TraceCallPathTool>) -> Result<CallToolResult, McpError> {
+        debug!("🔍 Trace call path: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("trace_call_path failed: {}", e), None)
+        })
+    }
 
-        match result {
-            Ok(call_result) => {
-                debug!("✅ Tool executed successfully");
-                Ok(call_result)
-            }
-            Err(e) => {
-                error!("❌ Tool execution failed: {}", e);
-                Err(CallToolError::new(std::io::Error::other(format!(
-                    "Tool execution failed: {}",
-                    e
-                ))))
-            }
+    // ========== Exploration Tools ==========
+
+    #[tool(
+        name = "fast_explore",
+        description = "Multi-mode exploration: find business logic, similar code, tests, or dependencies.",
+        annotations(
+            title = "Fast Explore",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn fast_explore(&self, Parameters(params): Parameters<FastExploreTool>) -> Result<CallToolResult, McpError> {
+        debug!("🔍 Fast explore (mode={:?}): {:?}", params.mode, params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("fast_explore failed: {}", e), None)
+        })
+    }
+
+    #[tool(
+        name = "find_logic",
+        description = "Find business logic implementation. Deprecated - use fast_explore with mode='logic'.",
+        annotations(
+            title = "Find Business Logic",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn find_logic(&self, Parameters(params): Parameters<FindLogicTool>) -> Result<CallToolResult, McpError> {
+        debug!("🏢 Find business logic: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("find_logic failed: {}", e), None)
+        })
+    }
+
+    // ========== Editing Tools ==========
+
+    #[tool(
+        name = "edit_lines",
+        description = "Surgical line editing: insert, replace, or delete specific lines in a file.",
+        annotations(
+            title = "Edit Lines",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn edit_lines(&self, Parameters(params): Parameters<EditLinesTool>) -> Result<CallToolResult, McpError> {
+        debug!("✂️ Surgical line edit: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("edit_lines failed: {}", e), None)
+        })
+    }
+
+    #[tool(
+        name = "fuzzy_replace",
+        description = "Fuzzy search and replace using diff-match-patch algorithm. Tolerant of whitespace changes.",
+        annotations(
+            title = "Fuzzy Replace",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn fuzzy_replace(&self, Parameters(params): Parameters<FuzzyReplaceTool>) -> Result<CallToolResult, McpError> {
+        debug!("🔍 Fuzzy replace: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("fuzzy_replace failed: {}", e), None)
+        })
+    }
+
+    // ========== Refactoring Tools ==========
+
+    #[tool(
+        name = "rename_symbol",
+        description = "Rename a symbol across the entire codebase with workspace-wide updates.",
+        annotations(
+            title = "Rename Symbol",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn rename_symbol(&self, Parameters(params): Parameters<RenameSymbolTool>) -> Result<CallToolResult, McpError> {
+        debug!("✏️ Rename symbol: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("rename_symbol failed: {}", e), None)
+        })
+    }
+
+    #[tool(
+        name = "edit_symbol",
+        description = "Edit a symbol's body (function, class, etc.) with fuzzy matching.",
+        annotations(
+            title = "Edit Symbol",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn edit_symbol(&self, Parameters(params): Parameters<EditSymbolTool>) -> Result<CallToolResult, McpError> {
+        debug!("✂️ Edit symbol: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("edit_symbol failed: {}", e), None)
+        })
+    }
+
+    // ========== Memory Tools ==========
+
+    #[tool(
+        name = "checkpoint",
+        description = "Save development memory checkpoint to .memories/ directory.",
+        annotations(
+            title = "Save Memory Checkpoint",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn checkpoint(&self, Parameters(params): Parameters<CheckpointTool>) -> Result<CallToolResult, McpError> {
+        debug!("💾 Checkpoint: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("checkpoint failed: {}", e), None)
+        })
+    }
+
+    #[tool(
+        name = "recall",
+        description = "Retrieve development memories using semantic search.",
+        annotations(
+            title = "Recall Memories",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn recall(&self, Parameters(params): Parameters<RecallTool>) -> Result<CallToolResult, McpError> {
+        debug!("🔍 Recall: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("recall failed: {}", e), None)
+        })
+    }
+
+    #[tool(
+        name = "plan",
+        description = "Manage working plans with atomic updates. One active plan at a time.",
+        annotations(
+            title = "Manage Plans",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn plan(&self, Parameters(params): Parameters<PlanTool>) -> Result<CallToolResult, McpError> {
+        debug!("📋 Plan: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("plan failed: {}", e), None)
+        })
+    }
+
+    // ========== Workspace Management ==========
+
+    #[tool(
+        name = "manage_workspace",
+        description = "Manage workspace: index, add/remove reference workspaces, view status.",
+        annotations(
+            title = "Manage Workspace",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn manage_workspace(&self, Parameters(params): Parameters<ManageWorkspaceTool>) -> Result<CallToolResult, McpError> {
+        info!("🏗️ Managing workspace: {}", params.operation);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("manage_workspace failed: {}", e), None)
+        })
+    }
+}
+
+/// ServerHandler implementation with tool_handler macro
+#[tool_handler]
+impl ServerHandler for JulieServerHandler {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            protocol_version: rmcp::model::ProtocolVersion::V_2024_11_05,
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .build(),
+            server_info: Implementation {
+                name: "Julie".into(),
+                version: env!("CARGO_PKG_VERSION").into(),
+                title: Some("Julie - Code Intelligence Server".into()),
+                icons: None,
+                website_url: None,
+            },
+            instructions: load_agent_instructions(),
         }
+    }
+
+    async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
+        info!("🔗 MCP connection established - client initialized");
+
+        // Run auto-indexing in background task after handshake completes
+        let handler = self.clone();
+        tokio::spawn(async move {
+            handler.run_auto_indexing().await;
+        });
     }
 }

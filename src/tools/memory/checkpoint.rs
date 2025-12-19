@@ -10,8 +10,8 @@
 //! organized by date, making them git-trackable and human-readable.
 
 use anyhow::{Context, Result};
-use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::process::Stdio;
@@ -112,16 +112,6 @@ async fn capture_git_context(handler: &JulieServerHandler) -> Option<GitContext>
     })
 }
 
-#[mcp_tool(
-    name = "checkpoint",
-    description = "Save development memory checkpoint to .memories/ directory.",
-    title = "Save Memory Checkpoint",
-    idempotent_hint = false,
-    destructive_hint = false,
-    open_world_hint = false,
-    read_only_hint = false,
-    meta = r#"{"category": "memory", "phase": "1"}"#
-)]
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct CheckpointTool {
     /// Description of what was accomplished or learned
@@ -183,7 +173,7 @@ impl CheckpointTool {
         // Keep output minimal - AI already knows what it saved
         let message = format!("✅ Checkpoint saved: {}", id);
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             message,
         )]))
     }

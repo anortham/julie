@@ -4,7 +4,7 @@
 //! Used when output format is set to "lines".
 
 use anyhow::Result;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use tracing::{debug, warn};
 
 use crate::handler::JulieServerHandler;
@@ -185,7 +185,7 @@ pub async fn line_mode_search(
             💡 Try a broader search term or different query",
             query
         );
-        return Ok(CallToolResult::text_content(vec![TextContent::from(
+        return Ok(CallToolResult::text_content(vec![Content::text(
             message,
         )]));
     }
@@ -206,7 +206,7 @@ pub async fn line_mode_search(
         ));
     }
 
-    Ok(CallToolResult::text_content(vec![TextContent::from(
+    Ok(CallToolResult::text_content(vec![Content::text(
         lines.join("\n"),
     )]))
 }

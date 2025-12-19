@@ -27,9 +27,8 @@ mod text_search;
 mod types;
 
 use anyhow::Result;
-use rust_mcp_sdk::macros::JsonSchema;
-use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt, WithStructuredContent};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
@@ -41,16 +40,6 @@ use crate::tools::shared::OptimizedResponse;
 //   Search Tools   //
 //******************//
 
-#[mcp_tool(
-    name = "fast_search",
-    description = "Search for code patterns and content. Auto-detects search method from query (code patterns use text search, natural language uses hybrid). Manual override available: text, semantic, or hybrid. Julie 2.0: Default limit 10 (optimized for token efficiency with intelligent filtering). Default output is lean grep-style text (80% token savings vs JSON). Alternative formats: output_format='json' for structured data, 'toon' for compact tabular, 'auto' for smart selection.",
-    title = "Fast Unified Search",
-    idempotent_hint = true,
-    destructive_hint = false,
-    open_world_hint = false,
-    read_only_hint = true,
-    meta = r#"{"category": "search", "performance": "sub_10ms", "version": "2.0"}"#
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastSearchTool {
     /// Search query (text or pattern)
@@ -181,7 +170,7 @@ impl FastSearchTool {
                     );
                 } else {
                     let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable fast search.";
-                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    return Ok(CallToolResult::text_content(vec![Content::text(
                         message,
                     )]));
                 }
@@ -351,7 +340,7 @@ impl FastSearchTool {
                                     lean_output.len(),
                                     optimized.results.len()
                                 );
-                                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
                             }
                             Some("toon") => {
                                 // TOON mode: Compact tabular format
@@ -367,12 +356,12 @@ impl FastSearchTool {
                                 match toon_format::encode_default(&toon_response) {
                                     Ok(toon) => {
                                         debug!("✅ Encoded search results to TOON ({} chars)", toon.len());
-                                        Ok(CallToolResult::text_content(vec![TextContent::from(toon)]))
+                                        Ok(CallToolResult::text_content(vec![Content::text(toon)]))
                                     }
                                     Err(e) => {
                                         warn!("❌ TOON encoding failed: {}, falling back to lean format", e);
                                         let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
-                                        Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                                        Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
                                     }
                                 }
                             }
@@ -395,7 +384,7 @@ impl FastSearchTool {
                                                 optimized.results.len(),
                                                 toon.len()
                                             );
-                                            return Ok(CallToolResult::text_content(vec![TextContent::from(toon)]));
+                                            return Ok(CallToolResult::text_content(vec![Content::text(toon)]));
                                         }
                                         Err(e) => {
                                             warn!("❌ TOON encoding failed: {}, using lean format", e);
@@ -411,7 +400,7 @@ impl FastSearchTool {
                                     optimized.results.len(),
                                     lean_output.len()
                                 );
-                                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
                             }
                             Some("json") => {
                                 // JSON mode: Full structured content
@@ -434,7 +423,7 @@ impl FastSearchTool {
                                     unknown
                                 );
                                 let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
-                                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
                             }
                         };
                     }
@@ -453,7 +442,7 @@ impl FastSearchTool {
                 💡 Try a broader search term, different mode, or check spelling",
                 self.query
             );
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 message,
             )]));
         }
@@ -469,7 +458,7 @@ impl FastSearchTool {
                     lean_output.len(),
                     optimized.results.len()
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
             Some("toon") => {
                 // TOON mode: Compact tabular format for structured data needs
@@ -489,7 +478,7 @@ impl FastSearchTool {
                 match toon_format::encode_default(&toon_response) {
                     Ok(toon) => {
                         debug!("✅ Encoded search results to TOON ({} chars)", toon.len());
-                        Ok(CallToolResult::text_content(vec![TextContent::from(toon)]))
+                        Ok(CallToolResult::text_content(vec![Content::text(toon)]))
                     }
                     Err(e) => {
                         warn!(
@@ -499,7 +488,7 @@ impl FastSearchTool {
                         // Fall back to lean instead of JSON
                         let lean_output =
                             formatting::format_lean_search_results(&self.query, &optimized);
-                        Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                        Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
                     }
                 }
             }
@@ -526,7 +515,7 @@ impl FastSearchTool {
                                 optimized.results.len(),
                                 toon.len()
                             );
-                            return Ok(CallToolResult::text_content(vec![TextContent::from(toon)]));
+                            return Ok(CallToolResult::text_content(vec![Content::text(toon)]));
                         }
                         Err(e) => {
                             warn!("❌ TOON encoding failed: {}, using lean format", e);
@@ -542,7 +531,7 @@ impl FastSearchTool {
                     optimized.results.len(),
                     lean_output.len()
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
             Some("json") => {
                 // JSON mode: Full structured content for programmatic access
@@ -565,7 +554,7 @@ impl FastSearchTool {
                     unknown
                 );
                 let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
-                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
         }
     }

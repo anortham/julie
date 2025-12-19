@@ -1,5 +1,6 @@
 use crate::embeddings::EmbeddingEngine;
 use crate::extractors::{Symbol, SymbolKind};
+use crate::mcp_compat::StructuredContentExt;
 use crate::tracing::{ArchitecturalLayer, ConnectionType, CrossLanguageTracer, TraceOptions};
 use std::sync::Arc;
 use tempfile;
@@ -614,7 +615,7 @@ mod dogfooding_tests {
 
         // Verify we got a response (even if empty)
         assert!(
-            !trace_result.content.is_empty() || trace_result.structured_content.is_some(),
+            !trace_result.content.is_empty() || trace_result.structured_content().is_some(),
             "Trace should return a response"
         );
 
@@ -668,7 +669,7 @@ mod dogfooding_tests {
 
         // Verify we got a response (even if empty)
         assert!(
-            !trace_result.content.is_empty() || trace_result.structured_content.is_some(),
+            !trace_result.content.is_empty() || trace_result.structured_content().is_some(),
             "Trace should return a response"
         );
 

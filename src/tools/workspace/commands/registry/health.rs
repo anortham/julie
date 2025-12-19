@@ -1,7 +1,7 @@
 use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use tracing::{info, warn};
 
 impl ManageWorkspaceTool {
@@ -21,7 +21,7 @@ impl ManageWorkspaceTool {
             None => {
                 let message = "CRITICAL: No primary workspace found!\n\
                                Run 'index' command to initialize workspace.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                return Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]));
             }
@@ -66,7 +66,7 @@ impl ManageWorkspaceTool {
             health_report.push_str("• Background indexing ensures minimal startup delay\n");
         }
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             health_report,
         )]))
     }

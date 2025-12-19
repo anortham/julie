@@ -4,7 +4,7 @@ use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use crate::tools::search::FastSearchTool;
 use anyhow::{Result, anyhow};
-use rust_mcp_sdk::schema::CallToolResult;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
 use std::sync::atomic::Ordering;
 
 /// Search Julie's codebase (file content search)
@@ -59,7 +59,7 @@ fn parse_search_results(result: &CallToolResult) -> Result<Vec<Symbol>> {
     // The search tool returns OptimizedResponse in structured_content with format:
     // { "tool": "fast_search", "results": [Symbol, ...], "confidence": 0.85, ... }
 
-    if let Some(structured) = &result.structured_content {
+    if let Some(structured) = result.structured_content() {
         if let Some(results_value) = structured.get("results") {
             // Parse the results array as Vec<Symbol>
             let symbols: Vec<Symbol> = serde_json::from_value(results_value.clone())

@@ -2,7 +2,7 @@
 //!
 //! Handles formatting symbol data into structured responses for MCP clients.
 
-use rust_mcp_sdk::schema::CallToolResult;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::Serialize;
 use tracing::debug;
 
@@ -75,7 +75,6 @@ impl GetSymbolsResult {
 /// This format is optimal for AI agents that can read code directly.
 /// Returns code bodies separated by blank lines with a minimal file header.
 fn format_code_output(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
-    use rust_mcp_sdk::schema::TextContent;
 
     let mut output = String::new();
 
@@ -96,7 +95,7 @@ fn format_code_output(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
     // Trim trailing whitespace but ensure single newline at end
     let output = output.trim_end().to_string() + "\n";
 
-    CallToolResult::text_content(vec![TextContent::from(output)])
+    CallToolResult::text_content(vec![Content::text(output)])
 }
 
 /// Format symbol query response with structured content

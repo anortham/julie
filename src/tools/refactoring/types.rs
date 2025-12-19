@@ -1,6 +1,6 @@
 //! Shared types for refactoring operations
 
-use rust_mcp_sdk::macros::JsonSchema;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Structured result from smart refactoring operations

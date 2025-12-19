@@ -8,9 +8,10 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::StructuredContentExt;
 use crate::tools::refactoring::SmartRefactorTool;
 
-fn extract_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
+fn extract_text(result: &crate::mcp_compat::CallToolResult) -> String {
     // Try extracting from .content first (TOON mode)
     if !result.content.is_empty() {
         return result
@@ -28,8 +29,8 @@ fn extract_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
     }
 
     // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = &result.structured_content {
-        return serde_json::to_string_pretty(structured).unwrap_or_default();
+    if let Some(structured) = result.structured_content() {
+        return serde_json::to_string_pretty(&structured).unwrap_or_default();
     }
 
     String::new()
@@ -354,8 +355,8 @@ async fn test_extract_symbol_to_file_dry_run() -> Result<()> {
     let result = tool.call_tool(&handler).await?;
 
     // Verify dry_run mode in structured_content
-    assert!(result.structured_content.is_some(), "Should have structured content");
-    let structured = result.structured_content.as_ref().unwrap();
+    assert!(result.structured_content().is_some(), "Should have structured content");
+    let structured = result.structured_content().unwrap();
     assert!(
         structured.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false),
         "Should indicate dry run mode"

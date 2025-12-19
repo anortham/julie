@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt, WithStructuredContent};
 use serde::{Deserialize, Serialize};
 use toon_format;
 use tracing::{debug, warn};
@@ -279,7 +279,7 @@ pub fn create_toonable_result<J: Serialize, T: Serialize>(
             match toon_format::encode_default(toon_data) {
                 Ok(toon) => {
                     debug!("✅ Encoded {} to TOON ({} chars)", tool_name, toon.len());
-                    Ok(CallToolResult::text_content(vec![TextContent::from(toon)]))
+                    Ok(CallToolResult::text_content(vec![Content::text(toon)]))
                 }
                 Err(e) => {
                     warn!("❌ TOON encoding failed for {}: {}, falling back to JSON", tool_name, e);
@@ -293,7 +293,7 @@ pub fn create_toonable_result<J: Serialize, T: Serialize>(
                 match toon_format::encode_default(toon_data) {
                     Ok(toon) => {
                         debug!("✅ Auto-selected TOON for {} results ({} chars)", result_count, toon.len());
-                        return Ok(CallToolResult::text_content(vec![TextContent::from(toon)]));
+                        return Ok(CallToolResult::text_content(vec![Content::text(toon)]));
                     }
                     Err(e) => {
                         debug!("⚠️  TOON encoding failed: {}, falling back to JSON", e);

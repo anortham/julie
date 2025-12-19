@@ -15,7 +15,7 @@ mod rename_symbol;
 mod ast_aware;
 
 use crate::tools::refactoring::*;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt, WithStructuredContent};
 use serde_json::json;
 
 #[test]
@@ -27,7 +27,7 @@ fn parse_refs_result_handles_confidence_suffix() {
     };
 
     let content = "🔗 Reference: OldSymbol - src/lib.rs:42 (confidence: 0.95)";
-    let result = CallToolResult::text_content(vec![TextContent::from(content)]);
+    let result = CallToolResult::text_content(vec![Content::text(content)]);
 
     let parsed = tool
         .parse_refs_result(&result)

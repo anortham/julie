@@ -27,7 +27,7 @@ mod fts5_minimal_tests {
         *handler.is_indexed.write().await = true;
     }
 
-    fn extract_text_from_result(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
+    fn extract_text_from_result(result: &crate::mcp_compat::CallToolResult) -> String {
         result
             .content
             .iter()

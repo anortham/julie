@@ -40,13 +40,9 @@ path = "src/bin/codesearch.rs"
 # Julie Extractors (workspace member crate)
 julie-extractors = { path = "crates/julie-extractors" }
 
-# MCP Server SDK
-rust-mcp-sdk = { version = "0.7.0", default-features = false, features = [
-    "server",
-    "macros",
-    "stdio",
-    "2025_06_18",
-] }
+# MCP Server SDK - Official Anthropic SDK
+rmcp = { version = "0.12", features = ["server", "transport-io", "macros"] }
+schemars = "1.0"  # For JsonSchema derives in tool parameters
 
 # Async recursion support
 async-recursion = "1.1"

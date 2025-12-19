@@ -3,7 +3,7 @@ use crate::handler::JulieServerHandler;
 use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use tracing::{debug, info, warn};
 
 impl ManageWorkspaceTool {
@@ -21,7 +21,7 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "No primary workspace found. Please run 'index' command first.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                return Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]));
             }
@@ -117,7 +117,7 @@ impl ManageWorkspaceTool {
                             symbol_count,
                             relationship_count
                         );
-                        Ok(CallToolResult::text_content(vec![TextContent::from(
+                        Ok(CallToolResult::text_content(vec![Content::text(
                             message,
                         )]))
                     }
@@ -131,7 +131,7 @@ impl ManageWorkspaceTool {
                              Error: {}",
                             entry.id, display_name, entry.original_path, e
                         );
-                        Ok(CallToolResult::text_content(vec![TextContent::from(
+                        Ok(CallToolResult::text_content(vec![Content::text(
                             message,
                         )]))
                     }
@@ -140,7 +140,7 @@ impl ManageWorkspaceTool {
             Err(e) => {
                 // Registration failed
                 let message = format!("Failed to add reference workspace: {}", e);
-                Ok(CallToolResult::text_content(vec![TextContent::from(
+                Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]))
             }
@@ -159,7 +159,7 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                return Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]));
             }
@@ -204,26 +204,26 @@ impl ManageWorkspaceTool {
                         All associated symbols, files, and relationships have been removed.",
                         workspace_id
                     );
-                    Ok(CallToolResult::text_content(vec![TextContent::from(
+                    Ok(CallToolResult::text_content(vec![Content::text(
                         message,
                     )]))
                 }
                 Ok(false) => {
                     let message = format!("Workspace not found in registry: {}", workspace_id);
-                    Ok(CallToolResult::text_content(vec![TextContent::from(
+                    Ok(CallToolResult::text_content(vec![Content::text(
                         message,
                     )]))
                 }
                 Err(e) => {
                     let message = format!("Failed to remove workspace from registry: {}", e);
-                    Ok(CallToolResult::text_content(vec![TextContent::from(
+                    Ok(CallToolResult::text_content(vec![Content::text(
                         message,
                     )]))
                 }
             }
         } else {
             let message = format!("Workspace not found: {}", workspace_id);
-            Ok(CallToolResult::text_content(vec![TextContent::from(
+            Ok(CallToolResult::text_content(vec![Content::text(
                 message,
             )]))
         }

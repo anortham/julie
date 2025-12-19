@@ -3,7 +3,7 @@ use crate::tools::{
     FindBusinessLogicTool, ScoreCriticalityTool, FastSearchTool
 };
 use crate::handler::JulieServerHandler;
-use rust_mcp_sdk::schema::CallToolResult;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt};
 use anyhow::Result;
 
 /// Test module for Phase 6.1 Intelligence Tools

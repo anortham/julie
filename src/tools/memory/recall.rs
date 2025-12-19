@@ -8,8 +8,8 @@
 
 use anyhow::Result;
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
-use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -40,16 +40,6 @@ fn parse_date_to_timestamp(date_str: &str) -> Result<i64> {
     )
 }
 
-#[mcp_tool(
-    name = "recall",
-    description = "Retrieve development memory checkpoints with filtering options.",
-    title = "Recall Memories",
-    idempotent_hint = true,
-    destructive_hint = false,
-    open_world_hint = false,
-    read_only_hint = true,
-    meta = r#"{"category": "memory", "phase": "1"}"#
-)]
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct RecallTool {
     /// Maximum results (default: 10)
@@ -114,7 +104,7 @@ impl RecallTool {
                     "\n\nCreate your first checkpoint with the checkpoint tool!"
                 };
 
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 format!("No memories found.{}", filter_info),
             )]));
         }
@@ -193,7 +183,7 @@ impl RecallTool {
             memories.len()
         ));
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             output,
         )]))
     }

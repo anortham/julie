@@ -3,7 +3,7 @@
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::JulieWorkspace;
-use rust_mcp_sdk::schema::CallToolResult;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
 use std::fs;
 use tempfile::TempDir;
 
@@ -27,8 +27,8 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
     }
 
     // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = &result.structured_content {
-        return serde_json::to_string_pretty(structured).unwrap_or_default();
+    if let Some(structured) = result.structured_content() {
+        return serde_json::to_string_pretty(&structured).unwrap_or_default();
     }
 
     String::new()

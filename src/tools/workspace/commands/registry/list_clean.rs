@@ -4,7 +4,7 @@ use crate::utils::progressive_reduction::ProgressiveReducer;
 use crate::utils::token_estimation::TokenEstimator;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use tracing::info;
 
 impl ManageWorkspaceTool {
@@ -19,7 +19,7 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "No primary workspace found. Use 'index' command to create one.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                return Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]));
             }
@@ -31,7 +31,7 @@ impl ManageWorkspaceTool {
             Ok(workspaces) => {
                 if workspaces.is_empty() {
                     let message = "No workspaces registered.";
-                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    return Ok(CallToolResult::text_content(vec![Content::text(
                         message,
                     )]));
                 }
@@ -148,13 +148,13 @@ impl ManageWorkspaceTool {
                     ));
                 }
 
-                Ok(CallToolResult::text_content(vec![TextContent::from(
+                Ok(CallToolResult::text_content(vec![Content::text(
                     output,
                 )]))
             }
             Err(e) => {
                 let message = format!("Failed to list workspaces: {}", e);
-                Ok(CallToolResult::text_content(vec![TextContent::from(
+                Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]))
             }
@@ -172,7 +172,7 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                return Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]));
             }
@@ -232,13 +232,13 @@ impl ManageWorkspaceTool {
                     )
                 };
 
-                Ok(CallToolResult::text_content(vec![TextContent::from(
+                Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]))
             }
             Err(e) => {
                 let message = format!("Failed to perform comprehensive cleanup: {}", e);
-                Ok(CallToolResult::text_content(vec![TextContent::from(
+                Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]))
             }

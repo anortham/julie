@@ -5,9 +5,10 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::StructuredContentExt;
 use crate::tools::refactoring::SmartRefactorTool;
 
-fn extract_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
+fn extract_text(result: &crate::mcp_compat::CallToolResult) -> String {
     // Try extracting from .content first (TOON mode)
     if !result.content.is_empty() {
         return result
@@ -25,8 +26,8 @@ fn extract_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
     }
 
     // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = &result.structured_content {
-        return serde_json::to_string_pretty(structured).unwrap_or_default();
+    if let Some(structured) = result.structured_content() {
+        return serde_json::to_string_pretty(&structured).unwrap_or_default();
     }
 
     String::new()

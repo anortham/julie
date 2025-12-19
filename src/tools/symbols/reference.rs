@@ -3,7 +3,7 @@
 //! Handles getting symbols from reference (non-primary) workspaces.
 
 use anyhow::Result;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use tracing::{debug, info, warn};
 
 use super::body_extraction::extract_code_bodies;
@@ -97,7 +97,7 @@ pub async fn get_symbols_from_reference(
             "❌ File not found: {}\n💡 Check the file path - use relative paths from workspace root",
             file_path
         );
-        return Ok(CallToolResult::text_content(vec![TextContent::from(
+        return Ok(CallToolResult::text_content(vec![Content::text(
             message,
         )]));
     }
@@ -110,7 +110,7 @@ pub async fn get_symbols_from_reference(
 
     if symbols.is_empty() {
         let message = format!("No symbols found in: {}", file_path);
-        return Ok(CallToolResult::text_content(vec![TextContent::from(
+        return Ok(CallToolResult::text_content(vec![Content::text(
             message,
         )]));
     }
@@ -121,7 +121,7 @@ pub async fn get_symbols_from_reference(
 
     if symbols_to_return.is_empty() {
         let message = format!("No symbols found after filtering in: {}", file_path);
-        return Ok(CallToolResult::text_content(vec![TextContent::from(
+        return Ok(CallToolResult::text_content(vec![Content::text(
             message,
         )]));
     }

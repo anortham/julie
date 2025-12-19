@@ -14,9 +14,8 @@ pub mod tracing;
 pub mod types;
 
 use anyhow::{Result, anyhow};
-use rust_mcp_sdk::macros::JsonSchema;
-use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::CallToolResult;
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, WithStructuredContent};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -30,16 +29,6 @@ use types::{default_depth, default_output_format, default_upstream, default_work
 //   Trace Call Path Tool    //
 //***************************//
 
-#[mcp_tool(
-    name = "trace_call_path",
-    description = "Trace execution flow across language boundaries (TypeScript, Go, Python, SQL). Default output is lean ASCII tree visualization (60% token savings vs JSON). Alternative formats: output_format='json' for structured data, 'toon' for compact tabular, 'auto' for smart selection.",
-    title = "Cross-Language Call Path Tracer",
-    idempotent_hint = true,
-    destructive_hint = false,
-    open_world_hint = false,
-    read_only_hint = true,
-    meta = r#"{"category": "navigation", "performance": "fast"}"#
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct TraceCallPathTool {
     /// Symbol name (supports qualified names)
@@ -91,7 +80,7 @@ impl TraceCallPathTool {
                     ascii_tree.len()
                 );
                 Ok(CallToolResult::text_content(vec![
-                    rust_mcp_sdk::schema::TextContent::from(ascii_tree),
+                    crate::mcp_compat::Content::text(ascii_tree),
                 ]))
             }
             Some("toon") | Some("auto") | Some("json") => {
@@ -117,12 +106,12 @@ impl TraceCallPathTool {
                         let toon_flat = result.to_toon_flat();
                         match toon_format::encode_default(&toon_flat) {
                             Ok(toon) => Ok(CallToolResult::text_content(vec![
-                                rust_mcp_sdk::schema::TextContent::from(toon),
+                                crate::mcp_compat::Content::text(toon),
                             ])),
                             Err(_) => {
                                 // Fall back to lean on TOON error
                                 Ok(CallToolResult::text_content(vec![
-                                    rust_mcp_sdk::schema::TextContent::from(ascii_tree),
+                                    crate::mcp_compat::Content::text(ascii_tree),
                                 ]))
                             }
                         }
@@ -132,13 +121,13 @@ impl TraceCallPathTool {
                         if toon_flat.len() >= 10 {
                             if let Ok(toon) = toon_format::encode_default(&toon_flat) {
                                 return Ok(CallToolResult::text_content(vec![
-                                    rust_mcp_sdk::schema::TextContent::from(toon),
+                                    crate::mcp_compat::Content::text(toon),
                                 ]));
                             }
                         }
                         // Fall back to lean for small results
                         Ok(CallToolResult::text_content(vec![
-                            rust_mcp_sdk::schema::TextContent::from(ascii_tree),
+                            crate::mcp_compat::Content::text(ascii_tree),
                         ]))
                     }
                     _ => {
@@ -159,7 +148,7 @@ impl TraceCallPathTool {
                     unknown
                 );
                 Ok(CallToolResult::text_content(vec![
-                    rust_mcp_sdk::schema::TextContent::from(ascii_tree),
+                    crate::mcp_compat::Content::text(ascii_tree),
                 ]))
             }
         }

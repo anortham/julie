@@ -3,7 +3,7 @@ use crate::handler::JulieServerHandler;
 use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
@@ -223,7 +223,7 @@ impl ManageWorkspaceTool {
                         "Workspace already indexed: {} symbols\nUse force: true to re-index",
                         symbol_count
                     );
-                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    return Ok(CallToolResult::text_content(vec![Content::text(
                         message,
                     )]));
                 }
@@ -267,7 +267,7 @@ impl ManageWorkspaceTool {
                                 None => {
                                     warn!("Failed to get primary workspace ID after registration");
                                     return Ok(CallToolResult::text_content(vec![
-                                        TextContent::from(
+                                        Content::text(
                                             "⚠️ Indexing completed but could not update workspace statistics",
                                         ),
                                     ]));
@@ -324,7 +324,7 @@ impl ManageWorkspaceTool {
                     "Workspace indexing complete: {} files, {} symbols, {} relationships\nReady for search and navigation",
                     file_count, symbol_count, relationship_count
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(
+                Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]))
             }
@@ -334,7 +334,7 @@ impl ManageWorkspaceTool {
                     "Workspace indexing failed: {}\nCheck that the path exists and contains source files",
                     e
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(
+                Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]))
             }

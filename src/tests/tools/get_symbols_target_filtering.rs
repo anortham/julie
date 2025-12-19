@@ -12,7 +12,7 @@ mod tests {
     use crate::handler::JulieServerHandler;
     use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
     use anyhow::Result;
-    use rust_mcp_sdk::schema::CallToolResult;
+    use crate::mcp_compat::{CallToolResult, CallToolResultExt};
 
     #[tokio::test]
     #[ignore] // SLOW/HANGS: Indexes entire workspace (300+ files) - not critical for CLI tools

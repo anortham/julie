@@ -6,6 +6,7 @@
 //! - Balance calculation for validation
 //! - Edge cases (empty strings, UTF-8, long patterns)
 
+use crate::mcp_compat::StructuredContentExt;
 use crate::tools::fuzzy_replace::FuzzyReplaceTool;
 use anyhow::Result;
 
@@ -479,8 +480,8 @@ mod multi_file_tests {
         let result = tool.call_tool(&handler).await?;
 
         // Verify dry_run mode in structured_content
-        assert!(result.structured_content.is_some(), "Should have structured content");
-        let structured = result.structured_content.as_ref().unwrap();
+        assert!(result.structured_content().is_some(), "Should have structured content");
+        let structured = result.structured_content().unwrap();
         assert!(
             structured.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false),
             "Should indicate dry run mode"

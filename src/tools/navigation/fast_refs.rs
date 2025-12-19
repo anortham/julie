@@ -6,9 +6,8 @@
 //! 3. HNSW semantic similarity (strict threshold 0.75 to prevent false positives)
 
 use anyhow::Result;
-use rust_mcp_sdk::macros::JsonSchema;
-use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tracing::{debug, warn};
@@ -42,16 +41,6 @@ fn default_output_format() -> Option<String> {
     None // None = lean format (reference list). Override with "json", "toon", or "auto"
 }
 
-#[mcp_tool(
-    name = "fast_refs",
-    description = "Find all references and usages of a symbol across the workspace. Julie 2.0: Default limit 10 (optimized for token efficiency, showing most relevant references first). Default output is lean text format (70% token savings vs JSON). Alternative formats: output_format='json' for structured data, 'toon' for compact tabular, 'auto' for smart selection.",
-    title = "Find All References",
-    idempotent_hint = true,
-    destructive_hint = false,
-    open_world_hint = false,
-    read_only_hint = true,
-    meta = r#"{"category": "navigation", "scope": "workspace", "version": "2.0"}"#
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastRefsTool {
     /// Symbol name (supports qualified names)
@@ -94,7 +83,7 @@ impl FastRefsTool {
                     definitions.len(),
                     references.len()
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
             Some("toon") | Some("auto") | Some("json") => {
                 // Structured formats: Build full result object
@@ -155,7 +144,7 @@ impl FastRefsTool {
                     unknown
                 );
                 let lean_output = format_lean_refs_results(&self.symbol, &definitions, &references);
-                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
         }
     }

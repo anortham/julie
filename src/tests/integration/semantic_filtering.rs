@@ -31,7 +31,7 @@ use crate::handler::JulieServerHandler;
 use crate::tools::search::FastSearchTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
-use rust_mcp_sdk::schema::CallToolResult;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
@@ -312,10 +312,9 @@ async fn semantic_search_with_pattern(
 fn parse_search_results(result: &CallToolResult) -> Result<Vec<Symbol>> {
     // Extract "results" from structured_content
     let symbols = result
-        .structured_content
-        .as_ref()
-        .and_then(|map| map.get("results"))
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .structured_content()
+        .and_then(|map| map.get("results").cloned())
+        .and_then(|v| serde_json::from_value(v).ok())
         .ok_or_else(|| anyhow::anyhow!("No results in CallToolResult"))?;
 
     Ok(symbols)

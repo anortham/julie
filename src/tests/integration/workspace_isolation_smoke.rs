@@ -6,6 +6,7 @@
 #[cfg(test)]
 mod workspace_isolation_smoke_tests {
     use crate::handler::JulieServerHandler;
+    use crate::mcp_compat::StructuredContentExt;
     use crate::tools::search::FastSearchTool;
     use crate::tools::workspace::ManageWorkspaceTool;
     use anyhow::Result;
@@ -29,7 +30,7 @@ mod workspace_isolation_smoke_tests {
         *handler.is_indexed.write().await = true;
     }
 
-    fn extract_text_from_result(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
+    fn extract_text_from_result(result: &crate::mcp_compat::CallToolResult) -> String {
         // Try extracting from .content first (TOON mode)
         if !result.content.is_empty() {
             return result
@@ -47,14 +48,14 @@ mod workspace_isolation_smoke_tests {
         }
 
         // Fall back to .structured_content (JSON mode)
-        if let Some(structured) = &result.structured_content {
-            return serde_json::to_string_pretty(structured).unwrap_or_default();
+        if let Some(structured) = result.structured_content() {
+            return serde_json::to_string_pretty(&structured).unwrap_or_default();
         }
 
         String::new()
     }
 
-    fn extract_workspace_id(result: &rust_mcp_sdk::schema::CallToolResult) -> Option<String> {
+    fn extract_workspace_id(result: &crate::mcp_compat::CallToolResult) -> Option<String> {
         let text = extract_text_from_result(result);
         text.lines()
             .find(|line| line.contains("Workspace ID:"))

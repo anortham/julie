@@ -10,15 +10,14 @@ use tempfile::TempDir;
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use crate::tools::{FastSearchTool, ManageWorkspaceTool};
-use rust_mcp_sdk::schema::CallToolResult;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
 
 /// Extract structured content as symbols from CallToolResult
 fn extract_symbols_from_result(result: &CallToolResult) -> Vec<Symbol> {
     result
-        .structured_content
-        .as_ref()
-        .and_then(|map| map.get("results"))
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .structured_content()
+        .and_then(|map| map.get("results").cloned())
+        .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_else(Vec::new)
 }
 

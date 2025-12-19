@@ -8,10 +8,11 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::StructuredContentExt;
 use crate::tools::refactoring::SmartRefactorTool;
 
 /// Extract text from CallToolResult
-fn extract_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
+fn extract_text(result: &crate::mcp_compat::CallToolResult) -> String {
     // Try extracting from .content first (TOON mode)
     if !result.content.is_empty() {
         return result
@@ -29,8 +30,8 @@ fn extract_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
     }
 
     // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = &result.structured_content {
-        return serde_json::to_string_pretty(structured).unwrap_or_default();
+    if let Some(structured) = result.structured_content() {
+        return serde_json::to_string_pretty(&structured).unwrap_or_default();
     }
 
     String::new()
@@ -82,7 +83,7 @@ export function getUserData(userId: number): Promise<User> {
 
     // This assertion would FAIL if the operation returned "coming soon"
     assert!(
-        result.structured_content.as_ref().and_then(|s| s.get("success")).and_then(|v| v.as_bool()).unwrap_or(false),
+        result.structured_content().and_then(|s| s.get("success").and_then(|v| v.as_bool())).unwrap_or(false),
         "Expected success message, got: {}",
         response
     );
@@ -147,7 +148,7 @@ class UserService:
 
     let response = extract_text(&result);
     assert!(
-        result.structured_content.as_ref().and_then(|s| s.get("success")).and_then(|v| v.as_bool()).unwrap_or(false),
+        result.structured_content().and_then(|s| s.get("success").and_then(|v| v.as_bool())).unwrap_or(false),
         "Expected success, got: {}",
         response
     );
@@ -198,7 +199,7 @@ pub fn calculate_total(items: &[Item]) -> f64 {
 
     let response = extract_text(&result);
     assert!(
-        result.structured_content.as_ref().and_then(|s| s.get("success")).and_then(|v| v.as_bool()).unwrap_or(false),
+        result.structured_content().and_then(|s| s.get("success").and_then(|v| v.as_bool())).unwrap_or(false),
         "Expected success, got: {}",
         response
     );
@@ -232,8 +233,8 @@ async fn test_replace_symbol_body_dry_run() -> Result<()> {
     let result = tool.call_tool(&handler).await?;
 
     // Verify dry_run mode in structured_content
-    assert!(result.structured_content.is_some(), "Should have structured content");
-    let structured = result.structured_content.as_ref().unwrap();
+    assert!(result.structured_content().is_some(), "Should have structured content");
+    let structured = result.structured_content().unwrap();
     assert!(
         structured.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false),
         "Should indicate dry run mode"

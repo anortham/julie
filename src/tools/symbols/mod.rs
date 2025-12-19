@@ -16,9 +16,8 @@ mod primary;
 mod reference;
 
 use anyhow::Result;
-use rust_mcp_sdk::macros::JsonSchema;
-use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::CallToolResult;
+use schemars::JsonSchema;
+use crate::mcp_compat::CallToolResult;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -45,16 +44,6 @@ fn default_workspace() -> Option<String> {
 //   Get Symbols Tool   //
 //**********************//
 
-#[mcp_tool(
-    name = "get_symbols",
-    description = "Get file structure and symbols with optional body extraction. Supports output_format='code' for raw source code (optimal for AI reading - default when code bodies available), 'json' for structured metadata, 'toon' for compact tabular format (50-70% token savings), or 'auto' (TOON for 5+ symbols). Default: mode='minimal' with output_format='code' - returns readable source code.",
-    title = "Get File Symbols",
-    idempotent_hint = true,
-    destructive_hint = false,
-    open_world_hint = false,
-    read_only_hint = true,
-    meta = r#"{"category": "navigation", "performance": "instant", "agent_hint": "structure_first_then_targeted_bodies"}"#
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct GetSymbolsTool {
     /// File path (relative to workspace root)

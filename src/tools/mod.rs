@@ -38,34 +38,5 @@ pub use shared::{
     KNOWN_CODE_EXTENSIONS, OptimizedResponse,
 };
 
-// Generate the JulieTools enum with tool_box! macro (gradually add tools as they are migrated)
-use rust_mcp_sdk::tool_box;
-
-// Generates the JulieTools enum with all tool variants
-tool_box!(
-    JulieTools,
-    [
-        // Search & Navigation tools
-        FastSearchTool,
-        FastGotoTool,
-        FastRefsTool,
-        GetSymbolsTool,
-        TraceCallPathTool,
-        // Exploration tools
-        FastExploreTool, // NEW: Multi-mode exploration (logic/similar/tests/deps)
-        FindLogicTool,   // Legacy: Use FastExploreTool(mode="logic") instead
-        // Editing tools
-        EditLinesTool,
-        FuzzyReplaceTool,
-        // Semantic refactoring tools (simplified, agent-friendly APIs)
-        RenameSymbolTool,
-        EditSymbolTool,
-        // Memory system tools (Phase 1)
-        CheckpointTool,
-        RecallTool,
-        // Memory system tools (Phase 1.5)
-        PlanTool,
-        // Workspace management
-        ManageWorkspaceTool,
-    ]
-);
+// Note: Tool registration now handled by rmcp #[tool_router] macro in handler.rs
+// The old tool_box! macro from rust-mcp-sdk has been removed

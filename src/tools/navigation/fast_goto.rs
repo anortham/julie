@@ -6,9 +6,8 @@
 //! 3. HNSW semantic similarity (if available)
 
 use anyhow::Result;
-use rust_mcp_sdk::macros::JsonSchema;
-use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
@@ -32,16 +31,6 @@ fn default_output_format() -> Option<String> {
     None // None = lean format (definition list). Override with "json", "toon", or "auto"
 }
 
-#[mcp_tool(
-    name = "fast_goto",
-    description = "Navigate to symbol definitions with fuzzy matching across languages. Default output is lean text format (70% token savings vs JSON). Alternative formats: output_format='json' for structured data, 'toon' for compact tabular, 'auto' for smart selection.",
-    title = "Navigate to Definition",
-    idempotent_hint = true,
-    destructive_hint = false,
-    open_world_hint = false,
-    read_only_hint = true,
-    meta = r#"{"category": "navigation", "precision": "line_level"}"#
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastGotoTool {
     /// Symbol name (supports qualified names like "MyClass::method")
@@ -79,7 +68,7 @@ impl FastGotoTool {
                     lean_output.len(),
                     definitions.len()
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
             Some("toon") | Some("auto") | Some("json") => {
                 // Structured formats: Build full result object
@@ -123,7 +112,7 @@ impl FastGotoTool {
                     unknown
                 );
                 let lean_output = format_lean_goto_results(&self.symbol, &definitions);
-                Ok(CallToolResult::text_content(vec![TextContent::from(lean_output)]))
+                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
         }
     }

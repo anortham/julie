@@ -1,8 +1,8 @@
 // PlanTool - MCP interface for mutable development plans (Phase 1.5)
 
 use anyhow::{Result, anyhow};
-use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -90,16 +90,6 @@ async fn capture_git_context(handler: &JulieServerHandler) -> Option<super::GitC
     })
 }
 
-#[mcp_tool(
-    name = "plan",
-    description = "Create and manage development plans stored in .memories/plans/.",
-    title = "Manage Development Plans",
-    idempotent_hint = false,
-    destructive_hint = false,
-    open_world_hint = false,
-    read_only_hint = false,
-    meta = r#"{"category": "memory", "phase": "1.5"}"#
-)]
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct PlanTool {
     /// Action: "save", "get", "list", "activate", "update", "complete"
@@ -182,7 +172,7 @@ impl PlanTool {
             activate_plan(workspace_root, &plan.id)?;
         }
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             format!(
                 "✅ Plan created: {}\nID: {}\nStatus: {}\n\nPlan saved to: .memories/plans/{}.json",
                 plan.title,
@@ -226,7 +216,7 @@ impl PlanTool {
             })
             .unwrap_or_else(|| "(no content)".to_string());
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             format!(
                 "📋 Plan: {}\nID: {}\nStatus: {}\n\n{}",
                 plan.title,
@@ -259,7 +249,7 @@ impl PlanTool {
         let plans = list_plans(workspace_root, status_filter)?;
 
         if plans.is_empty() {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 "No plans found.",
             )]));
         }
@@ -285,7 +275,7 @@ impl PlanTool {
             ));
         }
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             output,
         )]))
     }
@@ -302,7 +292,7 @@ impl PlanTool {
 
         let plan = get_plan(workspace_root, id)?;
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             format!(
                 "✅ Activated plan: {}\nAll other plans have been archived.",
                 plan.title
@@ -339,7 +329,7 @@ impl PlanTool {
 
         let plan = update_plan(workspace_root, id, updates)?;
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             format!(
                 "✅ Updated plan: {}\nStatus: {}",
                 plan.title,
@@ -362,7 +352,7 @@ impl PlanTool {
 
         let plan = complete_plan(workspace_root, id)?;
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             format!("✅ Completed plan: {}\nStatus: completed", plan.title),
         )]))
     }

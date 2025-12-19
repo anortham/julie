@@ -6,54 +6,12 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use julie::handler::JulieServerHandler;
-use rust_mcp_sdk::schema::{
-    Implementation, InitializeResult, LATEST_PROTOCOL_VERSION, ServerCapabilities,
-    ServerCapabilitiesTools,
-};
-
-use rust_mcp_sdk::{
-    McpServer, StdioTransport, TransportOptions,
-    error::SdkResult,
-    mcp_server::{ServerRuntime, server_runtime},
-};
-
-/// Load agent instructions from JULIE_AGENT_INSTRUCTIONS.md
-fn load_agent_instructions() -> String {
-    // Try to load from file first
-    match fs::read_to_string("JULIE_AGENT_INSTRUCTIONS.md") {
-        Ok(content) => {
-            info!("📖 Loaded agent instructions from JULIE_AGENT_INSTRUCTIONS.md");
-            content
-        }
-        Err(e) => {
-            warn!("⚠️  Could not load JULIE_AGENT_INSTRUCTIONS.md: {}", e);
-            warn!("📝 Using minimal fallback instructions");
-            // Minimal fallback instructions
-            r#"# Julie - Code Intelligence Server
-
-## Quick Start
-1. Index your workspace: `manage_workspace operation="index"`
-2. Search code: `fast_search query="your_search"`
-3. Navigate: `fast_goto symbol="SymbolName"`
-4. Find references: `fast_refs symbol="SymbolName"`
-
-## Key Tools
-- **get_symbols**: See file structure without reading full content
-- **trace_call_path**: Trace execution flow across languages (unique!)
-- **fast_search**: Instant semantic + text search
-- **fast_explore**: Understand architecture
-
-Use Julie for INTELLIGENCE, built-in tools for MECHANICS."#
-                .to_string()
-        }
-    }
-}
+use rmcp::{ServiceExt, transport::stdio};
 
 /// Determine the workspace root path from CLI args, environment, or current directory
 ///
@@ -124,7 +82,7 @@ fn get_workspace_root() -> PathBuf {
 }
 
 #[tokio::main]
-async fn main() -> SdkResult<()> {
+async fn main() -> anyhow::Result<()> {
     // 🔧 CRITICAL: Determine workspace root BEFORE setting up logging
     // VS Code/MCP servers may start with arbitrary working directories
     // We support multiple detection methods (see get_workspace_root())
@@ -133,12 +91,7 @@ async fn main() -> SdkResult<()> {
     // Initialize logging with both console and file output
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("julie=info"))
-        .map_err(|e| {
-            rust_mcp_sdk::error::McpSdkError::Io(std::io::Error::other(format!(
-                "Failed to initialize logging filter: {}",
-                e
-            )))
-        })?;
+        .map_err(|e| anyhow::anyhow!("Failed to initialize logging filter: {}", e))?;
 
     // Ensure .julie/logs directory exists in the workspace root
     let logs_dir = workspace_root.join(".julie").join("logs");
@@ -174,71 +127,43 @@ async fn main() -> SdkResult<()> {
     );
     info!("📂 Workspace root: {:?}", workspace_root);
 
-    // STEP 1: Define server details and capabilities
-    let server_details = InitializeResult {
-        server_info: Implementation {
-            name: "Julie".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            title: Some("Julie - Cross-Platform Code Intelligence Server".to_string()),
-        },
-        capabilities: ServerCapabilities {
-            tools: Some(ServerCapabilitiesTools { list_changed: None }),
-            ..Default::default()
-        },
-        meta: None,
-        instructions: Some(load_agent_instructions()),
-        protocol_version: LATEST_PROTOCOL_VERSION.to_string(),
-    };
-
-    info!("📋 Server configuration:");
-    info!("  Name: {}", server_details.server_info.name);
-    info!("  Version: {}", server_details.server_info.version);
-    info!("  Protocol: {}", server_details.protocol_version);
-
-    // STEP 2: Create stdio transport with default options
-    let transport = StdioTransport::new(TransportOptions::default())?;
-    debug!("✓ STDIO transport initialized");
-
-    // STEP 3: Instantiate our custom handler
+    // Create the Julie server handler
     let handler = JulieServerHandler::new()
         .await
-        .map_err(|e| rust_mcp_sdk::error::McpSdkError::Io(std::io::Error::other(e.to_string())))?;
-    debug!("✓ Julie server handler initialized");
+        .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
 
-    // STEP 3.1: 🕐 Start the periodic embedding engine cleanup task
-    // This task checks every minute if the engine has been idle >5 minutes and drops it
+    info!("📋 Server configuration:");
+    info!("  Name: Julie");
+    info!("  Version: {}", env!("CARGO_PKG_VERSION"));
+
+    // Start the periodic embedding engine cleanup task
     handler.start_embedding_cleanup_task();
 
-    // STEP 3.5: 🚀 AUTO-INDEXING moved to on_initialized() callback in handler.rs
-    // This ensures the MCP handshake completes immediately without blocking
-    // The workspace will be indexed in the background after the client connects
     info!("🎯 Auto-indexing will run in background after MCP handshake completes");
 
-    // STEP 3.9: 🗂️ Capture database reference for shutdown checkpoint
-    // We need this before moving handler into create_server()
+    // Capture database reference for shutdown checkpoint
     let db_for_shutdown = if let Ok(Some(workspace)) = handler.get_workspace().await {
         workspace.db.clone()
     } else {
         None
     };
 
-    // STEP 4: Create MCP server
-    let server: Arc<ServerRuntime> =
-        server_runtime::create_server(server_details, transport, handler);
-
     info!("🎯 Julie server created and ready to start");
-
-    // STEP 5: Start the server
     info!("🔥 Starting Julie MCP server...");
-    if let Err(start_error) = server.start().await {
-        error!("❌ Server failed to start: {}", start_error);
-        eprintln!(
-            "Julie server error: {}",
-            start_error
-                .rpc_error_message()
-                .unwrap_or(&start_error.to_string())
-        );
-        return Err(start_error);
+
+    // Start the MCP server with stdio transport
+    let service = match handler.serve(stdio()).await {
+        Ok(s) => s,
+        Err(e) => {
+            error!("❌ Server failed to start: {}", e);
+            return Err(anyhow::anyhow!("Server failed to start: {}", e));
+        }
+    };
+
+    // Wait for the server to complete
+    if let Err(e) = service.waiting().await {
+        error!("❌ Server error: {}", e);
+        return Err(anyhow::anyhow!("Server error: {}", e));
     }
 
     info!("🏁 Julie server stopped");

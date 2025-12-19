@@ -22,9 +22,8 @@ pub use types::{
 
 use anyhow::Result;
 use diff_match_patch_rs::DiffMatchPatch;
-use rust_mcp_sdk::macros::JsonSchema;
-use rust_mcp_sdk::macros::mcp_tool;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt, WithStructuredContent};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use tracing::{debug, info};
@@ -51,11 +50,6 @@ pub enum EditOperation {
 }
 
 /// Focused tool for workspace-wide symbol renaming (replaces rename_symbol operation)
-#[mcp_tool(
-    name = "rename_symbol",
-    description = "Rename symbols workspace-wide with semantic awareness.",
-    title = "Symbol Renaming"
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct RenameSymbolTool {
     /// Current symbol name
@@ -70,11 +64,6 @@ pub struct RenameSymbolTool {
     pub dry_run: bool,
 }
 
-#[mcp_tool(
-    name = "edit_symbol",
-    description = "Edit symbols with operations: replace_body, insert_relative, extract_to_file.",
-    title = "Semantic Symbol Editing"
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct EditSymbolTool {
     /// File path (relative to workspace root)
@@ -97,19 +86,6 @@ pub struct EditSymbolTool {
 }
 
 /// Smart refactoring tool for semantic code transformations
-#[mcp_tool(
-    name = "smart_refactor",
-    description = concat!(
-        "SAFE SEMANTIC REFACTORING - Use this for symbol-aware code transformations. ",
-        "This tool understands code structure and performs changes safely across the entire workspace.\n\n",
-        "You are EXCELLENT at using this for renaming symbols, replacing code bodies, inserting code, and moving symbols between files. ",
-        "Always use fast_refs BEFORE refactoring to understand impact.\n\n",
-        "Unlike simple text editing, this tool preserves code structure and updates all references. ",
-        "For simple text replacements, use the built-in Edit tool. For semantic operations, use this.\n\n",
-        "Julie provides the intelligence (what to change), this tool provides the mechanics (how to change it)."
-    ),
-    title = "Smart Semantic Refactoring Tool"
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct SmartRefactorTool {
     /// The refactoring operation to perform
@@ -162,13 +138,13 @@ impl RenameSymbolTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         // Validation
         if self.old_name.is_empty() || self.new_name.is_empty() {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 "Error: old_name and new_name are required and cannot be empty".to_string(),
             )]));
         }
 
         if self.old_name == self.new_name {
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 "Error: old_name and new_name are identical - no rename needed".to_string(),
             )]));
         }
@@ -229,7 +205,7 @@ impl EditSymbolTool {
             EditOperation::ExtractToFile => {
                 // Validate target_file is provided
                 if self.target_file.is_none() {
-                    return Ok(CallToolResult::text_content(vec![TextContent::from(
+                    return Ok(CallToolResult::text_content(vec![Content::text(
                         "Error: target_file is required for extract_to_file operation".to_string(),
                     )]));
                 }

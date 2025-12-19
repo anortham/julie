@@ -10,7 +10,7 @@ use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
-use rust_mcp_sdk::schema::CallToolResult;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
 
 /// Extract text from CallToolResult safely (handles both TOON and JSON modes)
 fn extract_text_from_result(result: &CallToolResult) -> String {
@@ -32,8 +32,8 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
     }
 
     // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = &result.structured_content {
-        return serde_json::to_string_pretty(structured).unwrap_or_default();
+    if let Some(structured) = result.structured_content() {
+        return serde_json::to_string_pretty(&structured).unwrap_or_default();
     }
 
     String::new()
@@ -313,9 +313,9 @@ pub struct Another {
 
     let result_depth_0 = get_depth_0.call_tool(&handler).await?;
     let _text_depth_0 = extract_text_from_result(&result_depth_0);
-    let json_depth_0 = result_depth_0.structured_content.as_ref();
+    let json_depth_0 = result_depth_0.structured_content();
 
-    if let Some(json) = json_depth_0 {
+    if let Some(ref json) = json_depth_0 {
         if let Some(symbols) = json.get("symbols") {
             if let Some(arr) = symbols.as_array() {
                 // With max_depth=0, should only get top-level symbols (no methods)
@@ -370,9 +370,9 @@ pub struct Another {
     };
 
     let result_limit = get_limit.call_tool(&handler).await?;
-    let json_limit = result_limit.structured_content.as_ref();
+    let json_limit = result_limit.structured_content();
 
-    if let Some(json) = json_limit {
+    if let Some(ref json) = json_limit {
         if let Some(symbols) = json.get("symbols") {
             if let Some(arr) = symbols.as_array() {
                 let top_level_count = arr

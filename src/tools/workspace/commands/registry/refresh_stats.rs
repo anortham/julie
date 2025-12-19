@@ -2,7 +2,7 @@ use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
-use rust_mcp_sdk::schema::{CallToolResult, TextContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use tracing::{info, warn};
 
 impl ManageWorkspaceTool {
@@ -18,7 +18,7 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                return Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]));
             }
@@ -111,7 +111,7 @@ impl ManageWorkspaceTool {
                             symbol_count,
                             relationship_count
                         );
-                        Ok(CallToolResult::text_content(vec![TextContent::from(
+                        Ok(CallToolResult::text_content(vec![Content::text(
                             message,
                         )]))
                     }
@@ -124,7 +124,7 @@ impl ManageWorkspaceTool {
                             Check that the path exists and contains readable files",
                             workspace_entry.display_name, workspace_entry.original_path, e
                         );
-                        Ok(CallToolResult::text_content(vec![TextContent::from(
+                        Ok(CallToolResult::text_content(vec![Content::text(
                             message,
                         )]))
                     }
@@ -132,7 +132,7 @@ impl ManageWorkspaceTool {
             }
             None => {
                 let message = format!("Workspace not found: {}", workspace_id);
-                Ok(CallToolResult::text_content(vec![TextContent::from(
+                Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]))
             }
@@ -151,7 +151,7 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![TextContent::from(
+                return Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]));
             }
@@ -199,13 +199,13 @@ impl ManageWorkspaceTool {
                                 .map(|t| t.to_string())
                                 .unwrap_or("never".to_string())
                         );
-                        Ok(CallToolResult::text_content(vec![TextContent::from(
+                        Ok(CallToolResult::text_content(vec![Content::text(
                             message,
                         )]))
                     }
                     None => {
                         let message = format!("Workspace not found: {}", id);
-                        Ok(CallToolResult::text_content(vec![TextContent::from(
+                        Ok(CallToolResult::text_content(vec![Content::text(
                             message,
                         )]))
                     }
@@ -251,7 +251,7 @@ impl ManageWorkspaceTool {
                         "Disabled"
                     }
                 );
-                Ok(CallToolResult::text_content(vec![TextContent::from(
+                Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]))
             }

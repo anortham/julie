@@ -1,7 +1,7 @@
 //! Refactoring operations - extract, replace, and insert operations
 
 use anyhow::{Result, anyhow};
-use rust_mcp_sdk::schema::CallToolResult;
+use crate::mcp_compat::CallToolResult;
 use serde_json::Value as JsonValue;
 
 use super::SmartRefactorTool;

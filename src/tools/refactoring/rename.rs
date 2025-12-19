@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use diff_match_patch_rs::DiffMatchPatch;
-use rust_mcp_sdk::schema::CallToolResult;
+use crate::mcp_compat::{CallToolResult, StructuredContentExt};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use tracing::debug;
@@ -405,7 +405,7 @@ impl SmartRefactorTool {
             .join("\n");
 
         // Prefer structured payloads when available
-        if let Some(structured) = &refs_result.structured_content {
+        if let Some(ref structured) = refs_result.structured_content() {
             if let Some(references) = structured.get("references").and_then(|v| v.as_array()) {
                 for reference in references {
                     if let (Some(file_path), Some(line_number)) = (

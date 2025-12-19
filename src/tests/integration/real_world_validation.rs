@@ -1180,7 +1180,7 @@ mod real_world_refactoring_tests {
     }
 
     /// Extract text from CallToolResult
-    fn extract_response_text(result: &rust_mcp_sdk::schema::CallToolResult) -> String {
+    fn extract_response_text(result: &crate::mcp_compat::CallToolResult) -> String {
         result
             .content
             .iter()

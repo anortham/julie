@@ -1,6 +1,6 @@
 use anyhow::Result;
-use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
-use rust_mcp_sdk::schema::CallToolResult;
+use schemars::JsonSchema;
+use crate::mcp_compat::CallToolResult;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -56,16 +56,6 @@ pub enum WorkspaceCommand {
     },
 }
 
-#[mcp_tool(
-    name = "manage_workspace",
-    description = "Manage workspaces: index, list, add, remove, stats, clean, refresh, health.",
-    title = "Manage Workspaces",
-    idempotent_hint = false,
-    destructive_hint = false,
-    open_world_hint = false,
-    read_only_hint = false,
-    meta = r#"{"priority": "high", "category": "workspace"}"#
-)]
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
     /// Operation to perform: "index", "list", "add", "remove", "stats", "clean", "refresh", "health"

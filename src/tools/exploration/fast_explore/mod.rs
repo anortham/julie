@@ -7,8 +7,8 @@
 //! - dependencies: Analyze transitive dependencies (IMPLEMENTED)
 
 use anyhow::Result;
-use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
-use rust_mcp_sdk::schema::CallToolResult;
+use schemars::JsonSchema;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::debug;
@@ -44,11 +44,6 @@ fn default_mode() -> ExploreMode {
     ExploreMode::Logic
 }
 
-#[mcp_tool(
-    name = "fast_explore",
-    description = "Explore codebases with modes: logic (business logic), similar (duplicates), dependencies (graph), types (type analysis). Julie 2.0: Default limit 10 per mode (optimized for token efficiency with focused results). Logic mode supports TOON format: compact tabular representation achieving 35-70% token savings vs JSON. Auto mode uses TOON for 5+ results.",
-    title = "Multi-Mode Code Exploration"
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FastExploreTool {
     /// Exploration mode (default: "logic")
@@ -202,8 +197,7 @@ impl FastExploreTool {
         };
 
         if !has_hnsw {
-            use rust_mcp_sdk::schema::TextContent;
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 serde_json::to_string(&json!({
                     "error": "Embeddings not yet ready",
                     "message": "HNSW index is still building in the background. Please try again in a few moments.",
@@ -373,8 +367,7 @@ impl FastExploreTool {
             "tip": "Similarity scores range from 0.0 (unrelated) to 1.0 (identical). High scores (>0.8) indicate likely code duplicates.",
         });
 
-        use rust_mcp_sdk::schema::TextContent;
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             serde_json::to_string(&response)?,
         )]))
     }
@@ -417,8 +410,7 @@ impl FastExploreTool {
 
         if symbols.is_empty() {
             // Symbol not found - return empty result
-            use rust_mcp_sdk::schema::TextContent;
-            return Ok(CallToolResult::text_content(vec![TextContent::from(
+            return Ok(CallToolResult::text_content(vec![Content::text(
                 serde_json::to_string(&json!({
                     "symbol": symbol_name,
                     "found": false,
@@ -504,8 +496,7 @@ impl FastExploreTool {
             "tip": "Dependencies show what this symbol imports, uses, calls, or references. Use depth parameter to control how deep the analysis goes."
         });
 
-        use rust_mcp_sdk::schema::TextContent;
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             serde_json::to_string(&response)?,
         )]))
     }
@@ -554,7 +545,6 @@ impl FastExploreTool {
 
     /// Types mode: Explore type intelligence (implementations, hierarchies, return types, parameters)
     async fn explore_types(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        use rust_mcp_sdk::schema::TextContent;
         use serde_json::json;
 
         // Validate required parameter
@@ -661,7 +651,7 @@ impl FastExploreTool {
             "total_found": total_found,
         });
 
-        Ok(CallToolResult::text_content(vec![TextContent::from(
+        Ok(CallToolResult::text_content(vec![Content::text(
             serde_json::to_string_pretty(&result)?,
         )]))
     }

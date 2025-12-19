@@ -16,7 +16,7 @@ mod tests {
     /// ```ignore
     /// let filter = EnvFilter::try_from_default_env()
     ///     .or_else(|_| EnvFilter::try_new("julie=info"))
-    ///     .map_err(|e| rust_mcp_sdk::error::McpSdkError::Io(...))?;
+    ///     .map_err(|e| anyhow::anyhow!("Filter error: {}", e))?;
     /// ```
     #[test]
     fn test_env_filter_creation_graceful_fallback() {

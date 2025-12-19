@@ -3,6 +3,7 @@
 //! Tests verify file-specific semantic editing with flat parameters
 
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::StructuredContentExt;
 use crate::tools::refactoring::{EditOperation, EditSymbolTool};
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
@@ -54,8 +55,8 @@ async fn test_edit_symbol_replace_body_basic() -> Result<()> {
 
     // Verify result indicates success
     // Verify result indicates success (check structured_content for success field)
-    assert!(result.structured_content.is_some(), "Result should have structured content");
-    let structured = result.structured_content.as_ref().unwrap();
+    assert!(result.structured_content().is_some(), "Result should have structured content");
+    let structured = result.structured_content().unwrap();
     assert!(
         structured.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
         "Result should indicate success"

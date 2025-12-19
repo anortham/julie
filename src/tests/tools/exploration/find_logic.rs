@@ -13,6 +13,7 @@
 use crate::extractors::SymbolKind;
 use crate::extractors::base::Symbol;
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::StructuredContentExt;
 use crate::tools::exploration::find_logic::FindLogicTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
@@ -846,7 +847,7 @@ async fn test_integration_full_tool_call() -> Result<()> {
     let result = tool.call_tool(&handler).await?;
 
     // Should return successful result
-    assert!(result.structured_content.is_some(), "Should return content");
+    assert!(result.structured_content().is_some(), "Should return content");
 
     Ok(())
 }
@@ -871,7 +872,7 @@ async fn test_integration_finds_service_layer_business_logic() -> Result<()> {
     // Parse result to verify business logic symbols found
     // (Would need to parse JSON/text output in real impl)
     assert!(
-        result.structured_content.is_some(),
+        result.structured_content().is_some(),
         "Should find payment business logic"
     );
 
@@ -926,7 +927,7 @@ async fn test_integration_groups_by_architectural_layer() -> Result<()> {
     let content_str = format!("{:?}", result.content);
 
     // Should contain layer information
-    assert!(result.structured_content.is_some(), "Should return grouped results");
+    assert!(result.structured_content().is_some(), "Should return grouped results");
 
     Ok(())
 }
@@ -950,7 +951,7 @@ async fn test_integration_respects_max_results_limit() -> Result<()> {
 
     // Should respect max_results limit
     // (Would need to parse result to count symbols in real impl)
-    assert!(result.structured_content.is_some(), "Should return limited results");
+    assert!(result.structured_content().is_some(), "Should return limited results");
 
     Ok(())
 }

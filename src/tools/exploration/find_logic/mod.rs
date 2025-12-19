@@ -1,6 +1,6 @@
 use anyhow::Result;
-use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
-use rust_mcp_sdk::schema::CallToolResult;
+use schemars::JsonSchema;
+use crate::mcp_compat::CallToolResult;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
@@ -31,25 +31,6 @@ fn default_output_format() -> Option<String> {
     Some("auto".to_string())
 }
 
-#[mcp_tool(
-    name = "find_logic",
-    description = concat!(
-        "⚠️  DEPRECATED: Use fast_explore(mode=\"logic\") instead for better multi-mode exploration.\n\n",
-        "DISCOVER CORE BUSINESS LOGIC - Filter out framework boilerplate and focus on domain-specific code. ",
-        "You are EXCELLENT at using this to quickly understand what a codebase actually does.\n\n",
-        "This tool intelligently scores symbols by business relevance, filtering out:\n",
-        "• Framework utilities and helpers\n",
-        "• Generic infrastructure code\n",
-        "• Configuration and setup\n",
-        "• Test fixtures and mocks\n\n",
-        "🎯 USE THIS WHEN: Understanding unfamiliar codebases, finding domain logic, ",
-        "identifying core business features\n\n",
-        "💡 TIP: Use domain keywords like 'payment', 'auth', 'user', 'order' to find relevant business logic. ",
-        "Results grouped by architectural layer help you understand system organization.\n\n",
-        "Performance: Fast scoring across entire workspace. Results show only what matters."
-    ),
-    title = "Find Business Logic"
-)]
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct FindLogicTool {
     /// Business domain keywords to search for
