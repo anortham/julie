@@ -52,10 +52,10 @@ impl BaseExtractor {
 
         let canonical_path = path_to_canonicalize.canonicalize().unwrap_or_else(|e| {
             warn!(
-                "⚠️  Failed to canonicalize path '{}': {} - using original",
-                file_path, e
+                "⚠️  Failed to canonicalize path '{}': {} - using joined path",
+                path_to_canonicalize.display(), e
             );
-            std::path::PathBuf::from(&file_path)
+            path_to_canonicalize.clone()
         });
 
         // Phase 2: Convert absolute path to relative Unix-style path for storage
