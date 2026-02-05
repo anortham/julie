@@ -1,10 +1,8 @@
 //! Recall Tool - Retrieve development memories
 //!
 //! Queries saved memories with filtering by type, date range, and tags.
-//! Results are returned in reverse chronological order (most recent first).
-//!
-//! For semantic search across memories, use fast_search with:
-//! `file_pattern=".memories/**/*.json"`
+//! Without a query: returns memories in reverse chronological order (most recent first).
+//! With a query: searches memory content using Tantivy and returns results ranked by relevance.
 
 use anyhow::Result;
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
@@ -14,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::memory::{RecallOptions, recall_memories};
+use crate::tools::memory::{RecallOptions, recall_memories, search_memories, Memory};
 
 /// Parse ISO date string to Unix timestamp
 fn parse_date_to_timestamp(date_str: &str) -> Result<i64> {
@@ -42,6 +40,9 @@ fn parse_date_to_timestamp(date_str: &str) -> Result<i64> {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct RecallTool {
+    /// Search query to find specific memories by content (uses fuzzy matching)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
     /// Maximum results (default: 10)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
@@ -89,34 +90,43 @@ impl RecallTool {
             limit: self.limit.map(|l| l as usize),
         };
 
-        // Recall memories
-        let mut memories = recall_memories(&workspace_root, options)?;
-
-        // Return in reverse chronological order (most recent first)
-        memories.reverse();
+        // Recall or search memories
+        let memories_with_scores: Vec<(Memory, Option<f32>)> = if let Some(ref query) = self.query {
+            // Query provided — use search (returns ranked by relevance)
+            let results = search_memories(&workspace_root, query, options)?;
+            results.into_iter().map(|(m, s)| (m, Some(s))).collect()
+        } else {
+            // No query — chronological recall
+            let mut memories = recall_memories(&workspace_root, options)?;
+            memories.reverse(); // Most recent first
+            memories.into_iter().map(|m| (m, None)).collect()
+        };
 
         // Format response
-        if memories.is_empty() {
-            let filter_info =
-                if self.memory_type.is_some() || self.since.is_some() || self.until.is_some() {
-                    "\n\nTry adjusting your filters or use fast_search for semantic queries."
-                } else {
-                    "\n\nCreate your first checkpoint with the checkpoint tool!"
-                };
+        if memories_with_scores.is_empty() {
+            let message = if let Some(ref query) = self.query {
+                format!(
+                    "No memories matched query \"{}\".\n\n\
+                     Try broader terms or remove filters. Use recall without a query to browse chronologically.",
+                    query
+                )
+            } else if self.memory_type.is_some() || self.since.is_some() || self.until.is_some() {
+                "No memories found.\n\nTry adjusting your filters.".to_string()
+            } else {
+                "No memories found.\n\nCreate your first checkpoint with the checkpoint tool!".to_string()
+            };
 
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                format!("No memories found.{}", filter_info),
-            )]));
+            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
         }
 
         // Build formatted output
         let mut output = format!(
             "Found {} memor{}:\n\n",
-            memories.len(),
-            if memories.len() == 1 { "y" } else { "ies" }
+            memories_with_scores.len(),
+            if memories_with_scores.len() == 1 { "y" } else { "ies" }
         );
 
-        for memory in &memories {
+        for (memory, score) in &memories_with_scores {
             // Format timestamp in local timezone
             let dt = DateTime::from_timestamp(memory.timestamp, 0).unwrap_or_else(|| Utc::now());
             let local_dt = dt.with_timezone(&Local);
@@ -154,12 +164,17 @@ impl RecallTool {
             });
 
             // Build entry
+            let score_display = match score {
+                Some(s) => format!(" | ⚡ {:.2}", s),
+                None => String::new(),
+            };
             output.push_str(&format!(
                 "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
-                 📅 {} | {} | {}\n",
+                 📅 {} | {} | {}{}\n",
                 date_str,
                 memory.memory_type,
-                &memory.id[..20] // Show first 20 chars of ID
+                &memory.id[..20], // Show first 20 chars of ID
+                score_display
             ));
 
             if let Some(git) = git_info {
@@ -175,13 +190,19 @@ impl RecallTool {
             output.push('\n');
         }
 
-        // Add footer with search tip
+        // Add footer
         output.push_str(&format!(
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
-             Showing {} of total memories. Use limit parameter to see more.\n\n\
-             💡 TIP: Use fast_search with file_pattern=\".memories/**/*.json\" for semantic queries.",
-            memories.len()
+             Showing {} of total memories. Use limit parameter to see more.",
+            memories_with_scores.len()
         ));
+
+        // Only show search tip in chronological mode (no query)
+        if self.query.is_none() {
+            output.push_str(
+                "\n\n💡 TIP: Use `query` parameter to search memory content (e.g., recall(query=\"tantivy scoring\"))"
+            );
+        }
 
         Ok(CallToolResult::text_content(vec![Content::text(
             output,
