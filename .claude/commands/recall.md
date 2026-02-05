@@ -31,9 +31,5 @@ Determine query mode from $ARGUMENTS and execute the appropriate tool NOW:
 **No arguments provided**:
 1. IMMEDIATELY call mcp__julie__recall with limit=10 to get the last 10 memories
 
-After retrieving results, present them formatted with:
-- Type icon (✓ checkpoint, 🎯 decision, 💡 learning, 👁️ observation)
-- Description
-- Relative time and git branch
-- Tags (if present)
-- Keep output scannable (newest first for chronological, relevance-first for queries)
+After retrieving results, present the tool output directly — it's already formatted cleanly.
+Results are chronological (oldest first) for browse mode, relevance-ranked for search mode.

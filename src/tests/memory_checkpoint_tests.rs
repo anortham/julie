@@ -59,16 +59,16 @@ fn test_checkpoint_filename_format() -> Result<()> {
 
     let file_path = crate::tools::memory::save_memory(&workspace_root, &memory)?;
 
-    // Verify filename format: HHMMSS_xxxx.json
+    // Verify filename format: HHMMSS_xxxx.md
     let filename = file_path.file_name().unwrap().to_string_lossy();
 
-    // Should be 15 characters: HHMMSS (6) + _ (1) + xxxx (4) + .json (5) = 16
+    // Should be 14 characters: HHMMSS (6) + _ (1) + xxxx (4) + .md (3) = 14
     assert!(
-        filename.len() == 16,
-        "Filename should be 16 chars: {}",
+        filename.len() == 14,
+        "Filename should be 14 chars: {}",
         filename
     );
-    assert!(filename.ends_with(".json"), "Should end with .json");
+    assert!(filename.ends_with(".md"), "Should end with .md");
 
     // Should have underscore at position 6
     assert_eq!(&filename[6..7], "_", "Should have underscore at position 6");
@@ -125,7 +125,7 @@ fn test_checkpoint_multiple_same_second_no_collision() -> Result<()> {
 }
 
 #[test]
-fn test_checkpoint_pretty_printed_json() -> Result<()> {
+fn test_checkpoint_markdown_format() -> Result<()> {
     // Setup
     let temp = TempDir::new()?;
     let workspace_root = temp.path().to_path_buf();
@@ -143,20 +143,29 @@ fn test_checkpoint_pretty_printed_json() -> Result<()> {
 
     let file_path = crate::tools::memory::save_memory(&workspace_root, &memory)?;
 
-    // Read file and verify it's pretty-printed
+    // Read file and verify it's markdown with YAML frontmatter
     let content = fs::read_to_string(&file_path)?;
 
-    // Should have newlines (pretty-printed)
-    assert!(
-        content.contains('\n'),
-        "Should be pretty-printed with newlines"
-    );
+    // Should start with YAML frontmatter delimiter
+    assert!(content.starts_with("---\n"), "Should start with YAML frontmatter");
 
-    // Should have indentation
-    assert!(content.contains("  "), "Should have indentation");
+    // Should contain a closing frontmatter delimiter
+    assert!(content.matches("---").count() >= 2, "Should have opening and closing ---");
 
-    // Should be valid JSON that roundtrips
-    let parsed: crate::tools::memory::Memory = serde_json::from_str(&content)?;
+    // Should contain key frontmatter fields
+    assert!(content.contains("id: mem_test_789"), "Should contain id");
+    assert!(content.contains("timestamp: 1234567890"), "Should contain timestamp");
+    assert!(content.contains("type: checkpoint"), "Should contain type");
+
+    // Should contain description in the body (after frontmatter)
+    assert!(content.contains("Test checkpoint"), "Should contain description in body");
+
+    // Tags should be in frontmatter as YAML list
+    assert!(content.contains("- test"), "Should contain tag 'test'");
+    assert!(content.contains("- example"), "Should contain tag 'example'");
+
+    // Should roundtrip through read_memory_file
+    let parsed = crate::tools::memory::read_memory_file(&file_path)?;
     assert_eq!(parsed.id, "mem_test_789");
     assert_eq!(parsed.timestamp, 1234567890);
 
@@ -217,9 +226,8 @@ fn test_checkpoint_with_git_context() -> Result<()> {
 
     let file_path = crate::tools::memory::save_memory(&workspace_root, &memory)?;
 
-    // Read and verify git context is saved
-    let content = fs::read_to_string(&file_path)?;
-    let parsed: crate::tools::memory::Memory = serde_json::from_str(&content)?;
+    // Read and verify git context is saved (via markdown parser)
+    let parsed = crate::tools::memory::read_memory_file(&file_path)?;
 
     let git = parsed.git.expect("Should have git context");
     assert_eq!(git.branch, "main");
@@ -265,13 +273,11 @@ fn test_checkpoint_different_memory_types() -> Result<()> {
     assert!(path2.exists());
     assert!(path3.exists());
 
-    // Verify types are preserved
-    let content1 = fs::read_to_string(&path1)?;
-    let parsed1: crate::tools::memory::Memory = serde_json::from_str(&content1)?;
+    // Verify types are preserved (via markdown parser)
+    let parsed1 = crate::tools::memory::read_memory_file(&path1)?;
     assert_eq!(parsed1.memory_type, "checkpoint");
 
-    let content2 = fs::read_to_string(&path2)?;
-    let parsed2: crate::tools::memory::Memory = serde_json::from_str(&content2)?;
+    let parsed2 = crate::tools::memory::read_memory_file(&path2)?;
     assert_eq!(parsed2.memory_type, "decision");
 
     Ok(())

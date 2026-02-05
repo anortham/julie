@@ -30,43 +30,36 @@ fn test_memories_view_exists() -> Result<()> {
 
 #[test]
 fn test_memories_view_queries_files_table() -> Result<()> {
-    // Setup
+    // This tests the SQL memories view with legacy JSON content.
+    // Note: .memories files are no longer indexed (removed from is_known_dotfile),
+    // and new memories are written as .md. This view exists for backward compat
+    // with any old JSON memories that might still be in databases.
     let temp = TempDir::new()?;
     let workspace_root = temp.path().to_path_buf();
     let db_path = workspace_root.join(".julie/indexes/test_workspace/db/symbols.db");
     fs::create_dir_all(db_path.parent().unwrap())?;
 
-    // Create memory file
-    let memory = crate::tools::memory::Memory::new(
-        "mem_test_123".to_string(),
-        1234567890,
-        "checkpoint".to_string(),
-    )
-    .with_extra(serde_json::json!({
-        "description": "Test memory for SQL view",
-        "tags": ["test", "sql"]
-    }));
-
-    let file_path = crate::tools::memory::save_memory(&workspace_root, &memory)?;
-
     // Create database
     let mut db = crate::database::SymbolDatabase::new(&db_path)?;
 
-    // Index the memory file (simulating tree-sitter indexing)
-    let content = fs::read_to_string(&file_path)?;
-    let relative_path = file_path.strip_prefix(&workspace_root).unwrap();
-    // Normalize to Unix-style paths (Julie's standard)
-    let normalized_path = relative_path.to_string_lossy().replace('\\', "/");
+    // Insert a legacy JSON memory directly (simulating old indexed .json file)
+    let json_content = serde_json::json!({
+        "id": "mem_test_123",
+        "timestamp": 1234567890,
+        "type": "checkpoint",
+        "description": "Test memory for SQL view",
+        "tags": ["test", "sql"]
+    });
 
     db.conn.execute(
         "INSERT INTO files (path, language, hash, size, last_modified, content) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         rusqlite::params![
-            normalized_path,
+            ".memories/2025-01-01/120000_abcd.json",
             "json",
             "test_hash",
-            content.len() as i64,
+            json_content.to_string().len() as i64,
             1234567890i64,
-            content,
+            json_content.to_string(),
         ],
     )?;
 

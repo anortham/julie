@@ -1,9 +1,9 @@
 {
   "id": "plan_replace-fts5-with-tantivy-codetokenizer",
-  "timestamp": 1770261837,
+  "timestamp": 1770334011,
   "type": "plan",
   "title": "Replace FTS5 with Tantivy + CodeTokenizer",
-  "status": "active",
+  "status": "completed",
   "content": "## Goals\n- Replace FTS5 search with Tantivy + code-aware CodeTokenizer from Razorback\n- Remove ORT/embeddings/HNSW entirely\n- Port and complete Razorback's language config system (30 languages)\n- Net simplification: remove ~1000+ lines of FTS5 workarounds\n\n## Phases\n1. **Add Tantivy alongside FTS5** — new src/search/ module, language configs, wire into workspace init\n2. **Switch search to Tantivy** — rewrite text_search_impl, simplify query preprocessor\n3. **Remove FTS5 and ORT** — drop tables, remove embeddings module, clean dependencies\n4. **Complete language config features** — meaningful_affixes, strip_prefixes/suffixes, important_patterns scoring\n\n## Key Decisions\n- One Tantivy index per workspace (mirrors SQLite isolation)\n- Two doc types in same index: symbols + file content\n- Language configs embedded in binary via include_str!\n- Search engine swap + ORT removal in scope; TOON cleanup deferred\n\n## Design Doc\ndocs/plans/2026-02-04-tantivy-search-engine-design.md",
   "git": {
     "branch": "main",

@@ -37,7 +37,7 @@ Retrieve saved memories.
 /recall 3d        # Last 3 days
 ```
 
-**Topic-based** (hybrid search: FTS5 + semantic):
+**Topic-based** (hybrid search):
 ```
 /recall db path bug
 /recall auth implementation

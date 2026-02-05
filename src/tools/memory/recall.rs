@@ -1,7 +1,7 @@
 //! Recall Tool - Retrieve development memories
 //!
 //! Queries saved memories with filtering by type, date range, and tags.
-//! Without a query: returns memories in reverse chronological order (most recent first).
+//! Without a query: returns memories in chronological order (oldest first).
 //! With a query: searches memory content using Tantivy and returns results ranked by relevance.
 
 use anyhow::Result;
@@ -97,8 +97,8 @@ impl RecallTool {
             results.into_iter().map(|(m, s)| (m, Some(s))).collect()
         } else {
             // No query — chronological recall
-            let mut memories = recall_memories(&workspace_root, options)?;
-            memories.reverse(); // Most recent first
+            let memories = recall_memories(&workspace_root, options)?;
+            // Chronological order (oldest first) — no reverse
             memories.into_iter().map(|m| (m, None)).collect()
         };
 
@@ -120,26 +120,26 @@ impl RecallTool {
         }
 
         // Build formatted output
+        let is_search = self.query.is_some();
         let mut output = format!(
-            "Found {} memor{}:\n\n",
+            "Found {} memor{}{}:\n",
             memories_with_scores.len(),
-            if memories_with_scores.len() == 1 { "y" } else { "ies" }
+            if memories_with_scores.len() == 1 { "y" } else { "ies" },
+            if is_search { " (by relevance)" } else { "" }
         );
 
         for (memory, score) in &memories_with_scores {
-            // Format timestamp in local timezone
+            // Format timestamp in local timezone (drop seconds — not useful)
             let dt = DateTime::from_timestamp(memory.timestamp, 0).unwrap_or_else(|| Utc::now());
             let local_dt = dt.with_timezone(&Local);
-            let date_str = local_dt.format("%Y-%m-%d %H:%M:%S").to_string();
+            let date_str = local_dt.format("%Y-%m-%d %H:%M").to_string();
 
-            // Extract description (if present in extra fields)
             let description = memory
                 .extra
                 .get("description")
                 .and_then(|v| v.as_str())
                 .unwrap_or("[no description]");
 
-            // Extract tags (if present)
             let tags = memory
                 .extra
                 .get("tags")
@@ -147,66 +147,39 @@ impl RecallTool {
                 .map(|arr| {
                     arr.iter()
                         .filter_map(|v| v.as_str())
+                        .map(|t| format!("#{}", t))
                         .collect::<Vec<_>>()
-                        .join(", ")
+                        .join(" ")
                 })
                 .filter(|s| !s.is_empty());
 
-            // Format git info (if present)
-            let git_info = memory.git.as_ref().map(|git| {
-                // Take up to 8 chars, or full hash if shorter (handles 7-char git short hashes)
-                let commit_display = if git.commit.len() >= 8 {
-                    &git.commit[..8]
+            // Header: type | date | git [| score]
+            let mut parts: Vec<String> = vec![
+                memory.memory_type.clone(),
+                date_str,
+            ];
+
+            if let Some(git) = &memory.git {
+                let short_hash = if git.commit.len() >= 7 {
+                    &git.commit[..7]
                 } else {
                     &git.commit
                 };
-                format!(" [{}@{}]", git.branch, commit_display)
-            });
-
-            // Build entry
-            let score_display = match score {
-                Some(s) => format!(" | ⚡ {:.2}", s),
-                None => String::new(),
-            };
-            output.push_str(&format!(
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
-                 📅 {} | {} | {}{}\n",
-                date_str,
-                memory.memory_type,
-                &memory.id[..20], // Show first 20 chars of ID
-                score_display
-            ));
-
-            if let Some(git) = git_info {
-                output.push_str(&format!("📍 Git: {}\n", git));
+                parts.push(format!("{}@{}", git.branch, short_hash));
             }
 
-            output.push_str(&format!("📝 {}\n", description));
+            if let Some(s) = score {
+                parts.push(format!("score: {:.1}", s));
+            }
+
+            output.push_str(&format!("\n{}\n{}\n", parts.join(" | "), description));
 
             if let Some(tags_str) = tags {
-                output.push_str(&format!("🏷️  {}\n", tags_str));
+                output.push_str(&format!("{}\n", tags_str));
             }
-
-            output.push('\n');
         }
 
-        // Add footer
-        output.push_str(&format!(
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
-             Showing {} of total memories. Use limit parameter to see more.",
-            memories_with_scores.len()
-        ));
-
-        // Only show search tip in chronological mode (no query)
-        if self.query.is_none() {
-            output.push_str(
-                "\n\n💡 TIP: Use `query` parameter to search memory content (e.g., recall(query=\"tantivy scoring\"))"
-            );
-        }
-
-        Ok(CallToolResult::text_content(vec![Content::text(
-            output,
-        )]))
+        Ok(CallToolResult::text_content(vec![Content::text(output)]))
     }
 }
 
@@ -253,26 +226,31 @@ mod tests {
     fn test_short_commit_hash_no_longer_panics() {
         // BUG FIX VERIFICATION: Short commit hashes should not crash
         // Git short hashes are typically 7 characters (e.g., "05a8cb5")
-        // We now handle this gracefully by taking min(len, 8)
+        // We now take 7 chars to match git's default short hash
 
-        let short_commit = "05a8cb5"; // 7 characters - typical git short hash
+        let short_commit = "05a8cb"; // 6 characters - shorter than default
+        let normal_commit = "05a8cb5"; // 7 characters - typical git short hash
         let long_commit = "05a8cb5def123"; // 13 characters
 
-        // Test the same logic as line 179-183
-        let short_display = if short_commit.len() >= 8 {
-            &short_commit[..8]
+        let short_display = if short_commit.len() >= 7 {
+            &short_commit[..7]
         } else {
             short_commit
         };
-        let formatted_short = format!(" [main@{}]", short_display);
-        assert_eq!(formatted_short, " [main@05a8cb5]");
+        assert_eq!(format!("main@{}", short_display), "main@05a8cb");
 
-        let long_display = if long_commit.len() >= 8 {
-            &long_commit[..8]
+        let normal_display = if normal_commit.len() >= 7 {
+            &normal_commit[..7]
+        } else {
+            normal_commit
+        };
+        assert_eq!(format!("main@{}", normal_display), "main@05a8cb5");
+
+        let long_display = if long_commit.len() >= 7 {
+            &long_commit[..7]
         } else {
             long_commit
         };
-        let formatted_long = format!(" [main@{}]", long_display);
-        assert_eq!(formatted_long, " [main@05a8cb5d]");
+        assert_eq!(format!("main@{}", long_display), "main@05a8cb5");
     }
 }

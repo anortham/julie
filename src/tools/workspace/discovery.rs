@@ -222,7 +222,6 @@ impl ManageWorkspaceTool {
                 | ".cargo"
                 | ".env"
                 | ".npmrc"
-                | ".memories" // Development memory checkpoints
         )
     }
 

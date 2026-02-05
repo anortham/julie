@@ -153,12 +153,29 @@ impl ManageWorkspaceTool {
         debug!("🐛 [INDEX TRACE L] workspace_id obtained: {}", workspace_id);
 
         // ═══════════════════════════════════════════════════════════════════
-        // TANTIVY BACKFILL: Detect upgrade from v1.x (FTS5) → v2.0 (Tantivy)
-        // If Tantivy has 0 docs but SQLite has symbols, populate Tantivy
-        // directly from SQLite data. Much faster than re-parsing all files.
+        // TANTIVY: Force re-index clears index; normal startup backfills
         // ═══════════════════════════════════════════════════════════════════
         if is_primary_workspace {
-            self.backfill_tantivy_if_needed(&workspace).await?;
+            if force_reindex {
+                // Clear Tantivy so stale entries (e.g. previously-indexed .memories files)
+                // don't persist. process_files_optimized will rebuild from discovered files.
+                if let Some(ref search_index) = workspace.search_index {
+                    let si = search_index.clone();
+                    tokio::task::spawn_blocking(move || {
+                        if let Ok(idx) = si.lock() {
+                            if let Err(e) = idx.clear_all() {
+                                tracing::warn!("Failed to clear Tantivy index: {}", e);
+                            } else {
+                                info!("🗑️  Cleared Tantivy index for force re-index");
+                            }
+                        }
+                    })
+                    .await?;
+                }
+            } else {
+                // Normal startup: backfill Tantivy from SQLite if empty (v1→v2 upgrade)
+                self.backfill_tantivy_if_needed(&workspace).await?;
+            }
         }
 
         // Proceeding with indexing (parser pool groups files by language for 10-50x speedup)

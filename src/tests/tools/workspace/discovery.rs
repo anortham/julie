@@ -587,3 +587,61 @@ fn test_discover_indexable_files_creates_julieignore_for_blacklisted_vendor_dirs
         content
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tests: Dotfile Discovery — .memories exclusion
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_memories_dir_excluded_from_discovery() {
+    let tool = create_tool();
+    let (temp_dir, _) = create_workspace_with_files(vec![
+        "src/main.rs",
+        "src/lib.rs",
+        ".memories/checkpoint_abc123.json",
+        ".memories/checkpoint_def456.json",
+    ]);
+
+    let indexable = tool
+        .discover_indexable_files(temp_dir.path())
+        .expect("Failed to discover files");
+
+    let memory_files: Vec<_> = indexable
+        .iter()
+        .filter(|p| p.to_string_lossy().contains(".memories"))
+        .collect();
+
+    assert!(
+        memory_files.is_empty(),
+        "Expected .memories files to be excluded from discovery, but found: {:?}",
+        memory_files
+    );
+
+    // Verify actual source files ARE discovered
+    let rs_files: Vec<_> = indexable
+        .iter()
+        .filter(|p| p.extension().map_or(false, |e| e == "rs"))
+        .collect();
+    assert_eq!(rs_files.len(), 2, "Should discover both .rs source files");
+}
+
+#[test]
+fn test_is_known_dotfile_accepts_config_files_but_not_memories() {
+    let tool = create_tool();
+
+    // These should be recognized as known dotfiles
+    assert!(tool.is_known_dotfile(std::path::Path::new(".gitignore")));
+    assert!(tool.is_known_dotfile(std::path::Path::new(".editorconfig")));
+    assert!(tool.is_known_dotfile(std::path::Path::new(".eslintrc")));
+    assert!(tool.is_known_dotfile(std::path::Path::new(".npmrc")));
+
+    // .memories should NOT be a known dotfile (recall() searches these directly)
+    assert!(
+        !tool.is_known_dotfile(std::path::Path::new(".memories")),
+        ".memories should not be whitelisted as a known dotfile"
+    );
+
+    // Random dotfiles should not be known
+    assert!(!tool.is_known_dotfile(std::path::Path::new(".random")));
+    assert!(!tool.is_known_dotfile(std::path::Path::new(".secret")));
+}

@@ -215,6 +215,16 @@ impl SearchIndex {
         Ok(())
     }
 
+    /// Remove all documents from the index (for force re-index).
+    pub fn clear_all(&self) -> Result<()> {
+        let guard = self.get_or_create_writer()?;
+        let writer = guard.as_ref().unwrap();
+        writer.delete_all_documents()?;
+        drop(guard);
+        self.commit()?;
+        Ok(())
+    }
+
     /// Remove all documents (both symbols and file content) for a given file path.
     pub fn remove_by_file_path(&self, path: &str) -> Result<()> {
         let term = Term::from_field_text(self.schema_fields.file_path, path);
