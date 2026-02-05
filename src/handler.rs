@@ -151,6 +151,7 @@ impl JulieServerHandler {
                 db,
                 embeddings: None,
                 vector_store: None,
+                search_index: None,
                 watcher: None,
                 config: WorkspaceConfig::default(),
             };

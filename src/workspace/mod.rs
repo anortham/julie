@@ -50,6 +50,9 @@ pub struct JulieWorkspace {
     /// Vector store with HNSW index (fast similarity search)
     pub vector_store: Option<Arc<RwLock<VectorIndex>>>,
 
+    /// Tantivy search index (replaces FTS5 for full-text search)
+    pub search_index: Option<Arc<std::sync::Mutex<crate::search::SearchIndex>>>,
+
     /// File watcher for incremental updates
     pub watcher: Option<IncrementalIndexer>,
 
@@ -87,6 +90,7 @@ impl Clone for JulieWorkspace {
             db: self.db.clone(),
             embeddings: self.embeddings.clone(),
             vector_store: self.vector_store.clone(),
+            search_index: self.search_index.clone(),
             watcher: None, // Don't clone file watcher - create new if needed
             config: self.config.clone(),
         }
@@ -146,6 +150,7 @@ impl JulieWorkspace {
             db: None,
             embeddings: None,
             vector_store: None,
+            search_index: None,
             watcher: None,
             config,
         };
@@ -194,6 +199,7 @@ impl JulieWorkspace {
                     db: None,
                     embeddings: None,
                     vector_store: None,
+                    search_index: None,
                     watcher: None,
                     config,
                 };
@@ -411,6 +417,11 @@ impl JulieWorkspace {
         self.indexes_root_path().join(workspace_id).join("vectors")
     }
 
+    /// Get the path to a specific workspace's Tantivy search index
+    pub fn workspace_tantivy_path(&self, workspace_id: &str) -> PathBuf {
+        self.indexes_root_path().join(workspace_id).join("tantivy")
+    }
+
     /// Get the path to a specific workspace's SQLite database
     pub fn workspace_db_path(&self, workspace_id: &str) -> PathBuf {
         self.indexes_root_path()
@@ -545,6 +556,42 @@ impl JulieWorkspace {
         self.db = Some(Arc::new(std::sync::Mutex::new(database)));
 
         info!("Database initialized successfully");
+        Ok(())
+    }
+
+    /// Initialize Tantivy search index for full-text code search
+    pub fn initialize_search_index(&mut self) -> Result<()> {
+        if self.search_index.is_some() {
+            return Ok(()); // Already initialized
+        }
+
+        let workspace_id = registry::generate_workspace_id(
+            self.root
+                .to_str()
+                .ok_or_else(|| anyhow!("Invalid workspace path"))?,
+        )?;
+
+        let tantivy_path = self.workspace_tantivy_path(&workspace_id);
+        info!(
+            "Initializing Tantivy search index at: {}",
+            tantivy_path.display()
+        );
+
+        // Ensure directory exists (create_dir_all handles parents)
+        std::fs::create_dir_all(&tantivy_path).context(format!(
+            "Failed to create Tantivy index directory: {}",
+            tantivy_path.display()
+        ))?;
+
+        let configs = crate::search::LanguageConfigs::load_embedded();
+        let index = crate::search::SearchIndex::open_or_create_with_language_configs(
+            &tantivy_path,
+            &configs,
+        )
+        .context("Failed to open or create Tantivy search index")?;
+
+        self.search_index = Some(Arc::new(std::sync::Mutex::new(index)));
+        info!("Tantivy search index initialized successfully");
         Ok(())
     }
 
@@ -749,6 +796,7 @@ impl JulieWorkspace {
     /// 🔥 CRITICAL FIX: Now async because initialize_embeddings() is async (ONNX blocking fix)
     pub async fn initialize_all_components(&mut self) -> Result<()> {
         self.initialize_database()?;
+        self.initialize_search_index()?;
         self.initialize_embeddings().await?; // 🚨 Now async to avoid runtime deadlock
         // REMOVED: Vector store initialization moved to end of background embedding generation
         // HNSW index will be built AFTER embeddings are generated, not at startup

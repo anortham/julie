@@ -319,6 +319,75 @@ impl ManageWorkspaceTool {
             }
 
             // ═══════════════════════════════════════════════════════════════════
+            // 📍 TANTIVY: Populate search index alongside SQLite
+            // Tantivy writes are blocking I/O — wrap in spawn_blocking to avoid
+            // blocking the tokio runtime (same pattern as file I/O above).
+            // Individual document failures are non-fatal: Tantivy is a secondary
+            // search index that can be rebuilt, so we log and continue rather
+            // than aborting the entire indexing pipeline.
+            // ═══════════════════════════════════════════════════════════════════
+            if let Some(workspace) = handler.get_workspace().await? {
+                if let Some(ref search_index) = workspace.search_index {
+                    let search_index = Arc::clone(search_index);
+                    let symbol_docs: Vec<_> = all_symbols
+                        .iter()
+                        .map(crate::search::SymbolDocument::from_symbol)
+                        .collect();
+                    let file_docs: Vec<_> = all_file_infos
+                        .iter()
+                        .map(crate::search::FileDocument::from_file_info)
+                        .collect();
+                    let files_to_clean_clone = files_to_clean.clone();
+
+                    let tantivy_result = tokio::task::spawn_blocking(move || {
+                        let idx = match search_index.lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => {
+                                warn!("Search index mutex poisoned (prior panic during indexing), recovering");
+                                poisoned.into_inner()
+                            }
+                        };
+
+                        // Remove stale documents for files being re-indexed
+                        for file_path in &files_to_clean_clone {
+                            if let Err(e) = idx.remove_by_file_path(file_path) {
+                                warn!("Failed to remove stale Tantivy docs for {}: {}", file_path, e);
+                            }
+                        }
+
+                        // Index symbols
+                        for doc in &symbol_docs {
+                            if let Err(e) = idx.add_symbol(doc) {
+                                warn!("Failed to add symbol to Tantivy: {}", e);
+                            }
+                        }
+
+                        // Index file content
+                        for doc in &file_docs {
+                            if let Err(e) = idx.add_file_content(doc) {
+                                warn!("Failed to add file to Tantivy: {}", e);
+                            }
+                        }
+
+                        if let Err(e) = idx.commit() {
+                            warn!("Failed to commit Tantivy index: {}", e);
+                        } else {
+                            info!(
+                                "Tantivy: indexed {} symbols and {} files",
+                                symbol_docs.len(),
+                                file_docs.len()
+                            );
+                        }
+                    })
+                    .await;
+
+                    if let Err(e) = tantivy_result {
+                        warn!("Tantivy indexing task panicked: {}", e);
+                    }
+                }
+            }
+
+            // ═══════════════════════════════════════════════════════════════════
             // 🔗 PHASE 2: Resolve pending cross-file relationships
             // After all symbols are stored, resolve pending relationships by
             // looking up callee names and finding actual Function definitions

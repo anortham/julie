@@ -43,6 +43,34 @@ pub struct FileDocument {
     pub language: String,
 }
 
+impl SymbolDocument {
+    /// Create from a Julie Symbol (from tree-sitter extraction).
+    pub fn from_symbol(symbol: &crate::extractors::Symbol) -> Self {
+        Self {
+            id: symbol.id.clone(),
+            name: symbol.name.clone(),
+            signature: symbol.signature.clone().unwrap_or_default(),
+            doc_comment: symbol.doc_comment.clone().unwrap_or_default(),
+            code_body: symbol.code_context.clone().unwrap_or_default(),
+            file_path: symbol.file_path.clone(),
+            kind: symbol.kind.to_string(),
+            language: symbol.language.clone(),
+            start_line: symbol.start_line,
+        }
+    }
+}
+
+impl FileDocument {
+    /// Create from a Julie FileInfo (from database types).
+    pub fn from_file_info(file_info: &crate::database::FileInfo) -> Self {
+        Self {
+            file_path: file_info.path.clone(),
+            content: file_info.content.clone().unwrap_or_default(),
+            language: file_info.language.clone(),
+        }
+    }
+}
+
 /// Search filter for narrowing results.
 #[derive(Default)]
 pub struct SearchFilter {
@@ -117,23 +145,16 @@ impl SearchIndex {
     /// Open an existing index or create a new one if it doesn't exist.
     pub fn open_or_create(path: &Path) -> Result<Self> {
         let tokenizer = CodeTokenizer::with_default_patterns();
-        let schema = create_schema();
-        let schema_fields = SchemaFields::new(&schema);
+        Self::open_or_create_with_tokenizer(path, tokenizer)
+    }
 
-        let index = Index::builder()
-            .schema(schema)
-            .create_in_dir(path)
-            .or_else(|_| Index::open_in_dir(path))?;
-
-        Self::register_tokenizer(&index, tokenizer);
-        let reader = index.reader()?;
-
-        Ok(Self {
-            index,
-            reader,
-            writer: Mutex::new(None),
-            schema_fields,
-        })
+    /// Open an existing index or create a new one, using language-specific tokenizer patterns.
+    pub fn open_or_create_with_language_configs(
+        path: &Path,
+        configs: &LanguageConfigs,
+    ) -> Result<Self> {
+        let tokenizer = CodeTokenizer::from_language_configs(configs);
+        Self::open_or_create_with_tokenizer(path, tokenizer)
     }
 
     /// Get the total number of documents in the index.
@@ -290,6 +311,26 @@ impl SearchIndex {
     }
 
     // --- Private helpers ---
+
+    fn open_or_create_with_tokenizer(path: &Path, tokenizer: CodeTokenizer) -> Result<Self> {
+        let schema = create_schema();
+        let schema_fields = SchemaFields::new(&schema);
+
+        let index = Index::builder()
+            .schema(schema)
+            .create_in_dir(path)
+            .or_else(|_| Index::open_in_dir(path))?;
+
+        Self::register_tokenizer(&index, tokenizer);
+        let reader = index.reader()?;
+
+        Ok(Self {
+            index,
+            reader,
+            writer: Mutex::new(None),
+            schema_fields,
+        })
+    }
 
     fn create_with_tokenizer(path: &Path, tokenizer: CodeTokenizer) -> Result<Self> {
         let schema = create_schema();
