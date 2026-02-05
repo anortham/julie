@@ -82,6 +82,9 @@ toml = "0.8"
 # Database
 rusqlite = { version = "0.37", features = ["bundled"] }
 
+# Full-text search engine with custom code tokenizer
+tantivy = "0.22"
+
 # File watching
 notify = "8.2"
 

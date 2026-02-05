@@ -6,6 +6,7 @@
 pub mod database;
 pub mod embeddings;
 pub mod extractors;
+pub mod search;
 pub mod handler;
 pub mod mcp_compat; // MCP compatibility layer for rmcp migration
 pub mod health;
