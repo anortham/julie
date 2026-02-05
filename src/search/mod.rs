@@ -12,5 +12,10 @@ pub mod scoring;
 pub mod tokenizer;
 
 pub use error::{Result, SearchError};
+pub use index::{
+    ContentSearchResult, FileDocument, SearchFilter, SearchIndex, SymbolDocument,
+    SymbolSearchResult,
+};
 pub use language_config::LanguageConfigs;
+pub use schema::{create_schema, SchemaFields};
 pub use tokenizer::CodeTokenizer;
