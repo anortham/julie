@@ -207,7 +207,7 @@ fn test_recall_limit() -> Result<()> {
 
 #[test]
 fn test_recall_preserves_extra_fields() -> Result<()> {
-    // Setup: Create memory with type-specific fields
+    // Setup: Create memory with description and tags
     let temp = TempDir::new()?;
     let workspace_root = temp.path().to_path_buf();
 
@@ -218,13 +218,14 @@ fn test_recall_preserves_extra_fields() -> Result<()> {
     )
     .with_extra(serde_json::json!({
         "description": "Test memory with extras",
-        "tags": ["test", "example"],
-        "custom_field": 42
+        "tags": ["test", "example"]
     }));
 
     crate::tools::memory::save_memory(&workspace_root, &memory)?;
 
-    // Recall and verify extras are preserved
+    // Recall and verify description and tags are preserved
+    // Note: markdown format preserves description (as body) and tags (as frontmatter list)
+    // but does not preserve arbitrary extra fields
     let memories = crate::tools::memory::recall_memories(&workspace_root, Default::default())?;
 
     assert_eq!(memories.len(), 1);
@@ -235,7 +236,6 @@ fn test_recall_preserves_extra_fields() -> Result<()> {
         "Test memory with extras"
     );
     assert_eq!(extra.get("tags").unwrap().as_array().unwrap().len(), 2);
-    assert_eq!(extra.get("custom_field").unwrap().as_i64().unwrap(), 42);
 
     Ok(())
 }
@@ -263,6 +263,78 @@ fn test_recall_handles_corrupted_json_gracefully() -> Result<()> {
 
     assert_eq!(memories.len(), 1, "Should skip corrupted file");
     assert_eq!(memories[0].id, "mem_good");
+
+    Ok(())
+}
+
+#[test]
+fn test_search_memories_by_query() -> Result<()> {
+    let temp = TempDir::new()?;
+    let workspace_root = temp.path().to_path_buf();
+
+    let m1 = crate::tools::memory::Memory::new(
+        "mem_tantivy".to_string(),
+        1000,
+        "checkpoint".to_string(),
+    )
+    .with_extra(serde_json::json!({
+        "description": "Fixed Tantivy tokenizer bug with hyphenated identifiers",
+        "tags": ["tantivy", "bugfix"]
+    }));
+
+    let m2 = crate::tools::memory::Memory::new(
+        "mem_sql".to_string(),
+        2000,
+        "checkpoint".to_string(),
+    )
+    .with_extra(serde_json::json!({
+        "description": "Added SQL migration to drop FTS5 tables",
+        "tags": ["sql", "migration"]
+    }));
+
+    let m3 = crate::tools::memory::Memory::new(
+        "mem_auth".to_string(),
+        3000,
+        "decision".to_string(),
+    )
+    .with_extra(serde_json::json!({
+        "description": "Decided to use JWT tokens for authentication",
+        "tags": ["auth", "decision"]
+    }));
+
+    crate::tools::memory::save_memory(&workspace_root, &m1)?;
+    crate::tools::memory::save_memory(&workspace_root, &m2)?;
+    crate::tools::memory::save_memory(&workspace_root, &m3)?;
+
+    // Search for "tantivy" — should find m1
+    let results = crate::tools::memory::search_memories(
+        &workspace_root,
+        "tantivy",
+        Default::default(),
+    )?;
+    assert!(!results.is_empty(), "Should find at least one result");
+    assert_eq!(
+        results[0].0.id, "mem_tantivy",
+        "Top result should be the Tantivy memory"
+    );
+
+    // Search for "migration" — should find m2
+    let results = crate::tools::memory::search_memories(
+        &workspace_root,
+        "migration",
+        Default::default(),
+    )?;
+    assert!(!results.is_empty());
+    assert_eq!(results[0].0.id, "mem_sql");
+
+    // Search for "authentication" — should find m3
+    let results = crate::tools::memory::search_memories(
+        &workspace_root,
+        "authentication",
+        Default::default(),
+    )?;
+    assert!(!results.is_empty());
+    assert_eq!(results[0].0.id, "mem_auth");
 
     Ok(())
 }
