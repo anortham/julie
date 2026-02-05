@@ -9,7 +9,7 @@ use tracing::{debug, warn};
 
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::search::{SearchFilter, SearchIndex};
+use crate::search::SearchFilter;
 use crate::utils::{exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer};
 use super::query::matches_glob_pattern;
 
@@ -26,7 +26,7 @@ pub async fn text_search_impl(
     language: &Option<String>,
     file_pattern: &Option<String>,
     limit: u32,
-    workspace_ids: Option<Vec<String>>,
+    _workspace_ids: Option<Vec<String>>,
     search_target: &str,
     _context_lines: Option<u32>,
     handler: &JulieServerHandler,
