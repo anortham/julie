@@ -13,3 +13,4 @@ pub mod tokenizer;
 
 pub use error::{Result, SearchError};
 pub use language_config::LanguageConfigs;
+pub use tokenizer::CodeTokenizer;
