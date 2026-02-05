@@ -398,7 +398,7 @@ fn extract_segments(text: &str, preserve_patterns: &[String]) -> Vec<(String, us
 
         // Skip whitespace and delimiters
         if let Some(c) = remaining.chars().next() {
-            if c.is_whitespace() || "(){}[]<>,;\"'!@#$%^&*+=|~/\\`".contains(c) {
+            if c.is_whitespace() || "(){}[]<>,;\"'!@#$%^&*+=|~/\\`.-:".contains(c) {
                 remaining = &remaining[c.len_utf8()..];
                 offset += c.len_utf8();
                 continue;
@@ -410,7 +410,7 @@ fn extract_segments(text: &str, preserve_patterns: &[String]) -> Vec<(String, us
             .char_indices()
             .find(|(i, c)| {
                 c.is_whitespace()
-                    || "(){}[]<>,;\"'!@#$%^&*+=|~/\\`".contains(*c)
+                    || "(){}[]<>,;\"'!@#$%^&*+=|~/\\`.-:".contains(*c)
                     || preserve_patterns
                         .iter()
                         .any(|p| remaining[*i..].starts_with(p.as_str()))

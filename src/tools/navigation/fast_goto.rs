@@ -1,7 +1,7 @@
 //! FastGotoTool - Navigate instantly to symbol definitions
 //!
 //! This tool uses a multi-strategy approach to find symbol definitions:
-//! 1. SQLite FTS5 for O(log n) exact name matching
+//! 1. SQLite indexed lookup for O(log n) exact name matching
 //! 2. Cross-language naming convention variants
 
 use anyhow::Result;
@@ -167,10 +167,10 @@ impl FastGotoTool {
         }
 
         // Primary workspace search - use handler.get_workspace().db
-        // Strategy 1: Use SQLite FTS5 for O(log n) indexed performance
+        // Strategy 1: Use SQLite indexed lookup for O(log n) performance
         let mut exact_matches = Vec::new();
 
-        // Use SQLite FTS5 for exact name lookup (indexed, fast)
+        // Use SQLite for exact name lookup (indexed, fast)
         if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
                 // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
@@ -193,7 +193,7 @@ impl FastGotoTool {
                 .await
                 .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
 
-                debug!("⚡ SQLite FTS5 found {} exact matches", exact_matches.len());
+                debug!("⚡ SQLite found {} exact matches", exact_matches.len());
             }
         }
 

@@ -56,7 +56,7 @@ async fn test_workspace_initialization() {
         workspace.julie_dir.join("indexes").exists(),
         "indexes/ root directory should exist"
     );
-    assert!(workspace.julie_dir.join("models").exists());
+    // Note: models/ directory was removed in v2.0 (embeddings replaced by Tantivy)
     assert!(workspace.julie_dir.join("cache").exists());
     assert!(workspace.julie_dir.join("logs").exists());
     assert!(workspace.julie_dir.join("config").exists());
@@ -130,7 +130,7 @@ async fn test_health_check() {
 #[ignore] // HANGS: Concurrent indexing stress test - not critical for CLI tools
 // Run manually with: cargo test test_concurrent_manage_workspace --ignored
 async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
-    // Skip search index initialization but allow FTS5 to initialize
+    // Skip search index initialization but allow Tantivy to initialize
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
     }

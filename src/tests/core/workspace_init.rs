@@ -220,10 +220,7 @@ async fn test_workspace_init_with_explicit_path() {
         julie_dir.join("indexes").exists(),
         "indexes directory should exist"
     );
-    assert!(
-        julie_dir.join("models").exists(),
-        "models directory should exist"
-    );
+    // Note: models/ directory was removed in v2.0 (embeddings replaced by Tantivy)
     assert!(
         julie_dir.join("cache").exists(),
         "cache directory should exist"

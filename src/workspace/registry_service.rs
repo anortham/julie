@@ -480,35 +480,6 @@ impl WorkspaceRegistryService {
         Ok(())
     }
 
-    /// Update embedding status for a workspace
-    /// 🔒 CRITICAL: Holds lock for entire load-modify-save cycle to prevent race conditions
-    pub async fn update_embedding_status(
-        &self,
-        workspace_id: &str,
-        status: crate::workspace::registry::EmbeddingStatus,
-    ) -> Result<()> {
-        let _lock = self.registry_lock.lock().await;
-        let mut registry = self.load_registry_locked().await?;
-        let mut updated = false;
-
-        if let Some(ref mut primary) = registry.primary_workspace {
-            if primary.id == workspace_id {
-                primary.embedding_status = status.clone();
-                updated = true;
-            }
-        }
-
-        if let Some(workspace) = registry.reference_workspaces.get_mut(workspace_id) {
-            workspace.embedding_status = status;
-            updated = true;
-        }
-
-        if updated {
-            self.save_registry_internal(registry).await?;
-        }
-
-        Ok(())
-    }
 
     /// Get workspaces that have expired
     pub async fn get_expired_workspaces(&self) -> Result<Vec<WorkspaceEntry>> {

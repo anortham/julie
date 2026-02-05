@@ -1,11 +1,10 @@
-//! Comprehensive tests for FindLogicTool (5-tier architecture)
+//! Comprehensive tests for FindLogicTool (4-tier architecture)
 //!
 //! Tests cover:
-//! - Tier 1: SQLite FTS5 keyword search
+//! - Tier 1: Tantivy keyword search
 //! - Tier 2: AST architectural pattern detection
 //! - Tier 3: Path-based intelligence scoring
-//! - Tier 4: HNSW semantic business search
-//! - Tier 5: Relationship graph centrality
+//! - Tier 4: Relationship graph centrality
 //! - Integration: Full MCP tool workflow
 //!
 //! Note: Following TDD methodology - write failing tests first, then implement/verify.
@@ -137,7 +136,7 @@ async fn index_workspace(handler: &JulieServerHandler, workspace_path: &str) -> 
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// TIER 1: SQLite FTS5 Keyword Search Tests
+// TIER 1: Tantivy Keyword Search Tests
 // ═══════════════════════════════════════════════════════════════════
 
 #[tokio::test]
@@ -158,7 +157,7 @@ async fn test_tier1_keyword_search_finds_payment_symbols() -> Result<()> {
     let results = tool.search_by_keywords(&handler).await?;
 
     // Should find payment-related symbols
-    assert!(!results.is_empty(), "Should find payment symbols via FTS5");
+    assert!(!results.is_empty(), "Should find payment symbols via Tantivy");
 
     // Verify results contain payment-related names
     let has_payment_symbol = results
@@ -173,12 +172,12 @@ async fn test_tier1_keyword_search_finds_payment_symbols() -> Result<()> {
     for symbol in &results {
         assert!(
             symbol.confidence.is_some(),
-            "FTS5 results should have confidence score"
+            "Keyword search results should have confidence score"
         );
         assert_eq!(
             symbol.confidence.unwrap(),
             0.5,
-            "Base FTS5 score should be 0.5"
+            "Base keyword search score should be 0.5"
         );
     }
 

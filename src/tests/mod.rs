@@ -119,7 +119,7 @@ pub mod integration {
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests
-    pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, FTS5 syntax, limit/ranking)
+    pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, Tantivy query semantics, limit/ranking)
     pub mod stale_index_detection; // Stale index detection tests
     pub mod tracing;
     pub mod watcher; // File watcher tests

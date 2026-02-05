@@ -274,6 +274,29 @@ impl SymbolDatabase {
         Ok(results)
     }
 
+    /// Get all file contents with language for Tantivy backfill.
+    /// Returns (path, language, content) tuples for files that have content stored.
+    pub fn get_all_file_contents_with_language(&self) -> Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT path, language, content FROM files WHERE content IS NOT NULL",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row?);
+        }
+
+        Ok(results)
+    }
+
     /// Get recently modified files (last N days)
     pub fn get_recent_files(&self, days: u32, limit: usize) -> Result<Vec<FileInfo>> {
         let now = get_unix_timestamp()?;

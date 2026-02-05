@@ -410,6 +410,7 @@ mod reference_workspace_tests {
     /// This verifies the fix for INCOMPLETE_IMPLEMENTATIONS.md Issue #2:
     /// Reference workspace orphan cleanup must open the correct database to clean up deleted files.
     #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial] // Reference workspace tests need serialization (shared fixtures)
     async fn test_reference_workspace_orphan_cleanup() -> Result<()> {
         // CLEANUP: Remove any stale .julie directories from previous test runs to prevent FTS5 corruption
         let primary_path = get_fixture_path("tiny-primary");

@@ -136,3 +136,52 @@ fn test_tokenizer_from_language_configs() {
         tokens
     );
 }
+
+#[test]
+fn test_tokenizer_splits_hyphenated_terms() {
+    // "tree-sitter" should be split on hyphen, producing "tree" and "sitter"
+    let tokenizer = CodeTokenizer::new(vec![]);
+    let mut analyzer = TextAnalyzer::builder(tokenizer).build();
+    let mut stream = analyzer.token_stream("tree-sitter parse");
+    let mut tokens = Vec::new();
+    while let Some(token) = stream.next() {
+        tokens.push(token.text.clone());
+    }
+    assert!(
+        tokens.contains(&"tree".to_string()),
+        "Hyphenated 'tree-sitter' should produce 'tree': {:?}",
+        tokens
+    );
+    assert!(
+        tokens.contains(&"sitter".to_string()),
+        "Hyphenated 'tree-sitter' should produce 'sitter': {:?}",
+        tokens
+    );
+    assert!(
+        tokens.contains(&"parse".to_string()),
+        "Should also produce 'parse': {:?}",
+        tokens
+    );
+}
+
+#[test]
+fn test_tokenizer_handles_dotted_identifiers() {
+    // "std.io.Read" should split on dots, producing "std", "io", "read"
+    let tokenizer = CodeTokenizer::new(vec![]);
+    let mut analyzer = TextAnalyzer::builder(tokenizer).build();
+    let mut stream = analyzer.token_stream("CASCADE.architecture");
+    let mut tokens = Vec::new();
+    while let Some(token) = stream.next() {
+        tokens.push(token.text.clone());
+    }
+    assert!(
+        tokens.contains(&"cascade".to_string()),
+        "Dotted 'CASCADE.architecture' should produce 'cascade': {:?}",
+        tokens
+    );
+    assert!(
+        tokens.contains(&"architecture".to_string()),
+        "Dotted 'CASCADE.architecture' should produce 'architecture': {:?}",
+        tokens
+    );
+}

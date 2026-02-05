@@ -149,10 +149,6 @@ pub struct WorkspaceEntry {
 
     /// Current status of this workspace
     pub status: WorkspaceStatus,
-
-    /// Embedding generation status for semantic search
-    #[serde(default = "default_embedding_status")]
-    pub embedding_status: EmbeddingStatus,
 }
 
 /// Type of workspace
@@ -185,25 +181,6 @@ pub enum WorkspaceStatus {
 
     /// Workspace is scheduled for deletion
     Expired,
-}
-
-/// Status of embedding generation for semantic search
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum EmbeddingStatus {
-    /// Embeddings not started
-    NotStarted,
-
-    /// Embeddings currently being generated in background
-    Generating,
-
-    /// Embeddings complete and ready for semantic search
-    Ready,
-
-    /// Embeddings generation failed
-    Failed,
-
-    /// Embeddings disabled for this workspace
-    Disabled,
 }
 
 /// Information about an orphaned index that needs cleanup
@@ -296,7 +273,6 @@ impl WorkspaceEntry {
             file_count: 0,
             index_size_bytes: 0,
             status: WorkspaceStatus::Active,
-            embedding_status: EmbeddingStatus::NotStarted,
         })
     }
 
@@ -421,7 +397,3 @@ pub fn current_timestamp() -> u64 {
         .as_secs()
 }
 
-/// Default embedding status for backward compatibility
-fn default_embedding_status() -> EmbeddingStatus {
-    EmbeddingStatus::NotStarted
-}

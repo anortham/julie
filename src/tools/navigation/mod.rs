@@ -5,7 +5,7 @@
 //! - **fast_refs**: Find all references to a symbol (<20ms)
 //!
 //! Architecture:
-//! - Uses multi-strategy symbol resolution (FTS5 → naming variants)
+//! - Uses multi-strategy symbol resolution (Tantivy → naming variants)
 //! - Per-workspace database isolation
 //! - Cross-language support through naming convention variants
 

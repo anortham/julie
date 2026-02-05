@@ -369,17 +369,6 @@ impl CrossLanguageTracer {
         Ok(None)
     }
 
-    /// Strategy 3: Semantic similarity via embeddings (the magic!)
-    #[allow(dead_code)]
-    async fn find_semantic_connection(
-        &self,
-        _symbol: &Symbol,
-        _options: &TraceOptions,
-    ) -> Result<Option<TraceStep>> {
-        // GREEN phase: stub implementation - will be implemented in REFACTOR phase
-        Ok(None)
-    }
-
     /// Calculate confidence score for a potential connection
     #[allow(dead_code)]
     fn calculate_confidence(

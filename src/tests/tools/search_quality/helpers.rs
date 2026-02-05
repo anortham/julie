@@ -334,8 +334,7 @@ incremental_updates = true
                 "symbol_count": fixture.metadata.symbol_count,
                 "file_count": fixture.metadata.file_count,
                 "index_size_bytes": dest_size,
-                "status": "Active",
-                "embedding_status": "NotStarted"
+                "status": "Active"
             },
             "reference_workspaces": {},
             "orphaned_indexes": {},
@@ -365,12 +364,60 @@ incremental_updates = true
         .expect("Failed to write workspace_registry.json");
     }
 
+    // Initialize Tantivy search index and backfill from SQLite fixture.
+    // This mirrors what backfill_tantivy_if_needed() does in production for
+    // v1.x → v2.0 upgrades: read all data from SQLite and push to Tantivy.
+    let tantivy_dir = workspace_dir.join("tantivy");
+    fs::create_dir_all(&tantivy_dir).expect("Failed to create tantivy dir");
+
+    let configs = crate::search::LanguageConfigs::load_embedded();
+    let search_index = crate::search::SearchIndex::open_or_create_with_language_configs(
+        &tantivy_dir,
+        &configs,
+    )
+    .expect("Failed to create Tantivy search index");
+
+    // Backfill symbols from SQLite fixture
+    let symbols = db_struct
+        .get_all_symbols()
+        .expect("Failed to get symbols for Tantivy backfill");
+    for symbol in &symbols {
+        let doc = crate::search::SymbolDocument::from_symbol(symbol);
+        if let Err(e) = search_index.add_symbol(&doc) {
+            eprintln!("Tantivy backfill warning: failed to add symbol: {}", e);
+        }
+    }
+
+    // Backfill file content from SQLite fixture
+    let file_contents = db_struct
+        .get_all_file_contents_with_language()
+        .unwrap_or_default();
+    for (path, language, content) in &file_contents {
+        let doc = crate::search::FileDocument {
+            file_path: path.clone(),
+            content: content.clone(),
+            language: language.clone(),
+        };
+        if let Err(e) = search_index.add_file_content(&doc) {
+            eprintln!("Tantivy backfill warning: failed to add file: {}", e);
+        }
+    }
+
+    search_index
+        .commit()
+        .expect("Failed to commit Tantivy index");
+    println!(
+        "✓ Tantivy backfilled: {} symbols, {} files",
+        symbols.len(),
+        file_contents.len()
+    );
+
     // Create workspace structure manually with the fixture database
     let workspace = crate::workspace::JulieWorkspace {
         root: temp_root.clone(),
         julie_dir: julie_dir.clone(),
         db: Some(Arc::new(Mutex::new(db_struct))),
-        search_index: None,
+        search_index: Some(Arc::new(Mutex::new(search_index))),
         watcher: None,
         config: crate::workspace::WorkspaceConfig::default(),
     };

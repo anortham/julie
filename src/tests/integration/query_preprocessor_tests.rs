@@ -5,7 +5,7 @@
 // 2. Detect the query type (Symbol/Pattern/Glob/Standard)
 // 3. Pass the original query to Tantivy
 //
-// FTS5-specific sanitization and query expansion are no longer needed
+// Manual sanitization and query expansion are no longer needed
 // since Tantivy handles query parsing and CodeTokenizer handles
 // CamelCase/snake_case splitting at index time.
 

@@ -5,6 +5,7 @@ use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use std::path::Path;
+use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 
@@ -15,7 +16,7 @@ impl ManageWorkspaceTool {
     /// 1. File discovery and filtering
     /// 2. Symbol extraction with optimized parser reuse
     /// 3. Bulk database storage
-    /// 4. Background embedding generation (asynchronous)
+    /// 4. Search index updates (Tantivy full-text search)
     ///
     /// Returns: (total_symbols, total_files, total_relationships)
     pub(crate) async fn index_workspace_files(
@@ -151,9 +152,17 @@ impl ManageWorkspaceTool {
         };
         debug!("🐛 [INDEX TRACE L] workspace_id obtained: {}", workspace_id);
 
-        // Proceeding with SQLite FTS5 indexing
+        // ═══════════════════════════════════════════════════════════════════
+        // TANTIVY BACKFILL: Detect upgrade from v1.x (FTS5) → v2.0 (Tantivy)
+        // If Tantivy has 0 docs but SQLite has symbols, populate Tantivy
+        // directly from SQLite data. Much faster than re-parsing all files.
+        // ═══════════════════════════════════════════════════════════════════
+        if is_primary_workspace {
+            self.backfill_tantivy_if_needed(&workspace).await?;
+        }
+
+        // Proceeding with indexing (parser pool groups files by language for 10-50x speedup)
         debug!("🐛 [INDEX TRACE S] About to call process_files_optimized");
-        // PERFORMANCE OPTIMIZATION: Group files by language and use parser pool for 10-50x speedup
         self.process_files_optimized(
             handler,
             files_to_index,
@@ -229,5 +238,130 @@ impl ManageWorkspaceTool {
         );
 
         Ok((total_symbols, total_files, total_relationships))
+    }
+
+    /// Backfill Tantivy search index from SQLite data when Tantivy is empty.
+    ///
+    /// This handles the v1.x → v2.0 upgrade scenario where SQLite already has
+    /// all symbols and file content, but Tantivy was just created empty.
+    /// Instead of re-parsing every file with tree-sitter, we read directly
+    /// from SQLite — skipping parsing entirely for a ~10x speedup.
+    async fn backfill_tantivy_if_needed(
+        &self,
+        workspace: &crate::workspace::JulieWorkspace,
+    ) -> Result<()> {
+        let search_index = match &workspace.search_index {
+            Some(idx) => Arc::clone(idx),
+            None => return Ok(()),
+        };
+        let db = match &workspace.db {
+            Some(db) => Arc::clone(db),
+            None => return Ok(()),
+        };
+
+        // Quick check: does Tantivy already have data?
+        let tantivy_docs = {
+            let idx = search_index.lock().unwrap_or_else(|p| p.into_inner());
+            idx.num_docs()
+        };
+
+        if tantivy_docs > 0 {
+            debug!(
+                "Tantivy already has {} docs, no backfill needed",
+                tantivy_docs
+            );
+            return Ok(());
+        }
+
+        // Tantivy is empty — check if SQLite has data (upgrade scenario)
+        let sqlite_symbol_count = {
+            let db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
+            db_lock.get_symbol_count_for_workspace().unwrap_or(0)
+        };
+
+        if sqlite_symbol_count == 0 {
+            debug!("Both Tantivy and SQLite empty — first run, no backfill needed");
+            return Ok(());
+        }
+
+        info!(
+            "🔄 Tantivy backfill: index empty but SQLite has {} symbols — populating from database",
+            sqlite_symbol_count
+        );
+
+        // Read all symbols from SQLite
+        let symbols = {
+            let db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
+            db_lock.get_all_symbols().unwrap_or_default()
+        };
+
+        // Read all file contents with language from SQLite
+        let file_contents = {
+            let db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
+            db_lock
+                .get_all_file_contents_with_language()
+                .unwrap_or_default()
+        };
+
+        let symbol_count = symbols.len();
+        let file_count = file_contents.len();
+
+        // Populate Tantivy in a blocking task (Tantivy I/O is blocking)
+        let backfill_result = tokio::task::spawn_blocking(move || {
+            let idx = search_index.lock().unwrap_or_else(|p| p.into_inner());
+
+            // Index all symbols
+            let mut symbol_errors = 0;
+            for symbol in &symbols {
+                let doc = crate::search::SymbolDocument::from_symbol(symbol);
+                if let Err(e) = idx.add_symbol(&doc) {
+                    symbol_errors += 1;
+                    if symbol_errors <= 3 {
+                        warn!("Tantivy backfill: failed to add symbol {}: {}", symbol.name, e);
+                    }
+                }
+            }
+
+            // Index all file contents
+            let mut file_errors = 0;
+            for (path, language, content) in &file_contents {
+                let doc = crate::search::FileDocument {
+                    file_path: path.clone(),
+                    content: content.clone(),
+                    language: language.clone(),
+                };
+                if let Err(e) = idx.add_file_content(&doc) {
+                    file_errors += 1;
+                    if file_errors <= 3 {
+                        warn!("Tantivy backfill: failed to add file {}: {}", path, e);
+                    }
+                }
+            }
+
+            if let Err(e) = idx.commit() {
+                warn!("Tantivy backfill: commit failed: {}", e);
+                return Err(anyhow::anyhow!("Tantivy backfill commit failed: {}", e));
+            }
+
+            if symbol_errors > 0 || file_errors > 0 {
+                warn!(
+                    "Tantivy backfill completed with errors: {} symbol errors, {} file errors",
+                    symbol_errors, file_errors
+                );
+            }
+
+            Ok(())
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Tantivy backfill task panicked: {}", e))?;
+
+        backfill_result?;
+
+        info!(
+            "✅ Tantivy backfill complete: {} symbols, {} files indexed from SQLite",
+            symbol_count, file_count
+        );
+
+        Ok(())
     }
 }

@@ -482,7 +482,7 @@ mod smart_refactor_control_tests {
                         }
 
                         // Symbols are now stored only in SQLite database
-                        // FTS5 index built directly from database
+                        // Tantivy index populated from database
                     }
                     Err(e) => {
                         println!("⚠️ Warning: Failed to extract symbols: {}", e);

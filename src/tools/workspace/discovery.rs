@@ -477,7 +477,7 @@ impl ManageWorkspaceTool {
 # Julie analyzed your project and detected vendor/third-party code patterns.
 # These patterns exclude files from:
 # • Symbol extraction (function/class definitions)
-# • Semantic search embeddings (AI-powered search)
+# • Search indexes (Tantivy full-text search)
 #
 # Files are still searchable as TEXT using fast_search(mode="text"),
 # but won't clutter symbol navigation or semantic search results.

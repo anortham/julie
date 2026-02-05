@@ -334,39 +334,6 @@ async fn test_update_last_accessed() {
     );
 }
 
-#[tokio::test]
-async fn test_update_embedding_status() {
-    use crate::workspace::registry::EmbeddingStatus;
-
-    let temp_dir = TempDir::new().unwrap();
-    let service = WorkspaceRegistryService::new(temp_dir.path().to_path_buf());
-
-    // Register workspace
-    let workspace = service
-        .register_workspace(
-            temp_dir.path().to_string_lossy().to_string(),
-            WorkspaceType::Primary,
-        )
-        .await
-        .unwrap();
-
-    // Initially should be NotStarted or Generating
-    let initial = service.get_workspace(&workspace.id).await.unwrap().unwrap();
-    assert!(
-        initial.embedding_status == EmbeddingStatus::NotStarted
-            || initial.embedding_status == EmbeddingStatus::Generating
-    );
-
-    // Update to Ready
-    service
-        .update_embedding_status(&workspace.id, EmbeddingStatus::Ready)
-        .await
-        .unwrap();
-
-    // Verify status was updated
-    let updated = service.get_workspace(&workspace.id).await.unwrap().unwrap();
-    assert_eq!(updated.embedding_status, EmbeddingStatus::Ready);
-}
 
 #[tokio::test]
 async fn test_get_all_workspaces_empty() {

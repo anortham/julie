@@ -66,7 +66,7 @@ impl JulieTestFixture {
 
         println!("✅ Indexing triggered, waiting for completion...");
 
-        // Wait for SQLite FTS5 indexing to complete
+        // Wait for Tantivy indexing to complete
         Self::wait_for_indexing(&handler).await?;
 
         println!("✅ Indexing complete, extracting database...");

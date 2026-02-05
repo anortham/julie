@@ -258,4 +258,105 @@ mod tests {
         );
         assert_eq!(results[0].name, "IPaymentService");
     }
+
+    #[test]
+    fn test_backfill_from_existing_symbols() {
+        // Simulates the v1→v2 upgrade backfill: an empty Tantivy index gets
+        // populated from symbols that already exist in SQLite.
+        let (_dir, index) = create_test_index();
+
+        // Verify index starts empty
+        assert_eq!(index.num_docs(), 0, "Fresh index should have 0 docs");
+
+        // Simulate backfill: add symbols as if reading from SQLite
+        let symbols = vec![
+            SymbolDocument {
+                id: "1".into(),
+                name: "getUserProfile".into(),
+                signature: "async function getUserProfile(id: string): Promise<User>".into(),
+                doc_comment: "Fetches user profile".into(),
+                code_body: "return await fetch(`/api/users/${id}`)".into(),
+                file_path: "src/services/user.ts".into(),
+                kind: "function".into(),
+                language: "typescript".into(),
+                start_line: 15,
+            },
+            SymbolDocument {
+                id: "2".into(),
+                name: "process_payment".into(),
+                signature: "pub async fn process_payment(amount: f64) -> Result<Receipt>".into(),
+                doc_comment: "Process a payment transaction".into(),
+                code_body: "let receipt = gateway.charge(amount).await?;".into(),
+                file_path: "src/billing/payment.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 42,
+            },
+            SymbolDocument {
+                id: "3".into(),
+                name: "IPaymentGateway".into(),
+                signature: "public interface IPaymentGateway".into(),
+                doc_comment: "Payment gateway contract".into(),
+                code_body: String::new(),
+                file_path: "src/IPaymentGateway.cs".into(),
+                kind: "interface".into(),
+                language: "csharp".into(),
+                start_line: 1,
+            },
+        ];
+
+        for doc in &symbols {
+            index.add_symbol(doc).unwrap();
+        }
+        index.commit().unwrap();
+
+        // Verify all symbols are now searchable
+        assert!(index.num_docs() >= 3, "Should have at least 3 docs after backfill");
+
+        // Cross-convention matching still works after backfill
+        let results = index
+            .search_symbols("user profile", &SearchFilter::default(), 10)
+            .unwrap();
+        assert!(!results.is_empty(), "Should find getUserProfile after backfill");
+
+        // Language filter works after backfill
+        let filter = SearchFilter {
+            language: Some("rust".into()),
+            ..Default::default()
+        };
+        let results = index.search_symbols("payment", &filter, 10).unwrap();
+        assert_eq!(results.len(), 1, "Language filter should work after backfill");
+        assert_eq!(results[0].name, "process_payment");
+
+        // Variant stripping works after backfill
+        let results = index
+            .search_symbols("PaymentGateway", &SearchFilter::default(), 10)
+            .unwrap();
+        assert!(!results.is_empty(), "Should find IPaymentGateway via prefix stripping after backfill");
+    }
+
+    #[test]
+    fn test_backfill_file_content() {
+        // Verifies that file content (for line-level search) can also be
+        // backfilled alongside symbols.
+        use crate::search::index::FileDocument;
+
+        let (_dir, index) = create_test_index();
+
+        // Simulate backfilling file content from SQLite
+        let file_doc = FileDocument {
+            file_path: "src/main.rs".into(),
+            content: "fn main() {\n    println!(\"hello world\");\n}".into(),
+            language: "rust".into(),
+        };
+        index.add_file_content(&file_doc).unwrap();
+        index.commit().unwrap();
+
+        // Search for content
+        let results = index
+            .search_content("hello world", &SearchFilter::default(), 10)
+            .unwrap();
+        assert!(!results.is_empty(), "Should find file content after backfill");
+        assert_eq!(results[0].file_path, "src/main.rs");
+    }
 }

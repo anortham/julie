@@ -15,7 +15,7 @@ use tree_sitter::Parser;
 impl ManageWorkspaceTool {
     /// SQLite-only file processing with optimized parser reuse
     ///
-    /// Uses SQLite FTS5 for full-text search indexing.
+    /// Uses Tantivy for full-text search indexing.
     pub(crate) async fn process_files_optimized(
         &self,
         handler: &JulieServerHandler,
@@ -325,64 +325,69 @@ impl ManageWorkspaceTool {
             // Individual document failures are non-fatal: Tantivy is a secondary
             // search index that can be rebuilt, so we log and continue rather
             // than aborting the entire indexing pipeline.
+            //
+            // PRIMARY workspace: uses workspace.search_index (shared Arc<Mutex>)
+            // REFERENCE workspace: creates its own Tantivy index at
+            //   .julie/indexes/{workspace_id}/tantivy/
             // ═══════════════════════════════════════════════════════════════════
             if let Some(workspace) = handler.get_workspace().await? {
-                if let Some(ref search_index) = workspace.search_index {
-                    let search_index = Arc::clone(search_index);
-                    let symbol_docs: Vec<_> = all_symbols
-                        .iter()
-                        .map(crate::search::SymbolDocument::from_symbol)
-                        .collect();
-                    let file_docs: Vec<_> = all_file_infos
-                        .iter()
-                        .map(crate::search::FileDocument::from_file_info)
-                        .collect();
-                    let files_to_clean_clone = files_to_clean.clone();
+                let symbol_docs: Vec<_> = all_symbols
+                    .iter()
+                    .map(crate::search::SymbolDocument::from_symbol)
+                    .collect();
+                let file_docs: Vec<_> = all_file_infos
+                    .iter()
+                    .map(crate::search::FileDocument::from_file_info)
+                    .collect();
+                let files_to_clean_clone = files_to_clean.clone();
+
+                if is_primary_workspace {
+                    // Primary workspace: use the shared search_index
+                    if let Some(ref search_index) = workspace.search_index {
+                        let search_index = Arc::clone(search_index);
+
+                        let tantivy_result = tokio::task::spawn_blocking(move || {
+                            let idx = match search_index.lock() {
+                                Ok(guard) => guard,
+                                Err(poisoned) => {
+                                    warn!("Search index mutex poisoned (prior panic during indexing), recovering");
+                                    poisoned.into_inner()
+                                }
+                            };
+                            populate_tantivy_index(&idx, &symbol_docs, &file_docs, &files_to_clean_clone);
+                        })
+                        .await;
+
+                        if let Err(e) = tantivy_result {
+                            warn!("Tantivy indexing task panicked: {}", e);
+                        }
+                    }
+                } else {
+                    // Reference workspace: create/open a separate Tantivy index
+                    let tantivy_path = workspace.workspace_tantivy_path(&workspace_id);
 
                     let tantivy_result = tokio::task::spawn_blocking(move || {
-                        let idx = match search_index.lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => {
-                                warn!("Search index mutex poisoned (prior panic during indexing), recovering");
-                                poisoned.into_inner()
-                            }
-                        };
-
-                        // Remove stale documents for files being re-indexed
-                        for file_path in &files_to_clean_clone {
-                            if let Err(e) = idx.remove_by_file_path(file_path) {
-                                warn!("Failed to remove stale Tantivy docs for {}: {}", file_path, e);
-                            }
+                        if let Err(e) = std::fs::create_dir_all(&tantivy_path) {
+                            warn!("Failed to create reference Tantivy dir: {}", e);
+                            return;
                         }
-
-                        // Index symbols
-                        for doc in &symbol_docs {
-                            if let Err(e) = idx.add_symbol(doc) {
-                                warn!("Failed to add symbol to Tantivy: {}", e);
+                        let configs = crate::search::LanguageConfigs::load_embedded();
+                        match crate::search::SearchIndex::open_or_create_with_language_configs(
+                            &tantivy_path,
+                            &configs,
+                        ) {
+                            Ok(idx) => {
+                                populate_tantivy_index(&idx, &symbol_docs, &file_docs, &files_to_clean_clone);
                             }
-                        }
-
-                        // Index file content
-                        for doc in &file_docs {
-                            if let Err(e) = idx.add_file_content(doc) {
-                                warn!("Failed to add file to Tantivy: {}", e);
+                            Err(e) => {
+                                warn!("Failed to create reference Tantivy index: {}", e);
                             }
-                        }
-
-                        if let Err(e) = idx.commit() {
-                            warn!("Failed to commit Tantivy index: {}", e);
-                        } else {
-                            info!(
-                                "Tantivy: indexed {} symbols and {} files",
-                                symbol_docs.len(),
-                                file_docs.len()
-                            );
                         }
                     })
                     .await;
 
                     if let Err(e) = tantivy_result {
-                        warn!("Tantivy indexing task panicked: {}", e);
+                        warn!("Reference Tantivy indexing task panicked: {}", e);
                     }
                 }
             }
@@ -716,5 +721,49 @@ impl ManageWorkspaceTool {
 
         // No symbols extracted (no parser available), but file_info created in spawn_blocking above
         Ok((Vec::new(), Vec::new(), file_info))
+    }
+}
+
+/// Populate a Tantivy search index with symbols and file content.
+///
+/// Used by both primary and reference workspace indexing paths.
+fn populate_tantivy_index(
+    idx: &crate::search::SearchIndex,
+    symbol_docs: &[crate::search::SymbolDocument],
+    file_docs: &[crate::search::FileDocument],
+    files_to_clean: &[String],
+) {
+    // Remove stale documents for files being re-indexed
+    for file_path in files_to_clean {
+        if let Err(e) = idx.remove_by_file_path(file_path) {
+            warn!(
+                "Failed to remove stale Tantivy docs for {}: {}",
+                file_path, e
+            );
+        }
+    }
+
+    // Index symbols
+    for doc in symbol_docs {
+        if let Err(e) = idx.add_symbol(doc) {
+            warn!("Failed to add symbol to Tantivy: {}", e);
+        }
+    }
+
+    // Index file content
+    for doc in file_docs {
+        if let Err(e) = idx.add_file_content(doc) {
+            warn!("Failed to add file to Tantivy: {}", e);
+        }
+    }
+
+    if let Err(e) = idx.commit() {
+        warn!("Failed to commit Tantivy index: {}", e);
+    } else {
+        info!(
+            "Tantivy: indexed {} symbols and {} files",
+            symbol_docs.len(),
+            file_docs.len()
+        );
     }
 }

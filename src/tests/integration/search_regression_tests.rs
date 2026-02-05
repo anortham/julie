@@ -284,7 +284,7 @@ mod glob_pattern_regression {
 // or document that low limits may hide relevant results.
 //
 // TODO: These tests require complex database setup with bulk inserts.
-// Implement after fixing glob pattern and FTS5 syntax issues.
+// Implement after fixing glob pattern and query syntax issues.
 //
 // #[cfg(test)]
 // mod limit_ranking_regression {

@@ -10,9 +10,7 @@ mod workspace_management_token_tests {
 
     use crate::utils::progressive_reduction::ProgressiveReducer;
     use crate::utils::token_estimation::TokenEstimator;
-    use crate::workspace::registry::{
-        EmbeddingStatus, WorkspaceEntry, WorkspaceStatus, WorkspaceType,
-    };
+    use crate::workspace::registry::{WorkspaceEntry, WorkspaceStatus, WorkspaceType};
 
     /// Test that workspace list formatting respects token limits
     #[test]
@@ -39,7 +37,6 @@ mod workspace_management_token_tests {
                 last_accessed: 1700000000 + i as u64,
                 expires_at: Some(1800000000 + i as u64),
                 status: WorkspaceStatus::Active,
-                embedding_status: EmbeddingStatus::Ready,
             };
             workspaces.push(workspace);
         }
@@ -113,7 +110,6 @@ mod workspace_management_token_tests {
                 last_accessed: 1700000000,
                 expires_at: None,
                 status: WorkspaceStatus::Active,
-                embedding_status: EmbeddingStatus::Ready,
             };
             workspaces.push(workspace);
         }
@@ -274,7 +270,6 @@ mod workspace_management_token_tests {
                 last_accessed: 1700000000,
                 expires_at: Some(1800000000),
                 status: WorkspaceStatus::Active,
-                embedding_status: EmbeddingStatus::Ready,
             };
             workspaces.push(workspace);
         }

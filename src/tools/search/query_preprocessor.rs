@@ -5,7 +5,7 @@
 //!
 //! With Tantivy + CodeTokenizer:
 //! - CamelCase/snake_case splitting happens at INDEX TIME (no query expansion needed)
-//! - Query parsing is handled by Tantivy (no FTS5 sanitization needed)
+//! - Query parsing is handled by Tantivy (no manual sanitization needed)
 //! - Our job is just to: validate, detect type, and route appropriately
 //!
 //! Pipeline: Validate → Detect → Route

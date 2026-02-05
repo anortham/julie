@@ -145,7 +145,7 @@ impl FastSearchTool {
             }
         }
 
-        // Check output format - if "lines" mode, use FTS5 directly for line-level results
+        // Check output format - if "lines" mode, use line-level search for line-level results
         if self.output.as_deref() == Some("lines") {
             debug!("📄 Line-level output mode requested");
             return line_mode::line_mode_search(
@@ -354,12 +354,12 @@ impl FastSearchTool {
                             Ok(Some(vec![workspace_id]))
                         }
                         None => {
-                            debug!("🔍 No primary workspace ID found, using SQLite FTS5 search");
+                            debug!("🔍 No primary workspace ID found, using fallback search");
                             Ok(None)
                         }
                     }
                 } else {
-                    debug!("🔍 No workspace available, using SQLite FTS5 search");
+                    debug!("🔍 No workspace available, using fallback search");
                     Ok(None)
                 }
             }
