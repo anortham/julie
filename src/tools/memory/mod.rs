@@ -68,12 +68,10 @@ pub struct GitContext {
 /// Optional common fields:
 /// - `git`: Git context (branch, commit, dirty status)
 ///
-/// Type-specific fields:
-/// - Everything else is stored in `extra` via serde flatten
-/// - Examples:
-///   - checkpoint: description, tags
-///   - decision: question, chosen, alternatives, rationale
-///   - learning: insight, context
+/// Type-specific fields (stored in `extra` via serde flatten):
+/// - Markdown format preserves `description` (as body) and `tags` (as YAML list)
+/// - Legacy JSON format preserves all extra fields
+/// - Common extras: description, tags
 ///
 /// # Examples
 ///
