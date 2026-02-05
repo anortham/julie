@@ -446,3 +446,52 @@ fn test_search_memories_finds_by_tags() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_search_memories_limit_applies_after_scoring() -> Result<()> {
+    // Regression test: limit should apply AFTER ranking, not before loading.
+    // With limit=1, we should still search ALL memories and return the best match.
+    let temp = TempDir::new()?;
+    let workspace_root = temp.path().to_path_buf();
+
+    // Create 3 memories with different timestamps (oldest first)
+    let old = crate::tools::memory::Memory::new(
+        "mem_old".to_string(), 1000, "checkpoint".to_string(),
+    ).with_extra(serde_json::json!({
+        "description": "Fixed Tantivy tokenizer bug",
+        "tags": ["tantivy"]
+    }));
+
+    let mid = crate::tools::memory::Memory::new(
+        "mem_mid".to_string(), 2000, "checkpoint".to_string(),
+    ).with_extra(serde_json::json!({
+        "description": "Unrelated database work",
+        "tags": ["database"]
+    }));
+
+    let new = crate::tools::memory::Memory::new(
+        "mem_new".to_string(), 3000, "checkpoint".to_string(),
+    ).with_extra(serde_json::json!({
+        "description": "Added new feature",
+        "tags": ["feature"]
+    }));
+
+    crate::tools::memory::save_memory(&workspace_root, &old)?;
+    crate::tools::memory::save_memory(&workspace_root, &mid)?;
+    crate::tools::memory::save_memory(&workspace_root, &new)?;
+
+    // Search for "tantivy" with limit=1
+    // Bug: if limit is applied during loading, we'd only load the 1 newest memory
+    // (mem_new) and miss the actual match (mem_old)
+    let options = crate::tools::memory::RecallOptions {
+        limit: Some(1),
+        ..Default::default()
+    };
+    let results = crate::tools::memory::search_memories(
+        &workspace_root, "tantivy", options,
+    )?;
+    assert_eq!(results.len(), 1, "Should return exactly 1 result");
+    assert_eq!(results[0].0.id, "mem_old", "Should find the oldest memory that matches, not just the newest");
+
+    Ok(())
+}

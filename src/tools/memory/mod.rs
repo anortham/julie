@@ -411,7 +411,14 @@ pub fn search_memories(
     query_str: &str,
     options: RecallOptions,
 ) -> Result<Vec<(Memory, f32)>> {
-    let memories = recall_memories(workspace_root, options)?;
+    // Strip limit from recall options — we need ALL memories for ranking,
+    // then apply limit after scoring (limit means "top N by relevance" in search mode)
+    let limit = options.limit;
+    let load_options = RecallOptions {
+        limit: None,
+        ..options
+    };
+    let memories = recall_memories(workspace_root, load_options)?;
 
     // If no memories or empty query, return all with score 0.0
     if memories.is_empty() || query_str.trim().is_empty() {
@@ -497,8 +504,9 @@ pub fn search_memories(
             ))
         });
 
+    let search_limit = limit.unwrap_or(memory_map.len());
     let top_docs = searcher
-        .search(&query, &TopDocs::with_limit(memory_map.len()))
+        .search(&query, &TopDocs::with_limit(search_limit))
         .context("Tantivy search failed")?;
 
     // Map results back to Memory structs
