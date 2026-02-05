@@ -1,7 +1,7 @@
 //! FastRefsTool - Find all references to a symbol
 //!
 //! This tool finds all usages and references across the codebase using:
-//! 1. SQLite FTS5 for O(log n) exact name matching
+//! 1. SQLite for O(log n) exact name matching
 //! 2. Cross-language naming convention variants
 
 use anyhow::Result;
@@ -207,10 +207,10 @@ impl FastRefsTool {
         }
 
         // Primary workspace search - use handler.get_workspace().db
-        // Strategy 1: Use SQLite FTS5 for O(log n) indexed performance
+        // Strategy 1: Use SQLite for O(log n) indexed name lookup
         let mut definitions = Vec::new();
 
-        // Use SQLite FTS5 for exact name lookup (indexed, fast)
+        // Use SQLite for exact name lookup (indexed)
         if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
                 // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
@@ -233,7 +233,7 @@ impl FastRefsTool {
                 .await
                 .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
 
-                debug!("⚡ SQLite FTS5 found {} exact matches", definitions.len());
+                debug!("⚡ SQLite found {} exact matches", definitions.len());
             }
         }
 

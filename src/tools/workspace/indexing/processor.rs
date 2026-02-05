@@ -479,12 +479,12 @@ impl ManageWorkspaceTool {
                 bulk_duration.as_secs_f64()
             );
 
-            // Mark SQLite FTS5 as ready
+            // Mark search as ready
             handler
                 .indexing_status
-                .sqlite_fts_ready
+                .search_ready
                 .store(true, std::sync::atomic::Ordering::Release);
-            debug!("🔍 SQLite FTS5 search now available");
+            debug!("🔍 Search now available");
         }
 
         Ok(())

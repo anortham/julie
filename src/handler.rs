@@ -27,14 +27,14 @@ use crate::tools::{
 #[derive(Debug)]
 pub struct IndexingStatus {
     /// Search system (Tantivy) is ready
-    pub sqlite_fts_ready: AtomicBool,
+    pub search_ready: AtomicBool,
 }
 
 impl IndexingStatus {
     /// Create new indexing status with all indexes not ready
     pub fn new() -> Self {
         Self {
-            sqlite_fts_ready: AtomicBool::new(false),
+            search_ready: AtomicBool::new(false),
         }
     }
 }

@@ -99,7 +99,6 @@ pub mod utils {
     pub mod context_truncation; // Context truncation tests
     pub mod cross_language_intelligence; // Cross-language intelligence tests
     pub mod progressive_reduction; // Progressive reduction tests
-    pub mod query_expansion; // Query expansion tests
     pub mod token_estimation; // Token estimation tests
     pub mod utf8_boundary_safety;
     pub mod utf8_truncation; // UTF-8 safe string truncation tests // UTF-8 boundary safety checks for unsafe slicing patterns

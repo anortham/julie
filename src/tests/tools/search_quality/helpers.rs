@@ -385,7 +385,7 @@ incremental_updates = true
     // We're loading from a pre-indexed fixture, so this status is accurate
     handler
         .indexing_status
-        .sqlite_fts_ready
+        .search_ready
         .store(true, std::sync::atomic::Ordering::Relaxed);
 
     // Debug confirmation

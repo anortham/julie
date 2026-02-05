@@ -203,14 +203,14 @@ impl JulieTestFixture {
         use std::sync::atomic::Ordering;
         use tokio::time::{Duration, sleep};
 
-        // Wait for SQLite FTS5 indexing to complete
+        // Wait for search indexing to complete
         for _ in 0..60 {
             if handler
                 .indexing_status
-                .sqlite_fts_ready
+                .search_ready
                 .load(Ordering::Relaxed)
             {
-                println!("✅ SQLite FTS5 indexing complete");
+                println!("✅ Search indexing complete");
                 return Ok(());
             }
             sleep(Duration::from_millis(500)).await;

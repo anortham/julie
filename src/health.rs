@@ -114,14 +114,6 @@ impl HealthChecker {
         }
     }
 
-    /// Quick check: Are embeddings available for semantic search?
-    pub async fn are_embeddings_ready(handler: &JulieServerHandler) -> Result<bool> {
-        match Self::check_system_readiness(handler, None).await? {
-            SystemStatus::FullyReady { .. } => Ok(true),
-            _ => Ok(false),
-        }
-    }
-
     /// Get a user-friendly status message
     pub async fn get_status_message(handler: &JulieServerHandler) -> Result<String> {
         let readiness = Self::check_system_readiness(handler, None).await?;

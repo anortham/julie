@@ -56,7 +56,7 @@ mod search_line_mode_tests {
     async fn mark_index_ready(handler: &JulieServerHandler) {
         handler
             .indexing_status
-            .sqlite_fts_ready
+            .search_ready
             .store(true, Ordering::Relaxed);
         *handler.is_indexed.write().await = true;
     }

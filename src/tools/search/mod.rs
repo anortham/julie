@@ -16,7 +16,6 @@ pub use self::types::{LineMatch, LineMatchStrategy};
 
 // Internal modules
 pub(crate) mod formatting; // Exposed for testing
-pub(crate) mod hybrid_search; // Exposed for testing
 mod line_mode;
 mod query;
 pub mod query_preprocessor; // Public for testing
@@ -92,25 +91,6 @@ fn default_output_format() -> Option<String> {
 
 fn default_search_target() -> String {
     "content".to_string() // fast_search focuses on content, fast_goto handles symbol definitions
-}
-
-/// Auto-detect optimal search method from query characteristics.
-///
-/// With Tantivy as the sole search engine, all queries route to text search.
-/// This function is kept for API compatibility — agents may still pass
-/// "auto" as the search_method parameter.
-///
-/// # Examples
-/// ```
-/// use julie::tools::search::detect_search_method;
-///
-/// assert_eq!(detect_search_method(": BaseClass"), "text");
-/// assert_eq!(detect_search_method("authentication logic"), "text");
-/// ```
-pub fn detect_search_method(_query: &str) -> &'static str {
-    // All search now goes through Tantivy's CodeTokenizer.
-    // Semantic/hybrid modes are no longer available.
-    "text"
 }
 
 impl FastSearchTool {
