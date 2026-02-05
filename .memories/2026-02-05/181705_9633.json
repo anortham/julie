@@ -1,0 +1,23 @@
+{
+  "id": "checkpoint_6984dea1_f25090",
+  "timestamp": 1770315425,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "1c58527",
+    "dirty": true,
+    "files_changed": [
+      "src/database/files.rs",
+      "src/tests/tools/search/tantivy_integration_tests.rs",
+      "src/tools/workspace/indexing/index.rs"
+    ]
+  },
+  "description": "Task #15 COMPLETE: Fixed Tantivy index not auto-populated on upgrade. Added backfill_tantivy_if_needed() method to ManageWorkspaceTool that detects when Tantivy is empty but SQLite has symbols (v1.x → v2.0 upgrade scenario). Instead of re-parsing all files with tree-sitter, it reads symbols from get_all_symbols() and file contents from new get_all_file_contents_with_language() method, then populates Tantivy directly — ~10x faster than force re-index. Method is called during index_workspace_files for primary workspaces, before the incremental process_files_optimized step. Added 2 integration tests (backfill_from_existing_symbols, backfill_file_content). 80 search tests pass, 0 failures, 0 regressions.",
+  "tags": [
+    "task-15",
+    "tantivy",
+    "backfill",
+    "upgrade",
+    "fix"
+  ]
+}

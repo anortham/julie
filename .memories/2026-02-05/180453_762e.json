@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_6984dbc5_51d8cb",
+  "timestamp": 1770314693,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "1c58527",
+    "dirty": false
+  },
+  "description": "Dead code cleanup complete. Removed 777 lines across 19 files: hybrid_search.rs stub, query_expansion.rs (10 deprecated FTS5 functions), detect_search_method(), are_embeddings_ready(), auto_detection_tests, hybrid_search_tests, 15 quality.rs tests for dead imports. Renamed sqlite_fts_ready → search_ready across 8 files. Fixed stale FTS5 comments in fast_refs.rs and processor.rs. Zero regressions (667 pass / 29 pre-existing fail). Also discovered Tantivy index not auto-populated on upgrade — needs force re-index after v1→v2 migration (tracked as task #15).",
+  "tags": [
+    "cleanup",
+    "dead-code",
+    "tantivy-migration",
+    "rename"
+  ]
+}

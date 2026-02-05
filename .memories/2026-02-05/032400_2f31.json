@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_69840d50_7bb42e",
+  "timestamp": 1770261840,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "61e1a99",
+    "dirty": true,
+    "files_changed": [
+      "Cargo.lock"
+    ]
+  },
+  "description": "Completed design for replacing FTS5 with Tantivy + CodeTokenizer. Design doc at docs/plans/2026-02-04-tantivy-search-engine-design.md. Key decisions: (1) Tantivy replaces both FTS5 tables (symbols + file content), (2) CodeTokenizer ported from Razorback with CamelCase/snake_case splitting at index time, (3) Per-language TOML configs embedded in binary, (4) ORT/HNSW removed entirely, (5) One Tantivy index per workspace, (6) 4-phase implementation: add alongside → switch over → remove old → complete features. Razorback's unfinished features (meaningful_affixes, strip_prefixes/suffixes, important_patterns scoring) will be completed during integration.",
+  "tags": [
+    "design",
+    "tantivy",
+    "search",
+    "fts5-replacement",
+    "architecture",
+    "razorback-port"
+  ]
+}

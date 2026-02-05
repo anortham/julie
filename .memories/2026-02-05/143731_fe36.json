@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_6984ab2b_77b5eb",
+  "timestamp": 1770302251,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "dfa5c82",
+    "dirty": false
+  },
+  "description": "Completed Task 9: Simplified search method routing. All search methods (text, semantic, hybrid, auto) now route to text_search_impl (Tantivy). Removed 150-line semantic fallback block from call_tool. detect_search_method always returns \"text\". Marked semantic_search.rs and hybrid_search.rs as deprecated with #![allow(dead_code)] for Phase 3 removal. Updated auto_detection tests. Net -319 lines. Commit: dfa5c82.",
+  "tags": [
+    "task-9",
+    "search-routing",
+    "tantivy-migration",
+    "simplification"
+  ]
+}

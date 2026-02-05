@@ -1,0 +1,19 @@
+{
+  "id": "checkpoint_698484e6_de1a92",
+  "timestamp": 1770292454,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "f3e32dc",
+    "dirty": false
+  },
+  "description": "Completed Task 7: Rewrite text_search_impl to use Tantivy. Found and fixed critical BooleanQuery bug: Tantivy's Should clauses are optional when Must clauses present — must wrap term matches in nested BooleanQuery as Must. Also fixed tokenizer dropping segments with punctuation like `println!` by expanding delimiter set to include `!@#$%^&*+=|~/\\``. Commits: 4a1621d (rewrite), f3e32dc (bug fixes).",
+  "tags": [
+    "tantivy",
+    "search",
+    "bug-fix",
+    "boolean-query",
+    "tokenizer",
+    "task-7"
+  ]
+}

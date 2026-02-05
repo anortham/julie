@@ -1,0 +1,23 @@
+{
+  "id": "checkpoint_6984ffed_98936c",
+  "timestamp": 1770323949,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "1a33684",
+    "dirty": true,
+    "files_changed": [
+      ".sherpa/active-workflow.md",
+      "src/tests/tools/workspace/discovery.rs",
+      "src/tools/workspace/discovery.rs"
+    ]
+  },
+  "description": "Fixed content search quality: removed .memories from is_known_dotfile() whitelist in discovery.rs. .memories JSON checkpoint files were being indexed into Tantivy and dominating BM25 rankings due to document length normalization (short docs score higher). recall() has its own search path and doesn't need Tantivy. Added 2 tests: test_memories_dir_excluded_from_discovery (verifies .memories files aren't discovered) and test_is_known_dotfile_accepts_config_files_but_not_memories (verifies .memories is no longer whitelisted while other dotfiles still are). 701 lib tests pass, 0 failures.",
+  "tags": [
+    "bugfix",
+    "search-quality",
+    "content-search",
+    "memories",
+    "discovery"
+  ]
+}

@@ -45,5 +45,5 @@ cache/
 .claude/settings.local.json
 .code/*.bak
 .test_watcher/
-.memories/
+
 poc_output.txt

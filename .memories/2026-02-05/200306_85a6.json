@@ -1,0 +1,50 @@
+{
+  "id": "checkpoint_6984f77a_68bfc3",
+  "timestamp": 1770321786,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "1c58527",
+    "dirty": true,
+    "files_changed": [
+      "src/database/files.rs",
+      "src/database/types.rs",
+      "src/search/tokenizer.rs",
+      "src/tests/core/workspace_init.rs",
+      "src/tests/fixtures/julie_db.rs",
+      "src/tests/integration/query_preprocessor_tests.rs",
+      "src/tests/integration/reference_workspace.rs",
+      "src/tests/integration/search_regression_tests.rs",
+      "src/tests/mod.rs",
+      "src/tests/tools/exploration/find_logic.rs",
+      "src/tests/tools/refactoring/smart_refactor_control.rs",
+      "src/tests/tools/search/tantivy_integration_tests.rs",
+      "src/tests/tools/search/tantivy_tokenizer_tests.rs",
+      "src/tests/tools/search_quality/dogfood_tests.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tests/tools/workspace/management_token.rs",
+      "src/tests/tools/workspace/mod_tests.rs",
+      "src/tests/tools/workspace/registry_service.rs",
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/mod.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/search/query_preprocessor.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/index.rs",
+      "src/tools/workspace/indexing/processor.rs",
+      "src/tracing/mod.rs",
+      "src/workspace/registry.rs",
+      "src/workspace/registry_service.rs"
+    ]
+  },
+  "description": "Completed post-Tantivy-migration cleanup: (1) Fixed CodeTokenizer delimiter bug — added .-: to extract_segments() delimiter set, enabling correct tokenization of \"tree-sitter\", \"CASCADE.architecture\" etc. (2) Fixed dogfood test helper — initialized Tantivy SearchIndex and backfilled from SQLite fixture, 29/29 dogfood tests passing. (3) Updated 5 dogfood tests for Tantivy ranking behavior (FTS5-specific assertions replaced). (4) Removed stale models/ directory assertions from workspace init tests. (5) Fixed reference workspace Tantivy indexing — processor now creates separate Tantivy index for reference workspaces at .julie/indexes/{workspace_id}/tantivy/. (6) Added missing #[serial_test::serial] to orphan_cleanup test. Result: 699 lib tests pass, 0 failures.",
+  "tags": [
+    "tantivy",
+    "testing",
+    "bugfix",
+    "tokenizer",
+    "reference-workspace"
+  ]
+}

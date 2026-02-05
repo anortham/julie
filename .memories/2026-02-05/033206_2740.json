@@ -1,0 +1,21 @@
+{
+  "id": "checkpoint_69840f36_0d2de3",
+  "timestamp": 1770262326,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "61e1a99",
+    "dirty": true,
+    "files_changed": [
+      "Cargo.lock"
+    ]
+  },
+  "description": "Completed detailed implementation plan for replacing FTS5 with Tantivy + CodeTokenizer. Plan at docs/plans/2026-02-04-tantivy-implementation-plan.md. 16 tasks across 4 phases: (P1) Add Tantivy alongside FTS5 - 5 tasks, (P2) Switch search to Tantivy - 4 tasks, (P3) Remove FTS5+ORT - 3 tasks, (P4) Complete language config features - 4 tasks. Each task has TDD steps with exact file paths, code snippets, and test expectations. Source code ported from ~/Source/razorback/crates/razorback-search/ and razorback-languages/.",
+  "tags": [
+    "implementation-plan",
+    "tantivy",
+    "search",
+    "fts5-replacement",
+    "tdd"
+  ]
+}

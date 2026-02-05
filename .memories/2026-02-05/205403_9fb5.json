@@ -1,0 +1,24 @@
+{
+  "id": "checkpoint_6985036b_a01b57",
+  "timestamp": 1770324843,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "1a33684",
+    "dirty": true,
+    "files_changed": [
+      ".sherpa/active-workflow.md",
+      "src/search/index.rs",
+      "src/tests/tools/workspace/discovery.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/index.rs"
+    ]
+  },
+  "description": "Fixed force re-index not clearing stale Tantivy entries. Added SearchIndex::clear_all() method (uses delete_all_documents + commit). Modified index_workspace_files to clear Tantivy when force_reindex=true and skip backfill_tantivy_if_needed (since process_files_optimized rebuilds everything). Without this fix, stale entries (like previously-indexed .memories files) persisted through force re-index because nothing removed undiscovered files. 701 tests pass, 0 failures.",
+  "tags": [
+    "bugfix",
+    "force-reindex",
+    "tantivy",
+    "stale-data"
+  ]
+}

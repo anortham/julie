@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_6984a4d7_090046",
+  "timestamp": 1770300631,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "a4ea31d",
+    "dirty": false
+  },
+  "description": "Completed Task 8: Simplified query preprocessor for Tantivy. Removed 5 FTS5 sanitization functions, process_query and 4 sub-functions, simplified PreprocessedQuery struct (dropped fts5_query, search_field; renamed original_query → original). Net -647 lines. Tests updated from FTS5-specific to Tantivy-passthrough assertions. Commit: a4ea31d.",
+  "tags": [
+    "task-8",
+    "query-preprocessor",
+    "tantivy-migration",
+    "cleanup"
+  ]
+}

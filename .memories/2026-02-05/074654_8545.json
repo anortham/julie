@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_69844aee_e5475a",
+  "timestamp": 1770277614,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b2a07a4",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/mod.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/search/text_search.rs"
+    ]
+  },
+  "description": "Task 7: Rewritten text_search_impl to use Tantivy instead of FTS5. Key changes: (1) Removed query expansion (now handled by CodeTokenizer at index time), (2) Removed FTS5 preprocessing, (3) Added direct Tantivy SearchIndex calls for both symbol and content search, (4) Implemented SymbolSearchResult → Symbol and ContentSearchResult → Symbol conversion, (5) Used tokio::task::spawn_blocking for Mutex access, (6) Applied glob filtering post-search, (7) Marked FTS5 functions as dead code for Task 10 removal. Code compiles successfully (cargo check). Tests created in src/tests/tools/text_search_tantivy.rs (7 tests for integration testing).",
+  "tags": [
+    "task-7",
+    "tantivy-migration",
+    "text-search",
+    "implementation"
+  ]
+}

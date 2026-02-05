@@ -1,0 +1,43 @@
+{
+  "id": "checkpoint_69850a9c_7a85e6",
+  "timestamp": 1770326684,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "1a33684",
+    "dirty": true,
+    "files_changed": [
+      ".claude/agents/rust-refactor-specialist.md",
+      ".claude/agents/rust-tdd-implementer.md",
+      ".claude/agents/sqlite-fts5-tdd-expert.md",
+      ".claude/agents/sqlite-rust-expert.md",
+      ".claude/commands/README.md",
+      ".claude/commands/checkpoint.md",
+      ".claude/commands/recall.md",
+      ".claude/skills/development-memory",
+      ".claude/skills/explore-codebase",
+      ".claude/skills/plan-tracking",
+      ".claude/skills/safe-refactor",
+      ".claude/skills/semantic-intelligence",
+      ".claude/skills/smart-search",
+      ".sherpa/active-workflow.md",
+      "src/search/index.rs",
+      "src/tests/memory_checkpoint_tests.rs",
+      "src/tests/memory_recall_tests.rs",
+      "src/tests/memory_sql_views_tests.rs",
+      "src/tests/tools/workspace/discovery.rs",
+      "src/tools/memory/mod.rs",
+      "src/tools/memory/recall.rs",
+      "src/tools/workspace/discovery.rs",
+      "src/tools/workspace/indexing/index.rs"
+    ]
+  },
+  "description": "Switched memory format from JSON to Markdown with YAML frontmatter. save_memory() now writes .md files (YAML frontmatter for metadata + markdown body for description). read_memory_file() dispatches on extension for backward compat (.json → serde_json, .md → frontmatter parser). recall_memories() globs both .json and .md. No serde_yaml dependency — manual formatting for 6 known fields. Updated slash commands, 6 existing tests, added 5 new tests. 706/706 pass.",
+  "tags": [
+    "memory",
+    "format",
+    "markdown",
+    "frontmatter",
+    "backward-compat"
+  ]
+}

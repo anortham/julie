@@ -1,0 +1,50 @@
+{
+  "id": "checkpoint_6984bf12_f909d1",
+  "timestamp": 1770307346,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "dfa5c82",
+    "dirty": true,
+    "files_changed": [
+      "src/database/bulk_operations.rs",
+      "src/database/files.rs",
+      "src/database/migrations.rs",
+      "src/database/mod.rs",
+      "src/database/schema.rs",
+      "src/database/symbols/bulk.rs",
+      "src/database/symbols/queries.rs",
+      "src/database/symbols/storage.rs",
+      "src/database/types.rs",
+      "src/database/workspace.rs",
+      "src/tests/core/database.rs",
+      "src/tests/integration/bulk_storage_atomicity.rs",
+      "src/tests/integration/documentation_indexing.rs",
+      "src/tests/integration/fts5_integrity.rs",
+      "src/tests/integration/fts5_minimal_repro.rs",
+      "src/tests/integration/fts5_orphan_cleanup_bug.rs",
+      "src/tests/integration/fts5_rowid_corruption.rs",
+      "src/tests/integration/fts5_sanitization.rs",
+      "src/tests/integration/search_regression_tests.rs",
+      "src/tests/mod.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search_quality/dogfood_tests.rs",
+      "src/tests/tools/search_quality/helpers.rs",
+      "src/tests/tools/workspace/mod_tests.rs",
+      "src/tools/exploration/find_logic/search.rs",
+      "src/tools/search/line_mode.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/search/query.rs",
+      "src/tools/search/text_search.rs",
+      "src/tools/workspace/indexing/incremental.rs"
+    ]
+  },
+  "description": "Task 10 COMPLETE: Removed FTS5 from database layer. Key findings: (1) symbols/bulk.rs was the hidden culprit for bulk_storage_atomicity test failures - it had inline FTS5 trigger management that explore agents missed because they focused on bulk_operations.rs. (2) migration_007_drop_fts5 added to clean existing databases. (3) Removed ~1500+ lines of FTS5 code across: schema.rs (10 functions), mod.rs (check_and_rebuild), files.rs (search_file_content_fts + trigger mgmt), symbols/queries.rs (sanitize + find_symbols_by_pattern), symbols/bulk.rs (trigger/rebuild cycle), bulk_operations.rs (FTS5 rebuild block), workspace.rs, incremental.rs. (4) Cleaned tests: deleted 5 FTS5 test files, removed FTS5 tests from database.rs/regression/dogfood/documentation_indexing. (5) Removed dead code: preprocess_fallback_query, FileSearchResult. (6) 742 tests pass, 58 pre-existing failures (dogfood need Tantivy fixture, CLI known issues). Zero regressions from FTS5 removal.",
+  "tags": [
+    "fts5-removal",
+    "tantivy",
+    "database",
+    "migration",
+    "task-10"
+  ]
+}
