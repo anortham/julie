@@ -1,10 +1,9 @@
 //! Fast search tool for code intelligence
 //!
-//! Provides unified search across text and semantic methods with support for:
-//! - Multiple search modes (text, semantic, hybrid)
+//! Provides Tantivy-powered code search with support for:
+//! - Code-aware tokenization (CamelCase/snake_case splitting at index time)
 //! - Language and file pattern filtering
 //! - Line-level grep-style search
-//! - Graceful degradation (CASCADE architecture)
 //! - Per-workspace isolation
 
 // Public API re-exports
@@ -98,38 +97,21 @@ fn default_search_target() -> String {
 
 /// Auto-detect optimal search method from query characteristics.
 ///
-/// Detection logic:
-/// - If query contains code pattern chars → "text" (exact matching)
-/// - Otherwise → "hybrid" (best quality for general search)
-///
-/// Code pattern indicators: `: < > [ ] ( ) { } => ?. &&`
+/// With Tantivy as the sole search engine, all queries route to text search.
+/// This function is kept for API compatibility — agents may still pass
+/// "auto" as the search_method parameter.
 ///
 /// # Examples
 /// ```
 /// use julie::tools::search::detect_search_method;
 ///
 /// assert_eq!(detect_search_method(": BaseClass"), "text");
-/// assert_eq!(detect_search_method("ILogger<"), "text");
-/// assert_eq!(detect_search_method("[Fact]"), "text");
-/// assert_eq!(detect_search_method("authentication logic"), "hybrid");
+/// assert_eq!(detect_search_method("authentication logic"), "text");
 /// ```
-pub fn detect_search_method(query: &str) -> &'static str {
-    // Multi-char patterns (check first to avoid false positives)
-    let multi_char_patterns = ["=>", "?.", "&&"];
-    for pattern in &multi_char_patterns {
-        if query.contains(pattern) {
-            return "text";
-        }
-    }
-
-    // Single-char patterns
-    let single_char_patterns = [':', '<', '>', '[', ']', '(', ')', '{', '}'];
-    if query.chars().any(|c| single_char_patterns.contains(&c)) {
-        return "text";
-    }
-
-    // Default to hybrid (best quality for natural language)
-    "hybrid"
+pub fn detect_search_method(_query: &str) -> &'static str {
+    // All search now goes through Tantivy's CodeTokenizer.
+    // Semantic/hybrid modes are no longer available.
+    "text"
 }
 
 impl FastSearchTool {
@@ -176,15 +158,14 @@ impl FastSearchTool {
                 }
             }
             SystemStatus::SqliteOnly { symbol_count } => {
-                // Graceful degradation: Use SQLite FTS5 for search
                 debug!(
-                    "🔍 Using SQLite FTS5 search ({} symbols available)",
+                    "🔍 Search available ({} symbols indexed)",
                     symbol_count
                 );
             }
             SystemStatus::FullyReady { symbol_count } => {
                 debug!(
-                    "✅ All systems ready ({} symbols, embeddings available)",
+                    "✅ Search ready ({} symbols indexed)",
                     symbol_count
                 );
             }
@@ -204,59 +185,27 @@ impl FastSearchTool {
             .await;
         }
 
-        // Auto-detect search method if needed
-        let search_method = if self.search_method == "auto" {
-            let detected = detect_search_method(&self.query);
-            debug!("🔍 Auto-detected search method: {} (query: {})", detected, self.query);
-            detected
-        } else {
-            self.search_method.as_str()
-        };
+        // Log search method (all methods now route to Tantivy)
+        if self.search_method != "text" && self.search_method != "auto" {
+            debug!(
+                "🔍 search_method='{}' requested, routing to Tantivy text search",
+                self.search_method
+            );
+        }
 
-        // Perform search based on search method
-        let symbols = match search_method {
-            "semantic" => {
-                let workspace_ids = self.resolve_workspace_filter(handler).await?;
-                semantic_search::semantic_search_impl(
-                    &self.query,
-                    &self.language,
-                    &self.file_pattern,
-                    self.limit,
-                    workspace_ids,
-                    handler,
-                )
-                .await?
-            }
-            "hybrid" => {
-                let workspace_ids = self.resolve_workspace_filter(handler).await?;
-                hybrid_search::hybrid_search_impl(
-                    &self.query,
-                    &self.language,
-                    &self.file_pattern,
-                    self.limit,
-                    workspace_ids,
-                    &self.search_target,
-                    self.context_lines,
-                    handler,
-                )
-                .await?
-            }
-            _ => {
-                // "text" or any other mode defaults to text search
-                let workspace_ids = self.resolve_workspace_filter(handler).await?;
-                text_search::text_search_impl(
-                    &self.query,
-                    &self.language,
-                    &self.file_pattern,
-                    self.limit,
-                    workspace_ids,
-                    &self.search_target,
-                    self.context_lines,
-                    handler,
-                )
-                .await?
-            }
-        };
+        // All search goes through Tantivy
+        let workspace_ids = self.resolve_workspace_filter(handler).await?;
+        let symbols = text_search::text_search_impl(
+            &self.query,
+            &self.language,
+            &self.file_pattern,
+            self.limit,
+            workspace_ids,
+            &self.search_target,
+            self.context_lines,
+            handler,
+        )
+        .await?;
 
         // Truncate code_context to save tokens (default: 3 lines total)
         let symbols = formatting::truncate_code_context(symbols, self.context_lines);
@@ -278,168 +227,9 @@ impl FastSearchTool {
         optimized.optimize_for_tokens(Some(self.limit as usize));
 
         if optimized.results.is_empty() {
-            // Semantic fallback: If text search returns 0 results, try semantic search
-            if self.search_method == "text" {
-                debug!("🔄 Text search returned 0 results, attempting semantic fallback");
-
-                let workspace_ids = self.resolve_workspace_filter(handler).await?;
-                match semantic_search::semantic_search_impl(
-                    &self.query,
-                    &self.language,
-                    &self.file_pattern,
-                    self.limit,
-                    workspace_ids,
-                    handler,
-                )
-                .await
-                {
-                    Ok(semantic_symbols) if !semantic_symbols.is_empty() => {
-                        debug!(
-                            "✅ Semantic fallback found {} results",
-                            semantic_symbols.len()
-                        );
-
-                        // Truncate code_context to save tokens
-                        let semantic_symbols =
-                            formatting::truncate_code_context(semantic_symbols, self.context_lines);
-
-                        // Create optimized response with confidence scoring
-                        let confidence =
-                            scoring::calculate_search_confidence(&self.query, &semantic_symbols);
-                        let mut optimized =
-                            OptimizedResponse::new("fast_search", semantic_symbols, confidence);
-
-                        // Add fallback message to insights
-                        let fallback_message = "🔄 Text search returned 0 results. Showing semantic matches instead.\n💡 Semantic search finds conceptually similar code even when exact terms don't match.";
-                        optimized = optimized.with_insights(fallback_message.to_string());
-
-                        // Add insights based on patterns found
-                        if let Some(insights) =
-                            scoring::generate_search_insights(&optimized.results, confidence)
-                        {
-                            // Append to existing insights
-                            let combined_insights = format!("{}\n\n{}", fallback_message, insights);
-                            optimized = optimized.with_insights(combined_insights);
-                        }
-
-                        // Add smart next actions
-                        let next_actions =
-                            scoring::suggest_next_actions(&self.query, &optimized.results);
-                        optimized = optimized.with_next_actions(next_actions);
-
-                        // Optimize for tokens
-                        optimized.optimize_for_tokens(Some(self.limit as usize));
-
-                        // Return based on output_format (same logic as main return)
-                        return match self.output_format.as_deref() {
-                            None | Some("lean") => {
-                                // Lean mode (DEFAULT): Grep-style text output
-                                let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
-                                debug!(
-                                    "✅ Returning lean search results ({} chars, {} results)",
-                                    lean_output.len(),
-                                    optimized.results.len()
-                                );
-                                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-                            }
-                            Some("toon") => {
-                                // TOON mode: Compact tabular format
-                                let toon_response = formatting::ToonResponse {
-                                    tool: optimized.tool.clone(),
-                                    results: optimized.results.iter().map(formatting::ToonSymbol::from).collect(),
-                                    confidence: optimized.confidence,
-                                    total_found: optimized.total_found,
-                                    insights: optimized.insights.clone(),
-                                    next_actions: optimized.next_actions.clone(),
-                                };
-
-                                match toon_format::encode_default(&toon_response) {
-                                    Ok(toon) => {
-                                        debug!("✅ Encoded search results to TOON ({} chars)", toon.len());
-                                        Ok(CallToolResult::text_content(vec![Content::text(toon)]))
-                                    }
-                                    Err(e) => {
-                                        warn!("❌ TOON encoding failed: {}, falling back to lean format", e);
-                                        let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
-                                        Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-                                    }
-                                }
-                            }
-                            Some("auto") => {
-                                // Auto mode: TOON for 10+ results, lean otherwise
-                                if optimized.results.len() >= 10 {
-                                    let toon_response = formatting::ToonResponse {
-                                        tool: optimized.tool.clone(),
-                                        results: optimized.results.iter().map(formatting::ToonSymbol::from).collect(),
-                                        confidence: optimized.confidence,
-                                        total_found: optimized.total_found,
-                                        insights: optimized.insights.clone(),
-                                        next_actions: optimized.next_actions.clone(),
-                                    };
-
-                                    match toon_format::encode_default(&toon_response) {
-                                        Ok(toon) => {
-                                            debug!(
-                                                "✅ Auto-selected TOON for {} results ({} chars)",
-                                                optimized.results.len(),
-                                                toon.len()
-                                            );
-                                            return Ok(CallToolResult::text_content(vec![Content::text(toon)]));
-                                        }
-                                        Err(e) => {
-                                            warn!("❌ TOON encoding failed: {}, using lean format", e);
-                                            // Fall through to lean
-                                        }
-                                    }
-                                }
-
-                                // Default to lean for small/medium responses
-                                let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
-                                debug!(
-                                    "✅ Auto-selected lean for {} results ({} chars)",
-                                    optimized.results.len(),
-                                    lean_output.len()
-                                );
-                                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-                            }
-                            Some("json") => {
-                                // JSON mode: Full structured content
-                                let structured = serde_json::to_value(&optimized)?;
-                                let structured_map = if let serde_json::Value::Object(map) = structured {
-                                    map
-                                } else {
-                                    return Err(anyhow::anyhow!("Expected JSON object"));
-                                };
-                                debug!(
-                                    "✅ Returning search results as JSON ({} results)",
-                                    optimized.results.len()
-                                );
-                                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
-                            }
-                            Some(unknown) => {
-                                // Unknown format - warn and use lean
-                                warn!(
-                                    "⚠️ Unknown output_format '{}', using lean format",
-                                    unknown
-                                );
-                                let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
-                                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-                            }
-                        };
-                    }
-                    Ok(_) => {
-                        debug!("⚠️ Semantic fallback also returned 0 results");
-                    }
-                    Err(e) => {
-                        debug!("⚠️ Semantic fallback failed: {}", e);
-                    }
-                }
-            }
-
-            // If we get here, either not text mode or semantic fallback failed/returned 0
             let message = format!(
                 "🔍 No results found for: '{}'\n\
-                💡 Try a broader search term, different mode, or check spelling",
+                💡 Try a broader search term or check spelling",
                 self.query
             );
             return Ok(CallToolResult::text_content(vec![Content::text(

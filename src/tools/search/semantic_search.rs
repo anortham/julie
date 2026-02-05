@@ -1,7 +1,11 @@
-//! Semantic search using HNSW embeddings
+//! Semantic search using HNSW embeddings (DEPRECATED — will be removed in Phase 3)
 //!
 //! Provides semantic similarity search powered by ONNX embeddings and HNSW indexing.
 //! Falls back to text search if embeddings are unavailable.
+//!
+//! **NOTE:** No longer called from production search routing. All search now goes
+//! through Tantivy. Kept temporarily for test compatibility.
+#![allow(dead_code)]
 //!
 //! # Error Handling
 //!

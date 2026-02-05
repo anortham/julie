@@ -1,7 +1,11 @@
-//! Hybrid search combining text and semantic results
+//! Hybrid search combining text and semantic results (DEPRECATED — will be removed in Phase 3)
 //!
 //! Implements result fusion combining text search and semantic search
 //! with intelligent scoring and ranking.
+//!
+//! **NOTE:** No longer called from production search routing. All search now goes
+//! through Tantivy. Kept temporarily for test compatibility.
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 
