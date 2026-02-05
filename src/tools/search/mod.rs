@@ -23,7 +23,7 @@ mod query;
 pub mod query_preprocessor; // Public for testing
 mod scoring;
 pub(crate) mod semantic_search; // Exposed for testing
-mod text_search;
+pub mod text_search;
 mod types;
 
 use anyhow::Result;

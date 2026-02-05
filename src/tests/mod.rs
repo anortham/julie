@@ -87,6 +87,7 @@ pub mod tools {
     pub mod search; // Search tool tests (line mode, quality, race conditions)
     pub mod search_context_lines;
     pub mod search_quality; // Search quality dogfooding tests (regression suite) // FastSearchTool context_lines parameter tests (token optimization)
+    pub mod text_search_tantivy; // Tantivy-based text search implementation tests
 
     pub mod refactoring; // Refactoring tool tests (SmartRefactorTool with SOURCE/CONTROL)
 

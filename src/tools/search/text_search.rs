@@ -1,24 +1,26 @@
 //! Text-based search implementations
 //!
-//! Provides text search using SQLite FTS5 and database pattern matching.
-//! This is the primary search method for fast, reliable results.
+//! Provides text search using Tantivy with code-aware tokenization.
+//! Replaces previous SQLite FTS5 implementation with improved handling
+//! of CamelCase/snake_case splitting at index time.
 
 use anyhow::Result;
 use tracing::{debug, warn};
 
-use crate::extractors::Symbol;
+use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::tools::search::query_preprocessor::{QueryType, preprocess_query};
-use crate::utils::query_expansion::{expand_query, is_symbol_name_relevant};
+use crate::search::{SearchFilter, SearchIndex};
 use crate::utils::{exact_match_boost::ExactMatchBoost, path_relevance::PathRelevanceScorer};
-
 use super::query::matches_glob_pattern;
 
 /// Text search with workspace filtering and search target selection
 ///
 /// search_target determines what to search:
-/// - "definitions": Search symbol definitions (functions, classes) using symbols_fts
-/// - "content": Search full file content (grep-like) using files_fts
+/// - "definitions": Search symbol definitions (functions, classes) using Tantivy
+/// - "content": Search full file content (grep-like) using Tantivy
+///
+/// Query expansion and preprocessing are now handled by Tantivy's CodeTokenizer
+/// at index time, so CamelCase/snake_case splitting happens automatically.
 pub async fn text_search_impl(
     query: &str,
     language: &Option<String>,
@@ -26,203 +28,143 @@ pub async fn text_search_impl(
     limit: u32,
     workspace_ids: Option<Vec<String>>,
     search_target: &str,
-    context_lines: Option<u32>,
+    _context_lines: Option<u32>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
-    // Step 1: Expand query into multiple variants
-    // Try variants in order: exact → CamelCase → snake_case → AND → wildcard → OR
-    // Trigger expansion for:
-    // - Multi-word queries (contains spaces)
-    // - CamelCase/PascalCase queries (contains uppercase letters)
-    let needs_expansion = query.contains(' ') || query.chars().any(|c| c.is_uppercase());
+    // Get the workspace and its search index
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
-    let query_variants = if needs_expansion {
-        let variants = expand_query(query);
-        debug!(
-            "🔄 Query expansion enabled: '{}' → {} variants: {:?}",
-            query,
-            variants.len(),
-            variants
-        );
-        variants
-    } else {
-        // Pure lowercase single word - no expansion needed
-        vec![query.to_string()]
+    let search_index = workspace
+        .search_index
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!(
+            "Search index not initialized. Run 'manage_workspace index' first."
+        ))?;
+
+    debug!("🔍 Tantivy text search: '{}' (target: {})", query, search_target);
+
+    // Build search filter from parameters
+    let filter = SearchFilter {
+        language: language.clone(),
+        kind: None,
+        file_pattern: file_pattern.clone(),
     };
 
-    // Step 2: Try each query variant until we get sufficient results
-    let mut tried_variants: Vec<(String, usize)> = Vec::new();
+    // Clone the Arc so we can move it into spawn_blocking
+    let search_index_clone = search_index.clone();
+    let query_clone = query.to_string();
+    let limit_usize = limit as usize;
+    let search_target_clone = search_target.to_string();
 
-    for (idx, variant) in query_variants.iter().enumerate() {
-        debug!(
-            "🔍 Trying variant {}/{}: '{}'",
-            idx + 1,
-            query_variants.len(),
-            variant
-        );
+    // Perform the search in a blocking task since Tantivy uses std::sync::Mutex
+    let results = tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
+        let index = search_index_clone.lock().unwrap();
 
-        // Preprocess this variant
-        let preprocessed = match preprocess_query(variant) {
-            Ok(p) => {
-                debug!(
-                    "✨ Query preprocessor: '{}' → {:?} → FTS5: '{}'",
-                    variant, p.query_type, p.fts5_query
-                );
-                p
-            }
-            Err(e) => {
-                warn!("⚠️  Variant '{}' failed preprocessing: {}", variant, e);
-                tried_variants.push((variant.clone(), 0));
-                continue; // Try next variant
-            }
-        };
+        // Route based on search_target
+        if search_target_clone == "definitions" {
+            debug!("🔍 Searching symbols with Tantivy");
+            let search_results = index.search_symbols(&query_clone, &filter, limit_usize)?;
 
-        let fts5_query = &preprocessed.fts5_query;
-
-        // Step 3: Route based on query type and search_target
-        // Symbol queries go to definitions, Pattern/Standard to content
-        let effective_search_target = match preprocessed.query_type {
-            QueryType::Symbol if search_target != "content" => "definitions",
-            QueryType::Glob if file_pattern.is_none() => {
-                // For glob queries without explicit file_pattern, search content
-                // The glob matching will happen via the file_path field
-                "content"
-            }
-            _ => search_target, // Respect user's explicit search_target
-        };
-
-        let results = match effective_search_target {
-            "definitions" => {
-                // Search symbol definitions only (symbols_fts index)
-                if let Some(ref workspace_ids) = workspace_ids {
-                    debug!(
-                        "🔍 Symbol search with workspace filter: {:?}",
-                        workspace_ids
-                    );
-                    database_search_with_workspace_filter(
-                        fts5_query,
-                        language,
-                        file_pattern,
-                        limit,
-                        workspace_ids.clone(),
-                        handler,
-                    )
-                    .await
-                } else {
-                    debug!("🔍 Symbol search in primary workspace (no workspace filter)");
-                    // Get primary workspace ID and use it for filtering
-                    let workspace = handler
-                        .get_workspace()
-                        .await?
-                        .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
-                    let registry_service =
-                        crate::workspace::registry_service::WorkspaceRegistryService::new(
-                            workspace.root.clone(),
-                        );
-                    let primary_workspace_id = registry_service
-                        .get_primary_workspace_id()
-                        .await?
-                        .unwrap_or_else(|| "primary".to_string());
-
-                    database_search_with_workspace_filter(
-                        fts5_query,
-                        language,
-                        file_pattern,
-                        limit,
-                        vec![primary_workspace_id],
-                        handler,
-                    )
-                    .await
-                }
-            }
-            _ => {
-                // "content" or any other value: Search full file content (files_fts index)
-                debug!("🔍 Content search (full file text)");
-                sqlite_fts_search(
-                    fts5_query,
-                    language,
-                    file_pattern,
-                    limit,
-                    workspace_ids.clone(),
-                    context_lines,
-                    handler,
-                )
-                .await
-            }
-        };
-
-        match results {
-            Ok(symbols) => {
-                let count = symbols.len();
-                debug!("✅ Variant '{}' returned {} results", variant, count);
-                tried_variants.push((variant.clone(), count));
-
-                if count > 0 {
-                    // Check if we found "good" results:
-                    // 1. Actual code (not just documentation)
-                    // 2. For single-word CamelCase queries: Symbol name is relevant (not just mentioned in comments)
-
-                    // Only apply strict symbol name check for single-word CamelCase/PascalCase queries
-                    // Multi-word queries and dotted identifiers don't have the spurious comment match problem
-                    let is_single_word_camelcase = !query.contains(' ')
-                        && !query.contains('.')
-                        && query.chars().any(|c| c.is_uppercase());
-
-                    let has_relevant_code = symbols.iter().any(|s| {
-                        let is_code = s.content_type.is_none();
-
-                        if is_single_word_camelcase {
-                            // Strict check: symbol name must be relevant
-                            let is_relevant = is_symbol_name_relevant(query, &s.name, variant);
-                            is_code && is_relevant
-                        } else {
-                            // Lenient check: just needs to be code (not docs)
-                            is_code
-                        }
-                    });
-
-                    if has_relevant_code {
-                        // Found actual code with relevant symbol names - return immediately
-                        debug!(
-                            "🎯 Query expansion SUCCESS: Found relevant code symbols with variant '{}' (tried {}/{})",
-                            variant,
-                            idx + 1,
-                            query_variants.len()
-                        );
-                        return Ok(symbols);
+            // Convert SymbolSearchResult → Symbol
+            let symbols = search_results
+                .into_iter()
+                .map(|result| Symbol {
+                    id: result.id,
+                    name: result.name,
+                    kind: SymbolKind::from_string(&result.kind),
+                    language: result.language,
+                    file_path: result.file_path,
+                    start_line: result.start_line,
+                    signature: if result.signature.is_empty() {
+                        None
                     } else {
-                        // Only found documentation or spurious matches - try next variant
-                        debug!(
-                            "⚠️  Variant '{}' found {} results but no relevant code symbols (docs/spurious matches), trying next variant",
-                            variant, count
-                        );
-                        // Continue to next variant
-                    }
-                }
-                // No results or only docs, continue to next variant
-            }
-            Err(e) => {
-                warn!("⚠️  Variant '{}' search failed: {}", variant, e);
-                tried_variants.push((variant.clone(), 0));
-                // Continue to next variant
-            }
-        }
-    }
+                        Some(result.signature)
+                    },
+                    doc_comment: if result.doc_comment.is_empty() {
+                        None
+                    } else {
+                        Some(result.doc_comment)
+                    },
+                    start_column: 0,
+                    end_line: 0,
+                    end_column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: Some(result.score),
+                    code_context: None,
+                    content_type: None,
+                })
+                .collect();
 
-    // All variants tried, no results found
+            Ok(symbols)
+        } else {
+            // "content" or any other value: search file content
+            debug!("🔍 Searching content with Tantivy");
+            let search_results = index.search_content(&query_clone, &filter, limit_usize)?;
+
+            // Convert ContentSearchResult → Symbol (file-level matches)
+            let symbols = search_results
+                .into_iter()
+                .map(|result| Symbol {
+                    id: format!("content_{}", result.file_path.replace(['/', '\\'], "_")),
+                    name: result.file_path.clone(),
+                    kind: SymbolKind::Module, // Represent as file/module match
+                    language: result.language,
+                    file_path: result.file_path,
+                    start_line: 1,
+                    signature: None,
+                    doc_comment: None,
+                    start_column: 0,
+                    end_line: 0,
+                    end_column: 0,
+                    start_byte: 0,
+                    end_byte: 0,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: Some("content_match".to_string()),
+                    confidence: Some(result.score),
+                    code_context: None,
+                    content_type: None,
+                })
+                .collect();
+
+            Ok(symbols)
+        }
+    })
+    .await??;
+
+    // Apply file_pattern glob matching as a post-filter if needed
+    // (Tantivy may not have indexed full paths for glob matching)
+    let filtered_results = if let Some(pattern) = file_pattern {
+        results
+            .into_iter()
+            .filter(|symbol| matches_glob_pattern(&symbol.file_path, pattern))
+            .collect()
+    } else {
+        results
+    };
+
     debug!(
-        "❌ Query expansion exhausted: Tried {} variants, no results. Variants: {:?}",
-        tried_variants.len(),
-        tried_variants
+        "✅ Tantivy search returned {} results (after filtering)",
+        filtered_results.len()
     );
-    Ok(Vec::new())
+
+    Ok(filtered_results)
 }
 
-/// CASCADE FALLBACK: Database search with workspace filtering
+/// DEPRECATED: Database search with workspace filtering (FTS5-based)
 ///
-/// Used during the 20-30s window while HNSW semantic index builds in background after indexing.
-/// Workspace-aware and provides graceful degradation, but lacks multi-word AND/OR logic.
-/// INTENTIONALLY KEPT: Part of CASCADE architecture for instant search availability.
+/// This function is no longer used - replaced by Tantivy search.
+/// Will be removed in Task 10: Remove FTS5 from database layer.
+#[allow(dead_code)]
 async fn database_search_with_workspace_filter(
     query: &str,
     language: &Option<String>,
@@ -454,10 +396,11 @@ fn find_intelligent_context(
     None
 }
 
-/// Graceful degradation: SQLite-based search when HNSW semantic search isn't ready
+/// DEPRECATED: SQLite FTS5-based file content search
 ///
-/// CASCADE: Search using SQLite FTS5 (file content full-text search).
-/// This is the final fallback that always works.
+/// This function is no longer used - replaced by Tantivy content search.
+/// Will be removed in Task 10: Remove FTS5 from database layer.
+#[allow(dead_code)]
 async fn sqlite_fts_search(
     query: &str,
     language: &Option<String>,
