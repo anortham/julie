@@ -1,0 +1,34 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "::before",
+    "::after",
+    "::",   # pseudo-element
+    "--",   # custom property
+    "&&",   # nesting
+]
+
+# Naming conventions to recognize
+naming_styles = ["kebab-case", "camelCase"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "--",
+    "is-",
+    "has-",
+    "js-",
+    "-webkit-",
+    "-moz-",
+]
+
+[variants]
+strip_prefixes = ["--", "is-", "has-", "js-"]
+strip_suffixes = [".css", ".scss", ".sass", ".less"]
+
+[scoring]
+important_patterns = [
+    "@media",
+    "@keyframes",
+    "@import",
+    ":root",
+]

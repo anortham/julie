@@ -1,0 +1,38 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "=>",   # arrow function
+    "?.",   # null-aware access
+    "??",   # null-aware operator
+    "??=",  # null-aware assignment
+    "?..",  # null-aware cascade
+    "..",   # cascade
+    "<>",   # generics
+    "@",    # annotation
+]
+
+# Naming conventions to recognize
+naming_styles = ["camelCase", "PascalCase", "snake_case"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "is",
+    "has",
+    "get",
+    "set",
+    "_",
+]
+
+[variants]
+strip_prefixes = ["_"]
+strip_suffixes = ["Widget", "State", "Bloc", "Cubit", "Provider"]
+
+[scoring]
+important_patterns = [
+    "class ",
+    "mixin ",
+    "extension ",
+    "abstract class",
+    "@override",
+    "Widget build",
+]

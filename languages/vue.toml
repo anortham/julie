@@ -1,0 +1,39 @@
+[tokenizer]
+# Character sequences to preserve as single tokens (Vue + JavaScript)
+preserve_patterns = [
+    "?.",   # optional chaining
+    "??",   # nullish coalescing
+    "===",  # strict equality
+    "!==",  # strict inequality
+    "=>",   # arrow function
+    "...",  # spread operator
+    "@",    # v-on shorthand
+    ":",    # v-bind shorthand
+    "#",    # v-slot shorthand
+]
+
+# Naming conventions to recognize
+naming_styles = ["camelCase", "PascalCase", "kebab-case"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "is",
+    "has",
+    "use",
+    "on",
+    "handle",
+    "v-",
+]
+
+[variants]
+strip_prefixes = ["V", "v-"]
+strip_suffixes = [".vue", "View", "Page", "Component"]
+
+[scoring]
+important_patterns = [
+    "defineComponent",
+    "defineProps",
+    "defineEmits",
+    "export default",
+    "<script setup>",
+]

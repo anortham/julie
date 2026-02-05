@@ -1,0 +1,43 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "::",   # path separator
+    "->",   # return type
+    "=>",   # match arm
+    "?",    # try operator
+    "<>",   # generics
+    "'",    # lifetime prefix
+    "#[",   # attribute start
+    "#![",  # inner attribute
+]
+
+# Naming conventions to recognize
+naming_styles = ["snake_case", "PascalCase", "SCREAMING_SNAKE_CASE"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "try_",
+    "into_",
+    "as_",
+    "from_",
+    "to_",
+    "is_",
+    "has_",
+    "_mut",
+    "_ref",
+    "_unchecked",
+]
+
+[variants]
+strip_prefixes = []
+strip_suffixes = ["_impl", "_trait", "_fn"]
+
+[scoring]
+important_patterns = [
+    "pub fn",
+    "pub struct",
+    "pub enum",
+    "pub trait",
+    "impl",
+    "async fn",
+]

@@ -1,0 +1,40 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "!=",   # not equal
+    "<>",   # not equal (SQL standard)
+    ">=",   # greater or equal
+    "<=",   # less or equal
+    "||",   # string concatenation
+    "::",   # type cast (PostgreSQL)
+    "->",   # JSON access (PostgreSQL)
+    "->>",  # JSON text access
+]
+
+# Naming conventions to recognize
+naming_styles = ["snake_case", "SCREAMING_SNAKE_CASE"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "pk_",
+    "fk_",
+    "idx_",
+    "uq_",
+    "vw_",
+    "sp_",
+    "fn_",
+]
+
+[variants]
+strip_prefixes = ["pk_", "fk_", "idx_", "uq_", "vw_", "sp_", "fn_"]
+strip_suffixes = []
+
+[scoring]
+important_patterns = [
+    "CREATE TABLE",
+    "CREATE INDEX",
+    "CREATE FUNCTION",
+    "CREATE PROCEDURE",
+    "SELECT",
+    "INSERT",
+]

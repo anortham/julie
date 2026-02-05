@@ -1,0 +1,27 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "```",  # code block
+    "***",  # horizontal rule
+    "---",  # horizontal rule / frontmatter
+    "[[",   # wiki link
+    "]]",   # wiki link end
+    "==",   # highlight
+]
+
+# Naming conventions to recognize
+naming_styles = ["kebab-case", "snake_case"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = []
+
+[variants]
+strip_prefixes = []
+strip_suffixes = [".md", ".markdown"]
+
+[scoring]
+important_patterns = [
+    "# ",
+    "## ",
+    "### ",
+]

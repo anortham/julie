@@ -1,0 +1,42 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "::",   # module separator
+    "=>",   # hash rocket
+    "&&",   # logical and
+    "||",   # logical or
+    "&.",   # safe navigation
+    "<<",   # heredoc / append
+    "@",    # instance variable
+    "@@",   # class variable
+    "!",    # bang method
+    "?",    # predicate method
+]
+
+# Naming conventions to recognize
+naming_styles = ["snake_case", "PascalCase", "SCREAMING_SNAKE_CASE"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "is_",
+    "has_",
+    "can_",
+    "_?",
+    "_!",
+    "find_",
+    "create_",
+]
+
+[variants]
+strip_prefixes = []
+strip_suffixes = ["_controller", "_helper", "_spec", "_test"]
+
+[scoring]
+important_patterns = [
+    "def ",
+    "class ",
+    "module ",
+    "attr_accessor",
+    "attr_reader",
+    "private",
+]

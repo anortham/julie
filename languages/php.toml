@@ -1,0 +1,39 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "::",   # static access
+    "->",   # object access
+    "=>",   # array key-value
+    "?->",  # nullsafe operator
+    "??",   # null coalescing
+    "&&",   # logical and
+    "||",   # logical or
+    "$",    # variable prefix
+    "@",    # error suppression
+]
+
+# Naming conventions to recognize
+naming_styles = ["camelCase", "PascalCase", "snake_case", "SCREAMING_SNAKE_CASE"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "is",
+    "has",
+    "get",
+    "set",
+    "__",
+]
+
+[variants]
+strip_prefixes = []
+strip_suffixes = ["Controller", "Service", "Repository", "Interface", "Trait"]
+
+[scoring]
+important_patterns = [
+    "public function",
+    "private function",
+    "class ",
+    "interface ",
+    "trait ",
+    "namespace",
+]

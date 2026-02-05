@@ -1,0 +1,33 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "::",   # label (rarely used)
+    "...",  # vararg
+    "..",   # concatenation
+    "and",  # logical and (keyword)
+    "or",   # logical or (keyword)
+]
+
+# Naming conventions to recognize
+naming_styles = ["snake_case", "PascalCase", "camelCase"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "is_",
+    "has_",
+    "get_",
+    "set_",
+    "_",
+    "M.",
+]
+
+[variants]
+strip_prefixes = ["_", "M."]
+strip_suffixes = []
+
+[scoring]
+important_patterns = [
+    "function ",
+    "local function",
+    "return {",
+]

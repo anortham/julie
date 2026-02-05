@@ -1,0 +1,42 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "::",   # scope resolution
+    "->",   # pointer member access
+    "=>",   # trailing return type
+    "<>",   # template
+    "<<",   # left shift / stream insertion
+    ">>",   # right shift / stream extraction
+    "&&",   # rvalue reference / logical and
+    "||",   # logical or
+    "...",  # variadic
+]
+
+# Naming conventions to recognize
+naming_styles = ["snake_case", "PascalCase", "camelCase", "SCREAMING_SNAKE_CASE"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "m_",
+    "s_",
+    "g_",
+    "_impl",
+    "_ptr",
+    "I",
+    "C",
+]
+
+[variants]
+strip_prefixes = ["m_", "s_", "g_", "C", "I"]
+strip_suffixes = ["_impl", "_ptr", "_t"]
+
+[scoring]
+important_patterns = [
+    "class ",
+    "struct ",
+    "namespace",
+    "template",
+    "virtual",
+    "override",
+    "public:",
+]

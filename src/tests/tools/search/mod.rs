@@ -10,6 +10,7 @@ mod quality;
 mod race_condition;
 mod semantic_error_handling_tests;
 mod semantic_scoring_tests;
+mod tantivy_language_config_tests;
 
 use crate::tools::search::*;
 

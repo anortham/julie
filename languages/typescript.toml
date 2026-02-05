@@ -1,0 +1,37 @@
+[tokenizer]
+preserve_patterns = [
+    "?.",   # optional chaining
+    "??",   # nullish coalescing
+    "=>",   # arrow function
+    "<>",   # generics
+    "...",  # spread operator
+    "?.(",  # optional call
+]
+
+naming_styles = ["camelCase", "PascalCase", "SCREAMING_SNAKE_CASE"]
+
+meaningful_affixes = [
+    "get",
+    "set",
+    "is",
+    "has",
+    "can",
+    "should",
+    "on",
+    "handle",
+    "Async",
+]
+
+[variants]
+strip_prefixes = ["I", "T", "E"]  # Interface, Type, Enum prefixes
+strip_suffixes = ["Dto", "Model", "Service", "Controller", "Handler"]
+
+[scoring]
+important_patterns = [
+    "export function",
+    "export class",
+    "export interface",
+    "export type",
+    "export const",
+    "async function",
+]

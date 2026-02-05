@@ -1,0 +1,33 @@
+[tokenizer]
+preserve_patterns = [
+    "__",   # dunder methods/attributes
+    "@",    # decorator
+    "**",   # kwargs / power
+    "->",   # return type hint
+]
+
+naming_styles = ["snake_case", "PascalCase", "SCREAMING_SNAKE_CASE"]
+
+meaningful_affixes = [
+    "_",      # private prefix
+    "__",     # name mangling prefix
+    "is_",
+    "has_",
+    "get_",
+    "set_",
+    "_async",
+]
+
+[variants]
+strip_prefixes = ["_", "__"]
+strip_suffixes = ["_impl", "_mixin", "_base"]
+
+[scoring]
+important_patterns = [
+    "def ",
+    "class ",
+    "async def",
+    "@property",
+    "@classmethod",
+    "@staticmethod",
+]

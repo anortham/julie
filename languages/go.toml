@@ -1,0 +1,31 @@
+[tokenizer]
+preserve_patterns = [
+    ":=",   # short variable declaration
+    "<-",   # channel receive
+    "...",  # variadic
+]
+
+naming_styles = ["camelCase", "PascalCase"]  # Go uses case for visibility
+
+meaningful_affixes = [
+    "New",      # constructor prefix
+    "Get",
+    "Set",
+    "Is",
+    "Has",
+    "Must",     # panics on error
+    "Try",
+    "With",
+]
+
+[variants]
+strip_prefixes = []
+strip_suffixes = ["Impl", "Handler", "Service", "Client"]
+
+[scoring]
+important_patterns = [
+    "func ",
+    "type ",
+    "interface ",
+    "struct ",
+]

@@ -1,0 +1,38 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "->",   # pointer member access
+    "<<",   # left shift
+    ">>",   # right shift
+    "&&",   # logical and
+    "||",   # logical or
+    "::",   # C++ scope (for headers)
+    "##",   # token pasting
+    "#",    # preprocessor
+]
+
+# Naming conventions to recognize
+naming_styles = ["snake_case", "SCREAMING_SNAKE_CASE", "PascalCase"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "init_",
+    "destroy_",
+    "create_",
+    "free_",
+    "_t",
+    "_cb",
+    "_fn",
+]
+
+[variants]
+strip_prefixes = []
+strip_suffixes = ["_t", "_s", "_cb", "_fn"]
+
+[scoring]
+important_patterns = [
+    "typedef struct",
+    "typedef enum",
+    "#define",
+    "extern",
+]

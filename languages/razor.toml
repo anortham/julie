@@ -1,0 +1,36 @@
+[tokenizer]
+# Character sequences to preserve as single tokens (Razor + C#)
+preserve_patterns = [
+    "=>",   # lambda
+    "?.",   # null conditional
+    "??",   # null coalescing
+    "@",    # Razor directive
+    "@@",   # escaped @
+    "@:",   # explicit expression
+    "::",   # global/alias qualifier
+]
+
+# Naming conventions to recognize
+naming_styles = ["PascalCase", "camelCase"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "Is",
+    "Has",
+    "On",
+    "_",
+]
+
+[variants]
+strip_prefixes = ["_"]
+strip_suffixes = [".cshtml", ".razor", "Component", "Page"]
+
+[scoring]
+important_patterns = [
+    "@page",
+    "@inject",
+    "@code",
+    "@functions",
+    "ViewBag",
+    "Model",
+]

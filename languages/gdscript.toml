@@ -1,0 +1,37 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    ":=",   # type inference
+    "->",   # return type hint
+    "&&",   # and
+    "||",   # or
+    "@",    # annotation
+    "$",    # node path shorthand
+    "%",    # unique node shorthand
+]
+
+# Naming conventions to recognize
+naming_styles = ["snake_case", "PascalCase", "SCREAMING_SNAKE_CASE"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "is_",
+    "has_",
+    "can_",
+    "_",
+    "on_",
+]
+
+[variants]
+strip_prefixes = ["_"]
+strip_suffixes = [".gd"]
+
+[scoring]
+important_patterns = [
+    "func ",
+    "class_name",
+    "extends ",
+    "signal ",
+    "@export",
+    "@onready",
+]

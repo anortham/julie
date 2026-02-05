@@ -1,0 +1,32 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "=>",   # arrow function
+    "?.",   # optional chaining (Qt 6.3+)
+    "??",   # nullish coalescing (Qt 6.3+)
+    "::",   # attached property
+]
+
+# Naming conventions to recognize
+naming_styles = ["camelCase", "PascalCase"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "on",
+    "is",
+    "has",
+    "_",
+]
+
+[variants]
+strip_prefixes = ["_"]
+strip_suffixes = [".qml"]
+
+[scoring]
+important_patterns = [
+    "property ",
+    "signal ",
+    "function ",
+    "Component",
+    "Item {",
+]
