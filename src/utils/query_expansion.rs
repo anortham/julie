@@ -1,13 +1,11 @@
-//! Query Expansion for Multi-Word Search
+//! Query Expansion Utilities - DEPRECATED
 //!
-//! Converts multi-word queries like "user service" into multiple variants:
-//! - CamelCase: "UserService"
-//! - snake_case: "user_service"
-//! - Wildcards: "user* AND service*"
-//! - OR queries: "(user OR service)"
-//! - Fuzzy: "user~1 service~1"
+//! With Tantivy + CodeTokenizer, query expansion at query time is no longer needed.
+//! CodeTokenizer splits CamelCase/snake_case at INDEX time, making the query much
+//! simpler - we just pass the user's query directly to Tantivy.
 //!
-//! This solves the #1 agent pain point: multi-word queries returning zero results.
+//! These functions are kept for reference and backward compatibility testing,
+//! but are not used in production.
 
 use crate::utils::cross_language_intelligence;
 
@@ -82,9 +80,12 @@ pub fn to_fuzzy_query(query: &str) -> String {
         .join(" ")
 }
 
-/// Expand query into all possible variants for Google-style search
-/// Handles complex agent queries like "user auth controller post"
-/// Returns a vector of query strings to try in sequence (most specific → most permissive)
+/// DEPRECATED: Expand query into all possible variants for Google-style search
+///
+/// This function was used with FTS5 where queries needed to be expanded at query time.
+/// With Tantivy, this is no longer needed - CodeTokenizer handles expansion at index time.
+///
+/// Kept for backward compatibility and testing only.
 pub fn expand_query(query: &str) -> Vec<String> {
     let mut variants = Vec::new();
 
@@ -197,10 +198,13 @@ pub fn expand_query_permissive(query: &str) -> Vec<String> {
     variants
 }
 
-/// Check if a symbol's name is actually relevant to the search query
+/// DEPRECATED: Check if a symbol's name is actually relevant to the search query
 ///
-/// Prevents spurious matches where the query appears only in comments/docs
-/// but the symbol name is completely unrelated.
+/// This function was used with FTS5 where query expansion at query time could produce
+/// spurious matches (query appears in comments but symbol name is unrelated).
+/// With Tantivy, this filtering is no longer needed - the search engine handles relevance properly.
+///
+/// Kept for backward compatibility and testing only.
 ///
 /// # Arguments
 /// * `query` - Original user query (e.g., "ProcessFilesOptimized")
@@ -210,25 +214,6 @@ pub fn expand_query_permissive(query: &str) -> Vec<String> {
 /// # Returns
 /// * `true` - Symbol name is relevant (matches query intent)
 /// * `false` - Symbol name is NOT relevant (spurious match via comments)
-///
-/// # Examples
-/// ```
-/// use julie::utils::query_expansion::is_symbol_name_relevant;
-///
-/// // Exact match (different casing)
-/// assert!(is_symbol_name_relevant(
-///     "ProcessFilesOptimized",
-///     "process_files_optimized",
-///     "process_files_optimized"
-/// ));
-///
-/// // Spurious match via comment
-/// assert!(!is_symbol_name_relevant(
-///     "ProcessFilesOptimized",
-///     "expand_query",
-///     "ProcessFilesOptimized"
-/// ));
-/// ```
 pub fn is_symbol_name_relevant(query: &str, symbol_name: &str, variant: &str) -> bool {
     // Normalize all inputs to snake_case for comparison
     let normalized_query = cross_language_intelligence::to_snake_case(query);

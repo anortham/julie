@@ -1,13 +1,14 @@
 //! Query Preprocessor - Intelligent query analysis and routing for code search
 //!
-//! This module implements the preprocessing layer that ALL production search systems require.
-//! It prevents the "bug of the day" loop by validating and transforming queries BEFORE
-//! they reach FTS5, rather than patching crashes after the fact.
+//! This module implements the preprocessing layer that validates and analyzes queries
+//! before they reach the search engine (Tantivy).
 //!
-//! Architecture inspired by coa-codesearch-mcp's SmartQueryPreprocessor which uses the same
-//! pattern with Lucene.NET (proving this is necessary regardless of search engine).
+//! With Tantivy + CodeTokenizer:
+//! - CamelCase/snake_case splitting happens at INDEX TIME (no query expansion needed)
+//! - Query parsing is handled by Tantivy (no FTS5 sanitization needed)
+//! - Our job is just to: validate, detect type, and route appropriately
 //!
-//! Pipeline: Validate → Detect → Route → Sanitize → Execute
+//! Pipeline: Validate → Detect → Route
 //!
 //! Query Types:
 //! - Symbol: Class/function/method names (UserService, getUserData, MAX_BUFFER_SIZE)
@@ -38,13 +39,11 @@ pub enum QueryType {
     Standard,
 }
 
-/// Preprocessed query ready for FTS5 execution
+/// Preprocessed query ready for Tantivy execution
 #[derive(Debug)]
 pub struct PreprocessedQuery {
-    pub original_query: String,
+    pub original: String,
     pub query_type: QueryType,
-    pub fts5_query: String,
-    pub search_field: String, // "name" for symbols, "content" for patterns/standard
 }
 
 /// Detects the optimal query type based on query characteristics
@@ -223,6 +222,7 @@ fn is_pure_wildcard(query: &str) -> bool {
 }
 
 /// Sanitizes query by removing problematic leading wildcards
+/// Note: With Tantivy, minimal sanitization is needed.
 pub fn sanitize_query(query: &str) -> String {
     let mut result = query.trim().to_string();
 
@@ -234,268 +234,28 @@ pub fn sanitize_query(query: &str) -> String {
     result
 }
 
-/// Sanitizes query for FTS5 based on query type
-pub fn sanitize_for_fts5(query: &str, query_type: QueryType) -> String {
-    match query_type {
-        QueryType::Symbol => sanitize_symbol_for_fts5(query),
-        QueryType::Pattern => sanitize_pattern_for_fts5(query),
-        QueryType::Glob => sanitize_glob_for_fts5(query),
-        QueryType::Standard => sanitize_standard_for_fts5(query),
-    }
-}
-
-/// Sanitize symbol queries for FTS5
-fn sanitize_symbol_for_fts5(query: &str) -> String {
-    // CRITICAL FIX: Don't quote Symbol queries!
-    //
-    // The FTS5 tokenizer uses underscore as a separator:
-    //   tokenize = "unicode61 separators '_::->.'"
-    //
-    // This means "handle_file_deleted" → ["handle", "file", "deleted"]
-    //
-    // If we wrap in quotes: "Deleted" → phrase search fails (no phrase "Deleted" exists)
-    // Without quotes: Deleted → token match succeeds (token "deleted" exists)
-    //
-    // Token matching works for both snake_case and camelCase:
-    // - "Deleted" matches "handle_file_deleted" (token "deleted")
-    // - "getUserData" matches "getUserData" (exact match)
-    // - "handle_file_change" matches "handle_file_change_static" (prefix match)
-    //
-    // This is the correct behavior for code search - find tokens, not exact phrases.
-    query.to_string()
-}
-
-/// Sanitize pattern queries for FTS5
-fn sanitize_pattern_for_fts5(query: &str) -> String {
-    let mut result = query.to_string();
-
-    // Remove regex operators that confuse FTS5
-    // FTS5 treats these as special operators, not literal text
-
-    // Strip backslash escapes first (regex escape sequences)
-    result = result.replace('\\', "");
-
-    // Handle regex patterns
-    if result.contains(".*") {
-        // "InputFile.*spreadsheet" → "InputFile spreadsheet"
-        result = result.replace(".*", " ");
-    }
-
-    if result.contains(".+") {
-        result = result.replace(".+", " ");
-    }
-
-    // Check if query contains code operators that should be preserved via quoting
-    // IMPORTANT: Do this BEFORE removing . and ? to preserve operators like ?.
-    let should_quote = result.contains('|')  // OR operator
-        || result.contains('[') || result.contains(']')  // Brackets
-        || result.contains('{') || result.contains('}')  // Braces
-        || result.contains("=>")  // Arrow functions
-        || result.contains("::")  // Scope resolution
-        || result.contains("?."); // Optional chaining
-
-    if should_quote {
-        // Quote to preserve operators as literal search
-        result = format!("\"{}\"", result.replace('"', ""));
-    } else {
-        // 🔥 FIX: Handle : (colon) specially - it's FTS5 column filter syntax
-        // FTS5 treats : as column specification syntax (e.g., "name:term")
-        // So "class Foo : Bar" is interpreted as "column Foo, term Bar" → syntax error
-        // Split on : and convert to AND query for precise matching
-        // Example: "class CmsService : ICmsService" → "class CmsService AND ICmsService"
-        // This finds classes where BOTH names appear (implements/extends relationship)
-        // BUT: Don't split :: (scope resolution) - that's already handled by should_quote above
-        if result.contains(':') && !result.contains("::") {
-            let parts: Vec<&str> = result.split(':').filter(|s| !s.is_empty()).collect();
-            if parts.len() > 1 {
-                result = parts.join(" AND ");
-            }
-        }
-
-        // Only remove dots and question marks if NOT quoting (no code operators)
-        // Remove standalone dots (FTS5 column separator / operator)
-        // "string.method" → "string method"
-        result = result.replace('.', " ");
-
-        // Remove question marks (FTS5 wildcard operator, C# nullable syntax)
-        // "string?" → "string", "List?" → "List"
-        result = result.replace('?', "");
-    }
-
-    // Remove regex anchors (always)
-    if result.contains('$') {
-        // "end$" → "end"
-        result = result.replace('$', "");
-    }
-
-    if result.contains('^') && !result.contains("^^") {
-        // "^start" → "start" (but preserve ^^ which might be XOR)
-        result = result.replace('^', "");
-    }
-
-    result
-}
-
-/// Sanitize glob queries for FTS5
-fn sanitize_glob_for_fts5(query: &str) -> String {
-    // Glob queries like "*.razor" need sanitization for FTS5
-    // Remove glob operators (*, ?, **) and FTS5 special chars (.)
-    // This prevents "fts5: syntax error near '.'" errors
-    query
-        .replace("**", "")
-        .replace("*", "")
-        .replace("?", "")
-        .replace(".", "") // FTS5 treats . as an operator
-        .trim()
-        .to_string()
-}
-
-/// Sanitize standard queries for FTS5
-fn sanitize_standard_for_fts5(query: &str) -> String {
-    // Standard queries use FTS5's natural tokenization
-    // Just ensure we don't have problematic characters
-    let mut result = query.to_string();
-
-    // Handle hyphens FIRST - FTS5 treats "-" as subtraction operator
-    // "tree-sitter" → "tree OR sitter" to match tokenized content
-    // Don't split negative numbers like "-42" or ranges like "1-10"
-    if result.contains('-')
-        && !result
-            .chars()
-            .all(|c| c.is_ascii_digit() || c == '-' || c == '.')
-    {
-        let parts: Vec<&str> = result.split('-').filter(|s| !s.is_empty()).collect();
-        if parts.len() > 1 {
-            result = parts.join(" OR ");
-        }
-    }
-
-    // Remove regex operators if present
-    result = result.replace(".*", " ");
-    result = result.replace(".+", " ");
-    result = result.replace('$', "");
-
-    // Remove standalone dots and question marks (FTS5 operators)
-    // IMPORTANT: Do this AFTER handling .* and .+ patterns
-    result = result.replace('.', " ");
-    result = result.replace('?', "");
-
-    // Remove FTS5 special characters that cause syntax errors
-    // These characters have special meaning in FTS5 and must be removed/escaped
-    result = result.replace('/', " "); // Forward slash breaks FTS5 (e.g., "tests/mod.rs" → "fts5: syntax error near /")
-    result = result.replace('!', " "); // Exclamation mark is NOT operator in FTS5
-    result = result.replace('(', " "); // Parentheses are grouping operators in FTS5
-    result = result.replace(')', " ");
-    result = result.replace('"', " "); // Double quotes are phrase search delimiters in FTS5
-
-    result.trim().to_string()
-}
-
-/// Process query based on type (strip noise words, etc.)
-pub fn process_query(query: &str, query_type: QueryType) -> String {
-    match query_type {
-        QueryType::Symbol => process_symbol_query(query),
-        QueryType::Pattern => process_pattern_query(query),
-        QueryType::Glob => process_glob_query(query),
-        QueryType::Standard => process_standard_query(query),
-    }
-}
-
-/// Process symbol queries - remove language keywords
-fn process_symbol_query(query: &str) -> String {
-    let mut result = query.to_string();
-
-    // Remove noise words (language keywords)
-    let noise_words = [
-        "class",
-        "interface",
-        "struct",
-        "enum",
-        "function",
-        "fn",
-        "def",
-        "method",
-    ];
-
-    for word in noise_words {
-        // Remove keyword with space after it
-        result = result.replace(&format!("{} ", word), "");
-    }
-
-    result.trim().to_string()
-}
-
-/// Process pattern queries - preserve as-is
-fn process_pattern_query(query: &str) -> String {
-    // Pattern queries need special characters preserved
-    query.to_string()
-}
-
-/// Process glob queries - preserve as-is
-fn process_glob_query(query: &str) -> String {
-    // Glob queries are file paths
-    query.to_string()
-}
-
-/// Process standard queries - convert multi-word queries to FTS5 AND logic
-fn process_standard_query(query: &str) -> String {
+/// Full preprocessing pipeline
+///
+/// With Tantivy + CodeTokenizer, the pipeline is simple:
+/// 1. Validate the query (reject pure wildcards, etc.)
+/// 2. Detect the query type (Symbol/Pattern/Glob/Standard)
+/// 3. Pass the original query to Tantivy (which handles all parsing)
+pub fn preprocess_query(query: &str) -> Result<PreprocessedQuery> {
     let trimmed = query.trim();
 
-    // For single-word queries, return as-is
-    if !trimmed.contains(' ') {
-        return trimmed.to_string();
+    if trimmed.is_empty() {
+        return Err(anyhow!("Empty query"));
     }
 
-    // Preserve quoted phrases (FTS5 phrase search)
-    // If the entire query is quoted, return as-is
-    if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.matches('"').count() == 2 {
-        return trimmed.to_string();
-    }
+    // Validate query
+    validate_query(trimmed)?;
 
-    // For multi-word queries, use FTS5 AND logic: "a b c" → "a AND b AND c"
-    // This finds documents containing ALL terms (Google-style search)
-    // FTS5's tokenizer will handle CamelCase/snake_case splitting automatically
-    // Example: "getUserData service" → "getUserData AND service"
-    //   FTS5 tokenizes "getUserData" → ["get", "User", "Data"] at index time
-    //   Query matches documents containing both "getUserData" AND "service"
-    let and_query = trimmed
-        .split_whitespace()
-        .collect::<Vec<&str>>()
-        .join(" AND ");
-
-    and_query
-}
-
-/// Full preprocessing pipeline
-pub fn preprocess_query(query: &str) -> Result<PreprocessedQuery> {
-    // Step 1: Validate
-    validate_query(query)?;
-
-    // Step 2: Detect type
-    let query_type = detect_query_type(query);
-
-    // Step 3: Sanitize wildcards
-    let sanitized = sanitize_query(query);
-
-    // Step 4: Process based on type
-    let processed = process_query(&sanitized, query_type);
-
-    // Step 5: Sanitize for FTS5
-    let fts5_query = sanitize_for_fts5(&processed, query_type);
-
-    // Step 6: Determine search field
-    let search_field = match query_type {
-        QueryType::Symbol => "name".to_string(), // Search symbol names
-        QueryType::Pattern => "content".to_string(), // Search file content
-        QueryType::Standard => "content".to_string(), // Search file content
-        QueryType::Glob => "file_path".to_string(), // Search file paths
-    };
+    // Detect type
+    let query_type = detect_query_type(trimmed);
 
     Ok(PreprocessedQuery {
-        original_query: query.to_string(),
+        original: trimmed.to_string(),
         query_type,
-        fts5_query,
-        search_field,
     })
 }
 
@@ -504,7 +264,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_query_type_detection_integration() {
+    fn test_query_type_detection() {
         assert_eq!(detect_query_type("UserService"), QueryType::Symbol);
         assert_eq!(detect_query_type("[Test]"), QueryType::Pattern);
         assert_eq!(detect_query_type("*.rs"), QueryType::Glob);
@@ -512,46 +272,49 @@ mod tests {
     }
 
     #[test]
-    fn test_wildcard_validation_integration() {
+    fn test_wildcard_validation() {
         assert!(validate_query("*").is_err());
         assert!(validate_query("**").is_err());
         assert!(validate_query("User*").is_ok());
     }
 
     #[test]
-    fn test_sanitization_integration() {
+    fn test_sanitization() {
         assert_eq!(sanitize_query("*something"), "something");
         assert_eq!(sanitize_query("User*"), "User*");
     }
 
     #[test]
-    fn test_colon_handling_in_patterns() {
-        // Bug reproduction: "class CmsService : ICmsService" → Pattern query → FTS5 syntax error
-        // FTS5 treats single : as column filter syntax (like "column:term")
+    fn test_preprocess_query_symbol() {
+        let result = preprocess_query("UserService").unwrap();
+        assert_eq!(result.query_type, QueryType::Symbol);
+        assert_eq!(result.original, "UserService");
+    }
 
-        // Question: Should this be AND or OR?
-        // - OR: Matches if EITHER name appears (broad, finds more results)
-        // - AND: Matches if BOTH names appear (precise, finds exact inheritance)
-        //
-        // Decision: Use AND for precise matching of inheritance/implements relationships
-        // User searching "class Foo : Bar" wants to find where Foo implements Bar,
-        // which means BOTH names must be present in the symbol definition.
-
-        // Single colon (inheritance/implements syntax)
+    #[test]
+    fn test_preprocess_query_pattern() {
         let result = preprocess_query("class CmsService : ICmsService").unwrap();
         assert_eq!(result.query_type, QueryType::Pattern);
-        // Should NOT contain bare colon - should be quoted or converted to AND/OR
-        assert!(
-            !result.fts5_query.contains(" : ")
-                && (result.fts5_query.contains(" AND ")
-                    || result.fts5_query.contains(" OR ")
-                    || result.fts5_query.contains("\":"))
-        );
+        assert_eq!(result.original, "class CmsService : ICmsService");
+    }
 
-        // Double colon (scope resolution) - already handled
-        let result = preprocess_query("std::vector").unwrap();
-        assert_eq!(result.query_type, QueryType::Pattern);
-        // Should be quoted to preserve ::
-        assert!(result.fts5_query.contains("::") || result.fts5_query.contains("\""));
+    #[test]
+    fn test_preprocess_query_glob() {
+        let result = preprocess_query("*.rs").unwrap();
+        assert_eq!(result.query_type, QueryType::Glob);
+        assert_eq!(result.original, "*.rs");
+    }
+
+    #[test]
+    fn test_preprocess_query_standard() {
+        let result = preprocess_query("error handling logic").unwrap();
+        assert_eq!(result.query_type, QueryType::Standard);
+        assert_eq!(result.original, "error handling logic");
+    }
+
+    #[test]
+    fn test_preprocess_query_rejects_pure_wildcard() {
+        assert!(preprocess_query("*").is_err());
+        assert!(preprocess_query("**").is_err());
     }
 }

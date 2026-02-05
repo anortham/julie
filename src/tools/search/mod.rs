@@ -10,8 +10,8 @@
 // Public API re-exports
 pub use self::query::{matches_glob_pattern, preprocess_fallback_query};
 pub use self::query_preprocessor::{
-    PreprocessedQuery, QueryType, detect_query_type, preprocess_query, process_query,
-    sanitize_for_fts5, sanitize_query, validate_query,
+    PreprocessedQuery, QueryType, detect_query_type, preprocess_query,
+    sanitize_query, validate_query,
 };
 pub use self::types::{LineMatch, LineMatchStrategy};
 

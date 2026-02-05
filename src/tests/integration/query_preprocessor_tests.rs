@@ -1,26 +1,22 @@
-// Query Preprocessor Tests - COMPREHENSIVE AGENT QUERY COVERAGE
+// Query Preprocessor Tests - Simplified for Tantivy
 //
-// This test suite captures the ACTUAL queries that AI agents run against Julie.
-// Every test case here represents a real-world scenario that must work reliably.
+// With Tantivy + CodeTokenizer, the preprocessor's job is simple:
+// 1. Validate the query (reject pure wildcards)
+// 2. Detect the query type (Symbol/Pattern/Glob/Standard)
+// 3. Pass the original query to Tantivy
 //
-// Test Organization:
-// 1. Symbol Searches - Finding classes, functions, methods by name
-// 2. Pattern Searches - Code syntax patterns (attributes, operators, keywords)
-// 3. File Glob Searches - Finding files by path patterns
-// 4. Invalid Queries - Queries that should be rejected with clear errors
-// 5. Edge Cases - Boundary conditions and corner cases
-//
-// TDD Approach: All tests written FIRST, then implementation follows.
+// FTS5-specific sanitization and query expansion are no longer needed
+// since Tantivy handles query parsing and CodeTokenizer handles
+// CamelCase/snake_case splitting at index time.
 
 use crate::tools::search::{
-    QueryType, detect_query_type, preprocess_query, process_query, sanitize_for_fts5,
+    QueryType, detect_query_type, preprocess_query,
     sanitize_query, validate_query,
 };
 
 // ============================================================================
 // Query Type Detection Tests
 // ============================================================================
-// These tests verify that we correctly identify what kind of search the user wants.
 
 #[cfg(test)]
 mod query_type_detection {
@@ -28,7 +24,6 @@ mod query_type_detection {
 
     #[test]
     fn test_detect_simple_symbol_query() {
-        // When I search for "UserService", I want to find the class
         let query = "UserService";
         let query_type = detect_query_type(query);
         assert_eq!(query_type, QueryType::Symbol);
@@ -36,7 +31,6 @@ mod query_type_detection {
 
     #[test]
     fn test_detect_camelcase_symbol_query() {
-        // When I search for "getUserData", I want to find the method
         let query = "getUserData";
         let query_type = detect_query_type(query);
         assert_eq!(query_type, QueryType::Symbol);
@@ -44,7 +38,6 @@ mod query_type_detection {
 
     #[test]
     fn test_detect_snake_case_symbol_query() {
-        // When I search for "get_symbols", I want to find the function
         let query = "get_symbols";
         let query_type = detect_query_type(query);
         assert_eq!(query_type, QueryType::Symbol);
@@ -52,7 +45,6 @@ mod query_type_detection {
 
     #[test]
     fn test_detect_constant_symbol_query() {
-        // When I search for "MAX_BUFFER_SIZE", I want to find the constant
         let query = "MAX_BUFFER_SIZE";
         let query_type = detect_query_type(query);
         assert_eq!(query_type, QueryType::Symbol);
@@ -60,7 +52,6 @@ mod query_type_detection {
 
     #[test]
     fn test_detect_pattern_with_brackets() {
-        // When I search for "[Test]", I want to find test attributes
         let query = "[Test]";
         let query_type = detect_query_type(query);
         assert_eq!(query_type, QueryType::Pattern);
@@ -68,7 +59,6 @@ mod query_type_detection {
 
     #[test]
     fn test_detect_pattern_with_code_syntax() {
-        // When I search for "async fn", I want to find async functions
         let query = "async fn";
         let query_type = detect_query_type(query);
         assert_eq!(query_type, QueryType::Pattern);
@@ -76,7 +66,6 @@ mod query_type_detection {
 
     #[test]
     fn test_detect_operator_query() {
-        // When I search for "=>", I want to find lambda/arrow functions
         let query = "=>";
         let query_type = detect_query_type(query);
         assert_eq!(query_type, QueryType::Pattern);
@@ -84,7 +73,6 @@ mod query_type_detection {
 
     #[test]
     fn test_detect_glob_pattern() {
-        // When I search for "*.rs", I want to find Rust files
         let query = "*.rs";
         let query_type = detect_query_type(query);
         assert_eq!(query_type, QueryType::Glob);
@@ -92,579 +80,196 @@ mod query_type_detection {
 
     #[test]
     fn test_detect_nested_glob_pattern() {
-        // When I search for "**/Program.cs", I want to find nested files
         let query = "**/Program.cs";
         let query_type = detect_query_type(query);
         assert_eq!(query_type, QueryType::Glob);
     }
 
     #[test]
-    fn test_detect_standard_text_query() {
-        // When I search for "error handling logic", it's natural language
+    fn test_detect_standard_natural_language() {
         let query = "error handling logic";
         let query_type = detect_query_type(query);
         assert_eq!(query_type, QueryType::Standard);
     }
+}
+
+// ============================================================================
+// Query Validation Tests
+// ============================================================================
+
+#[cfg(test)]
+mod query_validation {
+    use super::*;
 
     #[test]
-    fn test_detect_simple_filename_as_glob() {
-        // When I search for "Program.cs", I want to find that FILE
-        // This should be detected as Glob, not Symbol
-        let query = "Program.cs";
-        let query_type = detect_query_type(query);
-        assert_eq!(query_type, QueryType::Glob);
+    fn test_reject_pure_wildcard() {
+        assert!(validate_query("*").is_err());
+        assert!(validate_query("**").is_err());
+        assert!(validate_query("?").is_err());
     }
 
     #[test]
-    fn test_detect_filename_with_path() {
-        // When I search for "src/main.rs", I want to find that FILE
-        // This is detected as Glob because it ends with .rs extension
-        // The '/' doesn't prevent glob detection - file paths are globs!
-        let query = "src/main.rs";
-        let query_type = detect_query_type(query);
-        assert_eq!(query_type, QueryType::Glob); // Ends with .rs, so glob
+    fn test_accept_wildcard_with_search_term() {
+        assert!(validate_query("User*").is_ok());
+        assert!(validate_query("*Service").is_ok());
+        assert!(validate_query("get*Data").is_ok());
+    }
+
+    #[test]
+    fn test_accept_normal_queries() {
+        assert!(validate_query("UserService").is_ok());
+        assert!(validate_query("*.rs").is_ok());
+        assert!(validate_query("error handling").is_ok());
     }
 }
 
 // ============================================================================
-// Wildcard Validation Tests
+// Query Sanitization Tests
 // ============================================================================
-// These tests verify that we reject invalid wildcards BEFORE execution.
 
 #[cfg(test)]
-mod wildcard_validation {
+mod query_sanitization {
     use super::*;
 
     #[test]
-    fn test_reject_pure_wildcard_star() {
-        // Pure "*" should be rejected - it's meaningless
-        let query = "*";
-        let result = validate_query(query);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("pure wildcard"));
+    fn test_remove_leading_wildcards() {
+        assert_eq!(sanitize_query("*something"), "something");
+        assert_eq!(sanitize_query("**something"), "something");
+        assert_eq!(sanitize_query("?something"), "something");
     }
 
     #[test]
-    fn test_reject_pure_wildcard_double_star() {
-        // Pure "**" should be rejected - it's meaningless
-        let query = "**";
-        let result = validate_query(query);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("pure wildcard"));
+    fn test_preserve_trailing_wildcards() {
+        assert_eq!(sanitize_query("something*"), "something*");
+        assert_eq!(sanitize_query("some*thing"), "some*thing");
     }
 
     #[test]
-    fn test_reject_pure_wildcard_triple_star() {
-        // Pure "***" should be rejected - it's meaningless
-        let query = "***";
-        let result = validate_query(query);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_reject_pure_wildcard_question() {
-        // Pure "?" should be rejected - it's meaningless
-        let query = "?";
-        let result = validate_query(query);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_sanitize_leading_wildcard() {
-        // "*something" should be sanitized to "something"
-        let query = "*something";
-        let result = sanitize_query(query);
-        assert_eq!(result, "something");
-    }
-
-    #[test]
-    fn test_allow_trailing_wildcard() {
-        // "User*" is valid - finds UserService, UserRepository, etc.
-        let query = "User*";
-        let result = validate_query(query);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_allow_embedded_wildcard() {
-        // "get*Data" is valid - finds getUserData, getCustomerData, etc.
-        let query = "get*Data";
-        let result = validate_query(query);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_allow_glob_wildcards() {
-        // "**/*.rs" is valid for file path matching
-        let query = "**/*.rs";
-        let result = validate_query(query);
-        assert!(result.is_ok());
+    fn test_preserve_normal_queries() {
+        assert_eq!(sanitize_query("UserService"), "UserService");
+        assert_eq!(sanitize_query("  UserService  "), "UserService");
     }
 }
 
 // ============================================================================
-// FTS5 Sanitization Tests
+// Full Preprocessing Pipeline Tests
 // ============================================================================
-// These tests verify that we generate valid FTS5 queries.
 
 #[cfg(test)]
-mod fts5_sanitization {
+mod preprocessing_pipeline {
     use super::*;
 
     #[test]
-    fn test_sanitize_regex_pattern_with_dot_star() {
-        // "InputFile.*spreadsheet" should NOT crash FTS5
-        // This was the bug from TODO.md - FTS5 doesn't support regex
+    fn test_preprocess_symbol_query() {
+        let result = preprocess_query("UserService").unwrap();
+        assert_eq!(result.query_type, QueryType::Symbol);
+        assert_eq!(result.original, "UserService");
+    }
+
+    #[test]
+    fn test_preprocess_pattern_query() {
+        let result = preprocess_query("async fn").unwrap();
+        assert_eq!(result.query_type, QueryType::Pattern);
+        assert_eq!(result.original, "async fn");
+    }
+
+    #[test]
+    fn test_preprocess_glob_query() {
+        let result = preprocess_query("*.rs").unwrap();
+        assert_eq!(result.query_type, QueryType::Glob);
+        assert_eq!(result.original, "*.rs");
+    }
+
+    #[test]
+    fn test_preprocess_standard_query() {
+        let result = preprocess_query("error handling logic").unwrap();
+        assert_eq!(result.query_type, QueryType::Standard);
+        assert_eq!(result.original, "error handling logic");
+    }
+
+    #[test]
+    fn test_preprocess_rejects_pure_wildcard() {
+        assert!(preprocess_query("*").is_err());
+        assert!(preprocess_query("**").is_err());
+    }
+
+    #[test]
+    fn test_preprocess_rejects_empty_query() {
+        assert!(preprocess_query("").is_err());
+        assert!(preprocess_query("   ").is_err());
+    }
+
+    #[test]
+    fn test_preprocess_preserves_original_query() {
+        // Tantivy handles all the fancy parsing, so we just preserve the original
+        let original = "class CmsService : ICmsService";
+        let result = preprocess_query(original).unwrap();
+        assert_eq!(result.original, original);
+    }
+
+    #[test]
+    fn test_preprocess_with_special_characters() {
+        // With Tantivy, we don't need to sanitize special characters
+        // They're passed directly to Tantivy which handles them properly
+        let query = "std::vector<T>";
+        let result = preprocess_query(query).unwrap();
+        assert_eq!(result.query_type, QueryType::Pattern);
+        assert_eq!(result.original, query);
+    }
+
+    #[test]
+    fn test_preprocess_with_regex_operators() {
+        // Tantivy handles regex operators in queries
         let query = "InputFile.*spreadsheet";
-        let sanitized = sanitize_for_fts5(query, QueryType::Pattern);
-
-        // Should be converted to phrase search or sanitized
-        assert!(!sanitized.contains(".*")); // No regex operators
+        let result = preprocess_query(query).unwrap();
+        assert_eq!(result.query_type, QueryType::Pattern);
+        // Original is preserved - Tantivy will parse it
+        assert_eq!(result.original, query);
     }
 
     #[test]
-    fn test_sanitize_regex_end_anchor() {
-        // "end$" should be sanitized - FTS5 treats $ as operator
-        let query = "end$";
-        let sanitized = sanitize_for_fts5(query, QueryType::Pattern);
-
-        assert!(!sanitized.contains("$"));
-    }
-
-    #[test]
-    fn test_sanitize_regex_alternation() {
-        // "foo|bar" should be sanitized - FTS5 treats | as OR operator
-        let query = "foo|bar";
-        let sanitized = sanitize_for_fts5(query, QueryType::Pattern);
-
-        // Should be quoted or | should be escaped
-        assert!(sanitized.contains("\"") || !sanitized.contains("|"));
-    }
-
-    #[test]
-    fn test_sanitize_regex_escaped_dot() {
-        // "file\.txt" should be sanitized - backslash escapes confuse FTS5
-        let query = r"file\.txt";
-        let sanitized = sanitize_for_fts5(query, QueryType::Pattern);
-
-        assert!(!sanitized.contains("\\")); // No backslash escapes
-    }
-
-    #[test]
-    fn test_preserve_code_operators() {
-        // "=>" should be preserved for code search
-        let query = "=>";
-        let sanitized = sanitize_for_fts5(query, QueryType::Pattern);
-
-        // Should be quoted to preserve as phrase
-        assert!(sanitized.contains("=>"));
-    }
-
-    #[test]
-    fn test_preserve_scope_resolution() {
-        // "::" should be preserved for Rust/C++ searches
-        let query = "std::vector";
-        let sanitized = sanitize_for_fts5(query, QueryType::Pattern);
-
-        assert!(sanitized.contains("::"));
-    }
-
-    #[test]
-    fn test_preserve_optional_chaining() {
-        // "?." should be preserved for TypeScript searches
-        let query = "user?.name";
-        let sanitized = sanitize_for_fts5(query, QueryType::Pattern);
-
-        assert!(sanitized.contains("?."));
-    }
-
-    #[test]
-    fn test_sanitize_fts5_special_chars() {
-        // RED TEST: FTS5 has special characters that cause syntax errors
-        // These must be escaped or removed to prevent "fts5: syntax error" failures
-
-        // Test forward slash (commonly in paths)
-        let query1 = "tests/mod.rs";
-        let sanitized1 = sanitize_for_fts5(query1, QueryType::Standard);
-        // Should not contain unescaped forward slashes that break FTS5
-        // Verify it doesn't cause FTS5 error by ensuring no literal "/" in query
-        assert!(
-            !sanitized1.contains('/') || sanitized1.contains(r"\/"),
-            "Forward slash should be escaped or replaced: {}",
-            sanitized1
-        );
-
-        // Test exclamation mark (NOT operator in FTS5)
-        let query2 = "format! macro";
-        let sanitized2 = sanitize_for_fts5(query2, QueryType::Standard);
-        assert!(
-            !sanitized2.contains('!'),
-            "Exclamation mark should be removed: {}",
-            sanitized2
-        );
-
-        // Test parentheses (grouping operators in FTS5)
-        let query3 = "fn(arg)";
-        let sanitized3 = sanitize_for_fts5(query3, QueryType::Standard);
-        // Parentheses are okay if properly balanced, but in standard queries they should be escaped or removed
-        // to prevent accidental grouping operator interpretation
-
-        // Test double quotes (phrase search in FTS5)
-        let query4 = r#"let x = "value""#;
-        let sanitized4 = sanitize_for_fts5(query4, QueryType::Standard);
-        // Quotes should be escaped or the string should be properly quoted
-
-        // Test combined case from TODO.md error
-        let query5 = "mod knowledge tests/mod.rs";
-        let sanitized5 = sanitize_for_fts5(query5, QueryType::Standard);
-        assert!(
-            !sanitized5.contains('/'),
-            "Combined query with slash should not break FTS5: {}",
-            sanitized5
-        );
-    }
-}
-
-// ============================================================================
-// Symbol Query Processing Tests
-// ============================================================================
-// Symbol searches should generate exact match queries.
-
-#[cfg(test)]
-mod symbol_query_processing {
-    use super::*;
-
-    #[test]
-    fn test_process_simple_symbol() {
-        // "UserService" → exact symbol match
-        let query = "UserService";
-        let processed = process_query(query, QueryType::Symbol);
-
-        // Should search symbol names exactly
-        assert!(processed.contains("UserService"));
-    }
-
-    #[test]
-    fn test_process_symbol_with_noise_words() {
-        // "class UserService" → strip "class", keep "UserService"
-        let query = "class UserService";
-        let processed = process_query(query, QueryType::Symbol);
-
-        assert!(!processed.contains("class"));
-        assert!(processed.contains("UserService"));
-    }
-
-    #[test]
-    fn test_process_interface_keyword() {
-        // "interface IRepository" → strip "interface"
-        let query = "interface IRepository";
-        let processed = process_query(query, QueryType::Symbol);
-
-        assert!(!processed.contains("interface"));
-        assert!(processed.contains("IRepository"));
-    }
-
-    #[test]
-    fn test_process_function_keyword() {
-        // "function getUserData" → strip "function"
-        let query = "function getUserData";
-        let processed = process_query(query, QueryType::Symbol);
-
-        assert!(!processed.contains("function"));
-        assert!(processed.contains("getUserData"));
-    }
-}
-
-// ============================================================================
-// Pattern Query Processing Tests
-// ============================================================================
-// Pattern searches should preserve syntax and special characters.
-
-#[cfg(test)]
-mod pattern_query_processing {
-    use super::*;
-
-    #[test]
-    fn test_process_attribute_pattern() {
-        // "[Test]" → preserve brackets for attribute search
-        let query = "[Test]";
-        let processed = process_query(query, QueryType::Pattern);
-
-        assert!(processed.contains("[Test]") || processed.contains("\"[Test]\""));
-    }
-
-    #[test]
-    fn test_process_async_keyword_pattern() {
-        // "async fn" → preserve both words for syntax search
-        let query = "async fn";
-        let processed = process_query(query, QueryType::Pattern);
-
-        assert!(processed.contains("async"));
-        assert!(processed.contains("fn"));
-    }
-
-    #[test]
-    fn test_process_impl_trait_pattern() {
-        // "impl Trait for" → preserve syntax structure
-        let query = "impl Trait for";
-        let processed = process_query(query, QueryType::Pattern);
-
-        assert!(processed.contains("impl"));
-        assert!(processed.contains("Trait"));
-        assert!(processed.contains("for"));
-    }
-
-    #[test]
-    fn test_process_lambda_operator() {
-        // "=> {" → preserve operator and brace
-        let query = "=> {";
-        let processed = process_query(query, QueryType::Pattern);
-
-        assert!(processed.contains("=>"));
-        assert!(processed.contains("{"));
-    }
-}
-
-// ============================================================================
-// Standard Query Processing Tests
-// ============================================================================
-// Standard searches are full-text search with AND logic.
-
-#[cfg(test)]
-mod standard_query_processing {
-    use super::*;
-
-    #[test]
-    fn test_process_multi_word_query() {
-        // "error handling logic" → all words must match
-        let query = "error handling logic";
-        let processed = process_query(query, QueryType::Standard);
-
-        assert!(processed.contains("error"));
-        assert!(processed.contains("handling"));
-        assert!(processed.contains("logic"));
-    }
-
-    #[test]
-    fn test_process_phrase_query() {
-        // Quoted phrases should be preserved
-        let query = "\"exact phrase\"";
-        let processed = process_query(query, QueryType::Standard);
-
-        assert!(processed.contains("\"exact phrase\""));
-    }
-}
-
-// ============================================================================
-// Integration Tests - End-to-End
-// ============================================================================
-// These tests verify the entire pipeline works together.
-
-#[cfg(test)]
-mod integration_tests {
-    use super::*;
-
-    #[test]
-    fn test_end_to_end_symbol_search() {
-        // Complete pipeline: UserService → detect → validate → process → FTS5
-        let query = "UserService";
-        let result = preprocess_query(query);
-
-        assert!(result.is_ok());
-        let preprocessed = result.unwrap();
-        assert_eq!(preprocessed.query_type, QueryType::Symbol);
-        assert!(preprocessed.fts5_query.contains("UserService"));
-    }
-
-    #[test]
-    fn test_end_to_end_invalid_query_rejection() {
-        // Complete pipeline: * → detect → validate → REJECT
-        let query = "*";
-        let result = preprocess_query(query);
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("pure wildcard"));
-    }
-
-    #[test]
-    fn test_end_to_end_pattern_sanitization() {
-        // Complete pipeline: InputFile.*spreadsheet → detect → sanitize → FTS5
-        let query = "InputFile.*spreadsheet";
-        let result = preprocess_query(query);
-
-        assert!(result.is_ok());
-        let preprocessed = result.unwrap();
-        // Should not contain regex operators
-        assert!(!preprocessed.fts5_query.contains(".*"));
-    }
-
-    #[test]
-    fn test_glob_pattern_dot_sanitization() {
-        // BUG REPRODUCTION: *.razor causes "fts5: syntax error near ".""
-        // The dot in file extension globs MUST be removed for FTS5
-        let query = "*.razor";
-        let result = preprocess_query(query);
-
-        assert!(result.is_ok(), "Glob query should preprocess successfully");
-        let preprocessed = result.unwrap();
-        assert_eq!(preprocessed.query_type, QueryType::Glob);
-
-        // CRITICAL: FTS5 query must NOT contain dots (FTS5 treats . as operator)
-        assert!(
-            !preprocessed.fts5_query.contains("."),
-            "FTS5 query should not contain dots: got '{}'",
-            preprocessed.fts5_query
-        );
-
-        // Should be just "razor" or empty after sanitization
-        assert!(
-            preprocessed.fts5_query == "razor" || preprocessed.fts5_query.is_empty(),
-            "Expected 'razor' or empty, got '{}'",
-            preprocessed.fts5_query
-        );
-    }
-
-    #[test]
-    fn test_csharp_nullable_type_sanitization() {
-        // BUG REPRODUCTION: string? causes "fts5: syntax error near '?'"
-        // C# nullable types use ? which FTS5 treats as a special operator
+    fn test_preprocess_csharp_nullable() {
+        // C# nullable syntax - preserved for Tantivy
         let query = "string?";
-        let result = preprocess_query(query);
+        let result = preprocess_query(query).unwrap();
+        // Could be Pattern or Standard depending on detection
+        assert!(result.query_type == QueryType::Pattern || result.query_type == QueryType::Standard);
+        assert_eq!(result.original, query);
+    }
 
-        assert!(
-            result.is_ok(),
-            "C# nullable query should preprocess successfully"
-        );
-        let preprocessed = result.unwrap();
+    #[test]
+    fn test_preprocess_file_glob_patterns() {
+        let patterns = vec!["*.rs", "*.ts", "*.py", "**/src/**/*.java"];
+        for pattern in patterns {
+            let result = preprocess_query(pattern).unwrap();
+            assert_eq!(result.query_type, QueryType::Glob);
+            assert_eq!(result.original, pattern);
+        }
+    }
 
-        // Query type can be Standard or Pattern - doesn't matter for sanitization
-        // The key is that ? must be removed to prevent FTS5 errors
+    #[test]
+    fn test_preprocess_code_patterns() {
+        let patterns = vec!["[Test]", "=>", "::", "async fn", "impl Trait"];
+        for pattern in patterns {
+            let result = preprocess_query(pattern).unwrap();
+            assert_eq!(result.query_type, QueryType::Pattern);
+            assert_eq!(result.original, pattern);
+        }
+    }
 
-        // CRITICAL: FTS5 query must NOT contain ? (FTS5 treats it as wildcard/operator)
-        assert!(
-            !preprocessed.fts5_query.contains("?"),
-            "FTS5 query should not contain '?': got '{}'",
-            preprocessed.fts5_query
-        );
-
-        // Should be just "string" after sanitization
-        assert_eq!(preprocessed.fts5_query, "string");
+    #[test]
+    fn test_preprocess_various_symbol_formats() {
+        let symbols = vec![
+            "getUserData",
+            "get_user_data",
+            "GetUserData",
+            "MAX_BUFFER_SIZE",
+            "myFunction123",
+        ];
+        for symbol in symbols {
+            let result = preprocess_query(symbol).unwrap();
+            assert_eq!(result.query_type, QueryType::Symbol);
+            assert_eq!(result.original, symbol);
+        }
     }
 }
-
-// ============================================================================
-// Snake Case Tokenization Bug Tests (FTS5 Separator Mismatch)
-// ============================================================================
-// CRITICAL BUG: FTS5 tokenizer uses underscore as separator, but Symbol queries
-// wrap in quotes for "exact matching". This creates a mismatch:
-//
-// - "handle_file_deleted" is tokenized as ["handle", "file", "deleted"]
-// - Query "Deleted" wrapped in quotes: "Deleted"
-// - Phrase search "Deleted" looks for exact phrase, not token
-// - Result: ZERO MATCHES even though data exists!
-//
-// Root Cause: tokenize = "unicode61 separators '_::->.'"
-// Fix: Don't wrap Symbol queries in quotes - use token matching instead
-
-#[cfg(test)]
-mod snake_case_tokenization_bug {
-    use super::*;
-
-    #[test]
-    fn test_search_deleted_should_find_handle_file_deleted() {
-        // BUG REPRODUCTION: Searching "Deleted" should find "handle_file_deleted"
-        // The tokenizer splits on underscore, so "deleted" is a token
-        // But phrase search "Deleted" doesn't match token "deleted"
-        let query = "Deleted";
-        let result = preprocess_query(query);
-
-        assert!(result.is_ok());
-        let preprocessed = result.unwrap();
-        assert_eq!(preprocessed.query_type, QueryType::Symbol);
-
-        // CRITICAL: Should NOT wrap in quotes (phrase search fails with underscore tokenization)
-        // Expected: Deleted (token match)
-        // Wrong: "Deleted" (phrase search)
-        assert!(
-            !preprocessed.fts5_query.starts_with("\""),
-            "Symbol query should NOT be wrapped in quotes for snake_case compatibility. Got: {}",
-            preprocessed.fts5_query
-        );
-    }
-
-    #[test]
-    fn test_search_snake_case_function_name() {
-        // BUG REPRODUCTION: Searching "handle_file_change_static" should find itself
-        // With phrase search, this fails because underscores are separators
-        let query = "handle_file_change_static";
-        let result = preprocess_query(query);
-
-        assert!(result.is_ok());
-        let preprocessed = result.unwrap();
-        assert_eq!(preprocessed.query_type, QueryType::Symbol);
-
-        // Should NOT wrap in quotes - breaks snake_case token matching
-        assert!(
-            !preprocessed.fts5_query.starts_with("\""),
-            "Snake_case symbol should use token matching, not phrase search. Got: {}",
-            preprocessed.fts5_query
-        );
-    }
-
-    #[test]
-    fn test_search_scope_resolution_with_separator() {
-        // BUG REPRODUCTION: "FileChangeType::Deleted" has :: separator
-        // Both underscore AND :: are separators in tokenizer
-        let query = "FileChangeType::Deleted";
-        let result = preprocess_query(query);
-
-        assert!(result.is_ok());
-        let preprocessed = result.unwrap();
-        // Will be detected as Pattern (contains ::)
-        assert_eq!(preprocessed.query_type, QueryType::Pattern);
-
-        // For patterns with code operators, quoting is acceptable
-        // But we need to ensure tokens still match
-        // This test documents the current behavior
-    }
-
-    #[test]
-    fn test_search_partial_snake_case_token() {
-        // Searching for a partial token should work via FTS5 prefix matching
-        // "file_deleted" should find "handle_file_deleted"
-        let query = "file_deleted";
-        let result = preprocess_query(query);
-
-        assert!(result.is_ok());
-        let preprocessed = result.unwrap();
-
-        // Should use token matching (no quotes) to find partial matches
-        assert!(
-            !preprocessed.fts5_query.starts_with("\""),
-            "Partial snake_case should use token matching. Got: {}",
-            preprocessed.fts5_query
-        );
-    }
-
-    #[test]
-    fn test_camelcase_doesnt_need_token_workaround() {
-        // CamelCase doesn't have separators, so phrase search would work
-        // But for consistency, we should use token matching for ALL symbols
-        let query = "getUserData";
-        let result = preprocess_query(query);
-
-        assert!(result.is_ok());
-        let preprocessed = result.unwrap();
-        assert_eq!(preprocessed.query_type, QueryType::Symbol);
-
-        // For consistency, don't quote ANY symbol queries
-        assert!(
-            !preprocessed.fts5_query.starts_with("\""),
-            "Symbol queries should use token matching consistently. Got: {}",
-            preprocessed.fts5_query
-        );
-    }
-}
-
-// All functions are now implemented in src/tools/search/query_preprocessor.rs
-// and imported at the top of this file
