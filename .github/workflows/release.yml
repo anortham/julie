@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*' # Trigger on version tags like v0.5.0
+      - 'v*' # Trigger on version tags like v2.0.0
 
 permissions:
   contents: write  # Required for creating releases
@@ -19,22 +19,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Windows (DirectML - works with NVIDIA, AMD, Intel GPUs)
+          # Windows
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary_name: julie-server.exe
 
-          # macOS Intel (CoreML)
+          # macOS Intel
           - os: macos-latest
             target: x86_64-apple-darwin
             binary_name: julie-server
 
-          # macOS Apple Silicon (CoreML + Neural Engine)
+          # macOS Apple Silicon
           - os: macos-latest
             target: aarch64-apple-darwin
             binary_name: julie-server
 
-          # Linux (CUDA only - TensorRT disabled due to version compatibility)
+          # Linux
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_name: julie-server
@@ -53,16 +53,14 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Build release binaries
+      - name: Build release binary
         run: |
           cargo build --release --target ${{ matrix.target }} --bin julie-server
-          cargo build --release --target ${{ matrix.target }} --bin julie-semantic
 
-      - name: Strip binaries (Linux/macOS)
+      - name: Strip binary (Linux/macOS)
         if: matrix.os != 'windows-latest'
         run: |
           strip target/${{ matrix.target }}/release/${{ matrix.binary_name }}
-          strip target/${{ matrix.target }}/release/julie-semantic
 
       - name: Create archive
         shell: bash
@@ -70,10 +68,10 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.zip"
-            7z a "${ARCHIVE}" "./target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "./target/${{ matrix.target }}/release/julie-semantic.exe"
+            7z a "${ARCHIVE}" "./target/${{ matrix.target }}/release/${{ matrix.binary_name }}"
           else
             ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.tar.gz"
-            tar -czf "${ARCHIVE}" -C target/${{ matrix.target }}/release ${{ matrix.binary_name }} julie-semantic
+            tar -czf "${ARCHIVE}" -C target/${{ matrix.target }}/release ${{ matrix.binary_name }}
           fi
           echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
 
@@ -114,41 +112,34 @@ jobs:
 
           ### 📦 What's Included
 
-          Each archive contains **two binaries**:
+          Each archive contains:
           - **`julie-server`** - MCP server for code intelligence (search, navigation, refactoring)
-          - **`julie-semantic`** - Standalone embedding CLI for other projects (e.g., Goldfish)
 
           ### Installation
 
           Download the binary for your platform below, extract, and add to your PATH.
 
           ### Platform Support
-          - **Windows** (x86_64): DirectML GPU acceleration (NVIDIA, AMD, Intel)
-          - **macOS Intel** (x86_64): CoreML acceleration
-          - **macOS Apple Silicon** (aarch64): CoreML + Neural Engine acceleration
-          - **Linux** (x86_64): CUDA GPU acceleration
+          - **Windows** (x86_64)
+          - **macOS Intel** (x86_64)
+          - **macOS Apple Silicon** (aarch64)
+          - **Linux** (x86_64)
 
           ### Quick Start
           ```bash
           # Extract the archive for your platform
-          # Add julie-server and julie-semantic to your PATH
-
-          # MCP Server usage
+          # Add julie-server to your PATH
           # Configure your MCP client to use julie-server
-
-          # Standalone embedding usage (for integration)
-          julie-semantic query --text "your query" --model bge-small
           ```
 
           See [README.md](https://github.com/${{ github.repository }}) for full documentation.
 
           ### Highlights
           - 🚀 30 language extractors with comprehensive test coverage
-          - ⚡ CASCADE architecture (SQLite FTS5 → HNSW Semantic)
+          - ⚡ Tantivy search engine with code-aware tokenization
           - 🛡️ Comprehensive safety mechanisms (all tools default to preview mode)
-          - 🎯 GPU acceleration on all platforms (10-30x speedup)
-          - 🔧 Standalone embedding CLI for easy integration
-          - ✅ 1,400+ tests passing
+          - 🔧 Cross-convention matching (CamelCase, snake_case, affixes)
+          - ✅ 700+ tests passing
           EOF
 
           # Create release
@@ -177,12 +168,12 @@ jobs:
         run: |
           echo "✅ Release v${{ steps.version.outputs.version }} created successfully"
           echo ""
-          echo "📦 Binaries included: julie-server + julie-semantic"
+          echo "📦 Binary included: julie-server"
           echo ""
           echo "Platforms built:"
-          echo "  - Windows (x86_64-pc-windows-msvc) - DirectML"
-          echo "  - macOS Intel (x86_64-apple-darwin) - CoreML"
-          echo "  - macOS Apple Silicon (aarch64-apple-darwin) - CoreML + Neural Engine"
-          echo "  - Linux (x86_64-unknown-linux-gnu) - CUDA"
+          echo "  - Windows (x86_64-pc-windows-msvc)"
+          echo "  - macOS Intel (x86_64-apple-darwin)"
+          echo "  - macOS Apple Silicon (aarch64-apple-darwin)"
+          echo "  - Linux (x86_64-unknown-linux-gnu)"
           echo ""
           echo "View release: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.version }}"
