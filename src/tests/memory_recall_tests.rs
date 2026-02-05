@@ -338,3 +338,111 @@ fn test_search_memories_by_query() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_search_memories_respects_type_filter() -> Result<()> {
+    let temp = TempDir::new()?;
+    let workspace_root = temp.path().to_path_buf();
+
+    let checkpoint = crate::tools::memory::Memory::new(
+        "mem_cp".to_string(),
+        1000,
+        "checkpoint".to_string(),
+    )
+    .with_extra(serde_json::json!({"description": "Fixed authentication bug"}));
+
+    let decision = crate::tools::memory::Memory::new(
+        "mem_dec".to_string(),
+        2000,
+        "decision".to_string(),
+    )
+    .with_extra(serde_json::json!({"description": "Decided on authentication approach"}));
+
+    crate::tools::memory::save_memory(&workspace_root, &checkpoint)?;
+    crate::tools::memory::save_memory(&workspace_root, &decision)?;
+
+    let options = crate::tools::memory::RecallOptions {
+        memory_type: Some("decision".to_string()),
+        ..Default::default()
+    };
+    let results =
+        crate::tools::memory::search_memories(&workspace_root, "authentication", options)?;
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].0.id, "mem_dec");
+
+    Ok(())
+}
+
+#[test]
+fn test_search_memories_empty_query_returns_all() -> Result<()> {
+    let temp = TempDir::new()?;
+    let workspace_root = temp.path().to_path_buf();
+
+    let m1 = crate::tools::memory::Memory::new(
+        "mem_1".to_string(),
+        1000,
+        "checkpoint".to_string(),
+    )
+    .with_extra(serde_json::json!({"description": "First memory"}));
+
+    crate::tools::memory::save_memory(&workspace_root, &m1)?;
+
+    let results =
+        crate::tools::memory::search_memories(&workspace_root, "", Default::default())?;
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].1, 0.0);
+
+    Ok(())
+}
+
+#[test]
+fn test_search_memories_no_results() -> Result<()> {
+    let temp = TempDir::new()?;
+    let workspace_root = temp.path().to_path_buf();
+
+    let m1 = crate::tools::memory::Memory::new(
+        "mem_1".to_string(),
+        1000,
+        "checkpoint".to_string(),
+    )
+    .with_extra(serde_json::json!({"description": "Fixed a database bug"}));
+
+    crate::tools::memory::save_memory(&workspace_root, &m1)?;
+
+    let results = crate::tools::memory::search_memories(
+        &workspace_root,
+        "xylophone",
+        Default::default(),
+    )?;
+    assert!(results.is_empty(), "Should find nothing for unrelated query");
+
+    Ok(())
+}
+
+#[test]
+fn test_search_memories_finds_by_tags() -> Result<()> {
+    let temp = TempDir::new()?;
+    let workspace_root = temp.path().to_path_buf();
+
+    let m1 = crate::tools::memory::Memory::new(
+        "mem_tagged".to_string(),
+        1000,
+        "checkpoint".to_string(),
+    )
+    .with_extra(serde_json::json!({
+        "description": "Some work was done",
+        "tags": ["performance", "optimization"]
+    }));
+
+    crate::tools::memory::save_memory(&workspace_root, &m1)?;
+
+    let results = crate::tools::memory::search_memories(
+        &workspace_root,
+        "performance",
+        Default::default(),
+    )?;
+    assert!(!results.is_empty(), "Should find memory by tag");
+    assert_eq!(results[0].0.id, "mem_tagged");
+
+    Ok(())
+}
