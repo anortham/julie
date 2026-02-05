@@ -19,6 +19,13 @@ use crate::search::language_config::LanguageConfigs;
 pub struct CodeTokenizer {
     /// Patterns to preserve as single tokens (e.g., "::", "->")
     preserve_patterns: Vec<String>,
+    /// Language-specific affixes to strip for additional search tokens
+    /// (e.g., "is_" prefix means "is_valid" also emits "valid")
+    meaningful_affixes: Vec<String>,
+    /// Prefixes to strip from identifiers (e.g., "I" for C# interfaces)
+    strip_prefixes: Vec<String>,
+    /// Suffixes to strip from identifiers (e.g., "Service", "Controller")
+    strip_suffixes: Vec<String>,
 }
 
 impl CodeTokenizer {
@@ -27,7 +34,29 @@ impl CodeTokenizer {
         patterns.sort_by_key(|b| std::cmp::Reverse(b.len()));
         Self {
             preserve_patterns: patterns,
+            meaningful_affixes: Vec::new(),
+            strip_prefixes: Vec::new(),
+            strip_suffixes: Vec::new(),
         }
+    }
+
+    /// Set meaningful affixes to strip for additional search tokens.
+    ///
+    /// For each identifier, if it starts with a prefix affix (e.g., "is_") or
+    /// ends with a suffix affix (e.g., "_mut"), the stripped form is emitted
+    /// as an additional token.
+    pub fn set_meaningful_affixes(&mut self, affixes: Vec<String>) {
+        self.meaningful_affixes = affixes;
+    }
+
+    /// Set prefix/suffix stripping rules for variant generation.
+    ///
+    /// For each identifier, if it starts with a strip_prefix (e.g., "I" for interfaces)
+    /// or ends with a strip_suffix (e.g., "Service"), the stripped form is emitted
+    /// as an additional token.
+    pub fn set_strip_rules(&mut self, prefixes: Vec<String>, suffixes: Vec<String>) {
+        self.strip_prefixes = prefixes;
+        self.strip_suffixes = suffixes;
     }
 
     /// Create a tokenizer with default patterns for common languages.
@@ -63,7 +92,11 @@ impl CodeTokenizer {
     /// into a single union set, sorted by length descending.
     pub fn from_language_configs(configs: &LanguageConfigs) -> Self {
         let patterns = configs.all_preserve_patterns();
-        Self::new(patterns)
+        let mut tokenizer = Self::new(patterns);
+        tokenizer.set_meaningful_affixes(configs.all_meaningful_affixes());
+        let (prefixes, suffixes) = configs.all_strip_rules();
+        tokenizer.set_strip_rules(prefixes, suffixes);
+        tokenizer
     }
 }
 
@@ -71,7 +104,13 @@ impl Tokenizer for CodeTokenizer {
     type TokenStream<'a> = CodeTokenStream<'a>;
 
     fn token_stream<'a>(&'a mut self, text: &'a str) -> Self::TokenStream<'a> {
-        CodeTokenStream::new(text, &self.preserve_patterns)
+        CodeTokenStream::new(
+            text,
+            &self.preserve_patterns,
+            &self.meaningful_affixes,
+            &self.strip_prefixes,
+            &self.strip_suffixes,
+        )
     }
 }
 
@@ -83,8 +122,20 @@ pub struct CodeTokenStream<'a> {
 }
 
 impl<'a> CodeTokenStream<'a> {
-    fn new(text: &'a str, preserve_patterns: &[String]) -> Self {
-        let tokens = tokenize_code(text, preserve_patterns);
+    fn new(
+        text: &'a str,
+        preserve_patterns: &[String],
+        meaningful_affixes: &[String],
+        strip_prefixes: &[String],
+        strip_suffixes: &[String],
+    ) -> Self {
+        let tokens = tokenize_code(
+            text,
+            preserve_patterns,
+            meaningful_affixes,
+            strip_prefixes,
+            strip_suffixes,
+        );
         Self {
             text,
             tokens,
@@ -112,7 +163,13 @@ impl<'a> TokenStream for CodeTokenStream<'a> {
     }
 }
 
-fn tokenize_code(text: &str, preserve_patterns: &[String]) -> Vec<Token> {
+fn tokenize_code(
+    text: &str,
+    preserve_patterns: &[String],
+    meaningful_affixes: &[String],
+    strip_prefixes: &[String],
+    strip_suffixes: &[String],
+) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut position = 0;
     let segments = extract_segments(text, preserve_patterns);
@@ -131,29 +188,37 @@ fn tokenize_code(text: &str, preserve_patterns: &[String]) -> Vec<Token> {
         }
 
         if segment.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            let segment_lower = segment.to_lowercase();
             tokens.push(Token {
                 offset_from: offset,
                 offset_to: offset + segment.len(),
                 position,
-                text: segment.to_lowercase(),
+                text: segment_lower.clone(),
                 position_length: 1,
             });
             position += 1;
+
+            // Track what tokens we've already emitted to avoid duplicates
+            let mut emitted: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+            emitted.insert(segment_lower.clone());
 
             // Split CamelCase/PascalCase identifiers
             if segment.chars().any(|c| c.is_uppercase())
                 && segment.chars().any(|c| c.is_lowercase())
             {
                 for part in split_camel_case(&segment) {
-                    if part.to_lowercase() != segment.to_lowercase() {
+                    let lower = part.to_lowercase();
+                    if !emitted.contains(&lower) {
                         tokens.push(Token {
                             offset_from: offset,
                             offset_to: offset + segment.len(),
                             position,
-                            text: part.to_lowercase(),
+                            text: lower.clone(),
                             position_length: 1,
                         });
                         position += 1;
+                        emitted.insert(lower);
                     }
                 }
             }
@@ -161,22 +226,153 @@ fn tokenize_code(text: &str, preserve_patterns: &[String]) -> Vec<Token> {
             // Split snake_case identifiers
             if segment.contains('_') {
                 for part in split_snake_case(&segment) {
-                    if part.to_lowercase() != segment.to_lowercase() {
+                    let lower = part.to_lowercase();
+                    if !emitted.contains(&lower) {
                         tokens.push(Token {
                             offset_from: offset,
                             offset_to: offset + segment.len(),
                             position,
-                            text: part.to_lowercase(),
+                            text: lower.clone(),
                             position_length: 1,
                         });
                         position += 1;
+                        emitted.insert(lower);
                     }
+                }
+            }
+
+            // Emit affix-stripped variants
+            emit_affix_stripped(
+                &segment,
+                offset,
+                &mut position,
+                meaningful_affixes,
+                &mut tokens,
+                &mut emitted,
+            );
+
+            // Emit prefix/suffix-stripped variants
+            emit_strip_variants(
+                &segment,
+                offset,
+                &mut position,
+                strip_prefixes,
+                strip_suffixes,
+                &mut tokens,
+                &mut emitted,
+            );
+        }
+    }
+
+    tokens
+}
+
+/// Emit additional tokens by stripping meaningful affixes.
+///
+/// For "is_valid" with affix "is_", emits "valid".
+/// For "borrow_mut" with affix "_mut", emits "borrow".
+/// For "IsValid" with affix "Is", emits "valid".
+fn emit_affix_stripped(
+    segment: &str,
+    offset: usize,
+    position: &mut usize,
+    affixes: &[String],
+    tokens: &mut Vec<Token>,
+    emitted: &mut std::collections::HashSet<String>,
+) {
+    for affix in affixes {
+        // Try as prefix
+        if segment.starts_with(affix.as_str()) {
+            let remainder = &segment[affix.len()..];
+            if remainder.len() >= 2 {
+                let lower = remainder.to_lowercase();
+                if !emitted.contains(&lower) {
+                    tokens.push(Token {
+                        offset_from: offset,
+                        offset_to: offset + segment.len(),
+                        position: *position,
+                        text: lower.clone(),
+                        position_length: 1,
+                    });
+                    *position += 1;
+                    emitted.insert(lower);
+                }
+            }
+        }
+
+        // Try as suffix
+        if segment.ends_with(affix.as_str()) && segment.len() > affix.len() {
+            let remainder = &segment[..segment.len() - affix.len()];
+            if remainder.len() >= 2 {
+                let lower = remainder.to_lowercase();
+                if !emitted.contains(&lower) {
+                    tokens.push(Token {
+                        offset_from: offset,
+                        offset_to: offset + segment.len(),
+                        position: *position,
+                        text: lower.clone(),
+                        position_length: 1,
+                    });
+                    *position += 1;
+                    emitted.insert(lower);
+                }
+            }
+        }
+    }
+}
+
+/// Emit additional tokens by stripping type prefixes/suffixes.
+///
+/// For "IUserService" with prefix "I" and suffix "Service",
+/// emits "userservice" (prefix stripped) and "iuser" (suffix stripped).
+fn emit_strip_variants(
+    segment: &str,
+    offset: usize,
+    position: &mut usize,
+    strip_prefixes: &[String],
+    strip_suffixes: &[String],
+    tokens: &mut Vec<Token>,
+    emitted: &mut std::collections::HashSet<String>,
+) {
+    for prefix in strip_prefixes {
+        if segment.starts_with(prefix.as_str()) && segment.len() > prefix.len() {
+            let remainder = &segment[prefix.len()..];
+            if remainder.len() >= 2 {
+                let lower = remainder.to_lowercase();
+                if !emitted.contains(&lower) {
+                    tokens.push(Token {
+                        offset_from: offset,
+                        offset_to: offset + segment.len(),
+                        position: *position,
+                        text: lower.clone(),
+                        position_length: 1,
+                    });
+                    *position += 1;
+                    emitted.insert(lower);
                 }
             }
         }
     }
 
-    tokens
+    for suffix in strip_suffixes {
+        if segment.ends_with(suffix.as_str()) && segment.len() > suffix.len() {
+            let remainder = &segment[..segment.len() - suffix.len()];
+            if remainder.len() >= 2 {
+                let lower = remainder.to_lowercase();
+                if !emitted.contains(&lower) {
+                    tokens.push(Token {
+                        offset_from: offset,
+                        offset_to: offset + segment.len(),
+                        position: *position,
+                        text: lower.clone(),
+                        position_length: 1,
+                    });
+                    *position += 1;
+                    emitted.insert(lower);
+                }
+            }
+        }
+    }
 }
 
 fn extract_segments(text: &str, preserve_patterns: &[String]) -> Vec<(String, usize)> {

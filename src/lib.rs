@@ -1,10 +1,9 @@
 // Julie - Cross-Platform Code Intelligence Server Library
 //!
 //! Julie provides code intelligence across 26+ programming languages using
-//! a two-tier architecture: SQLite FTS5 (search + truth), FastEmbed (semantic).
+//! Tantivy search with code-aware tokenization (CamelCase/snake_case splitting).
 
 pub mod database;
-pub mod embeddings;
 pub mod extractors;
 pub mod search;
 pub mod handler;
@@ -17,9 +16,6 @@ pub mod tracing;
 pub mod utils;
 pub mod watcher;
 pub mod workspace;
-
-// CLI utilities (only used by julie-extract and julie-semantic binaries)
-pub mod cli;
 
 #[cfg(test)]
 pub mod tests;

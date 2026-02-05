@@ -1,38 +1,90 @@
 use anyhow::Result;
+use std::sync::Arc;
 use tracing::{debug, warn};
 
 use crate::extractors::SymbolKind;
 use crate::extractors::base::Symbol;
 use crate::handler::JulieServerHandler;
+use crate::search::{SearchFilter, SearchIndex, SymbolSearchResult};
 
 use super::FindLogicTool;
 
 // Maximum candidates for graph analysis (prevents pathological cases)
 pub const MAX_GRAPH_ANALYSIS_CANDIDATES: usize = 100;
 
+/// Maximum search results per keyword query
+const MAX_KEYWORD_RESULTS: usize = 200;
+
+/// Convert a SymbolSearchResult from Tantivy into a Symbol
+fn symbol_from_search_result(result: SymbolSearchResult) -> Symbol {
+    Symbol {
+        id: result.id,
+        name: result.name,
+        kind: SymbolKind::from_string(&result.kind),
+        language: result.language,
+        file_path: result.file_path,
+        start_line: result.start_line,
+        signature: if result.signature.is_empty() {
+            None
+        } else {
+            Some(result.signature)
+        },
+        doc_comment: if result.doc_comment.is_empty() {
+            None
+        } else {
+            Some(result.doc_comment)
+        },
+        start_column: 0,
+        end_line: 0,
+        end_column: 0,
+        start_byte: 0,
+        end_byte: 0,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: Some(result.score),
+        code_context: None,
+        content_type: None,
+    }
+}
+
+/// Search symbols via Tantivy index with the given query
+fn search_tantivy(
+    search_index: &Arc<std::sync::Mutex<SearchIndex>>,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<Symbol>> {
+    let index = match search_index.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!("Search index mutex poisoned, recovering: {}", poisoned);
+            poisoned.into_inner()
+        }
+    };
+    let filter = SearchFilter {
+        language: None,
+        kind: None,
+        file_pattern: None,
+    };
+    let results = index.search_symbols(query, &filter, limit)?;
+    Ok(results.into_iter().map(symbol_from_search_result).collect())
+}
+
 impl FindLogicTool {
-    /// Tier 1: Search using SQLite FTS5 for ultra-fast keyword matching
+    /// Tier 1: Search using Tantivy for fast keyword matching
     pub async fn search_by_keywords(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
         let domain_keywords: Vec<&str> = self.domain.split_whitespace().collect();
         let mut keyword_results: Vec<Symbol> = Vec::new();
 
-        // Use SQLite FTS5 for keyword search
-        debug!("🔍 Using SQLite FTS5 keyword search");
+        debug!("🔍 Using Tantivy keyword search");
         if let Ok(Some(workspace)) = handler.get_workspace().await {
-            if let Some(db) = workspace.db.as_ref() {
-                let db_lock = match db.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!("Database mutex poisoned, recovering: {}", poisoned);
-                        poisoned.into_inner()
-                    }
-                };
-
-                // Search by each keyword using indexed database queries
+            if let Some(search_index) = workspace.search_index.as_ref() {
                 for keyword in &domain_keywords {
-                    if let Ok(results) = db_lock.find_symbols_by_pattern(keyword) {
+                    if let Ok(results) = search_tantivy(search_index, keyword, MAX_KEYWORD_RESULTS)
+                    {
                         for mut symbol in results {
-                            symbol.confidence = Some(0.5); // Base FTS5 score
+                            symbol.confidence = Some(0.5);
                             keyword_results.push(symbol);
                         }
                     }
@@ -41,13 +93,13 @@ impl FindLogicTool {
         }
 
         debug!(
-            "🔍 SQLite FTS5 keyword search found {} candidates",
+            "🔍 Tantivy keyword search found {} candidates",
             keyword_results.len()
         );
         Ok(keyword_results)
     }
 
-    /// Tier 2: Find architectural patterns using tree-sitter AST analysis
+    /// Tier 2: Find architectural patterns using Tantivy search
     pub async fn find_architectural_patterns(
         &self,
         handler: &JulieServerHandler,
@@ -55,22 +107,14 @@ impl FindLogicTool {
         let mut pattern_matches: Vec<Symbol> = Vec::new();
         let domain_keywords: Vec<&str> = self.domain.split_whitespace().collect();
 
-        // Get database for querying
         let workspace = handler
             .get_workspace()
             .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-        let db = workspace
-            .db
+        let search_index = workspace
+            .search_index
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-        let db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
-                poisoned.into_inner()
-            }
-        };
+            .ok_or_else(|| anyhow::anyhow!("Search index not available"))?;
 
         // Pattern 1: Find Service/Controller/Handler classes
         let architectural_patterns = vec![
@@ -88,11 +132,9 @@ impl FindLogicTool {
 
         for pattern in &architectural_patterns {
             for keyword in &domain_keywords {
-                // Search for classes like "PaymentService", "UserController", etc.
                 let query = format!("{}{}", keyword, pattern);
-                if let Ok(results) = db_lock.find_symbols_by_pattern(&query) {
+                if let Ok(results) = search_tantivy(search_index, &query, MAX_KEYWORD_RESULTS) {
                     for mut symbol in results {
-                        // High score for architectural pattern matches
                         if matches!(symbol.kind, SymbolKind::Class | SymbolKind::Struct) {
                             symbol.confidence = Some(0.8);
                             symbol.semantic_group = Some(pattern.to_lowercase());
@@ -120,9 +162,8 @@ impl FindLogicTool {
 
         for prefix in &business_method_prefixes {
             for keyword in &domain_keywords {
-                // Search for methods like "processPayment", "validateUser", etc.
                 let query = format!("{}{}", prefix, keyword);
-                if let Ok(results) = db_lock.find_symbols_by_pattern(&query) {
+                if let Ok(results) = search_tantivy(search_index, &query, MAX_KEYWORD_RESULTS) {
                     for mut symbol in results {
                         if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
                             symbol.confidence = Some(0.7);
@@ -198,153 +239,7 @@ impl FindLogicTool {
         );
     }
 
-    /// Tier 4: Use HNSW semantic search to find conceptually similar business logic
-    pub async fn semantic_business_search(
-        &self,
-        handler: &JulieServerHandler,
-    ) -> Result<Vec<Symbol>> {
-        let mut semantic_matches: Vec<Symbol> = Vec::new();
-
-        // Ensure embedding engine is ready
-        if handler.ensure_embedding_engine().await.is_err() {
-            debug!("🧠 Embedding engine not available, skipping semantic search");
-            return Ok(semantic_matches);
-        }
-
-        // Ensure vector store is ready
-        if handler.ensure_vector_store().await.is_err() {
-            debug!("🧠 Vector store not available, skipping semantic search");
-            return Ok(semantic_matches);
-        }
-
-        // Get workspace components
-        let workspace = handler
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
-
-        let vector_store = match workspace.vector_store.as_ref() {
-            Some(vs) => vs,
-            None => {
-                debug!("🧠 Vector store not initialized");
-                return Ok(semantic_matches);
-            }
-        };
-
-        let db = workspace
-            .db
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
-
-        // Generate embedding for the domain query
-        let query_embedding = {
-            let mut embedding_guard = handler.embedding_engine.write().await;
-            let embedding_engine = match embedding_guard.as_mut() {
-                Some(engine) => engine,
-                None => {
-                    debug!("🧠 Embedding engine not available");
-                    return Ok(semantic_matches);
-                }
-            };
-
-            // Create a temporary symbol from the query
-            let query_symbol = Symbol {
-                id: "query".to_string(),
-                name: self.domain.clone(),
-                kind: SymbolKind::Function,
-                language: "query".to_string(),
-                file_path: "query".to_string(),
-                start_line: 1,
-                start_column: 0,
-                end_line: 1,
-                end_column: self.domain.len() as u32,
-                start_byte: 0,
-                end_byte: self.domain.len() as u32,
-                signature: None,
-                doc_comment: Some(format!("Business logic for: {}", self.domain)),
-                visibility: None,
-                parent_id: None,
-                metadata: None,
-                semantic_group: Some("business".to_string()),
-                confidence: None,
-                code_context: None,
-                content_type: None,
-            };
-
-            let context = crate::embeddings::CodeContext {
-                parent_symbol: None,
-                surrounding_code: None,
-                file_context: Some("".to_string()),
-            };
-
-            embedding_engine.embed_symbol(&query_symbol, &context)?
-        };
-
-        // 🔧 REFACTOR: Search using HNSW with SQLite on-demand vector fetching
-        let store_guard = vector_store.read().await;
-        if !store_guard.has_hnsw_index() {
-            debug!("🧠 HNSW index not available - skipping business logic similarity search");
-            return Ok(semantic_matches);
-        }
-
-        // Search for semantically similar symbols (lower threshold for broader coverage)
-        let search_limit = (self.max_results * 3) as usize; // Get more candidates for filtering
-        let similarity_threshold = 0.2; // Lower threshold for business logic discovery
-
-        let semantic_results = match tokio::task::block_in_place(|| {
-            let db_lock = match db.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
-                    poisoned.into_inner()
-                }
-            };
-            let model_name = "bge-small";
-            store_guard.search_similar_hnsw(
-                &db_lock,
-                &query_embedding,
-                search_limit,
-                similarity_threshold,
-                model_name,
-            )
-        }) {
-            Ok(results) => results,
-            Err(e) => {
-                debug!("🧠 Semantic similarity search failed: {}", e);
-                return Ok(semantic_matches);
-            }
-        };
-        drop(store_guard);
-
-        debug!(
-            "🚀 HNSW search returned {} business-logic candidates",
-            semantic_results.len()
-        );
-
-        // Fetch actual symbols from database
-        let db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                tracing::warn!("Database mutex poisoned, recovering: {}", poisoned);
-                poisoned.into_inner()
-            }
-        };
-        for result in semantic_results {
-            if let Ok(Some(mut symbol)) = db_lock.get_symbol_by_id(&result.symbol_id) {
-                // Score based on semantic similarity
-                symbol.confidence = Some(result.similarity_score);
-                semantic_matches.push(symbol);
-            }
-        }
-
-        debug!(
-            "🧠 Semantic HNSW search found {} conceptually similar symbols",
-            semantic_matches.len()
-        );
-        Ok(semantic_matches)
-    }
-
-    /// Tier 5: Analyze relationship graph to boost important business entities
+    /// Tier 4: Analyze relationship graph to boost important business entities
     pub async fn analyze_business_importance(
         &self,
         symbols: &mut [Symbol],

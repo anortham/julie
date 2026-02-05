@@ -5,9 +5,8 @@
 //! - **fast_refs**: Find all references to a symbol (<20ms)
 //!
 //! Architecture:
-//! - Uses multi-strategy symbol resolution (FTS5 → naming variants → semantic)
+//! - Uses multi-strategy symbol resolution (FTS5 → naming variants)
 //! - Per-workspace database isolation
-//! - CASCADE architecture for progressive enhancement
 //! - Cross-language support through naming convention variants
 
 mod fast_goto;
@@ -15,7 +14,6 @@ mod fast_refs;
 mod formatting;
 mod reference_workspace;
 pub mod resolution; // Public for use by other tools
-mod semantic_matching;
 mod types;
 
 // Re-export public APIs

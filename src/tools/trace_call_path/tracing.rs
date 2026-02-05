@@ -1,7 +1,6 @@
 //! Core call path tracing algorithms
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::CodeContext;
 use crate::extractors::{RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
@@ -9,10 +8,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
 
-use super::cross_language::{
-    find_cross_language_callees, find_cross_language_callers, find_semantic_cross_language_callees,
-    find_semantic_cross_language_callers,
-};
+use super::cross_language::{find_cross_language_callees, find_cross_language_callers};
 use super::types::{CallPathNode, MatchType};
 
 /// Safety limits to prevent explosion on "hub" symbols (e.g., commonly-used functions)
@@ -20,122 +16,11 @@ use super::types::{CallPathNode, MatchType};
 const MAX_CALLERS_PER_LEVEL: usize = 50;
 const MAX_TOTAL_NODES: usize = 500;
 
-/// Find semantic neighbors using vector similarity search
-pub async fn semantic_neighbors(
-    handler: &JulieServerHandler,
-    db: &Arc<Mutex<SymbolDatabase>>,
-    vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
-    symbol: &Symbol,
-    max_results: usize,
-) -> Result<Vec<(Symbol, f32)>> {
-    if max_results == 0 {
-        return Ok(vec![]);
-    }
-
-    // Check if vector store is available
-    let vector_store = match vector_store {
-        Some(store) => store.clone(),
-        None => {
-            debug!("Semantic tracing disabled - no vector store for this workspace");
-            return Ok(vec![]);
-        }
-    };
-
-    // Ensure embedding engine is available
-    if let Err(e) = handler.ensure_embedding_engine().await {
-        debug!(
-            "Semantic tracing disabled - embedding engine unavailable: {}",
-            e
-        );
-        return Ok(vec![]);
-    }
-
-    let db_arc = db.clone();
-
-    // Check if HNSW index is built
-    let store_guard = vector_store.read().await;
-    if !store_guard.has_hnsw_index() {
-        return Ok(vec![]);
-    }
-
-    let mut embedding_guard = handler.embedding_engine.write().await;
-    let embedding_engine = match embedding_guard.as_mut() {
-        Some(engine) => engine,
-        None => return Ok(vec![]),
-    };
-
-    let context = CodeContext {
-        parent_symbol: None,
-        surrounding_code: symbol.code_context.clone(),
-        file_context: Some(symbol.file_path.clone()),
-    };
-
-    let embedding = embedding_engine.embed_symbol(symbol, &context)?;
-    drop(embedding_guard);
-
-    // Use new architecture with SQLite on-demand fetching
-    let semantic_results = match tokio::task::block_in_place(|| {
-        let db_lock = match db_arc.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                tracing::warn!(
-                    "Database mutex poisoned in semantic_neighbors search, recovering: {}",
-                    poisoned
-                );
-                poisoned.into_inner()
-            }
-        };
-        let model_name = "bge-small";
-        store_guard.search_similar_hnsw(
-            &db_lock,
-            &embedding,
-            max_results,
-            0.7, // Hardcoded good balance threshold
-            model_name,
-        )
-    }) {
-        Ok(results) => results,
-        Err(e) => {
-            debug!("Semantic neighbor search failed: {}", e);
-            return Ok(vec![]);
-        }
-    };
-    drop(store_guard);
-
-    debug!(
-        "🚀 HNSW search found {} semantic neighbors",
-        semantic_results.len()
-    );
-
-    let mut matches = Vec::new();
-    let db_lock = match db_arc.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            tracing::warn!(
-                "Database mutex poisoned in semantic_neighbors fetch, recovering: {}",
-                poisoned
-            );
-            poisoned.into_inner()
-        }
-    };
-    for result in semantic_results {
-        if let Ok(Some(candidate)) = db_lock.get_symbol_by_id(&result.symbol_id) {
-            if candidate.id != symbol.id {
-                matches.push((candidate, result.similarity_score));
-            }
-        }
-    }
-    drop(db_lock);
-
-    Ok(matches)
-}
-
 /// Trace upstream (find callers) recursively
 #[async_recursion::async_recursion]
 pub async fn trace_upstream(
     handler: &JulieServerHandler,
     db: &Arc<Mutex<SymbolDatabase>>,
-    vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
     symbol: &Symbol,
     current_depth: u32,
     visited: &mut HashSet<String>,
@@ -237,7 +122,6 @@ pub async fn trace_upstream(
             node.children = trace_upstream(
                 handler,
                 db,
-                vector_store,
                 &caller_symbol,
                 current_depth + 1,
                 visited,
@@ -281,7 +165,6 @@ pub async fn trace_upstream(
                 node.children = trace_upstream(
                     handler,
                     db,
-                    vector_store,
                     &caller_symbol,
                     current_depth + 1,
                     visited,
@@ -291,50 +174,6 @@ pub async fn trace_upstream(
             }
 
             nodes.push(node);
-        }
-
-        // Skip semantic search if we've already hit the limit
-        if nodes.len() >= MAX_TOTAL_NODES {
-            debug!("⚠️  Skipping semantic search - already at MAX_TOTAL_NODES limit");
-        } else {
-            let semantic_callers =
-                find_semantic_cross_language_callers(handler, db, vector_store, symbol).await?;
-
-            for semantic in semantic_callers {
-                // Safety: stop if we've hit the total node limit
-                if nodes.len() >= MAX_TOTAL_NODES {
-                    debug!("⚠️  Hit MAX_TOTAL_NODES limit ({}), stopping semantic search", MAX_TOTAL_NODES);
-                    break;
-                }
-                if nodes.iter().any(|n| n.symbol.id == semantic.symbol.id) {
-                    continue;
-                }
-
-                let mut node = CallPathNode {
-                    symbol: semantic.symbol.clone(),
-                    level: current_depth,
-                    match_type: MatchType::Semantic,
-                    relationship_kind: Some(semantic.relationship_kind.clone()),
-                    similarity: Some(semantic.similarity),
-                    children: vec![],
-                };
-
-                let cross_lang_limit = get_cross_language_depth_limit(max_depth);
-                if current_depth + 1 < cross_lang_limit {
-                    node.children = trace_upstream(
-                        handler,
-                        db,
-                        vector_store,
-                        &semantic.symbol,
-                        current_depth + 1,
-                        visited,
-                        max_depth,
-                    )
-                    .await?;
-                }
-
-                nodes.push(node);
-            }
         }
     }
 
@@ -346,7 +185,6 @@ pub async fn trace_upstream(
 pub async fn trace_downstream(
     handler: &JulieServerHandler,
     db: &Arc<Mutex<SymbolDatabase>>,
-    vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
     symbol: &Symbol,
     current_depth: u32,
     visited: &mut HashSet<String>,
@@ -447,7 +285,6 @@ pub async fn trace_downstream(
             node.children = trace_downstream(
                 handler,
                 db,
-                vector_store,
                 &callee_symbol,
                 current_depth + 1,
                 visited,
@@ -491,7 +328,6 @@ pub async fn trace_downstream(
                 node.children = trace_downstream(
                     handler,
                     db,
-                    vector_store,
                     &callee_symbol,
                     current_depth + 1,
                     visited,
@@ -501,50 +337,6 @@ pub async fn trace_downstream(
             }
 
             nodes.push(node);
-        }
-
-        // Skip semantic search if we've already hit the limit
-        if nodes.len() >= MAX_TOTAL_NODES {
-            debug!("⚠️  Skipping semantic search - already at MAX_TOTAL_NODES limit");
-        } else {
-            let semantic_callees =
-                find_semantic_cross_language_callees(handler, db, vector_store, symbol).await?;
-
-            for semantic in semantic_callees {
-                // Safety: stop if we've hit the total node limit
-                if nodes.len() >= MAX_TOTAL_NODES {
-                    debug!("⚠️  Hit MAX_TOTAL_NODES limit ({}), stopping semantic search", MAX_TOTAL_NODES);
-                    break;
-                }
-                if nodes.iter().any(|n| n.symbol.id == semantic.symbol.id) {
-                    continue;
-                }
-
-                let mut node = CallPathNode {
-                    symbol: semantic.symbol.clone(),
-                    level: current_depth,
-                    match_type: MatchType::Semantic,
-                    relationship_kind: Some(semantic.relationship_kind.clone()),
-                    similarity: Some(semantic.similarity),
-                    children: vec![],
-                };
-
-                let cross_lang_limit = get_cross_language_depth_limit(max_depth);
-                if current_depth + 1 < cross_lang_limit {
-                    node.children = trace_downstream(
-                        handler,
-                        db,
-                        vector_store,
-                        &semantic.symbol,
-                        current_depth + 1,
-                        visited,
-                        max_depth,
-                    )
-                    .await?;
-                }
-
-                nodes.push(node);
-            }
         }
     }
 

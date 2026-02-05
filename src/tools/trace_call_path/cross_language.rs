@@ -1,15 +1,11 @@
-//! Cross-language call path matching using naming variants and semantic similarity
+//! Cross-language call path matching using naming variants
 
 use crate::database::SymbolDatabase;
-use crate::extractors::{RelationshipKind, Symbol};
-use crate::handler::JulieServerHandler;
+use crate::extractors::Symbol;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 use anyhow::Result;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
-
-use super::tracing::semantic_neighbors;
-use super::types::SemanticMatch;
 
 /// Find cross-language callers using naming variants
 pub async fn find_cross_language_callers(
@@ -111,130 +107,4 @@ pub async fn find_cross_language_callees(
     );
 
     Ok(cross_lang_symbols)
-}
-
-/// Find semantic cross-language callers using embedding similarity
-pub async fn find_semantic_cross_language_callers(
-    handler: &JulieServerHandler,
-    db: &Arc<Mutex<SymbolDatabase>>,
-    vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
-    symbol: &Symbol,
-) -> Result<Vec<SemanticMatch>> {
-    // Use hardcoded semantic limit for good balance between coverage and performance
-    let limit = 8;
-    let candidates = semantic_neighbors(handler, db, vector_store, symbol, limit).await?;
-
-    if candidates.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let mut matches = Vec::new();
-    let db_lock = match db.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            tracing::warn!(
-                "Database mutex poisoned in find_semantic_cross_language_callers, recovering: {}",
-                poisoned
-            );
-            poisoned.into_inner()
-        }
-    };
-
-    for (candidate, similarity) in candidates {
-        // Only match cross-language symbols (that's the whole point!)
-        if candidate.language == symbol.language {
-            continue;
-        }
-
-        // Check if there's an existing relationship (for metadata only)
-        // But semantic match is VALID even without a relationship!
-        let relationships = db_lock.get_relationships_for_symbol(&candidate.id).ok();
-        let relationship_kind = relationships
-            .and_then(|rels| {
-                rels.into_iter().find(|r| {
-                    matches!(
-                        r.kind,
-                        RelationshipKind::Calls | RelationshipKind::References
-                    ) && r.from_symbol_id == candidate.id
-                        && r.to_symbol_id == symbol.id
-                })
-            })
-            .map(|r| r.kind)
-            .unwrap_or(RelationshipKind::Calls); // Default to Calls for semantic bridges
-
-        // Accept ALL cross-language semantic matches above threshold
-        // This is how we bridge language gaps!
-        matches.push(SemanticMatch {
-            symbol: candidate,
-            relationship_kind,
-            similarity,
-        });
-    }
-
-    drop(db_lock);
-
-    Ok(matches)
-}
-
-/// Find semantic cross-language callees using embedding similarity
-pub async fn find_semantic_cross_language_callees(
-    handler: &JulieServerHandler,
-    db: &Arc<Mutex<SymbolDatabase>>,
-    vector_store: &Option<Arc<tokio::sync::RwLock<crate::embeddings::vector_store::VectorStore>>>,
-    symbol: &Symbol,
-) -> Result<Vec<SemanticMatch>> {
-    // Use hardcoded semantic limit for good balance between coverage and performance
-    let limit = 8;
-    let candidates = semantic_neighbors(handler, db, vector_store, symbol, limit).await?;
-
-    if candidates.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let mut matches = Vec::new();
-    let db_lock = match db.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            tracing::warn!(
-                "Database mutex poisoned in find_semantic_cross_language_callees, recovering: {}",
-                poisoned
-            );
-            poisoned.into_inner()
-        }
-    };
-
-    for (candidate, similarity) in candidates {
-        // Only match cross-language symbols (that's the whole point!)
-        if candidate.language == symbol.language {
-            continue;
-        }
-
-        // Check if there's an existing relationship (for metadata only)
-        // But semantic match is VALID even without a relationship!
-        let relationships = db_lock.get_relationships_to_symbol(&candidate.id).ok();
-        let relationship_kind = relationships
-            .and_then(|rels| {
-                rels.into_iter().find(|r| {
-                    matches!(
-                        r.kind,
-                        RelationshipKind::Calls | RelationshipKind::References
-                    ) && r.from_symbol_id == symbol.id
-                        && r.to_symbol_id == candidate.id
-                })
-            })
-            .map(|r| r.kind)
-            .unwrap_or(RelationshipKind::Calls); // Default to Calls for semantic bridges
-
-        // Accept ALL cross-language semantic matches above threshold
-        // This is how we bridge language gaps!
-        matches.push(SemanticMatch {
-            symbol: candidate,
-            relationship_kind,
-            similarity,
-        });
-    }
-
-    drop(db_lock);
-
-    Ok(matches)
 }

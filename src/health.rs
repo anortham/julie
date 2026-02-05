@@ -12,9 +12,9 @@ use tracing::{debug, warn};
 pub enum SystemStatus {
     /// No workspace or database available
     NotReady,
-    /// Only SQLite database is ready (FTS5 search available)
+    /// SQLite + Tantivy search available
     SqliteOnly { symbol_count: i64 },
-    /// All systems operational (SQLite FTS5 + Embeddings)
+    /// All systems operational (SQLite + Tantivy search)
     FullyReady { symbol_count: i64 },
 }
 
@@ -83,16 +83,8 @@ impl HealthChecker {
                 return Ok(SystemStatus::NotReady);
             }
 
-            let embeddings_ready = workspace.embeddings.is_some()
-                && Self::has_embedding_files(
-                    &workspace.workspace_vectors_path(&target_workspace_id),
-                );
-
-            if embeddings_ready {
-                Ok(SystemStatus::FullyReady { symbol_count })
-            } else {
-                Ok(SystemStatus::SqliteOnly { symbol_count })
-            }
+            // With Tantivy as the search engine, if symbols are indexed we're fully ready
+            Ok(SystemStatus::FullyReady { symbol_count })
         } else {
             let ref_db_path = workspace.workspace_db_path(&target_workspace_id);
             if !ref_db_path.exists() {
@@ -139,11 +131,11 @@ impl HealthChecker {
                 Ok("❌ System not ready. Run 'manage_workspace index' to initialize.".to_string())
             }
             SystemStatus::SqliteOnly { symbol_count } => Ok(format!(
-                "🟢 Ready: {} symbols available via SQLite FTS5 search (<5ms)",
+                "🟢 Ready: {} symbols available via Tantivy search",
                 symbol_count
             )),
             SystemStatus::FullyReady { symbol_count } => Ok(format!(
-                "🟢 Fully operational: {} symbols with semantic search enabled!",
+                "🟢 Fully operational: {} symbols with Tantivy search",
                 symbol_count
             )),
         }
@@ -190,41 +182,13 @@ impl HealthChecker {
         let workspace_id_result =
             registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""));
 
-        // SQLite FTS5 search status (always available if database exists)
-        report.push_str("✅ SQLite FTS5 search ready (<5ms queries)\n");
-
-        // Embeddings status
-        if let Ok(workspace_id) = &workspace_id_result {
-            let embeddings_path = workspace.workspace_vectors_path(workspace_id);
-            if Self::has_embedding_files(&embeddings_path) {
-                report.push_str("✅ Embedding vectors ready\n");
-            } else {
-                report.push_str("🔄 Embedding vectors building\n");
-            }
+        // Search status
+        if workspace_id_result.is_ok() {
+            report.push_str("✅ Tantivy search ready\n");
         } else {
             report.push_str("❌ Could not determine workspace ID\n");
         }
 
         Ok(report)
-    }
-
-    /// Check if a directory contains actual embedding files (not just empty directory)
-    fn has_embedding_files(path: &std::path::Path) -> bool {
-        if !path.exists() || !path.is_dir() {
-            return false;
-        }
-
-        // Check if directory has any files (not just subdirectories)
-        match std::fs::read_dir(path) {
-            Ok(entries) => {
-                for entry in entries.flatten() {
-                    if entry.path().is_file() {
-                        return true; // Found at least one file
-                    }
-                }
-                false // Directory exists but no files
-            }
-            Err(_) => false, // Can't read directory
-        }
     }
 }

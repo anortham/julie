@@ -44,17 +44,11 @@ impl SymbolDatabase {
 
         let mut result: Result<()> = (|| -> Result<()> {
             // 🔥 CRITICAL FIX: Wrap ENTIRE bulk operation in outer transaction for atomicity
-            // If crash happens anywhere, rollback restores ALL state (triggers, indexes, symbols, FTS5)
+            // If crash happens anywhere, rollback restores ALL state (indexes, symbols)
             debug!("🔐 Starting atomic transaction for entire bulk operation");
             let mut outer_tx = self.conn.transaction()?;
 
-            // STEP 1: Disable FTS triggers to prevent row-by-row FTS updates (WITHIN TRANSACTION)
-            debug!("🔇 Disabling FTS triggers for bulk insert optimization");
-            outer_tx.execute("DROP TRIGGER IF EXISTS symbols_ai", [])?;
-            outer_tx.execute("DROP TRIGGER IF EXISTS symbols_ad", [])?;
-            outer_tx.execute("DROP TRIGGER IF EXISTS symbols_au", [])?;
-
-            // STEP 2: Drop all indexes for maximum insert speed (WITHIN TRANSACTION)
+            // STEP 1: Drop all indexes for maximum insert speed (WITHIN TRANSACTION)
             debug!("🗑️ Dropping indexes for bulk insert optimization");
             let indexes = [
                 "idx_symbols_name",
@@ -249,20 +243,6 @@ impl SymbolDatabase {
             drop(stmt);
             tx.commit()?; // Commit savepoint
 
-            // STEP 5: Rebuild FTS5 index (WITHIN OUTER TRANSACTION - atomic with inserts!)
-            debug!("🔄 Rebuilding symbols FTS index atomically");
-            outer_tx.execute(
-                "INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')",
-                [],
-            )?;
-            outer_tx.execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
-
-            // STEP 5b: Optimize FTS5 index for better query performance
-            outer_tx.execute(
-                "INSERT INTO symbols_fts(symbols_fts) VALUES('optimize')",
-                [],
-            )?;
-
             // STEP 6: Recreate indexes (WITHIN OUTER TRANSACTION)
             debug!("🏗️ Rebuilding symbol indexes after bulk insert");
             outer_tx.execute(
@@ -290,34 +270,7 @@ impl SymbolDatabase {
                 [],
             )?;
 
-            // STEP 7: Re-enable FTS triggers (WITHIN OUTER TRANSACTION)
-            debug!("🔊 Re-enabling FTS triggers");
-            outer_tx.execute(
-                "CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
-                    INSERT INTO symbols_fts(rowid, name, signature, doc_comment, code_context)
-                    VALUES (new.rowid, new.name, new.signature, new.doc_comment, new.code_context);
-                END",
-                [],
-            )?;
-            outer_tx.execute(
-                "CREATE TRIGGER IF NOT EXISTS symbols_ad AFTER DELETE ON symbols BEGIN
-                    DELETE FROM symbols_fts WHERE rowid = old.rowid;
-                END",
-                [],
-            )?;
-            outer_tx.execute(
-                "CREATE TRIGGER IF NOT EXISTS symbols_au AFTER UPDATE ON symbols BEGIN
-                    UPDATE symbols_fts
-                    SET name = new.name,
-                        signature = new.signature,
-                        doc_comment = new.doc_comment,
-                        code_context = new.code_context
-                    WHERE rowid = old.rowid;
-                END",
-                [],
-            )?;
-
-            // STEP 8: Commit ENTIRE operation atomically
+            // STEP 7: Commit ENTIRE operation atomically
             debug!("💾 Committing atomic bulk operation");
             outer_tx.commit()?;
 
@@ -333,10 +286,8 @@ impl SymbolDatabase {
 
         // 🔥 ATOMICITY WIN: No manual cleanup needed!
         // If transaction failed, SQLite rolled back EVERYTHING automatically:
-        // - Triggers restored to original state
         // - Indexes restored to original state
         // - Symbols not inserted
-        // - FTS5 unchanged
         // Manual cleanup code removed - transaction guarantees consistency!
 
         // Restore original synchronous setting (outside transaction)

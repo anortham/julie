@@ -1,9 +1,9 @@
 //! Tests for FastExploreTool - Multi-mode code exploration
 //!
 //! Tests cover:
-//! - Similar mode: Semantic duplicate detection using HNSW embeddings
+//! - Similar mode: Semantic duplicate detection
 //! - Error handling: Missing parameters, threshold validation
-//! - Edge cases: No embeddings, symbol not found, empty results
+//! - Edge cases: Symbol not found, empty results
 //!
 //! Note: Following TDD methodology - write failing tests first, then implement/verify.
 
@@ -89,8 +89,8 @@ pub fn formatUsername(name: &str) -> String {
     Ok(())
 }
 
-/// Helper to index workspace and wait for embeddings
-async fn index_workspace_with_embeddings(
+/// Helper to index workspace and wait for completion
+async fn index_workspace(
     handler: &JulieServerHandler,
     workspace_path: &str,
 ) -> Result<()> {
@@ -104,7 +104,7 @@ async fn index_workspace_with_embeddings(
     };
     index_tool.call_tool(handler).await?;
 
-    // Wait for embeddings to generate (background process)
+    // Wait for indexing to complete
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
     Ok(())
@@ -115,12 +115,12 @@ async fn index_workspace_with_embeddings(
 // ═══════════════════════════════════════════════════════════════════
 
 #[tokio::test]
-#[ignore] // Requires embeddings/vector store to be initialized
+#[ignore] // Requires indexed workspace with symbols
 async fn test_similar_mode_basic_finds_duplicates() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
     create_similar_code_codebase(&temp_dir).await?;
-    index_workspace_with_embeddings(&handler, &workspace_path).await?;
+    index_workspace(&handler, &workspace_path).await?;
 
     let tool = FastExploreTool {
         mode: ExploreMode::Similar,
@@ -156,12 +156,12 @@ async fn test_similar_mode_basic_finds_duplicates() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore] // Requires embeddings/vector store to be initialized
+#[ignore] // Requires indexed workspace with symbols
 async fn test_similar_mode_threshold_filtering() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
     create_similar_code_codebase(&temp_dir).await?;
-    index_workspace_with_embeddings(&handler, &workspace_path).await?;
+    index_workspace(&handler, &workspace_path).await?;
 
     // Test with high threshold (0.9) - should work
     let tool_high = FastExploreTool {
@@ -309,12 +309,12 @@ async fn test_similar_mode_invalid_threshold() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore] // Requires embeddings/vector store to be initialized
+#[ignore] // Requires indexed workspace with symbols
 async fn test_similar_mode_default_threshold() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
     create_similar_code_codebase(&temp_dir).await?;
-    index_workspace_with_embeddings(&handler, &workspace_path).await?;
+    index_workspace(&handler, &workspace_path).await?;
 
     let tool = FastExploreTool {
         mode: ExploreMode::Similar,
@@ -421,7 +421,7 @@ async fn test_deps_mode_finds_direct_dependencies() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
     create_dependency_codebase(&temp_dir).await?;
-    index_workspace_with_embeddings(&handler, &workspace_path).await?;
+    index_workspace(&handler, &workspace_path).await?;
 
     let tool = FastExploreTool {
         mode: ExploreMode::Dependencies,
@@ -461,7 +461,7 @@ async fn test_deps_mode_transitive_dependencies() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
     create_dependency_codebase(&temp_dir).await?;
-    index_workspace_with_embeddings(&handler, &workspace_path).await?;
+    index_workspace(&handler, &workspace_path).await?;
 
     let tool = FastExploreTool {
         mode: ExploreMode::Dependencies,
@@ -501,7 +501,7 @@ async fn test_deps_mode_depth_limit_respected() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
     create_dependency_codebase(&temp_dir).await?;
-    index_workspace_with_embeddings(&handler, &workspace_path).await?;
+    index_workspace(&handler, &workspace_path).await?;
 
     // Test depth=1
     let tool_shallow = FastExploreTool {
@@ -563,7 +563,7 @@ async fn test_deps_mode_default_depth() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
     create_dependency_codebase(&temp_dir).await?;
-    index_workspace_with_embeddings(&handler, &workspace_path).await?;
+    index_workspace(&handler, &workspace_path).await?;
 
     let tool = FastExploreTool {
         mode: ExploreMode::Dependencies,
@@ -636,7 +636,7 @@ async fn test_deps_mode_symbol_not_found() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
     create_dependency_codebase(&temp_dir).await?;
-    index_workspace_with_embeddings(&handler, &workspace_path).await?;
+    index_workspace(&handler, &workspace_path).await?;
 
     let tool = FastExploreTool {
         mode: ExploreMode::Dependencies,

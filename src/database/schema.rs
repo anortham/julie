@@ -22,7 +22,6 @@ impl SymbolDatabase {
         self.create_identifiers_table()?; // Reference tracking
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
-        self.create_embeddings_table()?;
 
         // Create memory views (depends on files table)
         self.create_memories_view()?;
@@ -94,93 +93,6 @@ impl SymbolDatabase {
 
         debug!("Created files table and indexes");
 
-        // CASCADE: Create FTS5 table and triggers
-        self.create_files_fts_table()?;
-        self.create_files_fts_triggers()?;
-
-        Ok(())
-    }
-
-    /// CASCADE: Create FTS5 virtual table for full-text search on file content
-    pub(crate) fn create_files_fts_table(&self) -> Result<()> {
-        self.conn.execute(
-            r#"CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
-                path,
-                content,
-                tokenize = "unicode61 separators '_::->.'",
-                prefix='2 3 4 5',
-                content='files',
-                content_rowid='rowid'
-            )"#,
-            [],
-        )?;
-        debug!("Created files_fts virtual table with unicode61 tokenizer and prefix indexes");
-        Ok(())
-    }
-
-    /// CASCADE: Create triggers to keep FTS5 in sync with files table
-    pub(crate) fn create_files_fts_triggers(&self) -> Result<()> {
-        // Trigger for INSERT
-        self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS files_ai AFTER INSERT ON files BEGIN
-                INSERT INTO files_fts(rowid, path, content)
-                VALUES (new.rowid, new.path, new.content);
-            END",
-            [],
-        )?;
-
-        // Trigger for DELETE
-        self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS files_ad AFTER DELETE ON files BEGIN
-                DELETE FROM files_fts WHERE rowid = old.rowid;
-            END",
-            [],
-        )?;
-
-        // Trigger for UPDATE
-        self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS files_au AFTER UPDATE ON files BEGIN
-                UPDATE files_fts
-                SET path = new.path, content = new.content
-                WHERE rowid = old.rowid;
-            END",
-            [],
-        )?;
-
-        debug!("Created FTS5 synchronization triggers");
-        Ok(())
-    }
-
-    /// CASCADE: Disable FTS5 triggers for bulk operations
-    /// This prevents row-by-row FTS updates during bulk inserts
-    #[allow(dead_code)]
-    pub(crate) fn disable_files_fts_triggers(&self) -> Result<()> {
-        self.conn.execute("DROP TRIGGER IF EXISTS files_ai", [])?;
-        self.conn.execute("DROP TRIGGER IF EXISTS files_ad", [])?;
-        self.conn.execute("DROP TRIGGER IF EXISTS files_au", [])?;
-        debug!("Disabled files FTS5 triggers for bulk operation");
-        Ok(())
-    }
-
-    /// CASCADE: Re-enable FTS5 triggers after bulk operations
-    #[allow(dead_code)]
-    pub(crate) fn enable_files_fts_triggers(&self) -> Result<()> {
-        self.create_files_fts_triggers()?;
-        debug!("Re-enabled files FTS5 triggers");
-        Ok(())
-    }
-
-    /// CASCADE: Rebuild files FTS5 index atomically
-    /// Use after bulk operations with disabled triggers
-    pub(crate) fn rebuild_files_fts(&self) -> Result<()> {
-        debug!("Rebuilding files FTS5 index...");
-        // First, delete all existing FTS content
-        self.conn
-            .execute("INSERT INTO files_fts(files_fts) VALUES('delete-all')", [])?;
-        // Then rebuild from base table
-        self.conn
-            .execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
-        debug!("✅ Files FTS5 index rebuilt successfully");
         Ok(())
     }
 
@@ -254,101 +166,6 @@ impl SymbolDatabase {
 
         debug!("Created symbols table and indexes");
 
-        // CASCADE: Create FTS5 table and triggers for symbols
-        self.create_symbols_fts_table()?;
-        self.create_symbols_fts_triggers()?;
-
-        Ok(())
-    }
-
-    /// CASCADE: Create FTS5 virtual table for full-text search on symbols
-    /// Indexes name, signature, doc_comment, and code_context for fast relevance-ranked search
-    pub(crate) fn create_symbols_fts_table(&self) -> Result<()> {
-        self.conn.execute(
-            r#"CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
-                name,
-                signature,
-                doc_comment,
-                code_context,
-                tokenize = "unicode61 separators '_::->.'",
-                prefix='2 3 4 5',
-                content='symbols',
-                content_rowid='rowid'
-            )"#,
-            [],
-        )?;
-        debug!("Created symbols_fts virtual table with unicode61 tokenizer and prefix indexes");
-        Ok(())
-    }
-
-    /// CASCADE: Create triggers to keep symbols_fts in sync with symbols table
-    pub(crate) fn create_symbols_fts_triggers(&self) -> Result<()> {
-        // Trigger for INSERT
-        self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS symbols_ai AFTER INSERT ON symbols BEGIN
-                INSERT INTO symbols_fts(rowid, name, signature, doc_comment, code_context)
-                VALUES (new.rowid, new.name, new.signature, new.doc_comment, new.code_context);
-            END",
-            [],
-        )?;
-
-        // Trigger for DELETE
-        self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS symbols_ad AFTER DELETE ON symbols BEGIN
-                DELETE FROM symbols_fts WHERE rowid = old.rowid;
-            END",
-            [],
-        )?;
-
-        // Trigger for UPDATE
-        self.conn.execute(
-            "CREATE TRIGGER IF NOT EXISTS symbols_au AFTER UPDATE ON symbols BEGIN
-                UPDATE symbols_fts
-                SET name = new.name,
-                    signature = new.signature,
-                    doc_comment = new.doc_comment,
-                    code_context = new.code_context
-                WHERE rowid = old.rowid;
-            END",
-            [],
-        )?;
-
-        debug!("Created symbols_fts synchronization triggers");
-        Ok(())
-    }
-
-    /// CASCADE: Disable symbols FTS5 triggers for bulk operations
-    /// This prevents row-by-row FTS updates during bulk inserts
-    #[allow(dead_code)]
-    pub(crate) fn disable_symbols_fts_triggers(&self) -> Result<()> {
-        self.conn.execute("DROP TRIGGER IF EXISTS symbols_ai", [])?;
-        self.conn.execute("DROP TRIGGER IF EXISTS symbols_ad", [])?;
-        self.conn.execute("DROP TRIGGER IF EXISTS symbols_au", [])?;
-        debug!("Disabled symbols FTS5 triggers for bulk operation");
-        Ok(())
-    }
-
-    /// CASCADE: Re-enable symbols FTS5 triggers after bulk operations
-    #[allow(dead_code)]
-    pub(crate) fn enable_symbols_fts_triggers(&self) -> Result<()> {
-        self.create_symbols_fts_triggers()?;
-        debug!("Re-enabled symbols FTS5 triggers");
-        Ok(())
-    }
-
-    /// CASCADE: Rebuild symbols FTS5 index atomically
-    /// Use after bulk operations with disabled triggers
-    pub(crate) fn rebuild_symbols_fts(&self) -> Result<()> {
-        debug!("Rebuilding symbols FTS5 index...");
-        // First, delete all existing FTS content
-        self.conn.execute(
-            "INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')",
-            [],
-        )?;
-        // Then rebuild from base table
-        self.conn
-            .execute("INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')", [])?;
-        debug!("✅ Symbols FTS5 index rebuilt successfully");
         Ok(())
     }
 
@@ -491,48 +308,6 @@ impl SymbolDatabase {
         )?;
 
         debug!("Created relationships table and indexes");
-        Ok(())
-    }
-
-    /// Create the embeddings table for vector mapping
-    pub(crate) fn create_embeddings_table(&self) -> Result<()> {
-        // Metadata table: maps symbol_id to vector_id
-        self.conn.execute(
-            "CREATE TABLE IF NOT EXISTS embeddings (
-                symbol_id TEXT NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
-                vector_id TEXT NOT NULL,
-                model_name TEXT NOT NULL,
-                embedding_hash TEXT,
-                created_at INTEGER DEFAULT 0,
-
-                PRIMARY KEY (symbol_id, model_name)
-            )",
-            [],
-        )?;
-
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_embeddings_vector ON embeddings(vector_id)",
-            [],
-        )?;
-
-        // Vector data table: stores actual f32 vector arrays as BLOBs
-        self.conn.execute(
-            "CREATE TABLE IF NOT EXISTS embedding_vectors (
-                vector_id TEXT PRIMARY KEY,
-                dimensions INTEGER NOT NULL,
-                vector_data BLOB NOT NULL,
-                model_name TEXT NOT NULL,
-                created_at INTEGER DEFAULT 0
-            )",
-            [],
-        )?;
-
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_embedding_vectors_model ON embedding_vectors(model_name)",
-            [],
-        )?;
-
-        debug!("Created embeddings and embedding_vectors tables with indexes");
         Ok(())
     }
 

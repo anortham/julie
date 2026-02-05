@@ -26,35 +26,15 @@ pub mod shared_tests; // Shared tool infrastructure tests (create_toonable_resul
 pub mod main_error_handling; // MCP server initialization and runtime error handling
 
 // ============================================================================
-// CLI TESTS - Command-line interface integration tests
-// ============================================================================
-pub mod cli {
-    pub mod codesearch; // CLI integration tests for julie-codesearch (scan/update)
-    pub mod output; // CLI output formatting tests
-    pub mod parallel; // CLI parallel execution tests
-    pub mod progress;
-    pub mod semantic; // CLI integration tests for julie-semantic (embed with HNSW)
-    // CLI progress indicator tests
-}
-
-// ============================================================================
-// CORE SYSTEM TESTS - Database, embeddings, handlers, language support
+// CORE SYSTEM TESTS - Database, handlers, language support
 // ============================================================================
 pub mod core {
     pub mod database; // Database operations and SQLite tests
     pub mod handler; // MCP handler tests
     pub mod language; // Language detection and support tests
-    // pub mod test_bulk_store_types; // TDD Phase 2: bulk_store_types tests (TODO: restore when implementing)
     pub mod tracing; // Tracing and logging tests
     pub mod workspace_init; // Workspace root detection and initialization tests
-
-    pub mod embeddings; // Embedding tests with cross-language support
 }
-
-// ============================================================================
-// EMBEDDING TESTS - Batch sizing, memory pressure, GPU handling
-// ============================================================================
-pub mod embedding_batch_sizing_tests; // Embedding batch sizing tests (DirectML memory pressure)
 
 // ============================================================================
 // REGRESSION PREVENTION TESTS - Catch recurring bugs before they ship
@@ -135,24 +115,15 @@ pub mod utils {
 pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
     pub mod documentation_indexing; // Documentation indexing E2E tests (RAG POC)
-    pub mod fts5_integrity; // FTS5 integrity check and auto-rebuild tests (TDD)
-    pub mod fts5_minimal_repro; // FTS5 corruption minimal reproduction test
-    pub mod fts5_orphan_cleanup_bug; // FTS5 corruption from clean_orphaned_files loop (TDD)
-    pub mod fts5_rowid_corruption; // FTS5 rowid corruption from unnecessary rebuild (TDD)
-    pub mod fts5_sanitization; // FTS5 query sanitization tests
     pub mod lock_contention; // Lock contention regression tests
     pub mod plan_tool; // PlanTool integration tests (Phase 1.5 - Mutable Plans)
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests
     pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, FTS5 syntax, limit/ranking)
-    pub mod semantic_filtering; // Semantic search filtering under-delivery tests (Finding #5 fix)
     pub mod stale_index_detection; // Stale index detection tests
     pub mod tracing;
-    pub mod un_embeddable_symbols; // Un-embeddable symbols SQL filtering tests (Bug #3 fix)
-    pub mod vector_store_reload; // Vector store reload mechanism tests (Bug #2 fix)
     pub mod watcher; // File watcher tests
-    pub mod watcher_embeddings; // File watcher embeddings persistence tests (Bug #1 fix)
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests // Tracing integration tests (dogfooding tests)
     // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED

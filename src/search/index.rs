@@ -19,6 +19,7 @@ use crate::search::error::{Result, SearchError};
 use crate::search::language_config::LanguageConfigs;
 use crate::search::query::{build_content_query, build_symbol_query};
 use crate::search::schema::{create_schema, SchemaFields};
+use crate::search::scoring::apply_important_patterns_boost;
 use crate::search::tokenizer::CodeTokenizer;
 
 const WRITER_HEAP_SIZE: usize = 50_000_000; // 50MB
@@ -109,19 +110,22 @@ pub struct SearchIndex {
     reader: IndexReader,
     writer: Mutex<Option<IndexWriter>>,
     schema_fields: SchemaFields,
+    /// Language configs for post-search scoring (important_patterns boost).
+    /// Present when created via `_with_language_configs` constructors.
+    language_configs: Option<LanguageConfigs>,
 }
 
 impl SearchIndex {
     /// Create a new index at the given directory path using default patterns.
     pub fn create(path: &Path) -> Result<Self> {
         let tokenizer = CodeTokenizer::with_default_patterns();
-        Self::create_with_tokenizer(path, tokenizer)
+        Self::create_with_tokenizer(path, tokenizer, None)
     }
 
     /// Create a new index with language-specific tokenizer patterns.
     pub fn create_with_language_configs(path: &Path, configs: &LanguageConfigs) -> Result<Self> {
         let tokenizer = CodeTokenizer::from_language_configs(configs);
-        Self::create_with_tokenizer(path, tokenizer)
+        Self::create_with_tokenizer(path, tokenizer, Some(configs.clone()))
     }
 
     /// Open an existing index at the given directory path.
@@ -130,7 +134,7 @@ impl SearchIndex {
             return Err(SearchError::IndexNotFound(path.display().to_string()));
         }
         let tokenizer = CodeTokenizer::with_default_patterns();
-        Self::open_with_tokenizer(path, tokenizer)
+        Self::open_with_tokenizer(path, tokenizer, None)
     }
 
     /// Open an existing index with language-specific tokenizer patterns.
@@ -139,13 +143,13 @@ impl SearchIndex {
             return Err(SearchError::IndexNotFound(path.display().to_string()));
         }
         let tokenizer = CodeTokenizer::from_language_configs(configs);
-        Self::open_with_tokenizer(path, tokenizer)
+        Self::open_with_tokenizer(path, tokenizer, Some(configs.clone()))
     }
 
     /// Open an existing index or create a new one if it doesn't exist.
     pub fn open_or_create(path: &Path) -> Result<Self> {
         let tokenizer = CodeTokenizer::with_default_patterns();
-        Self::open_or_create_with_tokenizer(path, tokenizer)
+        Self::open_or_create_with_tokenizer(path, tokenizer, None)
     }
 
     /// Open an existing index or create a new one, using language-specific tokenizer patterns.
@@ -154,7 +158,7 @@ impl SearchIndex {
         configs: &LanguageConfigs,
     ) -> Result<Self> {
         let tokenizer = CodeTokenizer::from_language_configs(configs);
-        Self::open_or_create_with_tokenizer(path, tokenizer)
+        Self::open_or_create_with_tokenizer(path, tokenizer, Some(configs.clone()))
     }
 
     /// Get the total number of documents in the index.
@@ -269,6 +273,11 @@ impl SearchIndex {
             });
         }
 
+        // Apply important_patterns boost if language configs are available
+        if let Some(configs) = &self.language_configs {
+            apply_important_patterns_boost(&mut results, configs);
+        }
+
         Ok(results)
     }
 
@@ -312,7 +321,11 @@ impl SearchIndex {
 
     // --- Private helpers ---
 
-    fn open_or_create_with_tokenizer(path: &Path, tokenizer: CodeTokenizer) -> Result<Self> {
+    fn open_or_create_with_tokenizer(
+        path: &Path,
+        tokenizer: CodeTokenizer,
+        language_configs: Option<LanguageConfigs>,
+    ) -> Result<Self> {
         let schema = create_schema();
         let schema_fields = SchemaFields::new(&schema);
 
@@ -329,10 +342,15 @@ impl SearchIndex {
             reader,
             writer: Mutex::new(None),
             schema_fields,
+            language_configs,
         })
     }
 
-    fn create_with_tokenizer(path: &Path, tokenizer: CodeTokenizer) -> Result<Self> {
+    fn create_with_tokenizer(
+        path: &Path,
+        tokenizer: CodeTokenizer,
+        language_configs: Option<LanguageConfigs>,
+    ) -> Result<Self> {
         let schema = create_schema();
         let schema_fields = SchemaFields::new(&schema);
 
@@ -345,10 +363,15 @@ impl SearchIndex {
             reader,
             writer: Mutex::new(None),
             schema_fields,
+            language_configs,
         })
     }
 
-    fn open_with_tokenizer(path: &Path, tokenizer: CodeTokenizer) -> Result<Self> {
+    fn open_with_tokenizer(
+        path: &Path,
+        tokenizer: CodeTokenizer,
+        language_configs: Option<LanguageConfigs>,
+    ) -> Result<Self> {
         let index = Index::open_in_dir(path)?;
         let schema = index.schema();
         let schema_fields = SchemaFields::new(&schema);
@@ -361,6 +384,7 @@ impl SearchIndex {
             reader,
             writer: Mutex::new(None),
             schema_fields,
+            language_configs,
         })
     }
 

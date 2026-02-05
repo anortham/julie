@@ -81,11 +81,6 @@ async fn test_real_time_file_watcher_indexing() {
     use std::time::Duration;
     use tokio::time::sleep;
 
-    // Skip embeddings to avoid model download race
-    unsafe {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-    }
-
     // CRITICAL: Use real directory instead of tmpfs (notify/inotify doesn't work reliably on tmpfs)
     // tempfile::TempDir uses /tmp which is often tmpfs on Linux, causing test failures
     let workspace_root = std::env::current_dir()
@@ -106,8 +101,6 @@ async fn test_real_time_file_watcher_indexing() {
     let cache_dir = workspace_root.join(".julie/cache");
     std::fs::create_dir_all(&cache_dir).unwrap();
 
-    // Skip embeddings in test environment (respect JULIE_SKIP_EMBEDDINGS)
-    let embeddings = Arc::new(tokio::sync::RwLock::new(None));
     let extractor_manager = Arc::new(ExtractorManager::new());
 
     // Create initial file to ensure workspace isn't empty
@@ -118,9 +111,7 @@ async fn test_real_time_file_watcher_indexing() {
     let mut indexer = IncrementalIndexer::new(
         workspace_root.clone(),
         db.clone(),
-        embeddings.clone(),
         extractor_manager.clone(),
-        None, // No vector store for this test
     )
     .unwrap();
 

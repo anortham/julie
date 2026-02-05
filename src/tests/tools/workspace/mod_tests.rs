@@ -130,7 +130,7 @@ async fn test_health_check() {
 #[ignore] // HANGS: Concurrent indexing stress test - not critical for CLI tools
 // Run manually with: cargo test test_concurrent_manage_workspace --ignored
 async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
-    // Skip expensive embedding initialization but allow FTS5 to initialize
+    // Skip search index initialization but allow FTS5 to initialize
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
     }
@@ -364,7 +364,7 @@ fn test_function() {
         if let Some(db) = workspace.db.as_ref() {
             let db_lock = db.lock().unwrap();
             // Clear all symbols to simulate empty database
-            // The FTS triggers will automatically sync symbols_fts table
+            // Clear all symbols to simulate empty database
             db_lock.conn.execute("DELETE FROM symbols", []).unwrap();
         }
     }

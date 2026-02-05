@@ -3,7 +3,6 @@
 //! This tool traces execution flow across multiple programming languages using:
 //! 1. Direct relationship analysis from the symbol database
 //! 2. Naming convention variants for cross-language bridging
-//! 3. Semantic embeddings for conceptual similarity
 //!
 //! This is Julie's unique differentiator - NO other tool can trace calls
 //! across language boundaries in polyglot codebases.
@@ -181,19 +180,15 @@ impl TraceCallPathTool {
             anyhow!("No workspace initialized. Run 'manage_workspace index' first")
         })?;
 
-        // Determine target workspace and load appropriate database + vector store
-        let (db, vector_store) = match self.workspace.as_deref() {
+        // Determine target workspace and load appropriate database
+        let db = match self.workspace.as_deref() {
             Some("primary") | None => {
-                // Use primary workspace database and vector store (default)
-                let db = primary_workspace
+                // Use primary workspace database (default)
+                primary_workspace
                     .db
                     .as_ref()
                     .ok_or_else(|| anyhow!("No primary database available"))?
-                    .clone();
-
-                let vector_store = primary_workspace.vector_store.clone();
-
-                (db, vector_store)
+                    .clone()
             }
             Some(workspace_id) => {
                 // Load reference workspace database
@@ -223,45 +218,7 @@ impl TraceCallPathTool {
                 .await
                 .map_err(|e| anyhow!("Failed to spawn database task: {}", e))??;
 
-                let db = Arc::new(Mutex::new(ref_db));
-
-                // Load reference workspace vector store
-                let vectors_path = primary_workspace.workspace_vectors_path(workspace_id);
-                let vector_store = if vectors_path.exists() {
-                    ::tracing::debug!("📂 Loading reference workspace vectors: {:?}", vectors_path);
-
-                    // Load HNSW index from disk
-                    let mut store = crate::embeddings::vector_store::VectorStore::new(384)?;
-                    let hnsw_path = vectors_path.join("hnsw_index");
-
-                    if hnsw_path.with_extension("hnsw.graph").exists() {
-                        match store.load_hnsw_index(&hnsw_path) {
-                            Ok(()) => {
-                                ::tracing::debug!("✅ Loaded HNSW index for reference workspace");
-                                Some(Arc::new(tokio::sync::RwLock::new(store)))
-                            }
-                            Err(e) => {
-                                ::tracing::debug!(
-                                    "⚠️  Failed to load HNSW index for reference workspace: {}",
-                                    e
-                                );
-                                None
-                            }
-                        }
-                    } else {
-                        ::tracing::debug!(
-                            "ℹ️  No HNSW index found for reference workspace (semantic search disabled)"
-                        );
-                        None
-                    }
-                } else {
-                    ::tracing::debug!(
-                        "ℹ️  No vectors directory for reference workspace (semantic search disabled)"
-                    );
-                    None
-                };
-
-                (db, vector_store)
+                Arc::new(Mutex::new(ref_db))
             }
         };
 
@@ -329,7 +286,6 @@ impl TraceCallPathTool {
                     tracing::trace_upstream(
                         handler,
                         &db,
-                        &vector_store,
                         starting_symbol,
                         0,
                         &mut visited,
@@ -341,7 +297,6 @@ impl TraceCallPathTool {
                     tracing::trace_downstream(
                         handler,
                         &db,
-                        &vector_store,
                         starting_symbol,
                         0,
                         &mut visited,
@@ -354,7 +309,6 @@ impl TraceCallPathTool {
                     let mut upstream = tracing::trace_upstream(
                         handler,
                         &db,
-                        &vector_store,
                         starting_symbol,
                         0,
                         &mut visited,
@@ -364,7 +318,6 @@ impl TraceCallPathTool {
                     let downstream = tracing::trace_downstream(
                         handler,
                         &db,
-                        &vector_store,
                         starting_symbol,
                         0,
                         &mut visited,

@@ -897,42 +897,7 @@ impl SymbolDatabase {
                 drop(stmt);
             }
 
-            // STEP 5: Rebuild FTS5 indexes INSIDE transaction (before commit)
-            // 🔥 FTS5 CRITICAL: Rebuild FTS5 indexes after incremental DELETE operations
-            // DELETE operations create rowid gaps in the base tables that FTS5 external
-            // content tables still reference, causing "missing row X from content table" errors.
-            //
-            // 🔒 CONCURRENCY FIX: By doing this INSIDE the transaction (before commit),
-            // we prevent database corruption from concurrent access during FTS5 rebuild.
-            // Previously, rebuild happened AFTER commit while MCP server was still running,
-            // causing "database disk image is malformed" errors.
-            if !files_to_clean.is_empty() {
-                debug!("🔄 Rebuilding FTS5 indexes after DELETE operations (inside transaction)");
-
-                // Rebuild symbols_fts (inline to avoid borrow conflict)
-                outer_tx.execute(
-                    "INSERT INTO symbols_fts(symbols_fts) VALUES('delete-all')",
-                    [],
-                )?;
-                outer_tx.execute(
-                    "INSERT INTO symbols_fts(symbols_fts) VALUES('rebuild')",
-                    [],
-                )?;
-                debug!("✅ Symbols FTS5 index rebuilt");
-
-                // Rebuild files_fts (inline to avoid borrow conflict)
-                outer_tx.execute(
-                    "INSERT INTO files_fts(files_fts) VALUES('delete-all')",
-                    [],
-                )?;
-                outer_tx.execute(
-                    "INSERT INTO files_fts(files_fts) VALUES('rebuild')",
-                    [],
-                )?;
-                debug!("✅ Files FTS5 index rebuilt");
-            }
-
-            // STEP 6: Commit ENTIRE incremental update atomically (including FTS5 rebuild)
+            // STEP 5: Commit ENTIRE incremental update atomically
             debug!("💾 Committing atomic incremental update");
             outer_tx.commit()?;
 
@@ -945,14 +910,14 @@ impl SymbolDatabase {
         // 🔥 ATOMICITY WIN: If crash happens anywhere:
         // - Old data stays (delete didn't commit)
         // - New data not inserted
-        // - FTS5 rebuild didn't happen
+        // - Index rebuild didn't happen
         // - Database consistent (old state preserved)
         // Next incremental run will re-process the modified files
 
         if result.is_ok() {
             let duration = start_time.elapsed();
             info!(
-                "✅ Atomic incremental update complete (with FTS5 rebuild) in {:.2}ms",
+                "✅ Atomic incremental update complete in {:.2}ms",
                 duration.as_millis()
             );
         }

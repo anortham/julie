@@ -22,16 +22,7 @@ impl SymbolDatabase {
         tx.execute("DELETE FROM symbols", [])?;
         tx.execute("DELETE FROM files", [])?;
 
-        // Note: We could also delete embeddings, but they might be shared across workspaces
-        // For now, leave embeddings and clean them up separately if needed
-
         tx.commit()?;
-
-        // FTS5 CRITICAL: Rebuild indexes after bulk deletion to prevent desync
-        // Bulk deletions create large rowid gaps that FTS5 external content tables
-        // still reference, causing "missing row X from content table" errors
-        self.rebuild_symbols_fts()?;
-        self.rebuild_files_fts()?;
 
         let stats = WorkspaceCleanupStats {
             symbols_deleted: symbols_count,

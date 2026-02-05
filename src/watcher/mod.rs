@@ -1,13 +1,13 @@
 //! File Watcher & Incremental Indexing System
 //!
 //! This module provides real-time file monitoring and incremental updates
-//! to both data stores: SQLite database (with FTS5 search) and embedding vectors.
+//! to the SQLite database and Tantivy search index.
 //!
 //! # Architecture
 //!
 //! The watcher uses a 2-phase processing model:
-//! 1. **File System Events** → Notify-rs detects changes and queues them
-//! 2. **Background Processing** → Async task processes queue every second
+//! 1. **File System Events** -> Notify-rs detects changes and queues them
+//! 2. **Background Processing** -> Async task processes queue every second
 //!
 //! This separation prevents blocking on file I/O or database operations.
 
@@ -22,27 +22,19 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::SystemTime;
-use tokio::sync::{Mutex as TokioMutex, RwLock, mpsc};
+use tokio::sync::{Mutex as TokioMutex, mpsc};
 use tracing::{debug, error, info, warn};
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::EmbeddingEngine;
 use crate::extractors::ExtractorManager;
 
 pub use types::{FileChangeEvent, FileChangeType, IndexingStats};
-
-type VectorIndex = crate::embeddings::vector_store::VectorStore;
 
 /// Manages incremental indexing with real-time file watching
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<StdMutex<SymbolDatabase>>,
-    embedding_engine: Arc<RwLock<Option<EmbeddingEngine>>>,
     extractor_manager: Arc<ExtractorManager>,
-
-    // Vector store for HNSW semantic search (kept in sync with incremental updates)
-    #[allow(dead_code)]
-    vector_store: Option<Arc<RwLock<VectorIndex>>>,
 
     // Processing queues
     pub(crate) index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
@@ -64,9 +56,7 @@ impl IncrementalIndexer {
     pub fn new(
         workspace_root: PathBuf,
         db: Arc<StdMutex<SymbolDatabase>>,
-        embedding_engine: Arc<RwLock<Option<EmbeddingEngine>>>,
         extractor_manager: Arc<ExtractorManager>,
-        vector_store: Option<Arc<RwLock<VectorIndex>>>,
     ) -> Result<Self> {
         let supported_extensions = filtering::build_supported_extensions();
         let ignore_patterns = filtering::build_ignore_patterns()?;
@@ -74,9 +64,7 @@ impl IncrementalIndexer {
         Ok(Self {
             watcher: None,
             db,
-            embedding_engine,
             extractor_manager,
-            vector_store,
             index_queue: Arc::new(TokioMutex::new(VecDeque::new())),
             last_processed: Arc::new(TokioMutex::new(HashMap::new())),
             supported_extensions,
@@ -115,11 +103,11 @@ impl IncrementalIndexer {
         let index_queue = self.index_queue.clone();
 
         tokio::spawn(async move {
-            info!("🔍 File system event detector started");
+            info!("File system event detector started");
             while let Some(event_result) = rx.recv().await {
                 match event_result {
                     Ok(event) => {
-                        debug!("📁 File system event detected: {:?}", event);
+                        debug!("File system event detected: {:?}", event);
                         if let Err(e) = events::process_file_system_event(
                             &supported_extensions,
                             &ignore_patterns,
@@ -141,9 +129,7 @@ impl IncrementalIndexer {
         // Spawn background task to process queued events
         // Clone all the components needed for processing
         let db = self.db.clone();
-        let embeddings = self.embedding_engine.clone();
         let extractor_manager = self.extractor_manager.clone();
-        let vector_store = self.vector_store.clone();
         let queue_for_processing = self.index_queue.clone();
         let last_processed = self.last_processed.clone();
         let workspace_root = self.workspace_root.clone();
@@ -152,7 +138,7 @@ impl IncrementalIndexer {
             use tokio::time::{Duration, interval};
             let mut tick = interval(Duration::from_secs(1)); // Process queue every second
 
-            info!("🔄 Background queue processor started");
+            info!("Background queue processor started");
             loop {
                 tick.tick().await;
 
@@ -163,7 +149,7 @@ impl IncrementalIndexer {
                 };
 
                 if queue_size > 0 {
-                    debug!("📦 Processing {} queued file events", queue_size);
+                    debug!("Processing {} queued file events", queue_size);
                 }
 
                 while let Some(event) = {
@@ -180,7 +166,7 @@ impl IncrementalIndexer {
                             if let Ok(elapsed) = now.duration_since(*last_time) {
                                 if elapsed < Duration::from_secs(1) {
                                     debug!(
-                                        "⏭️  Skipping duplicate event for {:?} (processed {}ms ago)",
+                                        "Skipping duplicate event for {:?} (processed {}ms ago)",
                                         event.path,
                                         elapsed.as_millis()
                                     );
@@ -203,15 +189,13 @@ impl IncrementalIndexer {
                         continue;
                     }
 
-                    info!("🔄 Background task processing: {:?}", event.path);
+                    info!("Background task processing: {:?}", event.path);
                     if let Err(e) = match event.change_type {
                         FileChangeType::Created | FileChangeType::Modified => {
                             handlers::handle_file_created_or_modified_static(
                                 event.path,
                                 &db,
-                                &embeddings,
                                 &extractor_manager,
-                                vector_store.as_ref(),
                                 &workspace_root,
                             )
                             .await
@@ -220,7 +204,6 @@ impl IncrementalIndexer {
                             handlers::handle_file_deleted_static(
                                 event.path,
                                 &db,
-                                vector_store.as_ref(),
                                 &workspace_root,
                             )
                             .await
@@ -230,9 +213,7 @@ impl IncrementalIndexer {
                                 from,
                                 to,
                                 &db,
-                                &embeddings,
                                 &extractor_manager,
-                                vector_store.as_ref(),
                                 &workspace_root,
                             )
                             .await
@@ -260,9 +241,7 @@ impl IncrementalIndexer {
                     handlers::handle_file_created_or_modified_static(
                         event.path,
                         &self.db,
-                        &self.embedding_engine,
                         &self.extractor_manager,
-                        self.vector_store.as_ref(),
                         &self.workspace_root,
                     )
                     .await
@@ -271,7 +250,6 @@ impl IncrementalIndexer {
                     handlers::handle_file_deleted_static(
                         event.path,
                         &self.db,
-                        self.vector_store.as_ref(),
                         &self.workspace_root,
                     )
                     .await
@@ -281,9 +259,7 @@ impl IncrementalIndexer {
                         from,
                         to,
                         &self.db,
-                        &self.embedding_engine,
                         &self.extractor_manager,
-                        self.vector_store.as_ref(),
                         &self.workspace_root,
                     )
                     .await

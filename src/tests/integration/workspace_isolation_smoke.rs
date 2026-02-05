@@ -23,10 +23,6 @@ mod workspace_isolation_smoke_tests {
             .indexing_status
             .sqlite_fts_ready
             .store(true, Ordering::Relaxed);
-        handler
-            .indexing_status
-            .semantic_ready
-            .store(true, Ordering::Relaxed);
         *handler.is_indexed.write().await = true;
     }
 
@@ -70,10 +66,6 @@ mod workspace_isolation_smoke_tests {
     #[tokio::test(flavor = "multi_thread")]
     #[serial_test::serial] // Shared fixtures (tiny-primary, tiny-reference)
     async fn test_search_never_crosses_workspaces() -> Result<()> {
-        unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        }
-
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
 
@@ -203,10 +195,6 @@ mod workspace_isolation_smoke_tests {
     #[tokio::test(flavor = "multi_thread")]
     #[serial_test::serial] // Shared fixtures (tiny-primary, tiny-reference)
     async fn test_workspace_id_resolution() -> Result<()> {
-        unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        }
-
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
 
@@ -332,10 +320,6 @@ mod workspace_isolation_smoke_tests {
     #[tokio::test(flavor = "multi_thread")]
     #[serial_test::serial] // Shared fixtures (tiny-primary, tiny-reference)
     async fn test_invalid_workspace_id_returns_error() -> Result<()> {
-        unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        }
-
         let primary_path = get_fixture_path("tiny-primary");
 
         let handler = JulieServerHandler::new().await?;

@@ -55,10 +55,6 @@ mod reference_workspace_tests {
             .indexing_status
             .sqlite_fts_ready
             .store(true, Ordering::Relaxed);
-        handler
-            .indexing_status
-            .semantic_ready
-            .store(true, Ordering::Relaxed);
         *handler.is_indexed.write().await = true;
     }
 
@@ -157,10 +153,6 @@ mod reference_workspace_tests {
     #[serial_test::serial] // Reference workspace tests need serialization (shared fixtures)
     async fn test_reference_workspace_end_to_end() -> Result<()> {
         use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
-
-        unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        }
 
         // CLEANUP: Atomic cleanup of .julie directories from previous test runs
         let primary_path = get_fixture_path("tiny-primary");
@@ -269,7 +261,6 @@ mod reference_workspace_tests {
         use crate::tests::helpers::cleanup::atomic_cleanup_julie_dir;
 
         unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
         }
 
@@ -329,10 +320,6 @@ mod reference_workspace_tests {
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "Test isolation issue - passes alone, fails when run with other tests"]
     async fn test_workspace_filtering() -> Result<()> {
-        unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        }
-
         // Initialize handler with primary fixture
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
@@ -424,10 +411,6 @@ mod reference_workspace_tests {
     /// Reference workspace orphan cleanup must open the correct database to clean up deleted files.
     #[tokio::test(flavor = "multi_thread")]
     async fn test_reference_workspace_orphan_cleanup() -> Result<()> {
-        unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        }
-
         // CLEANUP: Remove any stale .julie directories from previous test runs to prevent FTS5 corruption
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");

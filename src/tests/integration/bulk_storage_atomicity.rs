@@ -97,18 +97,6 @@ fn test_bulk_store_symbols_is_atomic() -> Result<()> {
             symbol_count, 2,
             "Should have 2 symbols after successful bulk insert"
         );
-
-        // Verify FTS5 is in sync
-        let fts_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM symbols_fts WHERE symbols_fts MATCH 'function'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(
-            fts_count, 2,
-            "FTS5 should have 2 entries matching 'function'"
-        );
-
         // Verify indexes exist
         let index_count: i64 = db.conn.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='symbols'",
@@ -116,17 +104,6 @@ fn test_bulk_store_symbols_is_atomic() -> Result<()> {
             |row| row.get(0),
         )?;
         assert!(index_count >= 6, "Should have at least 6 symbol indexes");
-
-        // Verify triggers exist
-        let trigger_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND tbl_name='symbols'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(
-            trigger_count, 3,
-            "Should have 3 FTS triggers (insert, update, delete)"
-        );
     }
 
     Ok(())
@@ -167,13 +144,6 @@ fn test_bulk_store_files_atomicity() -> Result<()> {
             .conn
             .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
         assert_eq!(file_count, 2, "Should have 2 files");
-
-        // Check FTS5 count - this should match if atomic
-        let fts_count: i64 = db
-            .conn
-            .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))?;
-        assert_eq!(fts_count, 2, "FTS5 should have 2 file entries");
-
         // Verify indexes exist
         let index_count: i64 = db.conn.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='files'",
@@ -181,14 +151,6 @@ fn test_bulk_store_files_atomicity() -> Result<()> {
             |row| row.get(0),
         )?;
         assert!(index_count >= 2, "Should have at least 2 file indexes");
-
-        // Verify triggers exist
-        let trigger_count: i64 = db.conn.query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND tbl_name='files'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(trigger_count, 3, "Should have 3 FTS triggers for files");
     }
 
     Ok(())

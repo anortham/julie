@@ -61,14 +61,6 @@ pub struct CallPathNode {
     pub children: Vec<CallPathNode>,
 }
 
-/// Represents a semantic match found via embeddings
-#[derive(Clone)]
-pub struct SemanticMatch {
-    pub symbol: crate::extractors::Symbol,
-    pub relationship_kind: RelationshipKind,
-    pub similarity: f32,
-}
-
 /// Type of match found during tracing
 #[derive(Debug, Clone, PartialEq)]
 pub enum MatchType {
@@ -76,8 +68,6 @@ pub enum MatchType {
     Direct,
     /// Cross-language via naming convention variants
     NamingVariant,
-    /// Via embedding similarity
-    Semantic,
 }
 
 // Default value functions for serde defaults

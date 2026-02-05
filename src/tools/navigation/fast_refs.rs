@@ -3,13 +3,12 @@
 //! This tool finds all usages and references across the codebase using:
 //! 1. SQLite FTS5 for O(log n) exact name matching
 //! 2. Cross-language naming convention variants
-//! 3. HNSW semantic similarity (strict threshold 0.75 to prevent false positives)
 
 use anyhow::Result;
 use schemars::JsonSchema;
 use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use tracing::{debug, warn};
 
 use crate::extractors::{Relationship, Symbol};
@@ -20,7 +19,6 @@ use crate::utils::cross_language_intelligence::generate_naming_variants;
 use super::formatting::format_lean_refs_results;
 use super::reference_workspace;
 use super::resolution::resolve_workspace_filter;
-use super::semantic_matching;
 use super::types::DefinitionResult;
 use super::types::FastRefsResult;
 use super::types::ReferenceResult;
@@ -335,24 +333,6 @@ impl FastRefsTool {
                     references.extend(refs);
                 }
             }
-        }
-
-        // ✨ INTELLIGENCE: Strategy 3 - Semantic similarity matching with strict thresholds
-        // Only find HIGHLY similar symbols to prevent false positives
-        let existing_def_ids: HashSet<_> = definitions.iter().map(|d| d.id.clone()).collect();
-        let existing_ref_ids: HashSet<_> =
-            references.iter().map(|r| r.to_symbol_id.clone()).collect();
-
-        if let Ok((semantic_symbols, semantic_refs)) = semantic_matching::find_semantic_references(
-            handler,
-            &self.symbol,
-            &existing_def_ids,
-            &existing_ref_ids,
-        )
-        .await
-        {
-            definitions.extend(semantic_symbols);
-            references.extend(semantic_refs);
         }
 
         // Sort references by confidence and location

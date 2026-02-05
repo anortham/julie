@@ -38,23 +38,13 @@ mod tests {
     /// Helper to create a mock tracer for testing
     async fn create_test_tracer() -> CrossLanguageTracer {
         use crate::database::SymbolDatabase;
-        use crate::embeddings::EmbeddingEngine;
 
         // Create a temporary database for testing
         let temp_dir = tempfile::tempdir().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let db = Arc::new(Mutex::new(SymbolDatabase::new(&db_path).unwrap()));
 
-        // Create embedding engine (will need cache dir)
-        let cache_dir = temp_dir.path().join("cache");
-        std::fs::create_dir_all(&cache_dir).unwrap();
-        let embeddings = Arc::new(
-            EmbeddingEngine::new("bge-small", cache_dir, db.clone())
-                .await
-                .unwrap(),
-        );
-
-        CrossLanguageTracer::new(db, embeddings)
+        CrossLanguageTracer::new(db)
     }
 
     #[cfg_attr(

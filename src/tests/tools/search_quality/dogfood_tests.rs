@@ -162,60 +162,6 @@ async fn test_symbol_search_struct() {
     assert_contains_path(&results, "src/handler.rs");
     assert_min_results(&results, 1);
 }
-
-// ============================================================================
-// Category 4: FTS5 Internals Tests
-// ============================================================================
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_fts5_create_virtual_table() {
-    let handler = setup_handler_with_fixture().await;
-
-    // Query: "CREATE VIRTUAL TABLE fts5"
-    let results = search_content(&handler, "CREATE VIRTUAL TABLE fts5", 10)
-        .await
-        .expect("Search failed");
-
-    // Should find schema.rs with FTS5 table creation
-    assert_contains_path(&results, "src/database/schema.rs");
-
-    // We have files_fts and symbols_fts, so should find both
-    assert_min_results(&results, 2);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_fts5_snippet_function() {
-    let handler = setup_handler_with_fixture().await;
-
-    // Query: "snippet files_fts content"
-    let results = search_content(&handler, "snippet files_fts content", 5)
-        .await
-        .expect("Search failed");
-
-    // Should find the snippet SQL in files.rs
-    assert_contains_path(&results, "src/database/files.rs");
-    assert_min_results(&results, 1);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_fts5_corruption_tests() {
-    let handler = setup_handler_with_fixture().await;
-
-    // Query: "FTS5 corruption rowid"
-    let results = search_content(&handler, "FTS5 corruption rowid", 10)
-        .await
-        .expect("Search failed");
-
-    // Should find the corruption reproduction test
-    let has_corruption_test = results.iter().any(|r| {
-        r.file_path.contains("fts5_rowid_corruption.rs") || r.file_path.contains("TODO.md")
-    });
-    assert!(
-        has_corruption_test,
-        "Should find FTS5 corruption test files"
-    );
-}
-
 // ============================================================================
 // Category 5: Ranking Quality Tests
 // ============================================================================
@@ -393,23 +339,20 @@ async fn test_underscore_snake_case() {
 async fn test_tokenizer_consistency_hyphen() {
     let handler = setup_handler_with_fixture().await;
 
-    // FIXED: files_fts now uses the same tokenizer as symbols_fts
-    // Both use: tokenize = "unicode61 separators '_::->.''"
-    //
-    // Query "tree-sitter" should work the same in both
+    // Query "tree-sitter" should work the same in content and definition search
 
-    // Search file content (uses files_fts)
+    // Search file content (uses Tantivy)
     let content_results = search_content(&handler, "tree-sitter", 10)
         .await
         .expect("Content search failed");
 
-    // Search definitions (uses symbols_fts)
+    // Search definitions (uses Tantivy)
     let symbol_results = search_definitions(&handler, "tree-sitter", 10)
         .await
         .expect("Symbol search failed");
 
     // Both should find results (tokenizers should behave the same)
-    // If files_fts doesn't have separators, this will fail
+    // Both searches should find results with the same query
     assert_min_results(&content_results, 1);
     assert_min_results(&symbol_results, 0); // May or may not have symbol definitions
 }

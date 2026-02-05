@@ -45,6 +45,7 @@ pub struct ScoringConfig {
 }
 
 /// Registry of all language configurations.
+#[derive(Clone)]
 pub struct LanguageConfigs {
     configs: HashMap<String, LanguageConfig>,
 }
@@ -127,5 +128,39 @@ impl LanguageConfigs {
         // Sort by length descending so longer patterns match first
         result.sort_by_key(|b| std::cmp::Reverse(b.len()));
         result
+    }
+
+    /// Collect all meaningful_affixes from all languages into a single union set.
+    pub fn all_meaningful_affixes(&self) -> Vec<String> {
+        let mut affixes: HashSet<String> = HashSet::new();
+        for config in self.configs.values() {
+            for affix in &config.tokenizer.meaningful_affixes {
+                affixes.insert(affix.clone());
+            }
+        }
+        // Sort by length descending so longer affixes match first
+        let mut result: Vec<String> = affixes.into_iter().collect();
+        result.sort_by_key(|b| std::cmp::Reverse(b.len()));
+        result
+    }
+
+    /// Collect all strip_prefixes and strip_suffixes from all languages.
+    pub fn all_strip_rules(&self) -> (Vec<String>, Vec<String>) {
+        let mut prefixes: HashSet<String> = HashSet::new();
+        let mut suffixes: HashSet<String> = HashSet::new();
+        for config in self.configs.values() {
+            for p in &config.variants.strip_prefixes {
+                prefixes.insert(p.clone());
+            }
+            for s in &config.variants.strip_suffixes {
+                suffixes.insert(s.clone());
+            }
+        }
+        // Sort by length descending so longer patterns match first
+        let mut prefix_vec: Vec<String> = prefixes.into_iter().collect();
+        prefix_vec.sort_by_key(|b| std::cmp::Reverse(b.len()));
+        let mut suffix_vec: Vec<String> = suffixes.into_iter().collect();
+        suffix_vec.sort_by_key(|b| std::cmp::Reverse(b.len()));
+        (prefix_vec, suffix_vec)
     }
 }

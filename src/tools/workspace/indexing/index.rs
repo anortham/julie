@@ -1,13 +1,12 @@
 //! Main workspace indexing orchestration
-//! Coordinates file discovery, processing, and embedding generation
+//! Coordinates file discovery, processing, and Tantivy search indexing
 
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use std::path::Path;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
-use super::embeddings::generate_embeddings_from_sqlite;
 
 impl ManageWorkspaceTool {
     /// Index a workspace by discovering, parsing, and storing file symbols
@@ -228,180 +227,6 @@ impl ManageWorkspaceTool {
             "✅ Indexing complete: {} symbols, {} relationships stored in SQLite",
             total_symbols, total_relationships
         );
-
-        // 🔥 STALENESS CHECK: Only generate embeddings for symbols that don't have them yet
-        // This fixes the bug where embeddings were regenerated on EVERY startup
-        // EXCEPT when force_reindex=true, then we always regenerate all embeddings
-        let symbols_needing_embeddings = if force_reindex {
-            // Force mode: assume all symbols need embeddings (will be cleared and regenerated)
-            total_symbols
-        } else if let Some(db_arc) = if is_primary_workspace {
-            workspace.db.clone()
-        } else {
-            let ref_db_path = workspace.workspace_db_path(&workspace_id);
-            if ref_db_path.exists() {
-                match tokio::task::spawn_blocking(move || {
-                    crate::database::SymbolDatabase::new(ref_db_path)
-                })
-                .await
-                {
-                    Ok(Ok(db)) => Some(std::sync::Arc::new(std::sync::Mutex::new(db))),
-                    _ => None,
-                }
-            } else {
-                None
-            }
-        } {
-            let db_lock = match db_arc.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!(
-                        "Database mutex poisoned during staleness check, recovering: {}",
-                        poisoned
-                    );
-                    poisoned.into_inner()
-                }
-            };
-            db_lock
-                .get_symbols_without_embeddings()
-                .unwrap_or_default()
-                .len()
-        } else {
-            0
-        };
-
-        // 🔥 BACKGROUND TASK: Generate embeddings from SQLite (optional, compute-intensive)
-        // Now runs for ALL workspaces (primary and reference) - BUT ONLY IF NEEDED!
-        if symbols_needing_embeddings > 0 {
-            let workspace_type = if is_primary_workspace {
-                "primary"
-            } else {
-                "reference"
-            };
-            info!(
-                "🚀 Starting background embedding generation for {} new symbols in {} workspace: {}",
-                symbols_needing_embeddings, workspace_type, workspace_id
-            );
-
-            // Clone necessary references for background task
-            // Use the workspace variable we already fetched (DEADLOCK FIX: no re-lock)
-            let embedding_engine = handler.embedding_engine.clone();
-            let embedding_engine_last_used = handler.embedding_engine_last_used.clone();
-
-            // 🔴 CRITICAL FIX: Pass correct database for reference vs primary workspaces!
-            // Reference workspaces need their own database, not the primary's
-            let workspace_db = if is_primary_workspace {
-                // Primary workspace - use handler's database
-                workspace.db.clone()
-            } else {
-                // Reference workspace - open its separate database for embedding generation
-                let ref_db_path = workspace.workspace_db_path(&workspace_id);
-                if ref_db_path.exists() {
-                    match tokio::task::spawn_blocking(move || {
-                        crate::database::SymbolDatabase::new(ref_db_path)
-                    })
-                    .await
-                    {
-                        Ok(Ok(db)) => Some(std::sync::Arc::new(std::sync::Mutex::new(db))),
-                        Ok(Err(e)) => {
-                            tracing::warn!(
-                                "Failed to open reference workspace DB for embeddings: {}",
-                                e
-                            );
-                            None
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                "Reference workspace DB open task failed for embeddings: {}",
-                                e
-                            );
-                            None
-                        }
-                    }
-                } else {
-                    tracing::warn!("Reference workspace database not found for embeddings");
-                    None
-                }
-            };
-
-            // 🔥 RACE CONDITION FIX: Clear embeddings SYNCHRONOUSLY before spawning background task
-            // Previously, this was done inside the background task, causing a race where data written
-            // by the main thread could be deleted milliseconds later by the background task
-            if force_reindex {
-                if let Some(ref db_arc) = workspace_db {
-                    info!(
-                        "🔥 Force reindex - clearing all embeddings BEFORE background task (race condition fix)"
-                    );
-                    let db_lock = match db_arc.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            warn!(
-                                "Database mutex poisoned during embeddings clear, recovering: {}",
-                                poisoned
-                            );
-                            poisoned.into_inner()
-                        }
-                    };
-
-                    // Clear embeddings and vectors tables
-                    // CRITICAL: Must clear embeddings table (not just embedding_vectors) because
-                    // get_symbols_without_embeddings() queries the embeddings table with LEFT JOIN
-                    if let Err(e) = db_lock.conn.execute("DELETE FROM embeddings", []) {
-                        warn!("Failed to clear embeddings mapping table: {}", e);
-                    }
-                    if let Err(e) = db_lock.conn.execute("DELETE FROM embedding_vectors", []) {
-                        warn!("Failed to clear embedding_vectors storage table: {}", e);
-                    }
-                    info!("✅ Cleared all embeddings and vectors synchronously - will regenerate");
-                }
-            }
-
-            let workspace_root = Some(workspace.root.clone());
-            let workspace_id_clone = workspace_id.clone();
-            let indexing_status_clone = handler.indexing_status.clone();
-
-            let force_flag = force_reindex;
-            tokio::spawn(async move {
-                info!(
-                    "🐛 Background embedding task started for workspace: {}{}",
-                    workspace_id_clone,
-                    if force_flag { " (FORCE MODE)" } else { "" }
-                );
-                let task_start = std::time::Instant::now();
-
-                // No timeout - let embeddings complete however long it takes
-                // With rich code context, 16k+ symbols can take 10+ minutes
-                match generate_embeddings_from_sqlite(
-                    embedding_engine,
-                    embedding_engine_last_used,
-                    workspace_db,
-                    workspace_root,
-                    workspace_id_clone.clone(),
-                    indexing_status_clone,
-                    force_flag,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        info!(
-                            "✅ Embeddings generated from SQLite in {:.2}s for workspace {} - semantic search available!",
-                            task_start.elapsed().as_secs_f64(),
-                            workspace_id_clone
-                        );
-                    }
-                    Err(e) => {
-                        error!(
-                            "❌ Background embedding generation failed for workspace {}: {}",
-                            workspace_id_clone, e
-                        );
-                    }
-                }
-                info!(
-                    "🐛 Background embedding task completed for workspace: {}",
-                    workspace_id_clone
-                );
-            });
-        }
 
         Ok((total_symbols, total_files, total_relationships))
     }

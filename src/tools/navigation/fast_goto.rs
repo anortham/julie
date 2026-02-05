@@ -3,7 +3,6 @@
 //! This tool uses a multi-strategy approach to find symbol definitions:
 //! 1. SQLite FTS5 for O(log n) exact name matching
 //! 2. Cross-language naming convention variants
-//! 3. HNSW semantic similarity (if available)
 
 use anyhow::Result;
 use schemars::JsonSchema;
@@ -19,7 +18,6 @@ use crate::utils::cross_language_intelligence::generate_naming_variants;
 use super::formatting::format_lean_goto_results;
 use super::reference_workspace;
 use super::resolution::{compare_symbols_by_priority_and_context, resolve_workspace_filter};
-use super::semantic_matching;
 use super::types::DefinitionResult;
 use super::types::FastGotoResult;
 
@@ -204,9 +202,7 @@ impl FastGotoTool {
         exact_matches.dedup_by(|a, b| a.id == b.id);
 
         // Strategy 2: Cross-language resolution with naming conventions
-        // This leverages Julie's unique CASCADE architecture:
-        // - Fast: Naming convention variants (SQLite indexed search)
-        // - Smart: Semantic embeddings (HNSW similarity) in Strategy 3
+        // Uses naming convention variants for cross-language search (SQLite indexed)
         if exact_matches.is_empty() {
             debug!(
                 "🌍 Attempting cross-language resolution for '{}'",
@@ -260,19 +256,6 @@ impl FastGotoTool {
                 }
             }
 
-            // 2b. If still no matches, embeddings will catch semantically similar symbols
-            // (e.g., getUserData -> fetchUserInfo, retrieveUserDetails)
-            // This happens automatically in Strategy 3 below
-        }
-
-        // Strategy 3: HNSW-powered semantic matching (FAST!)
-        if exact_matches.is_empty() {
-            debug!("🧠 Using HNSW semantic search for: {}", self.symbol);
-            if let Ok(semantic_symbols) =
-                semantic_matching::find_semantic_definitions(handler, &self.symbol).await
-            {
-                exact_matches.extend(semantic_symbols);
-            }
         }
 
         // Prioritize results using shared logic

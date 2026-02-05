@@ -4,7 +4,6 @@
 //! operations correctly update the database with proper path handling.
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::EmbeddingEngine;
 use crate::extractors::ExtractorManager;
 use crate::watcher::handlers::{
     handle_file_created_or_modified_static, handle_file_deleted_static, handle_file_renamed_static,
@@ -12,7 +11,6 @@ use crate::watcher::handlers::{
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tokio::sync::RwLock;
 
 /// Regression test for Bug: Incremental indexing path mismatch causes duplicate symbols
 ///
@@ -21,9 +19,9 @@ use tokio::sync::RwLock;
 /// create_file_info() normalizes paths to relative Unix-style format.
 ///
 /// Root cause:
-/// - Line 36: `let path_str = path.to_string_lossy()` → absolute path
+/// - Line 36: `let path_str = path.to_string_lossy()` -> absolute path
 /// - Lines 45, 87, 110, 117: All use absolute path for DB operations
-/// - Line 103: `create_file_info(&path, ...)` → stores relative path
+/// - Line 103: `create_file_info(&path, ...)` -> stores relative path
 ///
 /// Result:
 /// - Blake3 hash check always fails (no match found)
@@ -34,11 +32,6 @@ use tokio::sync::RwLock;
 /// Fix: Convert all paths to relative Unix-style before database operations.
 #[tokio::test]
 async fn test_incremental_indexing_absolute_path_handling() {
-    // Skip background embedding tasks
-    unsafe {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-    }
-
     let temp_dir = crate::tests::helpers::unique_temp_dir("incremental_indexing");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
@@ -63,9 +56,6 @@ fn initial_function() {
     // Initialize extractor manager
     let extractor_manager = Arc::new(ExtractorManager::new());
 
-    // Initialize embeddings (None for this test)
-    let embeddings = Arc::new(RwLock::new(None::<EmbeddingEngine>));
-
     println!("DEBUG: absolute_path = {}", absolute_path.display());
     println!("DEBUG: workspace_root = {}", workspace_root.display());
 
@@ -73,9 +63,7 @@ fn initial_function() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &embeddings,
         &extractor_manager,
-        None,
         &workspace_root,
     )
     .await
@@ -121,9 +109,7 @@ fn modified_function() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &embeddings,
         &extractor_manager,
-        None,
         &workspace_root,
     )
     .await
@@ -210,9 +196,7 @@ fn third_function() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &embeddings,
         &extractor_manager,
-        None,
         &workspace_root,
     )
     .await
@@ -260,9 +244,7 @@ fn third_function() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &embeddings,
         &extractor_manager,
-        None,
         &workspace_root,
     )
     .await
@@ -302,7 +284,7 @@ fn third_function() {
             "File hash should be stored with relative path key"
         );
 
-        // The handler has now been FIXED to convert absolute → relative
+        // The handler has now been FIXED to convert absolute -> relative
         // So hash checks work correctly (see step 5 - no re-indexing occurred)
     }
 
@@ -319,9 +301,7 @@ fn final_function() {
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &embeddings,
         &extractor_manager,
-        None,
         &workspace_root,
     )
     .await
@@ -355,15 +335,12 @@ async fn test_file_deletion_absolute_path() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
-    let embeddings = Arc::new(RwLock::new(None::<EmbeddingEngine>));
 
     // Index the file
     handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &embeddings,
         &extractor_manager,
-        None,
         &workspace_root,
     )
     .await
@@ -380,7 +357,7 @@ async fn test_file_deletion_absolute_path() {
     fs::remove_file(&test_file).unwrap();
 
     // Call deletion handler with absolute path
-    handle_file_deleted_static(absolute_path, &db, None, &workspace_root)
+    handle_file_deleted_static(absolute_path, &db, &workspace_root)
         .await
         .expect("File deletion should succeed");
 
@@ -408,15 +385,12 @@ async fn test_file_rename_absolute_paths() {
         SymbolDatabase::new(&db_path).expect("Failed to create test database"),
     ));
     let extractor_manager = Arc::new(ExtractorManager::new());
-    let embeddings = Arc::new(RwLock::new(None::<EmbeddingEngine>));
 
     // Index original file
     handle_file_created_or_modified_static(
         old_absolute.clone(),
         &db,
-        &embeddings,
         &extractor_manager,
-        None,
         &workspace_root,
     )
     .await
@@ -432,9 +406,7 @@ async fn test_file_rename_absolute_paths() {
         old_absolute,
         new_absolute.clone(),
         &db,
-        &embeddings,
         &extractor_manager,
-        None,
         &workspace_root,
     )
     .await
@@ -472,11 +444,6 @@ async fn test_file_rename_absolute_paths() {
 /// Fix: Wrap transaction block in proper error handling to ensure rollback on ANY error.
 #[tokio::test]
 async fn test_transaction_leak_on_error() {
-    // Skip background embedding tasks
-    unsafe {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-    }
-
     let temp_dir = crate::tests::helpers::unique_temp_dir("transaction_leak");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
@@ -487,7 +454,6 @@ async fn test_transaction_leak_on_error() {
     ));
 
     let extractor_manager = Arc::new(ExtractorManager::new());
-    let embeddings = Arc::new(RwLock::new(None::<EmbeddingEngine>));
 
     // STEP 1: Create a scenario that will cause transaction leak
     // We'll manually start a transaction and NOT commit/rollback it
@@ -515,9 +481,7 @@ async fn test_transaction_leak_on_error() {
     let result = handle_file_created_or_modified_static(
         absolute_path.clone(),
         &db,
-        &embeddings,
         &extractor_manager,
-        None,
         &workspace_root,
     )
     .await;
@@ -557,9 +521,7 @@ async fn test_transaction_leak_on_error() {
     let result2 = handle_file_created_or_modified_static(
         absolute_path2,
         &db,
-        &embeddings,
         &extractor_manager,
-        None,
         &workspace_root,
     )
     .await;
@@ -581,4 +543,3 @@ async fn test_transaction_leak_on_error() {
         }
     }
 }
-

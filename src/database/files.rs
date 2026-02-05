@@ -31,7 +31,7 @@ impl SymbolDatabase {
                 file_info.last_modified,
                 now, // Use calculated timestamp instead of unixepoch()
                 file_info.symbol_count,
-                file_info.content.as_deref().unwrap_or("") // FTS5 CRITICAL: Must include content for triggers!
+                file_info.content.as_deref().unwrap_or("") // Content stored for Tantivy full-text indexing
             ],
         )?;
 
@@ -39,15 +39,13 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    /// 🚀 BLAZING-FAST bulk file storage for initial indexing
+    /// Bulk file storage for initial indexing
     ///
-    /// Uses the standard SQLite FTS bulk pattern:
-    /// 1. Disable FTS triggers (prevents row-by-row FTS updates)
-    /// 2. Drop regular indexes (improves insert speed)
-    /// 3. Bulk insert in single transaction
-    /// 4. Rebuild FTS once atomically
-    /// 5. Recreate regular indexes
-    /// 6. Re-enable FTS triggers
+    /// Uses optimized bulk insert pattern:
+    /// 1. Drop regular indexes (improves insert speed)
+    /// 2. Bulk insert in single transaction
+    /// 3. Recreate regular indexes
+    /// Content is stored in SQLite for Tantivy to index separately.
     pub fn bulk_store_files(&mut self, files: &[FileInfo]) -> Result<()> {
         if files.is_empty() {
             return Ok(());
@@ -82,18 +80,12 @@ impl SymbolDatabase {
         let now = get_unix_timestamp()?;
 
         let mut result: Result<()> = (|| -> Result<()> {
-            // 🔥 CRITICAL FIX: Wrap ENTIRE bulk operation in outer transaction for atomicity
-            // If crash happens anywhere, rollback restores ALL state (triggers, indexes, files, FTS5)
+            // Wrap ENTIRE bulk operation in outer transaction for atomicity
+            // If crash happens anywhere, rollback restores ALL state (indexes, files)
             debug!("🔐 Starting atomic transaction for entire bulk file operation");
             let mut outer_tx = self.conn.transaction()?;
 
-            // STEP 1: Disable FTS triggers (WITHIN TRANSACTION)
-            debug!("🔇 Disabling FTS triggers for bulk file insert optimization");
-            outer_tx.execute("DROP TRIGGER IF EXISTS files_ai", [])?;
-            outer_tx.execute("DROP TRIGGER IF EXISTS files_ad", [])?;
-            outer_tx.execute("DROP TRIGGER IF EXISTS files_au", [])?;
-
-            // STEP 2: Drop indexes (WITHIN TRANSACTION)
+            // STEP 1: Drop indexes (WITHIN TRANSACTION)
             debug!("🗑️ Dropping file indexes for bulk insert optimization");
             let indexes = ["idx_files_language", "idx_files_modified"];
             for index in &indexes {
@@ -125,15 +117,7 @@ impl SymbolDatabase {
             drop(stmt);
             tx.commit()?; // Commit savepoint
 
-            // STEP 4: Rebuild FTS5 index (WITHIN OUTER TRANSACTION - atomic!)
-            debug!("🔄 Rebuilding files FTS index atomically");
-            outer_tx.execute("INSERT INTO files_fts(files_fts) VALUES('delete-all')", [])?;
-            outer_tx.execute("INSERT INTO files_fts(files_fts) VALUES('rebuild')", [])?;
-
-            // STEP 4b: Optimize FTS5 index for better query performance
-            outer_tx.execute("INSERT INTO files_fts(files_fts) VALUES('optimize')", [])?;
-
-            // STEP 5: Recreate indexes (WITHIN OUTER TRANSACTION)
+            // STEP 3: Recreate indexes (WITHIN OUTER TRANSACTION)
             debug!("🏗️ Rebuilding file indexes after bulk insert");
             outer_tx.execute(
                 "CREATE INDEX IF NOT EXISTS idx_files_language ON files(language)",
@@ -144,31 +128,7 @@ impl SymbolDatabase {
                 [],
             )?;
 
-            // STEP 6: Re-enable FTS triggers (WITHIN OUTER TRANSACTION)
-            debug!("🔊 Re-enabling FTS triggers");
-            outer_tx.execute(
-                "CREATE TRIGGER IF NOT EXISTS files_ai AFTER INSERT ON files BEGIN
-                    INSERT INTO files_fts(rowid, path, content)
-                    VALUES (new.rowid, new.path, new.content);
-                END",
-                [],
-            )?;
-            outer_tx.execute(
-                "CREATE TRIGGER IF NOT EXISTS files_ad AFTER DELETE ON files BEGIN
-                    DELETE FROM files_fts WHERE rowid = old.rowid;
-                END",
-                [],
-            )?;
-            outer_tx.execute(
-                "CREATE TRIGGER IF NOT EXISTS files_au AFTER UPDATE ON files BEGIN
-                    UPDATE files_fts
-                    SET path = new.path, content = new.content
-                    WHERE rowid = old.rowid;
-                END",
-                [],
-            )?;
-
-            // STEP 7: Commit ENTIRE operation atomically
+            // STEP 4: Commit ENTIRE operation atomically
             debug!("💾 Committing atomic bulk file operation");
             outer_tx.commit()?;
 
@@ -182,13 +142,11 @@ impl SymbolDatabase {
             Ok(())
         })();
 
-        // 🔥 ATOMICITY WIN: No manual cleanup needed!
+        // ATOMICITY WIN: No manual cleanup needed!
         // If transaction failed, SQLite rolled back EVERYTHING automatically:
-        // - Triggers restored to original state
         // - Indexes restored to original state
         // - Files not inserted
-        // - FTS5 unchanged
-        // Manual cleanup code removed - transaction guarantees consistency!
+        // Transaction guarantees consistency.
 
         // Restore original synchronous setting (outside transaction)
         if let Err(e) = self.conn.pragma_update(None, "synchronous", original_sync) {
@@ -250,10 +208,10 @@ impl SymbolDatabase {
     }
 
     // ========================================
-    // CASCADE ARCHITECTURE: File Content Storage & FTS
+    // CASCADE ARCHITECTURE: File Content Storage
     // ========================================
 
-    /// CASCADE: Store file with full content for FTS search
+    /// Store file with full content (indexed by Tantivy for full-text search)
     #[allow(clippy::too_many_arguments)] // Legacy API, refactor later
     pub fn store_file_with_content(
         &self,
@@ -351,195 +309,6 @@ impl SymbolDatabase {
         Ok(results)
     }
 
-    /// CASCADE: Search file content using FTS5
-    pub fn search_file_content_fts(
-        &self,
-        query: &str,
-        language: &Option<String>,
-        file_pattern: &Option<String>,
-        limit: usize,
-    ) -> Result<Vec<FileSearchResult>> {
-        // 🔒 CRITICAL FIX: Sanitize query to prevent FTS5 syntax errors from special characters
-        // This prevents errors like "fts5: syntax error near '.'" when searching for dotted names
-        let sanitized_query = Self::sanitize_fts5_query(query);
-        debug!(
-            "🔍 FTS5 file content query sanitization: '{}' -> '{}'",
-            query, sanitized_query
-        );
-
-        // Build WHERE clause dynamically based on filters
-        let mut where_clauses = vec!["files_fts MATCH ?1".to_string()];
-        let mut param_index = 2;
-
-        if language.is_some() {
-            where_clauses.push(format!("files.language = ?{}", param_index));
-            param_index += 1;
-        }
-
-        // 🔥 CRITICAL: Database stores relative Unix-style paths (not absolute!)
-        // per RELATIVE_PATHS_CONTRACT.md (see to_relative_unix_style in src/utils/paths.rs:88-95)
-        //
-        // Examples of stored paths:
-        // - src/tests/file.rs (NOT /Users/murphy/project/src/tests/file.rs)
-        // - .memories/2025-11-10/checkpoint.json (NOT C:\source\julie\.memories\...)
-        //
-        // Since storage is workspace-relative, user patterns are ALREADY correct!
-        // No normalization needed - use pattern as-is.
-        //
-        // Pattern examples:
-        // - src/**/*.rs → matches src/tests/file.rs ✅
-        // - .memories/**/*.json → matches .memories/2025-11-10/file.json ✅
-        // - **/tests/** → matches src/tests/file.rs ✅
-        let normalized_pattern = file_pattern.as_ref().map(|pattern| pattern.clone());
-
-        if normalized_pattern.is_some() {
-            where_clauses.push(format!("files.path GLOB ?{}", param_index));
-            param_index += 1;
-        }
-
-        let where_clause = where_clauses.join(" AND ");
-
-        let query_sql = format!(
-            "SELECT
-                files.path,
-                COALESCE(snippet(files_fts, 1, '<mark>', '</mark>', '...', 32), '[Content unavailable - file may need re-indexing]') as snippet,
-                -- Custom ranking with Lucene-style boosting
-                -- 🔥 FIX: Negate BM25 (returns negative scores) so multipliers work correctly
-                -- Without negation: test files get -0.17, source files get -18.00 (test files rank higher!)
-                -- With negation: test files get 0.17, source files get 18.00 (source files rank higher!)
-                -- 🔥 PERFORMANCE: Column weighting (path 20%, content 100%) ensures content ranks higher than path-only
-                -bm25(files_fts, 0.2, 1.0) *
-
-                -- BOOST: Symbol-rich files (likely source code, not tests)
-                -- Each symbol adds 5% boost (capped by symbol count)
-                (1.0 + COALESCE(s.symbol_count, 0) * 0.05) *
-
-                -- BOOST: Files in src/, lib/ (production code paths)
-                -- Increased to 3.0x (was 1.5x) for stronger definition prioritization
-                CASE
-                    WHEN files.path GLOB '*/src/*' OR files.path GLOB '*/lib/*' THEN 3.0
-                    ELSE 1.0
-                END *
-
-                -- DE-BOOST: Test files (0.01x weight - 99% reduction, strongly pushed to bottom)
-                -- BM25 term frequency heavily favors test files (imports, usages, instantiations)
-                -- while source files only have 1-2 definition occurrences.
-                -- Very strong de-boost (0.01, was 0.1) overcomes ~10-20x term frequency advantage.
-                CASE
-                    WHEN files.path GLOB '*test*' OR
-                         files.path GLOB '*spec*' OR
-                         files.path GLOB '*__tests__*' OR
-                         files.path GLOB '*.test.*' OR
-                         files.path GLOB '*.spec.*'
-                    THEN 0.01
-                    ELSE 1.0
-                END *
-
-                -- DE-BOOST: Generated/vendor code (0.1x weight - mostly filtered out)
-                CASE
-                    WHEN files.path GLOB '*node_modules*' OR
-                         files.path GLOB '*vendor*' OR
-                         files.path GLOB '*dist/*' OR
-                         files.path GLOB '*build/*' OR
-                         files.path GLOB '*.min.*' OR
-                         files.path GLOB '*target/debug*' OR
-                         files.path GLOB '*target/release*'
-                    THEN 0.1
-                    ELSE 1.0
-                END
-                as rank
-
-             FROM files_fts f
-             LEFT JOIN files ON files.rowid = f.rowid
-             LEFT JOIN (
-                 -- Count symbols (functions, classes, etc.) per file
-                 SELECT file_path, COUNT(*) as symbol_count
-                 FROM symbols
-                 WHERE kind IN ('function', 'class', 'struct', 'interface', 'method', 'impl')
-                 GROUP BY file_path
-             ) s ON files.path = s.file_path
-             WHERE {}
-             ORDER BY rank DESC
-             LIMIT ?{}",
-            where_clause, param_index
-        );
-
-        // Helper to execute the query and collect results; returns Err on SQL/FTS error
-        let exec_query = |conn: &rusqlite::Connection| -> Result<Vec<FileSearchResult>> {
-            let mut stmt = conn.prepare(&query_sql)?;
-
-            // Bind parameters dynamically based on filters and collect results
-            let mut results = Vec::new();
-
-            // Use normalized_pattern for parameter binding (handles relative path conversion)
-            match (language, normalized_pattern.as_ref()) {
-                (Some(lang), Some(pattern)) => {
-                    let mut rows = stmt.query(params![sanitized_query, lang, pattern, limit])?;
-                    while let Some(row) = rows.next()? {
-                        results.push(FileSearchResult {
-                            path: row.get(0)?,
-                            snippet: row.get(1)?,
-                            rank: row.get::<_, f64>(2)? as f32,
-                        });
-                    }
-                }
-                (Some(lang), None) => {
-                    let mut rows = stmt.query(params![sanitized_query, lang, limit])?;
-                    while let Some(row) = rows.next()? {
-                        results.push(FileSearchResult {
-                            path: row.get(0)?,
-                            snippet: row.get(1)?,
-                            rank: row.get::<_, f64>(2)? as f32,
-                        });
-                    }
-                }
-                (None, Some(pattern)) => {
-                    let mut rows = stmt.query(params![sanitized_query, pattern, limit])?;
-                    while let Some(row) = rows.next()? {
-                        results.push(FileSearchResult {
-                            path: row.get(0)?,
-                            snippet: row.get(1)?,
-                            rank: row.get::<_, f64>(2)? as f32,
-                        });
-                    }
-                }
-                (None, None) => {
-                    let mut rows = stmt.query(params![sanitized_query, limit])?;
-                    while let Some(row) = rows.next()? {
-                        results.push(FileSearchResult {
-                            path: row.get(0)?,
-                            snippet: row.get(1)?,
-                            rank: row.get::<_, f64>(2)? as f32,
-                        });
-                    }
-                }
-            }
-
-            Ok(results)
-        };
-
-        // First attempt
-        match exec_query(&self.conn) {
-            Ok(results) => Ok(results),
-            Err(e) => {
-                let es = e.to_string();
-                // If the FTS index is desynced (common message: missing row from content table), rebuild and retry once
-                if es.contains("fts5: missing row") || es.contains("invalid fts5 file format") {
-                    warn!(
-                        "⚠️ FTS5 query error detected ({}). Rebuilding files_fts and retrying once...",
-                        es
-                    );
-                    // Attempt rebuild and retry
-                    // Ignore rebuild error; if rebuild fails, return original error
-                    let _ = self.rebuild_files_fts();
-                    exec_query(&self.conn)
-                } else {
-                    Err(e)
-                }
-            }
-        }
-    }
-
     /// Get file hash for change detection
     pub fn get_file_hash(&self, file_path: &str) -> Result<Option<String>> {
         let mut stmt = self
@@ -593,9 +362,7 @@ impl SymbolDatabase {
             .conn
             .execute("DELETE FROM files WHERE path = ?1", params![file_path])?;
 
-        // FTS5: DELETE triggers handle FTS updates automatically
-        // Query-time rebuild-on-error path (symbols/queries.rs:276-289) provides safety net
-        // No manual rebuild needed - would be expensive for single-file deletes
+        // Tantivy index is updated separately during re-indexing
 
         debug!(
             "Deleted file record for: {} ({} rows affected)",
@@ -610,8 +377,7 @@ impl SymbolDatabase {
             .conn
             .execute("DELETE FROM files WHERE path = ?1", params![file_path])?;
 
-        // FTS5: DELETE triggers handle FTS updates automatically
-        // No manual rebuild needed - would be expensive for single-file deletes
+        // Tantivy index is updated separately during re-indexing
 
         debug!(
             "Deleted file record for '{}' ({} rows affected)",
@@ -655,7 +421,7 @@ pub fn calculate_file_hash<P: AsRef<Path>>(file_path: P) -> Result<String> {
 }
 
 /// Create FileInfo from a file path
-/// CASCADE: Now reads and includes file content for FTS5 search
+/// Reads and includes file content for Tantivy full-text search indexing
 pub fn create_file_info<P: AsRef<Path>>(
     file_path: P,
     language: &str,
@@ -665,7 +431,7 @@ pub fn create_file_info<P: AsRef<Path>>(
     let metadata = std::fs::metadata(path)?;
     let hash = calculate_file_hash(path)?;
 
-    // CASCADE: Read file content for FTS5 search
+    // Read file content for Tantivy search indexing
     let content = std::fs::read_to_string(path).ok(); // Binary files or read errors - skip content
 
     let last_modified = metadata
@@ -689,6 +455,6 @@ pub fn create_file_info<P: AsRef<Path>>(
         last_modified,
         last_indexed: 0, // Will be set by database
         symbol_count: 0, // Will be updated after extraction
-        content,         // CASCADE: File content for FTS5
+        content,         // File content for Tantivy search indexing
     })
 }

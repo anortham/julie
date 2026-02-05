@@ -119,7 +119,7 @@ impl FindLogicTool {
             self.domain
         );
 
-        // 🚀 MULTI-TIER INTELLIGENT SEARCH ARCHITECTURE
+        // 🚀 4-TIER INTELLIGENT SEARCH ARCHITECTURE
         // This replaces primitive O(n) filtering with intelligent indexed queries
 
         let mut candidates: Vec<Symbol> = Vec::new();
@@ -162,7 +162,7 @@ impl FindLogicTool {
         self.apply_path_intelligence(&mut candidates);
 
         // ═══════════════════════════════════════════════════════════════════
-        // OPTIMIZATION: Cap Candidates Before Expensive Tier 5 Graph Analysis
+        // OPTIMIZATION: Cap Candidates Before Expensive Tier 4 Graph Analysis
         // ═══════════════════════════════════════════════════════════════════
         // Combined strategy: Filter by threshold + hard cap to prevent N-to-M explosion
         let original_count = candidates.len();
@@ -194,32 +194,14 @@ impl FindLogicTool {
         }
 
         // ═══════════════════════════════════════════════════════════════════
-        // TIER 4: Semantic HNSW Business Concept Matching - AI-Powered
+        // TIER 4: Relationship Graph Centrality Analysis
         // ═══════════════════════════════════════════════════════════════════
-        debug!("🧠 Tier 4: Semantic HNSW concept matching");
-        match self.semantic_business_search(handler).await {
-            Ok(semantic_matches) => {
-                search_insights.push(format!(
-                    "Semantic search: {} matches",
-                    semantic_matches.len()
-                ));
-                candidates.extend(semantic_matches);
-            }
-            Err(e) => {
-                debug!("⚠️ Tier 4 failed: {}", e);
-                search_insights.push("Semantic search: unavailable".to_string());
-            }
-        }
-
-        // ═══════════════════════════════════════════════════════════════════
-        // TIER 5: Relationship Graph Centrality Analysis
-        // ═══════════════════════════════════════════════════════════════════
-        debug!("📊 Tier 5: Analyzing relationship graph for business importance");
+        debug!("📊 Tier 4: Analyzing relationship graph for business importance");
         if let Err(e) = self
             .analyze_business_importance(&mut candidates, handler)
             .await
         {
-            debug!("⚠️ Tier 5 failed: {}", e);
+            debug!("⚠️ Tier 4 failed: {}", e);
             search_insights.push("Graph analysis: unavailable".to_string());
         } else {
             search_insights.push("Graph analysis: complete".to_string());

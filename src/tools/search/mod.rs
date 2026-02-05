@@ -7,7 +7,7 @@
 //! - Per-workspace isolation
 
 // Public API re-exports
-pub use self::query::{matches_glob_pattern, preprocess_fallback_query};
+pub use self::query::matches_glob_pattern;
 pub use self::query_preprocessor::{
     PreprocessedQuery, QueryType, detect_query_type, preprocess_query,
     sanitize_query, validate_query,
@@ -21,7 +21,6 @@ mod line_mode;
 mod query;
 pub mod query_preprocessor; // Public for testing
 mod scoring;
-pub(crate) mod semantic_search; // Exposed for testing
 pub mod text_search;
 mod types;
 
@@ -115,11 +114,6 @@ pub fn detect_search_method(_query: &str) -> &'static str {
 }
 
 impl FastSearchTool {
-    /// Preprocess query for FTS5 fallback search (exposed for testing)
-    pub fn preprocess_fallback_query(&self, query: &str) -> String {
-        query::preprocess_fallback_query(query)
-    }
-
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!(
             "🔍 Fast search: {} (method: {})",

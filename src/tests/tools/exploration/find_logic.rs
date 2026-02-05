@@ -551,43 +551,11 @@ async fn test_tier3_path_intelligence_penalizes_tests() -> Result<()> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// TIER 4: HNSW Semantic Search Tests
+// TIER 4: Relationship Graph Centrality Tests
 // ═══════════════════════════════════════════════════════════════════
 
 #[tokio::test]
-async fn test_tier4_semantic_search_graceful_degradation() -> Result<()> {
-    // Test that semantic search gracefully fails when embeddings not available
-    let (handler, _temp_dir) = create_test_handler().await?;
-
-    let tool = FindLogicTool {
-        domain: "payment".to_string(),
-        max_results: 50,
-        group_by_layer: true,
-        min_business_score: 0.3,
-        output_format: None,
-    };
-
-    // Should return empty results without error when embeddings unavailable
-    let results = tool.semantic_business_search(&handler).await?;
-
-    // No error thrown - graceful degradation
-    assert!(
-        results.is_empty() || !results.is_empty(),
-        "Should handle missing embeddings gracefully"
-    );
-
-    Ok(())
-}
-
-// Note: Full semantic search tests would require embedding engine setup
-// which is complex for unit tests. Integration tests cover this.
-
-// ═══════════════════════════════════════════════════════════════════
-// TIER 5: Relationship Graph Centrality Tests
-// ═══════════════════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_tier5_graph_centrality_boosts_referenced_symbols() -> Result<()> {
+async fn test_tier4_graph_centrality_boosts_referenced_symbols() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;
     let workspace_path = temp_dir.path().to_string_lossy().to_string();
     create_test_codebase(&temp_dir).await?;

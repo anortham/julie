@@ -23,10 +23,10 @@ use crate::workspace::registry::generate_workspace_id;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExploreMode {
-    /// Find business logic by domain keywords (5-tier CASCADE: FTS5 → AST → Path → HNSW → Graph)
+    /// Find business logic by domain keywords (4-tier CASCADE: FTS5 → AST → Path → Graph)
     Logic,
 
-    /// Find semantically similar code using HNSW embeddings
+    /// Find semantically similar code (deprecated - embeddings removed)
     Similar,
 
     /// Discover tests for symbols (CANCELLED - use fast_refs + fast_search composition)
@@ -160,211 +160,26 @@ impl FastExploreTool {
         find_logic_tool.call_tool(handler).await
     }
 
-    /// Similar mode: Find semantically duplicate code using HNSW embeddings
-    async fn explore_similar(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        // Validate required parameters for similar mode
+    /// Similar mode: Find semantically similar code
+    /// NOTE: Embedding-based similarity search has been removed. Use fast_search with
+    /// search_method="semantic" for text-based similarity, or use fast_refs to find
+    /// related symbols through the relationship graph.
+    async fn explore_similar(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
         let symbol_name = self
             .symbol
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("symbol parameter required for similar mode"))?;
 
         let threshold = self.threshold.unwrap_or(0.8);
-        let limit = self.max_results.unwrap_or(10) as usize; // Julie 2.0: Reduced from 50 for token efficiency
-
-        // Validate threshold range
         if !(0.0..=1.0).contains(&threshold) {
             anyhow::bail!("threshold must be between 0.0 and 1.0, got {}", threshold);
         }
 
-        // Get workspace
-        let workspace = handler.get_workspace().await?.ok_or_else(|| {
-            anyhow::anyhow!("No workspace available. Please index workspace first.")
-        })?;
-        let db_path = workspace.db_path();
-
-        // Ensure vector store is initialized
-        handler.ensure_vector_store().await?;
-
-        // Get vector store from workspace
-        let vector_store = workspace
-            .vector_store
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("Vector store not initialized for workspace"))?;
-
-        let has_hnsw = {
-            let store_guard = vector_store.read().await;
-            store_guard.has_hnsw_index()
-        };
-
-        if !has_hnsw {
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                serde_json::to_string(&json!({
-                    "error": "Embeddings not yet ready",
-                    "message": "HNSW index is still building in the background. Please try again in a few moments.",
-                    "symbol": symbol_name,
-                    "total_found": 0,
-                    "results": []
-                }))?,
-            )]));
-        }
-
-        // Step 1: Try to get stored embedding for the symbol (REUSE existing embedding)
-        // This is faster and more accurate than re-embedding the raw name
-        let query_embedding = {
-            // Try to find the symbol by name first
-            let db_path_for_lookup = db_path.clone();
-            let symbol_name_clone = symbol_name.clone();
-
-            let found_symbols = tokio::task::spawn_blocking(move || {
-                if let Ok(database) = SymbolDatabase::new(&db_path_for_lookup) {
-                    database.get_symbols_by_name(&symbol_name_clone)
-                } else {
-                    Err(anyhow::anyhow!("Failed to open database"))
-                }
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
-
-            // If symbol found, try to reuse its stored embedding
-            if let Some(symbol) = found_symbols.first() {
-                let db_path_for_emb = db_path.clone();
-                let symbol_id = symbol.id.clone();
-
-                let stored_embedding = tokio::task::spawn_blocking(move || {
-                    if let Ok(database) = SymbolDatabase::new(&db_path_for_emb) {
-                        database.get_embedding_for_symbol(&symbol_id, "bge-small")
-                    } else {
-                        Err(anyhow::anyhow!("Failed to open database"))
-                    }
-                })
-                .await
-                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
-
-                if let Some(embedding) = stored_embedding {
-                    debug!(
-                        "✨ Reusing stored embedding for '{}' (includes signature, docs, context)",
-                        symbol_name
-                    );
-                    embedding
-                } else {
-                    // Fallback: generate embedding using full symbol context (not just bare name)
-                    // This ensures consistent quality with indexed embeddings
-                    debug!(
-                        "⚠️  No stored embedding for '{}', building from full symbol context",
-                        symbol_name
-                    );
-                    handler.ensure_embedding_engine().await?;
-                    let mut engine = handler.embedding_engine.write().await;
-                    if let Some(ref mut engine) = *engine {
-                        let embedding_text = engine.build_embedding_text(symbol);
-                        engine.embed_text(&embedding_text)?
-                    } else {
-                        anyhow::bail!("Embedding engine not available")
-                    }
-                }
-            } else {
-                // Symbol not found, generate embedding from raw name (user might be exploring)
-                debug!(
-                    "🔎 Symbol '{}' not found in database, embedding raw name",
-                    symbol_name
-                );
-                handler.ensure_embedding_engine().await?;
-                let mut engine = handler.embedding_engine.write().await;
-                if let Some(ref mut engine) = *engine {
-                    engine.embed_text(symbol_name)?
-                } else {
-                    anyhow::bail!("Embedding engine not available")
-                }
-            }
-        };
-
-        debug!(
-            "🔍 Searching for symbols similar to '{}' (threshold: {})",
-            symbol_name, threshold
-        );
-
-        // Step 2: Search using HNSW for similar symbols
-        let vector_store_clone = vector_store.clone();
-        let db_path_clone = db_path.clone();
-        let query_embedding_clone = query_embedding.clone();
-        let model_name = "bge-small".to_string();
-
-        let similar_results = tokio::task::spawn_blocking(move || {
-            if let Ok(database) = SymbolDatabase::new(&db_path_clone) {
-                let store_guard = vector_store_clone.blocking_read();
-                store_guard.search_similar_hnsw(
-                    &database,
-                    &query_embedding_clone,
-                    limit,
-                    threshold,
-                    &model_name,
-                )
-            } else {
-                Err(anyhow::anyhow!(
-                    "Failed to open database at {:?}",
-                    db_path_clone
-                ))
-            }
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
-
-        debug!(
-            "🚀 HNSW search found {} similar symbols",
-            similar_results.len()
-        );
-
-        // Step 3: Fetch actual symbol data
-        let symbols = if !similar_results.is_empty() {
-            let symbol_ids: Vec<String> = similar_results
-                .iter()
-                .map(|r| r.symbol_id.clone())
-                .collect();
-
-            let db_path_for_fetch = db_path.clone();
-            tokio::task::spawn_blocking(move || {
-                if let Ok(database) = SymbolDatabase::new(&db_path_for_fetch) {
-                    database.get_symbols_by_ids(&symbol_ids)
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Failed to open database at {:?}",
-                        db_path_for_fetch
-                    ))
-                }
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??
-        } else {
-            Vec::new()
-        };
-
-        // Step 4: Combine symbols with their similarity scores
-        let results: Vec<serde_json::Value> = symbols
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, symbol)| {
-                similar_results.get(idx).map(|sim_result| {
-                    json!({
-                        "symbol_name": symbol.name,
-                        "file_path": symbol.file_path,
-                        "kind": symbol.kind,
-                        "language": symbol.language,
-                        "signature": symbol.signature,
-                        "similarity_score": sim_result.similarity_score,
-                        "line": symbol.start_line,
-                        "doc_comment": symbol.doc_comment,
-                    })
-                })
-            })
-            .collect();
-
-        // Step 5: Format response
         let response = json!({
             "query_symbol": symbol_name,
-            "threshold": threshold,
-            "total_found": results.len(),
-            "results": results,
-            "tip": "Similarity scores range from 0.0 (unrelated) to 1.0 (identical). High scores (>0.8) indicate likely code duplicates.",
+            "total_found": 0,
+            "results": [],
+            "message": "Semantic similarity search (embeddings/HNSW) has been removed. Use fast_search with search_method='semantic' for text-based similarity, or use fast_refs to find related symbols through the relationship graph.",
         });
 
         Ok(CallToolResult::text_content(vec![Content::text(

@@ -1,10 +1,7 @@
-use crate::embeddings::EmbeddingEngine;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::mcp_compat::StructuredContentExt;
 use crate::tracing::{ArchitecturalLayer, ConnectionType, CrossLanguageTracer, TraceOptions};
-use std::sync::Arc;
 use tempfile;
-use tokio::sync::RwLock;
 
 /// Test fixtures and helpers for cross-language tracing tests
 /// These represent realistic symbols from a polyglot web application
@@ -159,9 +156,6 @@ mod cross_language_tracing_tests {
 
     /// Helper to create a mock tracer for testing
     async fn create_mock_tracer() -> CrossLanguageTracer {
-        // Note: These will be mocked/stubbed for testing
-        // For now, we'll use placeholders - actual mock implementations coming in GREEN phase
-
         // Create a temporary workspace with proper directory structure
         let temp_dir = tempfile::tempdir().unwrap();
         let workspace = crate::workspace::JulieWorkspace::initialize(temp_dir.path().to_path_buf())
@@ -175,15 +169,7 @@ mod cross_language_tracing_tests {
             .expect("Database should be initialized")
             .clone();
 
-        // Create embedding engine using workspace's persistent cache
-        let cache_dir = workspace.ensure_embedding_cache_dir().unwrap();
-        let embeddings = Arc::new(
-            EmbeddingEngine::new("bge-small", cache_dir, db.clone())
-                .await
-                .unwrap(),
-        );
-
-        CrossLanguageTracer::new(db, embeddings)
+        CrossLanguageTracer::new(db)
     }
 
     /// Test the holy grail: complete React → C# → SQL trace

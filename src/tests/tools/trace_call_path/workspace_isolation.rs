@@ -1,11 +1,7 @@
-// TDD Test for Workspace Isolation Bug in trace_call_path
+// TDD Test for Workspace Isolation in trace_call_path
 //
-// BUG: semantic_neighbors() always uses handler.get_workspace() which returns
-// the PRIMARY workspace, completely ignoring the workspace parameter.
-//
-// This test demonstrates that trace_call_path violates workspace isolation
-// by returning semantic matches from the primary workspace when searching
-// a reference workspace.
+// Tests that cross-language naming variant matching correctly uses
+// the target workspace's database, not the primary workspace.
 
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::base::Visibility;
@@ -39,45 +35,10 @@ fn make_symbol(id: &str, name: &str, language: &str, file_path: &str) -> Symbol 
     }
 }
 
-/// RED PHASE: This test should FAIL because semantic_neighbors uses wrong workspace
-///
-/// Test scenario:
-/// 1. Primary workspace has symbol "PaymentService" at /primary/payment.ts
-/// 2. Reference workspace has symbol "UserService" at /reference/user.ts
-/// 3. When searching for "UserService" in reference workspace with semantic search
-/// 4. Results should ONLY include symbols from /reference/* paths
-/// 5. Results should NEVER include symbols from /primary/* paths
-///
-/// Current behavior (BUG):
-/// - semantic_neighbors() calls handler.get_workspace() which returns PRIMARY
-/// - HNSW search happens on PRIMARY workspace vector store
-/// - Results leak from primary workspace into reference workspace search
-///
-/// Expected behavior (AFTER FIX):
-/// - semantic_neighbors() should use the workspace parameter
-/// - HNSW search should happen on the REFERENCE workspace vector store
-/// - Results strictly isolated to the target workspace
-#[tokio::test]
-#[ignore] // Requires full workspace setup with vector stores - complex integration test
-async fn test_semantic_search_respects_workspace_isolation() {
-    // This is a placeholder for a full integration test
-    // The real bug was discovered manually during testing:
-    // - Searched MyraNext workspace (reference) for "InstitutionalProposalProject"
-    // - Got results from Julie workspace (primary): /Users/murphy/source/julie/...
-    // - This violates fundamental workspace isolation principle
-
-    // TODO: Implement full integration test when we have test infrastructure for:
-    // 1. Creating multiple workspaces with vector stores
-    // 2. Loading HNSW indexes
-    // 3. Running semantic search across workspace boundaries
-
-    panic!("Test not yet implemented - see manual reproduction in conversation");
-}
-
 /// Unit test for find_cross_language_callers workspace isolation
 ///
-/// This tests the non-semantic code path to ensure workspace isolation
-/// works correctly for naming variant matching (which doesn't use HNSW).
+/// This tests the naming variant code path to ensure workspace isolation
+/// works correctly for naming variant matching.
 #[tokio::test]
 async fn test_naming_variants_respect_workspace_database() {
     // Setup: Create TWO separate databases simulating primary + reference workspaces
@@ -233,28 +194,4 @@ async fn test_naming_variants_respect_workspace_database() {
         callers[0].language, "csharp",
         "Should not find primary workspace symbols"
     );
-}
-
-/// Documentation of the architectural bug
-///
-/// The bug is in src/tools/trace_call_path.rs:812-815:
-///
-/// ```rust
-/// let workspace = match handler.get_workspace().await? {
-///     Some(ws) => ws,
-///     None => return Ok(vec![]),
-/// };
-/// ```
-///
-/// This ALWAYS gets the PRIMARY workspace from the handler, ignoring the
-/// workspace parameter passed to call_tool(). The fix requires:
-///
-/// 1. Load the correct workspace's vector store based on self.workspace parameter
-/// 2. Pass that vector store to semantic_neighbors
-/// 3. Update semantic_neighbors signature to accept vector store parameter
-/// 4. Update both callers of semantic_neighbors
-#[test]
-fn document_semantic_neighbors_architectural_bug() {
-    // This test documents the root cause for future reference
-    // See conversation for full details of the bug discovery
 }

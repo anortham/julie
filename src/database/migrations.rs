@@ -6,7 +6,7 @@ use rusqlite::params;
 use tracing::{debug, info, warn};
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 6;
+pub const LATEST_SCHEMA_VERSION: i32 = 8;
 
 impl SymbolDatabase {
     // ============================================================
@@ -95,6 +95,8 @@ impl SymbolDatabase {
             4 => self.migration_004_add_content_type()?,
             5 => self.migration_005_add_fts_prefix_indexes()?,
             6 => self.migration_006_add_types_table()?,
+            7 => self.migration_007_drop_fts5()?,
+            8 => self.migration_008_drop_embedding_tables()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -109,6 +111,8 @@ impl SymbolDatabase {
             4 => "Add content_type field to symbols for documentation",
             5 => "Add FTS5 prefix indexes for faster wildcard queries",
             6 => "Add types table for type intelligence",
+            7 => "Drop FTS5 tables and triggers (replaced by Tantivy)",
+            8 => "Drop embedding tables (embedding engine removed)",
             _ => "Unknown migration",
         };
 
@@ -502,6 +506,47 @@ impl SymbolDatabase {
         debug!("Created types table indexes");
 
         info!("✅ Types table created successfully");
+        Ok(())
+    }
+
+    /// Migration 007: Drop FTS5 tables and triggers (replaced by Tantivy)
+    ///
+    /// FTS5 virtual tables and their sync triggers are no longer needed.
+    /// All full-text search is now handled by Tantivy with CodeTokenizer.
+    fn migration_007_drop_fts5(&self) -> Result<()> {
+        // Drop FTS5 sync triggers
+        for trigger in &[
+            "symbols_ai", "symbols_ad", "symbols_au",
+            "files_ai", "files_ad", "files_au",
+        ] {
+            self.conn.execute(
+                &format!("DROP TRIGGER IF EXISTS {trigger}"),
+                [],
+            )?;
+        }
+        debug!("Dropped FTS5 sync triggers");
+
+        // Drop FTS5 virtual tables
+        self.conn.execute("DROP TABLE IF EXISTS symbols_fts", [])?;
+        self.conn.execute("DROP TABLE IF EXISTS files_fts", [])?;
+        debug!("Dropped FTS5 virtual tables");
+
+        info!("✅ FTS5 tables and triggers removed (replaced by Tantivy)");
+        Ok(())
+    }
+
+    /// Migration 008: Drop embedding tables (embedding engine removed)
+    ///
+    /// The embedding storage layer (embeddings + embedding_vectors tables) is dead code.
+    /// The embedding engine was removed; all semantic search now uses HNSW vectors
+    /// stored externally. Drop the tables to clean up the schema.
+    fn migration_008_drop_embedding_tables(&self) -> Result<()> {
+        info!("Running migration 008: Drop embedding tables");
+        self.conn
+            .execute("DROP TABLE IF EXISTS embedding_vectors", [])?;
+        self.conn.execute("DROP TABLE IF EXISTS embeddings", [])?;
+        debug!("Dropped embedding_vectors and embeddings tables");
+        info!("✅ Embedding tables removed (embedding engine removed)");
         Ok(())
     }
 }

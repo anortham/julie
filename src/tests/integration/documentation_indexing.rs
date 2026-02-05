@@ -4,8 +4,7 @@
 //! 1. File discovery (markdown files found)
 //! 2. Symbol extraction (markdown extractor processes files)
 //! 3. Documentation storage (symbols table with content_type='documentation')
-//! 4. FTS5 sync (symbols_fts table auto-updated via triggers)
-//! 5. Deduplication (file_hash prevents duplicate processing)
+//! 4. Deduplication (file_hash prevents duplicate processing)
 
 use anyhow::Result;
 use std::fs;
@@ -197,127 +196,6 @@ async fn test_documentation_indexing_basic() -> Result<()> {
     Ok(())
 }
 
-/// Test 2: FTS5 full-text search sync
-/// Given: Documentation indexed into symbols table with content_type='documentation'
-/// When: Querying symbols_fts (FTS5 virtual table)
-/// Expected: Documentation is searchable via full-text search (triggers auto-synced)
-#[tokio::test]
-async fn test_documentation_fts5_sync() -> Result<()> {
-    unsafe {
-        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-    }
-
-    let temp_dir = TempDir::new()?;
-    let workspace_path = temp_dir.path();
-
-    // Create markdown with searchable content
-    fs::write(
-        workspace_path.join("DEPLOYMENT.md"),
-        "# Deployment Guide\n\nInstructions for deploying to production servers using Docker containers.",
-    )?;
-
-    let handler = create_test_handler(workspace_path).await?;
-    index_workspace(&handler, workspace_path).await?;
-
-    let workspace = handler
-        .get_workspace()
-        .await?
-        .expect("Workspace initialized");
-    let db_arc = workspace
-        .db
-        .as_ref()
-        .expect("Database should be initialized");
-    let db = db_arc.lock().unwrap();
-
-    // Debug: Check if data exists in symbols table
-    let symbols_count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols WHERE content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to count symbols");
-
-    println!(
-        "DEBUG: symbols table has {} documentation entries",
-        symbols_count
-    );
-
-    // Debug: Check if FTS5 table has any documentation data
-    let fts_total: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols_fts WHERE rowid IN (SELECT rowid FROM symbols WHERE content_type = 'documentation')",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to count symbols_fts");
-
-    println!("DEBUG: symbols_fts has {} documentation entries", fts_total);
-
-    // Debug: Check what content is actually in FTS5
-    let actual_content: String = db
-        .conn
-        .query_row("SELECT doc_comment FROM symbols_fts LIMIT 1", [], |row| {
-            row.get(0)
-        })
-        .expect("Failed to get FTS5 content");
-
-    println!("DEBUG: FTS5 doc_comment = '{}'", actual_content);
-
-    // Verify: FTS5 search finds documentation by keyword
-    let docker_count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols s
-             JOIN symbols_fts fts ON s.rowid = fts.rowid
-             WHERE fts.doc_comment MATCH 'docker' AND s.content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to search symbols_fts");
-
-    assert_eq!(
-        docker_count, 1,
-        "FTS5 search should find 'docker' in DEPLOYMENT.md content"
-    );
-
-    let production_count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols s
-             JOIN symbols_fts fts ON s.rowid = fts.rowid
-             WHERE fts.doc_comment MATCH 'production' AND s.content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to search symbols_fts");
-
-    assert_eq!(
-        production_count, 1,
-        "FTS5 search should find 'production' in DEPLOYMENT.md content"
-    );
-
-    // Verify: FTS5 search for non-existent term returns zero
-    let nonexistent_count: i64 = db
-        .conn
-        .query_row(
-            "SELECT COUNT(*) FROM symbols s
-             JOIN symbols_fts fts ON s.rowid = fts.rowid
-             WHERE fts.doc_comment MATCH 'nonexistent_keyword_xyz' AND s.content_type = 'documentation'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("Failed to search symbols_fts");
-
-    assert_eq!(
-        nonexistent_count, 0,
-        "FTS5 search should return 0 for non-existent keyword"
-    );
-
-    Ok(())
-}
 
 /// Test 3: File hash deduplication
 /// Given: Documentation indexed, then re-indexed without changes

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rmcp::{
     ServerHandler, RoleServer,
     model::{CallToolResult, ServerCapabilities, ServerInfo, Implementation},
@@ -12,8 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use tracing::{debug, info, warn};
 
-use crate::embeddings::EmbeddingEngine;
-use crate::workspace::{JulieWorkspace, WorkspaceConfig};
+use crate::workspace::JulieWorkspace;
 use tokio::sync::RwLock;
 
 // Import tool parameter types (we'll convert these from the tool modules)
@@ -25,16 +24,10 @@ use crate::tools::{
 };
 
 /// Tracks which indexes are ready for search operations
-///
-/// This enables progressive enhancement and graceful degradation:
-/// - SQLite FTS5: Available immediately after indexing (~2s)
-/// - Semantic (HNSW): Available after embedding generation (~20-30s)
 #[derive(Debug)]
 pub struct IndexingStatus {
-    /// SQLite FTS5 full-text search is ready
+    /// Search system (Tantivy) is ready
     pub sqlite_fts_ready: AtomicBool,
-    /// HNSW semantic search is ready
-    pub semantic_ready: AtomicBool,
 }
 
 impl IndexingStatus {
@@ -42,7 +35,6 @@ impl IndexingStatus {
     pub fn new() -> Self {
         Self {
             sqlite_fts_ready: AtomicBool::new(false),
-            semantic_ready: AtomicBool::new(false),
         }
     }
 }
@@ -58,7 +50,6 @@ impl Default for IndexingStatus {
 /// This handler manages the core Julie functionality including:
 /// - Code intelligence operations (search, navigation, extraction)
 /// - Symbol database management
-/// - Semantic search and embeddings
 /// - Cross-language relationship detection
 #[derive(Clone)]
 pub struct JulieServerHandler {
@@ -66,13 +57,9 @@ pub struct JulieServerHandler {
     pub workspace: Arc<RwLock<Option<JulieWorkspace>>>,
     /// Flag to track if workspace has been indexed
     pub is_indexed: Arc<RwLock<bool>>,
-    /// Cached embedding engine for semantic search (expensive to initialize)
-    pub embedding_engine: Arc<RwLock<Option<EmbeddingEngine>>>,
-    /// Timestamp of last embedding engine use (for lazy cleanup)
-    pub embedding_engine_last_used: Arc<tokio::sync::Mutex<Option<std::time::Instant>>>,
     /// Tracks which indexes are ready for search operations
     pub indexing_status: Arc<IndexingStatus>,
-    /// 🔒 CRITICAL FIX: Serializes tool execution to prevent stdout interleaving
+    /// Serializes tool execution to prevent stdout interleaving.
     /// The MCP StdioTransport doesn't synchronize writes to stdout.
     /// When multiple tool calls complete concurrently, their JSON responses can
     /// interleave on stdout, causing client parsing errors.
@@ -91,8 +78,6 @@ impl JulieServerHandler {
         Ok(Self {
             workspace: Arc::new(RwLock::new(None)),
             is_indexed: Arc::new(RwLock::new(false)),
-            embedding_engine: Arc::new(RwLock::new(None)),
-            embedding_engine_last_used: Arc::new(tokio::sync::Mutex::new(None)),
             indexing_status: Arc::new(IndexingStatus::new()),
             tool_execution_lock: Arc::new(tokio::sync::Mutex::new(())),
             tool_router: Self::tool_router(),
@@ -102,125 +87,6 @@ impl JulieServerHandler {
     /// Get the current working directory for workspace operations
     fn get_workspace_path(&self) -> std::path::PathBuf {
         std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
-    }
-
-    /// Get or initialize the cached embedding engine for semantic operations
-    /// This avoids expensive repeated initialization of the ONNX model
-    /// Ensure vector store is initialized (lazy initialization for semantic search)
-    /// 🔥 CRITICAL FIX: Wraps blocking HNSW initialization in spawn_blocking to prevent runtime deadlock
-    pub async fn ensure_vector_store(&self) -> Result<()> {
-        // Fast path: check with read lock first (avoids blocking concurrent searches)
-        {
-            let workspace_guard = self.workspace.read().await;
-            if let Some(ws) = workspace_guard.as_ref() {
-                if ws.vector_store.is_some() {
-                    return Ok(()); // Already initialized
-                }
-            }
-        } // Drop read lock before acquiring write lock
-
-        // 🚀 CRITICAL FIX: Extract data with minimal write lock, then release before long operation
-        // The old code held write lock for 30-60 seconds, blocking ALL workspace access
-        let (root, julie_dir, db) = {
-            let mut workspace_guard = self.workspace.write().await;
-            if let Some(ref mut ws) = workspace_guard.as_mut() {
-                // Double-check: another thread might have initialized while we waited for write lock
-                if ws.vector_store.is_some() {
-                    return Ok(()); // Another thread finished while we waited
-                }
-
-                info!("🔄 Lazy-initializing vector store for semantic search...");
-
-                // Clone what we need, then RELEASE the lock
-                (ws.root.clone(), ws.julie_dir.clone(), ws.db.clone())
-            } else {
-                return Err(anyhow::anyhow!("Workspace not initialized"));
-            }
-        }; // 🔓 Write lock released here - other operations can proceed!
-
-        // 🚨 CRITICAL FIX: HNSW loading/building is BLOCKING (12MB disk I/O + CPU computation)
-        // Must run on blocking thread pool to avoid deadlocking the tokio runtime
-        // This operation can take 30-60 seconds but now runs WITHOUT holding workspace lock
-
-        // Run initialization on blocking threadpool (NO LOCK HELD)
-        let vector_store = tokio::task::spawn_blocking(move || {
-            // Reconstruct minimal workspace for initialization
-            let mut temp_ws = JulieWorkspace {
-                root,
-                julie_dir,
-                db,
-                embeddings: None,
-                vector_store: None,
-                search_index: None,
-                watcher: None,
-                config: WorkspaceConfig::default(),
-            };
-
-            temp_ws.initialize_vector_store()?;
-
-            // Extract the initialized vector store
-            temp_ws
-                .vector_store
-                .ok_or_else(|| anyhow::anyhow!("Vector store initialization failed"))
-        })
-        .await
-        .context("Vector store initialization task panicked")??;
-
-        // 🔒 Re-acquire write lock ONLY to store the result (fast operation)
-        {
-            let mut workspace_guard = self.workspace.write().await;
-            if let Some(ref mut ws) = workspace_guard.as_mut() {
-                // Check one more time in case another thread beat us
-                if ws.vector_store.is_none() {
-                    ws.vector_store = Some(vector_store);
-                    info!("✅ Vector store initialized on blocking threadpool");
-                }
-            }
-        } // 🔓 Write lock released immediately
-
-        Ok(())
-    }
-
-    pub async fn ensure_embedding_engine(&self) -> Result<()> {
-        // Fast path: check with read lock first (avoids blocking concurrent searches)
-        {
-            let embedding_guard = self.embedding_engine.read().await;
-            if embedding_guard.is_some() {
-                return Ok(()); // Already initialized
-            }
-        } // Drop read lock before acquiring write lock
-
-        // Slow path: acquire write lock only if initialization needed
-        let mut embedding_guard = self.embedding_engine.write().await;
-
-        // Double-check: another thread might have initialized while we waited
-        if embedding_guard.is_none() {
-            debug!("🧠 Initializing cached embedding engine");
-
-            // Get database from workspace
-            let workspace_guard = self.workspace.read().await;
-            let workspace = workspace_guard
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
-
-            let db = workspace
-                .db
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?
-                .clone();
-
-            // Use workspace's persistent embedding cache (.julie/cache/embeddings/)
-            let cache_dir = workspace.ensure_embedding_cache_dir()?;
-
-            let engine = EmbeddingEngine::new("bge-small", cache_dir, db)
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to initialize embedding engine: {}", e))?;
-
-            *embedding_guard = Some(engine);
-            info!("✅ Cached embedding engine initialized successfully");
-        }
-
-        Ok(())
     }
 
     /// Initialize or load workspace and update components to use persistent storage
@@ -331,7 +197,6 @@ impl JulieServerHandler {
             }
 
             // Initialize workspace (will reuse existing database if present)
-            // 🔥 CRITICAL FIX: Now awaited due to async ONNX initialization
             JulieWorkspace::initialize(target_path).await?
         } else {
             // Try to load existing workspace first
@@ -376,58 +241,6 @@ impl JulieServerHandler {
             self.initialize_workspace(None).await?;
         }
         Ok(())
-    }
-
-    /// Start the periodic embedding engine cleanup task
-    /// This task checks every minute if the engine has been idle for >5 minutes and drops it to free memory
-    pub fn start_embedding_cleanup_task(&self) {
-        let engine = self.embedding_engine.clone();
-        let last_used = self.embedding_engine_last_used.clone();
-
-        tokio::spawn(async move {
-            const CHECK_INTERVAL_SECS: u64 = 60; // Check every minute
-            const IDLE_TIMEOUT_SECS: u64 = 300; // Drop after 5 minutes of inactivity
-
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(CHECK_INTERVAL_SECS)).await;
-
-                // Check if engine exists and is idle
-                let should_drop = {
-                    let last_used_guard = last_used.lock().await;
-                    if let Some(last_use_time) = *last_used_guard {
-                        let idle_duration = last_use_time.elapsed().as_secs();
-                        idle_duration > IDLE_TIMEOUT_SECS
-                    } else {
-                        false // Never used, don't drop
-                    }
-                };
-
-                if should_drop {
-                    // Check if engine actually exists before trying to drop
-                    let engine_exists = {
-                        let engine_guard = engine.read().await;
-                        engine_guard.is_some()
-                    };
-
-                    if engine_exists {
-                        // Drop the engine to release memory
-                        let mut engine_guard = engine.write().await;
-                        *engine_guard = None;
-                        info!(
-                            "🧹 Dropped embedding engine after 5 minutes of inactivity - ONNX model memory released"
-                        );
-
-                        // Reset last_used timestamp
-                        let mut last_used_guard = last_used.lock().await;
-                        *last_used_guard = None;
-                    }
-                }
-            }
-        });
-
-        info!(
-            "🕐 Started periodic embedding engine cleanup task (checks every 60s, drops after 5min idle)"
-        );
     }
 
     /// Check if the tool execution lock is currently free (used in tests)

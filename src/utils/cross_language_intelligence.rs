@@ -13,15 +13,15 @@
 //!    - Know that a Python class method ≈ C# instance method ≈ Rust impl function
 //!    - Extract semantic meaning, not just text
 //!
-//! 2. **Fast Intelligence** (CASCADE: SQLite FTS5)
+//! 2. **Fast Intelligence** (CASCADE: Tantivy full-text search)
 //!    - Naming convention variants (snake_case, camelCase, PascalCase)
 //!    - Pattern matching across language conventions
 //!    - Sub-10ms indexed searches
 //!
-//! 3. **Semantic Intelligence** (HNSW Embeddings)
+//! 3. **Semantic Intelligence** (planned - HNSW Embeddings)
 //!    - Conceptual similarity (getUserData ≈ fetchUser ≈ loadUserProfile)
 //!    - Find similar patterns even with different names
-//!    - <50ms similarity searches
+//!    - Not yet implemented; naming variants provide cross-language coverage
 //!
 //! ## The Problem We Solve
 //!
@@ -45,19 +45,17 @@
 //! // Returns: ["getUserData", "get_user_data", "GetUserData", "get-user-data", "GET_USER_DATA"]
 //! ```
 //!
-//! For finding cross-language matches with search and embedding engines:
+//! For finding cross-language matches with search:
 //! ```rust,ignore
 //! use julie::utils::cross_language_intelligence::*;
 //!
-//! // Find symbols across languages (requires search and embedding engines)
+//! // Find symbols across languages using naming variants + Tantivy search
 //! let intelligence = CrossLanguageIntelligence::new();
 //! let matches = intelligence.find_cross_language_matches(
 //!     "getUserData",
 //!     &search_engine,
-//!     &embedding_engine,
 //! ).await?;
-//! // Finds: Python get_user_data(), JS getUserData(), C# GetUserData(),
-//! //        and semantically similar: fetchUser(), loadUserProfile()
+//! // Finds: Python get_user_data(), JS getUserData(), C# GetUserData()
 //! ```
 //!
 //! ## Design Principles
@@ -112,7 +110,7 @@ pub enum NamingConvention {
 /// # Performance
 ///
 /// O(n) where n is the length of the input string. Extremely fast.
-/// These variants are then searched using indexed queries (SQLite FTS5).
+/// These variants are then searched using indexed queries (Tantivy full-text search).
 pub fn generate_naming_variants(symbol: &str) -> Vec<String> {
     let mut variants = Vec::with_capacity(5);
 

@@ -122,7 +122,6 @@ fn render_node(node: &CallPathNode, output: &mut String, prefix: &str, is_last: 
     let match_indicator = match node.match_type {
         MatchType::Direct => "→",
         MatchType::NamingVariant => "≈",
-        MatchType::Semantic => "~",
     };
 
     // Format similarity if present
@@ -189,7 +188,6 @@ fn node_to_serializable(node: &CallPathNode) -> SerializablePathNode {
     let match_type_str = match node.match_type {
         MatchType::Direct => "direct",
         MatchType::NamingVariant => "naming_variant",
-        MatchType::Semantic => "semantic",
     };
 
     let relationship_str = node.relationship_kind.as_ref().map(|k| {

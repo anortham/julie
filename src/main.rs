@@ -136,9 +136,6 @@ async fn main() -> anyhow::Result<()> {
     info!("  Name: Julie");
     info!("  Version: {}", env!("CARGO_PKG_VERSION"));
 
-    // Start the periodic embedding engine cleanup task
-    handler.start_embedding_cleanup_task();
-
     info!("🎯 Auto-indexing will run in background after MCP handshake completes");
 
     // Capture database reference for shutdown checkpoint

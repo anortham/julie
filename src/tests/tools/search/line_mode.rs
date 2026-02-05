@@ -58,18 +58,11 @@ mod search_line_mode_tests {
             .indexing_status
             .sqlite_fts_ready
             .store(true, Ordering::Relaxed);
-        handler
-            .indexing_status
-            .semantic_ready
-            .store(true, Ordering::Relaxed);
         *handler.is_indexed.write().await = true;
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_line_mode_basic() -> Result<()> {
-        unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        }
         unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
         }
@@ -157,9 +150,6 @@ fn processPayment() {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_line_mode_respects_workspace_filter() -> Result<()> {
-        unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        }
         unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
         }
@@ -257,9 +247,6 @@ fn processPayment() {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_line_mode_handles_exclusion_queries() -> Result<()> {
         unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        }
-        unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
         }
 
@@ -339,9 +326,6 @@ fn processPayment() {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_symbols_mode_default() -> Result<()> {
         unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
-        }
-        unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
         }
 
@@ -415,9 +399,6 @@ fn processPayment() {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_line_mode_language_filter() -> Result<()> {
-        unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        }
         unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
         }
@@ -537,9 +518,6 @@ def python_function():
     #[ignore = "FTS content indexing timing issue - needs investigation"]
     async fn test_fast_search_line_mode_file_pattern_filter() -> Result<()> {
         unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        }
-        unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
         }
 
@@ -638,9 +616,6 @@ def python_function():
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "FTS content indexing timing issue - needs investigation"]
     async fn test_fast_search_line_mode_combined_filters() -> Result<()> {
-        unsafe {
-            std::env::set_var("JULIE_SKIP_EMBEDDINGS", "0");
-        }
         unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
         }

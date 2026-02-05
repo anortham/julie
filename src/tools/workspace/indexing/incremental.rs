@@ -465,21 +465,6 @@ impl ManageWorkspaceTool {
 
             // Commit all deletions atomically
             db_lock.commit_transaction()?;
-
-            // 🔥 FTS5 REBUILD: Now rebuild indexes ONCE for all deletions
-            debug!(
-                "🔄 Rebuilding FTS5 indexes after batch deletion of {} files",
-                cleaned_count
-            );
-            if let Err(e) = db_lock.rebuild_symbols_fts() {
-                warn!("Failed to rebuild symbols_fts after orphan cleanup: {}", e);
-                return Err(e);
-            }
-            if let Err(e) = db_lock.rebuild_files_fts() {
-                warn!("Failed to rebuild files_fts after orphan cleanup: {}", e);
-                return Err(e);
-            }
-            debug!("✅ FTS5 indexes rebuilt successfully after orphan cleanup");
         }
 
         if cleaned_count > 0 && !is_primary {

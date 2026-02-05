@@ -16,31 +16,12 @@ pub struct FileInfo {
     pub content: Option<String>,
 }
 
-/// Embedding metadata linking symbols to vector store
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmbeddingInfo {
-    pub symbol_id: String,
-    pub vector_id: String,
-    pub model_name: String,
-    pub embedding_hash: String,
-    pub created_at: i64,
-}
-
-/// File search result from FTS5 queries
-#[derive(Debug, Clone)]
-pub struct FileSearchResult {
-    pub path: String,
-    pub snippet: String,
-    pub rank: f32,
-}
-
 /// Database statistics for health monitoring
 #[derive(Debug, Default)]
 pub struct DatabaseStats {
     pub total_symbols: i64,
     pub total_relationships: i64,
     pub total_files: i64,
-    pub total_embeddings: i64,
     pub languages: Vec<String>,
     pub db_size_mb: f64,
 }

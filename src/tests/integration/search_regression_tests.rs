@@ -5,9 +5,7 @@
 //!
 //! Reference: TODO.md - Investigation Results section
 
-use crate::database::SymbolDatabase;
 use crate::tools::search::matches_glob_pattern;
-use tempfile::TempDir;
 
 // ============================================================================
 // ISSUE 1: Glob Pattern Matching Failures
@@ -272,129 +270,6 @@ mod glob_pattern_regression {
         }
     }
 }
-
-// ============================================================================
-// ISSUE 2: FTS5 Syntax Errors - Users Expect Regex, Get FTS5 Operators
-// ============================================================================
-//
-// Root Cause: Query string passed directly to SQLite FTS5 full-text search.
-// FTS5 has special syntax where `.` is a query operator.
-// User expected regex pattern matching, but julie uses FTS5 text search (not regex).
-//
-// Example: "InputFile.*spreadsheet" → `fts5: syntax error near "."`
-//
-// Recommendation: Document that queries are FTS5 text search, NOT regex.
-// Consider escaping special characters or adding a regex mode.
-
-#[cfg(test)]
-mod fts5_syntax_regression {
-    use super::*;
-
-    /// Test that dot character in queries doesn't cause FTS5 syntax errors
-    /// Bug: "InputFile.*spreadsheet" causes "fts5: syntax error near '.'"
-    #[test]
-    fn test_fts5_dot_character_in_query() {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).expect("Failed to create database");
-
-        // These queries contain `.` which FTS5 interprets as an operator
-        let queries_with_dots = vec![
-            "InputFile.*spreadsheet",     // Regex-like pattern (user expectation)
-            "System.Collections.Generic", // .NET namespace
-            "std::vector",                // C++ namespace (though :: not .)
-            "React.Component",            // JavaScript qualified name
-            "file.txt",                   // Filename with extension
-        ];
-
-        for query in queries_with_dots {
-            let result = db.find_symbols_by_pattern(query);
-
-            match result {
-                Ok(_) => {
-                    // Success - query was properly sanitized or handled
-                }
-                Err(e) => {
-                    let error_msg = e.to_string();
-                    assert!(
-                        !error_msg.contains("fts5") && !error_msg.contains("syntax error"),
-                        "Query '{}' caused FTS5 syntax error (should be sanitized): {}",
-                        query,
-                        error_msg
-                    );
-                }
-            }
-        }
-    }
-
-    /// Test that asterisk character in queries is handled correctly
-    /// FTS5 uses * for prefix matching, so this should work, but regex .* might confuse users
-    #[test]
-    fn test_fts5_asterisk_character_in_query() {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).expect("Failed to create database");
-
-        let queries_with_asterisk = vec![
-            "get*",        // FTS5 prefix wildcard (should work)
-            "InputFile.*", // Regex-like (user might expect regex)
-            ".*",          // Regex "any character, any number of times"
-        ];
-
-        for query in queries_with_asterisk {
-            let result = db.find_symbols_by_pattern(query);
-
-            // All should execute without syntax errors
-            assert!(
-                result.is_ok(),
-                "Query '{}' should not cause syntax error: {:?}",
-                query,
-                result
-            );
-        }
-    }
-
-    /// Test that common regex metacharacters are handled gracefully
-    /// Users coming from grep/ripgrep might expect regex support
-    #[test]
-    fn test_fts5_regex_metacharacters() {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-        let db = SymbolDatabase::new(&db_path).expect("Failed to create database");
-
-        let regex_patterns = vec![
-            r"test\d+",    // \d for digits
-            r"user[0-9]+", // Character class
-            r"^start",     // Start anchor
-            r"end$",       // End anchor
-            r"foo|bar",    // Alternation
-            r"test(ing)?", // Optional group
-            r"file\.txt",  // Escaped dot
-            r"path/to/.*", // Wildcard
-        ];
-
-        for query in regex_patterns {
-            let result = db.find_symbols_by_pattern(query);
-
-            match result {
-                Ok(_) => {
-                    // Query executed (might return empty results, but no crash)
-                }
-                Err(e) => {
-                    let error_msg = e.to_string();
-                    // Should not get FTS5 syntax errors
-                    assert!(
-                        !error_msg.contains("fts5") && !error_msg.contains("syntax error"),
-                        "Regex pattern '{}' caused FTS5 error: {}",
-                        query,
-                        error_msg
-                    );
-                }
-            }
-        }
-    }
-}
-
 // ============================================================================
 // ISSUE 3: Limit/Ranking Interaction - Relevant Results Hidden by Test Files
 // ============================================================================

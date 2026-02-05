@@ -45,10 +45,6 @@ impl SymbolDatabase {
             .conn
             .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
 
-        let total_embeddings: i64 =
-            self.conn
-                .query_row("SELECT COUNT(*) FROM embeddings", [], |row| row.get(0))?;
-
         // Get unique languages
         let mut stmt = self
             .conn
@@ -72,7 +68,6 @@ impl SymbolDatabase {
             total_symbols,
             total_relationships,
             total_files,
-            total_embeddings,
             languages,
             db_size_mb,
         })

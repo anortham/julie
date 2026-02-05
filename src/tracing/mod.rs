@@ -7,7 +7,6 @@
 //! implementation has been superseded by the tool-based architecture.
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::EmbeddingEngine;
 use crate::extractors::Symbol;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -20,8 +19,6 @@ use uuid::Uuid;
 pub struct CrossLanguageTracer {
     #[allow(dead_code)]
     db: Arc<Mutex<SymbolDatabase>>,
-    #[allow(dead_code)]
-    embeddings: Arc<EmbeddingEngine>,
 }
 
 /// Complete trace of data flow across languages and architectural layers
@@ -111,8 +108,8 @@ pub struct ConfidenceScore {
 }
 
 impl CrossLanguageTracer {
-    pub fn new(db: Arc<Mutex<SymbolDatabase>>, embeddings: Arc<EmbeddingEngine>) -> Self {
-        Self { db, embeddings }
+    pub fn new(db: Arc<Mutex<SymbolDatabase>>) -> Self {
+        Self { db }
     }
 
     /// The killer feature: trace data flow from one symbol through the entire stack
