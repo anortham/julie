@@ -173,8 +173,7 @@ Finds ALL references in <20ms.
 trace_call_path(
   symbol="processPayment",
   direction="upstream",  // or "downstream", "both"
-  max_depth=3,
-  output_format="json"
+  max_depth=3
 )
 ```
 
