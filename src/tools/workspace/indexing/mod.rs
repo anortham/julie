@@ -14,3 +14,4 @@ pub(crate) mod extractor;
 pub(crate) mod incremental;
 pub(crate) mod index;
 pub(crate) mod processor;
+pub(crate) mod resolver;

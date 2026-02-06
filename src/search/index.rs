@@ -245,8 +245,11 @@ impl SearchIndex {
     ) -> Result<Vec<SymbolSearchResult>> {
         let f = &self.schema_fields;
 
-        // Tokenize the query using the same code tokenizer
-        let terms = self.tokenize_query(query_str);
+        // Tokenize the query using the same code tokenizer, then remove compound
+        // tokens whose sub-parts are all present. This prevents AND-per-term logic
+        // from requiring partial compounds (e.g., "search_term") that are never
+        // produced when indexing longer names (e.g., "search_term_one").
+        let terms = Self::filter_compound_tokens(self.tokenize_query(query_str));
         if terms.is_empty() {
             return Ok(Vec::new());
         }
@@ -300,7 +303,7 @@ impl SearchIndex {
     ) -> Result<Vec<ContentSearchResult>> {
         let f = &self.schema_fields;
 
-        let terms = self.tokenize_query(query_str);
+        let terms = Self::filter_compound_tokens(self.tokenize_query(query_str));
         if terms.is_empty() {
             return Ok(Vec::new());
         }
@@ -429,6 +432,35 @@ impl SearchIndex {
         }
         terms.dedup();
         terms
+    }
+
+    /// Remove compound tokens whose snake_case sub-parts are all present in the list.
+    ///
+    /// The CodeTokenizer emits the full form plus atomic sub-parts, but never
+    /// partial compounds. For example, `search_term_one` produces tokens
+    /// `[search_term_one, search, term, one]` — there is no `search_term` token.
+    ///
+    /// When a query like `"search_term"` tokenizes to `[search_term, search, term]`,
+    /// requiring ALL tokens via AND would fail because `search_term` doesn't exist
+    /// in documents indexed as `search_term_one`. By filtering out `search_term`
+    /// (whose parts `search` and `term` are already present), we get clean AND
+    /// semantics on just the atomic parts.
+    fn filter_compound_tokens(tokens: Vec<String>) -> Vec<String> {
+        use std::collections::HashSet;
+        let token_set: HashSet<String> = tokens.iter().cloned().collect();
+        tokens
+            .into_iter()
+            .filter(|token| {
+                let parts: Vec<&str> = token.split('_').collect();
+                if parts.len() <= 1 {
+                    return true; // Not a snake_case compound, keep it
+                }
+                // Keep if any sub-part is missing from the token set
+                !parts
+                    .iter()
+                    .all(|part| !part.is_empty() && token_set.contains(*part))
+            })
+            .collect()
     }
 
     fn get_text_field(doc: &TantivyDocument, field: tantivy::schema::Field) -> String {

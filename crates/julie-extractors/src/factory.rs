@@ -1,4 +1,4 @@
-//! Shared extractor factory - Single source of truth for all 27 languages
+//! Shared extractor factory - Single source of truth for all 30 languages
 //!
 //! This module provides the centralized factory function for all language extractors.
 //! It ensures consistency across the codebase and prevents bugs from missing languages
@@ -9,9 +9,34 @@ use anyhow::anyhow;
 use std::collections::HashMap;
 use std::path::Path;
 
+/// Convert a raw type map from `infer_types()` into the richer `TypeInfo` structure.
+///
+/// Currently all extracted types are marked as inferred with no generic params,
+/// constraints, or metadata. This is the single place to enrich type extraction
+/// when we're ready (see Task #1 in the audit plan).
+fn convert_types_map(types: HashMap<String, String>, language: &str) -> HashMap<String, TypeInfo> {
+    types
+        .into_iter()
+        .map(|(symbol_id, type_string)| {
+            (
+                symbol_id.clone(),
+                TypeInfo {
+                    symbol_id,
+                    resolved_type: type_string,
+                    generic_params: None,
+                    constraints: None,
+                    is_inferred: true,
+                    language: language.to_string(),
+                    metadata: None,
+                },
+            )
+        })
+        .collect()
+}
+
 /// Extract symbols and relationships for ANY supported language
 ///
-/// This is the centralized factory function for all 27 language extractors.
+/// This is the centralized factory function for all 30 language extractors.
 /// It ensures consistency across the codebase and prevents bugs from missing
 /// languages in different code paths.
 ///
@@ -23,14 +48,7 @@ use std::path::Path;
 /// - `workspace_root`: Workspace root path for relative path calculations
 ///
 /// # Returns
-/// `Ok((symbols, relationships))` on success, or error if extraction fails
-///
-/// # Example
-/// ```rust
-/// let (symbols, rels) = extract_symbols_and_relationships(
-///     &tree, "src/main.rs", &content, "rust", workspace_root
-/// )?;
-/// ```
+/// `ExtractionResults` containing symbols, relationships, identifiers, and types
 pub fn extract_symbols_and_relationships(
     tree: &tree_sitter::Tree,
     file_path: &str,
@@ -38,851 +56,283 @@ pub fn extract_symbols_and_relationships(
     language: &str,
     workspace_root: &Path,
 ) -> Result<ExtractionResults, anyhow::Error> {
-    // Single match statement for ALL 27 languages
     match language {
-        "rust" => {
-            let mut extractor = crate::rust::RustExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
+        // ─── Languages with full extraction (symbols + rels + pending + identifiers + types) ───
 
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+        "rust" => {
+            let mut ext = crate::rust::RustExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "typescript" | "tsx" => {
-            let mut extractor = crate::typescript::TypeScriptExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::typescript::TypeScriptExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "javascript" | "jsx" => {
-            let mut extractor = crate::javascript::JavaScriptExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::javascript::JavaScriptExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "python" => {
-            let mut extractor = crate::python::PythonExtractor::new(
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::python::PythonExtractor::new(file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "java" => {
-            let mut extractor = crate::java::JavaExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::java::JavaExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "csharp" => {
-            let mut extractor = crate::csharp::CSharpExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::csharp::CSharpExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "php" => {
-            let mut extractor = crate::php::PhpExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
-        }
-        "ruby" => {
-            let mut extractor = crate::ruby::RubyExtractor::new(
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: HashMap::new(),
-            })
+            let mut ext = crate::php::PhpExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "swift" => {
-            let mut extractor = crate::swift::SwiftExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::swift::SwiftExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "kotlin" => {
-            let mut extractor = crate::kotlin::KotlinExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: extractor.get_pending_relationships(),
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::kotlin::KotlinExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "dart" => {
-            let mut extractor = crate::dart::DartExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::dart::DartExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "go" => {
-            let mut extractor = crate::go::GoExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::go::GoExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "c" => {
-            let mut extractor = crate::c::CExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::c::CExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "cpp" => {
-            let mut extractor = crate::cpp::CppExtractor::new(
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: "cpp".to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
-        }
-        "lua" => {
-            let mut extractor = crate::lua::LuaExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: HashMap::new(),
-            })
-        }
-        "qml" => {
-            let mut extractor = crate::qml::QmlExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: extractor.get_pending_relationships(),
-                identifiers: _identifiers,
-                types: HashMap::new(),
-            })
-        }
-        "r" => {
-            let mut extractor = crate::r::RExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let pending_relationships = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships,
-                identifiers: _identifiers,
-                types: HashMap::new(),
-            })
-        }
-        "sql" => {
-            let mut extractor = crate::sql::SqlExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: Vec::new(),
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
-        }
-        "html" => {
-            let mut extractor = crate::html::HTMLExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: Vec::new(),
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
-        }
-        "css" => {
-            let mut extractor = crate::css::CSSExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            // CSSExtractor doesn't have extract_relationships method yet
-
-            Ok(ExtractionResults {
-
-                symbols,
-
-                relationships: Vec::new(),
-                pending_relationships: Vec::new(),
-
-                identifiers: _identifiers,
-
-                types: HashMap::new(),
-
-            })
-        }
-        "vue" => {
-            let mut extractor = crate::vue::VueExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(Some(tree));
-            let relationships = extractor.extract_relationships(Some(tree), &symbols);
-            let _identifiers = extractor.extract_identifiers(&symbols);
-            let _types = extractor.infer_types(&symbols);
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: Vec::new(),
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
-        }
-        "razor" => {
-            let mut extractor = crate::razor::RazorExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: Vec::new(),
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
-        }
-        "bash" => {
-            let mut extractor = crate::bash::BashExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: extractor.get_pending_relationships(),
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::cpp::CppExtractor::new(file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, "cpp") })
         }
         "powershell" => {
-            let mut extractor = crate::powershell::PowerShellExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::powershell::PowerShellExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
-        "gdscript" => {
-            let mut extractor = crate::gdscript::GDScriptExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers: _identifiers,
-                types: HashMap::new(),
-            })
+        "bash" => {
+            let mut ext = crate::bash::BashExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
         }
         "zig" => {
-            let mut extractor = crate::zig::ZigExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            let pending_relationships = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships,
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::zig::ZigExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: convert_types_map(types, language) })
+        }
+
+        // ─── Languages with rels + identifiers + types but no pending relationships ───
+
+        "sql" => {
+            let mut ext = crate::sql::SqlExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: Vec::new(), identifiers, types: convert_types_map(types, language) })
+        }
+        "html" => {
+            let mut ext = crate::html::HTMLExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: Vec::new(), identifiers, types: convert_types_map(types, language) })
+        }
+        "razor" => {
+            let mut ext = crate::razor::RazorExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: Vec::new(), identifiers, types: convert_types_map(types, language) })
         }
         "regex" => {
-            let mut extractor = crate::regex::RegexExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            let _types = extractor.infer_types(&symbols);
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: Vec::new(),
-                identifiers: _identifiers,
-                types: _types.into_iter().map(|(symbol_id, type_string)| {
-                    (symbol_id.clone(), TypeInfo {
-                        symbol_id,
-                        resolved_type: type_string,
-                        generic_params: None,
-                        constraints: None,
-                        is_inferred: true,
-                        language: language.to_string(),
-                        metadata: None,
-                    })
-                }).collect(),
-            })
+            let mut ext = crate::regex::RegexExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: Vec::new(), identifiers, types: convert_types_map(types, language) })
+        }
+
+        // ─── Vue (unique signatures: Option<&Tree>, no tree param for identifiers) ───
+
+        "vue" => {
+            let mut ext = crate::vue::VueExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(Some(tree));
+            let relationships = ext.extract_relationships(Some(tree), &symbols);
+            let identifiers = ext.extract_identifiers(&symbols);
+            let types = ext.infer_types(&symbols);
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: Vec::new(), identifiers, types: convert_types_map(types, language) })
+        }
+
+        // ─── Languages with rels + pending + identifiers but no types ───
+
+        "ruby" => {
+            let mut ext = crate::ruby::RubyExtractor::new(file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = convert_types_map(ext.infer_types(&symbols), language);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types })
+        }
+        "lua" => {
+            let mut ext = crate::lua::LuaExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: HashMap::new() })
+        }
+        "gdscript" => {
+            let mut ext = crate::gdscript::GDScriptExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = convert_types_map(ext.infer_types(&symbols), language);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types })
+        }
+        "qml" => {
+            let mut ext = crate::qml::QmlExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: HashMap::new() })
+        }
+        "r" => {
+            let mut ext = crate::r::RExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults { symbols, relationships, pending_relationships: pending, identifiers, types: HashMap::new() })
+        }
+
+        // ─── Data/markup languages (symbols + identifiers only) ───
+
+        "css" => {
+            let mut ext = crate::css::CSSExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults { symbols, relationships: Vec::new(), pending_relationships: Vec::new(), identifiers, types: HashMap::new() })
         }
         "markdown" => {
-            let mut extractor = crate::markdown::MarkdownExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);            // Markdown is documentation - no code relationships
-
-            Ok(ExtractionResults {
-
-                symbols,
-
-                relationships: Vec::new(),
-                pending_relationships: Vec::new(),
-
-                identifiers: _identifiers,
-
-                types: HashMap::new(),
-
-            })
+            let mut ext = crate::markdown::MarkdownExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults { symbols, relationships: Vec::new(), pending_relationships: Vec::new(), identifiers, types: HashMap::new() })
         }
         "json" => {
-            let mut extractor = crate::json::JsonExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            // JSON is configuration data - no code relationships
-
-            Ok(ExtractionResults {
-
-                symbols,
-
-                relationships: Vec::new(),
-                pending_relationships: Vec::new(),
-
-                identifiers: _identifiers,
-
-                types: HashMap::new(),
-
-            })
+            let mut ext = crate::json::JsonExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults { symbols, relationships: Vec::new(), pending_relationships: Vec::new(), identifiers, types: HashMap::new() })
         }
         "toml" => {
-            let mut extractor = crate::toml::TomlExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            // TOML is configuration data - no code relationships
-
-            Ok(ExtractionResults {
-
-                symbols,
-
-                relationships: Vec::new(),
-                pending_relationships: Vec::new(),
-
-                identifiers: _identifiers,
-
-                types: HashMap::new(),
-
-            })
+            let mut ext = crate::toml::TomlExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults { symbols, relationships: Vec::new(), pending_relationships: Vec::new(), identifiers, types: HashMap::new() })
         }
         "yaml" => {
-            let mut extractor = crate::yaml::YamlExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let _identifiers = extractor.extract_identifiers(tree, &symbols);
-            // YAML is configuration data - no code relationships
-
-            Ok(ExtractionResults {
-
-                symbols,
-
-                relationships: Vec::new(),
-                pending_relationships: Vec::new(),
-
-                identifiers: _identifiers,
-
-                types: HashMap::new(),
-
-            })
+            let mut ext = crate::yaml::YamlExtractor::new(language.to_string(), file_path.to_string(), content.to_string(), workspace_root);
+            let symbols = ext.extract_symbols(tree);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults { symbols, relationships: Vec::new(), pending_relationships: Vec::new(), identifiers, types: HashMap::new() })
         }
 
-        _ => {
-            return Err(anyhow!(
-                "No extractor available for language '{}' (file: {})",
-                language,
-                file_path
-            ));
-        }
+        _ => Err(anyhow!(
+            "No extractor available for language '{}' (file: {})",
+            language,
+            file_path
+        )),
     }
 }
 
@@ -892,7 +342,7 @@ mod factory_consistency_tests {
     use std::path::PathBuf;
     use tree_sitter::Parser;
 
-    /// Test that ALL 27 supported languages work with the factory function
+    /// Test that ALL supported languages work with the factory function
     ///
     /// This test prevents the R/QML/PHP bug from happening again by ensuring
     /// every language in supported_languages() can be extracted via the factory.
@@ -970,6 +420,7 @@ mod factory_consistency_tests {
         );
     }
 }
+
 #[cfg(test)]
 mod test_factory_returns_identifiers {
     use std::path::PathBuf;
@@ -982,15 +433,15 @@ def foo():
     bar()
     x.method()
 "#;
-        
+
         let workspace_root = PathBuf::from("/tmp");
-        
+
         // Parse the code
         let mut parser = Parser::new();
         let language = tree_sitter_python::LANGUAGE;
         parser.set_language(&language.into()).unwrap();
         let tree = parser.parse(code, None).unwrap();
-        
+
         // Call the factory
         let results = crate::factory::extract_symbols_and_relationships(
             &tree,
@@ -999,7 +450,7 @@ def foo():
             "python",
             &workspace_root,
         ).unwrap();
-        
+
         assert!(results.symbols.len() > 0, "Should extract symbols");
         assert!(results.identifiers.len() > 0, "Factory should return identifiers from Python code!");
     }

@@ -20,7 +20,7 @@ mod signals;
 mod types;
 mod variables;
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
+use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
 
@@ -119,6 +119,43 @@ impl GDScriptExtractor {
     /// Extract all identifier usages (function calls, member access, etc.)
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, tree, symbols)
+    }
+
+    /// Infer types from GDScript type annotations in signatures.
+    ///
+    /// GDScript supports explicit types: `func foo() -> String:`, `var x: int = 0`
+    pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
+        let mut type_map = HashMap::new();
+
+        for symbol in symbols {
+            if let Some(ref signature) = symbol.signature {
+                if let Some(inferred) = Self::infer_type_from_signature(signature, &symbol.kind) {
+                    type_map.insert(symbol.id.clone(), inferred);
+                }
+            }
+        }
+
+        type_map
+    }
+
+    fn infer_type_from_signature(signature: &str, kind: &SymbolKind) -> Option<String> {
+        // GDScript signatures may be multiline (include body). Use the first
+        // non-annotation line for functions, last annotation-bearing line for vars.
+        match kind {
+            SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor => {
+                // Signature: `func name(...) -> ReturnType:\n    body`
+                // Return type is on the `func` line
+                let func_line = signature.lines().find(|l| l.trim_start().starts_with("func "))?;
+                let re = regex::Regex::new(r"->\s*(\w+)").ok()?;
+                re.captures(func_line).map(|c| c[1].to_string())
+            }
+            SymbolKind::Variable | SymbolKind::Property | SymbolKind::Field | SymbolKind::Constant => {
+                // Signature: `@export var name: Type = value` or `const NAME: Type = value`
+                let re = regex::Regex::new(r"(?:var|const)\s+\w+\s*:\s*(\w+)").ok()?;
+                re.captures(signature).map(|c| c[1].to_string())
+            }
+            _ => None,
+        }
     }
 
     /// Main tree traversal for symbol extraction

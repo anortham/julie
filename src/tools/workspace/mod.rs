@@ -1,6 +1,6 @@
 mod commands;
 mod discovery;
-mod indexing;
+pub(crate) mod indexing;
 mod language;
 mod parser_pool;
 mod paths;

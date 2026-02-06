@@ -2,6 +2,7 @@
 //! Handles reading, parsing, and extracting symbols from individual files
 
 use crate::extractors::{PendingRelationship, Relationship, Symbol, SymbolKind};
+use super::resolver::{self, ResolutionStats};
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use crate::tools::workspace::LanguageParserPool;
@@ -395,7 +396,7 @@ impl ManageWorkspaceTool {
             // ═══════════════════════════════════════════════════════════════════
             // 🔗 PHASE 2: Resolve pending cross-file relationships
             // After all symbols are stored, resolve pending relationships by
-            // looking up callee names and finding actual Function definitions
+            // looking up callee names and scoring candidates by language + path proximity
             // ═══════════════════════════════════════════════════════════════════
             if !all_pending_relationships.is_empty() {
                 info!(
@@ -404,6 +405,10 @@ impl ManageWorkspaceTool {
                 );
 
                 let mut resolved_relationships = Vec::new();
+                let mut stats = ResolutionStats {
+                    total: all_pending_relationships.len(),
+                    ..Default::default()
+                };
 
                 // Re-acquire database lock for resolution queries
                 let mut db_lock = match db.lock() {
@@ -415,44 +420,28 @@ impl ManageWorkspaceTool {
                 };
 
                 for pending in &all_pending_relationships {
-                    // Look up all symbols with this name
                     match db_lock.find_symbols_by_name(&pending.callee_name) {
                         Ok(candidates) => {
-                            // Filter to find actual Function/Method definitions (not Imports)
-                            let definition = candidates.iter().find(|s| {
-                                matches!(
-                                    s.kind,
-                                    SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
-                                )
-                            });
-
-                            if let Some(target) = definition {
-                                // Create resolved relationship
-                                let resolved = Relationship {
-                                    id: format!(
-                                        "{}_{}_{:?}_resolved",
-                                        pending.from_symbol_id,
-                                        target.id,
-                                        pending.kind
-                                    ),
-                                    from_symbol_id: pending.from_symbol_id.clone(),
-                                    to_symbol_id: target.id.clone(),
-                                    kind: pending.kind.clone(),
-                                    file_path: pending.file_path.clone(),
-                                    line_number: pending.line_number,
-                                    confidence: pending.confidence,
-                                    metadata: None,
-                                };
-                                resolved_relationships.push(resolved);
+                            if candidates.is_empty() {
+                                stats.no_candidates += 1;
+                                continue;
+                            }
+                            if let Some(target) = resolver::select_best_candidate(&candidates, pending) {
+                                resolved_relationships.push(
+                                    resolver::build_resolved_relationship(pending, target)
+                                );
+                                stats.resolved += 1;
                             } else {
+                                stats.no_valid_candidates += 1;
                                 trace!(
-                                    "Could not resolve '{}' - no Function/Method definition found ({} candidates)",
+                                    "Could not resolve '{}' - no valid target among {} candidates",
                                     pending.callee_name,
                                     candidates.len()
                                 );
                             }
                         }
                         Err(e) => {
+                            stats.lookup_errors += 1;
                             trace!(
                                 "Failed to look up callee '{}': {}",
                                 pending.callee_name,
@@ -466,15 +455,10 @@ impl ManageWorkspaceTool {
                 if !resolved_relationships.is_empty() {
                     if let Err(e) = db_lock.bulk_store_relationships(&resolved_relationships) {
                         warn!("Failed to store resolved relationships: {}", e);
-                    } else {
-                        info!(
-                            "✅ Resolved {} cross-file relationships (from {} pending)",
-                            resolved_relationships.len(),
-                            all_pending_relationships.len()
-                        );
                     }
                 }
 
+                stats.log_summary();
                 drop(db_lock);
             }
 

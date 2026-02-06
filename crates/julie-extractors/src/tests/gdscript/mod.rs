@@ -38,4 +38,5 @@ pub mod patterns;
 pub mod resources;
 pub mod scenes;
 pub mod signals;
+pub mod types;
 pub mod ui;

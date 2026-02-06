@@ -507,6 +507,7 @@ impl JulieWorkspace {
             self.root.clone(),
             self.db.as_ref().unwrap().clone(),
             extractor_manager,
+            self.search_index.clone(),
         )?;
 
         self.watcher = Some(file_watcher);

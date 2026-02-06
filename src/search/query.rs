@@ -55,18 +55,17 @@ pub fn build_symbol_query(
         ));
     }
 
-    // Build term-matching clauses as a nested BooleanQuery with Should.
-    // This nested query becomes a Must clause, ensuring at least one search
-    // term must match in at least one field. Without this nesting, Tantivy's
-    // BooleanQuery treats Should as optional when Must clauses are present,
-    // which would return ALL documents matching the doc_type filter.
-    let mut term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
-
+    // For each search term, require it to match in at least one field (AND per term).
+    // Within each term, the field variants are OR'd (Should) so "select" can match
+    // in name OR signature OR doc OR body. But across terms, we use Must (AND) so
+    // searching "select_best_candidate" requires ALL three tokens to be present.
     for term in terms {
         let term_lower = term.to_lowercase();
 
+        let mut field_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+
         let name_term = Term::from_field_text(name_field, &term_lower);
-        term_clauses.push((
+        field_clauses.push((
             Occur::Should,
             Box::new(BoostQuery::new(
                 Box::new(TermQuery::new(name_term, IndexRecordOption::Basic)),
@@ -75,7 +74,7 @@ pub fn build_symbol_query(
         ));
 
         let sig_term = Term::from_field_text(sig_field, &term_lower);
-        term_clauses.push((
+        field_clauses.push((
             Occur::Should,
             Box::new(BoostQuery::new(
                 Box::new(TermQuery::new(sig_term, IndexRecordOption::Basic)),
@@ -84,7 +83,7 @@ pub fn build_symbol_query(
         ));
 
         let doc_term = Term::from_field_text(doc_field, &term_lower);
-        term_clauses.push((
+        field_clauses.push((
             Occur::Should,
             Box::new(BoostQuery::new(
                 Box::new(TermQuery::new(doc_term, IndexRecordOption::Basic)),
@@ -93,14 +92,14 @@ pub fn build_symbol_query(
         ));
 
         let body_term = Term::from_field_text(body_field, &term_lower);
-        term_clauses.push((
+        field_clauses.push((
             Occur::Should,
             Box::new(TermQuery::new(body_term, IndexRecordOption::Basic)),
         ));
-    }
 
-    // At least one term must match somewhere
-    subqueries.push((Occur::Must, Box::new(BooleanQuery::new(term_clauses))));
+        // Each term must match in at least one field
+        subqueries.push((Occur::Must, Box::new(BooleanQuery::new(field_clauses))));
+    }
 
     BooleanQuery::new(subqueries)
 }
@@ -131,20 +130,15 @@ pub fn build_content_query(
         ));
     }
 
-    // Build term-matching clauses as a nested BooleanQuery (same pattern as symbol query).
-    // Ensures at least one term must match in content.
-    let mut term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
-
+    // Require ALL terms to match in content (AND per term).
     for term in terms {
         let term_lower = term.to_lowercase();
         let content_term = Term::from_field_text(content_field, &term_lower);
-        term_clauses.push((
-            Occur::Should,
+        subqueries.push((
+            Occur::Must,
             Box::new(TermQuery::new(content_term, IndexRecordOption::Basic)),
         ));
     }
-
-    subqueries.push((Occur::Must, Box::new(BooleanQuery::new(term_clauses))));
 
     BooleanQuery::new(subqueries)
 }

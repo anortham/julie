@@ -78,6 +78,7 @@ pub mod tools {
         pub mod mod_tests; // Workspace module functionality tests
         pub mod registry; // Workspace registry tests
         pub mod registry_service;
+        pub mod resolver; // Cross-file relationship resolution tests
         pub mod utils; // Workspace utilities tests // Registry service tests
     }
 

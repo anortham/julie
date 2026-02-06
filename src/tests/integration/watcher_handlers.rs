@@ -12,6 +12,88 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+/// Regression test for Bug: File watcher drops identifiers, types, and relationships
+///
+/// Bug: handle_file_created_or_modified_static only calls extract_symbols() and
+/// stores symbols. It does NOT extract or store identifiers, types, or relationships.
+///
+/// Impact: fast_refs degrades over time as files are re-indexed by the watcher,
+/// because identifiers (needed for reference tracking) are silently dropped.
+#[tokio::test]
+async fn test_incremental_indexing_stores_identifiers_and_relationships() {
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_full_data");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    // Create a Rust file with function calls (produces identifiers + relationships)
+    let test_file = workspace_root.join("test.rs");
+    let code = r#"
+fn helper() -> i32 {
+    42
+}
+
+fn caller() -> i32 {
+    helper()
+}
+"#;
+    fs::write(&test_file, code).unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    // Initialize database
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    // Index the file
+    handle_file_created_or_modified_static(
+        absolute_path.clone(),
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("Indexing should succeed");
+
+    // Verify symbols are stored (this already works)
+    let db_lock = db.lock().unwrap();
+    let symbols = db_lock.get_symbols_for_file("test.rs").unwrap();
+    assert!(symbols.len() >= 2, "Should have at least 2 symbols (helper + caller), got {}", symbols.len());
+
+    // CRITICAL: Verify identifiers are stored (this is the bug)
+    let identifier_count: i64 = db_lock.conn
+        .query_row(
+            "SELECT COUNT(*) FROM identifiers WHERE file_path = ?1",
+            rusqlite::params!["test.rs"],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        identifier_count > 0,
+        "BUG: No identifiers stored for test.rs! \
+         The handler must extract and store identifiers for fast_refs to work. \
+         Got {} identifiers, expected at least 1.",
+        identifier_count
+    );
+
+    // Verify relationships are stored (caller -> helper)
+    let relationship_count: i64 = db_lock.conn
+        .query_row(
+            "SELECT COUNT(*) FROM relationships WHERE file_path = ?1",
+            rusqlite::params!["test.rs"],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        relationship_count > 0,
+        "BUG: No relationships stored for test.rs! \
+         The handler must extract and store relationships for trace_call_path to work. \
+         Got {} relationships, expected at least 1.",
+        relationship_count
+    );
+}
+
 /// Regression test for Bug: Incremental indexing path mismatch causes duplicate symbols
 ///
 /// Bug: handle_file_created_or_modified_static receives absolute paths from the
@@ -65,6 +147,7 @@ fn initial_function() {
         &db,
         &extractor_manager,
         &workspace_root,
+        None,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -111,6 +194,7 @@ fn modified_function() {
         &db,
         &extractor_manager,
         &workspace_root,
+        None,
     )
     .await
     .expect("Incremental indexing should succeed");
@@ -198,6 +282,7 @@ fn third_function() {
         &db,
         &extractor_manager,
         &workspace_root,
+        None,
     )
     .await
     .expect("Second modification should succeed");
@@ -246,6 +331,7 @@ fn third_function() {
         &db,
         &extractor_manager,
         &workspace_root,
+        None,
     )
     .await
     .expect("Re-indexing unchanged file should succeed");
@@ -303,6 +389,7 @@ fn final_function() {
         &db,
         &extractor_manager,
         &workspace_root,
+        None,
     )
     .await
     .expect("Re-indexing with new content should succeed");
@@ -342,6 +429,7 @@ async fn test_file_deletion_absolute_path() {
         &db,
         &extractor_manager,
         &workspace_root,
+        None,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -392,6 +480,7 @@ async fn test_file_rename_absolute_paths() {
         &db,
         &extractor_manager,
         &workspace_root,
+        None,
     )
     .await
     .expect("Initial indexing should succeed");
@@ -408,6 +497,7 @@ async fn test_file_rename_absolute_paths() {
         &db,
         &extractor_manager,
         &workspace_root,
+        None,
     )
     .await
     .expect("File rename should succeed");
@@ -483,6 +573,7 @@ async fn test_transaction_leak_on_error() {
         &db,
         &extractor_manager,
         &workspace_root,
+        None,
     )
     .await;
 
@@ -523,6 +614,7 @@ async fn test_transaction_leak_on_error() {
         &db,
         &extractor_manager,
         &workspace_root,
+        None,
     )
     .await;
 

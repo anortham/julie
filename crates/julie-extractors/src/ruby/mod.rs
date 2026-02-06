@@ -8,7 +8,8 @@
 /// - Identifier extraction for LSP-quality find_references
 ///
 /// Implementation of comprehensive Ruby extractor
-use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, Visibility};
+use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind, Visibility};
+use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 // Private modules - encapsulate implementation details
@@ -70,6 +71,57 @@ impl RubyExtractor {
     /// Extract identifier usages for LSP-quality references
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, tree, symbols)
+    }
+
+    /// Infer types from Ruby signatures.
+    ///
+    /// Ruby is dynamically typed, so we infer from literal assignments in constants
+    /// and variables: `CONST = "value"` → String, `@@count = 0` → Integer.
+    pub fn infer_types(&self, symbols: &[Symbol]) -> HashMap<String, String> {
+        let mut type_map = HashMap::new();
+
+        for symbol in symbols {
+            if let Some(ref signature) = symbol.signature {
+                if let Some(inferred) = Self::infer_type_from_signature(signature, &symbol.kind) {
+                    type_map.insert(symbol.id.clone(), inferred);
+                }
+            }
+        }
+
+        type_map
+    }
+
+    fn infer_type_from_signature(signature: &str, kind: &SymbolKind) -> Option<String> {
+        match kind {
+            SymbolKind::Constant | SymbolKind::Variable => {
+                // Extract type from literal RHS: `NAME = "value"` → String
+                let rhs = signature.split('=').nth(1)?.trim();
+                Self::infer_ruby_literal_type(rhs)
+            }
+            _ => None,
+        }
+    }
+
+    fn infer_ruby_literal_type(value: &str) -> Option<String> {
+        if value.starts_with('"') || value.starts_with('\'') || value.starts_with('%') {
+            Some("String".to_string())
+        } else if value.starts_with('[') {
+            Some("Array".to_string())
+        } else if value.starts_with('{') {
+            Some("Hash".to_string())
+        } else if value.starts_with(':') {
+            Some("Symbol".to_string())
+        } else if value == "true" || value == "false" {
+            Some("Boolean".to_string())
+        } else if value == "nil" {
+            Some("NilClass".to_string())
+        } else if value.parse::<i64>().is_ok() {
+            Some("Integer".to_string())
+        } else if value.parse::<f64>().is_ok() {
+            Some("Float".to_string())
+        } else {
+            None
+        }
     }
 
     // ========================================================================

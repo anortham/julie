@@ -5,6 +5,7 @@
 pub mod cross_file_relationships;
 pub mod doc_comments;
 pub mod extractor;
+pub mod types;
 
 use crate::base::{RelationshipKind, SymbolKind, Visibility};
 use crate::ruby::RubyExtractor;

@@ -112,6 +112,7 @@ async fn test_real_time_file_watcher_indexing() {
         workspace_root.clone(),
         db.clone(),
         extractor_manager.clone(),
+        None,
     )
     .unwrap();
 

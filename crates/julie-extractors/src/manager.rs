@@ -5,6 +5,7 @@
 //! to extract symbols, identifiers, and relationships from source files.
 
 use crate::base::{Identifier, Relationship, Symbol};
+use crate::ExtractionResults;
 use std::path::Path;
 use tree_sitter::Parser;
 
@@ -108,6 +109,37 @@ impl ExtractorManager {
             file_path
         );
         Ok(symbols)
+    }
+
+    /// Extract all data from a file: symbols, identifiers, types, relationships, and pending relationships.
+    ///
+    /// This is the preferred method for incremental re-indexing because it parses the file
+    /// once and returns everything needed for a complete database update.
+    pub fn extract_all(
+        &self,
+        file_path: &str,
+        content: &str,
+        workspace_root: &Path,
+    ) -> Result<ExtractionResults, anyhow::Error> {
+        let language = self.get_language_from_extension(file_path)?;
+
+        let mut parser = Parser::new();
+        let tree_sitter_language = self.get_tree_sitter_language(&language)?;
+        parser.set_language(&tree_sitter_language).map_err(|e| {
+            anyhow::anyhow!("Failed to set parser language for {}: {}", language, e)
+        })?;
+
+        let tree = parser
+            .parse(content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse file: {}", file_path))?;
+
+        crate::factory::extract_symbols_and_relationships(
+            &tree,
+            file_path,
+            content,
+            &language,
+            workspace_root,
+        )
     }
 
     /// Extract symbols from JSONL (JSON Lines) file

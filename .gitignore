@@ -24,6 +24,9 @@ Thumbs.db
 # Julie specific
 julie-server
 *.julie.db
+*.db-shm
+*.db-wal
+*.db-journal
 .julie/
 .coa/
 

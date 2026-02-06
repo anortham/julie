@@ -6,17 +6,23 @@
 use crate::database::SymbolDatabase;
 use crate::extractors::ExtractorManager;
 use crate::language; // Centralized language support
+use crate::search::SearchIndex;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
-/// Handle file creation or modification with Blake3 change detection
+/// Handle file creation or modification with Blake3 change detection.
+///
+/// Extracts ALL data (symbols, identifiers, types, relationships) and updates
+/// both SQLite and Tantivy atomically. Pass `None` for `search_index` if
+/// Tantivy updates are not needed (e.g., in tests).
 pub async fn handle_file_created_or_modified_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
+    search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
 ) -> Result<()> {
     info!("Processing file: {}", path.display());
 
@@ -56,7 +62,7 @@ pub async fn handle_file_created_or_modified_static(
         }
     }
 
-    // 4. Detect language and extract symbols
+    // 4. Detect language and extract ALL data (symbols + identifiers + types + relationships)
     let language = path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -65,23 +71,25 @@ pub async fn handle_file_created_or_modified_static(
         .unwrap_or_else(|| "unknown".to_string());
     let content_str = String::from_utf8_lossy(&content);
 
-    let symbols =
-        match extractor_manager.extract_symbols(&relative_path, &content_str, workspace_root) {
-            Ok(symbols) => symbols,
+    let results =
+        match extractor_manager.extract_all(&relative_path, &content_str, workspace_root) {
+            Ok(results) => results,
             Err(e) => {
-                error!("Symbol extraction failed for {}: {}", relative_path, e);
+                error!("Extraction failed for {}: {}", relative_path, e);
                 return Ok(()); // Skip update to preserve existing data
             }
         };
 
     info!(
-        "Extracted {} symbols from {} ({})",
-        symbols.len(),
+        "Extracted {} symbols, {} identifiers, {} relationships from {} ({})",
+        results.symbols.len(),
+        results.identifiers.len(),
+        results.relationships.len(),
         path.display(),
         language
     );
 
-    // 5. Update SQLite database
+    // 5. Update SQLite database atomically (symbols + identifiers + types + relationships)
     {
         let mut db_lock = match db.lock() {
             Ok(guard) => guard,
@@ -95,15 +103,12 @@ pub async fn handle_file_created_or_modified_static(
         };
 
         // DEFENSIVE: Rollback any leaked transaction before starting new one
-        // This handles cases where a previous operation failed mid-transaction
-        // SQLite doesn't have a "check if transaction is open" API, so we speculatively rollback
-        // If no transaction is open, this is a no-op (SQLite ignores ROLLBACK outside transaction)
-        let _ = db_lock.rollback_transaction(); // Ignore error - transaction might not be open
+        let _ = db_lock.rollback_transaction();
 
         let existing_symbols = db_lock.get_symbols_for_file(&relative_path)?;
 
         // Safeguard against data loss
-        if symbols.is_empty() && !existing_symbols.is_empty() {
+        if results.symbols.is_empty() && !existing_symbols.is_empty() {
             warn!(
                 "SAFEGUARD: Refusing to delete {} existing symbols from {}",
                 existing_symbols.len(),
@@ -112,44 +117,66 @@ pub async fn handle_file_created_or_modified_static(
             return Ok(());
         }
 
-        // Use transaction for atomic updates
-        // CRITICAL: Ensure rollback on ANY error to prevent transaction leaks
-        db_lock.begin_transaction()?;
+        // Create file info and update hash
+        let file_info = crate::database::create_file_info(&path, &language, workspace_root)?;
+        let new_hash_str = hex::encode(new_hash.as_bytes());
 
-        // Perform all database operations, capturing errors instead of using `?`
-        let transaction_result = (|| -> Result<()> {
-            // Ensure file record exists (required for foreign key constraint)
-            let file_info = crate::database::create_file_info(&path, &language, workspace_root)?;
-            db_lock.store_file_info(&file_info)?;
+        // Convert types HashMap to Vec for bulk storage
+        let types_vec: Vec<_> = results.types.into_values().collect();
 
-            // Delete old symbols for this file
-            db_lock.delete_symbols_for_file(&relative_path)?;
+        // Use incremental_update_atomic for a single atomic transaction that stores
+        // ALL extracted data: symbols, identifiers, types, and relationships.
+        // This replaces the old approach that only stored symbols.
+        db_lock.incremental_update_atomic(
+            &[relative_path.clone()],
+            &[file_info],
+            &results.symbols,
+            &results.relationships,
+            &results.identifiers,
+            &types_vec,
+            "", // workspace_id unused by this method
+        )?;
 
-            // Insert new symbols (within the transaction)
-            db_lock.store_symbols(&symbols)?;
+        // Update file hash after successful atomic update
+        db_lock.update_file_hash(&relative_path, &new_hash_str)?;
+    }
 
-            // Update file hash
-            let new_hash_str = hex::encode(new_hash.as_bytes());
-            db_lock.update_file_hash(&relative_path, &new_hash_str)?;
+    // 6. Update Tantivy search index (if available)
+    if let Some(search_index) = search_index {
+        let symbol_docs: Vec<_> = results
+            .symbols
+            .iter()
+            .map(crate::search::SymbolDocument::from_symbol)
+            .collect();
+        let file_to_clean = relative_path.clone();
 
-            Ok(())
-        })();
-
-        // Handle transaction result: commit on success, rollback on error
-        match transaction_result {
-            Ok(()) => {
-                db_lock.commit_transaction()?;
-            }
-            Err(e) => {
-                // Rollback transaction before returning error
-                if let Err(rollback_err) = db_lock.rollback_transaction() {
-                    warn!(
-                        "Failed to rollback transaction after error: {}. Original error: {}",
-                        rollback_err, e
-                    );
+        let search_index = Arc::clone(search_index);
+        let tantivy_result = tokio::task::spawn_blocking(move || {
+            let idx = match search_index.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Search index mutex poisoned, recovering");
+                    poisoned.into_inner()
                 }
-                return Err(e);
+            };
+
+            // Delete old documents for this file, then add new ones
+            if let Err(e) = idx.remove_by_file_path(&file_to_clean) {
+                warn!("Failed to remove Tantivy docs for {}: {}", file_to_clean, e);
             }
+            for doc in &symbol_docs {
+                if let Err(e) = idx.add_symbol(doc) {
+                    warn!("Failed to add Tantivy symbol doc: {}", e);
+                }
+            }
+            if let Err(e) = idx.commit() {
+                warn!("Failed to commit Tantivy updates: {}", e);
+            }
+        })
+        .await;
+
+        if let Err(e) = tantivy_result {
+            warn!("Tantivy update task panicked: {}", e);
         }
     }
 
@@ -226,6 +253,7 @@ pub async fn handle_file_renamed_static(
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
+    search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
 ) -> Result<()> {
     info!(
         "Handling file rename: {} -> {}",
@@ -235,7 +263,8 @@ pub async fn handle_file_renamed_static(
 
     // Delete + create
     handle_file_deleted_static(from, db, workspace_root).await?;
-    handle_file_created_or_modified_static(to, db, extractor_manager, workspace_root).await?;
+    handle_file_created_or_modified_static(to, db, extractor_manager, workspace_root, search_index)
+        .await?;
 
     Ok(())
 }

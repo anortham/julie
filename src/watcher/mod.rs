@@ -35,6 +35,7 @@ pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
     db: Arc<StdMutex<SymbolDatabase>>,
     extractor_manager: Arc<ExtractorManager>,
+    search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
 
     // Processing queues
     pub(crate) index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
@@ -57,6 +58,7 @@ impl IncrementalIndexer {
         workspace_root: PathBuf,
         db: Arc<StdMutex<SymbolDatabase>>,
         extractor_manager: Arc<ExtractorManager>,
+        search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
     ) -> Result<Self> {
         let supported_extensions = filtering::build_supported_extensions();
         let ignore_patterns = filtering::build_ignore_patterns()?;
@@ -65,6 +67,7 @@ impl IncrementalIndexer {
             watcher: None,
             db,
             extractor_manager,
+            search_index,
             index_queue: Arc::new(TokioMutex::new(VecDeque::new())),
             last_processed: Arc::new(TokioMutex::new(HashMap::new())),
             supported_extensions,
@@ -130,6 +133,7 @@ impl IncrementalIndexer {
         // Clone all the components needed for processing
         let db = self.db.clone();
         let extractor_manager = self.extractor_manager.clone();
+        let search_index = self.search_index.clone();
         let queue_for_processing = self.index_queue.clone();
         let last_processed = self.last_processed.clone();
         let workspace_root = self.workspace_root.clone();
@@ -197,6 +201,7 @@ impl IncrementalIndexer {
                                 &db,
                                 &extractor_manager,
                                 &workspace_root,
+                                search_index.as_ref(),
                             )
                             .await
                         }
@@ -215,6 +220,7 @@ impl IncrementalIndexer {
                                 &db,
                                 &extractor_manager,
                                 &workspace_root,
+                                search_index.as_ref(),
                             )
                             .await
                         }
@@ -243,6 +249,7 @@ impl IncrementalIndexer {
                         &self.db,
                         &self.extractor_manager,
                         &self.workspace_root,
+                        self.search_index.as_ref(),
                     )
                     .await
                 }
@@ -261,6 +268,7 @@ impl IncrementalIndexer {
                         &self.db,
                         &self.extractor_manager,
                         &self.workspace_root,
+                        self.search_index.as_ref(),
                     )
                     .await
                 }
