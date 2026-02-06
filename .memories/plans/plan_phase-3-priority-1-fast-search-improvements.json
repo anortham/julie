@@ -1,9 +1,9 @@
 {
   "id": "plan_phase-3-priority-1-fast-search-improvements",
-  "timestamp": 1770344058,
+  "timestamp": 1770347419,
   "type": "plan",
   "title": "Phase 3 Priority 1: fast_search Improvements",
-  "status": "active",
+  "status": "archived",
   "content": "## Goals\n- Fix content search false positives (symbol-mode returns garbage)\n- Remove dead search_method values (semantic/hybrid)\n- Populate code_context from Tantivy code_body field\n- Make LEAN default output format in AUTO mode\n- Clean up context_lines parameter\n- Refactor call_tool() god method\n\n## Task Order: 1 → 2 → 4 → 3 → 5 → 6\n\n## Key Files\n- src/tools/search/mod.rs (call_tool, output routing, search_method)\n- src/tools/search/text_search.rs (content search branch, code_context)\n- src/search/index.rs (SymbolSearchResult, code_body retrieval)\n- src/search/schema.rs (code_body STORED flag)\n- src/tools/search/formatting.rs (truncate_code_context, LEAN format)\n- src/tools/search/line_mode.rs (correct content search implementation)",
   "git": {
     "branch": "main",
