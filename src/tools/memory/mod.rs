@@ -13,6 +13,7 @@
 
 // MCP Tools (Phase 1)
 mod checkpoint;
+mod git;
 mod recall;
 
 // MCP Tools (Phase 1.5)

@@ -144,14 +144,10 @@ async fn test_types_mode_finds_implementations() -> Result<()> {
         limit: Some(50),
         domain: None,
         symbol: None,
-        threshold: None,
         max_results: None,
         group_by_layer: None,
         min_business_score: None,
         depth: None,
-        file_pattern: None,
-        include_integration: None,
-        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -185,14 +181,10 @@ async fn test_types_mode_finds_return_types() -> Result<()> {
         limit: Some(50),
         domain: None,
         symbol: None,
-        threshold: None,
         max_results: None,
         group_by_layer: None,
         min_business_score: None,
         depth: None,
-        file_pattern: None,
-        include_integration: None,
-        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -226,14 +218,10 @@ async fn test_types_mode_finds_parameter_types() -> Result<()> {
         limit: Some(50),
         domain: None,
         symbol: None,
-        threshold: None,
         max_results: None,
         group_by_layer: None,
         min_business_score: None,
         depth: None,
-        file_pattern: None,
-        include_integration: None,
-        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -263,14 +251,10 @@ async fn test_types_mode_missing_type_name_parameter() -> Result<()> {
         limit: Some(50),
         domain: None,
         symbol: None,
-        threshold: None,
         max_results: None,
         group_by_layer: None,
         min_business_score: None,
         depth: None,
-        file_pattern: None,
-        include_integration: None,
-        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await;
@@ -304,14 +288,10 @@ async fn test_types_mode_type_not_found() -> Result<()> {
         limit: Some(50),
         domain: None,
         symbol: None,
-        threshold: None,
         max_results: None,
         group_by_layer: None,
         min_business_score: None,
         depth: None,
-        file_pattern: None,
-        include_integration: None,
-        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -341,14 +321,10 @@ async fn test_types_mode_default_exploration_type() -> Result<()> {
         limit: Some(50),
         domain: None,
         symbol: None,
-        threshold: None,
         max_results: None,
         group_by_layer: None,
         min_business_score: None,
         depth: None,
-        file_pattern: None,
-        include_integration: None,
-        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;

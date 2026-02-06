@@ -1,9 +1,9 @@
 //! Tests for FastExploreTool - Multi-mode code exploration
 //!
 //! Tests cover:
-//! - Similar mode: Semantic duplicate detection
-//! - Error handling: Missing parameters, threshold validation
-//! - Edge cases: Symbol not found, empty results
+//! - Similar mode: Deprecated (bail with message)
+//! - Dependencies mode: Transitive dependency analysis
+//! - Error handling: Missing parameters, symbol not found
 //!
 //! Note: Following TDD methodology - write failing tests first, then implement/verify.
 
@@ -25,68 +25,6 @@ async fn create_test_handler() -> Result<(JulieServerHandler, TempDir)> {
         .await?;
 
     Ok((handler, temp_dir))
-}
-
-/// Helper to create test codebase with semantically similar functions
-async fn create_similar_code_codebase(temp_dir: &TempDir) -> Result<()> {
-    let workspace_root = temp_dir.path();
-
-    // Create directory structure
-    fs::create_dir_all(workspace_root.join("src/services"))?;
-    fs::create_dir_all(workspace_root.join("src/utils"))?;
-
-    // File 1: User data retrieval (original)
-    fs::write(
-        workspace_root.join("src/services/user_service.rs"),
-        r#"
-pub struct UserService {
-    db: Database,
-}
-
-impl UserService {
-    // Original function
-    pub fn getUserData(&self, user_id: i64) -> Result<User> {
-        self.db.query("SELECT * FROM users WHERE id = ?", &[user_id])
-    }
-
-    // Semantically similar function (different name, same concept)
-    pub fn fetchUser(&self, id: i64) -> Result<User> {
-        self.db.find_user_by_id(id)
-    }
-
-    // Another similar function
-    pub fn loadUserProfile(&self, user_id: i64) -> Result<User> {
-        self.db.get_user(user_id)
-    }
-
-    // Unrelated function (should have low similarity)
-    pub fn deleteUser(&self, user_id: i64) -> Result<()> {
-        self.db.execute("DELETE FROM users WHERE id = ?", &[user_id])
-    }
-}
-"#,
-    )?;
-
-    // File 2: More semantically similar functions in different file
-    fs::write(
-        workspace_root.join("src/utils/user_helpers.rs"),
-        r#"
-pub fn retrieveUserDetails(db: &Database, id: i64) -> Result<User> {
-    db.find_user(id)
-}
-
-pub fn getUserInfo(database: &Database, user_id: i64) -> Result<User> {
-    database.query_user(user_id)
-}
-
-// Unrelated function
-pub fn formatUsername(name: &str) -> String {
-    name.to_lowercase()
-}
-"#,
-    )?;
-
-    Ok(())
 }
 
 /// Helper to index workspace and wait for completion
@@ -111,125 +49,21 @@ async fn index_workspace(
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Similar Mode Tests
+// Similar Mode Tests (deprecated - bails with message)
 // ═══════════════════════════════════════════════════════════════════
 
 #[tokio::test]
-#[ignore] // Requires indexed workspace with symbols
-async fn test_similar_mode_basic_finds_duplicates() -> Result<()> {
-    let (handler, temp_dir) = create_test_handler().await?;
-    let workspace_path = temp_dir.path().to_string_lossy().to_string();
-    create_similar_code_codebase(&temp_dir).await?;
-    index_workspace(&handler, &workspace_path).await?;
-
-    let tool = FastExploreTool {
-        mode: ExploreMode::Similar,
-        symbol: Some("getUserData".to_string()),
-        threshold: Some(0.7), // Lower threshold to find more similar functions
-        max_results: Some(50),
-        domain: None,
-        group_by_layer: None,
-        min_business_score: None,
-        include_integration: None,
-        depth: None,
-        file_pattern: None,
-        workspace: None,
-        type_name: None,
-        exploration_type: None,
-        limit: None,
-    };
-
-    let result = tool.call_tool(&handler).await?;
-
-    // Verify we got results (content not empty)
-    assert!(!result.content.is_empty(), "Should return results");
-
-    // Verify it's text content containing our query symbol
-    if let Some(first_content) = result.content.first() {
-        // Content exists - test passes
-        // (Full JSON parsing would require accessing internal Content enum which is complex)
-    } else {
-        panic!("Should have at least one content item");
-    }
-
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore] // Requires indexed workspace with symbols
-async fn test_similar_mode_threshold_filtering() -> Result<()> {
-    let (handler, temp_dir) = create_test_handler().await?;
-    let workspace_path = temp_dir.path().to_string_lossy().to_string();
-    create_similar_code_codebase(&temp_dir).await?;
-    index_workspace(&handler, &workspace_path).await?;
-
-    // Test with high threshold (0.9) - should work
-    let tool_high = FastExploreTool {
-        mode: ExploreMode::Similar,
-        symbol: Some("getUserData".to_string()),
-        threshold: Some(0.9),
-        max_results: Some(50),
-        domain: None,
-        group_by_layer: None,
-        min_business_score: None,
-        include_integration: None,
-        depth: None,
-        file_pattern: None,
-        workspace: None,
-        type_name: None,
-        exploration_type: None,
-        limit: None,
-    };
-
-    let result_high = tool_high.call_tool(&handler).await?;
-    assert!(
-        !result_high.content.is_empty(),
-        "High threshold should return results"
-    );
-
-    // Test with low threshold (0.5) - should also work
-    let tool_low = FastExploreTool {
-        mode: ExploreMode::Similar,
-        symbol: Some("getUserData".to_string()),
-        threshold: Some(0.5),
-        max_results: Some(50),
-        domain: None,
-        group_by_layer: None,
-        min_business_score: None,
-        include_integration: None,
-        depth: None,
-        file_pattern: None,
-        workspace: None,
-        type_name: None,
-        exploration_type: None,
-        limit: None,
-    };
-
-    let result_low = tool_low.call_tool(&handler).await?;
-    assert!(
-        !result_low.content.is_empty(),
-        "Low threshold should return results"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_similar_mode_missing_symbol_parameter() -> Result<()> {
+async fn test_similar_mode_returns_deprecation_error() -> Result<()> {
     let (handler, _temp_dir) = create_test_handler().await?;
 
     let tool = FastExploreTool {
         mode: ExploreMode::Similar,
-        symbol: None, // Missing required parameter
-        threshold: Some(0.8),
-        max_results: Some(50),
+        symbol: None,
+        max_results: None,
         domain: None,
         group_by_layer: None,
         min_business_score: None,
-        include_integration: None,
         depth: None,
-        file_pattern: None,
-        workspace: None,
         type_name: None,
         exploration_type: None,
         limit: None,
@@ -237,115 +71,18 @@ async fn test_similar_mode_missing_symbol_parameter() -> Result<()> {
 
     let result = tool.call_tool(&handler).await;
 
+    assert!(result.is_err(), "Similar mode should bail with deprecation error");
+    let err_msg = result.unwrap_err().to_string();
     assert!(
-        result.is_err(),
-        "Should error when symbol parameter is missing"
-    );
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("symbol parameter required"),
-        "Error should mention missing symbol parameter"
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_similar_mode_invalid_threshold() -> Result<()> {
-    let (handler, _temp_dir) = create_test_handler().await?;
-
-    // Test threshold > 1.0
-    let tool_high = FastExploreTool {
-        mode: ExploreMode::Similar,
-        symbol: Some("getUserData".to_string()),
-        threshold: Some(1.5), // Invalid: > 1.0
-        max_results: Some(50),
-        domain: None,
-        group_by_layer: None,
-        min_business_score: None,
-        include_integration: None,
-        depth: None,
-        file_pattern: None,
-        workspace: None,
-        type_name: None,
-        exploration_type: None,
-        limit: None,
-    };
-
-    let result = tool_high.call_tool(&handler).await;
-    assert!(result.is_err(), "Should error when threshold > 1.0");
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("threshold must be between 0.0 and 1.0"),
-        "Error should mention threshold range"
-    );
-
-    // Test threshold < 0.0
-    let tool_low = FastExploreTool {
-        mode: ExploreMode::Similar,
-        symbol: Some("getUserData".to_string()),
-        threshold: Some(-0.1), // Invalid: < 0.0
-        max_results: Some(50),
-        domain: None,
-        group_by_layer: None,
-        min_business_score: None,
-        include_integration: None,
-        depth: None,
-        file_pattern: None,
-        workspace: None,
-        type_name: None,
-        exploration_type: None,
-        limit: None,
-    };
-
-    let result = tool_low.call_tool(&handler).await;
-    assert!(result.is_err(), "Should error when threshold < 0.0");
-
-    Ok(())
-}
-
-#[tokio::test]
-#[ignore] // Requires indexed workspace with symbols
-async fn test_similar_mode_default_threshold() -> Result<()> {
-    let (handler, temp_dir) = create_test_handler().await?;
-    let workspace_path = temp_dir.path().to_string_lossy().to_string();
-    create_similar_code_codebase(&temp_dir).await?;
-    index_workspace(&handler, &workspace_path).await?;
-
-    let tool = FastExploreTool {
-        mode: ExploreMode::Similar,
-        symbol: Some("getUserData".to_string()),
-        threshold: None, // Should default to 0.8
-        max_results: Some(50),
-        domain: None,
-        group_by_layer: None,
-        min_business_score: None,
-        include_integration: None,
-        depth: None,
-        file_pattern: None,
-        workspace: None,
-        type_name: None,
-        exploration_type: None,
-        limit: None,
-    };
-
-    let result = tool.call_tool(&handler).await?;
-
-    // Verify we got results (default threshold applied successfully)
-    assert!(
-        !result.content.is_empty(),
-        "Should return results with default threshold"
+        err_msg.contains("deprecated"),
+        "Error should mention deprecation, got: {err_msg}"
     );
 
     Ok(())
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Dependencies Mode Tests (TDD - RED phase)
+// Dependencies Mode Tests
 // ═══════════════════════════════════════════════════════════════════
 
 /// Helper to create test codebase with dependency relationships
@@ -428,13 +165,9 @@ async fn test_deps_mode_finds_direct_dependencies() -> Result<()> {
         symbol: Some("UserService".to_string()),
         depth: Some(1), // Only direct dependencies
         max_results: Some(50),
-        threshold: None,
         domain: None,
         group_by_layer: None,
         min_business_score: None,
-        include_integration: None,
-        file_pattern: None,
-        workspace: None,
         type_name: None,
         exploration_type: None,
         limit: None,
@@ -468,13 +201,9 @@ async fn test_deps_mode_transitive_dependencies() -> Result<()> {
         symbol: Some("UserService".to_string()),
         depth: Some(3), // Transitive dependencies
         max_results: Some(50),
-        threshold: None,
         domain: None,
         group_by_layer: None,
         min_business_score: None,
-        include_integration: None,
-        file_pattern: None,
-        workspace: None,
         type_name: None,
         exploration_type: None,
         limit: None,
@@ -509,13 +238,9 @@ async fn test_deps_mode_depth_limit_respected() -> Result<()> {
         symbol: Some("UserService".to_string()),
         depth: Some(1),
         max_results: Some(50),
-        threshold: None,
         domain: None,
         group_by_layer: None,
         min_business_score: None,
-        include_integration: None,
-        file_pattern: None,
-        workspace: None,
         type_name: None,
         exploration_type: None,
         limit: None,
@@ -533,13 +258,9 @@ async fn test_deps_mode_depth_limit_respected() -> Result<()> {
         symbol: Some("UserService".to_string()),
         depth: Some(3),
         max_results: Some(50),
-        threshold: None,
         domain: None,
         group_by_layer: None,
         min_business_score: None,
-        include_integration: None,
-        file_pattern: None,
-        workspace: None,
         type_name: None,
         exploration_type: None,
         limit: None,
@@ -570,13 +291,9 @@ async fn test_deps_mode_default_depth() -> Result<()> {
         symbol: Some("UserService".to_string()),
         depth: None, // Should default to 3
         max_results: Some(50),
-        threshold: None,
         domain: None,
         group_by_layer: None,
         min_business_score: None,
-        include_integration: None,
-        file_pattern: None,
-        workspace: None,
         type_name: None,
         exploration_type: None,
         limit: None,
@@ -602,13 +319,9 @@ async fn test_deps_mode_missing_symbol_parameter() -> Result<()> {
         symbol: None, // Missing required parameter
         depth: Some(3),
         max_results: Some(50),
-        threshold: None,
         domain: None,
         group_by_layer: None,
         min_business_score: None,
-        include_integration: None,
-        file_pattern: None,
-        workspace: None,
         type_name: None,
         exploration_type: None,
         limit: None,
@@ -643,13 +356,9 @@ async fn test_deps_mode_symbol_not_found() -> Result<()> {
         symbol: Some("NonExistentSymbol".to_string()),
         depth: Some(3),
         max_results: Some(50),
-        threshold: None,
         domain: None,
         group_by_layer: None,
         min_business_score: None,
-        include_integration: None,
-        file_pattern: None,
-        workspace: None,
         type_name: None,
         exploration_type: None,
         limit: None,

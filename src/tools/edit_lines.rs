@@ -142,31 +142,26 @@ impl EditLinesTool {
                 if self.content.is_none() {
                     return Err(anyhow!("'content' is required for replace operation"));
                 }
-                if let Some(end) = self.end_line {
-                    if end < self.start_line {
-                        return Err(anyhow!(
-                            "end_line ({}) must be >= start_line ({})",
-                            end,
-                            self.start_line
-                        ));
-                    }
-                }
             }
             "delete" => {
                 if self.end_line.is_none() {
                     return Err(anyhow!("'end_line' is required for delete operation"));
                 }
-                if let Some(end) = self.end_line {
-                    if end < self.start_line {
-                        return Err(anyhow!(
-                            "end_line ({}) must be >= start_line ({})",
-                            end,
-                            self.start_line
-                        ));
-                    }
-                }
             }
             _ => {}
+        }
+
+        // For replace and delete, end_line must be >= start_line
+        if matches!(self.operation.as_str(), "replace" | "delete") {
+            if let Some(end) = self.end_line {
+                if end < self.start_line {
+                    return Err(anyhow!(
+                        "end_line ({}) must be >= start_line ({})",
+                        end,
+                        self.start_line
+                    ));
+                }
+            }
         }
 
         Ok(())

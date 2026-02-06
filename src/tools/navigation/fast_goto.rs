@@ -51,10 +51,8 @@ impl FastGotoTool {
     /// Helper: Create result with lean format as default, JSON/TOON as alternatives
     fn create_result(
         &self,
-        _found: bool,
         definitions: Vec<Symbol>,
         next_actions: Vec<String>,
-        _markdown: String,
     ) -> Result<CallToolResult> {
         // Return based on output_format - lean is default
         match self.output_format.as_deref() {
@@ -122,33 +120,22 @@ impl FastGotoTool {
         let definitions = self.find_definitions(handler).await?;
 
         if definitions.is_empty() {
-            let message = format!(
-                "🔍 No definition found for: '{}'\n\
-                💡 Check the symbol name and ensure it exists in the indexed files",
-                self.symbol
-            );
             return self.create_result(
-                false,
                 vec![],
                 vec![
                     "Use fast_search to locate the symbol".to_string(),
                     "Check symbol name spelling".to_string(),
                 ],
-                message,
             );
         }
 
-        // REFACTOR: Use token-optimized formatting with progressive reduction
-        let message = self.format_optimized_results(&definitions);
-
+        // Format summary (structured_content has full data)
         self.create_result(
-            true,
             definitions,
             vec![
                 "Navigate to file location".to_string(),
                 "Use fast_refs to see all usages".to_string(),
             ],
-            message,
         )
     }
 
@@ -173,21 +160,12 @@ impl FastGotoTool {
         // Use SQLite for exact name lookup (indexed, fast)
         if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
-                // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                // spawn_blocking to avoid blocking tokio runtime during DB I/O
                 let symbol = self.symbol.clone();
                 let db_arc = db.clone();
 
                 exact_matches = tokio::task::spawn_blocking(move || {
-                    let db_lock = match db_arc.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            warn!(
-                                "Database mutex poisoned in fast_goto (line 184), recovering: {}",
-                                poisoned
-                            );
-                            poisoned.into_inner()
-                        }
-                    };
+                    let db_lock = super::lock_db(&db_arc, "fast_goto exact lookup");
                     db_lock.get_symbols_by_name(&symbol)
                 })
                 .await
@@ -214,18 +192,12 @@ impl FastGotoTool {
             // Uses Julie's Intelligence Layer for smart variant generation
             if let Ok(Some(workspace)) = handler.get_workspace().await {
                 if let Some(db) = workspace.db.as_ref() {
-                    // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                    // spawn_blocking to avoid blocking tokio runtime during DB I/O
                     let symbol = self.symbol.clone();
                     let db_arc = db.clone();
 
                     let variant_matches = tokio::task::spawn_blocking(move || {
-                        let db_lock = match db_arc.lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => {
-                                warn!("Database mutex poisoned in fast_goto (line 218), recovering: {}", poisoned);
-                                poisoned.into_inner()
-                            }
-                        };
+                        let db_lock = super::lock_db(&db_arc, "fast_goto variant lookup");
                         let mut matches = Vec::new();
 
                         // Generate all naming convention variants using shared intelligence module

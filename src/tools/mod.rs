@@ -10,6 +10,7 @@ pub mod edit_lines; // Surgical line editing tool (insert/replace/delete)
 pub mod editing; // EditingTransaction infrastructure (shared by all editing tools)
 pub mod exploration;
 pub mod fuzzy_replace; // DMP fuzzy matching tool
+mod fuzzy_replace_algorithm; // Fuzzy replace algorithm (extracted from fuzzy_replace.rs)
 pub mod memory; // Memory system (checkpoint/recall)
 pub mod navigation;
 pub mod refactoring;

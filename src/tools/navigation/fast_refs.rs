@@ -67,11 +67,9 @@ impl FastRefsTool {
     /// Helper: Create result with lean format as default, JSON/TOON as alternatives
     fn create_result(
         &self,
-        _found: bool,
         definitions: Vec<Symbol>,
         references: Vec<Relationship>,
         next_actions: Vec<String>,
-        _markdown: String,
     ) -> Result<CallToolResult> {
         // Return based on output_format - lean is default
         match self.output_format.as_deref() {
@@ -157,35 +155,23 @@ impl FastRefsTool {
         let (definitions, references) = self.find_references_and_definitions(handler).await?;
 
         if definitions.is_empty() && references.is_empty() {
-            let message = format!(
-                "🔍 No references found for: '{}'\n\
-                💡 Check the symbol name and ensure it exists in the indexed files",
-                self.symbol
-            );
             return self.create_result(
-                false,
                 vec![],
                 vec![],
                 vec![
                     "Use fast_search to locate the symbol".to_string(),
                     "Check symbol name spelling".to_string(),
                 ],
-                message,
             );
         }
 
-        // Use token-optimized formatting
-        let message = self.format_optimized_results(&definitions, &references);
-
         self.create_result(
-            true,
             definitions,
             references,
             vec![
                 "Navigate to reference locations".to_string(),
                 "Use fast_goto to see definitions".to_string(),
             ],
-            message,
         )
     }
 
@@ -216,21 +202,12 @@ impl FastRefsTool {
         // Use SQLite for exact name lookup (indexed)
         if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
-                // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                // spawn_blocking to avoid blocking tokio runtime during DB I/O
                 let symbol = self.symbol.clone();
                 let db_arc = db.clone();
 
                 definitions = tokio::task::spawn_blocking(move || {
-                    let db_lock = match db_arc.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            warn!(
-                                "Database mutex poisoned in fast_refs (line 217), recovering: {}",
-                                poisoned
-                            );
-                            poisoned.into_inner()
-                        }
-                    };
+                    let db_lock = super::lock_db(&db_arc, "fast_refs exact lookup");
                     db_lock.get_symbols_by_name(&symbol)
                 })
                 .await
@@ -247,21 +224,12 @@ impl FastRefsTool {
 
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
-                // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
+                // spawn_blocking to avoid blocking tokio runtime during DB I/O
                 let symbol = self.symbol.clone();
                 let db_arc = db.clone();
 
                 let variant_matches = tokio::task::spawn_blocking(move || {
-                    let db_lock = match db_arc.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            warn!(
-                                "Database mutex poisoned in fast_refs (line 239), recovering: {}",
-                                poisoned
-                            );
-                            poisoned.into_inner()
-                        }
-                    };
+                    let db_lock = super::lock_db(&db_arc, "fast_refs variant lookup");
                     let mut matches = Vec::new();
 
                     for variant in variants {
@@ -301,10 +269,7 @@ impl FastRefsTool {
 
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
-                // 🚨 DEADLOCK FIX: spawn_blocking with std::sync::Mutex (no block_on needed)
-                // std::sync::Mutex can be locked directly without async runtime
-                // spawn_blocking prevents blocking the tokio runtime during database I/O
-
+                // spawn_blocking to avoid blocking tokio runtime during DB I/O
                 // Collect definition IDs before moving into spawn_blocking
                 let definition_ids: Vec<String> =
                     definitions.iter().map(|d| d.id.clone()).collect();
@@ -312,16 +277,7 @@ impl FastRefsTool {
 
                 let reference_kind_filter = self.reference_kind.clone();
                 let symbol_references = tokio::task::spawn_blocking(move || {
-                    let db_lock = match db_arc.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            warn!(
-                                "Database mutex poisoned in fast_refs (line 289), recovering: {}",
-                                poisoned
-                            );
-                            poisoned.into_inner()
-                        }
-                    };
+                    let db_lock = super::lock_db(&db_arc, "fast_refs relationships");
                     // Single batch query, optionally filtered by identifier kind
                     if let Some(kind) = reference_kind_filter {
                         db_lock.get_relationships_to_symbols_filtered_by_kind(&definition_ids, &kind)
@@ -361,16 +317,7 @@ impl FastRefsTool {
                 let first_def_id = definitions.first().map(|d| d.id.clone()).unwrap_or_default();
 
                 let identifier_refs = tokio::task::spawn_blocking(move || {
-                    let db_lock = match db_arc.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            warn!(
-                                "Database mutex poisoned in fast_refs identifiers lookup, recovering: {}",
-                                poisoned
-                            );
-                            poisoned.into_inner()
-                        }
-                    };
+                    let db_lock = super::lock_db(&db_arc, "fast_refs identifiers");
                     if let Some(kind) = reference_kind_for_ident {
                         db_lock.get_identifiers_by_names_and_kind(&all_names, &kind)
                     } else {

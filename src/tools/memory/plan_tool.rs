@@ -8,87 +8,8 @@ use tracing::info;
 
 use crate::handler::JulieServerHandler;
 
+use super::git::capture_git_context;
 use super::plan::*;
-
-/// Capture git context from the workspace (reuse from checkpoint)
-async fn capture_git_context(handler: &JulieServerHandler) -> Option<super::GitContext> {
-    use std::process::Stdio;
-    use tokio::process::Command;
-
-    let workspace = handler.get_workspace().await.ok()??;
-    let workspace_root = workspace.root.clone();
-
-    // Get current branch
-    let branch_output = Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(&workspace_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await
-        .ok()?;
-
-    let branch = String::from_utf8(branch_output.stdout)
-        .ok()?
-        .trim()
-        .to_string();
-
-    // Get current commit
-    let commit_output = Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(&workspace_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await
-        .ok()?;
-
-    let commit = String::from_utf8(commit_output.stdout)
-        .ok()?
-        .trim()
-        .to_string();
-
-    // Check if working directory is dirty
-    let status_output = Command::new("git")
-        .args(["status", "--porcelain"])
-        .current_dir(&workspace_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await
-        .ok()?;
-
-    let dirty = !status_output.stdout.is_empty();
-
-    // Get changed files
-    let files_output = Command::new("git")
-        .args(["diff", "--name-only", "HEAD"])
-        .current_dir(&workspace_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await
-        .ok()?;
-
-    let files_changed = if !files_output.stdout.is_empty() {
-        Some(
-            String::from_utf8(files_output.stdout)
-                .ok()?
-                .lines()
-                .map(|s| s.to_string())
-                .collect(),
-        )
-    } else {
-        None
-    };
-
-    Some(super::GitContext {
-        branch,
-        commit,
-        dirty,
-        files_changed,
-    })
-}
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct PlanTool {

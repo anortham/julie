@@ -2,9 +2,9 @@
 //!
 //! Unified exploration tool with multiple strategies:
 //! - logic: Find business logic by domain keywords (from find_logic)
-//! - similar: Find semantically similar code (IMPLEMENTED)
-//! - tests: Discover tests for symbols (CANCELLED - use fast_refs + fast_search instead)
+//! - similar: Find semantically similar code (deprecated - embeddings removed)
 //! - dependencies: Analyze transitive dependencies (IMPLEMENTED)
+//! - types: Explore type intelligence (implementations, hierarchies, etc.)
 
 use anyhow::Result;
 use schemars::JsonSchema;
@@ -28,10 +28,6 @@ pub enum ExploreMode {
 
     /// Find semantically similar code (deprecated - embeddings removed)
     Similar,
-
-    /// Discover tests for symbols (CANCELLED - use fast_refs + fast_search composition)
-    #[allow(dead_code)]
-    Tests,
 
     /// Analyze transitive dependencies via graph traversal
     Dependencies,
@@ -72,32 +68,18 @@ pub struct FastExploreTool {
     pub min_business_score: Option<f32>,
 
     // ═══════════════════════════════════════════════════════════════════
-    // Similar Mode Parameters (Phase 3)
+    // Dependencies Mode Parameters
     // ═══════════════════════════════════════════════════════════════════
-    /// Symbol to find duplicates of (similar mode)
+    /// Symbol to analyze (required for dependencies mode)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
 
-    /// Similarity threshold 0.0-1.0 (default: 0.8, similar mode)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub threshold: Option<f32>,
-
-    // ═══════════════════════════════════════════════════════════════════
-    // Tests Mode Parameters (Phase 4)
-    // ═══════════════════════════════════════════════════════════════════
-    /// Include integration tests (default: true, tests mode)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub include_integration: Option<bool>,
-
-    // ═══════════════════════════════════════════════════════════════════
-    // Dependencies Mode Parameters (Phase 5)
-    // ═══════════════════════════════════════════════════════════════════
     /// Dependency analysis depth (default: 3, deps mode)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub depth: Option<i32>,
 
     // ═══════════════════════════════════════════════════════════════════
-    // Types Mode Parameters (Phase 6)
+    // Types Mode Parameters
     // ═══════════════════════════════════════════════════════════════════
     /// Type name to explore (required for types mode)
     /// Examples: "PaymentProcessor", "CheckoutStep", "UserProfile"
@@ -113,25 +95,14 @@ pub struct FastExploreTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
 
-    // ═══════════════════════════════════════════════════════════════════
-    // Common Parameters (All Modes)
-    // ═══════════════════════════════════════════════════════════════════
-    /// Optional file pattern filter (all modes)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_pattern: Option<String>,
-
-    /// Workspace filter (default: "primary", all modes)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace: Option<String>,
 }
 
 impl FastExploreTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         match self.mode {
             ExploreMode::Logic => self.explore_logic(handler).await,
-            ExploreMode::Similar => self.explore_similar(handler).await,
-            ExploreMode::Tests => {
-                anyhow::bail!("tests mode not yet implemented (Phase 4)")
+            ExploreMode::Similar => {
+                anyhow::bail!("similar mode is deprecated (embeddings removed). Use fast_search for text-based similarity, or fast_refs for related symbols via the relationship graph.")
             }
             ExploreMode::Dependencies => self.explore_dependencies(handler).await,
             ExploreMode::Types => self.explore_types(handler).await,
@@ -158,33 +129,6 @@ impl FastExploreTool {
 
         // Delegate to existing implementation
         find_logic_tool.call_tool(handler).await
-    }
-
-    /// Similar mode: Find semantically similar code
-    /// NOTE: Embedding-based similarity search has been removed. Use fast_search with
-    /// search_method="semantic" for text-based similarity, or use fast_refs to find
-    /// related symbols through the relationship graph.
-    async fn explore_similar(&self, _handler: &JulieServerHandler) -> Result<CallToolResult> {
-        let symbol_name = self
-            .symbol
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("symbol parameter required for similar mode"))?;
-
-        let threshold = self.threshold.unwrap_or(0.8);
-        if !(0.0..=1.0).contains(&threshold) {
-            anyhow::bail!("threshold must be between 0.0 and 1.0, got {}", threshold);
-        }
-
-        let response = json!({
-            "query_symbol": symbol_name,
-            "total_found": 0,
-            "results": [],
-            "message": "Semantic similarity search (embeddings/HNSW) has been removed. Use fast_search with search_method='semantic' for text-based similarity, or use fast_refs to find related symbols through the relationship graph.",
-        });
-
-        Ok(CallToolResult::text_content(vec![Content::text(
-            serde_json::to_string(&response)?,
-        )]))
     }
 
     /// Dependencies mode: Analyze transitive dependencies via graph traversal

@@ -99,11 +99,12 @@ pub fn compare_symbols_by_priority_and_context(
     }
 
     // Then by context file preference if provided
-    // CORRECTNESS FIX: Use exact path comparison instead of contains()
-    // contains() is fragile - "test.rs" would match "contest.rs" (false positive)
+    // Use path-separator-aware matching to avoid false positives
+    // (e.g. bare ends_with("test.rs") would incorrectly match "contest.rs")
     if let Some(context_file) = context_file {
-        let a_in_context = a.file_path == context_file || a.file_path.ends_with(context_file);
-        let b_in_context = b.file_path == context_file || b.file_path.ends_with(context_file);
+        let suffix = format!("/{}", context_file);
+        let a_in_context = a.file_path == context_file || a.file_path.ends_with(&suffix);
+        let b_in_context = b.file_path == context_file || b.file_path.ends_with(&suffix);
         match (a_in_context, b_in_context) {
             (true, false) => return std::cmp::Ordering::Less,
             (false, true) => return std::cmp::Ordering::Greater,
