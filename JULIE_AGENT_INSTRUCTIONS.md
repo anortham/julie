@@ -184,7 +184,52 @@ fast_explore(mode="similar", symbol="getUserData", threshold=0.8)
 fast_explore(mode="dependencies", symbol="PaymentService", depth=3)
 ```
 
-### Refactoring Tools
+### Editing Tools — When to Use Which
+
+Julie provides three editing tools plus a rename tool. Each has a unique capability that Claude Code's native Edit/Write tools lack.
+
+**edit_lines** - Line-number-based editing with dry-run preview
+- Best when: You know exact line numbers (from get_symbols or fast_search output)
+- Operations: insert (add lines at position), replace (swap line range), delete (remove lines)
+- Example: Insert import at line 3, delete dead code at lines 45-52
+```javascript
+edit_lines(
+  file_path="src/user.rs",
+  operation="replace",  // or "insert", "delete"
+  start_line=42,
+  end_line=45,
+  content="    let result = validate(input)?;",
+  dry_run=true
+)
+```
+
+**fuzzy_replace** - Fuzzy matching + multi-file refactoring
+- Best when: Pattern has whitespace variations, OR you need to change multiple files at once
+- Unique: `file_pattern="**/*.rs"` applies the same replacement across all matching files
+- Example: Rename `getUserData` to `fetchUserData` across all .ts files in one call
+```javascript
+fuzzy_replace(
+  file_pattern="**/*.ts",
+  pattern="getUserData",
+  replacement="fetchUserData",
+  threshold=0.8,
+  dry_run=true
+)
+```
+
+**edit_symbol** - AST-aware semantic editing
+- Best when: You want to edit a function/class by NAME, not by line number or string match
+- Operations: `replace_body` (rewrite implementation), `insert_relative` (add before/after), `extract_to_file` (move to another file)
+- Example: Replace the body of `calculate_total()` without touching its signature
+```javascript
+edit_symbol(
+  file_path="src/orders.rs",
+  symbol_name="calculate_total",
+  operation="replace_body",
+  content="    self.items.iter().map(|i| i.price * i.qty).sum()",
+  dry_run=true
+)
+```
 
 **rename_symbol** - Workspace-wide symbol renaming
 ```javascript
@@ -196,28 +241,7 @@ rename_symbol(
 ```
 **ALWAYS use fast_refs BEFORE renaming to see impact.**
 
-**edit_lines** - Surgical line editing
-```javascript
-edit_lines(
-  file_path="src/user.rs",
-  operation="insert",  // or "replace", "delete"
-  start_line=42,
-  content="// TODO: Add validation",
-  dry_run=true
-)
-```
-
-**fuzzy_replace** - Pattern replacement with fuzzy matching
-```javascript
-// Multi-file mode
-fuzzy_replace(
-  file_pattern="**/*.rs",
-  pattern="old_pattern",
-  replacement="new_pattern",
-  threshold=0.8,
-  dry_run=true
-)
-```
+**ALWAYS use `dry_run=true` first** for all four tools. Review the preview, then apply with `dry_run=false`.
 
 ### manage_workspace - Workspace Management
 **First action in new workspace:**
