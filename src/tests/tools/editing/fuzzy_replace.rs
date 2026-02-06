@@ -6,6 +6,7 @@
 //! - Balance calculation for validation
 //! - Edge cases (empty strings, UTF-8, long patterns)
 
+#[allow(unused_imports)]
 use crate::mcp_compat::StructuredContentExt;
 use crate::tools::fuzzy_replace::FuzzyReplaceTool;
 use anyhow::Result;
@@ -260,8 +261,22 @@ fn test_calculate_balance_in_strings() {
 mod multi_file_tests {
     use super::*;
     use crate::handler::JulieServerHandler;
+    use crate::mcp_compat::CallToolResult;
     use std::fs;
     use tempfile::TempDir;
+
+    fn extract_text(result: &CallToolResult) -> String {
+        result
+            .content
+            .iter()
+            .filter_map(|block| {
+                serde_json::to_value(block).ok().and_then(|json| {
+                    json.get("text").and_then(|v| v.as_str()).map(|s| s.to_string())
+                })
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[tokio::test]
     async fn test_fuzzy_replace_multi_file_basic_glob() -> Result<()> {
@@ -436,16 +451,16 @@ mod multi_file_tests {
         };
 
         let result = tool.call_tool(&handler).await?;
-        let result_text = format!("{:?}", result);
+        let result_text = extract_text(&result);
 
         // Should report: 2 files changed, 3 total replacements
         assert!(
-            result_text.contains("2") && result_text.contains("files"),
-            "Should mention 2 files"
+            result_text.contains("2 file"),
+            "Should mention 2 files, got: {}", result_text
         );
         assert!(
-            result_text.contains("3") && result_text.contains("replacement"),
-            "Should mention 3 replacements"
+            result_text.contains("3 match"),
+            "Should mention 3 matches, got: {}", result_text
         );
 
         Ok(())
@@ -467,8 +482,8 @@ mod multi_file_tests {
             .await?;
 
         let tool = FuzzyReplaceTool {
-            file_path: None,                           // ← This will fail: field type wrong
-            file_pattern: Some("**/*.rs".to_string()), // ← This will fail: field doesn't exist
+            file_path: None,
+            file_pattern: Some("**/*.rs".to_string()),
             pattern: "getUserData".to_string(),
             replacement: "fetchUserData".to_string(),
             threshold: 1.0,
@@ -478,13 +493,16 @@ mod multi_file_tests {
         };
 
         let result = tool.call_tool(&handler).await?;
+        let result_text = extract_text(&result);
 
-        // Verify dry_run mode in structured_content
-        assert!(result.structured_content().is_some(), "Should have structured content");
-        let structured = result.structured_content().unwrap();
+        // Verify dry_run response includes preview text
         assert!(
-            structured.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false),
-            "Should indicate dry run mode"
+            result_text.contains("dry run"),
+            "Should indicate dry run mode, got: {}", result_text
+        );
+        assert!(
+            result_text.contains("getUserData") && result_text.contains("fetchUserData"),
+            "Should show pattern and replacement, got: {}", result_text
         );
 
         // File should NOT be modified

@@ -65,6 +65,25 @@ impl EditLinesTool {
 
         debug!("📄 File has {} lines", original_line_count);
 
+        // Capture affected lines BEFORE the operation for dry-run preview
+        let before_context = if self.dry_run {
+            let start = (self.start_line as usize).saturating_sub(1);
+            let end = match self.operation.as_str() {
+                "insert" => start, // insert doesn't replace existing lines
+                _ => {
+                    let e = self.end_line.unwrap_or(self.start_line) as usize;
+                    e.min(lines.len())
+                }
+            };
+            if start < lines.len() && end > start {
+                Some(lines[start..end].to_vec())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         // Perform operation
         let modified_lines = match self.operation.as_str() {
             "insert" => self.perform_insert(&mut lines)?,
@@ -74,6 +93,30 @@ impl EditLinesTool {
         };
 
         let new_line_count = lines.len();
+
+        // Capture affected lines AFTER the operation for dry-run preview
+        let after_context = if self.dry_run {
+            let start = (self.start_line as usize).saturating_sub(1);
+            let end = match self.operation.as_str() {
+                "delete" => start, // delete removes lines, nothing new at that position
+                "insert" => {
+                    let insert_lines = self.content.as_ref().map(|c| c.lines().count()).unwrap_or(0);
+                    (start + insert_lines).min(lines.len())
+                }
+                _ => {
+                    // replace: new content occupies from start_line
+                    let new_lines = self.content.as_ref().map(|c| c.lines().count()).unwrap_or(0);
+                    (start + new_lines).min(lines.len())
+                }
+            };
+            if end > start {
+                Some(lines[start..end].to_vec())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         // Write back (unless dry_run)
         if !self.dry_run {
@@ -105,6 +148,8 @@ impl EditLinesTool {
             new_line_count,
             modified_lines,
             self.dry_run,
+            before_context,
+            after_context,
         )
     }
 
@@ -280,40 +325,59 @@ impl EditLinesTool {
         Ok(lines_to_delete) // Return number of lines deleted
     }
 
-    /// Create result message
+    /// Create result message with optional before/after preview for dry runs
     fn create_result(
         &self,
         display_path: &str,
         original_lines: usize,
         new_lines: usize,
-        modified: usize,
+        _modified: usize,
         dry_run: bool,
+        before_context: Option<Vec<String>>,
+        after_context: Option<Vec<String>>,
     ) -> Result<CallToolResult> {
         // Format line range differently for insert vs replace/delete
         let line_description = match self.operation.as_str() {
             "insert" => format!("at line {}", self.start_line),
             _ => {
-                // For replace/delete operations, end_line should always be present
-                // If it's None, this is a logic error in validation
-                let end_line = self.end_line.unwrap_or_else(|| {
-                    // Fallback for defensive programming, should never happen
-                    self.start_line
-                });
-                format!("lines {} - {}", self.start_line, end_line)
+                let end_line = self.end_line.unwrap_or(self.start_line);
+                format!("lines {}-{}", self.start_line, end_line)
             }
         };
 
-        let message = if dry_run {
+        let mut message = if dry_run {
             format!(
-                "Dry run: {} operation on {} ({})\nWould modify {} lines: {} -> {} lines (no changes applied)",
-                self.operation, display_path, line_description, modified, original_lines, new_lines
+                "edit_lines {} — {} ({}) [{} → {} lines]\n",
+                self.operation, display_path, line_description, original_lines, new_lines
             )
         } else {
             format!(
-                "Edit complete: {} operation on {} ({})\nModified {} lines: {} -> {} lines",
-                self.operation, display_path, line_description, modified, original_lines, new_lines
+                "edit_lines {} — {} ({}) [{} → {} lines]\n",
+                self.operation, display_path, line_description, original_lines, new_lines
             )
         };
+
+        // Add before/after preview for dry runs
+        if dry_run {
+            let start = self.start_line;
+            if let Some(before) = before_context {
+                if !before.is_empty() {
+                    message.push_str("\n--- Before:\n");
+                    for (i, line) in before.iter().enumerate() {
+                        message.push_str(&format!("  {}: {}\n", start as usize + i, line));
+                    }
+                }
+            }
+            if let Some(after) = after_context {
+                if !after.is_empty() {
+                    message.push_str("\n+++ After:\n");
+                    for (i, line) in after.iter().enumerate() {
+                        message.push_str(&format!("  {}: {}\n", start as usize + i, line));
+                    }
+                }
+            }
+            message.push_str("\n(dry run — no changes applied)");
+        }
 
         Ok(CallToolResult::text_content(vec![Content::text(message)]))
     }

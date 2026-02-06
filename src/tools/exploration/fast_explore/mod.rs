@@ -17,7 +17,6 @@ use crate::database::SymbolDatabase;
 use crate::extractors::base::{Relationship, RelationshipKind};
 use crate::handler::JulieServerHandler;
 use crate::tools::exploration::find_logic::FindLogicTool;
-use crate::workspace::registry::generate_workspace_id;
 
 /// Exploration mode selector
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -142,41 +141,27 @@ impl FastExploreTool {
 
         let max_depth = self.depth.unwrap_or(3).min(10); // Cap at 10 to prevent infinite recursion
 
-        // Get workspace
+        // Get workspace and use primary database (already open)
         let workspace = handler.get_workspace().await?.ok_or_else(|| {
             anyhow::anyhow!("No workspace available. Please index workspace first.")
         })?;
 
-        // Generate workspace ID from root path
-        let workspace_id = generate_workspace_id(&workspace.root.to_string_lossy())?;
-        let db_path = workspace.workspace_db_path(&workspace_id);
+        let db_arc = workspace
+            .db
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Database not initialized for workspace"))?;
+        let db = db_arc.lock().expect("Failed to lock database");
 
         debug!(
             "🔍 Analyzing dependencies for '{}' (max depth: {})",
             symbol_name, max_depth
         );
 
-        // Find the symbol by name
-        let db = tokio::task::spawn_blocking({
-            let db_path = db_path.clone();
-            move || SymbolDatabase::new(&db_path)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
-
         let symbols = db.get_symbols_by_name(symbol_name)?;
 
         if symbols.is_empty() {
-            // Symbol not found - return empty result
             return Ok(CallToolResult::text_content(vec![Content::text(
-                serde_json::to_string(&json!({
-                    "symbol": symbol_name,
-                    "found": false,
-                    "message": format!("Symbol '{}' not found in workspace", symbol_name),
-                    "depth": max_depth,
-                    "total_dependencies": 0,
-                    "dependencies": []
-                }))?,
+                format!("Symbol '{}' not found in workspace. Try fast_search to locate it.", symbol_name),
             )]));
         }
 
@@ -245,18 +230,31 @@ impl FastExploreTool {
 
         let total_dependencies = visited.len() - 1; // Exclude root symbol
 
-        let response = json!({
-            "symbol": symbol_name,
-            "found": true,
-            "depth": max_depth,
-            "total_dependencies": total_dependencies,
-            "dependencies": dependencies,
-            "tip": "Dependencies show what this symbol imports, uses, calls, or references. Use depth parameter to control how deep the analysis goes."
-        });
+        // Format as lean text tree
+        let mut output = format!(
+            "Dependencies: {} — {} dependency(ies), depth {}\n",
+            symbol_name, total_dependencies, max_depth
+        );
+        if total_dependencies == 0 {
+            output.push_str("\n  (no dependencies found in relationships table)");
+        } else {
+            fn format_dep_tree(deps: &[serde_json::Value], output: &mut String, indent: usize) {
+                for dep in deps {
+                    let prefix = "  ".repeat(indent + 1);
+                    let name = dep.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                    let kind = dep.get("relationship_kind").and_then(|v| v.as_str()).unwrap_or("?");
+                    let file = dep.get("file_path").and_then(|v| v.as_str()).unwrap_or("?");
+                    let line = dep.get("start_line").and_then(|v| v.as_u64()).unwrap_or(0);
+                    output.push_str(&format!("{}[{}] {} ({}:{})\n", prefix, kind, name, file, line));
+                    if let Some(children) = dep.get("dependencies").and_then(|v| v.as_array()) {
+                        format_dep_tree(children, output, indent + 1);
+                    }
+                }
+            }
+            format_dep_tree(&dependencies, &mut output, 0);
+        }
 
-        Ok(CallToolResult::text_content(vec![Content::text(
-            serde_json::to_string(&response)?,
-        )]))
+        Ok(CallToolResult::text_content(vec![Content::text(output.trim_end().to_string())]))
     }
 
     /// Helper to build dependency tree from relationship map
@@ -383,7 +381,12 @@ impl FastExploreTool {
             }
         }
 
-        // Count actual hierarchy entries (parents + children arrays), not HashMap size
+        // Format as lean text — file:line kind name (signature)
+        fn format_symbol_lean(sym: &crate::extractors::Symbol) -> String {
+            let sig = sym.signature.as_deref().unwrap_or(&sym.name);
+            format!("  {}:{} {} {}", sym.file_path, sym.start_line, sym.kind, sig)
+        }
+
         let hierarchy_count = hierarchy
             .get("parents")
             .and_then(|v| v.as_array().map(|arr| arr.len()))
@@ -396,21 +399,53 @@ impl FastExploreTool {
         let total_found =
             implementations.len() + returns.len() + parameters.len() + hierarchy_count;
 
-        let result = json!({
-            "type_name": type_name,
-            "exploration_type": exploration_type,
-            "limit": limit,
-            "results": {
-                "implementations": implementations,
-                "hierarchy": hierarchy,
-                "returns": returns,
-                "parameters": parameters
-            },
-            "total_found": total_found,
-        });
+        let mut output = format!("Type Intelligence: {} ({}) — {} results\n", type_name, exploration_type, total_found);
 
-        Ok(CallToolResult::text_content(vec![Content::text(
-            serde_json::to_string_pretty(&result)?,
-        )]))
+        if !implementations.is_empty() {
+            output.push_str(&format!("\nImplementations ({}):\n", implementations.len()));
+            for sym in &implementations {
+                output.push_str(&format_symbol_lean(sym));
+                output.push('\n');
+            }
+        }
+        if !hierarchy.is_empty() && hierarchy_count > 0 {
+            output.push_str("\nHierarchy:\n");
+            if let Some(parents) = hierarchy.get("parents").and_then(|v| v.as_array()) {
+                let names: Vec<String> = parents.iter()
+                    .filter_map(|p| p.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+                    .collect();
+                if !names.is_empty() {
+                    output.push_str(&format!("  Parents: {}\n", names.join(", ")));
+                }
+            }
+            if let Some(children) = hierarchy.get("children").and_then(|v| v.as_array()) {
+                let names: Vec<String> = children.iter()
+                    .filter_map(|c| c.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+                    .collect();
+                if !names.is_empty() {
+                    output.push_str(&format!("  Children: {}\n", names.join(", ")));
+                }
+            }
+        }
+        if !returns.is_empty() {
+            output.push_str(&format!("\nReturns ({}):\n", returns.len()));
+            for sym in &returns {
+                output.push_str(&format_symbol_lean(sym));
+                output.push('\n');
+            }
+        }
+        if !parameters.is_empty() {
+            output.push_str(&format!("\nParameters ({}):\n", parameters.len()));
+            for sym in &parameters {
+                output.push_str(&format_symbol_lean(sym));
+                output.push('\n');
+            }
+        }
+
+        if total_found == 0 {
+            output.push_str(&format!("\nNo type intelligence found for '{}'. Check spelling or use fast_search.", type_name));
+        }
+
+        Ok(CallToolResult::text_content(vec![Content::text(output.trim_end().to_string())]))
     }
 }

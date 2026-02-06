@@ -61,17 +61,17 @@ An agent should be able to use any tool with just the required params and get a 
 
 ## Progress Tracker
 
-- [ ] Tool 1: `fast_search`
-- [ ] Tool 2: `get_symbols`
-- [ ] Tool 3: `fast_refs`
-- [ ] Tool 4: `fast_goto`
-- [ ] Tool 5: `edit_symbol`
-- [ ] Tool 6: `rename_symbol`
-- [ ] Tool 7: `edit_lines`
-- [ ] Tool 8: `fuzzy_replace`
-- [ ] Tool 9: `fast_explore(logic)`
-- [ ] Tool 10: `fast_explore(types)`
-- [ ] Tool 11: `fast_explore(dependencies)`
-- [ ] Tool 12: `trace_call_path`
+- [x] Tool 1: `fast_search` — auto-route content→line mode, remove dead params (89e5e2d)
+- [x] Tool 2: `get_symbols` — lean text format, strip noise (9096c72), TOON/JSON removed (f8d029b)
+- [x] Tool 3: `fast_refs` — prefix matching, import separation, dedup (7916f42)
+- [x] Tool 4: `fast_goto` — import separation, lean output (7916f42)
+- [x] Tool 5: `edit_symbol` — before/after preview already in text; TOON removal made it primary
+- [x] Tool 6: `rename_symbol` — file list with change counts in dry run; parse_refs_result works with lean text
+- [x] Tool 7: `edit_lines` — added before/after line preview to dry run output
+- [x] Tool 8: `fuzzy_replace` — fixed empty dry run output, replaced structured_content with text diff preview
+- [x] Tool 9: `fast_explore(logic)` — already good, confidence scores properly formatted
+- [x] Tool 10: `fast_explore(types)` — lean text format: `file:line kind signature`, organized by category
+- [x] Tool 11: `fast_explore(dependencies)` — use primary workspace db, lean text tree output
+- [x] Tool 12: `trace_call_path` — generic name blocklist (~60 names) + min 4-char cross-language filter
 - [x] Tool 13: `manage_workspace`
 - [x] Tool 14: `checkpoint/recall/plan`

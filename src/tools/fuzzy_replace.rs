@@ -17,28 +17,12 @@
 use anyhow::{Result, anyhow};
 use schemars::JsonSchema;
 use std::path::Path;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt, WithStructuredContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use tokio::fs;
 use tracing::{debug, info};
 
 use crate::tools::editing::EditingTransaction;
-
-/// Structured result from fuzzy replace operation
-#[derive(Debug, Clone, Serialize)]
-pub struct FuzzyReplaceResult {
-    pub tool: String,
-    pub file_path: Option<String>,    // Single-file mode
-    pub file_pattern: Option<String>, // Multi-file mode
-    pub files_changed: usize,         // For multi-file mode
-    pub pattern: String,
-    pub replacement: String,
-    pub matches_found: usize,
-    pub threshold: f32,
-    pub dry_run: bool,
-    pub validation_passed: bool,
-    pub next_actions: Vec<String>,
-}
 
 fn default_threshold() -> f32 {
     0.8
@@ -199,41 +183,17 @@ impl FuzzyReplaceTool {
             }
         }
 
-        // Dry run - show preview with structured output
+        // Dry run - show diff preview
         if self.dry_run {
-            // Create structured result
-            let result = FuzzyReplaceResult {
-                tool: "fuzzy_replace".to_string(),
-                file_path: Some(resolved_path.display().to_string()),
-                file_pattern: None,
-                files_changed: 1,
-                pattern: self.pattern.clone(),
-                replacement: self.replacement.clone(),
-                matches_found,
-                threshold: self.threshold,
-                dry_run: true,
-                validation_passed: true,
-                next_actions: vec![
-                    "Review the changes preview above".to_string(),
-                    format!("Set dry_run=false to apply {} replacements", matches_found),
-                ],
-            };
-
-            // Return ONLY structured JSON (no redundant text)
-            let structured = serde_json::to_value(&result)
-                .map_err(|e| anyhow!("Failed to serialize result: {}", e))?;
-
-            let structured_map = if let serde_json::Value::Object(map) = structured {
-                map
-            } else {
-                return Err(anyhow!("Expected JSON object"));
-            };
-
-            debug!("✅ Returning fuzzy_replace results as JSON-only (no redundant text_content)");
-            return Ok(
-                CallToolResult::text_content(vec![])
-                    .with_structured_content(structured_map),
+            let diff_preview = Self::generate_diff_preview(&original_content, &modified_content, 10);
+            let text = format!(
+                "fuzzy_replace dry run — {} match(es) in {}\n'{}' → '{}' (threshold: {})\n\n{}\n\n(dry run — set dry_run=false to apply)",
+                matches_found, file_path, self.pattern, self.replacement, self.threshold,
+                diff_preview
             );
+
+            debug!("✅ Returning fuzzy_replace dry run preview ({} matches)", matches_found);
+            return Ok(CallToolResult::text_content(vec![Content::text(text)]));
         }
 
         // Apply changes atomically using EditingTransaction
@@ -243,48 +203,12 @@ impl FuzzyReplaceTool {
             .commit(&modified_content)
             .map_err(|e| anyhow!("Failed to apply changes: {}", e))?;
 
-        // Create structured result
-        let result = FuzzyReplaceResult {
-            tool: "fuzzy_replace".to_string(),
-            file_path: Some(resolved_path.display().to_string()),
-            file_pattern: None,
-            files_changed: 1,
-            pattern: self.pattern.clone(),
-            replacement: self.replacement.clone(),
-            matches_found,
-            threshold: self.threshold,
-            dry_run: false,
-            validation_passed: true,
-            next_actions: vec![
-                format!("Review changes in: {}", resolved_path.display()),
-                "Run tests to verify functionality".to_string(),
-            ],
-        };
-
-        // Minimal 2-line summary
-        let markdown = format!(
-            "Fuzzy replace complete: {} matches replaced in {}\nPattern: '{}' → Replacement: '{}' (threshold: {})",
-            result.matches_found,
-            result.file_path.as_ref().unwrap(),
-            result.pattern,
-            result.replacement,
-            result.threshold
+        let text = format!(
+            "fuzzy_replace applied — {} match(es) replaced in {}\n'{}' → '{}' (threshold: {})",
+            matches_found, file_path, self.pattern, self.replacement, self.threshold
         );
 
-        // Serialize to JSON for structured_content
-        let structured = serde_json::to_value(&result)
-            .map_err(|e| anyhow!("Failed to serialize result: {}", e))?;
-
-        let structured_map = if let serde_json::Value::Object(map) = structured {
-            map
-        } else {
-            return Err(anyhow!("Expected JSON object"));
-        };
-
-        Ok(
-            CallToolResult::text_content(vec![Content::text(markdown)])
-                .with_structured_content(structured_map),
-        )
+        Ok(CallToolResult::text_content(vec![Content::text(text)]))
     }
 
     /// Multi-file mode implementation
@@ -350,6 +274,7 @@ impl FuzzyReplaceTool {
         let mut total_matches = 0;
         let mut files_changed = 0;
         let mut errors = Vec::new();
+        let mut per_file_previews = Vec::new();
 
         for file_path in &matching_files {
             info!("🔄 Processing file: {}", file_path.display());
@@ -435,53 +360,84 @@ impl FuzzyReplaceTool {
 
             total_matches += matches_found;
             files_changed += 1;
+
+            // Collect per-file diff preview for dry run
+            if self.dry_run {
+                let rel_path = file_path
+                    .strip_prefix(workspace_root)
+                    .unwrap_or(file_path)
+                    .to_string_lossy();
+                let diff = Self::generate_diff_preview(&original_content, &modified_content, 5);
+                per_file_previews.push(format!("{} ({} matches)\n{}", rel_path, matches_found, diff));
+            }
         }
 
-        // Create structured result
-        let result = FuzzyReplaceResult {
-            tool: "fuzzy_replace".to_string(),
-            file_path: None,
-            file_pattern: Some(file_pattern.to_string()),
-            files_changed,
-            pattern: self.pattern.clone(),
-            replacement: self.replacement.clone(),
-            matches_found: total_matches,
-            threshold: self.threshold,
-            dry_run: self.dry_run,
-            validation_passed: errors.is_empty(),
-            next_actions: if self.dry_run {
-                vec![
-                    format!(
-                        "Review: {} matches across {} files",
-                        total_matches, files_changed
-                    ),
-                    "Set dry_run=false to apply changes".to_string(),
-                ]
-            } else {
-                vec![
-                    format!(
-                        "Replaced {} matches across {} files",
-                        total_matches, files_changed
-                    ),
-                    "Run tests to verify changes".to_string(),
-                ]
-            },
-        };
-
-        // Return ONLY structured JSON (no redundant text)
-        let structured = serde_json::to_value(&result)
-            .map_err(|e| anyhow!("Failed to serialize result: {}", e))?;
-
-        let structured_map = if let serde_json::Value::Object(map) = structured {
-            map
+        let error_text = if !errors.is_empty() {
+            format!("\n\nErrors:\n{}", errors.join("\n"))
         } else {
-            return Err(anyhow!("Expected JSON object"));
+            String::new()
         };
 
-        debug!("✅ Returning fuzzy_replace (multi-file) results as JSON-only (no redundant text_content)");
-        Ok(
-            CallToolResult::text_content(vec![])
-                .with_structured_content(structured_map),
-        )
+        let text = if self.dry_run {
+            let previews = per_file_previews.join("\n\n");
+            format!(
+                "fuzzy_replace dry run — {} match(es) across {} file(s)\n'{}' → '{}' (threshold: {})\n\n{}{}\n\n(dry run — set dry_run=false to apply)",
+                total_matches, files_changed, self.pattern, self.replacement, self.threshold,
+                previews, error_text
+            )
+        } else {
+            format!(
+                "fuzzy_replace applied — {} match(es) replaced across {} file(s)\n'{}' → '{}' (threshold: {}){}",
+                total_matches, files_changed, self.pattern, self.replacement, self.threshold,
+                error_text
+            )
+        };
+
+        Ok(CallToolResult::text_content(vec![Content::text(text)]))
+    }
+
+    /// Generate a compact diff preview showing changed lines between original and modified content.
+    /// Returns at most `max_diffs` changed line pairs.
+    fn generate_diff_preview(original: &str, modified: &str, max_diffs: usize) -> String {
+        let orig_lines: Vec<&str> = original.lines().collect();
+        let mod_lines: Vec<&str> = modified.lines().collect();
+
+        let mut diffs = Vec::new();
+        let mut remaining = 0;
+
+        // When line counts match, do a simple line-by-line comparison
+        if orig_lines.len() == mod_lines.len() {
+            for (i, (orig, modif)) in orig_lines.iter().zip(mod_lines.iter()).enumerate() {
+                if orig != modif {
+                    if diffs.len() < max_diffs {
+                        diffs.push(format!("  L{}: - {}\n       + {}", i + 1, orig.trim(), modif.trim()));
+                    } else {
+                        remaining += 1;
+                    }
+                }
+            }
+        } else {
+            // Line counts differ (pattern/replacement have different newline counts)
+            // Show a before/after block instead
+            let changed_orig: Vec<(usize, &&str)> = orig_lines.iter().enumerate()
+                .filter(|(i, line)| mod_lines.get(*i).map_or(true, |m| m != *line))
+                .collect();
+            for (i, line) in changed_orig.iter().take(max_diffs) {
+                diffs.push(format!("  L{}: - {}", i + 1, line.trim()));
+            }
+            if changed_orig.len() > max_diffs {
+                remaining = changed_orig.len() - max_diffs;
+            }
+        }
+
+        if remaining > 0 {
+            diffs.push(format!("  ... and {} more change(s)", remaining));
+        }
+
+        if diffs.is_empty() {
+            "  (no visible line changes)".to_string()
+        } else {
+            diffs.join("\n")
+        }
     }
 }
