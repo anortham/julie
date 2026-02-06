@@ -80,7 +80,7 @@ Plans represent hours of work. Losing them is unacceptable.
 
 **Parameters:**
 - `query` - What to search for
-- `search_method` - "text" (exact/pattern), "semantic" (conceptual), "hybrid" (both)
+- `search_method` - "text" (default) or "auto" (both use Tantivy full-text search)
 - `search_target` - "content" (default - code/comments), "definitions" (symbol names)
 - `limit` - Max results (default: 10)
 - `file_pattern` - Filter by glob (e.g., "src/**/*.rs")
@@ -88,7 +88,7 @@ Plans represent hours of work. Losing them is unacceptable.
 
 **Refinement logic:**
 - Too many results (>15)? Add `file_pattern` or `language` filter
-- Too few results (<3)? Try `search_method="semantic"` or broader query
+- Too few results (<3)? Try a broader query or different keywords
 - Zero results? Check indexing: `manage_workspace(operation="index")`
 
 ### get_symbols - Structure Overview (70-90% Token Savings)

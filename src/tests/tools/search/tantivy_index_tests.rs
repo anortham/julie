@@ -250,3 +250,149 @@ fn test_camel_case_cross_convention_search() {
         "Should find both getUserData and get_user_data when searching 'user'"
     );
 }
+
+/// Regression test: content search with CodeTokenizer over-splits multi-word queries.
+///
+/// Bug: Searching for "Blake3 hash" in file content is tokenized by CodeTokenizer into
+/// ["blake", "3", "hash"]. The AND-per-term logic then requires all three tokens to be
+/// present in the file. Since "3" appears in nearly every code file (line numbers,
+/// constants, etc.) and "hash" is common (HashMap, etc.), this produces false positives
+/// from files that don't actually contain "Blake3 hash".
+///
+/// This test documents the known behavior. The fix is at the routing level: content
+/// searches should use line_mode which post-verifies via substring matching.
+#[test]
+fn test_content_search_over_tokenization_produces_false_positives() {
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    // File that DOES contain "Blake3 hash"
+    index
+        .add_file_content(&FileDocument {
+            file_path: "src/watcher.rs".into(),
+            content: "// Check if file changed using Blake3 hash\nlet hash = blake3::hash(&content);".into(),
+            language: "rust".into(),
+        })
+        .unwrap();
+
+    // File that does NOT contain "Blake3" but DOES contain "3" and "hash"
+    // This SHOULD NOT match, but CodeTokenizer splits "Blake3" → ["blake", "3"]
+    index
+        .add_file_content(&FileDocument {
+            file_path: "src/utils.rs".into(),
+            content: "use std::collections::HashMap;\nlet x = 3;\nfn get_hash() {}".into(),
+            language: "rust".into(),
+        })
+        .unwrap();
+    index.commit().unwrap();
+
+    let results = index
+        .search_content("Blake3 hash", &SearchFilter::default(), 10)
+        .unwrap();
+
+    // The correct file should be found
+    assert!(
+        !results.is_empty(),
+        "Should find at least the file containing 'Blake3 hash'"
+    );
+
+    // KNOWN ISSUE: CodeTokenizer splits "Blake3" into ["blake", "3"], causing
+    // false positives from files containing "3" and "hash" separately.
+    // This is why content search must be routed through line_mode for verification.
+    let result_paths: Vec<&str> = results.iter().map(|r| r.file_path.as_str()).collect();
+    // Document the false positive behavior (both files match at the Tantivy level)
+    assert!(
+        result_paths.contains(&"src/watcher.rs"),
+        "Should find the file containing 'Blake3 hash'"
+    );
+    // NOTE: src/utils.rs is a FALSE POSITIVE at the Tantivy level.
+    // The line_mode routing fix in mod.rs handles this by post-verifying matches.
+}
+
+/// Regression test: multi-token symbol search should require ALL tokens to match.
+///
+/// Bug: Searching for "select_best_candidate" splits into tokens [select, best, candidate]
+/// and OR-matches them, producing false positives from symbols containing just "select"
+/// or just "best" in their name/body.
+#[test]
+fn test_multi_token_search_requires_all_tokens() {
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    // Add the target symbol
+    index
+        .add_symbol(&SymbolDocument {
+            id: "1".into(),
+            name: "select_best_candidate".into(),
+            signature: "fn select_best_candidate(candidates: &[Symbol]) -> Option<&Symbol>".into(),
+            doc_comment: "Picks the best matching candidate symbol".into(),
+            code_body: "fn select_best_candidate() { /* impl */ }".into(),
+            file_path: "src/resolver.rs".into(),
+            kind: "function".into(),
+            language: "rust".into(),
+            start_line: 89,
+        })
+        .unwrap();
+
+    // Add a FALSE POSITIVE — contains "select" but NOT "best" or "candidate"
+    index
+        .add_symbol(&SymbolDocument {
+            id: "2".into(),
+            name: "select_query".into(),
+            signature: "fn select_query(table: &str) -> String".into(),
+            doc_comment: "Build a SQL SELECT query".into(),
+            code_body: "fn select_query() { /* impl */ }".into(),
+            file_path: "src/database.rs".into(),
+            kind: "function".into(),
+            language: "rust".into(),
+            start_line: 42,
+        })
+        .unwrap();
+
+    // Add another FALSE POSITIVE — contains "best" but NOT "select" or "candidate"
+    index
+        .add_symbol(&SymbolDocument {
+            id: "3".into(),
+            name: "find_best_match".into(),
+            signature: "fn find_best_match(items: &[Item]) -> Option<&Item>".into(),
+            doc_comment: "Find the best matching item".into(),
+            code_body: "fn find_best_match() { /* impl */ }".into(),
+            file_path: "src/matcher.rs".into(),
+            kind: "function".into(),
+            language: "rust".into(),
+            start_line: 15,
+        })
+        .unwrap();
+
+    index.commit().unwrap();
+
+    // Search for the compound name
+    let results = index
+        .search_symbols("select_best_candidate", &SearchFilter::default(), 10)
+        .unwrap();
+
+    // CRITICAL: Should only find the actual symbol, not false positives
+    assert!(
+        !results.is_empty(),
+        "Should find select_best_candidate"
+    );
+    assert_eq!(
+        results[0].name, "select_best_candidate",
+        "First result should be the exact match"
+    );
+
+    // The false positives should NOT appear in results
+    let result_names: Vec<&str> = results.iter().map(|r| r.name.as_str()).collect();
+    assert!(
+        !result_names.contains(&"select_query"),
+        "BUG: 'select_query' is a false positive — it only matches the 'select' token. \
+         Multi-token searches must require ALL tokens to match. Got results: {:?}",
+        result_names
+    );
+    assert!(
+        !result_names.contains(&"find_best_match"),
+        "BUG: 'find_best_match' is a false positive — it only matches the 'best' token. \
+         Multi-token searches must require ALL tokens to match. Got results: {:?}",
+        result_names
+    );
+}

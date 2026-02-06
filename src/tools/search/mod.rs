@@ -41,7 +41,7 @@ use crate::tools::shared::OptimizedResponse;
 pub struct FastSearchTool {
     /// Search query (text or pattern)
     pub query: String,
-    /// Search method: "auto" (default, detects from query), "text", "semantic", or "hybrid"
+    /// Search method: "auto" (default) or "text". Both use Tantivy full-text search.
     #[serde(default = "default_search_method")]
     pub search_method: String,
     /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
@@ -159,10 +159,10 @@ impl FastSearchTool {
             .await;
         }
 
-        // Log search method (all methods now route to Tantivy)
+        // Validate search_method — only "text" and "auto" are supported
         if self.search_method != "text" && self.search_method != "auto" {
-            debug!(
-                "🔍 search_method='{}' requested, routing to Tantivy text search",
+            warn!(
+                "Unknown search_method '{}', using 'text'. Valid values: 'auto', 'text'.",
                 self.search_method
             );
         }
@@ -211,12 +211,20 @@ impl FastSearchTool {
             )]));
         }
 
-        // Return based on output_format
-        // Default is "lean" - optimized text format for AI agent consumption
-        match self.output_format.as_deref() {
+        Self::format_response(&self.query, optimized, self.output_format.as_deref())
+    }
+
+    /// Format search results based on output_format parameter.
+    ///
+    /// Supports: "lean" (default), "toon", "auto", "json"
+    fn format_response(
+        query: &str,
+        optimized: OptimizedResponse<crate::extractors::Symbol>,
+        output_format: Option<&str>,
+    ) -> Result<CallToolResult> {
+        match output_format {
             None | Some("lean") => {
-                // Lean mode (DEFAULT): Grep-style text output, minimal tokens, maximum readability
-                let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
+                let lean_output = formatting::format_lean_search_results(query, &optimized);
                 debug!(
                     "✅ Returning lean search results ({} chars, {} results)",
                     lean_output.len(),
@@ -224,72 +232,15 @@ impl FastSearchTool {
                 );
                 Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
-            Some("toon") => {
-                // TOON mode: Compact tabular format for structured data needs
-                let toon_response = formatting::ToonResponse {
-                    tool: optimized.tool.clone(),
-                    results: optimized
-                        .results
-                        .iter()
-                        .map(formatting::ToonSymbol::from)
-                        .collect(),
-                    confidence: optimized.confidence,
-                    total_found: optimized.total_found,
-                    insights: optimized.insights.clone(),
-                    next_actions: optimized.next_actions.clone(),
-                };
-
-                match toon_format::encode_default(&toon_response) {
-                    Ok(toon) => {
-                        debug!("✅ Encoded search results to TOON ({} chars)", toon.len());
-                        Ok(CallToolResult::text_content(vec![Content::text(toon)]))
-                    }
-                    Err(e) => {
-                        warn!(
-                            "❌ TOON encoding failed: {}, falling back to lean format",
-                            e
-                        );
-                        // Fall back to lean instead of JSON
-                        let lean_output =
-                            formatting::format_lean_search_results(&self.query, &optimized);
-                        Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-                    }
-                }
-            }
+            Some("toon") => Self::try_toon_or_lean(query, &optimized),
             Some("auto") => {
-                // Auto mode: Lean for most cases, TOON only for very large results (10+)
+                // TOON for large result sets (10+), LEAN for small/medium
                 if optimized.results.len() >= 10 {
-                    let toon_response = formatting::ToonResponse {
-                        tool: optimized.tool.clone(),
-                        results: optimized
-                            .results
-                            .iter()
-                            .map(formatting::ToonSymbol::from)
-                            .collect(),
-                        confidence: optimized.confidence,
-                        total_found: optimized.total_found,
-                        insights: optimized.insights.clone(),
-                        next_actions: optimized.next_actions.clone(),
-                    };
-
-                    match toon_format::encode_default(&toon_response) {
-                        Ok(toon) => {
-                            debug!(
-                                "✅ Auto-selected TOON for {} results ({} chars)",
-                                optimized.results.len(),
-                                toon.len()
-                            );
-                            return Ok(CallToolResult::text_content(vec![Content::text(toon)]));
-                        }
-                        Err(e) => {
-                            warn!("❌ TOON encoding failed: {}, using lean format", e);
-                            // Fall through to lean
-                        }
+                    if let Ok(result) = Self::try_toon_or_lean(query, &optimized) {
+                        return Ok(result);
                     }
                 }
-
-                // Default to lean for small/medium responses
-                let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
+                let lean_output = formatting::format_lean_search_results(query, &optimized);
                 debug!(
                     "✅ Auto-selected lean for {} results ({} chars)",
                     optimized.results.len(),
@@ -298,7 +249,6 @@ impl FastSearchTool {
                 Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
             Some("json") => {
-                // JSON mode: Full structured content for programmatic access
                 let structured = serde_json::to_value(&optimized)?;
                 let structured_map = if let serde_json::Value::Object(map) = structured {
                     map
@@ -312,12 +262,35 @@ impl FastSearchTool {
                 Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
             }
             Some(unknown) => {
-                // Unknown format - warn and use lean
-                warn!(
-                    "⚠️ Unknown output_format '{}', using lean format",
-                    unknown
-                );
-                let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
+                warn!("⚠️ Unknown output_format '{}', using lean format", unknown);
+                let lean_output = formatting::format_lean_search_results(query, &optimized);
+                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
+            }
+        }
+    }
+
+    /// Try TOON encoding, fall back to LEAN on failure.
+    fn try_toon_or_lean(
+        query: &str,
+        optimized: &OptimizedResponse<crate::extractors::Symbol>,
+    ) -> Result<CallToolResult> {
+        let toon_response = formatting::ToonResponse {
+            tool: optimized.tool.clone(),
+            results: optimized.results.iter().map(formatting::ToonSymbol::from).collect(),
+            confidence: optimized.confidence,
+            total_found: optimized.total_found,
+            insights: optimized.insights.clone(),
+            next_actions: optimized.next_actions.clone(),
+        };
+
+        match toon_format::encode_default(&toon_response) {
+            Ok(toon) => {
+                debug!("✅ Encoded search results to TOON ({} chars)", toon.len());
+                Ok(CallToolResult::text_content(vec![Content::text(toon)]))
+            }
+            Err(e) => {
+                warn!("❌ TOON encoding failed: {}, falling back to lean format", e);
+                let lean_output = formatting::format_lean_search_results(query, optimized);
                 Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
         }

@@ -591,3 +591,30 @@ async fn test_tokenization_number_handling() {
     // Just verify search handles them without error
     // Results depend on codebase content
 }
+
+/// Verify that definition search results include code_context from SQLite.
+/// code_context is stored in SQLite but NOT in Tantivy (code_body is indexed but not stored).
+/// The text_search_impl enrichment step batch-fetches code_context from SQLite after Tantivy
+/// returns results, so agents get contextual code snippets with their search results.
+#[tokio::test]
+async fn test_definition_search_includes_code_context() {
+    let handler = setup_handler_with_fixture().await;
+
+    // Search for a symbol known to exist in the fixture with code_context
+    let results = search_definitions(&handler, "extract_context_lines", 5)
+        .await
+        .expect("Search failed");
+
+    assert_min_results(&results, 1);
+
+    // At least one result should have code_context populated
+    let has_context = results.iter().any(|r| r.code_context.is_some());
+    assert!(
+        has_context,
+        "Definition search should return code_context from SQLite enrichment, but all results had None:\n{}",
+        results.iter()
+            .map(|r| format!("  {} ({}) - code_context: {:?}", r.name, r.file_path, r.code_context.as_ref().map(|c| c.len())))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
