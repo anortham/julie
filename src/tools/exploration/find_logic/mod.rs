@@ -162,6 +162,15 @@ impl FindLogicTool {
         self.apply_path_intelligence(&mut candidates);
 
         // ═══════════════════════════════════════════════════════════════════
+        // TIER 3b: Visibility-Aware Ranking
+        // ═══════════════════════════════════════════════════════════════════
+        debug!("👁️ Tier 3b: Applying visibility-aware ranking");
+        if let Err(e) = self.apply_visibility_boost(&mut candidates, handler).await {
+            debug!("⚠️ Tier 3b visibility boost failed: {}", e);
+            search_insights.push("Visibility boost: unavailable".to_string());
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
         // OPTIMIZATION: Cap Candidates Before Expensive Tier 4 Graph Analysis
         // ═══════════════════════════════════════════════════════════════════
         // Combined strategy: Filter by threshold + hard cap to prevent N-to-M explosion

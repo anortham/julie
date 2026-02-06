@@ -1159,6 +1159,182 @@ async fn test_tier4_identifier_call_sites_boost_business_importance() -> Result<
     Ok(())
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// Visibility-Aware Ranking Tests
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_visibility_boost_ranks_public_above_private() -> Result<()> {
+    use crate::extractors::base::Visibility;
+
+    let (handler, temp_dir) = create_test_handler().await?;
+    let workspace_path = temp_dir.path().to_string_lossy().to_string();
+    create_test_codebase(&temp_dir).await?;
+    index_workspace(&handler, &workspace_path).await?;
+
+    let workspace = handler.get_workspace().await?.unwrap();
+    let db = workspace.db.as_ref().unwrap();
+
+    let tool = FindLogicTool {
+        domain: "payment".to_string(),
+        max_results: 50,
+        group_by_layer: false,
+        min_business_score: 0.0,
+        output_format: None,
+    };
+
+    // Store 3 symbols with different visibility in the DB
+    let public_sym = Symbol {
+        id: "vis_pub".to_string(),
+        name: "public_payment_fn".to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "src/services/payment_service.rs".to_string(),
+        start_line: 200,
+        start_column: 0,
+        end_line: 210,
+        end_column: 0,
+        start_byte: 4000,
+        end_byte: 4200,
+        signature: None,
+        doc_comment: None,
+        visibility: Some(Visibility::Public),
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: Some(1.0),
+        code_context: None,
+        content_type: None,
+    };
+
+    let private_sym = Symbol {
+        id: "vis_priv".to_string(),
+        name: "private_payment_fn".to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "src/services/payment_service.rs".to_string(),
+        start_line: 220,
+        start_column: 0,
+        end_line: 230,
+        end_column: 0,
+        start_byte: 4300,
+        end_byte: 4500,
+        signature: None,
+        doc_comment: None,
+        visibility: Some(Visibility::Private),
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: Some(1.0),
+        code_context: None,
+        content_type: None,
+    };
+
+    let no_vis_sym = Symbol {
+        id: "vis_none".to_string(),
+        name: "unknown_vis_payment_fn".to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "src/services/payment_service.rs".to_string(),
+        start_line: 240,
+        start_column: 0,
+        end_line: 250,
+        end_column: 0,
+        start_byte: 4600,
+        end_byte: 4800,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: Some(1.0),
+        code_context: None,
+        content_type: None,
+    };
+
+    {
+        let mut db_lock = db.lock().unwrap();
+        db_lock
+            .store_symbols(&[public_sym.clone(), private_sym.clone(), no_vis_sym.clone()])
+            .expect("Failed to store visibility test symbols");
+    }
+
+    // Build candidates list — these come from Tantivy and have visibility: None,
+    // but the DB has the real visibility. apply_visibility_boost should look it up.
+    let mut candidates = vec![
+        Symbol {
+            confidence: Some(0.5),
+            visibility: None, // Tantivy loses visibility
+            ..public_sym.clone()
+        },
+        Symbol {
+            confidence: Some(0.5),
+            visibility: None,
+            ..private_sym.clone()
+        },
+        Symbol {
+            confidence: Some(0.5),
+            visibility: None,
+            ..no_vis_sym.clone()
+        },
+    ];
+
+    tool.apply_visibility_boost(&mut candidates, &handler)
+        .await?;
+
+    let pub_score = candidates
+        .iter()
+        .find(|s| s.id == "vis_pub")
+        .unwrap()
+        .confidence
+        .unwrap_or(0.0);
+    let priv_score = candidates
+        .iter()
+        .find(|s| s.id == "vis_priv")
+        .unwrap()
+        .confidence
+        .unwrap_or(0.0);
+    let none_score = candidates
+        .iter()
+        .find(|s| s.id == "vis_none")
+        .unwrap()
+        .confidence
+        .unwrap_or(0.0);
+
+    // Public should be boosted: 0.5 + 0.1 = 0.6
+    assert!(
+        (pub_score - 0.6).abs() < 0.001,
+        "Public symbol should be boosted to ~0.6, got {:.4}",
+        pub_score
+    );
+
+    // Private should be penalized: 0.5 - 0.15 = 0.35
+    assert!(
+        (priv_score - 0.35).abs() < 0.001,
+        "Private symbol should be penalized to ~0.35, got {:.4}",
+        priv_score
+    );
+
+    // No visibility should remain unchanged: 0.5
+    assert!(
+        (none_score - 0.5).abs() < 0.001,
+        "Symbol with no visibility should remain at 0.5, got {:.4}",
+        none_score
+    );
+
+    // Public > None > Private
+    assert!(
+        pub_score > none_score && none_score > priv_score,
+        "Ranking should be Public ({:.4}) > None ({:.4}) > Private ({:.4})",
+        pub_score,
+        none_score,
+        priv_score
+    );
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_integration_respects_max_results_limit() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;

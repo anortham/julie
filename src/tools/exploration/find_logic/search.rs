@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tracing::{debug, warn};
 
 use crate::extractors::SymbolKind;
-use crate::extractors::base::Symbol;
+use crate::extractors::base::{Symbol, Visibility};
 use crate::handler::JulieServerHandler;
 use crate::search::{SearchFilter, SearchIndex, SymbolSearchResult};
 
@@ -237,6 +237,59 @@ impl FindLogicTool {
             "🗂️ Applied path-based intelligence to {} symbols",
             symbols.len()
         );
+    }
+
+    /// Apply visibility-aware ranking boost/penalty.
+    /// Public symbols get boosted (agents care about public APIs), private symbols
+    /// get penalized, and symbols with no visibility data are left unchanged.
+    /// Symbols from Tantivy have visibility: None, so we look up the real value from the DB.
+    pub async fn apply_visibility_boost(
+        &self,
+        symbols: &mut [Symbol],
+        handler: &JulieServerHandler,
+    ) -> Result<()> {
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace available"))?;
+        let db = workspace
+            .db
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Database mutex poisoned in apply_visibility_boost, recovering: {}", poisoned);
+                poisoned.into_inner()
+            }
+        };
+
+        // Batch lookup: get symbols from DB that have visibility data
+        let symbol_ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
+        let db_symbols = db_lock.get_symbols_by_ids(&symbol_ids)?;
+
+        // Build visibility map: id → Visibility
+        let visibility_map: std::collections::HashMap<String, Visibility> = db_symbols
+            .into_iter()
+            .filter_map(|s| s.visibility.map(|v| (s.id, v)))
+            .collect();
+
+        for symbol in symbols.iter_mut() {
+            if let Some(vis) = visibility_map.get(&symbol.id) {
+                let boost = match vis {
+                    Visibility::Public => 0.1,
+                    Visibility::Private => -0.15,
+                    Visibility::Protected => -0.05,
+                };
+                let current_score = symbol.confidence.unwrap_or(0.5);
+                symbol.confidence = Some((current_score + boost).clamp(0.0, 1.0));
+
+                debug!("👁️ {} visibility={:?} boost={:+.2}", symbol.name, vis, boost);
+            }
+            // No visibility data → no change (don't penalize missing data)
+        }
+
+        Ok(())
     }
 
     /// Tier 4: Analyze relationship graph to boost important business entities
