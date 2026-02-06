@@ -149,6 +149,7 @@ fn truncate_signature(sig: &str, max_len: usize) -> String {
 mod tests {
     use super::*;
     use crate::extractors::base::{RelationshipKind, SymbolKind};
+    use crate::tools::navigation::resolution::parse_qualified_name;
 
     fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&str>) -> Symbol {
         Symbol {
@@ -263,5 +264,59 @@ mod tests {
         let truncated = truncate_signature(long, 40);
         assert!(truncated.len() <= 40);
         assert!(truncated.ends_with("..."));
+    }
+
+    // --- Qualified name parsing tests (Task 4) ---
+
+    #[test]
+    fn test_parse_qualified_name_with_double_colon() {
+        assert_eq!(
+            parse_qualified_name("MyClass::method"),
+            Some(("MyClass", "method"))
+        );
+    }
+
+    #[test]
+    fn test_parse_qualified_name_with_dot() {
+        assert_eq!(
+            parse_qualified_name("MyClass.method"),
+            Some(("MyClass", "method"))
+        );
+    }
+
+    #[test]
+    fn test_parse_qualified_name_nested() {
+        // Splits on LAST separator
+        assert_eq!(
+            parse_qualified_name("Namespace::Class::method"),
+            Some(("Namespace::Class", "method"))
+        );
+    }
+
+    #[test]
+    fn test_parse_qualified_name_no_separator() {
+        assert_eq!(parse_qualified_name("standalone_function"), None);
+    }
+
+    #[test]
+    fn test_parse_qualified_name_trailing_separator() {
+        // Edge case: separator at end should return None (empty child)
+        assert_eq!(parse_qualified_name("MyClass::"), None);
+        assert_eq!(parse_qualified_name("MyClass."), None);
+    }
+
+    #[test]
+    fn test_parse_qualified_name_leading_separator() {
+        // Edge case: separator at start should return None (empty parent)
+        assert_eq!(parse_qualified_name("::method"), None);
+        assert_eq!(parse_qualified_name(".method"), None);
+    }
+
+    #[test]
+    fn test_parse_qualified_name_dot_nested() {
+        assert_eq!(
+            parse_qualified_name("package.Class.method"),
+            Some(("package.Class", "method"))
+        );
     }
 }

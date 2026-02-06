@@ -17,7 +17,7 @@ use crate::utils::cross_language_intelligence::generate_naming_variants;
 
 use super::formatting::format_lean_goto_results;
 use super::reference_workspace;
-use super::resolution::{compare_symbols_by_priority_and_context, resolve_workspace_filter};
+use super::resolution::{compare_symbols_by_priority_and_context, parse_qualified_name, resolve_workspace_filter};
 use super::types::DefinitionResult;
 use super::types::FastGotoResult;
 
@@ -154,6 +154,96 @@ impl FastGotoTool {
         }
 
         // Primary workspace search - use handler.get_workspace().db
+
+        // Strategy 0: Qualified name resolution (e.g. "MyClass::method" or "MyClass.method")
+        if let Some((parent_name, child_name)) = parse_qualified_name(&self.symbol) {
+            debug!(
+                "🔗 Qualified name detected: parent='{}', child='{}'",
+                parent_name, child_name
+            );
+
+            if let Some(workspace) = handler.get_workspace().await? {
+                if let Some(db) = workspace.db.as_ref() {
+                    let child = child_name.to_string();
+                    let parent = parent_name.to_string();
+                    let db_arc = db.clone();
+
+                    let qualified_matches = tokio::task::spawn_blocking(move || {
+                        let db_lock = super::lock_db(&db_arc, "fast_goto qualified lookup");
+
+                        // Step 1: Find all symbols with the child name
+                        let candidates = db_lock.get_symbols_by_name(&child)?;
+
+                        // Step 2: Collect unique parent IDs
+                        let parent_ids: Vec<String> = candidates
+                            .iter()
+                            .filter_map(|s| s.parent_id.clone())
+                            .collect::<std::collections::HashSet<_>>()
+                            .into_iter()
+                            .collect();
+
+                        if parent_ids.is_empty() {
+                            return Ok::<Vec<Symbol>, anyhow::Error>(Vec::new());
+                        }
+
+                        // Step 3: Batch fetch parent symbols
+                        let parent_symbols = db_lock.get_symbols_by_ids(&parent_ids)?;
+                        let parent_name_map: std::collections::HashMap<String, String> =
+                            parent_symbols
+                                .into_iter()
+                                .map(|s| (s.id.clone(), s.name.clone()))
+                                .collect();
+
+                        // Step 4: Filter candidates where parent name matches
+                        let matches: Vec<Symbol> = candidates
+                            .into_iter()
+                            .filter(|s| {
+                                s.parent_id
+                                    .as_ref()
+                                    .and_then(|pid| parent_name_map.get(pid))
+                                    .map(|name| name == &parent)
+                                    .unwrap_or(false)
+                            })
+                            .collect();
+
+                        Ok(matches)
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
+
+                    if !qualified_matches.is_empty() {
+                        debug!(
+                            "🎯 Qualified name resolution found {} matches",
+                            qualified_matches.len()
+                        );
+                        // Skip normal strategies — we have precise matches
+                        let mut exact_matches = qualified_matches;
+                        exact_matches.sort_by(|a, b| {
+                            let shared_cmp = compare_symbols_by_priority_and_context(
+                                a,
+                                b,
+                                self.context_file.as_deref(),
+                            );
+                            if shared_cmp != std::cmp::Ordering::Equal {
+                                return shared_cmp;
+                            }
+                            if let Some(line_number) = self.line_number {
+                                let a_distance =
+                                    (a.start_line as i32 - line_number as i32).abs();
+                                let b_distance =
+                                    (b.start_line as i32 - line_number as i32).abs();
+                                return a_distance.cmp(&b_distance);
+                            }
+                            std::cmp::Ordering::Equal
+                        });
+                        return Ok(exact_matches);
+                    }
+
+                    debug!("🔗 Qualified name resolution found no matches, falling through to normal resolution");
+                }
+            }
+        }
+
         // Strategy 1: Use SQLite indexed lookup for O(log n) performance
         let mut exact_matches = Vec::new();
 

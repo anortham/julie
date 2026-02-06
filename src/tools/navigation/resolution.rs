@@ -8,6 +8,29 @@ use crate::handler::JulieServerHandler;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 
+/// Parse a qualified symbol name like "MyClass::method" or "MyClass.method"
+/// into (parent_name, child_name), splitting on the LAST separator.
+///
+/// Returns None if no `::` or `.` separator is found.
+pub fn parse_qualified_name(symbol: &str) -> Option<(&str, &str)> {
+    // Check for :: first (more specific), then .
+    if let Some(pos) = symbol.rfind("::") {
+        let parent = &symbol[..pos];
+        let child = &symbol[pos + 2..];
+        if !parent.is_empty() && !child.is_empty() {
+            return Some((parent, child));
+        }
+    }
+    if let Some(pos) = symbol.rfind('.') {
+        let parent = &symbol[..pos];
+        let child = &symbol[pos + 1..];
+        if !parent.is_empty() && !child.is_empty() {
+            return Some((parent, child));
+        }
+    }
+    None
+}
+
 /// Resolve workspace parameter to specific workspace ID
 ///
 /// Returns None for primary workspace (use handler.get_workspace().db)
