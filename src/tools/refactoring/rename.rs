@@ -1,7 +1,7 @@
 //! Rename symbol refactoring operations
 
 use anyhow::Result;
-use crate::mcp_compat::{CallToolResult, StructuredContentExt};
+use crate::mcp_compat::CallToolResult;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use tracing::debug;
@@ -346,42 +346,7 @@ impl SmartRefactorTool {
             .collect::<Vec<_>>()
             .join("\n");
 
-        // Prefer structured payloads when available
-        if let Some(ref structured) = refs_result.structured_content() {
-            if let Some(references) = structured.get("references").and_then(|v| v.as_array()) {
-                for reference in references {
-                    if let (Some(file_path), Some(line_number)) = (
-                        reference.get("file_path").and_then(|v| v.as_str()),
-                        reference.get("line_number").and_then(|v| v.as_u64()),
-                    ) {
-                        file_locations
-                            .entry(file_path.to_string())
-                            .or_default()
-                            .push(line_number as u32);
-                    }
-                }
-            }
-
-            if let Some(definitions) = structured.get("definitions").and_then(|v| v.as_array()) {
-                for definition in definitions {
-                    if let (Some(file_path), Some(line_number)) = (
-                        definition.get("file_path").and_then(|v| v.as_str()),
-                        definition.get("start_line").and_then(|v| v.as_u64()),
-                    ) {
-                        file_locations
-                            .entry(file_path.to_string())
-                            .or_default()
-                            .push(line_number as u32);
-                    }
-                }
-            }
-
-            if !file_locations.is_empty() {
-                return Ok(file_locations);
-            }
-        }
-
-        // Parse textual fallback (expected format: "file_path:line_number")
+        // Parse text output from fast_refs (format: "file_path:line_number")
         for line in content.lines() {
             let after_dash = line
                 .split_once(" - ")

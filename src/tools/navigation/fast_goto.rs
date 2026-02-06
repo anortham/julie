@@ -315,7 +315,7 @@ impl FastGotoTool {
         });
     }
 
-    /// Format minimal summary for AI agents (structured_content has all data)
+    /// Format lean text summary for AI agents
     pub fn format_optimized_results(&self, symbols: &[Symbol]) -> String {
         let count = symbols.len();
         let top_results: Vec<String> = symbols.iter().take(5).map(|s| s.name.clone()).collect();

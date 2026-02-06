@@ -1,7 +1,6 @@
 //! Phase 4 Token Savings Tests
 //!
 //! Measure token reduction from data structure optimizations (skip_serializing_if).
-//! These optimizations happen BEFORE TOON encoding, reducing base data size.
 
 use anyhow::Result;
 use crate::extractors::{Symbol, SymbolKind};

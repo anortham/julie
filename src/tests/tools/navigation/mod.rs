@@ -68,7 +68,6 @@ mod navigation_tools_tests {
         // Should show reference count or status (3 references)
         assert!(result.contains("references") || result.contains("Found") || result.contains("3"));
 
-        // NEW FORMAT: Actual symbol details are in structured_content JSON, not required in text
     }
 
     #[test]
@@ -145,8 +144,6 @@ mod navigation_tools_tests {
         // Should show reference count (400 references found)
         assert!(result.contains("400") || result.contains("references"));
 
-        // NEW FORMAT: Top results shown in summary line, not full list
-        // The actual data is in structured_content JSON, not in verbose text
     }
 
     #[test]
@@ -221,8 +218,6 @@ mod navigation_tools_tests {
         // Should show reference count (300 references)
         assert!(result.contains("300") || result.contains("references"));
 
-        // NEW FORMAT: Data is in structured_content, text is just summary
-        // No need to check for specific symbol names in minimal format
     }
 
     // FastGotoTool token optimization tests

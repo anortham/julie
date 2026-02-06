@@ -336,7 +336,7 @@ impl FastRefsTool {
         Ok((definitions, references))
     }
 
-    /// Format minimal summary for AI agents (structured_content has all data)
+    /// Format lean text summary for AI agents
     pub fn format_optimized_results(
         &self,
         symbols: &[Symbol],

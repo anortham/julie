@@ -486,13 +486,10 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
     Ok(())
 }
 
-/// Test output_format="code" returns raw code without JSON/TOON wrapper
+/// Test output_format="code" returns raw source code
 ///
-/// TDD: This test WILL FAIL initially because output_format="code" is not yet implemented.
-///
-/// Expected behavior: When output_format="code" is specified, get_symbols should return
-/// the raw source code of the symbols, not wrapped in JSON or TOON format.
-/// This is optimal for AI agents that can read code directly.
+/// When output_format="code" is specified, get_symbols returns the raw source code
+/// of matched symbols — optimal for AI agents that can read code directly.
 #[tokio::test]
 async fn test_get_symbols_output_format_code() -> Result<()> {
     let temp_dir = TempDir::new()?;
@@ -565,7 +562,7 @@ pub fn get_user(id: &str) -> User {
         text_content
     );
 
-    // Should NOT contain JSON/TOON structural markers
+    // Should NOT contain JSON structural markers
     assert!(
         !text_content.contains("\"id\":"),
         "Should not contain JSON field markers, got: {}",

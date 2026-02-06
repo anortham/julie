@@ -6,8 +6,6 @@
 //! - Balance calculation for validation
 //! - Edge cases (empty strings, UTF-8, long patterns)
 
-#[allow(unused_imports)]
-use crate::mcp_compat::StructuredContentExt;
 use crate::tools::fuzzy_replace::FuzzyReplaceTool;
 use anyhow::Result;
 

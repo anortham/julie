@@ -1,9 +1,9 @@
 //! Tests for lean output format in fast_search
 //!
 //! The lean format is designed for AI agent consumption:
-//! - Minimal tokens (80% less than JSON, 60% less than TOON)
+//! - Minimal tokens — no structural overhead
 //! - Grep-style output familiar to developers
-//! - Zero parsing overhead - just read the text
+//! - Zero parsing overhead — just read the text
 
 #[cfg(test)]
 mod tests {

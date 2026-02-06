@@ -8,7 +8,6 @@ mod search_line_mode_tests {
 
     use crate::extractors::{Symbol, SymbolKind};
     use crate::handler::JulieServerHandler;
-    use crate::mcp_compat::StructuredContentExt;
     use crate::tools::search::FastSearchTool;
     use crate::tools::workspace::ManageWorkspaceTool;
     use anyhow::Result;
@@ -18,30 +17,19 @@ mod search_line_mode_tests {
     use tempfile::TempDir;
     use tokio::time::{Duration, sleep};
 
-    /// Extract text from CallToolResult safely (handles both TOON and JSON modes)
     fn extract_text_from_result(result: &crate::mcp_compat::CallToolResult) -> String {
-        // Try extracting from .content first (TOON mode)
-        if !result.content.is_empty() {
-            return result
-                .content
-                .iter()
-                .filter_map(|content_block| {
-                    serde_json::to_value(content_block).ok().and_then(|json| {
-                        json.get("text")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                    })
+        result
+            .content
+            .iter()
+            .filter_map(|content_block| {
+                serde_json::to_value(content_block).ok().and_then(|json| {
+                    json.get("text")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
                 })
-                .collect::<Vec<_>>()
-                .join("\n");
-        }
-
-        // Fall back to .structured_content (JSON mode)
-        if let Some(structured) = result.structured_content() {
-            return serde_json::to_string_pretty(&structured).unwrap_or_default();
-        }
-
-        String::new()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     #[allow(dead_code)]
@@ -370,8 +358,6 @@ fn processPayment() {
             response_text.contains("getUserData"),
             "Should find function symbol"
         );
-        // NEW FORMAT: Minimal 2-line summary shows symbol name and basic status
-        // Symbol type details are in structured_content JSON, not required in minimal text
         assert!(
             response_text.contains("getUserData")
                 || response_text.contains("Found")

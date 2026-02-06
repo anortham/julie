@@ -206,7 +206,7 @@ impl FindLogicTool {
                 language: symbol.language.clone(),
                 file_path: symbol.file_path.clone(),
                 start_line: symbol.start_line,
-                confidence: Some(symbol.confidence.unwrap_or(0.0)), // Wrapped in Some for TOON compatibility
+                confidence: Some(symbol.confidence.unwrap_or(0.0)),
                 signature: symbol.signature.clone(),
             })
             .collect();

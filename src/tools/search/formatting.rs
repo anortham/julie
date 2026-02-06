@@ -51,10 +51,9 @@ pub fn truncate_code_context(symbols: Vec<Symbol>, context_lines: Option<u32>) -
 ///   100→ matched_code
 /// ```
 ///
-/// Benefits over JSON/TOON:
-/// - 80% fewer tokens than JSON
-/// - 60% fewer tokens than TOON
-/// - Zero parsing overhead - just read the text
+/// Benefits:
+/// - Minimal tokens — no wasted structural overhead
+/// - Zero parsing overhead — just read the text
 /// - Grep-style output familiar to developers
 pub fn format_lean_search_results(query: &str, response: &OptimizedResponse<Symbol>) -> String {
     let mut output = String::new();

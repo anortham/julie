@@ -9,33 +9,21 @@ use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
 use crate::tools::refactoring::SmartRefactorTool;
-use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
+use crate::mcp_compat::{CallToolResult, CallToolResultExt};
 
-/// Extract text from CallToolResult safely (handles both TOON and JSON modes)
 fn extract_text_from_result(result: &CallToolResult) -> String {
-    // Try extracting from .content first (TOON mode)
-    if !result.content.is_empty() {
-        return result
-            .content
-            .iter()
-            .filter_map(|content_block| {
-                serde_json::to_value(content_block).ok().and_then(|json| {
-                    json.get("text")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                })
+    result
+        .content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
             })
-            .collect::<Vec<_>>()
-            .join("
-");
-    }
-
-    // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = result.structured_content() {
-        return serde_json::to_string_pretty(&structured).unwrap_or_default();
-    }
-
-    String::new()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Test fixture for refactoring operations

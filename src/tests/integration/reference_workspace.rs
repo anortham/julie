@@ -9,37 +9,25 @@
 #[cfg(test)]
 mod reference_workspace_tests {
     use crate::handler::JulieServerHandler;
-    use crate::mcp_compat::StructuredContentExt;
     use crate::tests::helpers::workspace::get_fixture_path;
     use crate::tools::search::FastSearchTool;
     use crate::tools::workspace::ManageWorkspaceTool;
     use anyhow::Result;
     use std::sync::atomic::Ordering;
 
-    /// Extract text from CallToolResult safely (handles both TOON and JSON modes)
     fn extract_text_from_result(result: &crate::mcp_compat::CallToolResult) -> String {
-        // Try extracting from .content first (TOON mode)
-        if !result.content.is_empty() {
-            return result
-                .content
-                .iter()
-                .filter_map(|content_block| {
-                    serde_json::to_value(content_block).ok().and_then(|json| {
-                        json.get("text")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                    })
+        result
+            .content
+            .iter()
+            .filter_map(|content_block| {
+                serde_json::to_value(content_block).ok().and_then(|json| {
+                    json.get("text")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
                 })
-                .collect::<Vec<_>>()
-                .join("\n");
-        }
-
-        // Fall back to .structured_content (JSON mode)
-        if let Some(structured) = result.structured_content() {
-            return serde_json::to_string_pretty(&structured).unwrap_or_default();
-        }
-
-        String::new()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn extract_workspace_id(result: &crate::mcp_compat::CallToolResult) -> Option<String> {

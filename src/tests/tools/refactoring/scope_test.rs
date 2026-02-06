@@ -5,32 +5,20 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::StructuredContentExt;
 use crate::tools::refactoring::SmartRefactorTool;
 
 fn extract_text(result: &crate::mcp_compat::CallToolResult) -> String {
-    // Try extracting from .content first (TOON mode)
-    if !result.content.is_empty() {
-        return result
-            .content
-            .iter()
-            .filter_map(|block| {
-                serde_json::to_value(block).ok().and_then(|json| {
-                    json.get("text")
-                        .and_then(|v| v.as_str().map(|s| s.to_string()))
-                })
+    result
+        .content
+        .iter()
+        .filter_map(|block| {
+            serde_json::to_value(block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
             })
-            .collect::<Vec<_>>()
-            .join("
-");
-    }
-
-    // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = result.structured_content() {
-        return serde_json::to_string_pretty(&structured).unwrap_or_default();
-    }
-
-    String::new()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[tokio::test]

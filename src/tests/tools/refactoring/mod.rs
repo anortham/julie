@@ -15,8 +15,7 @@ mod rename_symbol;
 mod ast_aware;
 
 use crate::tools::refactoring::*;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt, WithStructuredContent};
-use serde_json::json;
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 
 #[test]
 fn parse_refs_result_handles_confidence_suffix() {
@@ -34,40 +33,4 @@ fn parse_refs_result_handles_confidence_suffix() {
         .expect("parse should succeed");
     let lines = parsed.get("src/lib.rs").expect("file should be captured");
     assert_eq!(lines, &vec![42]);
-}
-
-#[test]
-fn parse_refs_result_prefers_structured_content() {
-    let tool = SmartRefactorTool {
-        operation: "rename_symbol".to_string(),
-        params: "{}".to_string(),
-        dry_run: true,
-    };
-
-    let structured = json!({
-        "references": [
-            {
-                "file_path": "src/main.rs",
-                "line_number": 128
-            }
-        ],
-        "definitions": [
-            {
-                "file_path": "src/lib.rs",
-                "start_line": 12
-            }
-        ]
-    });
-
-    let result = if let serde_json::Value::Object(map) = structured {
-        CallToolResult::text_content(vec![]).with_structured_content(map)
-    } else {
-        panic!("expected structured object");
-    };
-
-    let parsed = tool
-        .parse_refs_result(&result)
-        .expect("parse should succeed");
-    assert_eq!(parsed.get("src/main.rs"), Some(&vec![128]));
-    assert_eq!(parsed.get("src/lib.rs"), Some(&vec![12]));
 }
