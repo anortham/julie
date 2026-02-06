@@ -30,6 +30,7 @@ pub mod main_error_handling; // MCP server initialization and runtime error hand
 // ============================================================================
 pub mod core {
     pub mod database; // Database operations and SQLite tests
+    pub mod database_lightweight_query; // Lightweight query optimization tests
     pub mod handler; // MCP handler tests
     pub mod language; // Language detection and support tests
     pub mod tracing; // Tracing and logging tests
@@ -90,6 +91,7 @@ pub mod tools {
 
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
 
+    pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
     pub mod toon_struct_verification; // TOON struct field mapping verification (data drift prevention)
 }
 

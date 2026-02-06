@@ -13,6 +13,14 @@ pub(crate) const SYMBOL_COLUMNS: &str = "id, name, kind, language, file_path, si
      doc_comment, visibility, code_context, parent_id, \
      metadata, semantic_group, confidence, content_type";
 
+/// Lightweight SELECT column list — skips expensive columns that are unused in structure mode.
+/// Omits: code_context (large, immediately discarded), metadata (expensive JSON parse),
+/// semantic_group, confidence, content_type (unused in filtering/formatting).
+/// CRITICAL: Must stay in sync with row_to_symbol_lightweight() expectations.
+pub(crate) const SYMBOL_COLUMNS_LIGHTWEIGHT: &str = "id, name, kind, language, file_path, signature, \
+     start_line, start_col, end_line, end_col, start_byte, end_byte, \
+     doc_comment, visibility, parent_id";
+
 impl SymbolDatabase {
     pub fn begin_transaction(&mut self) -> Result<()> {
         self.conn.execute("BEGIN TRANSACTION", [])?;
@@ -111,6 +119,44 @@ impl SymbolDatabase {
             confidence: row.get("confidence")?,
             code_context: row.get("code_context")?,
             content_type: row.get("content_type")?,
+        })
+    }
+
+    /// Lightweight row mapper — skips expensive columns not in SYMBOL_COLUMNS_LIGHTWEIGHT.
+    /// Sets code_context, metadata, semantic_group, confidence, content_type to None.
+    pub(crate) fn row_to_symbol_lightweight(&self, row: &Row) -> rusqlite::Result<Symbol> {
+        let kind_str: String = row.get("kind")?;
+        let kind = SymbolKind::from_string(&kind_str);
+
+        let visibility_str: Option<String> = row.get("visibility")?;
+        let visibility = visibility_str.and_then(|v| match v.as_str() {
+            "public" => Some(crate::extractors::base::Visibility::Public),
+            "private" => Some(crate::extractors::base::Visibility::Private),
+            "protected" => Some(crate::extractors::base::Visibility::Protected),
+            _ => None,
+        });
+
+        Ok(Symbol {
+            id: row.get("id")?,
+            name: row.get("name")?,
+            kind,
+            language: row.get("language")?,
+            file_path: row.get("file_path")?,
+            signature: row.get("signature")?,
+            start_line: row.get("start_line")?,
+            start_column: row.get("start_col")?,
+            end_line: row.get("end_line")?,
+            end_column: row.get("end_col")?,
+            start_byte: row.get("start_byte")?,
+            end_byte: row.get("end_byte")?,
+            doc_comment: row.get("doc_comment")?,
+            visibility,
+            parent_id: row.get("parent_id")?,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
         })
     }
 

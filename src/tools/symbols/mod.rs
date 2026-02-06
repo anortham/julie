@@ -10,7 +10,7 @@
 //! just the "skeleton" - symbol names, types, signatures, and locations.
 
 mod body_extraction;
-mod filtering;
+pub(crate) mod filtering;
 mod formatting;
 mod primary;
 mod reference;

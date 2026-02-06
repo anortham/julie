@@ -89,7 +89,9 @@ pub async fn get_symbols_from_primary(
         )]));
     }
 
-    // Query symbols for this file using relative Unix-style path
+    // Query symbols for this file using relative Unix-style path.
+    // In structure mode, use lightweight query that skips expensive columns
+    // (code_context, metadata, semantic_group, confidence, content_type).
     let symbols = {
         let db_lock = match db.lock() {
             Ok(guard) => guard,
@@ -101,9 +103,15 @@ pub async fn get_symbols_from_primary(
                 poisoned.into_inner()
             }
         };
-        db_lock
-            .get_symbols_for_file(&query_path)
-            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
+        if mode == "structure" {
+            db_lock
+                .get_symbols_for_file_lightweight(&query_path)
+                .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
+        } else {
+            db_lock
+                .get_symbols_for_file(&query_path)
+                .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
+        }
     };
 
     if symbols.is_empty() {

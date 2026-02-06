@@ -1,6 +1,6 @@
 // Symbol query operations
 
-use super::super::helpers::SYMBOL_COLUMNS;
+use super::super::helpers::{SYMBOL_COLUMNS, SYMBOL_COLUMNS_LIGHTWEIGHT};
 use super::super::*;
 use anyhow::Result;
 use rusqlite::params;
@@ -99,6 +99,33 @@ impl SymbolDatabase {
         }
 
         debug!("Found {} symbols in file '{}'", symbols.len(), file_path);
+        Ok(symbols)
+    }
+
+    /// Get symbols for a file, skipping expensive columns (code_context, metadata, etc.)
+    ///
+    /// Use this when the caller doesn't need code bodies or metadata — e.g. structure mode
+    /// in get_symbols. Avoids reading large code_context blobs and parsing metadata JSON.
+    pub fn get_symbols_for_file_lightweight(&self, file_path: &str) -> Result<Vec<Symbol>> {
+        let query = format!(
+            "SELECT {} FROM symbols WHERE file_path = ?1 ORDER BY start_line, start_col",
+            SYMBOL_COLUMNS_LIGHTWEIGHT
+        );
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let symbol_iter =
+            stmt.query_map(params![file_path], |row| self.row_to_symbol_lightweight(row))?;
+
+        let mut symbols = Vec::new();
+        for symbol_result in symbol_iter {
+            symbols.push(symbol_result?);
+        }
+
+        debug!(
+            "Found {} symbols in file '{}' (lightweight)",
+            symbols.len(),
+            file_path
+        );
         Ok(symbols)
     }
 }

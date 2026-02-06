@@ -33,7 +33,7 @@ impl From<&Symbol> for ToonFlatSymbol {
         Self {
             id: s.id.clone(),
             name: s.name.clone(),
-            kind: format!("{:?}", s.kind), // Convert enum to string
+            kind: s.kind.to_string(), // Display trait: lowercase "function", "enum_member"
             language: s.language.clone(),
             file_path: s.file_path.clone(),
             start_line: s.start_line,

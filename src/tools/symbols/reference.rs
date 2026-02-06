@@ -104,9 +104,16 @@ pub async fn get_symbols_from_reference(
 
     // Query symbols using relative Unix-style path
     // ✅ NO MUTEX: ref_db is owned (not Arc<Mutex<>>), so we can call directly
-    let symbols = ref_db
-        .get_symbols_for_file(&query_path)
-        .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?;
+    // In structure mode, use lightweight query that skips expensive columns
+    let symbols = if mode == "structure" {
+        ref_db
+            .get_symbols_for_file_lightweight(&query_path)
+            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
+    } else {
+        ref_db
+            .get_symbols_for_file(&query_path)
+            .map_err(|e| anyhow::anyhow!("Failed to get symbols: {}", e))?
+    };
 
     if symbols.is_empty() {
         let message = format!("No symbols found in: {}", file_path);
