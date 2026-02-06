@@ -7,21 +7,17 @@ This document provides detailed information about Julie's workspace architecture
 
 ## How Workspace Isolation Works
 
-Each workspace has its own PHYSICAL database and HNSW index files:
+Each workspace has its own PHYSICAL database and Tantivy index files:
 
 ```
 .julie/indexes/
 ├── julie_316c0b08/              ← PRIMARY workspace
-│   ├── db/symbols.db            ← SEPARATE SQLite database
-│   └── vectors/                 ← SEPARATE HNSW index
-│       ├── hnsw_index.hnsw.graph
-│       └── hnsw_index.hnsw.data
+│   ├── db/symbols.db            ← SQLite database
+│   └── tantivy/                 ← Tantivy search index
 │
 └── coa-mcp-framework_c77f81e4/  ← REFERENCE workspace
-    ├── db/symbols.db            ← SEPARATE SQLite database
-    └── vectors/                 ← SEPARATE HNSW index
-        ├── hnsw_index.hnsw.graph
-        └── hnsw_index.hnsw.data
+    ├── db/symbols.db            ← SQLite database
+    └── tantivy/                 ← Tantivy search index
 ```
 
 ## Workspace Routing
@@ -67,7 +63,7 @@ Logs are PROJECT-LEVEL, not user-level:
 
 ## Key Benefits
 
-- ✅ Complete workspace isolation - Each workspace has own db/vectors
+- ✅ Complete workspace isolation - Each workspace has own db/tantivy index
 - ✅ Centralized storage - All indexes in one location (primary workspace)
 - ✅ Trivial deletion - `rm -rf indexes/{workspace_id}/` removes everything
-- ✅ Smaller, faster indexes - Simpler 2-tier architecture
+- ✅ Smaller, faster indexes - Simple single-tier architecture

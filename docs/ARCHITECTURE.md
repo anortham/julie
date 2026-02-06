@@ -476,7 +476,7 @@ Potential improvements for future releases:
 
 ## 📚 Related Documentation
 
-- **SEARCH_FLOW.md** - CASCADE architecture (SQLite FTS5 → HNSW Semantic)
+- **SEARCH_FLOW.md** - Tantivy search architecture
 - **SMART_READ_DEMO.md** - GetSymbolsTool token savings demonstration
 - **CLAUDE.md** - Project guidelines and TDD methodology
 - **Testing:** `src/tests/*_token_tests.rs` - Integration test suites

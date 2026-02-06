@@ -1,318 +1,332 @@
-# Julie Search Flow Documentation
+# Julie Search Architecture
 
-**Purpose**: Living document tracking how searches flow through Julie's CASCADE architecture
-**Last Updated**: 2025-10-12
-**Status**: ✅ CASCADE Architecture - 2-Tier (Simplified)
-
----
-
-## 🌊 CASCADE Architecture Overview
-
-**Core Principle**: SQLite is the single source of truth. All indexes cascade downstream.
-
-```
-Files → Tree-sitter → Symbols + Content
-                            ↓
-                        SQLite
-                  (single source of truth)
-                  ├─ files.content (file text)
-                  ├─ files_fts (FTS5 index)
-                  └─ symbols (extracted symbols)
-                            ↓
-                            ↓ (background)
-                       Embeddings
-                      (rebuilt from
-                        SQLite)
-```
-
-**Two-Tier Progressive Enhancement**:
-1. **Tier 1: SQLite FTS5** (Immediate, <5ms) - Full-text search with BM25 ranking
-2. **Tier 2: HNSW Semantic** (20-30s background) - AI-powered semantic search
-
-**Startup Flow**:
-- **Startup completes in <2 seconds** (SQLite only)
-- HNSW embeddings build in background (20-30s)
-- **Search works immediately** using best available tier
-
-**Why 2-Tier Architecture**:
-- SQLite FTS5 provides <5ms queries with BM25 ranking (sufficient for most searches)
-- Simplified from 3-tier to 2-tier by removing Tantivy (not due to Tantivy issues, but our complex async architecture)
-- Cleaner design: SQLite (truth) → HNSW (semantic) - no intermediate layer
-- Reduced architectural complexity and surface area for potential issues
+**Purpose**: Technical reference for Julie's Tantivy-based search engine
+**Last Updated**: 2026-02-06
+**Status**: Production (Tantivy full-text search)
 
 ---
 
-## 🎯 Search Flow Architecture
+## Architecture Overview
 
-### High-Level Flow
+Julie uses a single-tier search architecture built on Tantivy with a custom
+`CodeTokenizer`. SQLite remains the source of truth for symbol metadata and
+file content; Tantivy provides full-text search with code-aware tokenization.
 
 ```
-User Query → MCP Tool → Workspace Filter → Search Mode Router → Tier Selection → Results
+Source Files
+     |
+     v
+tree-sitter extraction
+     |
+     +---> SQLite (symbols, identifiers, relationships, types, files)
+     |         |
+     |         | symbol/file data
+     |         v
+     +---> Tantivy Index (full-text search)
+               |
+               +-- SymbolDocument (name, signature, doc_comment, code_body, ...)
+               +-- FileDocument   (file_path, content)
 ```
 
-### Mode-Based Routing
+Both document types share one Tantivy index per workspace, distinguished by a
+`doc_type` field (`"symbol"` or `"file"`).
 
-**1. Text Search Mode** (`mode: "text"`):
-- Uses SQLite FTS5 (always available)
-- Best for: exact matches, code patterns, symbol names
-- Latency: <5ms
+**Key files:**
 
-**2. Semantic Search Mode** (`mode: "semantic"`):
-- Tries HNSW semantic (if ready)
-- Falls back to SQLite FTS5
-- Best for: conceptual queries, "find code that does X"
-- Latency: <50ms (semantic) or <5ms (fallback)
-
-**3. Hybrid Search Mode** (`mode: "hybrid"`):
-- Combines FTS + semantic results
-- Merges and re-ranks by relevance
-- Best for: comprehensive searches
+| File | Responsibility |
+|------|---------------|
+| `src/search/index.rs` | `SearchIndex` struct, add/search/commit operations |
+| `src/search/tokenizer.rs` | `CodeTokenizer` (CamelCase/snake_case splitting) |
+| `src/search/schema.rs` | Tantivy schema definition and `SchemaFields` |
+| `src/search/query.rs` | BooleanQuery construction with field boosting |
+| `src/search/scoring.rs` | Post-search `important_patterns` boost |
+| `src/search/language_config.rs` | Per-language TOML config loader |
+| `src/tools/search/text_search.rs` | MCP tool entry point (`text_search_impl`) |
 
 ---
 
-## 🏗️ Implementation Layers
+## Search Flow
 
-### Layer 1: MCP Tool Entry Point
-**File**: `src/tools/search.rs`
-**Function**: `FastSearchTool::call_tool()`
+A search goes through these stages:
 
-**Responsibilities**:
-1. Check system readiness (`IndexingStatus` flags)
-2. Route based on mode: text/semantic/hybrid
-3. Apply workspace filters
-4. Format and return results
+```
+MCP Tool (fast_search)
+  |
+  v
+text_search_impl()                       [src/tools/search/text_search.rs]
+  |
+  +-- get workspace + search_index
+  |
+  +-- spawn_blocking (Tantivy uses std::sync::Mutex)
+  |     |
+  |     +-- route on search_target:
+  |     |     "definitions" --> search_symbols()
+  |     |     "content"     --> search_content()
+  |     |
+  |     +-- SearchIndex methods:          [src/search/index.rs]
+  |           |
+  |           +-- tokenize_query()        CodeTokenizer splits query
+  |           +-- filter_compound_tokens() remove redundant compounds
+  |           +-- build_symbol_query()    [src/search/query.rs]
+  |           |   or build_content_query()
+  |           +-- searcher.search()       Tantivy BooleanQuery execution
+  |           +-- apply_important_patterns_boost()  [src/search/scoring.rs]
+  |
+  +-- post-processing:
+        "definitions" --> enrich code_context from SQLite
+        "content"     --> post-verify candidates against SQLite file content
+  |
+  +-- apply file_pattern glob filter
+  |
+  v
+Results (Vec<Symbol>)
+```
 
-**Key Parameters**:
-- `query`: Search string
-- `mode`: "text", "semantic", or "hybrid"
-- `language`: Optional language filter
-- `file_pattern`: Optional glob filter
-- `workspace`: "primary" (default) or specific workspace ID
-- `limit`: Max results (default 50)
+### Two Search Targets
+
+**"definitions"** -- searches symbol documents (functions, classes, structs).
+Tantivy returns ranked matches. Each result is enriched with `code_context`
+from SQLite (Tantivy indexes `code_body` for search but does not store it).
+
+**"content"** -- searches file content documents (grep-like). Tantivy acts as a
+candidate retrieval stage (fetches 5x the limit). Each candidate is
+post-verified against actual file content from SQLite to eliminate false
+positives from `CodeTokenizer` over-splitting. For example, `"Blake3 hash"`
+tokenizes to `["blake", "3", "hash"]`, which could match files containing
+unrelated "3" and "hash" -- post-verification catches this.
 
 ---
 
-### Layer 2: Indexing Status Tracking
-**File**: `src/handler.rs`
-**Struct**: `IndexingStatus`
+## CodeTokenizer
 
-```rust
-pub struct IndexingStatus {
-    pub sqlite_fts_ready: AtomicBool,    // Always true after indexing
-    pub semantic_ready: AtomicBool,      // True after 20-30s
-}
-```
+The `CodeTokenizer` is a custom Tantivy `Tokenizer` that understands code
+naming conventions. It runs at both index time and query time, so the same
+splitting rules apply to documents and queries.
 
-**Status Flags Control Fallback Chain**:
-- If `semantic_ready = false` → Use SQLite FTS5
-- Graceful degradation: HNSW → SQLite FTS5
+### Splitting Rules
 
----
+1. **Delimiters** -- Characters in `(){}[]<>,;"'!@#$%^&*+=|~/\`.-:` split
+   tokens (hyphens, dots, and colons are included).
 
-### Layer 3: Search Implementation
+2. **Preserved patterns** -- Multi-character operators like `::`, `->`, `=>`,
+   `?.`, `??`, `===` are kept as single tokens instead of being split.
 
-#### A. Text Search Flow
-**File**: `src/tools/search.rs`
-**Function**: `text_search()`
+3. **CamelCase splitting** -- `getUserData` emits `[getuserdata, get, user, data]`.
+   Handles acronyms: `XMLParser` emits `[xmlparser, xml, parser]`.
 
-```rust
-async fn text_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
-    // Always use SQLite FTS5 for text search
-    self.sqlite_fts_search(handler).await
-}
-```
+4. **snake_case splitting** -- `get_user_data` emits `[get_user_data, get, user, data]`.
 
-**Single Tier**: SQLite FTS5 (always available)
+5. **Affix stripping** -- Language-specific meaningful affixes (e.g. Rust's
+   `is_`, `try_`, `_mut`) produce additional tokens. `is_valid` emits `valid`.
 
----
+6. **Prefix/suffix stripping** -- Type prefixes like C#'s `I` and suffixes like
+   `Service` produce stripped variants. `IUserService` emits `userservice`.
 
-#### B. Semantic Search Flow
-**File**: `src/tools/search.rs`
-**Function**: `semantic_search()`
+All emitted tokens are lowercased. A `HashSet` prevents duplicate tokens from
+overlapping splits.
 
-```rust
-async fn semantic_search(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
-    let status = handler.indexing_status();
+### Cross-Convention Matching
 
-    // Try HNSW semantic (if ready)
-    if status.semantic_ready.load(Ordering::Relaxed) {
-        if let Ok(results) = self.try_hnsw_search(handler).await {
-            return Ok(results);
-        }
-    }
+Because both `getUserData` and `get_user_data` produce the atomic tokens
+`[get, user, data]`, searching for either name finds both. The full compound
+form is also emitted for exact-match scoring.
 
-    // Fall back to SQLite FTS5
-    self.sqlite_fts_search(handler).await
-}
-```
+### Language Configuration
 
-**Tier Priority**: HNSW Semantic → SQLite FTS5
+`CodeTokenizer` can be initialized from `LanguageConfigs`, which collects
+preserve_patterns, meaningful_affixes, and strip_prefixes/strip_suffixes from
+all 31 language TOML files in `languages/*.toml`. These are embedded in the
+binary via `include_str!`.
 
----
+Example (`languages/rust.toml`):
 
-#### C. SQLite FTS5 Search
-**File**: `src/database/mod.rs`
-**Function**: `search_file_content_fts()`
+```toml
+[tokenizer]
+preserve_patterns = ["::", "->", "=>", "?", "<>", "'", "#[", "#!["]
+naming_styles = ["snake_case", "PascalCase", "SCREAMING_SNAKE_CASE"]
+meaningful_affixes = ["try_", "into_", "as_", "from_", "to_", "is_", "has_", "_mut", "_ref"]
 
-**Features**:
-- FTS5 full-text search with BM25 ranking
-- Searches both file content and symbol code_context
-- Sub-5ms query latency
-- Always available (no background indexing needed)
-- Supports multi-word AND/OR queries
+[variants]
+strip_prefixes = []
+strip_suffixes = ["_impl", "_trait", "_fn"]
 
-**SQL Query**:
-```sql
-SELECT path, snippet(files_fts, -1, '<b>', '</b>', '...', 64) as snippet,
-       rank
-FROM files_fts
-WHERE files_fts MATCH ?
-ORDER BY rank
-LIMIT ?
-```
-
-**Why SQLite FTS5 is Sufficient**:
-- BM25 ranking provides relevance scoring
-- Porter stemming handles variations (authentication → authenticate)
-- Multi-word queries with AND/OR logic
-- Sub-5ms latency competitive with specialized search engines
-- No complex index management needed
-
----
-
-### Layer 4: Background Index Building
-
-#### HNSW Semantic Background Build
-**File**: `src/tools/workspace/indexing.rs`
-**Function**: `generate_embeddings_from_sqlite()`
-
-**Process**:
-1. Pull all symbols from SQLite
-2. Generate embeddings using ONNX model (Xenova/bge-small-en-v1.5)
-3. Build HNSW index for fast vector similarity
-4. Set `semantic_ready = true`
-
-**Timing**: 20-30s for 10k symbols
-
-**Cache Location**: `<workspace>/.julie/cache/embeddings/`
-
----
-
-## 🔍 Query Processing
-
-### SQLite FTS5 Query Syntax
-
-**Exact Phrase**:
-```sql
-"exact phrase"      -- Must appear exactly
-```
-
-**Boolean Operators**:
-```sql
-authentication AND user     -- Both terms required
-authentication OR login     -- Either term
-authentication NOT test     -- Exclude "test"
-```
-
-**Prefix Matching**:
-```sql
-auth*                       -- Matches authentication, authorize, etc.
-```
-
-**Proximity Search**:
-```sql
-NEAR(authentication user, 5) -- Terms within 5 words of each other
+[scoring]
+important_patterns = ["pub fn", "pub struct", "pub enum", "pub trait", "impl", "async fn"]
 ```
 
 ---
 
-## 📊 Performance Characteristics
+## Index Schema
 
-### Startup Performance
-- **SQLite indexing**: <2 seconds (blocking)
-- **HNSW build**: 20-30s (background, non-blocking)
-- **Total to full capability**: ~30s
-- **Search available**: Immediately (SQLite FTS5)
+Defined in `src/search/schema.rs`. A single Tantivy index holds two document
+types, distinguished by the `doc_type` field.
 
-### Search Latency
-- **SQLite FTS5**: <5ms (full-text search with BM25)
-- **HNSW Semantic**: <50ms (vector similarity)
-- **Fallback overhead**: <1ms (negligible)
+### SymbolDocument Fields
 
-### Storage
-- **SQLite database**: ~1-2KB per symbol
-- **HNSW embeddings**: ~1-2KB per symbol
-- **Embedding models cache**: ~128MB (one-time download)
-- **Total savings**: ~5-10KB per symbol (simplified architecture)
+| Field | Tokenizer | Stored | Purpose |
+|-------|-----------|--------|---------|
+| `doc_type` | STRING (exact) | yes | Always `"symbol"` |
+| `id` | STRING (exact) | yes | Unique symbol ID |
+| `file_path` | STRING (exact) | yes | Relative file path |
+| `language` | STRING (exact) | yes | Language name |
+| `name` | code | yes | Symbol name (5x boost) |
+| `signature` | code | yes | Full signature (3x boost) |
+| `doc_comment` | code | yes | Documentation (2x boost) |
+| `code_body` | code | **no** | Function body (1x boost, not stored) |
+| `kind` | STRING (exact) | yes | Symbol kind (function, struct, etc.) |
+| `start_line` | u64 | yes | Line number |
 
----
+### FileDocument Fields
 
-## ✅ Success Metrics
+| Field | Tokenizer | Stored | Purpose |
+|-------|-----------|--------|---------|
+| `doc_type` | STRING (exact) | yes | Always `"file"` |
+| `file_path` | STRING (exact) | yes | Relative file path |
+| `language` | STRING (exact) | yes | Language name |
+| `content` | code | **no** | Full file text (not stored) |
 
-### Reliability
-- ✅ Single source of truth (SQLite)
-- ✅ HNSW rebuildable from SQLite (<30s)
-- ✅ Search always available (graceful degradation)
-- ✅ No deadlocks (simplified architecture with fewer layers)
-
-### Performance
-- ✅ Startup time: <2 seconds (30-60x improvement)
-- ✅ SQLite FTS: <5ms query latency
-- ✅ HNSW background: <30s for 10k symbols
-- ✅ No blocking during startup
-
-### Simplicity
-- ✅ 2-tier architecture (vs 3-tier)
-- ✅ Simpler index management (2-tier vs 3-tier)
-- ✅ No search engine locks/deadlocks
-- ✅ Smaller disk footprint
-
-### User Experience
-- ✅ Immediate search (SQLite FTS5)
-- ✅ Progressive enhancement (FTS → Semantic)
-- ✅ Status indicators show capability
-- ✅ Graceful degradation on failures
+Fields using the `code` tokenizer get CamelCase/snake_case splitting. Fields
+using `STRING` are matched exactly (no tokenization). The `code_body` and
+`content` fields are indexed but not stored to save disk space -- `code_body`
+is retrieved from SQLite when needed.
 
 ---
 
-## 🔧 Debugging & Monitoring
+## Query Processing
 
-### Check Indexing Status
+### Tokenization and Compound Filtering
+
+When a query arrives, `SearchIndex` processes it in two steps:
+
+1. **`tokenize_query()`** -- Runs the query through the same `CodeTokenizer`
+   used at index time. `"getUserData"` becomes `[getuserdata, get, user, data]`.
+
+2. **`filter_compound_tokens()`** -- Removes snake_case compound tokens whose
+   sub-parts are all present in the token list. This prevents AND-per-term
+   logic from requiring partial compounds that don't exist in the index.
+
+   **Why this matters:** Consider searching for `"search_term"`. The tokenizer
+   produces `[search_term, search, term]`. The indexed symbol
+   `search_term_one` was tokenized as `[search_term_one, search, term, one]`
+   -- note there is no `search_term` token. If we require ALL query tokens via
+   AND, the query would fail because `search_term` is absent from the index.
+   By filtering it out (its parts `search` and `term` are both present), we
+   get clean AND semantics on just the atomic parts.
+
+### BooleanQuery Construction
+
+**Symbol queries** (`build_symbol_query` in `src/search/query.rs`):
+
+```
+Must: doc_type = "symbol"
+Must: language = <filter>         (if specified)
+Must: kind = <filter>             (if specified)
+Must: (for each term)
+  Should: name    CONTAINS term   (boost 5.0x)
+  Should: signature CONTAINS term (boost 3.0x)
+  Should: doc_comment CONTAINS term (boost 2.0x)
+  Should: code_body CONTAINS term (boost 1.0x)
+```
+
+Each search term must match in at least one field (AND across terms), but
+within a single term the field matches are OR'd. This means searching
+`"select best candidate"` requires all three tokens to be present, but each
+can appear in any field.
+
+**Content queries** (`build_content_query`):
+
+```
+Must: doc_type = "file"
+Must: language = <filter>         (if specified)
+Must: content CONTAINS term       (for each term, AND semantics)
+```
+
+---
+
+## Language Config Scoring
+
+After Tantivy returns results, `apply_important_patterns_boost()` applies a
+post-search score multiplier based on per-language `important_patterns`.
+
+For each result, if its `signature` field contains any pattern from the
+result's language config, the score is multiplied by **1.5x**. Only one boost
+is applied per result regardless of how many patterns match. Results are
+re-sorted by score after boosting.
+
+This causes public API symbols to rank higher than private implementation
+details. For example, in Rust, `pub fn process()` gets a 1.5x boost over
+a private `fn helper()`, because `"pub fn"` is in the important_patterns list.
+
+---
+
+## Performance
+
+- **Query latency**: <5ms typical (single-tier, no fallback chain)
+- **Search available**: Immediately after indexing (no background build phase)
+- **Writer heap**: 50MB (configurable via `WRITER_HEAP_SIZE`)
+- **Blocking context**: Tantivy uses `std::sync::Mutex` for the writer, so
+  search operations run inside `tokio::task::spawn_blocking`
+
+---
+
+## Storage
+
+```
+.julie/indexes/{workspace_id}/
+  ├── db/
+  │   └── symbols.db           # SQLite (symbols, files, relationships, types)
+  └── tantivy/
+      ├── meta.json            # Tantivy index metadata
+      ├── {segment_id}.fast    # Fast fields (stored data)
+      ├── {segment_id}.idx     # Inverted index
+      ├── {segment_id}.pos     # Positions
+      ├── {segment_id}.store   # Doc store
+      └── {segment_id}.term    # Term dictionary
+```
+
+Each workspace (primary and reference) gets its own Tantivy index directory.
+Reference workspaces are stored at `.julie/indexes/{ref_workspace_id}/tantivy/`.
+
+The `SearchIndex` supports `open_or_create` semantics -- if a Tantivy
+directory doesn't exist, it creates one. If it exists, it opens it. A v1-to-v2
+backfill path (`backfill_tantivy_if_needed`) reads symbols and files from
+SQLite when the Tantivy index is empty.
+
+---
+
+## Debugging
+
+### Health Check
+
+Use the `manage_workspace` MCP tool with operation `"health"` and
+`detailed: true` to check index status, document counts, and diagnostics.
+
+### Log Location
+
+Logs are per-project, not per-user:
+
 ```bash
-# Watch indexing progress in logs
-tail -f .julie/logs/julie.log
+# Today's log
+tail -f .julie/logs/julie.log.$(date +%Y-%m-%d)
 
-# Check SQLite database
+# Search-related entries
+tail -100 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i tantivy
+
+# Recent errors
+tail -100 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i error
+```
+
+### SQLite Verification
+
+```bash
+# Check symbol count
 sqlite3 .julie/indexes/{workspace_id}/db/symbols.db "SELECT COUNT(*) FROM symbols;"
-sqlite3 .julie/indexes/{workspace_id}/db/symbols.db "SELECT COUNT(*) FROM files_fts;"
 
-# Check HNSW embeddings
-ls -lh .julie/indexes/{workspace_id}/vectors/
+# Check file count
+sqlite3 .julie/indexes/{workspace_id}/db/symbols.db "SELECT COUNT(*) FROM files;"
 ```
 
-### Test Search Tiers
-```bash
-# Test SQLite FTS (always available)
-# Query: "authentication"
-# Expected: Results immediately, even during startup
+### Tantivy Index Verification
 
-# Test Semantic (after 20-30s)
-# Query: "code that handles authentication"
-# Expected: Conceptually similar functions, even with different names
-```
-
----
-
-## 🚀 Future Enhancements
-
-### Potential Improvements
-- [ ] **Query caching**: Cache frequent queries for <1ms response
-- [ ] **Incremental updates**: Update indexes without full rebuild
-- [ ] **Ranking tuning**: Boost relevance for code patterns
-- [ ] **Multi-modal search**: Combine code + docs + tests in results
-- [ ] **Query suggestions**: "Did you mean..." for typos
-- [ ] **Search analytics**: Track popular queries and performance
-
----
-
-**This document reflects the production 2-tier CASCADE architecture (simplified 2025-10-12).**
+The `SearchIndex::num_docs()` method returns the total document count (both
+symbol and file documents). Use the health check tool to see this value.

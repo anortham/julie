@@ -13,15 +13,15 @@
 //!    - Know that a Python class method ≈ C# instance method ≈ Rust impl function
 //!    - Extract semantic meaning, not just text
 //!
-//! 2. **Fast Intelligence** (CASCADE: Tantivy full-text search)
+//! 2. **Fast Intelligence** (Tantivy full-text search)
 //!    - Naming convention variants (snake_case, camelCase, PascalCase)
 //!    - Pattern matching across language conventions
 //!    - Sub-10ms indexed searches
 //!
-//! 3. **Semantic Intelligence** (planned - HNSW Embeddings)
-//!    - Conceptual similarity (getUserData ≈ fetchUser ≈ loadUserProfile)
-//!    - Find similar patterns even with different names
-//!    - Not yet implemented; naming variants provide cross-language coverage
+//! 3. **Cross-Language Coverage** (Naming Variants)
+//!    - Naming convention variants find the same concept across languages
+//!    - getUserData → get_user_data → GetUserData → get-user-data
+//!    - Fast (<5ms) and requires no model downloads
 //!
 //! ## The Problem We Solve
 //!

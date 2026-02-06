@@ -215,17 +215,17 @@ match db.conn.execute("INSERT ...", params![...]) {
 
 ### Corruption Detection
 
-Corruption is detected at connection open via FTS5 integrity checks:
+Corruption is detected at connection open via SQLite integrity checks:
 
 ```rust
 // Automatic in SymbolDatabase::new()
-db.check_and_rebuild_fts5_indexes()?;
+db.check_integrity()?;
 ```
 
 If corruption detected:
-1. Attempts standard FTS5 rebuild
-2. If that fails, drops and recreates FTS5 tables
-3. Rebuilds from base tables
+1. Runs SQLite integrity check
+2. If database is malformed, deletes and recreates from scratch
+3. Re-indexing rebuilds all data
 
 ---
 

@@ -85,8 +85,8 @@ cargo test --lib -- --include-ignored
 **When to Run Dogfooding Tests:**
 - Before major releases
 - After significant search/ranking changes
-- After modifying FTS5 tokenization or query logic
-- When validating CASCADE architecture changes
+- After modifying Tantivy tokenization or query logic
+- When validating search architecture changes
 - Weekly regression checks
 
 ## Code Coverage Tooling

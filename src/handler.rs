@@ -316,7 +316,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "fast_search",
-        description = "Search code using text or semantic search. Supports multi-word queries with AND/OR logic.",
+        description = "Search code using text search with code-aware tokenization. Supports multi-word queries with AND/OR logic.",
         annotations(
             title = "Fast Code Search",
             read_only_hint = true,

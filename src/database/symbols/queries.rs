@@ -20,10 +20,10 @@ impl SymbolDatabase {
         }
     }
 
-    /// Get multiple symbols by their IDs in one batched query (for semantic search results)
+    /// Get multiple symbols by their IDs in one batched query (for batched lookups)
     ///
     /// **CRITICAL**: Preserves the input order of IDs in the returned results.
-    /// This is essential for semantic search where similarity scores must match their corresponding symbols.
+    /// This is essential for search where relevance scores must match their corresponding symbols.
     pub fn get_symbols_by_ids(&self, ids: &[String]) -> Result<Vec<Symbol>> {
         if ids.is_empty() {
             return Ok(Vec::new());

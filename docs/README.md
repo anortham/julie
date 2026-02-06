@@ -4,8 +4,8 @@ This directory contains **current** documentation for Julie. Code is the source 
 
 ## Architecture Documentation
 
-- **`SEARCH_FLOW.md`** - CASCADE architecture (SQLite FTS5 → HNSW Semantic) and search flow
-- **`INTELLIGENCE_LAYER.md`** - Cross-language intelligence (tree-sitter + naming variants + semantic embeddings)
+- **`SEARCH_FLOW.md`** - Tantivy search architecture and search flow
+- **`INTELLIGENCE_LAYER.md`** - Cross-language intelligence (tree-sitter + naming variants + Tantivy search)
 
 ## Primary Documentation
 

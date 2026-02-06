@@ -3,17 +3,17 @@
 ## 🔥 CRITICAL: WORKSPACE ARCHITECTURE (Overview)
 
 **Each workspace has SEPARATE PHYSICAL FILES:**
-- Primary workspace: `.julie/indexes/julie_316c0b08/db/symbols.db` + `vectors/`
-- Reference workspace: `.julie/indexes/coa-mcp-framework_c77f81e4/db/symbols.db` + `vectors/`
+- Primary workspace: `.julie/indexes/julie_316c0b08/db/symbols.db` + `tantivy/`
+- Reference workspace: `.julie/indexes/coa-mcp-framework_c77f81e4/db/symbols.db` + `tantivy/`
 
 **WORKSPACE ISOLATION HAPPENS AT FILE LEVEL, NOT QUERY LEVEL:**
 - Tool receives workspace param → Routes to correct .db file → Opens connection
 - Connection is LOCKED to that workspace
 - Database functions can ONLY query that workspace
 
-**For detailed architecture info**, use Julie's semantic search:
+**For detailed architecture info**, use Julie's code intelligence tools:
 ```
-fast_search(query="workspace routing", search_method="semantic", search_target="definitions", file_pattern="docs/**")
+fast_search(query="workspace routing", search_target="definitions", file_pattern="docs/**")
 ```
 
 See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
@@ -74,12 +74,12 @@ src/database/
 
 ## Project Overview
 
-**Julie** is a cross-platform code intelligence server built in Rust with production-grade architecture. Julie provides LSP-quality features across 30 programming languages using tree-sitter parsers, CASCADE architecture (SQLite FTS5 → HNSW Semantic), and instant search availability.
+**Julie** is a cross-platform code intelligence server built in Rust with production-grade architecture. Julie provides LSP-quality features across 30 programming languages using tree-sitter parsers, Tantivy full-text search with code-aware tokenization, and instant search availability.
 
 ### Key Project Facts
 - **Language**: Rust (native performance, cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
-- **Architecture**: CASCADE (SQLite FTS5 → HNSW Semantic) - 2-tier with progressive enhancement
+- **Architecture**: Tantivy full-text search + SQLite structured storage
 - **Origin**: Native Rust implementation for true cross-platform compatibility
 - **Crown Jewels**: 30 tree-sitter extractors with comprehensive test suites
 
@@ -176,8 +176,8 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 # Primary workspace logs (use date for current day)
 tail -f .julie/logs/julie.log.$(date +%Y-%m-%d)
 
-# Check embedding/indexing progress
-tail -50 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -E "HNSW|embedding|Background"
+# Check indexing progress
+tail -50 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -E "Tantivy|indexing|Background"
 
 # View recent errors
 tail -100 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i error
@@ -199,15 +199,14 @@ ls -lh .julie/logs/
 ## 🏗️ Architecture Principles (Brief)
 
 ### Core Design Decisions
-1. **CASCADE Architecture (2-Tier)**: SQLite FTS5 single source of truth → HNSW Semantic (background)
-2. **Per-Workspace Isolation**: Each workspace gets own db/vectors in `indexes/{workspace_id}/`
+1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization
+2. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`
 3. **Native Rust**: No FFI, no CGO, no external dependencies
 4. **Tree-sitter Native**: Direct Rust bindings for all language parsers
-5. **SQLite FTS5 Search**: BM25 ranking, <5ms queries, multi-word AND/OR logic
-6. **ONNX Embeddings**: ort crate for semantic understanding
-7. **Single Binary**: Deploy anywhere, no runtime required
-8. **Graceful Degradation**: Search works immediately (SQLite FTS5), progressive enhancement
-9. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
+5. **SQLite Storage**: Symbols, identifiers, relationships, types, files
+6. **Single Binary**: Deploy anywhere, no runtime required
+7. **Instant Search**: Tantivy index available immediately after indexing
+8. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
 
 For detailed architecture info, see: **docs/SEARCH_FLOW.md** and **docs/ARCHITECTURE.md**
 
@@ -216,8 +215,8 @@ For detailed architecture info, see: **docs/SEARCH_FLOW.md** and **docs/ARCHITEC
 src/
 ├── main.rs              # MCP server entry point
 ├── extractors/          # Language-specific symbol extraction (30 languages)
-├── embeddings/          # ONNX-based semantic search
-├── database/            # SQLite symbol storage (includes FTS5 search)
+├── search/              # Tantivy search engine and tokenizer
+├── database/            # SQLite structured storage
 ├── tools/               # MCP tool implementations
 ├── workspace/           # Multi-workspace registry
 └── tests/               # Comprehensive test infrastructure
@@ -229,13 +228,12 @@ src/
 
 **This file contains only the essentials for daily development.**
 
-For detailed information on any topic, **use Julie's semantic search**:
+For detailed information on any topic, **use Julie's code intelligence tools**:
 
 ```rust
 // Ask conceptual questions
 fast_search(
     query="How does workspace routing work?",
-    search_method="semantic",
     search_target="definitions",
     file_pattern="docs/**"
 )
@@ -243,7 +241,6 @@ fast_search(
 // Find specific documentation
 fast_search(
     query="SOURCE/CONTROL testing methodology",
-    search_method="text",
     search_target="content",
     file_pattern="docs/*.md"
 )
@@ -256,8 +253,7 @@ fast_search(
 - **docs/DEVELOPMENT.md** - Daily commands, debugging, release process
 - **docs/PERFORMANCE.md** - Performance targets and benchmarking
 - **docs/DEPENDENCIES.md** - Tree-sitter versions, dependency management
-- **docs/GPU_SETUP.md** - Platform-specific GPU acceleration setup
-- **docs/SEARCH_FLOW.md** - CASCADE architecture deep dive
+- **docs/SEARCH_FLOW.md** - Tantivy search architecture
 - **docs/RAG_TRANSFORMATION.md** - RAG POC results and token reduction
 - **docs/RAG_POC_PROGRESS.md** - POC progress tracker (100% complete)
 - **docs/ARCHITECTURE.md** - Token optimization strategies
@@ -266,12 +262,10 @@ fast_search(
 ### Query Examples
 
 **Architecture questions:**
-- *"How does CASCADE architecture work?"*
-- *"Why is the architecture 2-tier instead of 3-tier?"*
+- *"How does Tantivy search work?"*
 - *"What is workspace isolation?"*
 
 **Implementation questions:**
-- *"How do I set up GPU acceleration?"*
 - *"What is SOURCE/CONTROL testing?"*
 - *"How do I run performance tests?"*
 
@@ -285,5 +279,5 @@ fast_search(
 
 ---
 
-*Use Julie's semantic search to access detailed documentation on-demand. Save 85-95% of context tokens.*
+*Use Julie's code intelligence tools to access detailed documentation on-demand. Save 85-95% of context tokens.*
 - you CANNOT build the release build while we're running the server in session!

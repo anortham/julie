@@ -65,7 +65,6 @@ pub async fn text_search_impl(
 
     // Clone DB for both definition search (code_context enrichment) and
     // content search (post-verification filtering)
-    let is_content_search = search_target != "definitions";
     let db_clone = workspace.db.clone();
 
     // Perform the search in a blocking task since Tantivy uses std::sync::Mutex

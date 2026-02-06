@@ -5,7 +5,7 @@
 **Latest Release**: v1.13.0 (2025-11-20)
 **Latest Development**: Julie 2.0 Phase 5b Extended - TOON Integration Complete ✅
 **Languages Supported**: 30/30 ✅
-**Architecture**: CASCADE (SQLite FTS5 → HNSW Semantic)
+**Architecture**: Tantivy full-text search + SQLite storage
 
 ### ✅ Recent Completions
 
@@ -511,7 +511,7 @@ nodes[192]{id,parent_id,group,level,symbol_name,file_path,language,line,match_ty
 ## 📊 Key Metrics
 
 **Token Reduction (TOON Phase 5b)**: 50-70% across 8 tools
-**Search Performance**: <5ms (FTS5), <50ms (HNSW semantic)
+**Search Performance**: <5ms (Tantivy full-text search)
 **Language Coverage**: 30 languages with tree-sitter parsers
 **Test Coverage**: Comprehensive (SOURCE/CONTROL methodology)
 

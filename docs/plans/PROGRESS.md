@@ -2,7 +2,7 @@
 
 **Master Plan:** [2026-02-05-code-intelligence-audit-design.md](2026-02-05-code-intelligence-audit-design.md)
 **Started:** 2026-02-05
-**Last Updated:** 2026-02-06 (Phase 3 complete, including Round 2 deep-dives)
+**Last Updated:** 2026-02-06 (ALL PHASES COMPLETE — audit finished)
 
 ---
 
@@ -140,12 +140,23 @@ Commits: `c3945e4`, `273f41c`, `3543a26`, `12424f7`, `e35cd27`, `42cff15`, `9eba
 
 ---
 
-## Phase 4: Documentation Cleanup — NOT STARTED
+## Phase 4: Documentation Cleanup — COMPLETE
 
-- Remove all references to embeddings, HNSW, CASCADE, ONNX, semantic search
-- Update architecture docs for Tantivy + SQLite
-- Update CLAUDE.md
-- Update tool descriptions in handler.rs
+| Task | Description | Status |
+|------|-------------|--------|
+| 1 | Delete all skills (6 skill dirs, switching to superpowers-only) | Done |
+| 2 | Delete docs/GPU_SETUP.md (ONNX GPU setup, no longer relevant) | Done |
+| 3 | Rewrite docs/SEARCH_FLOW.md for Tantivy architecture (332 lines) | Done |
+| 4 | Update CLAUDE.md — remove CASCADE/FTS5/HNSW/ONNX/embeddings refs | Done |
+| 5 | Update README.md — remove GPU/semantic/skills sections | Done |
+| 6 | Update docs/INTELLIGENCE_LAYER.md — replace HNSW section with naming variants | Done |
+| 7 | Update 5 smaller docs (PERFORMANCE, WORKSPACE_ARCHITECTURE, TESTING_GUIDE, README, SQLITE_USAGE_GUIDELINES) | Done |
+| 8 | Update TODO.md architecture references | Done |
+| 9 | Fix stale Rust source comments (cross_language_intelligence.rs, queries.rs, handler.rs, types.rs) | Done |
+| 10 | Fix build warnings (unused import + unused variable) | Done |
+| 11 | Fix docs/ARCHITECTURE.md stale SEARCH_FLOW.md reference | Done |
+
+774 tests pass, 0 warnings. Zero stale CASCADE/HNSW/ONNX/FTS5/semantic search references in active docs or source.
 
 ---
 

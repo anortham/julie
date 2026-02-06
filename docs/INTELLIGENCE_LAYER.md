@@ -12,8 +12,8 @@
 
 **Answer**: **THIS.** The Julie Intelligence Layer is what makes Julie more than just another code search tool. It's the convergence of everything we built:
 - 26 tree-sitter extractors → **Structural Understanding**
-- CASCADE architecture (SQLite FTS5 → HNSW Semantic) → **Progressive Intelligence**
-- ONNX embeddings → **Semantic Understanding**
+- Tantivy full-text search → **Fast Intelligence**
+- Code-aware tokenization → **Cross-language Discovery**
 
 Traditional code search tools search for TEXT. Julie searches for MEANING.
 
@@ -68,13 +68,13 @@ TypeScript: interface UserService
 
 ---
 
-### 2. Fast Intelligence (CASCADE: Naming Conventions)
+### 2. Fast Intelligence (Tantivy: Naming Conventions)
 
 **What it is**: Lightning-fast naming convention variant matching.
 
 **How it works**:
 1. Generate all naming convention variants of a symbol
-2. Search each variant using SQLite FTS5 indexed search (<10ms)
+2. Search each variant using Tantivy indexed search (<5ms)
 3. Return matches from any language
 
 **Example**:
@@ -92,65 +92,41 @@ variants = [
 // Finds ALL implementations across ALL languages!
 ```
 
-**Performance**: <10ms using SQLite FTS5 indexed queries
+**Performance**: <5ms using Tantivy indexed queries
 
 **Code**: `src/utils/cross_language_intelligence.rs::generate_naming_variants()`
 
 ---
 
-### 3. Semantic Intelligence (HNSW Embeddings)
+### 3. Cross-Language Coverage (Naming Variants)
 
-**What it is**: Find conceptually similar code even with different names.
+Traditional semantic search uses embeddings to find conceptually similar code. Julie achieves cross-language discovery through naming convention variants instead — converting between camelCase, snake_case, PascalCase, kebab-case, and SCREAMING_SNAKE_CASE to find the same concept across languages.
 
-**How it works**:
-1. ONNX embeddings convert symbols to 384-dimensional vectors
-2. HNSW (Hierarchical Navigable Small World) index enables fast similarity search
-3. Find symbols that are semantically similar, not just textually similar
-
-**Example**:
-```
-// Search: "getUserData"
-// Semantic similarity also finds:
-✅ fetchUser() - similar concept
-✅ loadUserProfile() - same domain
-✅ retrieveUserDetails() - same intent
-✅ userDataProvider() - related functionality
-
-// Even though the NAMES are totally different!
-```
-
-**Performance**: <50ms for similarity search with 6k+ vectors
-
-**Code**: `src/embeddings/mod.rs`, `src/embeddings/vector_store.rs`
+This approach is simpler, faster (<5ms vs 50ms+), requires no model downloads, and covers the most common cross-language scenario: the same concept with different naming conventions.
 
 ---
 
-## How It All Works Together (CASCADE)
+## How It All Works Together
 
-The Intelligence Layer uses **progressive enhancement** - try cheap operations first, fall back to expensive ones. As of 2025-10-12, the architecture was simplified to a 2-tier CASCADE design:
+The Intelligence Layer uses **progressive enhancement** - try cheap operations first, fall back to broader ones:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│ Strategy 1: Exact Match (SQLite FTS5)          │ <5ms
+│ Strategy 1: Exact Match (Tantivy)              │ <5ms
 │ ↓ If no results...                              │
 ├─────────────────────────────────────────────────┤
 │ Strategy 2: Relationships (SQLite Joins)        │ <10ms
 │ ↓ If still no results...                        │
 ├─────────────────────────────────────────────────┤
 │ Strategy 3: Cross-Language Intelligence         │
-│   3a. Naming Variants (SQLite FTS5)     <10ms   │
+│   3a. Naming Variants (Tantivy)         <5ms    │
 │   3b. Symbol Kind Equivalence          <1ms    │
-│ ↓ If still no results...                        │
-├─────────────────────────────────────────────────┤
-│ Strategy 4: Semantic Similarity (HNSW)          │ <50ms
 └─────────────────────────────────────────────────┘
 ```
 
-**Architecture Change (2025-10-12)**: Simplified to 2-tier architecture, all indexed text search now uses SQLite FTS5 for cleaner design and reduced complexity
+**Total worst-case**: ~25ms to find a symbol across languages
 
-**Total worst-case**: ~75ms to find a symbol across languages with semantic fallback
-
-**Typical case**: <10ms (exact or naming variant match)
+**Typical case**: <5ms (exact or naming variant match)
 
 ---
 
@@ -179,12 +155,7 @@ Strategy 3a (Naming Variants):
   - Searching "get_user_data" → Found Python user_dao.py ✅
   - Searching "GetUserData" → Found C# UserService.cs ✅
 
-Strategy 4 (Semantic):
-  - Similarity search → Found Go fetchUser() ✅
-  - Similarity search → Found loadUserInfo() ✅
-  - Similarity search → Found retrieveUserDetails() ✅
-
-// Result: Found ALL 6 implementations across 4 languages!
+// Result: Found ALL 3 implementations across 3 languages!
 ```
 
 ---
@@ -237,7 +208,6 @@ The Intelligence Layer is **tunable** for different use cases:
 IntelligenceConfig::default()
 // - Naming variants: ON
 // - Kind equivalence: ON
-// - Semantic similarity: ON (threshold: 0.7)
 // - Max variants: 10
 ```
 
@@ -255,7 +225,7 @@ IntelligenceConfig::strict()
 IntelligenceConfig::relaxed()
 // - Naming variants: ON
 // - Kind equivalence: ON
-// - Semantic similarity: ON (threshold: 0.6)
+// - Max variants: 15
 // Use for: Exploration, discovery, research
 ```
 
@@ -266,9 +236,8 @@ IntelligenceConfig::relaxed()
 | Operation | Algorithm | Complexity | Typical Time |
 |-----------|-----------|------------|--------------|
 | Naming variants generation | String processing | O(n) | <1ms |
-| Variant search (each) | SQLite FTS5 indexed | O(log N) | <5ms |
+| Variant search (each) | Tantivy indexed | O(log N) | <5ms |
 | Symbol kind check | HashMap lookup | O(1) | <1μs |
-| Semantic similarity | HNSW vector search | O(log N) | <50ms |
 
 Where:
 - n = length of symbol name
@@ -353,8 +322,7 @@ cargo test navigation
 
 ### Quantitative
 - ✅ **Naming variants**: 5 conventions generated in <1ms
-- ✅ **Search performance**: <10ms per variant (SQLite FTS5)
-- ✅ **Semantic similarity**: <50ms (HNSW with 6k vectors)
+- ✅ **Search performance**: <5ms per variant (Tantivy indexed)
 - ✅ **Cross-language matches**: 3-5x more results than text-only search
 - ✅ **Zero regressions**: 481/485 tests passing (same as before)
 
@@ -373,9 +341,9 @@ cargo test navigation
 
 **YES.** The Intelligence Layer is:
 
-1. **Unique**: No other tool combines tree-sitter + naming variants + semantic embeddings
-2. **Fast**: <10ms for most queries, <75ms worst case with semantic fallback
-3. **Accurate**: Structural + fast + semantic = comprehensive coverage
+1. **Unique**: No other tool combines tree-sitter + naming variants + Tantivy full-text search
+2. **Fast**: <5ms for most queries, <25ms worst case
+3. **Accurate**: Structural + naming variants = comprehensive coverage
 4. **Professional**: Tested, documented, tunable, extensible
 5. **Differentiating**: This is WHY Julie exists vs. just using ripgrep
 
@@ -387,14 +355,14 @@ cargo test navigation
 **The Value Proposition**:
 - Codesearch: Fast text search
 - LSP: Single-language intelligence (fragile, expensive)
-- **Julie**: Multi-language intelligence (robust, fast, semantic)
+- **Julie**: Multi-language intelligence (robust, fast, naming-aware)
 
 ---
 
 ## Related Documentation
 
 - **Implementation**: `src/utils/cross_language_intelligence.rs`
-- **CASCADE Architecture**: `docs/SEARCH_FLOW.md`
+- **Search Architecture**: `docs/SEARCH_FLOW.md`
 - **Navigation Tools**: `src/tools/navigation.rs`
 - **Project Status**: `STATUS.md`
 - **Development Guide**: `CLAUDE.md`

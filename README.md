@@ -4,7 +4,7 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 
 ## Features
 
-- **Fast symbol search** with text and semantic modes
+- **Fast symbol search** with code-aware tokenization
 - **Cross-language code navigation** (go-to-definition, find-references)
 - **Intelligent code editing** with fuzzy matching and AST-aware refactoring
 - **Development memory system** - checkpoint and recall significant development moments
@@ -13,46 +13,12 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 
 ### Performance Characteristics
 
-- Search latency: <10ms (text), <100ms (semantic)
+- Search latency: <5ms (Tantivy full-text search)
 - Memory usage: <100MB typical workload
-- Startup time: <2s (database indexing - text search available immediately)
+- Startup time: <2s (database + Tantivy indexing)
 - Single binary deployment with no external dependencies
 
-**Semantic Indexing Performance** (background, non-blocking):
-
-- **Windows (GPU via DirectML)**: ~30 seconds per 10,000 symbols
-- **macOS (CPU-optimized)**: ~1-3 minutes per 10,000 symbols
-- **Linux (CPU default)**: ~5-10 minutes per 10,000 symbols
-- **Linux (GPU via CUDA)**: ~30 seconds per 10,000 symbols (requires CUDA 12.x + cuDNN 9 - see GPU Acceleration section below)
-
-**Incremental Updates**: Only changed files are re-indexed, typically completing in 3-15 seconds regardless of platform.
-
-**First-time setup**: Two-stage indexing - database (~2s, text search ready) → embeddings (background, semantic search ready when done). Most workflows use incremental updates (3-15s) rather than full re-indexing (one-time cost). See "First Use" section below for health check details.
-
-### GPU Acceleration
-
-Julie automatically uses GPU acceleration for semantic embeddings when available:
-
-- **Windows**: DirectML (supports NVIDIA, AMD, Intel GPUs) - **✅ Enabled by default**
-- **Linux**: CUDA support built-in - **⚠️ Requires CUDA 12.x + cuDNN 9**
-  - Pre-built binaries use CUDA 12.x libraries (CUDA 13+ not compatible due to symbol versioning)
-  - Install CUDA 12.6 from [NVIDIA Developer](https://developer.nvidia.com/cuda-12-6-0-download-archive)
-  - Install cuDNN 9 from [NVIDIA Developer](https://developer.nvidia.com/cudnn-downloads)
-  - Add to library path: `export LD_LIBRARY_PATH=/usr/local/cuda-12/lib64:$LD_LIBRARY_PATH`
-  - **CPU fallback automatic** if CUDA libraries not found
-- **macOS**: CPU-optimized (faster than CoreML for BERT/transformer models)
-
-**Automatic CPU Fallback**: If GPU initialization or inference fails, Julie automatically detects the failure and reinitializes in CPU-only mode. This handles:
-
-- Missing or incompatible CUDA/cuDNN libraries
-- Incompatible GPU drivers
-- DirectML/CUDA crashes during inference
-- Remote Desktop sessions (GPU unavailable)
-- Specific GPU/model incompatibilities
-
-The fallback happens once at runtime with clear logging - no manual intervention needed. Machines with working GPUs continue using acceleration; machines with GPU issues fall back to stable CPU mode.
-
-**Manual CPU Override**: Set the environment variable `JULIE_FORCE_CPU=1` to skip GPU entirely and use CPU-only mode from startup.
+**Incremental Updates**: Only changed files are re-indexed, typically completing in 3-15 seconds.
 
 ## Supported Languages (31)
 
@@ -161,31 +127,17 @@ If your MCP client doesn't support environment variables, Julie will use the cur
 
 **First Use:**
 
-Julie indexes your workspace in two separate phases:
+Julie indexes your workspace automatically on first connection:
 
-1. **Database Indexing (~2s)**: Extracts symbols and creates SQLite FTS5 search index
-   - Text search (`search_method="text"`) available immediately after this completes
-   - Fast enough you won't notice the wait
+1. **Indexing (~2-5s)**: Extracts symbols via tree-sitter, stores in SQLite, builds Tantivy search index
+   - All search capabilities available immediately after indexing completes
+   - Duration scales with workspace size (10K files ≈ 2-5s)
 
-2. **Embeddings Generation (30s-10min, background)**: Creates semantic search vectors
-   - Semantic search (`search_method="semantic"`) available after this completes
-   - Runs in background, doesn't block your work
-   - Duration depends on workspace size and GPU availability (see Performance Characteristics above)
-
-**You can start using text search immediately while embeddings build in the background.**
-
-**To check if semantic search is ready:**
-
-Use the health check command to see the current status:
+**To check indexing status:**
 
 ```
 manage_workspace(operation="health", detailed=true)
 ```
-
-Status indicators:
-- `Embeddings Status: READY` - Semantic search fully available
-- `Embeddings Status: BUILDING` - Still generating, use text search meanwhile
-- `Embeddings Status: NOT INITIALIZED` - Embeddings haven't started
 
 **Workspace Detection:**
 
@@ -208,39 +160,13 @@ cargo build --release
 # Binary will be at: target/release/julie-server[.exe]
 ```
 
-## Skills (Recommended)
-
-Julie includes skills that teach AI agents how to use its code intelligence and project memory tools effectively:
-
-**Code Intelligence:**
-- **smart-search** - Intelligent search mode selection (semantic for concepts, text for exact terms, symbols for definitions)
-- **semantic-intelligence** - Advanced semantic search patterns for cross-language code discovery and business logic filtering
-- **explore-codebase** - Systematic codebase exploration using symbol navigation without reading entire files
-- **safe-refactor** - Reference-checked refactoring with workspace-wide renames and fuzzy replacement
-
-**Project Memory:**
-- **development-memory** - Build persistent knowledge base using checkpoint/recall (automatically creates searchable project history)
-- **plan-tracking** - Manage working plans and tasks with mutable plan system (track progress, switch focus, one active plan)
-
-**Why use skills?** Skills provide proven workflow patterns that help AI agents use Julie's tools correctly and efficiently. They're like instruction manuals that activate automatically based on your requests.
-
-### Installation
-
-```bash
-# Install skills globally (works across all projects where Julie is configured)
-mkdir -p ~/.claude/skills
-cp -r /path/to/julie/skills/* ~/.claude/skills/
-```
-
-Skills are model-invoked - Claude automatically uses them when relevant based on your request. No explicit commands needed.
-
 ## Tools
 
 ### Search & Navigation
 
-- `fast_search` - Unified text and semantic code search with multiple output modes (symbols/lines)
+- `fast_search` - Full-text code search with code-aware tokenization and multiple output modes (symbols/lines)
   - Search full file content or symbol definitions only
-  - Text mode (<10ms), semantic mode (<100ms), or hybrid
+  - <5ms search latency with CamelCase/snake_case splitting
   - Language and file pattern filtering
 - `fast_goto` - Jump directly to symbol definitions across the workspace
 - `fast_refs` - Find all references to a symbol with structured output
@@ -250,11 +176,10 @@ Skills are model-invoked - Claude automatically uses them when relevant based on
   - Structure/minimal/full reading modes
 - `trace_call_path` - Cross-language execution flow tracing
   - Upstream (who calls this) and downstream (what does this call)
-  - Uses semantic similarity for cross-language matching
+  - Uses naming convention variants for cross-language matching
 
 ### Code Intelligence & Editing
 
-- `find_logic` - Discover core business logic by filtering framework noise
 - `fuzzy_replace` - Diff-match-patch fuzzy text replacement with validation
 - `rename_symbol` - Rename symbols across entire workspace
   - Updates all references atomically
@@ -316,9 +241,9 @@ Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patter
 ## Architecture
 
 - **Tree-sitter parsers** for accurate symbol extraction across all languages
-- **2-tier CASCADE search**: SQLite FTS5 (instant text search) → HNSW (semantic understanding)
+- **Tantivy full-text search** with code-aware tokenization (CamelCase/snake_case splitting)
+- **SQLite storage** for symbols, identifiers, relationships, and file metadata
 - **Per-workspace isolation** with separate databases and indexes
-- **ONNX embeddings** for semantic search capabilities
 - **MCP protocol** for AI agent integration
 
 ## Development
@@ -364,8 +289,8 @@ cargo tarpaulin
 ```
 src/
 ├── extractors/      # Language-specific symbol extraction (31 languages)
-├── database/        # SQLite storage with FTS5 search
-├── embeddings/      # ONNX semantic search
+├── database/        # SQLite structured storage
+├── search/          # Tantivy search engine and tokenizer
 ├── tools/           # MCP tool implementations
 │   ├── memory/      # Development memory system (checkpoint/recall)
 │   ├── search/      # Search tools (fast_search, fast_goto, fast_refs)

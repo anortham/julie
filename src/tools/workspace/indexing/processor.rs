@@ -1,7 +1,7 @@
 //! File processing for indexing
 //! Handles reading, parsing, and extracting symbols from individual files
 
-use crate::extractors::{PendingRelationship, Relationship, Symbol, SymbolKind};
+use crate::extractors::{PendingRelationship, Relationship, Symbol};
 use super::resolver::{self, ResolutionStats};
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
