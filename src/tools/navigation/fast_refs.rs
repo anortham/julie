@@ -1,8 +1,10 @@
 //! FastRefsTool - Find all references to a symbol
 //!
 //! This tool finds all usages and references across the codebase using:
-//! 1. SQLite for O(log n) exact name matching
-//! 2. Cross-language naming convention variants
+//! 1. SQLite symbols table for O(log n) exact name matching
+//! 2. Cross-language naming convention variants (snake_case, camelCase, etc.)
+//! 3. Relationships table for caller→callee connections
+//! 4. Identifiers table for usage sites (calls, type usages, member access, imports)
 
 use anyhow::Result;
 use schemars::JsonSchema;
@@ -11,10 +13,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{debug, warn};
 
-use crate::extractors::{Relationship, Symbol};
+use crate::extractors::{Relationship, RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::tools::shared::create_toonable_result;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
+use std::collections::HashSet;
 
 use super::formatting::format_lean_refs_results;
 use super::reference_workspace;
@@ -331,6 +334,90 @@ impl FastRefsTool {
 
                 if let Ok(refs) = symbol_references {
                     references.extend(refs);
+                }
+            }
+        }
+
+        // Strategy 3: Identifier-based reference discovery
+        // The identifiers table stores every usage site extracted by all 31 language extractors.
+        // This catches references that relationships miss (struct type usages, function calls
+        // without extracted relationships, member accesses, etc.)
+        if let Ok(Some(workspace)) = handler.get_workspace().await {
+            if let Some(db) = workspace.db.as_ref() {
+                let db_arc = db.clone();
+                let symbol = self.symbol.clone();
+                let reference_kind_for_ident = self.reference_kind.clone();
+
+                // Collect all name variants for batch query
+                let mut all_names = vec![symbol.clone()];
+                let variants = generate_naming_variants(&symbol);
+                for v in variants {
+                    if v != symbol {
+                        all_names.push(v);
+                    }
+                }
+
+                // First definition ID for to_symbol_id in converted Relationships
+                let first_def_id = definitions.first().map(|d| d.id.clone()).unwrap_or_default();
+
+                let identifier_refs = tokio::task::spawn_blocking(move || {
+                    let db_lock = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            warn!(
+                                "Database mutex poisoned in fast_refs identifiers lookup, recovering: {}",
+                                poisoned
+                            );
+                            poisoned.into_inner()
+                        }
+                    };
+                    if let Some(kind) = reference_kind_for_ident {
+                        db_lock.get_identifiers_by_names_and_kind(&all_names, &kind)
+                    } else {
+                        db_lock.get_identifiers_by_names(&all_names)
+                    }
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+
+                if let Ok(ident_refs) = identifier_refs {
+                    // Build dedup set from existing relationship results
+                    let existing_refs: HashSet<(String, u32)> = references
+                        .iter()
+                        .map(|r| (r.file_path.clone(), r.line_number))
+                        .collect();
+
+                    let mut added = 0;
+                    for ident in ident_refs {
+                        let key = (ident.file_path.clone(), ident.start_line);
+                        if existing_refs.contains(&key) {
+                            continue; // Prefer existing relationship (richer data)
+                        }
+
+                        // Convert IdentifierKind string to RelationshipKind
+                        let rel_kind = match ident.kind.as_str() {
+                            "call" => RelationshipKind::Calls,
+                            "import" => RelationshipKind::Imports,
+                            _ => RelationshipKind::References,
+                        };
+
+                        references.push(Relationship {
+                            id: format!("ident_{}_{}", ident.file_path, ident.start_line),
+                            from_symbol_id: ident.containing_symbol_id.unwrap_or_default(),
+                            to_symbol_id: first_def_id.clone(),
+                            kind: rel_kind,
+                            file_path: ident.file_path,
+                            line_number: ident.start_line,
+                            confidence: ident.confidence,
+                            metadata: None,
+                        });
+                        added += 1;
+                    }
+
+                    debug!(
+                        "🔓 Identifiers added {} new references (deduped from existing relationships)",
+                        added
+                    );
                 }
             }
         }

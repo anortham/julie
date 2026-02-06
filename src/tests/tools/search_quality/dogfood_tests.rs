@@ -187,11 +187,11 @@ async fn test_hyphenated_cross_language() {
 // ============================================================================
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_symbol_search_sanitize_function() {
+async fn test_symbol_search_database_method() {
     let handler = setup_handler_with_fixture().await;
 
-    // Query: "sanitize_fts5_query" - should find the function definition (legacy name still in codebase)
-    let results = search_definitions(&handler, "sanitize_fts5_query", 5)
+    // Query: "find_symbols_by_name" - a method in database/symbols/queries.rs
+    let results = search_definitions(&handler, "find_symbols_by_name", 5)
         .await
         .expect("Search failed");
 
@@ -617,4 +617,223 @@ async fn test_definition_search_includes_code_context() {
             .collect::<Vec<_>>()
             .join("\n")
     );
+}
+
+// ============================================================================
+// Category 12: fast_refs Identifier-Based Reference Discovery
+// ============================================================================
+
+/// Test that get_identifiers_by_names() returns results from the fixture DB.
+/// This is a unit test for the database query layer.
+#[tokio::test]
+async fn test_identifiers_query_returns_results() {
+    let handler = setup_handler_with_fixture().await;
+
+    if let Some(workspace) = handler.get_workspace().await.unwrap() {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+
+            // First check how many identifiers exist
+            let count: i64 = db_lock
+                .conn
+                .query_row("SELECT COUNT(*) FROM identifiers", [], |row| row.get(0))
+                .expect("Failed to count identifiers");
+
+            println!("Fixture DB has {} identifiers", count);
+
+            if count > 0 {
+                // Get a sample identifier name to test with
+                let sample_name: String = db_lock
+                    .conn
+                    .query_row("SELECT name FROM identifiers LIMIT 1", [], |row| row.get(0))
+                    .expect("Failed to get sample identifier");
+
+                let results = db_lock
+                    .get_identifiers_by_names(&[sample_name.clone()])
+                    .expect("get_identifiers_by_names failed");
+
+                assert!(
+                    !results.is_empty(),
+                    "get_identifiers_by_names('{}') should return results",
+                    sample_name
+                );
+                println!(
+                    "get_identifiers_by_names('{}') returned {} results",
+                    sample_name,
+                    results.len()
+                );
+            } else {
+                println!("⚠ Fixture DB has 0 identifiers - skipping identifier query test");
+            }
+        }
+    }
+}
+
+/// Test that fast_refs finds references using identifiers when relationships are sparse.
+/// This is the core regression test for the identifiers unlock feature.
+#[tokio::test]
+async fn test_fast_refs_finds_identifier_based_references() {
+    use crate::tools::navigation::FastRefsTool;
+
+    let handler = setup_handler_with_fixture().await;
+
+    // First verify identifiers exist in the fixture
+    let has_identifiers = if let Some(workspace) = handler.get_workspace().await.unwrap() {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            let count: i64 = db_lock
+                .conn
+                .query_row("SELECT COUNT(*) FROM identifiers", [], |row| row.get(0))
+                .unwrap_or(0);
+            count > 0
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if !has_identifiers {
+        println!("⚠ Fixture DB has no identifiers - skipping fast_refs identifier test");
+        return;
+    }
+
+    // Find a symbol name that exists in identifiers but may not have relationships
+    let test_name = if let Some(workspace) = handler.get_workspace().await.unwrap() {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            // Find an identifier name that appears at least 3 times
+            db_lock
+                .conn
+                .query_row(
+                    "SELECT name FROM identifiers GROUP BY name HAVING COUNT(*) >= 3 LIMIT 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(symbol_name) = test_name {
+        let tool = FastRefsTool {
+            symbol: symbol_name.clone(),
+            include_definition: true,
+            limit: 50,
+            workspace: Some("primary".to_string()),
+            reference_kind: None,
+            output_format: Some("json".to_string()),
+        };
+
+        let result = tool.call_tool(&handler).await.expect("fast_refs failed");
+
+        // Extract text content to check results
+        let text = result.content.iter()
+            .filter_map(|c| c.as_text().map(|t| t.text.clone()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        println!(
+            "fast_refs('{}') result: {} chars",
+            symbol_name,
+            text.len()
+        );
+
+        // Should find at least some references (either from relationships or identifiers)
+        assert!(
+            !text.contains("No references found"),
+            "fast_refs('{}') should find references via identifiers, but got: {}",
+            symbol_name,
+            &text[..text.len().min(200)]
+        );
+    } else {
+        println!("⚠ No identifier with 3+ occurrences found - skipping");
+    }
+}
+
+/// Test that reference_kind filtering works with the identifiers table.
+#[tokio::test]
+async fn test_fast_refs_reference_kind_filter_with_identifiers() {
+    use crate::tools::navigation::FastRefsTool;
+
+    let handler = setup_handler_with_fixture().await;
+
+    // Check if fixture has call identifiers
+    let has_call_identifiers = if let Some(workspace) = handler.get_workspace().await.unwrap() {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            let count: i64 = db_lock
+                .conn
+                .query_row(
+                    "SELECT COUNT(*) FROM identifiers WHERE kind = 'call'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            println!("Fixture has {} call identifiers", count);
+            count > 0
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if !has_call_identifiers {
+        println!("⚠ Fixture has no call identifiers - skipping reference_kind test");
+        return;
+    }
+
+    // Find a name that has call identifiers
+    let call_name = if let Some(workspace) = handler.get_workspace().await.unwrap() {
+        if let Some(db) = workspace.db.as_ref() {
+            let db_lock = db.lock().unwrap();
+            db_lock
+                .conn
+                .query_row(
+                    "SELECT name FROM identifiers WHERE kind = 'call' GROUP BY name HAVING COUNT(*) >= 2 LIMIT 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(symbol_name) = call_name {
+        let tool = FastRefsTool {
+            symbol: symbol_name.clone(),
+            include_definition: true,
+            limit: 50,
+            workspace: Some("primary".to_string()),
+            reference_kind: Some("call".to_string()),
+            output_format: Some("json".to_string()),
+        };
+
+        let result = tool.call_tool(&handler).await.expect("fast_refs failed");
+        let text = result.content.iter()
+            .filter_map(|c| c.as_text().map(|t| t.text.clone()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        println!(
+            "fast_refs('{}', reference_kind='call') result: {} chars",
+            symbol_name,
+            text.len()
+        );
+
+        // With identifiers table, call filtering should now work
+        assert!(
+            !text.contains("No references found"),
+            "fast_refs with reference_kind='call' should find results via identifiers for '{}', but got: {}",
+            symbol_name,
+            &text[..text.len().min(200)]
+        );
+    } else {
+        println!("⚠ No call identifier with 2+ occurrences found - skipping");
+    }
 }

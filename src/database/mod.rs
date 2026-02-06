@@ -14,6 +14,7 @@ use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 mod bulk_operations;
 mod files;
 mod helpers;
+mod identifiers;
 mod migrations;
 mod relationships;
 mod schema;
@@ -24,6 +25,7 @@ mod workspace;
 
 // Re-export public types
 pub use files::{calculate_file_hash, create_file_info};
+pub use identifiers::IdentifierRef;
 pub use migrations::LATEST_SCHEMA_VERSION;
 pub use types::*;
 

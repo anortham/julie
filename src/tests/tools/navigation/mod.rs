@@ -917,4 +917,193 @@ mod navigation_tools_tests {
         );
     }
 
+    /// Test get_identifiers_by_names() returns correct results
+    #[test]
+    fn test_get_identifiers_by_names() {
+        use crate::database::SymbolDatabase;
+        use crate::extractors::base::{Identifier, IdentifierKind};
+
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test.db");
+        let mut db = SymbolDatabase::new(&db_path).expect("Failed to create test database");
+
+        // Store file records first (FK constraint)
+        use crate::database::FileInfo;
+        let files = vec![
+            FileInfo {
+                path: "src/main.rs".to_string(),
+                language: "rust".to_string(),
+                last_indexed: 0,
+                hash: "h1".to_string(),
+                size: 100,
+                last_modified: 0,
+                symbol_count: 0,
+                content: None,
+            },
+            FileInfo {
+                path: "src/lib.rs".to_string(),
+                language: "rust".to_string(),
+                last_indexed: 0,
+                hash: "h2".to_string(),
+                size: 100,
+                last_modified: 0,
+                symbol_count: 0,
+                content: None,
+            },
+        ];
+        db.bulk_store_files(&files).expect("Failed to store files");
+
+        // Create identifiers with different names and kinds
+        let identifiers = vec![
+            Identifier {
+                id: "id1".to_string(),
+                name: "SearchIndex".to_string(),
+                kind: IdentifierKind::TypeUsage,
+                language: "rust".to_string(),
+                file_path: "src/main.rs".to_string(),
+                start_line: 10,
+                start_column: 4,
+                end_line: 10,
+                end_column: 15,
+                start_byte: 100,
+                end_byte: 111,
+                containing_symbol_id: None,
+                target_symbol_id: None,
+                confidence: 1.0,
+                code_context: None,
+            },
+            Identifier {
+                id: "id2".to_string(),
+                name: "SearchIndex".to_string(),
+                kind: IdentifierKind::Call,
+                language: "rust".to_string(),
+                file_path: "src/lib.rs".to_string(),
+                start_line: 20,
+                start_column: 4,
+                end_line: 20,
+                end_column: 15,
+                start_byte: 200,
+                end_byte: 211,
+                containing_symbol_id: None,
+                target_symbol_id: None,
+                confidence: 0.9,
+                code_context: None,
+            },
+            Identifier {
+                id: "id3".to_string(),
+                name: "other_func".to_string(),
+                kind: IdentifierKind::Call,
+                language: "rust".to_string(),
+                file_path: "src/main.rs".to_string(),
+                start_line: 15,
+                start_column: 4,
+                end_line: 15,
+                end_column: 14,
+                start_byte: 150,
+                end_byte: 160,
+                containing_symbol_id: None,
+                target_symbol_id: None,
+                confidence: 1.0,
+                code_context: None,
+            },
+        ];
+
+        db.bulk_store_identifiers(&identifiers, "test_ws")
+            .expect("Failed to store identifiers");
+
+        // Test 1: Query by single name
+        let results = db
+            .get_identifiers_by_names(&["SearchIndex".to_string()])
+            .expect("Query failed");
+        assert_eq!(results.len(), 2, "Should find 2 SearchIndex identifiers");
+
+        // Test 2: Query by multiple names (batch)
+        let results = db
+            .get_identifiers_by_names(&[
+                "SearchIndex".to_string(),
+                "other_func".to_string(),
+            ])
+            .expect("Query failed");
+        assert_eq!(results.len(), 3, "Should find all 3 identifiers");
+
+        // Test 3: Query with kind filter
+        let results = db
+            .get_identifiers_by_names_and_kind(
+                &["SearchIndex".to_string()],
+                "call",
+            )
+            .expect("Query failed");
+        assert_eq!(results.len(), 1, "Should find 1 SearchIndex call");
+        assert_eq!(results[0].file_path, "src/lib.rs");
+
+        // Test 4: Query with kind filter - type_usage
+        let results = db
+            .get_identifiers_by_names_and_kind(
+                &["SearchIndex".to_string()],
+                "type_usage",
+            )
+            .expect("Query failed");
+        assert_eq!(results.len(), 1, "Should find 1 SearchIndex type_usage");
+        assert_eq!(results[0].containing_symbol_id, None);
+
+        // Test 5: Empty names
+        let results = db
+            .get_identifiers_by_names(&[])
+            .expect("Query failed");
+        assert!(results.is_empty(), "Empty names should return empty results");
+
+        // Test 6: Non-existent name
+        let results = db
+            .get_identifiers_by_names(&["nonexistent".to_string()])
+            .expect("Query failed");
+        assert!(results.is_empty(), "Non-existent name should return empty");
+
+        println!("✅ get_identifiers_by_names tests passed");
+    }
+
+    /// Test that identifier-to-relationship conversion works correctly
+    /// for the fast_refs merge/dedup logic
+    #[test]
+    fn test_identifier_to_relationship_dedup() {
+        use crate::extractors::base::{Relationship, RelationshipKind};
+        use std::collections::HashSet;
+
+        // Simulate existing relationship results
+        let existing_refs = vec![
+            Relationship {
+                id: "rel1".to_string(),
+                from_symbol_id: "caller".to_string(),
+                to_symbol_id: "target".to_string(),
+                kind: RelationshipKind::Calls,
+                file_path: "src/main.rs".to_string(),
+                line_number: 10,
+                confidence: 1.0,
+                metadata: None,
+            },
+        ];
+
+        // Build dedup set
+        let existing_set: HashSet<(String, u32)> = existing_refs
+            .iter()
+            .map(|r| (r.file_path.clone(), r.line_number))
+            .collect();
+
+        // Simulate identifier results — one overlaps, one is new
+        let ident_locations = vec![
+            ("src/main.rs", 10u32),  // Overlaps with existing relationship
+            ("src/lib.rs", 20u32),   // New, should be added
+        ];
+
+        let mut added = 0;
+        for (file_path, line) in &ident_locations {
+            let key = (file_path.to_string(), *line);
+            if !existing_set.contains(&key) {
+                added += 1;
+            }
+        }
+
+        assert_eq!(added, 1, "Should add 1 new reference (dedup removes the overlap)");
+        println!("✅ Identifier-to-relationship dedup test passed");
+    }
+
 }

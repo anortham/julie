@@ -4,6 +4,7 @@
 // Julie creates its .julie directory based on CLI args, environment
 // variables, and current working directory.
 
+use serial_test::serial;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,6 +23,7 @@ fn setup_test_workspace() -> TempDir {
 /// the priority is respected: --workspace CLI arg takes precedence,
 /// then JULIE_WORKSPACE env var, then current working directory.
 #[test]
+#[serial]
 fn test_workspace_detection_priority() {
     // Save original env and args FIRST
     let original_env = env::var("JULIE_WORKSPACE").ok();
@@ -99,6 +101,7 @@ fn test_workspace_detection_priority() {
 /// Verifies that paths like "~/projects/foo" are expanded to the user's
 /// home directory correctly on all platforms.
 #[test]
+#[serial]
 fn test_tilde_expansion_in_env_var() {
     // Save original env
     let original_env = env::var("JULIE_WORKSPACE").ok();
@@ -148,6 +151,7 @@ fn test_tilde_expansion_in_env_var() {
 /// Verifies that different representations of the same path (with ./ or \\)
 /// are canonicalized to the same path, preventing duplicate workspaces.
 #[test]
+#[serial]
 fn test_path_canonicalization() {
     let workspace = setup_test_workspace();
     let canonical = workspace
@@ -237,6 +241,7 @@ async fn test_workspace_init_with_explicit_path() {
 /// NOTE: This is a conceptual test. Full integration testing would require
 /// spawning a new process with specific env vars and cwd.
 #[test]
+#[serial]
 fn test_env_var_concept() {
     let target_workspace = setup_test_workspace();
     let different_cwd = setup_test_workspace();
@@ -300,6 +305,7 @@ fn test_env_var_concept() {
 /// Verifies that if JULIE_WORKSPACE points to a non-existent directory,
 /// get_workspace_root() would fall back to current_dir instead of failing.
 #[test]
+#[serial]
 fn test_nonexistent_env_var_fallback() {
     let workspace = setup_test_workspace();
 
@@ -368,6 +374,7 @@ fn test_nonexistent_env_var_fallback() {
 /// Verifies that paths with forward slashes (common in JSON configs)
 /// work correctly on Windows through PathBuf normalization.
 #[test]
+#[serial]
 #[cfg(target_os = "windows")]
 fn test_forward_slashes_on_windows() {
     let workspace = setup_test_workspace();
@@ -401,6 +408,7 @@ fn test_forward_slashes_on_windows() {
 /// updates occur, the JULIE_WORKSPACE environment variable is respected even when the
 /// current working directory is different.
 #[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn test_incremental_indexing_respects_env_var() {
     use crate::handler::JulieServerHandler;
     use crate::tools::workspace::ManageWorkspaceTool;
@@ -473,6 +481,7 @@ async fn test_incremental_indexing_respects_env_var() {
 /// Unit test for: The resolve_workspace_path function should check JULIE_WORKSPACE
 /// environment variable before falling back to current_dir().
 #[test]
+#[serial]
 fn test_resolve_workspace_path_respects_env_var() {
     use crate::tools::workspace::ManageWorkspaceTool;
 
