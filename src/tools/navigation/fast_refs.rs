@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{debug, warn};
 
-use crate::extractors::{Relationship, RelationshipKind, Symbol};
+use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::tools::shared::create_toonable_result;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
@@ -167,8 +167,15 @@ impl FastRefsTool {
             );
         }
 
+        // Respect include_definition parameter
+        let defs = if self.include_definition {
+            definitions
+        } else {
+            vec![]
+        };
+
         self.create_result(
-            definitions,
+            defs,
             references,
             vec![
                 "Navigate to reference locations".to_string(),
@@ -264,10 +271,33 @@ impl FastRefsTool {
         definitions.sort_by(|a, b| a.id.cmp(&b.id));
         definitions.dedup_by(|a, b| a.id == b.id);
 
+        // Separate imports from true definitions.
+        // Imports (use/require/include) are REFERENCES to a symbol, not definitions of it.
+        // An agent searching for "CodeTokenizer" wants to see struct definition separate from
+        // the 6 files that import it.
+        let mut import_refs: Vec<Relationship> = Vec::new();
+        definitions.retain(|sym| {
+            if sym.kind == SymbolKind::Import {
+                import_refs.push(Relationship {
+                    id: format!("import_{}_{}", sym.file_path, sym.start_line),
+                    from_symbol_id: sym.id.clone(),
+                    to_symbol_id: String::new(),
+                    kind: RelationshipKind::Imports,
+                    file_path: sym.file_path.clone(),
+                    line_number: sym.start_line,
+                    confidence: 1.0,
+                    metadata: None,
+                });
+                false // Remove from definitions
+            } else {
+                true // Keep as definition
+            }
+        });
+
         // Strategy 2: Find direct relationships - REFERENCES TO this symbol (not FROM it)
         // PERFORMANCE FIX: Use targeted queries instead of loading ALL relationships
         // This changes from O(n) linear scan to O(k * log n) indexed queries where k = definitions.len()
-        let mut references: Vec<Relationship> = Vec::new();
+        let mut references: Vec<Relationship> = import_refs;
 
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
@@ -330,11 +360,15 @@ impl FastRefsTool {
                 .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
 
                 if let Ok(ident_refs) = identifier_refs {
-                    // Build dedup set from existing relationship results
-                    let existing_refs: HashSet<(String, u32)> = references
+                    // Build dedup set from existing relationships AND definitions
+                    // so identifier entries at definition sites don't create duplicates
+                    let mut existing_refs: HashSet<(String, u32)> = references
                         .iter()
                         .map(|r| (r.file_path.clone(), r.line_number))
                         .collect();
+                    for def in &definitions {
+                        existing_refs.insert((def.file_path.clone(), def.start_line));
+                    }
 
                     let mut added = 0;
                     for ident in ident_refs {

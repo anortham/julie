@@ -12,7 +12,7 @@ use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
-use crate::extractors::Symbol;
+use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::tools::shared::create_toonable_result;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
@@ -323,6 +323,10 @@ impl FastGotoTool {
         // Remove duplicates based on symbol id
         exact_matches.sort_by(|a, b| a.id.cmp(&b.id));
         exact_matches.dedup_by(|a, b| a.id == b.id);
+
+        // Filter out imports — for goto-definition, only actual definitions matter.
+        // `use crate::search::SearchIndex;` is not where SearchIndex is defined.
+        exact_matches.retain(|s| s.kind != SymbolKind::Import);
 
         // Strategy 2: Cross-language resolution with naming conventions
         // Uses naming convention variants for cross-language search (SQLite indexed)
