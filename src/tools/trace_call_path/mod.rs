@@ -22,6 +22,18 @@ use std::sync::{Arc, Mutex};
 use crate::handler::JulieServerHandler;
 
 pub use types::{CallPath, SerializablePathNode, TraceCallPathResult};
+
+/// Lock the database mutex, recovering from poisoning if necessary.
+/// Centralizes the lock+recover pattern used throughout trace_call_path.
+fn lock_db<'a>(db: &'a Arc<Mutex<crate::database::SymbolDatabase>>, context: &str) -> std::sync::MutexGuard<'a, crate::database::SymbolDatabase> {
+    match db.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            ::tracing::warn!("Database mutex poisoned in {}, recovering: {}", context, poisoned);
+            poisoned.into_inner()
+        }
+    }
+}
 use types::{default_depth, default_output_format, default_upstream, default_workspace};
 
 //***************************//
@@ -50,23 +62,19 @@ pub struct TraceCallPathTool {
 }
 
 impl TraceCallPathTool {
-    /// Find cross-language callers using naming variants (exposed for testing)
-    pub async fn find_cross_language_callers(
+    /// Find cross-language symbols using naming variants (exposed for testing)
+    pub async fn find_cross_language_symbols(
         &self,
         db: &Arc<Mutex<crate::database::SymbolDatabase>>,
         symbol: &crate::extractors::Symbol,
     ) -> Result<Vec<crate::extractors::Symbol>> {
-        cross_language::find_cross_language_callers(db, symbol).await
+        cross_language::find_cross_language_symbols(db, symbol).await
     }
 
     /// Helper: Create result with lean format as default, JSON/TOON as alternatives
     fn create_result(
         &self,
-        _success: bool,
-        _paths_found: usize,
-        _next_actions: Vec<String>,
         ascii_tree: String,
-        _error_message: Option<String>,
         call_paths: Option<Vec<CallPath>>,
         output_format: Option<&str>,
     ) -> Result<CallToolResult> {
@@ -165,11 +173,7 @@ impl TraceCallPathTool {
         if self.max_depth > 10 {
             let message = "Error: max_depth cannot exceed 10 (recommended: 5)".to_string();
             return self.create_result(
-                false,
-                0,
-                vec!["Reduce max_depth to 5 or less".to_string()],
-                message.clone(),
-                Some(message),
+                message,
                 None,
                 self.output_format.as_deref(),
             );
@@ -199,13 +203,9 @@ impl TraceCallPathTool {
                         workspace_id
                     );
                     return self.create_result(
-                        false,
-                        0,
-                        vec!["Use 'manage_workspace list' to see available workspaces".to_string()],
-                        message.clone(),
-                        Some(format!("Workspace not found: {}", workspace_id)),
+                        message,
                         None,
-                self.output_format.as_deref(),
+                        self.output_format.as_deref(),
                     );
                 }
 
@@ -224,16 +224,7 @@ impl TraceCallPathTool {
 
         // Find the starting symbol(s) - wrap in block to ensure mutex guard is dropped
         let mut starting_symbols = {
-            let db_lock = match db.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    ::tracing::warn!(
-                        "Database mutex poisoned in trace_call_path symbol lookup, recovering: {}",
-                        poisoned
-                    );
-                    poisoned.into_inner()
-                }
-            };
+            let db_lock = lock_db(&db, "trace_call_path symbol lookup");
             db_lock.get_symbols_by_name(&self.symbol)?
         }; // Guard dropped here automatically
 
@@ -243,14 +234,7 @@ impl TraceCallPathTool {
                 self.symbol
             );
             return self.create_result(
-                false,
-                0,
-                vec![
-                    "Use fast_search to find the symbol".to_string(),
-                    "Check symbol name spelling".to_string(),
-                ],
-                message.clone(),
-                Some(format!("Symbol not found: {}", self.symbol)),
+                message,
                 None,
                 self.output_format.as_deref(),
             );
@@ -265,13 +249,9 @@ impl TraceCallPathTool {
                     self.symbol, context_file
                 );
                 return self.create_result(
-                    false,
-                    0,
-                    vec!["Try without context_file parameter".to_string()],
-                    message.clone(),
-                    Some(format!("Symbol not found in file: {}", context_file)),
+                    message,
                     None,
-                self.output_format.as_deref(),
+                    self.output_format.as_deref(),
                 );
             }
         }
@@ -284,7 +264,6 @@ impl TraceCallPathTool {
             let call_tree = match self.direction.as_str() {
                 "upstream" => {
                     tracing::trace_upstream(
-                        handler,
                         &db,
                         starting_symbol,
                         0,
@@ -295,7 +274,6 @@ impl TraceCallPathTool {
                 }
                 "downstream" => {
                     tracing::trace_downstream(
-                        handler,
                         &db,
                         starting_symbol,
                         0,
@@ -305,25 +283,29 @@ impl TraceCallPathTool {
                     .await?
                 }
                 "both" => {
-                    // Use single visited set to prevent duplicate processing across both directions
+                    // Separate visited sets per direction — a shared set starves
+                    // the second direction since the starting symbol is already visited.
+                    let mut upstream_visited = visited.clone();
+                    let mut downstream_visited = visited.clone();
                     let mut upstream = tracing::trace_upstream(
-                        handler,
                         &db,
                         starting_symbol,
                         0,
-                        &mut visited,
+                        &mut upstream_visited,
                         self.max_depth,
                     )
                     .await?;
                     let downstream = tracing::trace_downstream(
-                        handler,
                         &db,
                         starting_symbol,
                         0,
-                        &mut visited,
+                        &mut downstream_visited,
                         self.max_depth,
                     )
                     .await?;
+                    // Merge visited sets back for outer loop (multiple starting symbols)
+                    visited.extend(upstream_visited);
+                    visited.extend(downstream_visited);
                     upstream.extend(downstream);
                     upstream
                 }
@@ -333,13 +315,9 @@ impl TraceCallPathTool {
                         self.direction
                     );
                     return self.create_result(
-                        false,
-                        0,
-                        vec!["Use 'upstream', 'downstream', or 'both'".to_string()],
-                        message.clone(),
-                        Some(format!("Invalid direction: {}", self.direction)),
+                        message,
                         None,
-                self.output_format.as_deref(),
+                        self.output_format.as_deref(),
                     );
                 }
             };
@@ -366,14 +344,7 @@ impl TraceCallPathTool {
         };
 
         self.create_result(
-            true,
-            all_trees.len(),
-            vec![
-                "Review call paths to understand execution flow".to_string(),
-                "Use fast_goto to navigate to specific symbols".to_string(),
-            ],
             output,
-            None,
             call_paths,
             self.output_format.as_deref(),
         )

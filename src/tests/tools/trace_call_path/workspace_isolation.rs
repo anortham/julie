@@ -35,7 +35,7 @@ fn make_symbol(id: &str, name: &str, language: &str, file_path: &str) -> Symbol 
     }
 }
 
-/// Unit test for find_cross_language_callers workspace isolation
+/// Unit test for find_cross_language_symbols workspace isolation
 ///
 /// This tests the naming variant code path to ensure workspace isolation
 /// works correctly for naming variant matching.
@@ -164,9 +164,9 @@ async fn test_naming_variants_respect_workspace_database() {
         output_format: Some("json".to_string()),
     };
 
-    // Call find_cross_language_callers with REFERENCE database
+    // Call find_cross_language_symbols with REFERENCE database
     let callers = tool
-        .find_cross_language_callers(&reference_db, &reference_symbol)
+        .find_cross_language_symbols(&reference_db, &reference_symbol)
         .await
         .expect("find callers");
 

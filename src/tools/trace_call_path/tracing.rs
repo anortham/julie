@@ -2,13 +2,12 @@
 
 use crate::database::SymbolDatabase;
 use crate::extractors::{RelationshipKind, Symbol};
-use crate::handler::JulieServerHandler;
 use anyhow::Result;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
 
-use super::cross_language::{find_cross_language_callees, find_cross_language_callers};
+use super::cross_language::find_cross_language_symbols;
 use super::types::{CallPathNode, MatchType};
 
 /// Safety limits to prevent explosion on "hub" symbols (e.g., commonly-used functions)
@@ -19,7 +18,6 @@ const MAX_TOTAL_NODES: usize = 500;
 /// Trace upstream (find callers) recursively
 #[async_recursion::async_recursion]
 pub async fn trace_upstream(
-    handler: &JulieServerHandler,
     db: &Arc<Mutex<SymbolDatabase>>,
     symbol: &Symbol,
     current_depth: u32,
@@ -52,16 +50,7 @@ pub async fn trace_upstream(
 
     // Build callers list - wrap in block to ensure mutex guard is dropped before .await
     let callers = {
-        let db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                tracing::warn!(
-                    "Database mutex poisoned in trace_upstream callers, recovering: {}",
-                    poisoned
-                );
-                poisoned.into_inner()
-            }
-        };
+        let db_lock = super::lock_db(db, "trace_upstream callers");
         let relationships = db_lock.get_relationships_to_symbol(&symbol.id)?;
 
         // Filter to call relationships and collect symbol IDs
@@ -113,14 +102,12 @@ pub async fn trace_upstream(
             level: current_depth,
             match_type: MatchType::Direct,
             relationship_kind: Some(rel_kind),
-            similarity: None,
             children: vec![],
         };
 
         // Recursively trace callers
         if current_depth + 1 < max_depth {
             node.children = trace_upstream(
-                handler,
                 db,
                 &caller_symbol,
                 current_depth + 1,
@@ -133,11 +120,73 @@ pub async fn trace_upstream(
         nodes.push(node);
     }
 
+    // Step 1b: Identifier-based caller discovery (supplements relationships)
+    // The identifiers table captures call sites from token-level extraction
+    // that the relationship table may miss (e.g., dynamic dispatch, indirect calls).
+    if nodes.len() < MAX_TOTAL_NODES {
+        let identifier_callers = {
+            let db_lock = super::lock_db(db, "trace_upstream identifiers");
+            let variants =
+                crate::utils::cross_language_intelligence::generate_naming_variants(&symbol.name);
+            let ident_refs = db_lock.get_identifiers_by_names_and_kind(&variants, "call")?;
+
+            // Collect unique containing_symbol_ids — these are the callers
+            let mut seen = HashSet::new();
+            let caller_ids: Vec<String> = ident_refs
+                .iter()
+                .filter_map(|ident| ident.containing_symbol_id.clone())
+                .filter(|id| !id.is_empty() && seen.insert(id.clone()))
+                .collect();
+
+            if !caller_ids.is_empty() {
+                debug!(
+                    "Found {} identifier-based callers for {}",
+                    caller_ids.len(),
+                    symbol.name
+                );
+                db_lock.get_symbols_by_ids(&caller_ids)?
+            } else {
+                vec![]
+            }
+        };
+
+        for caller_symbol in identifier_callers {
+            if nodes.len() >= MAX_TOTAL_NODES {
+                break;
+            }
+            // Skip if already found via relationships
+            if nodes.iter().any(|n| n.symbol.id == caller_symbol.id) {
+                continue;
+            }
+
+            let mut node = CallPathNode {
+                symbol: caller_symbol.clone(),
+                level: current_depth,
+                match_type: MatchType::Direct,
+                relationship_kind: Some(RelationshipKind::Calls),
+                children: vec![],
+            };
+
+            if current_depth + 1 < max_depth {
+                node.children = trace_upstream(
+                    db,
+                    &caller_symbol,
+                    current_depth + 1,
+                    visited,
+                    max_depth,
+                )
+                .await?;
+            }
+
+            nodes.push(node);
+        }
+    }
+
     // Step 2: Cross-language matching (always enabled - this is Julie's superpower!)
     // Skip if we've already hit the node limit from direct callers
     if current_depth < max_depth && nodes.len() < MAX_TOTAL_NODES {
         debug!("Finding cross-language callers for: {}", symbol.name);
-        let cross_lang_callers = find_cross_language_callers(db, symbol).await?;
+        let cross_lang_callers = find_cross_language_symbols(db, symbol).await?;
 
         for caller_symbol in cross_lang_callers {
             // Safety: stop if we've hit the total node limit
@@ -155,7 +204,6 @@ pub async fn trace_upstream(
                 level: current_depth,
                 match_type: MatchType::NamingVariant,
                 relationship_kind: None,
-                similarity: None,
                 children: vec![],
             };
 
@@ -163,7 +211,6 @@ pub async fn trace_upstream(
             let cross_lang_limit = get_cross_language_depth_limit(max_depth);
             if current_depth + 1 < cross_lang_limit {
                 node.children = trace_upstream(
-                    handler,
                     db,
                     &caller_symbol,
                     current_depth + 1,
@@ -183,7 +230,6 @@ pub async fn trace_upstream(
 /// Trace downstream (find callees) recursively
 #[async_recursion::async_recursion]
 pub async fn trace_downstream(
-    handler: &JulieServerHandler,
     db: &Arc<Mutex<SymbolDatabase>>,
     symbol: &Symbol,
     current_depth: u32,
@@ -216,16 +262,7 @@ pub async fn trace_downstream(
 
     // Build callees list - wrap in block to ensure mutex guard is dropped before .await
     let callees = {
-        let db_lock = match db.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                tracing::warn!(
-                    "Database mutex poisoned in trace_downstream callees, recovering: {}",
-                    poisoned
-                );
-                poisoned.into_inner()
-            }
-        };
+        let db_lock = super::lock_db(db, "trace_downstream callees");
         let relationships = db_lock.get_relationships_for_symbol(&symbol.id)?;
 
         // Filter to call relationships and collect symbol IDs
@@ -276,14 +313,12 @@ pub async fn trace_downstream(
             level: current_depth,
             match_type: MatchType::Direct,
             relationship_kind: Some(rel_kind),
-            similarity: None,
             children: vec![],
         };
 
         // Recursively trace callees
         if current_depth + 1 < max_depth {
             node.children = trace_downstream(
-                handler,
                 db,
                 &callee_symbol,
                 current_depth + 1,
@@ -300,7 +335,7 @@ pub async fn trace_downstream(
     // Skip if we've already hit the node limit from direct callees
     if current_depth < max_depth && nodes.len() < MAX_TOTAL_NODES {
         debug!("Finding cross-language callees for: {}", symbol.name);
-        let cross_lang_callees = find_cross_language_callees(db, symbol).await?;
+        let cross_lang_callees = find_cross_language_symbols(db, symbol).await?;
 
         for callee_symbol in cross_lang_callees {
             // Safety: stop if we've hit the total node limit
@@ -318,7 +353,6 @@ pub async fn trace_downstream(
                 level: current_depth,
                 match_type: MatchType::NamingVariant,
                 relationship_kind: None,
-                similarity: None,
                 children: vec![],
             };
 
@@ -326,7 +360,6 @@ pub async fn trace_downstream(
             let cross_lang_limit = get_cross_language_depth_limit(max_depth);
             if current_depth + 1 < cross_lang_limit {
                 node.children = trace_downstream(
-                    handler,
                     db,
                     &callee_symbol,
                     current_depth + 1,

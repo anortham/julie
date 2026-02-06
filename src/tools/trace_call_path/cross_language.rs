@@ -7,8 +7,13 @@ use anyhow::Result;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
 
-/// Find cross-language callers using naming variants
-pub async fn find_cross_language_callers(
+/// Find cross-language symbol matches using naming variants.
+///
+/// Given a symbol, generates naming convention variants (camelCase, snake_case, etc.)
+/// and finds symbols with those names in different languages.
+/// Used for both upstream (callers) and downstream (callees) tracing —
+/// the logic is identical since cross-language matching is directionless.
+pub async fn find_cross_language_symbols(
     db: &Arc<Mutex<SymbolDatabase>>,
     symbol: &Symbol,
 ) -> Result<Vec<Symbol>> {
@@ -20,77 +25,15 @@ pub async fn find_cross_language_callers(
     );
 
     let mut cross_lang_symbols = Vec::new();
-    let db_lock = match db.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            tracing::warn!(
-                "Database mutex poisoned in find_cross_language_callers, recovering: {}",
-                poisoned
-            );
-            poisoned.into_inner()
-        }
-    };
-
-    for variant in variants {
-        if variant == symbol.name {
-            continue; // Skip original
-        }
-
-        // Find symbols with this variant name
-        if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
-            for variant_symbol in variant_symbols {
-                // Only include if different language - naming variant match is sufficient
-                if variant_symbol.language != symbol.language {
-                    cross_lang_symbols.push(variant_symbol);
-                }
-            }
-        }
-    }
-
-    drop(db_lock);
-
-    debug!(
-        "Found {} cross-language callers for {}",
-        cross_lang_symbols.len(),
-        symbol.name
-    );
-
-    Ok(cross_lang_symbols)
-}
-
-/// Find cross-language callees using naming variants
-pub async fn find_cross_language_callees(
-    db: &Arc<Mutex<SymbolDatabase>>,
-    symbol: &Symbol,
-) -> Result<Vec<Symbol>> {
-    let variants = generate_naming_variants(&symbol.name);
-    debug!(
-        "Generated {} naming variants for {}",
-        variants.len(),
-        symbol.name
-    );
-
-    let mut cross_lang_symbols = Vec::new();
-    let db_lock = match db.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            tracing::warn!(
-                "Database mutex poisoned in find_cross_language_callees, recovering: {}",
-                poisoned
-            );
-            poisoned.into_inner()
-        }
-    };
+    let db_lock = super::lock_db(db, "find_cross_language_symbols");
 
     for variant in variants {
         if variant == symbol.name {
             continue;
         }
 
-        // Find symbols with this variant name in different languages
         if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
             for variant_symbol in variant_symbols {
-                // Only include if different language - naming variant match is sufficient
                 if variant_symbol.language != symbol.language {
                     cross_lang_symbols.push(variant_symbol);
                 }
@@ -101,7 +44,7 @@ pub async fn find_cross_language_callees(
     drop(db_lock);
 
     debug!(
-        "Found {} cross-language callees for {}",
+        "Found {} cross-language symbols for {}",
         cross_lang_symbols.len(),
         symbol.name
     );

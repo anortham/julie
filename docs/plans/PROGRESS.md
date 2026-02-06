@@ -2,7 +2,7 @@
 
 **Master Plan:** [2026-02-05-code-intelligence-audit-design.md](2026-02-05-code-intelligence-audit-design.md)
 **Started:** 2026-02-05
-**Last Updated:** 2026-02-06
+**Last Updated:** 2026-02-06 (Priority 4 complete)
 
 ---
 
@@ -51,13 +51,15 @@ Commit: `8576d0b fix(search): content search false positives, code_context enric
 
 Commit: `40ac5d3 feat(fast_refs): unlock identifiers table for reference discovery`
 
-### Priority 3: get_symbols optimization — IN PROGRESS
+### Priority 3: get_symbols optimization — COMPLETE
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 1 | Lightweight DB query (skip unused columns) | In progress (teammate) |
-| 2 | Index-based filter pipeline (single-clone) | In progress (teammate) |
+| 1 | Lightweight DB query (skip unused columns) | Done |
+| 2 | Index-based filter pipeline (single-clone) | Done |
 | 3 | SymbolKind Display consistency in TOON | Done |
+
+Commit: `a3f64bc perf(get_symbols): lightweight DB query, index-based filtering, Display consistency`
 
 ### Bug fixes discovered during audit
 
@@ -70,11 +72,39 @@ Commit: `40ac5d3 feat(fast_refs): unlock identifiers table for reference discove
 
 Commit: `7c18e80 fix: overflow panic in find_containing_symbol and incorrect is_primary_workspace detection`
 
-### Priorities 4-9: Not yet started
+### Priority 4: trace_call_path optimization — COMPLETE
+
+Plan: [distributed-crunching-mist.md](/Users/murphy/.claude/plans/distributed-crunching-mist.md)
+
+**Tier 1 — Dead code cleanup (no behavior change):**
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 1 | Remove 4 unused create_result parameters (6 call sites) | Done |
+| 2 | Remove unused handler param from tracing functions (4 recursive sites) | Done |
+| 3 | Merge duplicate cross_language functions into single `find_cross_language_symbols` | Done |
+| 4 | Remove dead similarity field + fix incorrect #[allow(dead_code)] annotations | Done |
+| 5 | Extract lock_db mutex recovery helper (replaced 5 copy-paste blocks) | Done |
+| 6 | Fix calculate_max_depth math (was using absolute level, now counts tree height) | Done |
+
+**Tier 2 — Bug fix:**
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 7 | Fix direction=both shared visited set (separate sets per direction) | Done |
+
+**Tier 3 — Identifiers integration:**
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 8 | Supplement upstream tracing with identifiers table (naming variants + call kind) | Done |
+
+Results: cross_language.rs 110→53 lines, total ~1260→1189 lines despite new code. 763 tests pass (+2 new).
+
+### Priorities 5-9: Not yet started
 
 | Priority | Tool | Status |
 |----------|------|--------|
-| 4 | trace_call_path | Pending |
 | 5 | fast_explore | Pending |
 | 6 | fast_goto | Pending |
 | 7 | Editing tools (edit_symbol, edit_lines, fuzzy_replace) | Pending |

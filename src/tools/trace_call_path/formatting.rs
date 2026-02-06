@@ -124,23 +124,15 @@ fn render_node(node: &CallPathNode, output: &mut String, prefix: &str, is_last: 
         MatchType::NamingVariant => "≈",
     };
 
-    // Format similarity if present
-    let similarity_str = if let Some(sim) = node.similarity {
-        format!(" [sim: {:.2}]", sim)
-    } else {
-        String::new()
-    };
-
     // Write node
     output.push_str(&format!(
-        "{}{} {} {} ({}:{}){}\n",
+        "{}{} {} {} ({}:{})\n",
         prefix,
         connector,
         match_indicator,
         node.symbol.name,
         node.symbol.file_path,
         node.symbol.start_line,
-        similarity_str
     ));
 
     // Render children
@@ -218,7 +210,6 @@ fn node_to_serializable(node: &CallPathNode) -> SerializablePathNode {
         line: node.symbol.start_line,
         match_type: match_type_str.to_string(),
         relationship_kind: relationship_str,
-        similarity: node.similarity,
         level: node.level,
         children: node
             .children
@@ -233,12 +224,11 @@ fn calculate_max_depth(nodes: &[CallPathNode]) -> u32 {
     nodes
         .iter()
         .map(|n| {
-            let child_depth = if n.children.is_empty() {
-                0
+            if n.children.is_empty() {
+                1
             } else {
-                calculate_max_depth(&n.children)
-            };
-            n.level + child_depth
+                1 + calculate_max_depth(&n.children)
+            }
         })
         .max()
         .unwrap_or(0)

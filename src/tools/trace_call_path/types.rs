@@ -40,8 +40,6 @@ pub struct SerializablePathNode {
     pub match_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub relationship_kind: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub similarity: Option<f32>,
     pub level: u32,
     pub children: Vec<SerializablePathNode>,
 }
@@ -50,14 +48,9 @@ pub struct SerializablePathNode {
 #[derive(Debug, Clone)]
 pub struct CallPathNode {
     pub symbol: crate::extractors::Symbol,
-    #[allow(dead_code)]
     pub level: u32,
-    #[allow(dead_code)]
     pub match_type: MatchType,
-    #[allow(dead_code)]
     pub relationship_kind: Option<RelationshipKind>,
-    #[allow(dead_code)]
-    pub similarity: Option<f32>,
     pub children: Vec<CallPathNode>,
 }
 
@@ -113,7 +106,6 @@ pub struct ToonFlatCallPathNode {
     pub line: u32,
     pub match_type: String,
     pub relationship_kind: Option<String>, // Always serialized
-    pub similarity: Option<f32>,           // Always serialized
 }
 
 impl TraceCallPathResult {
@@ -165,7 +157,6 @@ fn flatten_to_toon_recursive(
         line: node.line,
         match_type: node.match_type.clone(),
         relationship_kind: node.relationship_kind.clone(),
-        similarity: node.similarity,
     });
 
     // Recursively flatten children
