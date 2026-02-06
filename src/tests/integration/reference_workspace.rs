@@ -173,13 +173,11 @@ mod reference_workspace_tests {
         // Search primary workspace - should find PRIMARY_WORKSPACE_MARKER
         let search_primary = FastSearchTool {
             query: "PRIMARY_WORKSPACE_MARKER".to_string(),
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some(primary_id.clone()),
             search_target: "content".to_string(),
-            output: Some("lines".to_string()),
             context_lines: None,
         output_format: None,
         };
@@ -199,13 +197,11 @@ mod reference_workspace_tests {
         // Search reference workspace by ID - should find REFERENCE_WORKSPACE_MARKER
         let search_reference = FastSearchTool {
             query: "REFERENCE_WORKSPACE_MARKER".to_string(),
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id.clone()),
             search_target: "content".to_string(),
-            output: Some("lines".to_string()),
             context_lines: None,
         output_format: None,
         };
@@ -226,13 +222,11 @@ mod reference_workspace_tests {
         // Verify workspace isolation: search primary for reference content should find nothing
         let cross_search = FastSearchTool {
             query: "REFERENCE_WORKSPACE_MARKER".to_string(),
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
-            output: Some("lines".to_string()),
             context_lines: None,
         output_format: None,
         };
@@ -279,13 +273,11 @@ mod reference_workspace_tests {
         // Try to search with non-existent workspace ID
         let search_tool = FastSearchTool {
             query: "anything".to_string(),
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("nonexistent_workspace_12345".to_string()),
             search_target: "content".to_string(),
-            output: Some("lines".to_string()),
             context_lines: None,
         output_format: None,
         };
@@ -367,13 +359,11 @@ mod reference_workspace_tests {
         // Search reference workspace for reference-specific symbol
         let search_reference = FastSearchTool {
             query: "calculate_product".to_string(), // Function only in reference workspace
-            search_method: "text".to_string(),
             language: Some("rust".to_string()),
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id.clone()),
             search_target: "definitions".to_string(), // Use symbols scope (doesn't need FTS5)
-            output: Some("symbols".to_string()),
             context_lines: None,
         output_format: None,
         };
@@ -430,13 +420,11 @@ mod reference_workspace_tests {
         // Verify initial files are indexed in reference workspace
         let initial_search = FastSearchTool {
             query: "helper".to_string(),
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id.clone()),
             search_target: "content".to_string(),
-            output: Some("lines".to_string()),
             context_lines: None,
         output_format: None,
         };
@@ -473,13 +461,11 @@ mod reference_workspace_tests {
         // Search for the deleted file - should NOT be found
         let search_deleted = FastSearchTool {
             query: "helper".to_string(),
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id.clone()),
             search_target: "content".to_string(),
-            output: Some("lines".to_string()),
             context_lines: None,
         output_format: None,
         };

@@ -93,11 +93,11 @@ Plans represent hours of work. Losing them is unacceptable.
 
 **Parameters:**
 - `query` - What to search for
-- `search_method` - "text" (default) or "auto" (both use Tantivy full-text search)
-- `search_target` - "content" (default - code/comments), "definitions" (symbol names)
+- `search_target` - "content" (default - grep-style line matches), "definitions" (symbol names with signatures)
 - `limit` - Max results (default: 10)
 - `file_pattern` - Filter by glob (e.g., "src/**/*.rs")
 - `language` - Filter by language (e.g., "rust")
+- `context_lines` - Lines before/after each match (default: 1)
 
 **Refinement logic:**
 - Too many results (>15)? Add `file_pattern` or `language` filter
@@ -303,7 +303,7 @@ manage_workspace(operation="index")
 - `recall({ limit: 10 })` - MANDATORY first action
 
 **Finding Code:**
-- `fast_search(query="...", search_method="text", limit=15)` - Find code
+- `fast_search(query="...")` - Find code (content search returns matching lines, definition search returns symbols)
 - `fast_goto(symbol="...")` - Jump to definition
 - `fast_refs(symbol="...")` - See all usages
 

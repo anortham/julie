@@ -1,10 +1,11 @@
 //! Test Helpers - Shared utilities for search quality tests
+//!
+//! These helpers call the search engine directly (not through the MCP tool layer)
+//! to get structured Symbol results for quality assertions.
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
-use crate::tools::search::FastSearchTool;
-use anyhow::{Result, anyhow};
-use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
+use anyhow::Result;
 use std::sync::atomic::Ordering;
 
 /// Search Julie's codebase (file content search)
@@ -13,21 +14,17 @@ pub async fn search_content(
     query: &str,
     limit: u32,
 ) -> Result<Vec<Symbol>> {
-    let tool = FastSearchTool {
-        query: query.to_string(),
-        search_method: "text".to_string(),
+    crate::tools::search::text_search::text_search_impl(
+        query,
+        &None,
+        &None,
         limit,
-        language: None,
-        file_pattern: None,
-        workspace: Some("primary".to_string()),
-        output: None, // Use default (symbols mode)
-        context_lines: None,
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
-        search_target: "content".to_string(),
-    };
-
-    let result = tool.call_tool(handler).await?;
-    parse_search_results(&result)
+        None,
+        "content",
+        None,
+        handler,
+    )
+    .await
 }
 
 /// Search Julie's codebase (symbol definitions search)
@@ -36,40 +33,17 @@ pub async fn search_definitions(
     query: &str,
     limit: u32,
 ) -> Result<Vec<Symbol>> {
-    let tool = FastSearchTool {
-        query: query.to_string(),
-        search_method: "text".to_string(),
+    crate::tools::search::text_search::text_search_impl(
+        query,
+        &None,
+        &None,
         limit,
-        language: None,
-        file_pattern: None,
-        workspace: Some("primary".to_string()),
-        output: None,
-        context_lines: None,
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
-        search_target: "definitions".to_string(),
-    };
-
-    let result = tool.call_tool(handler).await?;
-    parse_search_results(&result)
-}
-
-/// Parse search results from MCP CallToolResult
-fn parse_search_results(result: &CallToolResult) -> Result<Vec<Symbol>> {
-    // Extract structured_content from CallToolResult
-    // The search tool returns OptimizedResponse in structured_content with format:
-    // { "tool": "fast_search", "results": [Symbol, ...], "confidence": 0.85, ... }
-
-    if let Some(structured) = result.structured_content() {
-        if let Some(results_value) = structured.get("results") {
-            // Parse the results array as Vec<Symbol>
-            let symbols: Vec<Symbol> = serde_json::from_value(results_value.clone())
-                .map_err(|e| anyhow!("Failed to parse symbols from results: {}", e))?;
-            return Ok(symbols);
-        }
-    }
-
-    // Fallback: no structured content
-    Ok(Vec::new())
+        None,
+        "definitions",
+        None,
+        handler,
+    )
+    .await
 }
 
 /// Assert that results contain a file path matching the pattern

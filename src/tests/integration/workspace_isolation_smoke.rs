@@ -138,13 +138,11 @@ mod workspace_isolation_smoke_tests {
         // CRITICAL TEST: Search primary for reference-only content
         let search_primary_for_ref = FastSearchTool {
             query: "REFERENCE_WORKSPACE_MARKER".to_string(),
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
-            output: Some("lines".to_string()),
             context_lines: None,
         output_format: None,
         };
@@ -163,13 +161,11 @@ mod workspace_isolation_smoke_tests {
         // CRITICAL TEST: Search reference for primary-only content
         let search_ref_for_primary = FastSearchTool {
             query: "PRIMARY_WORKSPACE_MARKER".to_string(),
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id),
             search_target: "content".to_string(),
-            output: Some("lines".to_string()),
             context_lines: None,
         output_format: None,
         };
@@ -267,13 +263,11 @@ mod workspace_isolation_smoke_tests {
         // Test 1: "primary" should resolve to primary workspace
         let search_primary_string = FastSearchTool {
             query: "calculate_sum".to_string(), // Function only in primary
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
             search_target: "definitions".to_string(),
-            output: Some("symbols".to_string()),
             context_lines: None,
         output_format: None,
         };
@@ -290,13 +284,11 @@ mod workspace_isolation_smoke_tests {
         // Test 2: Specific workspace ID should resolve to reference workspace
         let search_ref_id = FastSearchTool {
             query: "calculate_product".to_string(), // Function only in reference
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some(reference_id),
             search_target: "definitions".to_string(),
-            output: Some("symbols".to_string()),
             context_lines: None,
         output_format: None,
         };
@@ -342,13 +334,11 @@ mod workspace_isolation_smoke_tests {
         // Try to search non-existent workspace
         let search_invalid = FastSearchTool {
             query: "anything".to_string(),
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("nonexistent_workspace_12345".to_string()),
             search_target: "definitions".to_string(),
-            output: Some("symbols".to_string()),
             context_lines: None,
         output_format: None,
         };

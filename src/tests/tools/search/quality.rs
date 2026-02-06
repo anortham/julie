@@ -129,13 +129,11 @@ mod search_quality_tests {
 
         let search_tool = FastSearchTool {
             query: "getUserData".to_string(),
-            search_method: "text".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
-            output: None,
             context_lines: None,
         output_format: None,
         };

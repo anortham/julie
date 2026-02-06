@@ -55,13 +55,11 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
             use crate::tools::search::FastSearchTool;
             let tool = FastSearchTool {
                 query: query.to_string(),
-                search_method: "text".to_string(),
                 language: None,
                 file_pattern: Some("docs/archive/*.md".to_string()), // File pattern filter
                 limit: 10,
                 workspace: Some("primary".to_string()),
                 search_target: "content".to_string(),
-                output: Some("lines".to_string()), // LINE MODE - triggers unsafe db.lock() path!
                 context_lines: Some(1),
         output_format: None,            };
             tool.call_tool(&handler_clone).await

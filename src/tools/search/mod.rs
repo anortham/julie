@@ -38,12 +38,13 @@ use crate::tools::shared::OptimizedResponse;
 //******************//
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+/// Search code using text search with code-aware tokenization. Supports multi-word queries with AND/OR logic.
 pub struct FastSearchTool {
     /// Search query (text or pattern)
     pub query: String,
-    /// Search method: "auto" (default) or "text". Both use Tantivy full-text search.
-    #[serde(default = "default_search_method")]
-    pub search_method: String,
+    /// Search target: "content" (default) or "definitions"
+    #[serde(default = "default_search_target")]
+    pub search_target: String,
     /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
     #[serde(default)]
     pub language: Option<String>,
@@ -53,34 +54,22 @@ pub struct FastSearchTool {
     /// Maximum results (default: 10, range: 1-500)
     #[serde(default = "default_limit")]
     pub limit: u32,
-    /// Workspace filter: "primary" (default) or workspace ID
-    #[serde(default = "default_workspace")]
-    pub workspace: Option<String>,
-    /// Search target: "content" (default) or "definitions"
-    #[serde(default = "default_search_target")]
-    pub search_target: String,
-    /// Output format: "symbols" (default) or "lines"
-    #[serde(default = "default_output")]
-    pub output: Option<String>,
     /// Context lines before/after match (default: 1)
     #[serde(default = "default_context_lines")]
     pub context_lines: Option<u32>,
     /// Output format: "lean" (default - grep-style text), "json", "toon", or "auto"
     #[serde(default = "default_output_format")]
     pub output_format: Option<String>,
+    /// Workspace filter: "primary" (default) or workspace ID
+    #[serde(default = "default_workspace")]
+    pub workspace: Option<String>,
 }
 
 fn default_limit() -> u32 {
     10 // Reduced from 15 with enhanced scoring (better quality = fewer results needed)
 }
-fn default_search_method() -> String {
-    "auto".to_string()
-}
 fn default_workspace() -> Option<String> {
     Some("primary".to_string())
-}
-fn default_output() -> Option<String> {
-    Some("symbols".to_string())
 }
 fn default_context_lines() -> Option<u32> {
     Some(1) // 1 before + match + 1 after = 3 total lines (minimal context)
@@ -95,15 +84,10 @@ fn default_search_target() -> String {
 
 impl FastSearchTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!(
-            "🔍 Fast search: {} (method: {})",
-            self.query, self.search_method
-        );
+        debug!("🔍 Fast search: {} (target: {})", self.query, self.search_target);
 
         // Determine target workspace for health check
-        // If workspace parameter specified, check that workspace; otherwise check primary
         let target_workspace_id = if self.workspace.is_some() {
-            // Resolve workspace filter to get actual workspace ID
             self.resolve_workspace_filter(handler)
                 .await?
                 .and_then(|ids| ids.first().cloned())
@@ -111,43 +95,34 @@ impl FastSearchTool {
             None
         };
 
-        // Check system readiness with graceful degradation (workspace-aware!)
+        // Check system readiness
         let readiness = crate::health::HealthChecker::check_system_readiness(
             handler,
             target_workspace_id.as_deref(),
         )
         .await?;
 
+        let use_line_mode = self.search_target != "definitions";
+
         match readiness {
             SystemStatus::NotReady => {
-                if self.output.as_deref() == Some("lines") {
-                    debug!(
-                        "Line-mode search requested before readiness; attempting SQLite fallback"
-                    );
+                if use_line_mode {
+                    debug!("Line-mode search before readiness; attempting SQLite fallback");
                 } else {
-                    let message = "❌ Workspace not indexed yet!\n💡 Run 'manage_workspace index' first to enable fast search.";
-                    return Ok(CallToolResult::text_content(vec![Content::text(
-                        message,
-                    )]));
+                    let message = "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
+                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                 }
             }
             SystemStatus::SqliteOnly { symbol_count } => {
-                debug!(
-                    "🔍 Search available ({} symbols indexed)",
-                    symbol_count
-                );
+                debug!("Search available ({} symbols indexed)", symbol_count);
             }
             SystemStatus::FullyReady { symbol_count } => {
-                debug!(
-                    "✅ Search ready ({} symbols indexed)",
-                    symbol_count
-                );
+                debug!("Search ready ({} symbols indexed)", symbol_count);
             }
         }
 
-        // Check output format - if "lines" mode, use line-level search for line-level results
-        if self.output.as_deref() == Some("lines") {
-            debug!("📄 Line-level output mode requested");
+        // Route: content search → line mode, definition search → symbol mode
+        if use_line_mode {
             return line_mode::line_mode_search(
                 &self.query,
                 &self.language,
@@ -159,15 +134,7 @@ impl FastSearchTool {
             .await;
         }
 
-        // Validate search_method — only "text" and "auto" are supported
-        if self.search_method != "text" && self.search_method != "auto" {
-            warn!(
-                "Unknown search_method '{}', using 'text'. Valid values: 'auto', 'text'.",
-                self.search_method
-            );
-        }
-
-        // All search goes through Tantivy
+        // Definition search → Tantivy symbol mode
         let workspace_ids = self.resolve_workspace_filter(handler).await?;
         let symbols = text_search::text_search_impl(
             &self.query,
@@ -181,34 +148,27 @@ impl FastSearchTool {
         )
         .await?;
 
-        // Truncate code_context to save tokens (default: 3 lines total)
         let symbols = formatting::truncate_code_context(symbols, self.context_lines);
 
-        // Create optimized response with confidence scoring
         let confidence = scoring::calculate_search_confidence(&self.query, &symbols);
         let mut optimized = OptimizedResponse::new("fast_search", symbols, confidence);
 
-        // Add insights based on patterns found (includes .julieignore hint for low-quality results)
         if let Some(insights) = scoring::generate_search_insights(&optimized.results, confidence) {
             optimized = optimized.with_insights(insights);
         }
 
-        // Add smart next actions
         let next_actions = scoring::suggest_next_actions(&self.query, &optimized.results);
         optimized = optimized.with_next_actions(next_actions);
 
-        // Optimize for tokens
         optimized.optimize_for_tokens(Some(self.limit as usize));
 
         if optimized.results.is_empty() {
             let message = format!(
                 "🔍 No results found for: '{}'\n\
-                💡 Try a broader search term or check spelling",
+                💡 Try a broader search term or different keywords",
                 self.query
             );
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                message,
-            )]));
+            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
         }
 
         Self::format_response(&self.query, optimized, self.output_format.as_deref())

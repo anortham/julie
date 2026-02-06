@@ -84,7 +84,12 @@ pub async fn line_mode_search(
                 )
             })?;
 
-        tokio::task::block_in_place(|| -> Result<Vec<LineMatch>> {
+        let search_index = search_index.clone();
+        let db = db.clone();
+        let query = query.to_string();
+        let match_strategy = match_strategy.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<Vec<LineMatch>> {
             let index = match search_index.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
@@ -92,7 +97,7 @@ pub async fn line_mode_search(
                     poisoned.into_inner()
                 }
             };
-            let file_results = index.search_content(query, &filter, fetch_limit)?;
+            let file_results = index.search_content(&query, &filter, fetch_limit)?;
             drop(index);
 
             let db_lock = match db.lock() {
@@ -121,7 +126,8 @@ pub async fn line_mode_search(
             }
 
             Ok(matches)
-        })?
+        })
+        .await??
     } else {
         // Search reference workspace with isolated Tantivy index + DB for content
         let tantivy_path = workspace_struct.workspace_tantivy_path(&target_workspace_id);
