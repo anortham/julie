@@ -2,7 +2,7 @@
 
 **Master Plan:** [2026-02-05-code-intelligence-audit-design.md](2026-02-05-code-intelligence-audit-design.md)
 **Started:** 2026-02-05
-**Last Updated:** 2026-02-06 (Phase 3 complete)
+**Last Updated:** 2026-02-06 (Phase 3 complete, including Round 2 deep-dives)
 
 ---
 
@@ -22,7 +22,7 @@ Produced prioritized Phase 3 deep-dive order.
 
 ---
 
-## Phase 3: Tool Deep-Dives — IN PROGRESS
+## Phase 3: Tool Deep-Dives — COMPLETE
 
 ### Priority 1: fast_search — COMPLETE
 
@@ -115,6 +115,28 @@ Commit: `5433cd8 refactor(tools): parallel cleanup of fast_explore, navigation, 
 | memory-agent | checkpoint, plan_tool | Extracted shared capture_git_context() | -179 |
 
 Net: 15 files changed, +436/-956 lines. 762 tests pass.
+
+### Priorities 5-9: Deep-Dives Round 2 — COMPLETE
+
+Executed the substantive work skipped during the parallel cleanup: data utilization, output enrichment, Bucket C decisions, and discoverability fixes.
+
+Plan: [2026-02-06-phase3-deep-dives-round2.md](2026-02-06-phase3-deep-dives-round2.md)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 1 | Kill find_logic MCP registration (redirect to fast_explore mode=logic) | Done |
+| 2 | Integrate identifiers into fast_explore logic mode (Tier 4 caller analysis) | Done |
+| 3 | Add visibility-aware ranking to logic mode (pub +0.1, priv -0.15) | Done |
+| 4 | Implement fast_goto qualified name resolution (MyClass::method) | Done |
+| 5 | Enrich fast_goto output with parent name and visibility | Done |
+| 6 | Rewrite editing tool MCP descriptions for agent discoverability | Done |
+| 7 | Expand editing tools section in agent instructions | Done |
+| 8 | Fix recall ("semantic search" → "text search") and checkpoint descriptions | Done |
+| 9 | Dogfood test all improved tools | Done |
+
+Commits: `c3945e4`, `273f41c`, `3543a26`, `12424f7`, `e35cd27`, `42cff15`, `9eba701`
+
+774 tests pass. Data utilization scorecard: identifiers 40%→60%, visibility 0%→20%.
 
 ---
 
