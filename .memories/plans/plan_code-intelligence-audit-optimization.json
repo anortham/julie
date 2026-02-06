@@ -1,0 +1,13 @@
+{
+  "id": "plan_code-intelligence-audit-optimization",
+  "timestamp": 1770343527,
+  "type": "plan",
+  "title": "Code Intelligence Audit & Optimization",
+  "status": "archived",
+  "content": "## Phases\n\n### Phase 1: Data Pipeline Audit (1-2 sessions)\n- Automated census of all 30 extractors (symbols/identifiers/types/relationships counts)\n- End-to-end pipeline trace for Rust, TypeScript, Python, Go\n- Gap analysis (pending relationships, semantic_group, decorators, import graphs)\n\n### Phase 2: Tool Categorization (1 session)\n- Bucket A (table-stakes): fast_goto, fast_refs, rename_symbol\n- Bucket B (moat): fast_search, get_symbols, trace_call_path, fast_explore, edit_symbol, memory tools\n- Bucket C (evaluate): find_logic (remove), edit_lines/fuzzy_replace (keep/kill/consolidate)\n\n### Phase 3: Tool Deep-Dives (~9 sessions, one per tool)\nPriority: fast_search → get_symbols → fast_refs → trace_call_path → fast_explore → fast_goto → editing tools → memory tools → manage_workspace\nPer-tool checklist: data utilization, output optimization, semantic remnants, code quality, test coverage, dogfood test\n\n### Phase 4: Documentation Cleanup (1-2 sessions)\n- Remove all embeddings/HNSW/ONNX/semantic references\n- Update CLAUDE.md, handler.rs descriptions, architecture docs\n\n### Cross-cutting\n- Tantivy as general-purpose scoring/ranking/resolution resource\n- Semantic search remnant cleanup\n- Rust code quality improvements\n- Agent-first output optimization",
+  "git": {
+    "branch": "main",
+    "commit": "7297133a21063d5c676963ec5a9817dab22f9e48",
+    "dirty": true
+  }
+}

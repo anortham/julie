@@ -1,0 +1,34 @@
+{
+  "id": "plan_phase-3-tool-deep-dives-priority-order",
+  "timestamp": 1770344058,
+  "type": "plan",
+  "title": "Phase 3: Tool Deep-Dives Priority Order",
+  "status": "archived",
+  "content": "## Phase 3 Tool Deep-Dives — Approved Priority Order\n\n### Priority 1: fast_search (Bucket B+D, 1-2 sessions)\n- Unlock unused Tantivy: fuzzy matching, phrase search, doc comment search, signature search\n- Most-used discovery tool, core differentiator\n- Code-aware tokenization already strong (just fixed false positives)\n\n### Priority 2: fast_refs (Bucket A+D, 1-2 sessions)\n- **CRITICAL: Unlock 1.2M identifiers per workspace** (currently 0% utilization)\n- Transform from relationship-based refs to LSP-quality find-all-usages\n- Differentiate from Claude Code's native lsp_find_references\n\n### Priority 3: get_symbols (Bucket B, 1 session)\n- Most-used tool by token volume, already strong\n- Audit for output optimization and semantic remnant cleanup\n\n### Priority 4: trace_call_path (Bucket B+D, 1 session)\n- Unique cross-language capability\n- Add relationship kind filtering (calls vs type_usage vs imports)\n\n### Priority 5: fast_explore (Bucket B+D, 1-2 sessions)\n- Types table only 10% utilized, business logic metadata untapped\n- 5 modes may be overloaded\n\n### Priority 6: fast_goto (Bucket A, 1 session)\n- Probably already solid (3-stage CASCADE)\n- Quick audit, semantic remnant cleanup\n\n### Priority 7: Editing tools (Bucket C, 1 session)\n- edit_lines, fuzzy_replace, edit_symbol — investigate underuse\n- Keep/kill/consolidate decision\n\n### Priority 8: Memory tools (Bucket B, 1 session)\n- checkpoint/recall/plan — recently overhauled, quick audit\n\n### Priority 9: manage_workspace (Infrastructure, 0.5 session)\n- Health check accuracy, completeness\n\n### Kill: find_logic (Bucket C)\n- Already deprecated, redirect to fast_explore(mode='logic')\n\n## 6-Point Checklist Per Tool\n1. Data utilization — what SQLite/Tantivy data is it ignoring?\n2. Output optimization — token-efficient? Agent-friendly?\n3. Semantic remnants — dead params, stale descriptions, embedding refs\n4. Code quality — Rust anti-patterns, unnecessary clones, stringly-typed logic\n5. Test coverage — fill gaps, validate findings\n6. Dogfood test — run against Julie's own codebase\n\n## Data Utilization Targets\n- Identifiers: 0% → unlock in fast_refs (Priority 2)\n- Types: 10% → improve in fast_explore (Priority 5)\n- Relationships: 30% → improve in trace_call_path (Priority 4)\n- Symbol metadata: 0% → expose where useful\n- Tantivy capabilities: ~30% → unlock in fast_search (Priority 1)",
+  "git": {
+    "branch": "main",
+    "commit": "7297133a21063d5c676963ec5a9817dab22f9e48",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_replace-fts5-with-tantivy-codetokenizer.json",
+      "crates/julie-extractors/src/factory.rs",
+      "crates/julie-extractors/src/gdscript/mod.rs",
+      "crates/julie-extractors/src/manager.rs",
+      "crates/julie-extractors/src/ruby/mod.rs",
+      "crates/julie-extractors/src/tests/gdscript/mod.rs",
+      "crates/julie-extractors/src/tests/ruby/mod.rs",
+      "src/search/index.rs",
+      "src/search/query.rs",
+      "src/tests/integration/watcher.rs",
+      "src/tests/integration/watcher_handlers.rs",
+      "src/tests/mod.rs",
+      "src/tests/tools/search/tantivy_index_tests.rs",
+      "src/tools/workspace/indexing/mod.rs",
+      "src/tools/workspace/indexing/processor.rs",
+      "src/tools/workspace/mod.rs",
+      "src/watcher/handlers.rs",
+      "src/watcher/mod.rs",
+      "src/workspace/mod.rs"
+    ]
+  }
+}
