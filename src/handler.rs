@@ -18,7 +18,7 @@ use tokio::sync::RwLock;
 // Import tool parameter types (we'll convert these from the tool modules)
 use crate::tools::{
     FastSearchTool, FastGotoTool, FastRefsTool, GetSymbolsTool, TraceCallPathTool,
-    FastExploreTool, FindLogicTool, EditLinesTool, FuzzyReplaceTool,
+    FastExploreTool, EditLinesTool, FuzzyReplaceTool,
     RenameSymbolTool, EditSymbolTool, CheckpointTool, RecallTool, PlanTool,
     ManageWorkspaceTool,
 };
@@ -427,25 +427,6 @@ impl JulieServerHandler {
         let _guard = self.tool_execution_lock.lock().await;
         params.call_tool(self).await.map_err(|e| {
             McpError::internal_error(format!("fast_explore failed: {}", e), None)
-        })
-    }
-
-    #[tool(
-        name = "find_logic",
-        description = "Find business logic implementation. Deprecated - use fast_explore with mode='logic'.",
-        annotations(
-            title = "Find Business Logic",
-            read_only_hint = true,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    async fn find_logic(&self, Parameters(params): Parameters<FindLogicTool>) -> Result<CallToolResult, McpError> {
-        debug!("🏢 Find business logic: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("find_logic failed: {}", e), None)
         })
     }
 
