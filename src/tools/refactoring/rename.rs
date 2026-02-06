@@ -1,7 +1,6 @@
 //! Rename symbol refactoring operations
 
 use anyhow::Result;
-use diff_match_patch_rs::DiffMatchPatch;
 use crate::mcp_compat::{CallToolResult, StructuredContentExt};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
@@ -58,7 +57,7 @@ impl SmartRefactorTool {
             symbol: old_name.to_string(),
             include_definition: true,
             limit: 1000,                            // High limit for comprehensive rename
-            workspace: Some("primary".to_string()), // TODO: Map scope to workspace
+            workspace: Some("primary".to_string()), // Rename only in primary workspace (you own these files)
             reference_kind: None,                   // No filtering - find all reference kinds
             output_format: None,
         };
@@ -69,17 +68,15 @@ impl SmartRefactorTool {
         let mut file_locations = self.parse_refs_result(&refs_result)?;
 
         if file_locations.is_empty() {
-            let message = format!("No references found for symbol '{}'", old_name);
             return self.create_result(
                 "rename_symbol",
-                false, // Failed to find symbol
+                false,
                 vec![],
                 0,
                 vec![
                     "Use fast_search to locate the symbol".to_string(),
                     "Check spelling of symbol name".to_string(),
                 ],
-                message,
                 None,
             );
         }
@@ -90,17 +87,12 @@ impl SmartRefactorTool {
                 // Scope to specific file
                 file_locations.retain(|path, _| path == file_path);
                 if file_locations.is_empty() {
-                    let message = format!(
-                        "Symbol '{}' not found in specified file: {}",
-                        old_name, file_path
-                    );
                     return self.create_result(
                         "rename_symbol",
                         false,
                         vec![],
                         0,
                         vec!["Check the file path is correct".to_string()],
-                        message,
                         None,
                     );
                 }
@@ -125,18 +117,10 @@ impl SmartRefactorTool {
         // Step 2: Apply renames file by file
         let mut renamed_files = Vec::new();
         let mut errors = Vec::new();
-        let dmp = DiffMatchPatch::new();
 
         for file_path in file_locations.keys() {
             match self
-                .rename_in_file(
-                    handler,
-                    file_path,
-                    old_name,
-                    new_name,
-                    update_comments,
-                    &dmp,
-                )
+                .rename_in_file(handler, file_path, old_name, new_name)
                 .await
             {
                 Ok(changes_applied) => {
@@ -153,10 +137,9 @@ impl SmartRefactorTool {
         // Step 2.5: Update import statements if requested
         if update_imports && !renamed_files.is_empty() {
             debug!("🔄 Updating import statements for renamed symbol");
-            // Pass the files we already found - no need to search again
             let file_paths: Vec<String> = file_locations.keys().cloned().collect();
             match self
-                .update_import_statements_in_files(handler, &file_paths, old_name, new_name, &dmp)
+                .update_import_statements_in_files(handler, &file_paths, old_name, new_name)
                 .await
             {
                 Ok(updated_files) => {
@@ -183,72 +166,33 @@ impl SmartRefactorTool {
         let total_files = renamed_files.len();
         let total_changes: usize = renamed_files.iter().map(|(_, count)| count).sum();
 
-        // FIX: Check for errors and report partial failures
+        // Check for errors and report partial failures
         if !errors.is_empty() {
-            let error_summary = errors.join("\n");
-            let message = if total_files > 0 {
-                format!(
-                    "⚠️  Partial rename: '{}' -> '{}'\n\
-                    ✅ Successfully modified {} files with {} changes\n\
-                    ❌ Failed to modify {} files:\n{}",
-                    old_name,
-                    new_name,
-                    total_files,
-                    total_changes,
-                    errors.len(),
-                    error_summary
-                )
-            } else {
-                format!(
-                    "❌ Rename failed: '{}' -> '{}'\n\
-                    All {} files failed:\n{}",
-                    old_name,
-                    new_name,
-                    errors.len(),
-                    error_summary
-                )
-            };
-
             let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
-            let warnings = vec![
-                "Check file permissions and paths".to_string(),
-                "Review errors above for details".to_string(),
-                "Use git status to see which files were modified".to_string(),
-            ];
             return self.create_result(
                 "rename_symbol",
-                total_files > 0, // Partial success if some files succeeded
+                total_files > 0,
                 files,
                 total_changes,
-                warnings,
-                message,
-                None,
+                vec![
+                    "Check file permissions and paths".to_string(),
+                    "Use git status to see which files were modified".to_string(),
+                ],
+                Some(serde_json::json!({ "errors": errors })),
             );
         }
 
         if self.dry_run {
-            let message = format!(
-                "DRY RUN: Rename '{}' -> '{}'\nWould modify {} files with {} changes",
-                old_name, new_name, total_files, total_changes
-            );
-
             let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
             return self.create_result(
                 "rename_symbol",
-                true, // Dry run succeeded
+                true,
                 files,
                 total_changes,
                 vec!["Set dry_run=false to apply changes".to_string()],
-                message,
                 None,
             );
         }
-
-        // Final success message (no errors)
-        let message = format!(
-            "✅ Rename successful: '{}' -> '{}'\nModified {} files with {} changes",
-            old_name, new_name, total_files, total_changes
-        );
 
         let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
         self.create_result(
@@ -259,9 +203,7 @@ impl SmartRefactorTool {
             vec![
                 "Run tests to verify changes".to_string(),
                 "Use fast_refs to validate rename completion".to_string(),
-                "Use git diff to review changes".to_string(),
             ],
-            message,
             None,
         )
     }
@@ -275,14 +217,12 @@ impl SmartRefactorTool {
         file_paths: &[String],
         old_name: &str,
         new_name: &str,
-        dmp: &DiffMatchPatch,
     ) -> Result<Vec<(String, usize)>> {
         let mut updated_files = Vec::new();
 
-        // Check each file directly - no search needed since we already know which files to check
         for file_path in file_paths {
             match self
-                .update_imports_in_file(handler, file_path, old_name, new_name, dmp)
+                .update_imports_in_file(handler, file_path, old_name, new_name)
                 .await
             {
                 Ok(changes) if changes > 0 => {
@@ -308,7 +248,6 @@ impl SmartRefactorTool {
         file_path: &str,
         old_name: &str,
         new_name: &str,
-        _dmp: &DiffMatchPatch,
     ) -> Result<usize> {
         use regex::Regex;
 

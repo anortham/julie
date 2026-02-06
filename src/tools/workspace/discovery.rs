@@ -479,14 +479,14 @@ impl ManageWorkspaceTool {
 # • Search indexes (Tantivy full-text search)
 #
 # Files are still searchable as TEXT using fast_search(mode="text"),
-# but won't clutter symbol navigation or semantic search results.
+# but won't clutter symbol navigation or search results.
 #
 # ═══════════════════════════════════════════════════════════════
 # Why Exclude Vendor Code?
 # ═══════════════════════════════════════════════════════════════
 # 1. Search Quality: Prevents vendor code from polluting search results
 # 2. Performance: Skips symbol extraction for thousands of vendor functions
-# 3. Relevance: Semantic search focuses on YOUR code, not libraries
+# 3. Relevance: Search focuses on YOUR code, not libraries
 #
 # ═══════════════════════════════════════════════════════════════
 # How to Modify This File

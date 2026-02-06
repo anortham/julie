@@ -40,21 +40,34 @@ recall({ limit: 10 })  // FIRST action in EVERY session
 - Don't verify, don't ask "should I continue?" - just proceed
 
 ### Checkpoint After Every Significant Task
+
+**NEVER ask "should I checkpoint?" - the answer is ALWAYS YES.**
+
+The `description` field is the **markdown body** of the memory file. Write it as **structured markdown** — not a wall of text. Use headings, bullet points, and code spans so recalled memories are scannable.
+
+**Good checkpoint (structured markdown):**
 ```javascript
 checkpoint({
-  description: "Fixed JWT validation bug - inverted expiry check in validateToken(). Added test coverage.",
+  description: "## JWT Validation Bug Fix\n\n- **Root cause**: Expiry check was inverted in `validateToken()` — tokens were accepted *after* expiry\n- **Fix**: Flipped `>` to `<` comparison on line 42\n- **Tests**: Added 3 edge-case tests (expired, just-expired, valid)\n- **Files**: `src/auth/jwt.rs`, `src/tests/auth_tests.rs`",
   tags: ["bug", "auth", "security"]
 })
 ```
-**NEVER ask "should I checkpoint?" - the answer is ALWAYS YES.**
+
+**Bad checkpoint (wall of text):**
+```javascript
+checkpoint({
+  description: "Fixed JWT validation bug where the expiry check was inverted in validateToken(). The comparison operator was > instead of < so tokens were accepted after expiry. Flipped the operator and added test coverage for expired tokens, just-expired tokens, and valid tokens.",
+  tags: ["bug", "auth", "security"]
+})
+```
 
 Create checkpoints immediately after:
-- Bug fixes (what was broken, how you fixed it)
-- Feature implementations (design decisions, trade-offs)
-- Architectural decisions (why this approach)
+- Bug fixes (what was broken, root cause, how you fixed it)
+- Feature implementations (design decisions, trade-offs, files changed)
+- Architectural decisions (why this approach, alternatives considered)
 - Learning discoveries (insights about the codebase)
 
-**Why this matters:** recall() is useless without checkpointing. Future sessions can only restore what you've saved. Checkpoints are cheap (<50ms) but invaluable.
+**Why this matters:** recall() is useless without checkpointing. Future sessions can only restore what you've saved. Checkpoints are cheap (<50ms) but invaluable. **Structured markdown** makes recalled memories 10x more useful than plain text.
 
 ### Save Plans After Planning
 When you call ExitPlanMode → save plan within 1 exchange:
@@ -170,18 +183,18 @@ trace_call_path(
 
 **Modes:**
 - `logic` - Find business logic by domain (filters boilerplate)
-- `similar` - Find semantically similar code (detect duplicates)
 - `dependencies` - Analyze transitive dependencies
+- `types` - Explore type intelligence (implementations, hierarchies)
 
 ```javascript
 // Find payment processing logic
 fast_explore(mode="logic", domain="payment processing")
 
-// Find duplicate code
-fast_explore(mode="similar", symbol="getUserData", threshold=0.8)
-
 // Analyze dependencies
 fast_explore(mode="dependencies", symbol="PaymentService", depth=3)
+
+// Explore type hierarchy
+fast_explore(mode="types", type_name="PaymentProcessor")
 ```
 
 ### Editing Tools — When to Use Which

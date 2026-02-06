@@ -6,8 +6,12 @@
 //! - Architectural decisions
 //! - Learning discoveries
 //!
-//! Each checkpoint is saved as a pretty-printed JSON file in `.memories/`
+//! Each checkpoint is saved as a markdown file with YAML frontmatter in `.memories/`
 //! organized by date, making them git-trackable and human-readable.
+//!
+//! The `description` field becomes the markdown body — agents should write it
+//! as proper structured markdown (headers, bullet points, code blocks) so that
+//! recalled memories are scannable and useful.
 
 use anyhow::{Context, Result};
 use schemars::JsonSchema;
@@ -22,7 +26,9 @@ use super::git::capture_git_context;
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct CheckpointTool {
-    /// Description of what was accomplished or learned
+    /// Markdown body describing what was accomplished or learned.
+    /// Write as **proper structured markdown**: use `## Headings`, `- bullet points`,
+    /// and `` `code spans` `` so recalled memories are scannable. Avoid walls of text.
     pub description: String,
     /// Tags for categorization (e.g., ["bug", "auth", "performance"])
     #[serde(skip_serializing_if = "Option::is_none")]

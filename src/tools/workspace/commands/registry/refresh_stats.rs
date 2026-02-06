@@ -181,8 +181,8 @@ impl ManageWorkspaceTool {
                             Type: {:?}\n\
                             Files: {} | Symbols: {}\n\
                             Index Size: {:.2} MB\n\
-                            Created: {} (timestamp)\n\
-                            Last Accessed: {} (timestamp)\n\
+                            Created: {} (unix)\n\
+                            Last Accessed: {} (unix)\n\
                             Expires: {}",
                             workspace.display_name,
                             workspace.display_name,
@@ -226,7 +226,7 @@ impl ManageWorkspaceTool {
                     Total Files: {}\n\
                     Total Symbols: {}\n\
                     Total Index Size: {:.2} MB\n\
-                    Last Updated: {} (timestamp)\n\n\
+                    Last Updated: {} (unix)\n\n\
                     Configuration\n\
                     Default TTL: {} days\n\
                     Max Size Limit: {} MB\n\

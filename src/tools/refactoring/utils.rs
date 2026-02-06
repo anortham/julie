@@ -3,35 +3,6 @@
 use super::SmartRefactorTool;
 
 impl SmartRefactorTool {
-    /// Detect the base indentation level of code lines
-    #[allow(dead_code)]
-    pub fn detect_base_indentation(&self, lines: &[&str]) -> usize {
-        lines
-            .iter()
-            .filter(|line| !line.trim().is_empty()) // Skip empty lines
-            .map(|line| line.len() - line.trim_start().len()) // Count leading whitespace
-            .min()
-            .unwrap_or(0)
-    }
-
-    /// Remove base indentation from code lines
-    #[allow(dead_code)]
-    pub fn dedent_code(&self, lines: &[&str], base_indent: usize) -> String {
-        lines
-            .iter()
-            .map(|line| {
-                if line.trim().is_empty() {
-                    "" // Keep empty lines empty
-                } else if line.len() > base_indent {
-                    &line[base_indent..] // Remove base indentation
-                } else {
-                    line.trim_start() // Line has less indentation than base
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     /// Detect programming language from file extension using shared language module
     pub fn detect_language(&self, file_path: &str) -> String {
         match std::path::Path::new(file_path)
@@ -65,10 +36,5 @@ impl SmartRefactorTool {
             Some("r") | Some("R") => "r".to_string(),
             _ => "unknown".to_string(),
         }
-    }
-
-    pub fn optimize_response(&self, message: &str) -> String {
-        // Messages are now minimal 2-line summaries - no optimization needed
-        message.to_string()
     }
 }

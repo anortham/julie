@@ -202,7 +202,7 @@ impl ManageWorkspaceTool {
                 if stored_hash == &current_hash {
                     // File unchanged by hash, but check if it needs FILE_CONTENT symbols
                     // For files without parsers (text, json, etc.), we need to ensure they have
-                    // FILE_CONTENT symbols in FTS5. This is a migration for existing workspaces.
+                    // FILE_CONTENT symbols in the database. This is a migration for existing workspaces.
 
                     // Check if this is a language without a parser
                     let needs_file_content = matches!(
@@ -398,10 +398,7 @@ impl ManageWorkspaceTool {
             }
         };
 
-        // 🔥 FTS5 CRITICAL FIX: Batch all deletions in ONE transaction, rebuild FTS5 ONCE
-        // OLD BUG: Loop deleted files one-by-one, each triggering FTS5 rebuild (100 files = 200 rebuilds!)
-        // This caused rowid desynchronization: "fts5: missing row X from content table"
-        // NEW: Transaction wraps ALL deletions, single FTS5 rebuild after commit
+        // Batch all deletions in ONE transaction for efficiency and consistency
         let mut cleaned_count = 0;
         {
             let mut db_lock = match db.lock() {
@@ -433,7 +430,7 @@ impl ManageWorkspaceTool {
                     continue;
                 }
 
-                // Delete symbols (no FTS5 rebuild - happens in batch after transaction)
+                // Delete symbols
                 let symbols_result = db_lock.conn.execute(
                     "DELETE FROM symbols WHERE file_path = ?1",
                     rusqlite::params![file_path],

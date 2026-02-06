@@ -1,7 +1,7 @@
 //! Tantivy-based code search engine.
 //!
-//! Replaces FTS5 with a code-aware search using custom tokenization
-//! that understands CamelCase, snake_case, and language-specific operators.
+//! Code-aware full-text search using custom tokenization that understands
+//! CamelCase, snake_case, and language-specific operators.
 
 mod error;
 pub mod index;

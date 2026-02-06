@@ -21,12 +21,11 @@ pub use types::{
 };
 
 use anyhow::Result;
-use diff_match_patch_rs::DiffMatchPatch;
 use schemars::JsonSchema;
 use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt, WithStructuredContent};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 use crate::tools::editing::EditingTransaction;
@@ -49,7 +48,13 @@ pub enum EditOperation {
     ExtractToFile,
 }
 
-/// Focused tool for workspace-wide symbol renaming (replaces rename_symbol operation)
+/// Rename a symbol across the entire codebase with workspace-wide updates.
+///
+/// Uses `fast_refs` to find all references, then applies AST-aware replacement
+/// (tree-sitter parsing) to rename only actual code identifiers — string literals
+/// and comments are left untouched. Supports scope limiting to a single file.
+///
+/// **Always use `dry_run=true` first** to preview changes before applying.
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct RenameSymbolTool {
     /// Current symbol name
@@ -64,6 +69,15 @@ pub struct RenameSymbolTool {
     pub dry_run: bool,
 }
 
+/// AST-aware symbol editing: replace function/method bodies, insert code before/after
+/// symbols, or extract symbols to other files. Finds symbols by name using tree-sitter.
+///
+/// Three operations:
+/// - `replace_body` — rewrite a function's implementation without touching its signature
+/// - `insert_relative` — add code adjacent to a symbol (before or after)
+/// - `extract_to_file` — move a symbol to another file
+///
+/// **Always use `dry_run=true` first** to preview changes before applying.
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct EditSymbolTool {
     /// File path (relative to workspace root)
@@ -228,9 +242,8 @@ impl EditSymbolTool {
     }
 }
 
-#[allow(dead_code)]
 impl SmartRefactorTool {
-    /// Helper: Create structured result with markdown for dual output
+    /// Create structured JSON result for refactoring operations
     fn create_result(
         &self,
         operation: &str,
@@ -238,7 +251,6 @@ impl SmartRefactorTool {
         files_modified: Vec<String>,
         changes_count: usize,
         next_actions: Vec<String>,
-        markdown: String,
         metadata: Option<serde_json::Value>,
     ) -> Result<CallToolResult> {
         let result = SmartRefactorResult {
@@ -252,10 +264,6 @@ impl SmartRefactorTool {
             metadata,
         };
 
-        // Apply token optimization to prevent context overflow (unused now since we return JSON-only)
-        let _optimized_markdown = self.optimize_response(&markdown);
-
-        // Return ONLY structured JSON (no redundant text)
         let structured = serde_json::to_value(&result)?;
         let structured_map = if let serde_json::Value::Object(map) = structured {
             map
@@ -263,79 +271,33 @@ impl SmartRefactorTool {
             return Err(anyhow::anyhow!("Expected JSON object"));
         };
 
-        debug!("✅ Returning smart_refactor results as JSON-only (no redundant text_content)");
+        debug!("✅ Returning smart_refactor results as JSON-only");
         Ok(
             CallToolResult::text_content(vec![])
                 .with_structured_content(structured_map),
         )
     }
 
+    /// Dispatcher used by tests to route operations to the appropriate handler method.
+    /// Production code uses the focused MCP tools (RenameSymbolTool, EditSymbolTool) directly.
+    #[allow(dead_code)]
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        info!("🔄 Smart refactor operation: {:?}", self.operation);
-
         match self.operation.as_str() {
             "rename_symbol" => self.handle_rename_symbol(handler).await,
             "replace_symbol_body" => self.handle_replace_symbol_body(handler).await,
             "insert_relative_to_symbol" => self.handle_insert_relative_to_symbol(handler).await,
             "extract_symbol_to_file" => self.handle_extract_symbol_to_file(handler).await,
-
-            // Removed operations (not feasible for cross-language support)
-            "extract_function" | "extract_type" | "update_imports" | "inline_variable"
-            | "inline_function" | "validate_syntax" | "auto_fix_syntax" => {
-                let message = format!(
-                    "❌ Operation '{}' has been removed from Julie's API\n\n\
-                    This operation is not feasible for reliable cross-language support.\n\n\
-                    Available operations:\n\
-                    • rename_symbol - Rename symbols across workspace (all languages)\n\
-                    • replace_symbol_body - Replace function/method body (all languages)\n\
-                    • insert_relative_to_symbol - Insert code before/after symbols (all languages)\n\
-                    • extract_symbol_to_file - Move symbols between files with import updates (all languages)\n\n\
-                    For more sophisticated refactoring, consider using language-specific LSPs.",
-                    self.operation
-                );
-                self.create_result(
-                    &self.operation,
-                    false,
-                    vec![],
-                    0,
-                    vec!["Use one of the available operations".to_string()],
-                    message,
-                    None,
-                )
-            }
-
-            _ => {
-                let message = format!(
-                    "❌ Unknown refactoring operation: '{}'\n\n\
-                    Valid operations:\n\
-                    • rename_symbol - Rename symbols across workspace\n\
-                    • replace_symbol_body - Replace function/method body\n\
-                    • insert_relative_to_symbol - Insert code before/after symbols\n\
-                    • extract_symbol_to_file - Move symbols between files",
-                    self.operation
-                );
-                self.create_result(
-                    &self.operation,
-                    false,
-                    vec![],
-                    0,
-                    vec!["Check operation name spelling".to_string()],
-                    message,
-                    None,
-                )
-            }
+            other => Err(anyhow::anyhow!("Unknown refactoring operation: '{}'", other)),
         }
     }
 
-    /// Rename symbol occurrences in a single file using AST-aware replacement
+    /// Rename symbol occurrences in a single file using tree-sitter AST-aware replacement
     async fn rename_in_file(
         &self,
         handler: &JulieServerHandler,
         file_path: &str,
         old_name: &str,
         new_name: &str,
-        update_comments: bool,
-        _dmp: &DiffMatchPatch,
     ) -> Result<usize> {
         // Resolve file path relative to workspace root
         let workspace_guard = handler.workspace.read().await;
@@ -352,17 +314,9 @@ impl SmartRefactorTool {
         // Read file content
         let content = fs::read_to_string(&absolute_path)?;
 
-        // Use AST-aware replacement to avoid strings/comments
-        let updated_content = self
-            .ast_aware_replace(
-                &content,
-                file_path,
-                old_name,
-                new_name,
-                update_comments,
-                handler,
-            )
-            .await?;
+        // Tree-sitter AST-aware replacement: only renames identifiers, skips strings/comments
+        let updated_content =
+            self.smart_text_replace(&content, old_name, new_name, file_path, false)?;
 
         if updated_content == content {
             return Ok(0); // No changes
@@ -384,69 +338,6 @@ impl SmartRefactorTool {
         };
 
         Ok(changes)
-    }
-
-    /// Only replaces actual symbol references, not string literals or comments
-    async fn ast_aware_replace(
-        &self,
-        content: &str,
-        file_path: &str,
-        old_name: &str,
-        new_name: &str,
-        update_comments: bool,
-        handler: &JulieServerHandler,
-    ) -> Result<String> {
-        debug!("🌳 AST-aware replacement for {} -> {}", old_name, new_name);
-
-        // First, try using the search database
-        if let Ok(positions) = self
-            .find_symbols_via_search(file_path, old_name, handler)
-            .await
-        {
-            debug!("📍 Found {} positions via search database", positions.len());
-            let updated =
-                self.smart_text_replace(content, old_name, new_name, file_path, update_comments)?;
-            return Ok(updated);
-        }
-
-        // Fallback to tree-sitter
-        if let Ok(positions) = self
-            .find_symbols_via_treesitter(content, file_path, old_name)
-            .await
-        {
-            debug!("📍 Found {} positions via tree-sitter", positions.len());
-            let updated =
-                self.smart_text_replace(content, old_name, new_name, file_path, update_comments)?;
-            return Ok(updated);
-        }
-
-        // Last resort: simple replacement
-        debug!("⚠️ Falling back to simple text replacement");
-        self.smart_text_replace(content, old_name, new_name, file_path, update_comments)
-    }
-
-    /// Find symbol positions using SQLite database (for indexed files)
-    async fn find_symbols_via_search(
-        &self,
-        _file_path: &str,
-        _old_name: &str,
-        _handler: &JulieServerHandler,
-    ) -> Result<Vec<(u32, u32)>> {
-        // Would use fast_search tool here
-        // For now, return empty to trigger fallback
-        Ok(Vec::new())
-    }
-
-    /// Find symbol positions using direct tree-sitter parsing (for any file)
-    async fn find_symbols_via_treesitter(
-        &self,
-        _content: &str,
-        _file_path: &str,
-        _old_name: &str,
-    ) -> Result<Vec<(u32, u32)>> {
-        // Tree-sitter extraction not yet implemented
-        // For now, return empty to trigger fallback
-        Ok(Vec::new())
     }
 
     /// Uses tree-sitter AST to find ONLY actual code symbols, skipping strings/comments.
@@ -548,8 +439,3 @@ impl SmartRefactorTool {
         crate::language::get_tree_sitter_language(language)
     }
 }
-
-#[allow(dead_code)]
-const DOC_COMMENT_LOOKBACK_BYTES: usize = 256;
-#[allow(dead_code)]
-const TOP_OF_SCOPE_COMMENT_LINE_WINDOW: usize = 2;

@@ -11,8 +11,6 @@ use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{debug, error, info, warn};
 
-// calculate_dir_size moved to shared utility: src/tools/workspace/utils.rs
-// Use crate::tools::workspace::calculate_dir_size() instead
 
 fn indexing_lock_cache() -> &'static StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>> {
     static LOCKS: OnceLock<StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>> = OnceLock::new();

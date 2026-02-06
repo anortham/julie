@@ -23,7 +23,7 @@ use crate::workspace::registry::generate_workspace_id;
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExploreMode {
-    /// Find business logic by domain keywords (4-tier CASCADE: Tantivy → AST → Path → Graph)
+    /// Find business logic by domain keywords (Tantivy search + AST analysis + path heuristics + graph scoring)
     Logic,
 
     /// Find semantically similar code (deprecated - embeddings removed)

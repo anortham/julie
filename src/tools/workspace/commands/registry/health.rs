@@ -40,7 +40,7 @@ impl ManageWorkspaceTool {
         // PHASE 2: Search Engine Health
         health_report.push_str("Search Engine (Tantivy)\n");
         let search_status = self
-            .check_search_engine_health(&primary_workspace, detailed)
+            .check_search_engine_health(&primary_workspace)
             .await?;
         health_report.push_str(&search_status);
         health_report.push('\n');
@@ -136,7 +136,6 @@ impl ManageWorkspaceTool {
     async fn check_search_engine_health(
         &self,
         workspace: &crate::workspace::JulieWorkspace,
-        _detailed: bool,
     ) -> Result<String> {
         let mut status = String::new();
 
