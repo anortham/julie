@@ -899,6 +899,266 @@ async fn test_integration_groups_by_architectural_layer() -> Result<()> {
     Ok(())
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// TIER 4b: Identifier-Based Centrality Tests
+// ═══════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_tier4_identifier_call_sites_boost_business_importance() -> Result<()> {
+    use crate::extractors::{Identifier, IdentifierKind};
+
+    let (handler, temp_dir) = create_test_handler().await?;
+    let workspace_path = temp_dir.path().to_string_lossy().to_string();
+    create_test_codebase(&temp_dir).await?;
+    index_workspace(&handler, &workspace_path).await?;
+
+    let workspace = handler.get_workspace().await?.unwrap();
+    let db = workspace.db.as_ref().unwrap();
+
+    let tool = FindLogicTool {
+        domain: "payment".to_string(),
+        max_results: 50,
+        group_by_layer: false,
+        min_business_score: 0.0,
+        output_format: None,
+    };
+
+    // Create TWO synthetic symbols with identical starting scores of 0.5.
+    // Neither exists in the relationships table — only identifiers differ.
+    // "target_symbol" will have call-site identifiers; "control_symbol" will not.
+    // Use unique names that won't collide with indexer-generated identifiers.
+    let target_symbol = Symbol {
+        id: "target_sym".to_string(),
+        name: "execute_zebra_refund".to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "src/services/payment_service.rs".to_string(),
+        start_line: 100,
+        start_column: 0,
+        end_line: 110,
+        end_column: 0,
+        start_byte: 2000,
+        end_byte: 2200,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: Some(0.5),
+        code_context: None,
+        content_type: None,
+    };
+
+    let control_symbol = Symbol {
+        id: "control_sym".to_string(),
+        name: "validate_zebra_coupon".to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "src/services/payment_service.rs".to_string(),
+        start_line: 120,
+        start_column: 0,
+        end_line: 130,
+        end_column: 0,
+        start_byte: 2300,
+        end_byte: 2500,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: Some(0.5),
+        code_context: None,
+        content_type: None,
+    };
+
+    // Store both symbols and caller symbols in DB (FK constraints require them)
+    {
+        let mut db_lock = db.lock().unwrap();
+
+        db_lock
+            .store_symbols(&[
+                target_symbol.clone(),
+                control_symbol.clone(),
+                Symbol {
+                    id: "caller_a".to_string(),
+                    name: "handler_a".to_string(),
+                    kind: SymbolKind::Function,
+                    language: "rust".to_string(),
+                    file_path: "src/controllers/payment_controller.rs".to_string(),
+                    start_line: 3,
+                    start_column: 0,
+                    end_line: 10,
+                    end_column: 0,
+                    start_byte: 50,
+                    end_byte: 200,
+                    signature: None,
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: Some(1.0),
+                    code_context: None,
+                    content_type: None,
+                },
+                Symbol {
+                    id: "caller_b".to_string(),
+                    name: "handler_b".to_string(),
+                    kind: SymbolKind::Function,
+                    language: "rust".to_string(),
+                    file_path: "src/services/payment_service.rs".to_string(),
+                    start_line: 20,
+                    start_column: 0,
+                    end_line: 30,
+                    end_column: 0,
+                    start_byte: 400,
+                    end_byte: 600,
+                    signature: None,
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: Some(1.0),
+                    code_context: None,
+                    content_type: None,
+                },
+                Symbol {
+                    id: "caller_c".to_string(),
+                    name: "handler_c".to_string(),
+                    kind: SymbolKind::Function,
+                    language: "rust".to_string(),
+                    file_path: "tests/payment_test.rs".to_string(),
+                    start_line: 1,
+                    start_column: 0,
+                    end_line: 5,
+                    end_column: 0,
+                    start_byte: 0,
+                    end_byte: 100,
+                    signature: None,
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: Some(1.0),
+                    code_context: None,
+                    content_type: None,
+                },
+            ])
+            .expect("Failed to store symbols");
+
+        // Store 3 call-site identifiers for "execute_zebra_refund" from 3 unique callers.
+        // No identifiers for "validate_zebra_coupon".
+        db_lock
+            .bulk_store_identifiers(
+                &[
+                    Identifier {
+                        id: "ident_call_1".to_string(),
+                        name: "execute_zebra_refund".to_string(),
+                        kind: IdentifierKind::Call,
+                        language: "rust".to_string(),
+                        file_path: "src/controllers/payment_controller.rs".to_string(),
+                        start_line: 5,
+                        start_column: 8,
+                        end_line: 5,
+                        end_column: 24,
+                        start_byte: 100,
+                        end_byte: 116,
+                        containing_symbol_id: Some("caller_a".to_string()),
+                        target_symbol_id: None,
+                        confidence: 1.0,
+                        code_context: None,
+                    },
+                    Identifier {
+                        id: "ident_call_2".to_string(),
+                        name: "execute_zebra_refund".to_string(),
+                        kind: IdentifierKind::Call,
+                        language: "rust".to_string(),
+                        file_path: "src/services/payment_service.rs".to_string(),
+                        start_line: 25,
+                        start_column: 4,
+                        end_line: 25,
+                        end_column: 20,
+                        start_byte: 450,
+                        end_byte: 466,
+                        containing_symbol_id: Some("caller_b".to_string()),
+                        target_symbol_id: None,
+                        confidence: 1.0,
+                        code_context: None,
+                    },
+                    Identifier {
+                        id: "ident_call_3".to_string(),
+                        name: "execute_zebra_refund".to_string(),
+                        kind: IdentifierKind::Call,
+                        language: "rust".to_string(),
+                        file_path: "tests/payment_test.rs".to_string(),
+                        start_line: 3,
+                        start_column: 4,
+                        end_line: 3,
+                        end_column: 20,
+                        start_byte: 30,
+                        end_byte: 46,
+                        containing_symbol_id: Some("caller_c".to_string()),
+                        target_symbol_id: None,
+                        confidence: 1.0,
+                        code_context: None,
+                    },
+                ],
+                "primary",
+            )
+            .expect("Failed to store identifiers");
+    }
+
+    // Pass both symbols directly to analyze_business_importance
+    let mut candidates = vec![target_symbol, control_symbol];
+
+    tool.analyze_business_importance(&mut candidates, &handler)
+        .await?;
+
+    let target_score = candidates
+        .iter()
+        .find(|s| s.id == "target_sym")
+        .unwrap()
+        .confidence
+        .unwrap_or(0.0);
+    let control_score = candidates
+        .iter()
+        .find(|s| s.id == "control_sym")
+        .unwrap()
+        .confidence
+        .unwrap_or(0.0);
+
+    // target_sym should have gotten a boost from 3 unique identifier callers
+    // Expected boost: ln(3) * 0.03 ≈ 0.033
+    let expected_boost = (3.0_f32).ln() * 0.03;
+    assert!(
+        target_score > control_score,
+        "Symbol with identifier call sites ({:.4}) should score higher than one without ({:.4})",
+        target_score,
+        control_score,
+    );
+
+    let actual_boost = target_score - 0.5; // started at 0.5
+    assert!(
+        (actual_boost - expected_boost).abs() < 0.01,
+        "Identifier boost should be ~ln(3)*0.03={:.4}, got {:.4}",
+        expected_boost,
+        actual_boost,
+    );
+
+    // Control symbol should still be at its original score (no relationships, no identifiers)
+    assert!(
+        (control_score - 0.5).abs() < 0.001,
+        "Control symbol without identifiers should remain at 0.5, got {:.4}",
+        control_score,
+    );
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_integration_respects_max_results_limit() -> Result<()> {
     let (handler, temp_dir) = create_test_handler().await?;

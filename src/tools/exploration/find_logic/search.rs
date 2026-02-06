@@ -296,7 +296,76 @@ impl FindLogicTool {
             }
         }
 
-        debug!("📊 Applied relationship graph centrality analysis");
+        // ── Identifier-based caller analysis ──────────────────────────
+        // The identifiers table has call sites with containing_symbol_id
+        // revealing which symbols are actively called. Count unique callers
+        // per target symbol name for a secondary centrality boost.
+
+        // Batch all naming variants for all symbols into a single query
+        let mut all_variants: Vec<String> = Vec::new();
+        // Map from variant → set of symbol indices that it matches
+        let mut variant_to_symbol_indices: std::collections::HashMap<String, Vec<usize>> =
+            std::collections::HashMap::new();
+
+        for (idx, symbol) in symbols.iter().enumerate() {
+            let variants =
+                crate::utils::cross_language_intelligence::generate_naming_variants(&symbol.name);
+            for variant in variants {
+                variant_to_symbol_indices
+                    .entry(variant.clone())
+                    .or_default()
+                    .push(idx);
+                all_variants.push(variant);
+            }
+        }
+
+        // Deduplicate variants for the query
+        all_variants.sort();
+        all_variants.dedup();
+
+        if !all_variants.is_empty() {
+            if let Ok(identifier_refs) =
+                db_lock.get_identifiers_by_names_and_kind(&all_variants, "call")
+            {
+                // Count unique containing_symbol_id values per symbol index
+                let mut caller_sets: std::collections::HashMap<
+                    usize,
+                    std::collections::HashSet<String>,
+                > = std::collections::HashMap::new();
+
+                for ident_ref in &identifier_refs {
+                    if let Some(ref caller_id) = ident_ref.containing_symbol_id {
+                        // Find which symbol(s) this identifier name matches
+                        if let Some(indices) = variant_to_symbol_indices.get(&ident_ref.name) {
+                            for &idx in indices {
+                                caller_sets
+                                    .entry(idx)
+                                    .or_default()
+                                    .insert(caller_id.clone());
+                            }
+                        }
+                    }
+                }
+
+                // Apply logarithmic identifier boost (slightly less than relationship boost)
+                for (idx, callers) in &caller_sets {
+                    let caller_count = callers.len();
+                    if caller_count > 0 {
+                        let identifier_boost = (caller_count as f32).ln() * 0.03;
+                        let current_score = symbols[*idx].confidence.unwrap_or(0.5);
+                        symbols[*idx].confidence =
+                            Some((current_score + identifier_boost).clamp(0.0, 1.0));
+
+                        debug!(
+                            "📊 Symbol {} has {} unique callers via identifiers, boost: {:.3}",
+                            symbols[*idx].name, caller_count, identifier_boost
+                        );
+                    }
+                }
+            }
+        }
+
+        debug!("📊 Applied relationship graph + identifier centrality analysis");
         Ok(())
     }
 
