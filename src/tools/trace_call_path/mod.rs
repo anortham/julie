@@ -14,14 +14,14 @@ pub mod types;
 
 use anyhow::{Result, anyhow};
 use schemars::JsonSchema;
-use crate::mcp_compat::{CallToolResult, CallToolResultExt, WithStructuredContent};
+use crate::mcp_compat::{CallToolResult, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use crate::handler::JulieServerHandler;
 
-pub use types::{CallPath, SerializablePathNode, TraceCallPathResult};
+pub use types::CallPathNode;
 
 /// Lock the database mutex, recovering from poisoning if necessary.
 /// Centralizes the lock+recover pattern used throughout trace_call_path.
@@ -34,7 +34,7 @@ fn lock_db<'a>(db: &'a Arc<Mutex<crate::database::SymbolDatabase>>, context: &st
         }
     }
 }
-use types::{default_depth, default_output_format, default_upstream, default_workspace};
+use types::{default_depth, default_upstream, default_workspace};
 
 //***************************//
 //   Trace Call Path Tool    //
@@ -56,9 +56,6 @@ pub struct TraceCallPathTool {
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Output format: "lean" (default - ASCII tree), "json", "toon", or "auto"
-    #[serde(default = "default_output_format")]
-    pub output_format: Option<String>,
 }
 
 impl TraceCallPathTool {
@@ -71,94 +68,15 @@ impl TraceCallPathTool {
         cross_language::find_cross_language_symbols(db, symbol).await
     }
 
-    /// Helper: Create result with lean format as default, JSON/TOON as alternatives
-    fn create_result(
-        &self,
-        ascii_tree: String,
-        call_paths: Option<Vec<CallPath>>,
-        output_format: Option<&str>,
-    ) -> Result<CallToolResult> {
-        // Return based on output_format - lean (ASCII tree) is default
-        match output_format {
-            None | Some("lean") | Some("tree") => {
-                // Lean mode (DEFAULT): ASCII tree visualization
-                ::tracing::debug!(
-                    "✅ Returning lean trace results ({} chars)",
-                    ascii_tree.len()
-                );
-                Ok(CallToolResult::text_content(vec![
-                    crate::mcp_compat::Content::text(ascii_tree),
-                ]))
-            }
-            Some("toon") | Some("auto") | Some("json") => {
-                // Structured formats: Build full result object
-                let result = TraceCallPathResult {
-                    tool: "trace_call_path".to_string(),
-                    symbol: self.symbol.clone(),
-                    direction: self.direction.clone(),
-                    max_depth: self.max_depth,
-                    cross_language: true,
-                    success: call_paths.is_some(),
-                    paths_found: call_paths.as_ref().map(|p| p.len()).unwrap_or(0),
-                    next_actions: vec![
-                        "Review call paths to understand execution flow".to_string(),
-                        "Use fast_goto to navigate to specific symbols".to_string(),
-                    ],
-                    error_message: None,
-                    call_paths,
-                };
-
-                match output_format {
-                    Some("toon") => {
-                        let toon_flat = result.to_toon_flat();
-                        match toon_format::encode_default(&toon_flat) {
-                            Ok(toon) => Ok(CallToolResult::text_content(vec![
-                                crate::mcp_compat::Content::text(toon),
-                            ])),
-                            Err(_) => {
-                                // Fall back to lean on TOON error
-                                Ok(CallToolResult::text_content(vec![
-                                    crate::mcp_compat::Content::text(ascii_tree),
-                                ]))
-                            }
-                        }
-                    }
-                    Some("auto") => {
-                        let toon_flat = result.to_toon_flat();
-                        if toon_flat.len() >= 10 {
-                            if let Ok(toon) = toon_format::encode_default(&toon_flat) {
-                                return Ok(CallToolResult::text_content(vec![
-                                    crate::mcp_compat::Content::text(toon),
-                                ]));
-                            }
-                        }
-                        // Fall back to lean for small results
-                        Ok(CallToolResult::text_content(vec![
-                            crate::mcp_compat::Content::text(ascii_tree),
-                        ]))
-                    }
-                    _ => {
-                        // JSON mode
-                        let structured = serde_json::to_value(&result)?;
-                        let map = match structured {
-                            serde_json::Value::Object(m) => m,
-                            _ => return Err(anyhow!("Expected object")),
-                        };
-                        Ok(CallToolResult::text_content(vec![]).with_structured_content(map))
-                    }
-                }
-            }
-            Some(unknown) => {
-                // Unknown format - warn and use lean
-                ::tracing::warn!(
-                    "⚠️ Unknown output_format '{}', using lean format",
-                    unknown
-                );
-                Ok(CallToolResult::text_content(vec![
-                    crate::mcp_compat::Content::text(ascii_tree),
-                ]))
-            }
-        }
+    /// Create result with lean ASCII tree format
+    fn create_result(&self, ascii_tree: String) -> Result<CallToolResult> {
+        ::tracing::debug!(
+            "✅ Returning lean trace results ({} chars)",
+            ascii_tree.len()
+        );
+        Ok(CallToolResult::text_content(vec![
+            crate::mcp_compat::Content::text(ascii_tree),
+        ]))
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -172,11 +90,7 @@ impl TraceCallPathTool {
         // Validate parameters
         if self.max_depth > 10 {
             let message = "Error: max_depth cannot exceed 10 (recommended: 5)".to_string();
-            return self.create_result(
-                message,
-                None,
-                self.output_format.as_deref(),
-            );
+            return self.create_result(message);
         }
 
         // Get workspace and database with workspace filtering support
@@ -202,11 +116,7 @@ impl TraceCallPathTool {
                         "Reference workspace database not found: {}\nCheck workspace ID with 'manage_workspace list'",
                         workspace_id
                     );
-                    return self.create_result(
-                        message,
-                        None,
-                        self.output_format.as_deref(),
-                    );
+                    return self.create_result(message);
                 }
 
                 ::tracing::debug!("📂 Opening reference workspace DB: {:?}", ref_db_path);
@@ -233,11 +143,7 @@ impl TraceCallPathTool {
                 "Symbol not found: '{}'\nTry fast_search to find the symbol, or check spelling",
                 self.symbol
             );
-            return self.create_result(
-                message,
-                None,
-                self.output_format.as_deref(),
-            );
+            return self.create_result(message);
         }
 
         // If context file provided, filter to symbols in that file
@@ -248,11 +154,7 @@ impl TraceCallPathTool {
                     "Symbol '{}' not found in file: {} (try without context_file to search all files)",
                     self.symbol, context_file
                 );
-                return self.create_result(
-                    message,
-                    None,
-                    self.output_format.as_deref(),
-                );
+                return self.create_result(message);
             }
         }
 
@@ -314,11 +216,7 @@ impl TraceCallPathTool {
                         "Invalid direction: '{}' (valid options: 'upstream', 'downstream', 'both')",
                         self.direction
                     );
-                    return self.create_result(
-                        message,
-                        None,
-                        self.output_format.as_deref(),
-                    );
+                    return self.create_result(message);
                 }
             };
 
@@ -327,26 +225,14 @@ impl TraceCallPathTool {
             }
         }
 
-        // Format output - "lean" (ASCII tree) is default
+        // Format output as ASCII tree
         let output = formatting::format_call_trees(
             &all_trees,
             &self.symbol,
             &self.direction,
             self.max_depth,
-            self.output_format.as_deref().unwrap_or("lean"),
         )?;
 
-        // Convert trees to serializable format for structured content
-        let call_paths = if !all_trees.is_empty() {
-            Some(formatting::trees_to_call_paths(&all_trees))
-        } else {
-            None
-        };
-
-        self.create_result(
-            output,
-            call_paths,
-            self.output_format.as_deref(),
-        )
+        self.create_result(output)
     }
 }

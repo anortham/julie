@@ -68,7 +68,6 @@ mod tests {
             workspace: None,
             search_target: "content".to_string(),
             context_lines: None,
-            output_format: None,
         };
 
         // Search MUST complete within 5 seconds or it's the lock contention bug
@@ -131,7 +130,6 @@ mod tests {
                     workspace: None,
                     search_target: "content".to_string(),
                     context_lines: None,
-            output_format: None,
                 };
 
                 timeout(
@@ -185,7 +183,6 @@ mod tests {
             workspace: None,
             search_target: "content".to_string(),
             context_lines: None,
-            output_format: None,
         };
 
         let result = timeout(Duration::from_secs(5), search_tool.call_tool(&handler)).await??;
@@ -255,7 +252,6 @@ pub fn helper_function() {}
                 workspace: None,
                 search_target: "content".to_string(),
                 context_lines: None,
-            output_format: None,
             };
 
             let fast_search_query_b = FastSearchTool {
@@ -266,7 +262,6 @@ pub fn helper_function() {}
                 workspace: None,
                 search_target: "content".to_string(),
                 context_lines: None,
-            output_format: None,
             };
 
             let get_symbols_main = GetSymbolsTool {
@@ -277,7 +272,7 @@ pub fn helper_function() {}
                 mode: None,
                 workspace: None,
                 output_format: None,
-            };
+                };
 
             let get_symbols_extra = GetSymbolsTool {
                 file_path: "src/extra.rs".to_string(),
@@ -287,7 +282,7 @@ pub fn helper_function() {}
                 mode: None,
                 workspace: None,
                 output_format: None,
-            };
+                };
 
             let handler_a = handler.clone();
             let handler_b = handler.clone();
@@ -377,7 +372,6 @@ pub fn embedding_vector_semantic() {}
             workspace: None,
             search_target: "content".to_string(),
             context_lines: None,
-            output_format: None,
         };
 
         let result = timeout(
@@ -511,7 +505,6 @@ pub fn embedding_vector_semantic() {}
             workspace: Some(workspace_id.clone()),
             search_target: "content".to_string(),
             context_lines: None,
-            output_format: None,
         };
 
         println!("🐛 TEST TRACE 10: About to call fast_search with 5s timeout");

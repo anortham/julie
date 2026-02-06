@@ -1,18 +1,17 @@
-//! Output formatting for call path traces (ASCII tree and summary text)
+//! Output formatting for call path traces (ASCII tree visualization)
 
 use crate::extractors::Symbol;
 use anyhow::Result;
 use std::collections::HashSet;
 
-use super::types::{CallPath, CallPathNode, MatchType, SerializablePathNode};
+use super::types::{CallPathNode, MatchType};
 
-/// Format call trees based on output format preference
+/// Format call trees as ASCII tree visualization
 pub fn format_call_trees(
     trees: &[(Symbol, Vec<CallPathNode>)],
     symbol: &str,
     direction: &str,
     max_depth: u32,
-    output_format: &str,
 ) -> Result<String> {
     if trees.is_empty() {
         return Ok(format!(
@@ -34,48 +33,6 @@ pub fn format_call_trees(
         "callees"
     };
 
-    // Choose output format based on parameter
-    // "lean" or "tree" = ASCII tree (default), others = summary for structured formats
-    match output_format {
-        "lean" | "tree" => {
-            // ASCII tree visualization (DEFAULT) - optimal for AI agents
-            build_ascii_tree(
-                trees,
-                total_nodes,
-                &all_languages,
-                direction_label,
-                symbol,
-                direction,
-                max_depth,
-            )
-        }
-        _ => {
-            // Summary for JSON/TOON structured formats
-            Ok(format!(
-                "Traced {} call paths for '{}' (direction: {}, depth: {}, cross_language: {})\nFound {} {} across {} languages\n\nFull call path details are in structured_content.call_paths",
-                trees.len(),
-                symbol,
-                direction,
-                max_depth,
-                true, // Cross-language always enabled
-                total_nodes,
-                direction_label,
-                all_languages.len()
-            ))
-        }
-    }
-}
-
-/// Build ASCII tree visualization for human readability
-fn build_ascii_tree(
-    trees: &[(Symbol, Vec<CallPathNode>)],
-    total_nodes: usize,
-    all_languages: &HashSet<String>,
-    direction_label: &str,
-    symbol: &str,
-    direction: &str,
-    max_depth: u32,
-) -> Result<String> {
     let mut output = String::new();
 
     // Header
@@ -156,80 +113,4 @@ fn collect_languages(nodes: &[CallPathNode]) -> HashSet<String> {
         languages.extend(collect_languages(&node.children));
     }
     languages
-}
-
-/// Convert trees to serializable format for structured output
-pub fn trees_to_call_paths(trees: &[(Symbol, Vec<CallPathNode>)]) -> Vec<CallPath> {
-    trees
-        .iter()
-        .map(|(root, nodes)| {
-            let max_depth = calculate_max_depth(nodes);
-            CallPath {
-                root_symbol: root.name.clone(),
-                root_file: root.file_path.clone(),
-                root_language: root.language.clone(),
-                nodes: nodes.iter().map(|n| node_to_serializable(n)).collect(),
-                total_depth: max_depth,
-            }
-        })
-        .collect()
-}
-
-/// Convert CallPathNode to serializable format
-fn node_to_serializable(node: &CallPathNode) -> SerializablePathNode {
-    let match_type_str = match node.match_type {
-        MatchType::Direct => "direct",
-        MatchType::NamingVariant => "naming_variant",
-    };
-
-    let relationship_str = node.relationship_kind.as_ref().map(|k| {
-        use crate::extractors::RelationshipKind;
-        match k {
-            RelationshipKind::Calls => "calls",
-            RelationshipKind::Extends => "extends",
-            RelationshipKind::Implements => "implements",
-            RelationshipKind::Uses => "uses",
-            RelationshipKind::Returns => "returns",
-            RelationshipKind::Parameter => "parameter",
-            RelationshipKind::Imports => "imports",
-            RelationshipKind::Instantiates => "instantiates",
-            RelationshipKind::References => "references",
-            RelationshipKind::Defines => "defines",
-            RelationshipKind::Overrides => "overrides",
-            RelationshipKind::Contains => "contains",
-            RelationshipKind::Joins => "joins",
-            RelationshipKind::Composition => "composition",
-        }
-        .to_string()
-    });
-
-    SerializablePathNode {
-        symbol_name: node.symbol.name.clone(),
-        file_path: node.symbol.file_path.clone(),
-        language: node.symbol.language.clone(),
-        line: node.symbol.start_line,
-        match_type: match_type_str.to_string(),
-        relationship_kind: relationship_str,
-        level: node.level,
-        children: node
-            .children
-            .iter()
-            .map(|c| node_to_serializable(c))
-            .collect(),
-    }
-}
-
-/// Calculate maximum depth in tree
-fn calculate_max_depth(nodes: &[CallPathNode]) -> u32 {
-    nodes
-        .iter()
-        .map(|n| {
-            if n.children.is_empty() {
-                1
-            } else {
-                1 + calculate_max_depth(&n.children)
-            }
-        })
-        .max()
-        .unwrap_or(0)
 }

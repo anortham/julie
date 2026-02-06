@@ -4,56 +4,6 @@
 
 use crate::extractors::Symbol;
 use crate::tools::shared::OptimizedResponse;
-use serde::Serialize;
-
-/// Simplified Symbol for TOON encoding (primitives only for compact CSV-style)
-#[derive(Debug, Clone, Serialize)]
-pub struct ToonSymbol {
-    id: String,
-    name: String,
-    kind: String, // Enum formatted as string
-    language: String,
-    file_path: String,
-    start_line: u32,
-    end_line: u32,
-    parent_id: Option<String>, // CRITICAL: enables class.method relationships in search results
-    signature: Option<String>,
-    doc_comment: Option<String>,
-    visibility: Option<String>, // Enum formatted as string
-    confidence: Option<f32>,
-    code_context: Option<String>,
-}
-
-impl From<&Symbol> for ToonSymbol {
-    fn from(s: &Symbol) -> Self {
-        Self {
-            id: s.id.clone(),
-            name: s.name.clone(),
-            kind: format!("{:?}", s.kind), // Convert enum to string
-            language: s.language.clone(),
-            file_path: s.file_path.clone(),
-            start_line: s.start_line,
-            end_line: s.end_line,
-            parent_id: s.parent_id.clone(),
-            signature: s.signature.clone(),
-            doc_comment: s.doc_comment.clone(),
-            visibility: s.visibility.as_ref().map(|v| format!("{:?}", v)),
-            confidence: s.confidence,
-            code_context: s.code_context.clone(),
-        }
-    }
-}
-
-/// Simplified OptimizedResponse for TOON encoding
-#[derive(Debug, Clone, Serialize)]
-pub struct ToonResponse {
-    pub tool: String,
-    pub results: Vec<ToonSymbol>,
-    pub confidence: f32,
-    pub total_found: usize,
-    pub insights: Option<String>,
-    pub next_actions: Vec<String>,
-}
 
 /// Truncate code_context field to save massive tokens in search results
 ///

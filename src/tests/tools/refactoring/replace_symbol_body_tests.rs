@@ -8,33 +8,21 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::StructuredContentExt;
 use crate::tools::refactoring::SmartRefactorTool;
 
 /// Extract text from CallToolResult
 fn extract_text(result: &crate::mcp_compat::CallToolResult) -> String {
-    // Try extracting from .content first (TOON mode)
-    if !result.content.is_empty() {
-        return result
-            .content
-            .iter()
-            .filter_map(|block| {
-                serde_json::to_value(block).ok().and_then(|json| {
-                    json.get("text")
-                        .and_then(|v| v.as_str().map(|s| s.to_string()))
-                })
+    result
+        .content
+        .iter()
+        .filter_map(|block| {
+            serde_json::to_value(block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()))
             })
-            .collect::<Vec<_>>()
-            .join("
-");
-    }
-
-    // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = result.structured_content() {
-        return serde_json::to_string_pretty(&structured).unwrap_or_default();
-    }
-
-    String::new()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[tokio::test]
@@ -81,10 +69,10 @@ export function getUserData(userId: number): Promise<User> {
 
     let response = extract_text(&result);
 
-    // This assertion would FAIL if the operation returned "coming soon"
+    // Verify the result text confirms the operation
     assert!(
-        result.structured_content().and_then(|s| s.get("success").and_then(|v| v.as_bool())).unwrap_or(false),
-        "Expected success message, got: {}",
+        response.contains("applied") && response.contains("change"),
+        "Expected applied confirmation, got: {}",
         response
     );
 
@@ -148,8 +136,8 @@ class UserService:
 
     let response = extract_text(&result);
     assert!(
-        result.structured_content().and_then(|s| s.get("success").and_then(|v| v.as_bool())).unwrap_or(false),
-        "Expected success, got: {}",
+        response.contains("applied") && response.contains("change"),
+        "Expected applied confirmation, got: {}",
         response
     );
 
@@ -199,8 +187,8 @@ pub fn calculate_total(items: &[Item]) -> f64 {
 
     let response = extract_text(&result);
     assert!(
-        result.structured_content().and_then(|s| s.get("success").and_then(|v| v.as_bool())).unwrap_or(false),
-        "Expected success, got: {}",
+        response.contains("applied") && response.contains("change"),
+        "Expected applied confirmation, got: {}",
         response
     );
 
@@ -232,12 +220,12 @@ async fn test_replace_symbol_body_dry_run() -> Result<()> {
     let handler = JulieServerHandler::new().await?;
     let result = tool.call_tool(&handler).await?;
 
-    // Verify dry_run mode in structured_content
-    assert!(result.structured_content().is_some(), "Should have structured content");
-    let structured = result.structured_content().unwrap();
+    // Verify dry_run mode in text content
+    let response = extract_text(&result);
     assert!(
-        structured.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false),
-        "Should indicate dry run mode"
+        response.contains("dry run"),
+        "Should indicate dry run mode, got: {}",
+        response
     );
 
     // File should be unchanged

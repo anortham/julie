@@ -17,4 +17,4 @@ pub mod types;
 // Re-export public API
 pub use fast_explore::{ExploreMode, FastExploreTool};
 pub use find_logic::FindLogicTool;
-pub use types::{BusinessLogicSymbol, FindLogicResult};
+pub use types::BusinessLogicSymbol;

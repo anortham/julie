@@ -8,32 +8,22 @@ use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
-use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
+use crate::mcp_compat::CallToolResult;
 
-/// Extract text from CallToolResult safely (handles both TOON and JSON modes)
+/// Extract text from CallToolResult content blocks
 fn extract_text_from_result(result: &CallToolResult) -> String {
-    // Try extracting from .content first (TOON mode)
-    if !result.content.is_empty() {
-        return result
-            .content
-            .iter()
-            .filter_map(|content_block| {
-                serde_json::to_value(content_block).ok().and_then(|json| {
-                    json.get("text")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                })
+    result
+        .content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
             })
-            .collect::<Vec<_>>()
-            .join("\n");
-    }
-
-    // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = result.structured_content() {
-        return serde_json::to_string_pretty(&structured).unwrap_or_default();
-    }
-
-    String::new()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[tokio::test]
@@ -319,31 +309,34 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Test 1: No limit - should return all 20 symbols
-    // Use explicit JSON format to get structured_content for metadata inspection
     let tool_no_limit = GetSymbolsTool {
         file_path: "src/many_symbols.rs".to_string(),
         max_depth: 1,
         target: None,
         limit: None,
-        mode: None,
+        mode: None, // Default → "structure" → lean overview
         workspace: None,
-        output_format: Some("json".to_string()),
+        output_format: None,
     };
 
     let result_no_limit = tool_no_limit.call_tool(&handler).await?;
-    let structured_content_no_limit = result_no_limit
-        .structured_content()
-        .expect("Should have structured content");
+    let text_no_limit = extract_text_from_result(&result_no_limit);
 
-    let total_symbols_no_limit = structured_content_no_limit
-        .get("total_symbols")
-        .and_then(|v| v.as_u64())
-        .expect("Should have total_symbols");
+    // Lean format header: "src/many_symbols.rs — 20 symbols"
+    assert!(
+        text_no_limit.contains("20 symbols"),
+        "Should list all 20 symbols in the header, got: {}",
+        text_no_limit
+    );
 
-    assert_eq!(total_symbols_no_limit, 20, "Should find all 20 symbols");
+    // Count function lines - each symbol gets a lean line with "function" kind
+    let symbol_lines = text_no_limit
+        .lines()
+        .filter(|line| line.contains("function"))
+        .count();
+    assert_eq!(symbol_lines, 20, "Should list all 20 function symbols");
 
     // Test 2: With limit=5 - should return only 5 symbols
-    // Use explicit JSON format to get structured_content for metadata inspection
     let tool_with_limit = GetSymbolsTool {
         file_path: "src/many_symbols.rs".to_string(),
         max_depth: 1,
@@ -351,34 +344,24 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: Some(5),
         mode: None,
         workspace: None,
-        output_format: Some("json".to_string()),
+        output_format: None,
     };
 
     let result_with_limit = tool_with_limit.call_tool(&handler).await?;
     let text_with_limit = extract_text_from_result(&result_with_limit);
-    let structured_content_with_limit = result_with_limit
-        .structured_content()
-        .expect("Should have structured content");
 
-    let returned_symbols = structured_content_with_limit
-        .get("returned_symbols")
-        .and_then(|v| v.as_u64())
-        .expect("Should have returned_symbols");
+    // With limit=5, should only show 5 symbols
+    let limited_symbol_lines = text_with_limit
+        .lines()
+        .filter(|line| line.contains("function"))
+        .count();
+    assert_eq!(limited_symbol_lines, 5, "Should return exactly 5 symbols");
 
-    let total_symbols = structured_content_with_limit
-        .get("total_symbols")
-        .and_then(|v| v.as_u64())
-        .expect("Should have total_symbols");
-
-    let truncated = structured_content_with_limit
-        .get("truncated")
-        .and_then(|v| v.as_bool())
-        .expect("Should have truncated flag");
-
-    assert_eq!(returned_symbols, 5, "Should return exactly 5 symbols");
-    assert_eq!(total_symbols, 20, "Total should still be 20");
-    assert!(truncated, "Should indicate truncation occurred");
-    // Note: Text representation is in JSON format, structured_content has all info
+    // The remaining 15 symbols should not appear
+    assert!(
+        !text_with_limit.contains("function_6"),
+        "function_6 should not appear with limit=5"
+    );
 
     Ok(())
 }

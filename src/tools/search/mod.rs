@@ -25,9 +25,9 @@ mod types;
 
 use anyhow::Result;
 use schemars::JsonSchema;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt, WithStructuredContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 use crate::health::SystemStatus;
@@ -57,9 +57,6 @@ pub struct FastSearchTool {
     /// Context lines before/after match (default: 1)
     #[serde(default = "default_context_lines")]
     pub context_lines: Option<u32>,
-    /// Output format: "lean" (default - grep-style text), "json", "toon", or "auto"
-    #[serde(default = "default_output_format")]
-    pub output_format: Option<String>,
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
@@ -74,10 +71,6 @@ fn default_workspace() -> Option<String> {
 fn default_context_lines() -> Option<u32> {
     Some(1) // 1 before + match + 1 after = 3 total lines (minimal context)
 }
-fn default_output_format() -> Option<String> {
-    None // None = lean format (grep-style text). Override with "json", "toon", or "auto"
-}
-
 fn default_search_target() -> String {
     "content".to_string() // fast_search focuses on content, fast_goto handles symbol definitions
 }
@@ -171,89 +164,13 @@ impl FastSearchTool {
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
         }
 
-        Self::format_response(&self.query, optimized, self.output_format.as_deref())
-    }
-
-    /// Format search results based on output_format parameter.
-    ///
-    /// Supports: "lean" (default), "toon", "auto", "json"
-    fn format_response(
-        query: &str,
-        optimized: OptimizedResponse<crate::extractors::Symbol>,
-        output_format: Option<&str>,
-    ) -> Result<CallToolResult> {
-        match output_format {
-            None | Some("lean") => {
-                let lean_output = formatting::format_lean_search_results(query, &optimized);
-                debug!(
-                    "✅ Returning lean search results ({} chars, {} results)",
-                    lean_output.len(),
-                    optimized.results.len()
-                );
-                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-            }
-            Some("toon") => Self::try_toon_or_lean(query, &optimized),
-            Some("auto") => {
-                // TOON for large result sets (10+), LEAN for small/medium
-                if optimized.results.len() >= 10 {
-                    if let Ok(result) = Self::try_toon_or_lean(query, &optimized) {
-                        return Ok(result);
-                    }
-                }
-                let lean_output = formatting::format_lean_search_results(query, &optimized);
-                debug!(
-                    "✅ Auto-selected lean for {} results ({} chars)",
-                    optimized.results.len(),
-                    lean_output.len()
-                );
-                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-            }
-            Some("json") => {
-                let structured = serde_json::to_value(&optimized)?;
-                let structured_map = if let serde_json::Value::Object(map) = structured {
-                    map
-                } else {
-                    return Err(anyhow::anyhow!("Expected JSON object"));
-                };
-                debug!(
-                    "✅ Returning search results as JSON ({} results)",
-                    optimized.results.len()
-                );
-                Ok(CallToolResult::text_content(vec![]).with_structured_content(structured_map))
-            }
-            Some(unknown) => {
-                warn!("⚠️ Unknown output_format '{}', using lean format", unknown);
-                let lean_output = formatting::format_lean_search_results(query, &optimized);
-                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-            }
-        }
-    }
-
-    /// Try TOON encoding, fall back to LEAN on failure.
-    fn try_toon_or_lean(
-        query: &str,
-        optimized: &OptimizedResponse<crate::extractors::Symbol>,
-    ) -> Result<CallToolResult> {
-        let toon_response = formatting::ToonResponse {
-            tool: optimized.tool.clone(),
-            results: optimized.results.iter().map(formatting::ToonSymbol::from).collect(),
-            confidence: optimized.confidence,
-            total_found: optimized.total_found,
-            insights: optimized.insights.clone(),
-            next_actions: optimized.next_actions.clone(),
-        };
-
-        match toon_format::encode_default(&toon_response) {
-            Ok(toon) => {
-                debug!("✅ Encoded search results to TOON ({} chars)", toon.len());
-                Ok(CallToolResult::text_content(vec![Content::text(toon)]))
-            }
-            Err(e) => {
-                warn!("❌ TOON encoding failed: {}, falling back to lean format", e);
-                let lean_output = formatting::format_lean_search_results(query, optimized);
-                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-            }
-        }
+        let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
+            debug!(
+                "✅ Returning lean search results ({} chars, {} results)",
+                lean_output.len(),
+                optimized.results.len()
+            );
+            Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
     }
 
     /// Resolve workspace filtering parameter to a list of workspace IDs

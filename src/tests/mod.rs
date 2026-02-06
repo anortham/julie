@@ -16,11 +16,6 @@
 pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
 
 // ============================================================================
-// SHARED INFRASTRUCTURE TESTS - Shared tool helpers and utilities
-// ============================================================================
-pub mod shared_tests; // Shared tool infrastructure tests (create_toonable_result, etc.)
-
-// ============================================================================
 // MAIN SERVER TESTS - Entry point error handling
 // ============================================================================
 pub mod main_error_handling; // MCP server initialization and runtime error handling
@@ -92,7 +87,6 @@ pub mod tools {
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
 
     pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
-    pub mod toon_struct_verification; // TOON struct field mapping verification (data drift prevention)
 }
 
 // ============================================================================

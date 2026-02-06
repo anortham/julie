@@ -22,10 +22,9 @@ pub use types::{
 
 use anyhow::Result;
 use schemars::JsonSchema;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt, WithStructuredContent};
+use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 use crate::tools::editing::EditingTransaction;
@@ -243,39 +242,30 @@ impl EditSymbolTool {
 }
 
 impl SmartRefactorTool {
-    /// Create structured JSON result for refactoring operations
+    /// Create result for refactoring operations.
+    /// For dry_run: returns before/after preview as text (what agents need).
+    /// For applied: returns confirmation summary as text.
     fn create_result(
         &self,
         operation: &str,
-        success: bool,
+        _success: bool,
         files_modified: Vec<String>,
         changes_count: usize,
-        next_actions: Vec<String>,
-        metadata: Option<serde_json::Value>,
+        preview: Option<String>,
     ) -> Result<CallToolResult> {
-        let result = SmartRefactorResult {
-            tool: "smart_refactor".to_string(),
-            operation: operation.to_string(),
-            dry_run: self.dry_run,
-            success,
-            files_modified,
-            changes_count,
-            next_actions,
-            metadata,
-        };
-
-        let structured = serde_json::to_value(&result)?;
-        let structured_map = if let serde_json::Value::Object(map) = structured {
-            map
+        let file_list = files_modified.join(", ");
+        let text = if let Some(preview) = preview {
+            // Dry run: show before/after preview
+            preview
         } else {
-            return Err(anyhow::anyhow!("Expected JSON object"));
+            // Applied: confirmation summary
+            format!(
+                "edit_symbol {} — applied {} change(s) to {}",
+                operation, changes_count, file_list
+            )
         };
 
-        debug!("✅ Returning smart_refactor results as JSON-only");
-        Ok(
-            CallToolResult::text_content(vec![])
-                .with_structured_content(structured_map),
-        )
+        Ok(CallToolResult::text_content(vec![Content::text(text)]))
     }
 
     /// Dispatcher used by tests to route operations to the appropriate handler method.

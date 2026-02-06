@@ -84,7 +84,6 @@ globset = "0.4.16"  # Advanced glob matching with exclusion patterns support
 chrono = { version = "0.4.42", features = ["serde"] }
 
 walkdir = "2.5"
-toon-format = "0.3.7"
 
 [dev-dependencies]
 tempfile = "3.13"

@@ -3,7 +3,6 @@
 //! Tests verify workspace-wide symbol renaming with flat parameters
 
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::StructuredContentExt;
 use crate::tools::refactoring::RenameSymbolTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
@@ -63,12 +62,12 @@ async fn test_rename_symbol_basic() -> Result<()> {
         "Old symbol should be gone"
     );
 
-    // Verify result indicates success (check structured_content for success field)
-    assert!(result.structured_content().is_some(), "Result should have structured content");
-    let structured = result.structured_content().unwrap();
+    // Verify result text confirms the rename
+    let result_text = format!("{:?}", result);
     assert!(
-        structured.get("success").and_then(|v| v.as_bool()).unwrap_or(false),
-        "Result should indicate success"
+        result_text.contains("applied") && result_text.contains("change"),
+        "Result should confirm applied changes, got: {}",
+        result_text
     );
 
     Ok(())

@@ -581,7 +581,6 @@ mod dogfooding_tests {
             symbol: "process_files_optimized".to_string(),
             direction: "downstream".to_string(), // Follow callees
             max_depth: 3,
-            output_format: Some("json".to_string()),
             context_file: None,
             workspace: Some("primary".to_string()),
         };
@@ -635,7 +634,6 @@ mod dogfooding_tests {
             symbol: "FastSearchTool".to_string(),
             direction: "downstream".to_string(), // Follow callees
             max_depth: 3,
-            output_format: Some("tree".to_string()), // Test tree output format
             context_file: None,
             workspace: Some("primary".to_string()),
         };

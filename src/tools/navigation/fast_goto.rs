@@ -10,25 +10,19 @@ use anyhow::Result;
 use schemars::JsonSchema;
 use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::tools::shared::create_toonable_result;
+use tracing::warn;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
 use super::formatting::format_lean_goto_results;
 use super::reference_workspace;
 use super::resolution::{compare_symbols_by_priority_and_context, parse_qualified_name, resolve_workspace_filter};
-use super::types::DefinitionResult;
-use super::types::FastGotoResult;
 
 fn default_workspace() -> Option<String> {
     Some("primary".to_string())
-}
-
-fn default_output_format() -> Option<String> {
-    None // None = lean format (definition list). Override with "json", "toon", or "auto"
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
@@ -44,91 +38,17 @@ pub struct FastGotoTool {
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Output format: "lean" (default - text list), "json", "toon", or "auto"
-    #[serde(default = "default_output_format")]
-    pub output_format: Option<String>,
 }
 
 impl FastGotoTool {
-    /// Helper: Create result with lean format as default, JSON/TOON as alternatives
+    /// Create lean text result for goto definitions
     fn create_result(
         &self,
         definitions: Vec<Symbol>,
         parent_names: &HashMap<String, String>,
-        next_actions: Vec<String>,
     ) -> Result<CallToolResult> {
-        // Return based on output_format - lean is default
-        match self.output_format.as_deref() {
-            None | Some("lean") => {
-                // Lean mode (DEFAULT): Simple text list of definitions
-                let lean_output =
-                    format_lean_goto_results(&self.symbol, &definitions, parent_names);
-                debug!(
-                    "✅ Returning lean goto results ({} chars, {} definitions)",
-                    lean_output.len(),
-                    definitions.len()
-                );
-                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-            }
-            Some("toon") | Some("auto") | Some("json") => {
-                // Structured formats: Build full result object
-                let definition_results: Vec<DefinitionResult> = definitions
-                    .iter()
-                    .map(|symbol| {
-                        let parent_name = symbol
-                            .parent_id
-                            .as_ref()
-                            .and_then(|pid| parent_names.get(pid))
-                            .cloned();
-                        let visibility = symbol
-                            .visibility
-                            .as_ref()
-                            .map(|v| v.to_string().to_lowercase());
-                        DefinitionResult {
-                            name: symbol.name.clone(),
-                            kind: format!("{:?}", symbol.kind),
-                            language: symbol.language.clone(),
-                            file_path: symbol.file_path.clone(),
-                            start_line: symbol.start_line,
-                            start_column: symbol.start_column,
-                            end_line: symbol.end_line,
-                            end_column: symbol.end_column,
-                            signature: symbol.signature.clone(),
-                            parent_name,
-                            visibility,
-                        }
-                    })
-                    .collect();
-
-                let result = FastGotoResult {
-                    tool: "fast_goto".to_string(),
-                    symbol: self.symbol.clone(),
-                    found: !definitions.is_empty(),
-                    definitions: definition_results,
-                    next_actions,
-                };
-
-                // Use shared TOON/JSON formatter
-                create_toonable_result(
-                    &result,
-                    &result,
-                    self.output_format.as_deref(),
-                    10, // Auto threshold: 10+ results use TOON
-                    result.definitions.len(),
-                    "fast_goto",
-                )
-            }
-            Some(unknown) => {
-                // Unknown format - warn and use lean
-                warn!(
-                    "⚠️ Unknown output_format '{}', using lean format",
-                    unknown
-                );
-                let lean_output =
-                    format_lean_goto_results(&self.symbol, &definitions, parent_names);
-                Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
-            }
-        }
+        let lean_output = format_lean_goto_results(&self.symbol, &definitions, parent_names);
+        Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -139,27 +59,15 @@ impl FastGotoTool {
         let empty_parents = HashMap::new();
 
         if definitions.is_empty() {
-            return self.create_result(
-                vec![],
-                &empty_parents,
-                vec![
-                    "Use fast_search to locate the symbol".to_string(),
-                    "Check symbol name spelling".to_string(),
-                ],
-            );
+            return self.create_result(vec![], &empty_parents);
         }
 
         // Resolve parent names for enrichment
         let parent_names = self.resolve_parent_names(handler, &definitions).await;
 
-        // Format summary (structured_content has full data)
         self.create_result(
             definitions,
             &parent_names,
-            vec![
-                "Navigate to file location".to_string(),
-                "Use fast_refs to see all usages".to_string(),
-            ],
         )
     }
 

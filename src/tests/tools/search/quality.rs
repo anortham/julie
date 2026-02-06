@@ -135,7 +135,6 @@ mod search_quality_tests {
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
-        output_format: None,
         };
 
         // Test the integrated behavior by verifying that PathRelevanceScorer is properly imported

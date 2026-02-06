@@ -61,7 +61,7 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
                 workspace: Some("primary".to_string()),
                 search_target: "content".to_string(),
                 context_lines: Some(1),
-        output_format: None,            };
+            };
             tool.call_tool(&handler_clone).await
         });
         tasks.push(task);

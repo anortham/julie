@@ -59,7 +59,6 @@ impl SmartRefactorTool {
             limit: 1000,                            // High limit for comprehensive rename
             workspace: Some("primary".to_string()), // Rename only in primary workspace (you own these files)
             reference_kind: None,                   // No filtering - find all reference kinds
-            output_format: None,
         };
 
         let refs_result = refs_tool.call_tool(handler).await?;
@@ -73,11 +72,10 @@ impl SmartRefactorTool {
                 false,
                 vec![],
                 0,
-                vec![
-                    "Use fast_search to locate the symbol".to_string(),
-                    "Check spelling of symbol name".to_string(),
-                ],
-                None,
+                Some(format!(
+                    "rename_symbol: no references found for '{}'\nCheck symbol name spelling or use fast_search to locate it.",
+                    old_name
+                )),
             );
         }
 
@@ -92,8 +90,10 @@ impl SmartRefactorTool {
                         false,
                         vec![],
                         0,
-                        vec!["Check the file path is correct".to_string()],
-                        None,
+                        Some(format!(
+                            "rename_symbol: '{}' not found in scope '{}'",
+                            old_name, scope
+                        )),
                     );
                 }
                 debug!("📍 Scope limited to file: {}", file_path);
@@ -169,28 +169,35 @@ impl SmartRefactorTool {
         // Check for errors and report partial failures
         if !errors.is_empty() {
             let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
+            let error_text = errors.join("\n");
             return self.create_result(
                 "rename_symbol",
                 total_files > 0,
-                files,
+                files.clone(),
                 total_changes,
-                vec![
-                    "Check file permissions and paths".to_string(),
-                    "Use git status to see which files were modified".to_string(),
-                ],
-                Some(serde_json::json!({ "errors": errors })),
+                Some(format!(
+                    "rename_symbol: partial failure renaming '{}' → '{}'\n{} changes in {} files, but errors occurred:\n{}",
+                    old_name, new_name, total_changes, files.len(), error_text
+                )),
             );
         }
 
         if self.dry_run {
             let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
+            let file_summary: Vec<String> = renamed_files
+                .iter()
+                .map(|(f, c)| format!("  {} ({} changes)", f, c))
+                .collect();
             return self.create_result(
                 "rename_symbol",
                 true,
                 files,
                 total_changes,
-                vec!["Set dry_run=false to apply changes".to_string()],
-                None,
+                Some(format!(
+                    "rename_symbol dry run — '{}' → '{}'\n{} changes across {} files:\n{}\n\n(dry run — no changes applied)",
+                    old_name, new_name, total_changes, renamed_files.len(),
+                    file_summary.join("\n")
+                )),
             );
         }
 
@@ -200,11 +207,7 @@ impl SmartRefactorTool {
             true,
             files,
             total_changes,
-            vec![
-                "Run tests to verify changes".to_string(),
-                "Use fast_refs to validate rename completion".to_string(),
-            ],
-            None,
+            None, // No preview for applied changes
         )
     }
 

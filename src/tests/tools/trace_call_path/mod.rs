@@ -2,7 +2,6 @@
 // These were previously inline tests that have been moved to follow project standards
 
 mod comprehensive; // Parameter validation and API tests
-mod new_features; // TDD tests for new features (output_format, configurable parameters)
 mod workspace_isolation; // TDD tests for workspace isolation bug fix
 
 use crate::database::{FileInfo, SymbolDatabase};
@@ -298,7 +297,7 @@ async fn cross_language_callers_found_via_naming_variant() {
         max_depth: 3,
         context_file: None,
         workspace: Some(workspace_id.to_string()),
-        output_format: Some("json".to_string()),
+
     };
 
     let callers = tool

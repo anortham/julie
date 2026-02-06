@@ -35,7 +35,7 @@ pub use workspace::ManageWorkspaceTool;
 
 // Re-export shared types and helpers
 pub use shared::{
-    create_toonable_result, BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS,
+    BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS,
     KNOWN_CODE_EXTENSIONS, OptimizedResponse,
 };
 

@@ -9,45 +9,22 @@ use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
-use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
+use crate::mcp_compat::CallToolResult;
 
-/// Extract text from CallToolResult safely (handles both TOON and JSON modes)
+/// Extract text from CallToolResult content blocks
 fn extract_text_from_result(result: &CallToolResult) -> String {
-    // Try extracting from .content first (TOON mode)
-    if !result.content.is_empty() {
-        return result
-            .content
-            .iter()
-            .filter_map(|content_block| {
-                serde_json::to_value(content_block).ok().and_then(|json| {
-                    json.get("text")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                })
-            })
-            .collect::<Vec<_>>()
-            .join("
-");
-    }
-
-    // Fall back to .structured_content (JSON mode)
-    if let Some(structured) = result.structured_content() {
-        return serde_json::to_string_pretty(&structured).unwrap_or_default();
-    }
-
-    String::new()
-}
-
-/// Extract structured symbols from CallToolResult
-fn extract_symbols_from_result(result: &CallToolResult) -> Vec<serde_json::Value> {
     result
-        .structured_content()
-        .and_then(|sc| {
-            sc.get("symbols")
-                .and_then(|s| s.as_array())
-                .map(|a| a.clone())
+        .content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
         })
-        .unwrap_or_default()
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Create a temporary Rust file with known structure for testing
@@ -111,31 +88,32 @@ async fn test_default_behavior_strips_context() -> Result<()> {
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    // Call with default parameters (mode not set)
+    // Call with default parameters (mode not set → "structure" which produces lean overview)
     let tool = GetSymbolsTool {
         file_path: "src/example.rs".to_string(),
         max_depth: 1,
         target: None,
         limit: None,
-        mode: None,
+        mode: None,       // Default = "structure" → lean overview (no code bodies)
         workspace: None,
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
-    // Verify code_context is stripped (None or empty)
-    for symbol in &symbols {
-        let code_context = symbol.get("code_context");
-        assert!(
-            code_context.is_none() || code_context == Some(&serde_json::Value::Null),
-            "Expected code_context to be None/null in default mode, got: {:?}",
-            code_context
-        );
-    }
+    // In structure mode (default), output is a lean symbol list without code bodies
+    // It should contain symbol names but NOT function body code
+    assert!(!text.is_empty(), "Should find at least one symbol");
+    assert!(text.contains("get_user"), "Should list get_user symbol");
+    assert!(text.contains("User"), "Should list User symbol");
 
-    assert!(!symbols.is_empty(), "Should find at least one symbol");
+    // Structure mode should NOT contain function body code
+    assert!(
+        !text.contains("id: id.to_string()"),
+        "Structure mode should not include function body code, got: {}",
+        text
+    );
     Ok(())
 }
 
@@ -160,7 +138,7 @@ async fn test_structure_mode_strips_context() -> Result<()> {
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    // Call with explicit mode="structure"
+    // Call with explicit mode="structure" → lean overview (no code bodies)
     let tool = GetSymbolsTool {
         file_path: "src/example.rs".to_string(),
         max_depth: 1,
@@ -168,22 +146,21 @@ async fn test_structure_mode_strips_context() -> Result<()> {
         limit: None,
         mode: Some("structure".to_string()),
         workspace: None,
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
+        output_format: None, // lean format (structure mode has no code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
-    // Verify code_context is stripped
-    for symbol in &symbols {
-        let code_context = symbol.get("code_context");
-        assert!(
-            code_context.is_none() || code_context == Some(&serde_json::Value::Null),
-            "Expected code_context to be None/null in structure mode"
-        );
-    }
+    // Structure mode produces lean symbol list — no code bodies
+    assert!(!text.is_empty(), "Should find at least one symbol");
+    assert!(text.contains("get_user"), "Should list get_user symbol");
 
-    assert!(!symbols.is_empty(), "Should find at least one symbol");
+    // Should NOT contain function body code
+    assert!(
+        !text.contains("id: id.to_string()"),
+        "Structure mode should not include function body code"
+    );
     Ok(())
 }
 
@@ -208,7 +185,7 @@ async fn test_mode_structure_always_strips() -> Result<()> {
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    // Call with mode="structure"
+    // Call with mode="structure" → lean overview always, no code bodies
     let tool = GetSymbolsTool {
         file_path: "src/example.rs".to_string(),
         max_depth: 1,
@@ -216,22 +193,21 @@ async fn test_mode_structure_always_strips() -> Result<()> {
         limit: None,
         mode: Some("structure".to_string()),
         workspace: None,
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
+        output_format: None, // lean format (structure mode has no code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
-    // Verify code_context is still stripped (structure mode)
-    for symbol in &symbols {
-        let code_context = symbol.get("code_context");
-        assert!(
-            code_context.is_none() || code_context == Some(&serde_json::Value::Null),
-            "Expected code_context to be None/null in structure mode, "
-        );
-    }
+    // Structure mode always strips code bodies
+    assert!(!text.is_empty(), "Should find at least one symbol");
+    assert!(text.contains("User"), "Should list User symbol");
 
-    assert!(!symbols.is_empty(), "Should find at least one symbol");
+    // Should NOT contain function body code
+    assert!(
+        !text.contains("id: id.to_string()"),
+        "Structure mode should never include function body code"
+    );
     Ok(())
 }
 
@@ -263,39 +239,27 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
+        output_format: None, // Default → "code" format (since minimal provides code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
-    // Verify: top-level symbols have code_context, nested symbols don't
-    let mut found_top_level = false;
+    // Minimal mode extracts code bodies for top-level symbols
+    // The "code" format outputs raw source code
+    assert!(!text.is_empty(), "Should find at least one symbol");
 
-    for symbol in &symbols {
-        let parent_id = symbol.get("parent_id");
-        let code_context = symbol.get("code_context");
-        let is_top_level = parent_id.is_none() || parent_id == Some(&serde_json::Value::Null);
+    // Top-level function get_user should have its code body present
+    assert!(
+        text.contains("pub fn get_user"),
+        "Minimal mode should include top-level function code body"
+    );
 
-        if is_top_level {
-            found_top_level = true;
-            // Top-level should have code_context populated
-            assert!(
-                code_context.is_some() && code_context != Some(&serde_json::Value::Null),
-                "Expected code_context for top-level symbol: {}",
-                symbol.get("name").unwrap_or(&serde_json::Value::Null)
-            );
-        } else {
-            // Nested should NOT have code_context
-            assert!(
-                code_context.is_none() || code_context == Some(&serde_json::Value::Null),
-                "Expected NO code_context for nested symbol"
-            );
-        }
-    }
-
-    assert!(found_top_level, "Should find at least one top-level symbol");
-    // Note: we might not have nested symbols depending on file structure
+    // Top-level struct User should be present
+    assert!(
+        text.contains("pub struct User"),
+        "Minimal mode should include top-level struct definition"
+    );
     Ok(())
 }
 
@@ -327,29 +291,33 @@ async fn test_mode_full_all_symbols() -> Result<()> {
         limit: None,
         mode: Some("full".to_string()),
         workspace: None,
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
+        output_format: None, // Default → "code" format (since full provides code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
-    // Verify: ALL symbols have code_context populated (or are constants with no body)
-    for symbol in &symbols {
-        let code_context = symbol.get("code_context");
-        let symbol_kind = symbol.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+    // Full mode extracts code bodies for ALL symbols including nested
+    assert!(!text.is_empty(), "Should find at least one symbol");
 
-        // For most symbols (functions, methods, classes), should have code_context
-        if symbol_kind != "constant" {
-            assert!(
-                code_context.is_some() && code_context != Some(&serde_json::Value::Null),
-                "Expected code_context for symbol: {} (kind: {})",
-                symbol.get("name").unwrap_or(&serde_json::Value::Null),
-                symbol_kind
-            );
-        }
-    }
-
-    assert!(!symbols.is_empty(), "Should find at least one symbol");
+    // Should contain all symbol code bodies
+    assert!(
+        text.contains("pub fn get_user"),
+        "Full mode should include top-level function"
+    );
+    assert!(
+        text.contains("pub struct User"),
+        "Full mode should include struct definition"
+    );
+    // Nested methods from impl block should also be present
+    assert!(
+        text.contains("fn new("),
+        "Full mode should include nested method 'new'"
+    );
+    assert!(
+        text.contains("fn display_name"),
+        "Full mode should include nested method 'display_name'"
+    );
     Ok(())
 }
 
@@ -381,38 +349,24 @@ async fn test_target_with_minimal_mode() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
+        output_format: None, // Default → "code" format (since minimal provides code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
-    // Should have User struct and its methods
-    let has_user_struct = symbols.iter().any(|s| {
-        s.get("name")
-            .and_then(|n| n.as_str())
-            .map(|n| n.contains("User"))
-            .unwrap_or(false)
-    });
-
+    // Should find User struct when filtering by target
     assert!(
-        has_user_struct,
-        "Should find User struct when filtering by target"
+        text.contains("User"),
+        "Should find User struct when filtering by target, got: {}",
+        text
     );
 
-    // Top-level User should have code_context
-    for symbol in &symbols {
-        let name = symbol.get("name").and_then(|n| n.as_str()).unwrap_or("");
-        let parent_id = symbol.get("parent_id");
-        let code_context = symbol.get("code_context");
-
-        if name == "User" && (parent_id.is_none() || parent_id == Some(&serde_json::Value::Null)) {
-            assert!(
-                code_context.is_some() && code_context != Some(&serde_json::Value::Null),
-                "Top-level User struct should have code_context"
-            );
-        }
-    }
+    // In minimal mode, User struct code body should be present
+    assert!(
+        text.contains("pub struct User"),
+        "Top-level User struct should have code body in minimal mode"
+    );
 
     Ok(())
 }
@@ -449,7 +403,7 @@ async fn test_file_read_error_handling() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
+        output_format: None,
     };
 
     let result = tool.call_tool(&handler).await;
@@ -504,16 +458,20 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
+        output_format: None, // Default → "code" format (since minimal provides code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
     // Should succeed and have symbols
     assert!(
-        !symbols.is_empty(),
+        !text.is_empty(),
         "Should successfully extract symbols even with UTF-8 handling"
+    );
+    assert!(
+        text.contains("get_user") || text.contains("User"),
+        "Should contain symbol names in output"
     );
     Ok(())
 }

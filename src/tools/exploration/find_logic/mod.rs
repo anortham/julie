@@ -6,9 +6,9 @@ use tracing::{debug, warn};
 
 use crate::extractors::base::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
-use crate::tools::shared::create_toonable_result;
+use crate::mcp_compat::{Content, CallToolResultExt};
 
-use super::types::{BusinessLogicSymbol, FindLogicResult};
+use super::types::BusinessLogicSymbol;
 
 pub mod search;
 
@@ -25,10 +25,6 @@ fn default_true() -> bool {
 
 fn default_min_score() -> f32 {
     0.3
-}
-
-fn default_output_format() -> Option<String> {
-    Some("auto".to_string())
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
@@ -52,9 +48,6 @@ pub struct FindLogicTool {
     /// Recommended: 0.3 for broad coverage, 0.7 for core business logic only
     #[serde(default = "default_min_score")]
     pub min_business_score: f32,
-    /// Output format: "json", "toon", or "auto" (default - TOON for 5+ results)
-    #[serde(default = "default_output_format")]
-    pub output_format: Option<String>,
 }
 
 impl FindLogicTool {
@@ -80,37 +73,9 @@ impl FindLogicTool {
         }
     }
 
-    /// Helper: Create structured result with markdown for dual output
-    fn create_result(
-        &self,
-        business_logic_symbols: Vec<BusinessLogicSymbol>,
-        intelligence_layers: Vec<String>,
-        next_actions: Vec<String>,
-        _markdown: String,
-        output_format: Option<&str>,
-    ) -> Result<CallToolResult> {
-        let result = FindLogicResult {
-            tool: "find_logic".to_string(),
-            domain: self.domain.clone(),
-            found_count: business_logic_symbols.len(),
-            max_results: self.max_results as usize,
-            min_business_score: self.min_business_score,
-            group_by_layer: self.group_by_layer,
-            intelligence_layers,
-            business_symbols: business_logic_symbols,
-            next_actions,
-        };
-
-        // Use shared TOON/JSON formatter
-        let toon_flat = result.to_toon_flat();
-        create_toonable_result(
-            &result,      // JSON data (full metadata + results)
-            &toon_flat,   // TOON data (just the business_symbols array)
-            output_format,
-            5,  // Auto threshold: 5+ results use TOON
-            result.found_count,
-            "find_logic"
-        )
+    /// Create lean text result from formatted markdown
+    fn create_result(&self, markdown: String) -> Result<CallToolResult> {
+        Ok(CallToolResult::text_content(vec![Content::text(markdown)]))
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -256,17 +221,7 @@ impl FindLogicTool {
             &self.format_optimized_results(&business_logic_symbols, &business_relationships),
         );
 
-        self.create_result(
-            business_logic_symbols,
-            search_insights,
-            vec![
-                "Review business logic symbols".to_string(),
-                "Use fast_goto to navigate to definitions".to_string(),
-                "Use fast_refs to see usage patterns".to_string(),
-            ],
-            message,
-            self.output_format.as_deref(),
-        )
+        self.create_result(message)
     }
 
     /// Get relationships between business logic symbols using intelligent queries

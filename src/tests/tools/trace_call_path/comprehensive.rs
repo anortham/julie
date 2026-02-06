@@ -17,7 +17,7 @@ fn create_test_tool() -> TraceCallPathTool {
         max_depth: 3,
         context_file: None,
         workspace: None,
-        output_format: Some("json".to_string()),
+
     }
 }
 
@@ -30,7 +30,7 @@ fn test_parameter_validation_max_depth() {
         max_depth: 15, // Exceeds limit of 10
         context_file: None,
         workspace: Some("primary".to_string()),
-        output_format: Some("json".to_string()),
+
     };
 
     assert!(
@@ -50,7 +50,7 @@ fn test_direction_values() {
         max_depth: 3,
         context_file: None,
         workspace: None,
-        output_format: Some("json".to_string()),
+
     };
 
     let downstream = TraceCallPathTool {
@@ -59,7 +59,7 @@ fn test_direction_values() {
         max_depth: 3,
         context_file: None,
         workspace: None,
-        output_format: Some("json".to_string()),
+
     };
 
     let both = TraceCallPathTool {
@@ -68,7 +68,7 @@ fn test_direction_values() {
         max_depth: 3,
         context_file: None,
         workspace: None,
-        output_format: Some("json".to_string()),
+
     };
 
     assert_eq!(upstream.direction, "upstream");
@@ -154,7 +154,7 @@ fn test_default_parameters() {
         max_depth: 3,                      // default in tool
         context_file: None,
         workspace: Some("primary".to_string()), // default in tool
-        output_format: Some("json".to_string()),
+
     };
 
     assert_eq!(tool.direction, "upstream");
@@ -171,7 +171,7 @@ fn test_context_file_filtering() {
         max_depth: 3,
         context_file: Some("src/user.ts".to_string()),
         workspace: None,
-        output_format: Some("json".to_string()),
+
     };
 
     assert_eq!(with_context.context_file, Some("src/user.ts".to_string()));
@@ -182,7 +182,7 @@ fn test_context_file_filtering() {
         max_depth: 3,
         context_file: None,
         workspace: None,
-        output_format: Some("json".to_string()),
+
     };
 
     assert_eq!(without_context.context_file, None);
@@ -197,7 +197,7 @@ fn test_workspace_filtering() {
         max_depth: 3,
         context_file: None,
         workspace: Some("primary".to_string()),
-        output_format: Some("json".to_string()),
+
     };
 
     let all = TraceCallPathTool {
@@ -206,7 +206,7 @@ fn test_workspace_filtering() {
         max_depth: 3,
         context_file: None,
         workspace: Some("all".to_string()),
-        output_format: Some("json".to_string()),
+
     };
 
     let specific = TraceCallPathTool {
@@ -215,7 +215,7 @@ fn test_workspace_filtering() {
         max_depth: 3,
         context_file: None,
         workspace: Some("project-b_a3f2b8c1".to_string()),
-        output_format: Some("json".to_string()),
+
     };
 
     assert_eq!(primary.workspace, Some("primary".to_string()));
@@ -233,7 +233,7 @@ fn test_max_depth_range() {
             max_depth: depth,
             context_file: None,
             workspace: None,
-            output_format: Some("json".to_string()),
+    
         };
 
         assert_eq!(tool.max_depth, depth);

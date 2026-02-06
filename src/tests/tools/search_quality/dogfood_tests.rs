@@ -725,7 +725,6 @@ async fn test_fast_refs_finds_identifier_based_references() {
             limit: 50,
             workspace: Some("primary".to_string()),
             reference_kind: None,
-            output_format: Some("json".to_string()),
         };
 
         let result = tool.call_tool(&handler).await.expect("fast_refs failed");
@@ -812,7 +811,6 @@ async fn test_fast_refs_reference_kind_filter_with_identifiers() {
             limit: 50,
             workspace: Some("primary".to_string()),
             reference_kind: Some("call".to_string()),
-            output_format: Some("json".to_string()),
         };
 
         let result = tool.call_tool(&handler).await.expect("fast_refs failed");

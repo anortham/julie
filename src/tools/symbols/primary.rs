@@ -122,7 +122,7 @@ pub async fn get_symbols_from_primary(
     }
 
     // Apply all filters and get the final symbol list
-    let (symbols_to_return, was_truncated, total_symbols) =
+    let (symbols_to_return, _was_truncated, _total_symbols) =
         apply_all_filters(symbols, max_depth, target, limit);
 
     if symbols_to_return.is_empty() {
@@ -139,12 +139,7 @@ pub async fn get_symbols_from_primary(
     format_symbol_response(
         file_path,
         symbols_to_return,
-        total_symbols,
-        max_depth,
         target,
-        limit,
-        was_truncated,
-        None,
         output_format,
     )
 }

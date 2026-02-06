@@ -127,19 +127,24 @@ impl SmartRefactorTool {
             fs::write(target_file, &target_content)?;
         }
 
+        let lines_extracted = extracted_text.lines().count();
+        let preview = if self.dry_run {
+            Some(format!(
+                "edit_symbol extract_to_file — {} from {} → {}\n\n{} lines to extract:\n{}\n\n(dry run — no changes applied)",
+                symbol_name, source_file, target_file,
+                lines_extracted,
+                extracted_text.trim_end()
+            ))
+        } else {
+            None
+        };
+
         self.create_result(
             "extract_symbol_to_file",
             true,
             vec![source_file.to_string(), target_file.to_string()],
             1,
-            vec!["Review both source and target files".to_string()],
-            Some(serde_json::json!({
-                "source_file": source_file,
-                "target_file": target_file,
-                "symbol": symbol_name,
-                "lines_extracted": extracted_text.lines().count(),
-                "import_added": update_imports,
-            })),
+            preview,
         )
     }
 
@@ -349,18 +354,23 @@ impl SmartRefactorTool {
             tx.commit(&result)?;
         }
 
+        let preview = if self.dry_run {
+            Some(format!(
+                "edit_symbol replace_body — {} in {}\n\n--- Before:\n{}\n\n+++ After:\n{}\n\n(dry run — no changes applied)",
+                symbol_name, file_path,
+                body_text.trim_end(),
+                formatted_body.trim_end()
+            ))
+        } else {
+            None
+        };
+
         self.create_result(
             "replace_symbol_body",
             true,
             vec![file_path.to_string()],
             1,
-            vec!["Review the updated function/method".to_string()],
-            Some(serde_json::json!({
-                "file": file_path,
-                "symbol": symbol_name,
-                "old_size": body_text.len(),
-                "new_size": formatted_body.len(),
-            })),
+            preview,
         )
     }
 
@@ -524,19 +534,23 @@ impl SmartRefactorTool {
         }
 
         let lines_inserted = formatted_content.lines().count();
+        let preview = if self.dry_run {
+            Some(format!(
+                "edit_symbol insert_{} — {} {} in {}\n\n{} lines to insert:\n{}\n\n(dry run — no changes applied)",
+                position, position, target_symbol, file_path,
+                lines_inserted,
+                formatted_content.trim_end()
+            ))
+        } else {
+            None
+        };
 
         self.create_result(
             "insert_relative_to_symbol",
             true,
             vec![file_path.to_string()],
             1,
-            vec!["Review the inserted content".to_string()],
-            Some(serde_json::json!({
-                "file": file_path,
-                "symbol": target_symbol,
-                "position": position,
-                "lines_inserted": lines_inserted,
-            })),
+            preview,
         )
     }
 

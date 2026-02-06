@@ -7,18 +7,53 @@ use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
 
-use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use crate::tools::{FastSearchTool, ManageWorkspaceTool};
-use crate::mcp_compat::{CallToolResult, CallToolResultExt, StructuredContentExt};
+use crate::mcp_compat::CallToolResult;
 
-/// Extract structured content as symbols from CallToolResult
-fn extract_symbols_from_result(result: &CallToolResult) -> Vec<Symbol> {
+/// Extract text from CallToolResult content blocks
+fn extract_text_from_result(result: &CallToolResult) -> String {
     result
-        .structured_content()
-        .and_then(|map| map.get("results").cloned())
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_else(Vec::new)
+        .content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Count the context lines shown for a match in lean format output.
+/// Lean format looks like:
+///   src/file.rs:42
+///     41: context before
+///     42→ matched line
+///     43: context after
+///
+/// Returns the number of indented code context lines following the file:line header.
+fn count_context_lines_for_match(text: &str, function_name: &str) -> Option<usize> {
+    let lines: Vec<&str> = text.lines().collect();
+    // Find a file:line header that's followed by context containing function_name
+    for (i, line) in lines.iter().enumerate() {
+        // Look for indented context lines containing the function name
+        if line.starts_with("  ") && line.contains(function_name) {
+            // Count all indented context lines in this block (going back to header)
+            let mut start = i;
+            while start > 0 && lines[start - 1].starts_with("  ") {
+                start -= 1;
+            }
+            let mut end = i + 1;
+            while end < lines.len() && lines[end].starts_with("  ") {
+                end += 1;
+            }
+            return Some(end - start);
+        }
+    }
+    None
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -78,40 +113,27 @@ pub fn process_user_data(input: &str) -> String {
         workspace: Some("primary".to_string()),
         search_target: "definitions".to_string(),
         context_lines: None, // Use default (1)
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
-    assert!(!symbols.is_empty(), "Should find the function");
+    assert!(
+        text.contains("process_user_data"),
+        "Should find the function, got: {}",
+        text
+    );
 
-    // Find the process_user_data symbol
-    let symbol = symbols
-        .iter()
-        .find(|s| s.name == "process_user_data")
-        .expect("Should find process_user_data function");
-
-    if let Some(code_context) = &symbol.code_context {
-        let lines: Vec<&str> = code_context.lines().collect();
-
-        // Default context_lines=1 means max 3 lines (1 before + match + 1 after)
-        // If original context was longer, should be truncated to 3 lines + "..."
-        if lines.len() > 3 {
-            // Should be truncated
-            let last_line = lines.last().unwrap();
-            assert!(
-                last_line.contains("..."),
-                "Should have truncation indicator, got: {:?}",
-                lines
-            );
-            // Should have at most 4 lines (3 + "..." line)
-            assert!(
-                lines.len() <= 4,
-                "Should have at most 4 lines (3 + ...), got {}",
-                lines.len()
-            );
-        }
+    // Default context_lines=1 → max 3 lines of context (1 before + match + 1 after)
+    // The lean output shows indented context lines under each file:line header
+    if let Some(context_count) = count_context_lines_for_match(&text, "process_user_data") {
+        // Default context_lines=1 means at most 3 visible context lines
+        // (may include "..." truncation as part of the context text)
+        assert!(
+            context_count <= 4,
+            "Default context_lines=1 should show at most ~3 lines + truncation, got {}",
+            context_count
+        );
     }
 
     Ok(())
@@ -165,36 +187,25 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
         workspace: Some("primary".to_string()),
         search_target: "definitions".to_string(),
         context_lines: Some(0), // 0 = just match line
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
-    assert!(!symbols.is_empty(), "Should find the function");
+    assert!(
+        text.contains("calculate_sum"),
+        "Should find the function, got: {}",
+        text
+    );
 
-    let symbol = symbols
-        .iter()
-        .find(|s| s.name == "calculate_sum")
-        .expect("Should find calculate_sum function");
-
-    if let Some(code_context) = &symbol.code_context {
-        let lines: Vec<&str> = code_context.lines().collect();
-
-        // context_lines=0 means max 1 line
-        // If truncated, should have "..." indicator
-        if lines.len() > 1 {
-            let last_line = lines.last().unwrap();
-            assert!(
-                last_line.contains("..."),
-                "Should have truncation indicator for context_lines=0"
-            );
-            assert!(
-                lines.len() <= 2,
-                "Should have at most 2 lines (1 + ...) for context_lines=0, got {}",
-                lines.len()
-            );
-        }
+    // context_lines=0 → max 1 line of context (just the match line)
+    if let Some(context_count) = count_context_lines_for_match(&text, "calculate_sum") {
+        // context_lines=0 means at most 1 visible context line (+ possible truncation marker)
+        assert!(
+            context_count <= 2,
+            "context_lines=0 should show at most 1 line + truncation, got {}",
+            context_count
+        );
     }
 
     Ok(())
@@ -255,36 +266,25 @@ pub fn validate_input(data: &str) -> bool {
         workspace: Some("primary".to_string()),
         search_target: "definitions".to_string(),
         context_lines: Some(3), // 3 = grep default (7 total lines)
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
-    assert!(!symbols.is_empty(), "Should find the function");
+    assert!(
+        text.contains("validate_input"),
+        "Should find the function, got: {}",
+        text
+    );
 
-    let symbol = symbols
-        .iter()
-        .find(|s| s.name == "validate_input")
-        .expect("Should find validate_input function");
-
-    if let Some(code_context) = &symbol.code_context {
-        let lines: Vec<&str> = code_context.lines().collect();
-
-        // context_lines=3 means max 7 lines
-        // If truncated, should have "..." indicator
-        if lines.len() > 7 {
-            let last_line = lines.last().unwrap();
-            assert!(
-                last_line.contains("..."),
-                "Should have truncation indicator for context_lines=3"
-            );
-            assert!(
-                lines.len() <= 8,
-                "Should have at most 8 lines (7 + ...) for context_lines=3, got {}",
-                lines.len()
-            );
-        }
+    // context_lines=3 → max 7 lines of context (3 before + match + 3 after)
+    if let Some(context_count) = count_context_lines_for_match(&text, "validate_input") {
+        // context_lines=3 means at most 7 visible context lines (+ possible truncation marker)
+        assert!(
+            context_count <= 8,
+            "context_lines=3 should show at most 7 lines + truncation, got {}",
+            context_count
+        );
     }
 
     Ok(())
@@ -334,27 +334,24 @@ pub fn short_func() -> i32 { 42 }
         workspace: Some("primary".to_string()),
         search_target: "definitions".to_string(),
         context_lines: None, // Default (1)
-        output_format: Some("json".to_string()), // Explicit JSON for structured parsing
     };
 
     let result = tool.call_tool(&handler).await?;
-    let symbols = extract_symbols_from_result(&result);
+    let text = extract_text_from_result(&result);
 
-    assert!(!symbols.is_empty(), "Should find the function");
+    assert!(
+        text.contains("short_func"),
+        "Should find the function, got: {}",
+        text
+    );
 
-    let symbol = symbols
-        .iter()
-        .find(|s| s.name == "short_func")
-        .expect("Should find short_func function");
-
-    if let Some(code_context) = &symbol.code_context {
-        // Should NOT have "..." since context is short
-        assert!(
-            !code_context.contains("..."),
-            "Short context should NOT be truncated: {}",
-            code_context
-        );
-    }
+    // Short context should NOT be truncated (no "..." indicator)
+    // The lean format puts context as indented lines under the file:line header
+    assert!(
+        !text.contains("..."),
+        "Short context should NOT be truncated: {}",
+        text
+    );
 
     Ok(())
 }
