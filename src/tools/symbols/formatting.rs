@@ -15,11 +15,8 @@ use crate::tools::shared::create_toonable_result;
 /// TOON requires ALL objects to have IDENTICAL key sets for tabular encoding.
 #[derive(Debug, Clone, Serialize)]
 pub struct ToonFlatSymbol {
-    pub id: String,
     pub name: String,
     pub kind: String,
-    pub language: String,
-    pub file_path: String,
     pub start_line: u32,
     pub end_line: u32,
     pub parent_id: Option<String>, // Always serialized (null for top-level)
@@ -31,11 +28,8 @@ pub struct ToonFlatSymbol {
 impl From<&Symbol> for ToonFlatSymbol {
     fn from(s: &Symbol) -> Self {
         Self {
-            id: s.id.clone(),
             name: s.name.clone(),
-            kind: s.kind.to_string(), // Display trait: lowercase "function", "enum_member"
-            language: s.language.clone(),
-            file_path: s.file_path.clone(),
+            kind: s.kind.to_string(),
             start_line: s.start_line,
             end_line: s.end_line,
             parent_id: s.parent_id.clone(),
@@ -98,6 +92,60 @@ fn format_code_output(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
     CallToolResult::text_content(vec![Content::text(output)])
 }
 
+/// Format lean text overview — scannable symbol list for agents
+///
+/// Output format:
+/// ```text
+/// src/foo.rs — 12 symbols
+///
+///   struct Foo (10-25, public)
+///     fn new() -> Self (12-15, public)
+///     fn process(&self, data: &[u8]) (17-24, public)
+///   fn helper(x: i32) -> bool (30-45, private)
+/// ```
+fn format_lean_symbols(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
+    let mut output = String::new();
+
+    output.push_str(&format!("{} — {} symbols\n", file_path, symbols.len()));
+
+    for symbol in symbols {
+        let indent = if symbol.parent_id.is_some() { "    " } else { "  " };
+        let kind = symbol.kind.to_string();
+
+        // Use signature if available, otherwise just name
+        let name_display = if let Some(sig) = &symbol.signature {
+            // Signature often includes the kind keyword, use as-is
+            sig.clone()
+        } else {
+            symbol.name.clone()
+        };
+
+        let vis = symbol
+            .visibility
+            .as_ref()
+            .map(|v| format!("{:?}", v).to_lowercase())
+            .unwrap_or_default();
+
+        let vis_str = if vis.is_empty() || vis == "public" {
+            String::new()
+        } else {
+            format!(", {}", vis)
+        };
+
+        output.push_str(&format!(
+            "{}{} {} ({}-{}{})\n",
+            indent,
+            kind,
+            name_display,
+            symbol.start_line,
+            symbol.end_line,
+            vis_str,
+        ));
+    }
+
+    CallToolResult::text_content(vec![Content::text(output.trim_end().to_string())])
+}
+
 /// Format symbol query response with structured content
 pub fn format_symbol_response(
     file_path: &str,
@@ -111,12 +159,12 @@ pub fn format_symbol_response(
     output_format: Option<&str>,
 ) -> anyhow::Result<CallToolResult> {
     // Smart default: use "code" format when code bodies are available
-    // Fall back to structured output (TOON/JSON) when only metadata exists
+    // Fall back to lean text overview when only metadata exists
     let has_code_bodies = symbols.iter().any(|s| s.code_context.is_some());
     let effective_format = match output_format {
         Some(fmt) => fmt,                  // Explicit format wins
         None if has_code_bodies => "code", // Default to code when available
-        None => "auto",                    // Fall back to structured output
+        None => "lean",                    // Default to lean text overview
     };
 
     // Handle "code" format - returns raw code without metadata
@@ -127,6 +175,16 @@ pub fn format_symbol_response(
             target
         );
         return Ok(format_code_output(file_path, &symbols));
+    }
+
+    // Handle "lean" format - returns scannable text overview
+    if effective_format == "lean" {
+        debug!(
+            "📋 Returning {} symbols as lean overview (target: {:?})",
+            symbols.len(),
+            target
+        );
+        return Ok(format_lean_symbols(file_path, &symbols));
     }
 
     let top_level_count = symbols.iter().filter(|s| s.parent_id.is_none()).count();
@@ -158,7 +216,7 @@ pub fn format_symbol_response(
     create_toonable_result(
         &result,                 // JSON gets full metadata
         &toon_flat,              // TOON gets flat optimized array
-        Some(effective_format),  // Pass resolved format (already handled "code" above)
+        Some(effective_format),  // Pass resolved format (already handled "code"/"lean" above)
         5,                       // Auto threshold: use TOON for 5+ symbols
         toon_flat.len(),
         "get_symbols",

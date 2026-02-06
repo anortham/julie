@@ -66,11 +66,12 @@ pub struct GetSymbolsTool {
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Output format: "json", "toon", "auto", or "code"
-    /// Default: "code" when mode=minimal/full (code bodies available), otherwise "auto"
-    /// - "code": Raw source code without metadata (optimal for AI reading)
+    /// Output format: "lean" (default - text overview), "code", "json", "toon", or "auto"
+    /// Default: "code" when mode=minimal/full (code bodies available), "lean" for structure mode
+    /// - "lean": Scannable text list with kind, signature, line range, visibility (default for structure)
+    /// - "code": Raw source code without metadata (default for minimal/full)
     /// - "json": Full structured JSON with all metadata
-    /// - "toon": Compact tabular format (35-70% token savings)
+    /// - "toon": Compact tabular format
     /// - "auto": TOON for 5+ symbols, JSON otherwise
     #[serde(default)]
     pub output_format: Option<String>,
