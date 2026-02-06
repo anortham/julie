@@ -28,6 +28,10 @@ pub struct DefinitionResult {
     pub end_column: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<String>,
 }
 
 /// Structured result from fast_refs operation

@@ -98,6 +98,8 @@ impl FastRefsTool {
                         end_line: symbol.end_line,
                         end_column: symbol.end_column,
                         signature: symbol.signature.clone(),
+                        parent_name: None,
+                        visibility: None,
                     })
                     .collect();
 

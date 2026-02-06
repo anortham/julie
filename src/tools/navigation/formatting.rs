@@ -5,6 +5,8 @@
 //! - Familiar grep-style output
 //! - Zero parsing overhead
 
+use std::collections::HashMap;
+
 use crate::extractors::{Relationship, Symbol};
 
 /// Format references in lean text format for AI agents
@@ -96,7 +98,11 @@ pub fn format_lean_refs_results(
 /// src/services/user.rs:45 (impl)
 ///   impl UserService {
 /// ```
-pub fn format_lean_goto_results(symbol: &str, definitions: &[Symbol]) -> String {
+pub fn format_lean_goto_results(
+    symbol: &str,
+    definitions: &[Symbol],
+    parent_names: &HashMap<String, String>,
+) -> String {
     let mut output = String::new();
 
     if definitions.is_empty() {
@@ -118,8 +124,17 @@ pub fn format_lean_goto_results(symbol: &str, definitions: &[Symbol]) -> String 
     for def in definitions {
         let kind = format!("{:?}", def.kind).to_lowercase();
 
-        // File:line header with kind
-        output.push_str(&format!("{}:{} ({})\n", def.file_path, def.start_line, kind));
+        // File:line header with kind and optional visibility
+        let kind_str = match &def.visibility {
+            Some(v) => format!("{}, {}", kind, v.to_string().to_lowercase()),
+            None => kind,
+        };
+        output.push_str(&format!("{}:{} ({})\n", def.file_path, def.start_line, kind_str));
+
+        // Parent context if available (indented)
+        if let Some(parent_name) = def.parent_id.as_ref().and_then(|pid| parent_names.get(pid)) {
+            output.push_str(&format!("  in {}\n", parent_name));
+        }
 
         // Signature if available (indented)
         if let Some(sig) = &def.signature {
@@ -148,8 +163,9 @@ fn truncate_signature(sig: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::extractors::base::{RelationshipKind, SymbolKind};
+    use crate::extractors::base::{RelationshipKind, SymbolKind, Visibility};
     use crate::tools::navigation::resolution::parse_qualified_name;
+    use std::collections::HashMap;
 
     fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&str>) -> Symbol {
         Symbol {
@@ -228,7 +244,7 @@ mod tests {
             Some("pub struct UserService { db: Pool }"),
         )];
 
-        let output = format_lean_goto_results("UserService", &defs);
+        let output = format_lean_goto_results("UserService", &defs, &HashMap::new());
 
         assert!(output.contains("Found 1 definition for \"UserService\":"));
         assert!(output.contains("src/user.rs:15 (struct)"));
@@ -242,7 +258,7 @@ mod tests {
             make_test_symbol("src/user.rs", 45, SymbolKind::Method, Some("fn new() -> Self")),
         ];
 
-        let output = format_lean_goto_results("User", &defs);
+        let output = format_lean_goto_results("User", &defs, &HashMap::new());
 
         assert!(output.contains("Found 2 definitions for \"User\":"));
         assert!(output.contains("src/user.rs:15 (struct)"));
@@ -251,7 +267,7 @@ mod tests {
 
     #[test]
     fn test_lean_goto_no_results() {
-        let output = format_lean_goto_results("Unknown", &[]);
+        let output = format_lean_goto_results("Unknown", &[], &HashMap::new());
         assert_eq!(output, "No definitions found for \"Unknown\"");
     }
 
@@ -264,6 +280,64 @@ mod tests {
         let truncated = truncate_signature(long, 40);
         assert!(truncated.len() <= 40);
         assert!(truncated.ends_with("..."));
+    }
+
+    // --- Parent/visibility enrichment tests (Task 5) ---
+
+    #[test]
+    fn test_lean_goto_with_parent_and_visibility() {
+        let mut def = make_test_symbol(
+            "src/service.rs",
+            42,
+            SymbolKind::Method,
+            Some("fn process_order(order: Order) -> Result"),
+        );
+        def.parent_id = Some("class_1".to_string());
+        def.visibility = Some(Visibility::Public);
+        let defs = vec![def];
+
+        let mut parent_names = HashMap::new();
+        parent_names.insert("class_1".to_string(), "OrderService".to_string());
+
+        let output = format_lean_goto_results("process_order", &defs, &parent_names);
+
+        assert!(output.contains("(method, public)"), "output was: {}", output);
+        assert!(output.contains("  in OrderService"), "output was: {}", output);
+        assert!(output.contains("  fn process_order"), "output was: {}", output);
+    }
+
+    #[test]
+    fn test_lean_goto_no_parent_no_visibility() {
+        let defs = vec![make_test_symbol(
+            "src/lib.rs",
+            10,
+            SymbolKind::Function,
+            Some("fn standalone()"),
+        )];
+        let parent_names = HashMap::new();
+
+        let output = format_lean_goto_results("standalone", &defs, &parent_names);
+
+        assert!(output.contains("(function)"), "output was: {}", output);
+        assert!(!output.contains("  in "), "output was: {}", output);
+    }
+
+    #[test]
+    fn test_lean_goto_with_visibility_no_parent() {
+        let mut def = make_test_symbol(
+            "src/lib.rs",
+            10,
+            SymbolKind::Function,
+            Some("fn helper()"),
+        );
+        def.visibility = Some(Visibility::Private);
+        let defs = vec![def];
+        let parent_names = HashMap::new();
+
+        let output = format_lean_goto_results("helper", &defs, &parent_names);
+
+        assert!(output.contains("(function, private)"), "output was: {}", output);
+        assert!(!output.contains("  in "), "output was: {}", output);
     }
 
     // --- Qualified name parsing tests (Task 4) ---

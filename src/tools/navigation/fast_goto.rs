@@ -4,6 +4,8 @@
 //! 1. SQLite indexed lookup for O(log n) exact name matching
 //! 2. Cross-language naming convention variants
 
+use std::collections::HashMap;
+
 use anyhow::Result;
 use schemars::JsonSchema;
 use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
@@ -52,13 +54,15 @@ impl FastGotoTool {
     fn create_result(
         &self,
         definitions: Vec<Symbol>,
+        parent_names: &HashMap<String, String>,
         next_actions: Vec<String>,
     ) -> Result<CallToolResult> {
         // Return based on output_format - lean is default
         match self.output_format.as_deref() {
             None | Some("lean") => {
                 // Lean mode (DEFAULT): Simple text list of definitions
-                let lean_output = format_lean_goto_results(&self.symbol, &definitions);
+                let lean_output =
+                    format_lean_goto_results(&self.symbol, &definitions, parent_names);
                 debug!(
                     "✅ Returning lean goto results ({} chars, {} definitions)",
                     lean_output.len(),
@@ -70,16 +74,29 @@ impl FastGotoTool {
                 // Structured formats: Build full result object
                 let definition_results: Vec<DefinitionResult> = definitions
                     .iter()
-                    .map(|symbol| DefinitionResult {
-                        name: symbol.name.clone(),
-                        kind: format!("{:?}", symbol.kind),
-                        language: symbol.language.clone(),
-                        file_path: symbol.file_path.clone(),
-                        start_line: symbol.start_line,
-                        start_column: symbol.start_column,
-                        end_line: symbol.end_line,
-                        end_column: symbol.end_column,
-                        signature: symbol.signature.clone(),
+                    .map(|symbol| {
+                        let parent_name = symbol
+                            .parent_id
+                            .as_ref()
+                            .and_then(|pid| parent_names.get(pid))
+                            .cloned();
+                        let visibility = symbol
+                            .visibility
+                            .as_ref()
+                            .map(|v| v.to_string().to_lowercase());
+                        DefinitionResult {
+                            name: symbol.name.clone(),
+                            kind: format!("{:?}", symbol.kind),
+                            language: symbol.language.clone(),
+                            file_path: symbol.file_path.clone(),
+                            start_line: symbol.start_line,
+                            start_column: symbol.start_column,
+                            end_line: symbol.end_line,
+                            end_column: symbol.end_column,
+                            signature: symbol.signature.clone(),
+                            parent_name,
+                            visibility,
+                        }
                     })
                     .collect();
 
@@ -107,7 +124,8 @@ impl FastGotoTool {
                     "⚠️ Unknown output_format '{}', using lean format",
                     unknown
                 );
-                let lean_output = format_lean_goto_results(&self.symbol, &definitions);
+                let lean_output =
+                    format_lean_goto_results(&self.symbol, &definitions, parent_names);
                 Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
             }
         }
@@ -118,10 +136,12 @@ impl FastGotoTool {
 
         // Find symbol definitions (workspace resolution happens in find_definitions)
         let definitions = self.find_definitions(handler).await?;
+        let empty_parents = HashMap::new();
 
         if definitions.is_empty() {
             return self.create_result(
                 vec![],
+                &empty_parents,
                 vec![
                     "Use fast_search to locate the symbol".to_string(),
                     "Check symbol name spelling".to_string(),
@@ -129,14 +149,66 @@ impl FastGotoTool {
             );
         }
 
+        // Resolve parent names for enrichment
+        let parent_names = self.resolve_parent_names(handler, &definitions).await;
+
         // Format summary (structured_content has full data)
         self.create_result(
             definitions,
+            &parent_names,
             vec![
                 "Navigate to file location".to_string(),
                 "Use fast_refs to see all usages".to_string(),
             ],
         )
+    }
+
+    /// Batch-fetch parent symbol names for enriching output.
+    /// Note: uses primary workspace DB only — reference workspace results will
+    /// get empty parent names (graceful degradation, not an error).
+    async fn resolve_parent_names(
+        &self,
+        handler: &JulieServerHandler,
+        definitions: &[Symbol],
+    ) -> HashMap<String, String> {
+        let parent_ids: Vec<String> = definitions
+            .iter()
+            .filter_map(|s| s.parent_id.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if parent_ids.is_empty() {
+            return HashMap::new();
+        }
+
+        let result = async {
+            if let Some(workspace) = handler.get_workspace().await? {
+                if let Some(db) = workspace.db.as_ref() {
+                    let db_arc = db.clone();
+                    let ids = parent_ids;
+                    let parent_symbols = tokio::task::spawn_blocking(move || {
+                        let db_lock = super::lock_db(&db_arc, "fast_goto parent lookup");
+                        db_lock.get_symbols_by_ids(&ids)
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
+
+                    let map: HashMap<String, String> = parent_symbols
+                        .into_iter()
+                        .map(|s| (s.id.clone(), s.name.clone()))
+                        .collect();
+                    return Ok::<_, anyhow::Error>(map);
+                }
+            }
+            Ok(HashMap::new())
+        }
+        .await;
+
+        result.unwrap_or_else(|e| {
+            warn!("Failed to resolve parent names: {}", e);
+            HashMap::new()
+        })
     }
 
     async fn find_definitions(&self, handler: &JulieServerHandler) -> Result<Vec<Symbol>> {
@@ -218,24 +290,7 @@ impl FastGotoTool {
                         );
                         // Skip normal strategies — we have precise matches
                         let mut exact_matches = qualified_matches;
-                        exact_matches.sort_by(|a, b| {
-                            let shared_cmp = compare_symbols_by_priority_and_context(
-                                a,
-                                b,
-                                self.context_file.as_deref(),
-                            );
-                            if shared_cmp != std::cmp::Ordering::Equal {
-                                return shared_cmp;
-                            }
-                            if let Some(line_number) = self.line_number {
-                                let a_distance =
-                                    (a.start_line as i32 - line_number as i32).abs();
-                                let b_distance =
-                                    (b.start_line as i32 - line_number as i32).abs();
-                                return a_distance.cmp(&b_distance);
-                            }
-                            std::cmp::Ordering::Equal
-                        });
+                        self.sort_definitions(&mut exact_matches);
                         return Ok(exact_matches);
                     }
 
@@ -321,23 +376,7 @@ impl FastGotoTool {
         }
 
         // Prioritize results using shared logic
-        exact_matches.sort_by(|a, b| {
-            // Use shared prioritization logic (definition priority + context file preference)
-            let shared_cmp =
-                compare_symbols_by_priority_and_context(a, b, self.context_file.as_deref());
-            if shared_cmp != std::cmp::Ordering::Equal {
-                return shared_cmp;
-            }
-
-            // Finally by line number if provided (prefer definitions closer to context)
-            if let Some(line_number) = self.line_number {
-                let a_distance = (a.start_line as i32 - line_number as i32).abs();
-                let b_distance = (b.start_line as i32 - line_number as i32).abs();
-                return a_distance.cmp(&b_distance);
-            }
-
-            std::cmp::Ordering::Equal
-        });
+        self.sort_definitions(&mut exact_matches);
 
         debug!(
             "✅ Found {} definitions for '{}'",
@@ -345,6 +384,23 @@ impl FastGotoTool {
             self.symbol
         );
         Ok(exact_matches)
+    }
+
+    /// Sort definitions by priority, context file proximity, and line distance
+    fn sort_definitions(&self, defs: &mut [Symbol]) {
+        defs.sort_by(|a, b| {
+            let shared_cmp =
+                compare_symbols_by_priority_and_context(a, b, self.context_file.as_deref());
+            if shared_cmp != std::cmp::Ordering::Equal {
+                return shared_cmp;
+            }
+            if let Some(line_number) = self.line_number {
+                let a_distance = (a.start_line as i32 - line_number as i32).abs();
+                let b_distance = (b.start_line as i32 - line_number as i32).abs();
+                return a_distance.cmp(&b_distance);
+            }
+            std::cmp::Ordering::Equal
+        });
     }
 
     /// Format minimal summary for AI agents (structured_content has all data)
