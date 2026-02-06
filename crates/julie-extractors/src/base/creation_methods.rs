@@ -192,9 +192,11 @@ impl BaseExtractor {
                 return priority_a.cmp(&priority_b);
             }
 
-            // Then by size (smaller first) - reference calculation
-            let size_a = (a.end_line - a.start_line) * 1000 + (a.end_column - a.start_column);
-            let size_b = (b.end_line - b.start_line) * 1000 + (b.end_column - b.start_column);
+            // Then by size (smaller first) — use byte range for accurate, overflow-safe comparison.
+            // The old formula `(end_line - start_line) * 1000 + (end_column - start_column)` panicked
+            // on multi-line symbols where end_column < start_column (columns refer to different lines).
+            let size_a = a.end_byte - a.start_byte;
+            let size_b = b.end_byte - b.start_byte;
             size_a.cmp(&size_b)
         });
 

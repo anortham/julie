@@ -27,19 +27,23 @@ impl ManageWorkspaceTool {
     ) -> Result<(usize, usize, usize)> {
         info!("🔍 Scanning workspace: {}", workspace_path.display());
 
-        // Check if this is the primary workspace (current directory)
-        debug!("🐛 [INDEX TRACE A] About to get current_dir");
-        let current_dir = std::env::current_dir().unwrap_or_default();
-        let is_primary_workspace = workspace_path == current_dir;
-        debug!(
-            "🐛 [INDEX TRACE B] Got current_dir, is_primary={}",
-            is_primary_workspace
-        );
+        // 🔥 CRITICAL DEADLOCK FIX: Call get_workspace() ONCE and reuse throughout function
+        // Moved up from later in function so we can use workspace.root for primary detection.
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace available for indexing"))?;
 
-        // Log workspace path comparison for debugging
+        // Check if this is the primary workspace by comparing against the handler's workspace root.
+        // Previously compared against std::env::current_dir() which is WRONG — in tests and any
+        // scenario where CWD != workspace root, this incorrectly treated the primary workspace
+        // as a reference workspace, creating a disconnected SearchIndex whose commits silently failed.
+        let workspace_canonical = workspace_path.canonicalize().unwrap_or_else(|_| workspace_path.to_path_buf());
+        let root_canonical = workspace.root.canonicalize().unwrap_or_else(|_| workspace.root.clone());
+        let is_primary_workspace = workspace_canonical == root_canonical;
         debug!(
-            "Workspace comparison: path={:?}, current_dir={:?}, is_primary={}",
-            workspace_path, current_dir, is_primary_workspace
+            "Workspace comparison: path={:?}, root={:?}, is_primary={}",
+            workspace_canonical, root_canonical, is_primary_workspace
         );
 
         // Only clear existing data for primary workspace reindex to preserve workspace isolation
@@ -110,14 +114,7 @@ impl ManageWorkspaceTool {
             workspace_path
         );
 
-        // 🔥 CRITICAL DEADLOCK FIX: Call get_workspace() ONCE and reuse throughout function
-        // Calling get_workspace() multiple times causes lock contention and deadlocks
-        debug!("🐛 [INDEX TRACE G] About to get workspace for ID generation (ONCE)");
-        let workspace = handler
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("No workspace available for indexing"))?;
-        debug!("🐛 [INDEX TRACE H] Got workspace successfully (reusing throughout function)");
+        // workspace was already acquired at top of function (reusing throughout)
 
         // Get workspace ID early for use throughout the function
         // CRITICAL DEADLOCK FIX: Generate workspace ID directly to avoid registry lock contention
