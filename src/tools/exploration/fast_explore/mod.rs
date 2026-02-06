@@ -17,6 +17,7 @@ use crate::database::SymbolDatabase;
 use crate::extractors::base::{Relationship, RelationshipKind};
 use crate::handler::JulieServerHandler;
 use crate::tools::exploration::find_logic::FindLogicTool;
+use crate::tools::trace_call_path::cross_language::is_generic_name;
 
 /// Exploration mode selector
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -202,8 +203,13 @@ impl FastExploreTool {
                 })
                 .collect();
 
+            // Dedup relationships by target symbol ID (multiple call sites → single dep)
+            let mut seen_targets = HashSet::new();
             for rel in dep_relationships {
                 let target_symbol_id = rel.to_symbol_id.clone();
+                if !seen_targets.insert(target_symbol_id.clone()) {
+                    continue; // Skip duplicate targets from same source
+                }
 
                 // Store relationship with depth
                 dependency_map
@@ -228,7 +234,18 @@ impl FastExploreTool {
             max_depth,
         )?;
 
-        let total_dependencies = visited.len() - 1; // Exclude root symbol
+        // Count actual dependencies from the filtered tree (not BFS visited set,
+        // which includes generic names that get filtered during tree building)
+        fn count_deps(deps: &[serde_json::Value]) -> usize {
+            let mut total = deps.len();
+            for dep in deps {
+                if let Some(children) = dep.get("dependencies").and_then(|v| v.as_array()) {
+                    total += count_deps(children);
+                }
+            }
+            total
+        }
+        let total_dependencies = count_deps(&dependencies);
 
         // Format as lean text tree
         let mut output = format!(
@@ -275,6 +292,10 @@ impl FastExploreTool {
         if let Some(deps) = dependency_map.get(symbol_id) {
             for (rel, depth) in deps {
                 if let Ok(Some(target_symbol)) = db.get_symbol_by_id(&rel.to_symbol_id) {
+                    // Skip generic names that create noise
+                    if is_generic_name(&target_symbol.name) {
+                        continue;
+                    }
                     let children = self.build_dependency_tree_from_map(
                         db,
                         &rel.to_symbol_id,
@@ -285,12 +306,12 @@ impl FastExploreTool {
 
                     result.push(json!({
                         "name": target_symbol.name,
-                        "kind": format!("{}", rel.kind),
+                        "relationship_kind": format!("{}", rel.kind),
                         "file_path": target_symbol.file_path,
-                        "line": rel.line_number,
+                        "start_line": target_symbol.start_line,
                         "depth": depth,
                         "symbol_kind": target_symbol.kind.to_string(),
-                        "children": children
+                        "dependencies": children
                     }));
                 }
             }

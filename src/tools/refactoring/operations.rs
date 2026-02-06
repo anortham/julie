@@ -281,9 +281,9 @@ impl SmartRefactorTool {
             .parse(&content, None)
             .ok_or_else(|| anyhow!("Failed to parse {} file", language))?;
 
-        // Find the function/method definition
+        // Find the symbol definition (functions, methods, structs, enums, classes, impl blocks)
         let root = tree.root_node();
-        let symbol_node = self.find_function_or_method(root, symbol_name, &content)?;
+        let symbol_node = self.find_any_symbol(root, symbol_name, &content)?;
 
         // Find the body node (the part between braces or indented block for Python)
         let body_node = symbol_node
@@ -371,49 +371,6 @@ impl SmartRefactorTool {
             vec![file_path.to_string()],
             1,
             preview,
-        )
-    }
-
-    /// Find a function or method node by name
-    fn find_function_or_method<'a>(
-        &self,
-        node: tree_sitter::Node<'a>,
-        name: &str,
-        content: &str,
-    ) -> Result<tree_sitter::Node<'a>> {
-        // Check if this node is a function/method with the matching name
-        if self.is_function_or_method(&node) {
-            if let Some(name_node) = node.child_by_field_name("name") {
-                if let Ok(node_name) = name_node.utf8_text(content.as_bytes()) {
-                    if node_name == name {
-                        return Ok(node);
-                    }
-                }
-            }
-        }
-
-        // Recursively search children
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if let Ok(found) = self.find_function_or_method(child, name, content) {
-                return Ok(found);
-            }
-        }
-
-        Err(anyhow!("Symbol '{}' not found", name))
-    }
-
-    /// Check if a node is a function or method definition
-    fn is_function_or_method(&self, node: &tree_sitter::Node) -> bool {
-        matches!(
-            node.kind(),
-            "function_declaration"
-                | "function_definition"  // Python, C, C++
-                | "method_declaration"
-                | "method_definition"
-                | "function_item"       // Rust
-                | "arrow_function"      // JavaScript/TypeScript
-                | "function_expression" // JavaScript/TypeScript
         )
     }
 

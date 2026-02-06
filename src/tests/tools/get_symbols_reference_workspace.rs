@@ -125,7 +125,7 @@ pub fn reference_function() {
         limit: None,
         mode: None,
         workspace: Some(workspace_id.clone()), // ✅ NOW IT EXISTS!
-        output_format: None,
+
     };
 
     let result = get_symbols_tool.call_tool(&handler).await?;
@@ -265,7 +265,7 @@ pub struct Another {
         limit: None,
         mode: None,
         workspace: Some(workspace_id.clone()),
-        output_format: None,
+
     };
 
     let result_all = get_all.call_tool(&handler).await?;
@@ -296,7 +296,7 @@ pub struct Another {
         limit: None,
         mode: None,
         workspace: Some(workspace_id.clone()),
-        output_format: None,
+
     };
 
     let result_depth_0 = get_depth_0.call_tool(&handler).await?;
@@ -317,7 +317,7 @@ pub struct Another {
         limit: None,
         mode: None,
         workspace: Some(workspace_id.clone()),
-        output_format: None,
+
     };
 
     let result_target = get_target.call_tool(&handler).await?;
@@ -345,7 +345,7 @@ pub struct Another {
         limit: Some(2),
         mode: None,
         workspace: Some(workspace_id.clone()),
-        output_format: None,
+
     };
 
     let result_limit = get_limit.call_tool(&handler).await?;

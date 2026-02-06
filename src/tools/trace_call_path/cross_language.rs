@@ -7,9 +7,9 @@ use anyhow::Result;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
 
-/// Names too generic for cross-language matching — ubiquitous across all languages.
-/// Matching these produces false call paths (e.g., Rust `new` → Ruby `new`).
-const GENERIC_NAMES: &[&str] = &[
+/// Names too generic for meaningful call path tracing — ubiquitous across all languages.
+/// Used to filter both cross-language matches and same-language traversal noise.
+pub(crate) const GENERIC_NAMES: &[&str] = &[
     // Constructors/lifecycle
     "new", "init", "initialize", "create", "destroy", "delete", "dispose",
     "setup", "teardown", "build", "make", "clone", "copy", "reset",
@@ -24,14 +24,27 @@ const GENERIC_NAMES: &[&str] = &[
     "from_str", "as_ref", "as_mut",
     // Validation/comparison
     "validate", "check", "test", "equals", "compare", "hash",
+    // Iterators/collections
+    "next", "iter", "map", "filter", "collect", "fold", "reduce",
+    "sort", "push", "pop", "append", "extend", "clear",
     // Common patterns
     "len", "size", "count", "is_empty", "empty", "default", "display",
     "debug", "print", "log", "error", "warn", "info",
+    // Type conversion/access
+    "unwrap", "expect", "ok", "err", "some", "none", "lock", "try_lock",
+    "borrow", "deref", "drop", "index", "contains", "matches",
 ];
 
 /// Minimum symbol name length for cross-language matching.
 /// Very short names (≤3 chars) are almost always too generic.
 const MIN_CROSS_LANG_NAME_LEN: usize = 4;
+
+/// Check if a symbol name is too generic to be useful in call path tracing.
+/// Returns true for names like `clone`, `to_string`, `len`, `new`, etc.
+pub(crate) fn is_generic_name(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    GENERIC_NAMES.contains(&lower.as_str())
+}
 
 /// Find cross-language symbol matches using naming variants.
 ///

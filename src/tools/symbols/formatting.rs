@@ -94,16 +94,10 @@ pub fn format_symbol_response(
     file_path: &str,
     symbols: Vec<Symbol>,
     target: Option<&str>,
-    output_format: Option<&str>,
 ) -> anyhow::Result<CallToolResult> {
-    // Smart default: use "code" format when code bodies are available
-    // Fall back to lean text overview when only metadata exists
+    // Auto-select format: "code" when code bodies are available, "lean" otherwise
     let has_code_bodies = symbols.iter().any(|s| s.code_context.is_some());
-    let effective_format = match output_format {
-        Some(fmt) => fmt,                  // Explicit format wins
-        None if has_code_bodies => "code", // Default to code when available
-        None => "lean",                    // Default to lean text overview
-    };
+    let effective_format = if has_code_bodies { "code" } else { "lean" };
 
     // Handle "code" format - returns raw code without metadata
     if effective_format == "code" {

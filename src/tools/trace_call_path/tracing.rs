@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
 
-use super::cross_language::find_cross_language_symbols;
+use super::cross_language::{find_cross_language_symbols, is_generic_name};
 use super::types::{CallPathNode, MatchType};
 
 /// Safety limits to prevent explosion on "hub" symbols (e.g., commonly-used functions)
@@ -80,6 +80,9 @@ pub async fn trace_upstream(
                 result.push((caller_symbol.clone(), rel.kind.clone()));
             }
         }
+        // Dedup by symbol ID (multiple call sites → single entry)
+        let mut seen_ids = HashSet::new();
+        result.retain(|(sym, _)| seen_ids.insert(sym.id.clone()));
         result
     }; // Guard dropped here automatically
 
@@ -291,6 +294,11 @@ pub async fn trace_downstream(
                 result.push((callee_symbol.clone(), rel.kind.clone()));
             }
         }
+        // Dedup by symbol ID (multiple call sites → single entry)
+        let mut seen_ids = HashSet::new();
+        result.retain(|(sym, _)| seen_ids.insert(sym.id.clone()));
+        // Filter out generic names that create noise (clone, to_string, len, etc.)
+        result.retain(|(sym, _)| !is_generic_name(&sym.name));
         result
     }; // Guard dropped here automatically
 

@@ -66,12 +66,6 @@ pub struct GetSymbolsTool {
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Output format: "code" (default) or "lean"
-    /// Default: "code" when mode=minimal/full (code bodies available), otherwise "lean"
-    /// - "code": Raw source code without metadata (optimal for AI reading)
-    /// - "lean": Scannable text list with kind, signature, line range, visibility
-    #[serde(default)]
-    pub output_format: Option<String>,
 }
 
 impl GetSymbolsTool {
@@ -90,7 +84,6 @@ impl GetSymbolsTool {
                 self.limit,
                 self.mode.as_deref().unwrap_or("structure"),
                 ref_workspace_id,
-                self.output_format.as_deref(),
             )
             .await;
         }
@@ -103,7 +96,6 @@ impl GetSymbolsTool {
             self.target.as_deref(),
             self.limit,
             self.mode.as_deref().unwrap_or("structure"),
-            self.output_format.as_deref(),
         )
         .await
     }

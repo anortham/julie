@@ -112,7 +112,7 @@ pub const MAX_USERS: usize = 100;
         limit: None,
         mode: None,
         workspace: None,
-        output_format: None,
+
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -187,7 +187,7 @@ pub fn process_data(input: &str) -> String {
         limit: None,
         mode: None,
         workspace: None,
-        output_format: None,
+
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -251,7 +251,7 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
             limit: None,
             mode: None,
             workspace: None,
-        output_format: None,        };
+        };
 
         let result = tool.call_tool(&handler).await?;
         let text_content = extract_text_from_result(&result);
@@ -316,7 +316,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: None,
         mode: None, // Default → "structure" → lean overview
         workspace: None,
-        output_format: None,
+
     };
 
     let result_no_limit = tool_no_limit.call_tool(&handler).await?;
@@ -344,7 +344,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: Some(5),
         mode: None,
         workspace: None,
-        output_format: None,
+
     };
 
     let result_with_limit = tool_with_limit.call_tool(&handler).await?;
@@ -406,7 +406,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
-        output_format: None,
+
     };
 
     let result_not_found = tool_not_found.call_tool(&handler).await?;
@@ -431,7 +431,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
-        output_format: None,
+
     };
 
     let result_exists = tool_exists.call_tool(&handler).await?;
@@ -465,7 +465,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
-        output_format: None,
+
     };
 
     let result_empty = tool_empty.call_tool(&handler).await?;
@@ -486,12 +486,12 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
     Ok(())
 }
 
-/// Test output_format="code" returns raw source code
+/// Test that mode="minimal" auto-selects code format with raw source code
 ///
-/// When output_format="code" is specified, get_symbols returns the raw source code
+/// When mode="minimal" is used, get_symbols returns the raw source code
 /// of matched symbols — optimal for AI agents that can read code directly.
 #[tokio::test]
-async fn test_get_symbols_output_format_code() -> Result<()> {
+async fn test_get_symbols_minimal_mode_code_format() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
 
@@ -534,21 +534,20 @@ pub fn get_user(id: &str) -> User {
     index_tool.call_tool(&handler).await?;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    // Query with output_format="code" and mode="minimal" (to get code bodies)
+    // Query with mode="minimal" — auto-selects code format when bodies available
     let tool = GetSymbolsTool {
         file_path: "src/example.rs".to_string(),
         max_depth: 2,
         target: None,
         limit: None,
-        mode: Some("minimal".to_string()), // Need minimal/full to get code bodies
+        mode: Some("minimal".to_string()), // minimal mode provides code bodies → code format
         workspace: None,
-        output_format: Some("code".to_string()), // NEW: Request raw code output
     };
 
     let result = tool.call_tool(&handler).await?;
     let text_content = extract_text_from_result(&result);
 
-    println!("DEBUG: output_format=code result:\n{}", text_content);
+    println!("DEBUG: minimal mode code result:\n{}", text_content);
 
     // Should contain actual code
     assert!(
