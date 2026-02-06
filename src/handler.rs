@@ -434,7 +434,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "edit_lines",
-        description = "Surgical line editing: insert, replace, or delete specific lines in a file.",
+        description = "Edit file content by line number: insert, replace, or delete specific line ranges. Use when you know the exact line numbers (e.g., from get_symbols output). Supports dry-run preview. Paths are relative to workspace root.",
         annotations(
             title = "Edit Lines",
             read_only_hint = false,
@@ -453,7 +453,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "fuzzy_replace",
-        description = "Fuzzy search and replace using diff-match-patch algorithm. Tolerant of whitespace changes.",
+        description = "Find and replace with fuzzy matching (tolerates whitespace and minor variations). Two modes: single-file (file_path) or multi-file (file_pattern with glob like '**/*.rs'). Multi-file mode is ideal for codebase-wide refactoring. Supports dry-run preview and structural validation.",
         annotations(
             title = "Fuzzy Replace",
             read_only_hint = false,
@@ -493,7 +493,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "edit_symbol",
-        description = "Edit a symbol's body (function, class, etc.) with fuzzy matching.",
+        description = "AST-aware symbol editing: replace function/method bodies, insert code before/after symbols, or extract symbols to other files. Three operations: 'replace_body' (update implementation), 'insert_relative' (add code adjacent to symbol), 'extract_to_file' (move symbol). Finds symbols by name using tree-sitter. Supports dry-run preview.",
         annotations(
             title = "Edit Symbol",
             read_only_hint = false,
@@ -514,7 +514,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "checkpoint",
-        description = "Save development memory checkpoint to .memories/ directory.",
+        description = "Save development memory checkpoint to .memories/ directory. Captures git context (branch, commit, changed files) automatically. Supports types: checkpoint, decision, learning, observation.",
         annotations(
             title = "Save Memory Checkpoint",
             read_only_hint = false,
@@ -533,7 +533,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "recall",
-        description = "Retrieve development memories using semantic search.",
+        description = "Retrieve development memories using text search with code-aware tokenization.",
         annotations(
             title = "Recall Memories",
             read_only_hint = true,
