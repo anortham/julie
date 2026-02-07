@@ -1979,19 +1979,260 @@ mod razor_identifier_extraction_tests {
     "#;
 
         let symbols = extract_symbols(razor_code);
-        let header = symbols.iter().find(|s| s.name == "header");
 
-        assert!(header.is_some(), "Should find header HTML element");
-        if let Some(h) = header {
-            // HTML comments might be extracted or might not be - this depends on implementation
-            // But we're testing that if extracted, it contains the comment
-            if let Some(doc) = &h.doc_comment {
-                assert!(
-                    doc.contains("Page header") || doc.contains("navigation bar"),
-                    "HTML comment should be extracted if available"
-                );
-            }
-        }
+        // Lowercase HTML elements (header, nav, a) should NOT be extracted as symbols.
+        // Only PascalCase Blazor components are extracted.
+        let header = symbols.iter().find(|s| s.name == "header");
+        assert!(header.is_none(), "Lowercase HTML elements should not be extracted");
+        let nav = symbols.iter().find(|s| s.name == "nav");
+        assert!(nav.is_none(), "Lowercase HTML elements should not be extracted");
     }
 }
 mod types; // Phase 4: Type extraction verification tests
+
+#[cfg(test)]
+mod blazor_extraction_tests {
+    use super::*;
+
+    #[test]
+    fn test_inherits_directive_produces_symbol() {
+        let code = r#"@inherits LayoutComponentBase
+
+<div class="main">
+    @Body
+</div>"#;
+
+        let symbols = extract_symbols(code);
+        let inherits = symbols
+            .iter()
+            .find(|s| {
+                s.name.contains("inherits") || s.name.contains("LayoutComponentBase")
+            });
+        assert!(
+            inherits.is_some(),
+            "Should extract @inherits directive. Got symbols: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_code_block_extracts_parameter_property() {
+        let code = r#"@code {
+    [Parameter] public TipOfTheDay? Model { get; set; }
+}"#;
+
+        let symbols = extract_symbols(code);
+        let model_prop = symbols
+            .iter()
+            .find(|s| s.name == "Model" && s.kind == SymbolKind::Property);
+        assert!(
+            model_prop.is_some(),
+            "Should extract [Parameter] property from @code block. Got symbols: {:?}",
+            symbols
+                .iter()
+                .map(|s| format!("{}:{:?}", s.name, s.kind))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_code_block_extracts_lifecycle_method() {
+        let code = r#"@code {
+    private async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+}"#;
+
+        let symbols = extract_symbols(code);
+        let lifecycle = symbols
+            .iter()
+            .find(|s| s.name == "OnInitializedAsync");
+        assert!(
+            lifecycle.is_some(),
+            "Should extract lifecycle method from @code block. Got symbols: {:?}",
+            symbols
+                .iter()
+                .map(|s| format!("{}:{:?}", s.name, s.kind))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_html_elements_not_extracted_as_symbols() {
+        let code = r#"<div class="container">
+    <h1>Title</h1>
+    <p>Content</p>
+    <span>More</span>
+</div>"#;
+
+        let symbols = extract_symbols(code);
+        let html_elements: Vec<_> = symbols
+            .iter()
+            .filter(|s| matches!(s.name.as_str(), "div" | "h1" | "p" | "span"))
+            .collect();
+        assert!(
+            html_elements.is_empty(),
+            "Lowercase HTML elements should NOT be extracted as symbols. Found: {:?}",
+            html_elements.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_blazor_components_extracted() {
+        let code = r#"<ErrorBoundary>
+    <ChildContent>
+        <HeaderComponent/>
+        <FooterComponent/>
+    </ChildContent>
+</ErrorBoundary>"#;
+
+        let symbols = extract_symbols(code);
+        let component_names: Vec<_> = symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+
+        assert!(
+            component_names.contains(&"ErrorBoundary"),
+            "Should extract PascalCase component ErrorBoundary. Got: {:?}",
+            component_names
+        );
+        assert!(
+            component_names.contains(&"HeaderComponent"),
+            "Should extract PascalCase component HeaderComponent. Got: {:?}",
+            component_names
+        );
+        assert!(
+            component_names.contains(&"FooterComponent"),
+            "Should extract PascalCase component FooterComponent. Got: {:?}",
+            component_names
+        );
+    }
+
+    #[test]
+    fn test_inject_directive_extracts_service() {
+        let code = r#"@inject ICmsService CmsService
+@inject ILogger<MyComponent> Logger"#;
+
+        let symbols = extract_symbols(code);
+
+        let cms_service = symbols.iter().find(|s| s.name == "CmsService");
+        assert!(
+            cms_service.is_some(),
+            "Should extract @inject service name. Got: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert_eq!(cms_service.unwrap().kind, SymbolKind::Property);
+
+        let logger = symbols.iter().find(|s| s.name == "Logger");
+        assert!(
+            logger.is_some(),
+            "Should extract second @inject service. Got: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_full_blazor_component_extraction() {
+        // Comprehensive test: a realistic Blazor component
+        let code = r#"@page "/counter"
+@inject ICounterService CounterService
+
+<h1>Counter</h1>
+<p>Current count: @currentCount</p>
+<button class="btn btn-primary" @onclick="IncrementCount">Click me</button>
+
+<ChildComponent Value="@currentCount" />
+
+@code {
+    [Parameter] public int InitialCount { get; set; }
+
+    private int currentCount;
+
+    protected override void OnInitialized()
+    {
+        currentCount = InitialCount;
+    }
+
+    private void IncrementCount()
+    {
+        currentCount++;
+    }
+}"#;
+
+        let symbols = extract_symbols(code);
+        let names: Vec<_> = symbols
+            .iter()
+            .map(|s| format!("{}:{:?}", s.name, s.kind))
+            .collect();
+
+        // Directives should be present
+        assert!(
+            symbols.iter().any(|s| s.name == "@page"),
+            "Should have @page directive. Got: {:?}", names
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "CounterService"),
+            "Should have @inject service. Got: {:?}", names
+        );
+
+        // @code block C# members should be present
+        assert!(
+            symbols.iter().any(|s| s.name == "InitialCount" && s.kind == SymbolKind::Property),
+            "Should have [Parameter] property. Got: {:?}", names
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "OnInitialized"),
+            "Should have lifecycle method. Got: {:?}", names
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "IncrementCount"),
+            "Should have event handler method. Got: {:?}", names
+        );
+
+        // PascalCase components should be present
+        assert!(
+            symbols.iter().any(|s| s.name == "ChildComponent"),
+            "Should have PascalCase component. Got: {:?}", names
+        );
+
+        // Lowercase HTML should NOT be present
+        let html_noise: Vec<_> = symbols
+            .iter()
+            .filter(|s| matches!(s.name.as_str(), "h1" | "p" | "button"))
+            .collect();
+        assert!(
+            html_noise.is_empty(),
+            "Should NOT have lowercase HTML elements. Found: {:?}",
+            html_noise.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    /// Test that components after Razor expressions are detected even when
+    /// tree-sitter misparsess `@expr <Component>` as a binary expression.
+    /// This validates the whole-source regex fallback catches parser blind spots.
+    #[test]
+    fn test_component_after_razor_expression_detected() {
+        // When a component appears after a Razor expression at the top level
+        // (not inside any element), tree-sitter may misparse `@expr <Component>`
+        // as a binary expression. The regex pass should catch it.
+        let code = r#"@page "/test"
+
+@Body
+<TopLevelPanel />
+
+@code {
+    private void DoWork() { }
+}"#;
+
+        let symbols = extract_symbols(code);
+        let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();
+
+        assert!(
+            names.contains(&"TopLevelPanel"),
+            "Top-level component after @Body should be detected. Got: {:?}",
+            names
+        );
+    }
+}

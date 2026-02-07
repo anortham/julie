@@ -1,7 +1,7 @@
 /// HTML element and Razor component extraction
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
-use tree_sitter::Node;
+use tree_sitter::{Node, Tree};
 
 impl super::RazorExtractor {
     /// Extract HTML elements (<div>, <span>, etc.)
@@ -33,7 +33,7 @@ impl super::RazorExtractor {
                     let mut metadata = HashMap::new();
                     metadata.insert(
                         "type".to_string(),
-                        serde_json::Value::String("html-element".to_string()),
+                        serde_json::Value::String("blazor-component".to_string()),
                     );
                     metadata.insert("tagName".to_string(), serde_json::Value::String(tag_name));
                     metadata.insert(
@@ -248,49 +248,64 @@ impl super::RazorExtractor {
         parameters
     }
 
-    /// Create external component symbols for uppercase tags (standard approach)
-    pub(super) fn create_external_component_symbols_if_needed(
+    /// Whole-source regex pass to detect Blazor components in the template.
+    ///
+    /// This is the primary mechanism for component detection — it scans the
+    /// entire source for `<PascalCase>` tags, catching components that
+    /// tree-sitter-razor misparsess (e.g., `@Body <Component>` parsed as
+    /// a C# binary expression instead of separate constructs).
+    ///
+    /// Called after the tree-sitter walk, so tree-sitter-found components
+    /// (via `extract_html_element` or `extract_component`) take priority.
+    pub(super) fn extract_template_components(
         &mut self,
-        node: Node,
+        tree: &Tree,
         symbols: &mut Vec<Symbol>,
     ) {
-        let node_text = self.base.get_node_text(&node);
+        let content = self.base.content.clone();
+        let component_regex = regex::Regex::new(r"<([A-Z][A-Za-z0-9]+)").unwrap();
 
-        // Use regex to find all component tags within the element (standard approach)
-        if let Ok(component_regex) = regex::Regex::new(r"<([A-Z][A-Za-z0-9]*)\b") {
-            for captures in component_regex.captures_iter(&node_text) {
-                if let Some(tag_match) = captures.get(1) {
-                    let tag_name = tag_match.as_str();
+        for captures in component_regex.captures_iter(&content) {
+            if let Some(tag_match) = captures.get(1) {
+                let tag_name = tag_match.as_str();
 
-                    // Check if symbol already exists
-                    if !symbols.iter().any(|s| s.name == tag_name) {
-                        // Create external component symbol (standard approach)
-                        let component_symbol = self.base.create_symbol(
-                            &node,
-                            tag_name.to_string(),
-                            SymbolKind::Class,
-                            SymbolOptions {
-                                signature: Some(format!("external component {}", tag_name)),
-                                visibility: Some(Visibility::Public),
-                                parent_id: None,
-                                metadata: Some({
-                                    let mut metadata = HashMap::new();
-                                    metadata.insert(
-                                        "type".to_string(),
-                                        serde_json::Value::String("external-component".to_string()),
-                                    );
-                                    metadata.insert(
-                                        "source".to_string(),
-                                        serde_json::Value::String("inferred".to_string()),
-                                    );
-                                    metadata
-                                }),
-                                doc_comment: None,
-                            },
-                        );
-                        symbols.push(component_symbol);
-                    }
+                // Skip if symbol already exists (tree-sitter found it)
+                if symbols.iter().any(|s| s.name == tag_name) {
+                    continue;
                 }
+
+                // Find nearest tree-sitter node for position info
+                let byte_start = tag_match.start();
+                let byte_end = tag_match.end();
+                let node = tree
+                    .root_node()
+                    .descendant_for_byte_range(byte_start, byte_end)
+                    .unwrap_or_else(|| tree.root_node());
+
+                let symbol = self.base.create_symbol(
+                    &node,
+                    tag_name.to_string(),
+                    SymbolKind::Class,
+                    SymbolOptions {
+                        signature: Some(format!("<{}>", tag_name)),
+                        visibility: Some(Visibility::Public),
+                        parent_id: None,
+                        metadata: Some({
+                            let mut metadata = HashMap::new();
+                            metadata.insert(
+                                "type".to_string(),
+                                serde_json::Value::String("blazor-component".to_string()),
+                            );
+                            metadata.insert(
+                                "source".to_string(),
+                                serde_json::Value::String("template-scan".to_string()),
+                            );
+                            metadata
+                        }),
+                        doc_comment: None,
+                    },
+                );
+                symbols.push(symbol);
             }
         }
     }

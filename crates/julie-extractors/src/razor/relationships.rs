@@ -149,20 +149,29 @@ impl super::RazorExtractor {
                 if let Some(tag_match) = captures.get(1) {
                     let tag_name = tag_match.as_str();
 
-                    if let Some(from_symbol) = symbols
-                        .iter()
-                        .find(|s| s.kind == SymbolKind::Class)
-                        .or_else(|| {
-                            symbols.iter().find(|s| {
+                    // Find the component symbol first, then find a different "from" symbol
+                    if let Some(component_symbol) = symbols.iter().find(|s| s.name == tag_name)
+                    {
+                        // Find the page/module that USES this component (must not be the component itself)
+                        let from_symbol = symbols
+                            .iter()
+                            .find(|s| {
                                 s.signature
                                     .as_ref()
                                     .is_some_and(|sig| sig.contains("@page"))
                             })
-                        })
-                    {
-                        // Find the component symbol (should exist now due to symbol extraction)
-                        if let Some(component_symbol) = symbols.iter().find(|s| s.name == tag_name)
-                        {
+                            .or_else(|| {
+                                symbols.iter().find(|s| {
+                                    s.kind == SymbolKind::Module && s.id != component_symbol.id
+                                })
+                            })
+                            .or_else(|| {
+                                symbols.iter().find(|s| {
+                                    s.kind == SymbolKind::Class && s.id != component_symbol.id
+                                })
+                            });
+
+                        if let Some(from_symbol) = from_symbol {
                             relationships.push(self.base.create_relationship(
                                 from_symbol.id.clone(),
                                 component_symbol.id.clone(),
@@ -472,7 +481,7 @@ fn symbol_type(symbol: &Symbol) -> Option<&str> {
 fn is_component_symbol(symbol: &Symbol) -> bool {
     matches!(
         symbol_type(symbol),
-        Some("razor-component") | Some("external-component")
+        Some("razor-component") | Some("external-component") | Some("blazor-component")
     )
 }
 

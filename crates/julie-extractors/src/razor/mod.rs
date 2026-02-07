@@ -23,6 +23,16 @@ pub struct RazorExtractor {
     base: BaseExtractor,
 }
 
+/// Check if a tag name is a Blazor component (PascalCase, starts with uppercase).
+/// Standard HTML elements (div, span, p) start lowercase.
+/// Blazor components and custom elements start uppercase (ErrorBoundary, HeaderComponent).
+fn is_blazor_component(tag_name: &str) -> bool {
+    tag_name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_uppercase())
+}
+
 impl RazorExtractor {
     /// Create a new Razor extractor
     pub fn new(
@@ -40,6 +50,10 @@ impl RazorExtractor {
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.visit_node(tree.root_node(), &mut symbols, None);
+        // Whole-source regex pass for Blazor component detection.
+        // Catches components that tree-sitter misparsess (e.g., @Body <Component>
+        // parsed as a C# comparison). Only creates symbols not already found above.
+        self.extract_template_components(tree, &mut symbols);
         symbols
     }
 
@@ -95,16 +109,17 @@ impl RazorExtractor {
                 symbol = self.extract_expression(node, parent_id.as_deref());
             }
             "html_element" | "element" => {
-                symbol = self.extract_html_element(node, parent_id.as_deref());
-                // Also extract binding attributes from HTML elements
+                // Only extract PascalCase tags as component symbols (like Vue's approach).
+                // Lowercase HTML elements (div, span, p) are noise for code intelligence.
+                let tag_name = self.extract_html_tag_name(node);
+                if is_blazor_component(&tag_name) {
+                    symbol = self.extract_html_element(node, parent_id.as_deref());
+                }
+                // Extract binding attributes regardless of tag case (@bind-*, @on*)
                 self.extract_binding_attributes_from_element(node, symbols, parent_id.as_deref());
-                // Create external component symbols for uppercase tag names (standard approach)
-                self.create_external_component_symbols_if_needed(node, symbols);
             }
             "razor_component" => {
                 symbol = self.extract_component(node, parent_id.as_deref());
-                // Also create external component symbols for razor components
-                self.create_external_component_symbols_if_needed(node, symbols);
             }
             "csharp_code" => {
                 self.extract_csharp_symbols(node, symbols, parent_id.as_deref());
