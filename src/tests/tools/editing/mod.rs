@@ -1,19 +1,9 @@
-//! Editing tool tests
+//! Editing infrastructure tests
 //!
-//! This module contains tests for editing tools:
-//! - FuzzyReplaceTool: Fuzzy pattern matching and replacement
-//! - EditLinesTool: Line-level editing operations
-//! - EditingTransaction: Transaction-based editing safety
-//!
-//! Also includes legacy EditingTransaction tests extracted from inline tests.
+//! This module contains tests for EditingTransaction (used by rename_symbol).
 
-// Test submodules
-pub mod edit_lines;
-pub mod edit_lines_validation; // EditLinesTool input validation and error handling tests
-pub mod fuzzy_replace; // FuzzyReplaceTool comprehensive tests
 pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
 
-// Legacy EditingTransaction tests
 use crate::tools::editing::EditingTransaction;
 use std::env;
 use std::fs;

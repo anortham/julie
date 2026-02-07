@@ -45,8 +45,8 @@ struct EditingTestCase {
 cargo test
 
 # Specific test suites
-cargo test fuzzy_replace          # FuzzyReplaceTool unit tests (18 tests)
-cargo test trace_call_path        # TraceCallPathTool unit tests (15 tests)
+cargo test deep_dive              # DeepDiveTool unit tests (37 tests)
+cargo test definition_promotion   # fast_search definition promotion tests (6 tests)
 cargo test typescript_extractor   # Language extractor tests
 
 # With output

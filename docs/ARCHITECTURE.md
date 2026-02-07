@@ -338,7 +338,7 @@ fn test_tool_with_large_dataset_applies_reduction() {
 **Test coverage:**
 - `workspace_management_token_tests.rs` - 5 tests (ManageWorkspaceTool)
 - `get_symbols_token_tests.rs` - 7 tests (GetSymbolsTool Smart Read)
-- `trace_call_path_tests.rs` - 15 tests (includes token optimization validation)
+- `deep_dive_tests.rs` - 37 tests (progressive-depth symbol investigation)
 
 ### Testing Checklist
 

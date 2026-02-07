@@ -15,11 +15,10 @@ use tracing::{debug, info, warn};
 use crate::workspace::JulieWorkspace;
 use tokio::sync::RwLock;
 
-// Import tool parameter types (we'll convert these from the tool modules)
+// Import tool parameter types
 use crate::tools::{
-    FastSearchTool, FastGotoTool, FastRefsTool, GetSymbolsTool, TraceCallPathTool,
-    FastExploreTool, EditLinesTool, FuzzyReplaceTool,
-    RenameSymbolTool, EditSymbolTool, CheckpointTool, RecallTool, PlanTool,
+    FastSearchTool, FastRefsTool, GetSymbolsTool, DeepDiveTool,
+    RenameSymbolTool, CheckpointTool, RecallTool, PlanTool,
     ManageWorkspaceTool,
 };
 
@@ -334,25 +333,6 @@ impl JulieServerHandler {
     }
 
     #[tool(
-        name = "fast_goto",
-        description = "Navigate to symbol definition. Finds where a symbol is defined in the codebase.",
-        annotations(
-            title = "Go to Definition",
-            read_only_hint = true,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    async fn fast_goto(&self, Parameters(params): Parameters<FastGotoTool>) -> Result<CallToolResult, McpError> {
-        debug!("⚡ Fast goto definition: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("fast_goto failed: {}", e), None)
-        })
-    }
-
-    #[tool(
         name = "fast_refs",
         description = "Find all references to a symbol across the codebase.",
         annotations(
@@ -391,82 +371,21 @@ impl JulieServerHandler {
     }
 
     #[tool(
-        name = "trace_call_path",
-        description = "Trace execution flow between symbols across languages. Unique cross-language analysis.",
+        name = "deep_dive",
+        description = "Investigate a symbol with progressive depth. Returns definition, references, children, and type info in a single call — tailored to the symbol's kind.",
         annotations(
-            title = "Trace Call Path",
+            title = "Deep Dive Symbol Investigation",
             read_only_hint = true,
             destructive_hint = false,
             idempotent_hint = true,
             open_world_hint = false
         )
     )]
-    async fn trace_call_path(&self, Parameters(params): Parameters<TraceCallPathTool>) -> Result<CallToolResult, McpError> {
-        debug!("🔍 Trace call path: {:?}", params);
+    async fn deep_dive(&self, Parameters(params): Parameters<DeepDiveTool>) -> Result<CallToolResult, McpError> {
+        debug!("🔍 Deep dive: {:?}", params);
         let _guard = self.tool_execution_lock.lock().await;
         params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("trace_call_path failed: {}", e), None)
-        })
-    }
-
-    // ========== Exploration Tools ==========
-
-    #[tool(
-        name = "fast_explore",
-        description = "Multi-mode exploration: find business logic, similar code, tests, or dependencies.",
-        annotations(
-            title = "Fast Explore",
-            read_only_hint = true,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    async fn fast_explore(&self, Parameters(params): Parameters<FastExploreTool>) -> Result<CallToolResult, McpError> {
-        debug!("🔍 Fast explore (mode={:?}): {:?}", params.mode, params);
-        let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("fast_explore failed: {}", e), None)
-        })
-    }
-
-    // ========== Editing Tools ==========
-
-    #[tool(
-        name = "edit_lines",
-        description = "Edit file content by line number: insert, replace, or delete specific line ranges. Use when you know the exact line numbers (e.g., from get_symbols output). Supports dry-run preview. Paths are relative to workspace root.",
-        annotations(
-            title = "Edit Lines",
-            read_only_hint = false,
-            destructive_hint = true,
-            idempotent_hint = false,
-            open_world_hint = false
-        )
-    )]
-    async fn edit_lines(&self, Parameters(params): Parameters<EditLinesTool>) -> Result<CallToolResult, McpError> {
-        debug!("✂️ Surgical line edit: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("edit_lines failed: {}", e), None)
-        })
-    }
-
-    #[tool(
-        name = "fuzzy_replace",
-        description = "Find and replace with fuzzy matching (tolerates whitespace and minor variations). Two modes: single-file (file_path) or multi-file (file_pattern with glob like '**/*.rs'). Multi-file mode is ideal for codebase-wide refactoring. Supports dry-run preview and structural validation.",
-        annotations(
-            title = "Fuzzy Replace",
-            read_only_hint = false,
-            destructive_hint = true,
-            idempotent_hint = false,
-            open_world_hint = false
-        )
-    )]
-    async fn fuzzy_replace(&self, Parameters(params): Parameters<FuzzyReplaceTool>) -> Result<CallToolResult, McpError> {
-        debug!("🔍 Fuzzy replace: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("fuzzy_replace failed: {}", e), None)
+            McpError::internal_error(format!("deep_dive failed: {}", e), None)
         })
     }
 
@@ -488,25 +407,6 @@ impl JulieServerHandler {
         let _guard = self.tool_execution_lock.lock().await;
         params.call_tool(self).await.map_err(|e| {
             McpError::internal_error(format!("rename_symbol failed: {}", e), None)
-        })
-    }
-
-    #[tool(
-        name = "edit_symbol",
-        description = "AST-aware symbol editing: replace function/method bodies, insert code before/after symbols, or extract symbols to other files. Three operations: 'replace_body' (update implementation), 'insert_relative' (add code adjacent to symbol), 'extract_to_file' (move symbol). Finds symbols by name using tree-sitter. Supports dry-run preview.",
-        annotations(
-            title = "Edit Symbol",
-            read_only_hint = false,
-            destructive_hint = true,
-            idempotent_hint = false,
-            open_world_hint = false
-        )
-    )]
-    async fn edit_symbol(&self, Parameters(params): Parameters<EditSymbolTool>) -> Result<CallToolResult, McpError> {
-        debug!("✂️ Edit symbol: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("edit_symbol failed: {}", e), None)
         })
     }
 

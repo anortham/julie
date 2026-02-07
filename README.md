@@ -160,35 +160,36 @@ cargo build --release
 # Binary will be at: target/release/julie-server[.exe]
 ```
 
-## Tools
+## Tools (9)
 
 ### Search & Navigation
 
-- `fast_search` - Full-text code search with code-aware tokenization and multiple output modes (symbols/lines)
-  - Search full file content or symbol definitions only
+- `fast_search` - Full-text code search with code-aware tokenization
+  - Content search (grep-style line matches) or definition search (symbol names with signatures)
+  - Definition search promotes exact symbol matches with kind, visibility, and signature
   - <5ms search latency with CamelCase/snake_case splitting
   - Language and file pattern filtering
-- `fast_goto` - Jump directly to symbol definitions across the workspace
+- `deep_dive` - Progressive-depth symbol investigation
+  - Overview (~200 tokens), context (~600 tokens), or full (~1500 tokens) detail levels
+  - Kind-aware: functions show callers/callees/types, traits show implementations, structs show fields/methods
+  - Includes identifier fallback and test file locations at full depth
 - `fast_refs` - Find all references to a symbol with structured output
 - `get_symbols` - Smart file reading with 70-90% token savings
   - View file structure without reading full content
   - Extract specific symbols with complete code bodies
   - Structure/minimal/full reading modes
-- `trace_call_path` - Cross-language execution flow tracing
-  - Upstream (who calls this) and downstream (what does this call)
-  - Uses naming convention variants for cross-language matching
 
-### Code Intelligence & Editing
+### Refactoring
 
-- `fuzzy_replace` - Diff-match-patch fuzzy text replacement with validation
 - `rename_symbol` - Rename symbols across entire workspace
   - Updates all references atomically
   - Preview mode with dry_run parameter
-- `edit_symbol` - AST-aware symbol editing
-  - Replace function/method bodies
-  - Insert code relative to symbols
-  - Extract symbols to new files
-- `edit_lines` - Surgical line-level editing (insert/replace/delete)
+
+### Memory
+
+- `checkpoint` - Save development memory checkpoints
+- `recall` - Retrieve development memories by search query
+- `plan` - Manage working plans with atomic updates
 
 ### Workspace Management
 
@@ -288,13 +289,14 @@ cargo tarpaulin
 
 ```
 src/
-├── extractors/      # Language-specific symbol extraction (31 languages)
+├── extractors/      # Language-specific symbol extraction (30 languages)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer
 ├── tools/           # MCP tool implementations
-│   ├── memory/      # Development memory system (checkpoint/recall)
-│   ├── search/      # Search tools (fast_search, fast_goto, fast_refs)
-│   ├── editing/     # Code editing tools (fuzzy_replace, smart_refactor)
+│   ├── deep_dive/   # Progressive-depth symbol investigation
+│   ├── memory/      # Development memory system (checkpoint/recall/plan)
+│   ├── navigation/  # fast_refs, rename_symbol
+│   ├── search/      # fast_search, get_symbols
 │   └── workspace/   # Workspace management
 ├── workspace/       # Multi-workspace management
 └── tests/           # Test infrastructure

@@ -1,6 +1,7 @@
 // PlanTool - MCP interface for mutable development plans (Phase 1.5)
 
 use anyhow::{Result, anyhow};
+use chrono::Utc;
 use schemars::JsonSchema;
 use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
@@ -93,21 +94,12 @@ impl PlanTool {
             activate_plan(workspace_root, &plan.id)?;
         }
 
+        let status_str = if should_activate { "active" } else { &plan.status.to_string() };
+
         Ok(CallToolResult::text_content(vec![Content::text(
             format!(
                 "✅ Plan created: {}\nID: {}\nStatus: {}\n\nPlan saved to: .memories/plans/{}.json",
-                plan.title,
-                plan.id,
-                if should_activate {
-                    "active"
-                } else {
-                    match plan.status {
-                        PlanStatus::Active => "active",
-                        PlanStatus::Completed => "completed",
-                        PlanStatus::Archived => "archived",
-                    }
-                },
-                plan.id
+                plan.title, plan.id, status_str, plan.id
             ),
         )]))
     }
@@ -122,32 +114,12 @@ impl PlanTool {
 
         let plan = get_plan(workspace_root, id)?;
 
-        // Format plan as readable text
-        let content_preview = plan
-            .content
-            .as_ref()
-            .map(|c| {
-                let lines: Vec<&str> = c.lines().take(10).collect();
-                let preview = lines.join("\n");
-                if c.lines().count() > 10 {
-                    format!("{}\n... ({} more lines)", preview, c.lines().count() - 10)
-                } else {
-                    preview
-                }
-            })
-            .unwrap_or_else(|| "(no content)".to_string());
+        let content = plan.content.as_deref().unwrap_or("(no content)");
 
         Ok(CallToolResult::text_content(vec![Content::text(
             format!(
                 "📋 Plan: {}\nID: {}\nStatus: {}\n\n{}",
-                plan.title,
-                plan.id,
-                match plan.status {
-                    PlanStatus::Active => "active",
-                    PlanStatus::Completed => "completed",
-                    PlanStatus::Archived => "archived",
-                },
-                content_preview
+                plan.title, plan.id, plan.status, content
             ),
         )]))
     }
@@ -157,12 +129,7 @@ impl PlanTool {
 
         // Parse status filter
         let status_filter = if let Some(ref status_str) = self.status {
-            Some(match status_str.to_lowercase().as_str() {
-                "active" => PlanStatus::Active,
-                "completed" => PlanStatus::Completed,
-                "archived" => PlanStatus::Archived,
-                _ => return Err(anyhow!("Invalid status: {}", status_str)),
-            })
+            Some(parse_status(status_str)?)
         } else {
             None
         };
@@ -175,6 +142,8 @@ impl PlanTool {
             )]));
         }
 
+        let now = Utc::now().timestamp();
+
         // Format plans list
         let mut output = format!("Found {} plan(s):\n\n", plans.len());
         for plan in plans {
@@ -183,16 +152,10 @@ impl PlanTool {
                 PlanStatus::Completed => "✅",
                 PlanStatus::Archived => "📦",
             };
+            let age = format_relative_time(now, plan.timestamp);
             output.push_str(&format!(
-                "{} {} ({})\n   ID: {}\n",
-                status_icon,
-                plan.title,
-                match plan.status {
-                    PlanStatus::Active => "active",
-                    PlanStatus::Completed => "completed",
-                    PlanStatus::Archived => "archived",
-                },
-                plan.id
+                "{} {} ({}, {})\n   ID: {}\n",
+                status_icon, plan.title, plan.status, age, plan.id
             ));
         }
 
@@ -227,22 +190,26 @@ impl PlanTool {
             .as_ref()
             .ok_or_else(|| anyhow!("ID is required for update action"))?;
 
+        // Reject title changes — ID is derived from title slug, so changing
+        // the title would break the ID→filename mapping
+        if self.title.is_some() {
+            return Err(anyhow!(
+                "Title changes are not supported. The plan ID is derived from the title. \
+                 Create a new plan instead."
+            ));
+        }
+
         info!("✏️ Updating plan: {}", id);
 
         // Parse status if provided
         let status = if let Some(ref status_str) = self.status {
-            Some(match status_str.to_lowercase().as_str() {
-                "active" => PlanStatus::Active,
-                "completed" => PlanStatus::Completed,
-                "archived" => PlanStatus::Archived,
-                _ => return Err(anyhow!("Invalid status: {}", status_str)),
-            })
+            Some(parse_status(status_str)?)
         } else {
             None
         };
 
         let updates = PlanUpdates {
-            title: None, // Don't allow title changes (changes filename)
+            title: None,
             status,
             content: self.content.clone(),
             extra: None,
@@ -251,15 +218,7 @@ impl PlanTool {
         let plan = update_plan(workspace_root, id, updates)?;
 
         Ok(CallToolResult::text_content(vec![Content::text(
-            format!(
-                "✅ Updated plan: {}\nStatus: {}",
-                plan.title,
-                match plan.status {
-                    PlanStatus::Active => "active",
-                    PlanStatus::Completed => "completed",
-                    PlanStatus::Archived => "archived",
-                }
-            ),
+            format!("✅ Updated plan: {}\nStatus: {}", plan.title, plan.status),
         )]))
     }
 
@@ -274,7 +233,42 @@ impl PlanTool {
         let plan = complete_plan(workspace_root, id)?;
 
         Ok(CallToolResult::text_content(vec![Content::text(
-            format!("✅ Completed plan: {}\nStatus: completed", plan.title),
+            format!("✅ Completed plan: {}\nStatus: {}", plan.title, plan.status),
         )]))
+    }
+}
+
+/// Parse a status string into PlanStatus
+fn parse_status(s: &str) -> Result<PlanStatus> {
+    match s.to_lowercase().as_str() {
+        "active" => Ok(PlanStatus::Active),
+        "completed" => Ok(PlanStatus::Completed),
+        "archived" => Ok(PlanStatus::Archived),
+        _ => Err(anyhow!("Invalid status: {}", s)),
+    }
+}
+
+/// Format a Unix timestamp as a human-readable relative time (e.g., "2d ago", "3mo ago")
+fn format_relative_time(now: i64, timestamp: i64) -> String {
+    let delta = now - timestamp;
+    if delta < 0 {
+        return "just now".to_string();
+    }
+    let seconds = delta as u64;
+    let minutes = seconds / 60;
+    let hours = minutes / 60;
+    let days = hours / 24;
+    let months = days / 30;
+
+    if seconds < 60 {
+        "just now".to_string()
+    } else if minutes < 60 {
+        format!("{}m ago", minutes)
+    } else if hours < 24 {
+        format!("{}h ago", hours)
+    } else if days < 30 {
+        format!("{}d ago", days)
+    } else {
+        format!("{}mo ago", months)
     }
 }

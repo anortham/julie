@@ -893,14 +893,14 @@ mod real_world_tests {
 mod real_world_refactoring_tests {
     use super::real_world_tests::get_files_with_extension;
     use crate::handler::JulieServerHandler;
-    use crate::tools::refactoring::SmartRefactorTool;
+    use crate::tools::refactoring::RenameSymbolTool;
     use std::fs;
     use std::path::Path;
     use tempfile::TempDir;
 
     const REAL_WORLD_TEST_DIR: &str = "fixtures/real-world";
 
-    /// Test SmartRefactorTool against real TypeScript files
+    /// Test RenameSymbolTool against real TypeScript files
     #[tokio::test]
     async fn test_rename_symbol_real_typescript_files() {
         let ts_dir = Path::new(REAL_WORLD_TEST_DIR).join("typescript");
@@ -921,7 +921,7 @@ mod real_world_refactoring_tests {
         }
     }
 
-    /// Test SmartRefactorTool against real JavaScript files
+    /// Test RenameSymbolTool against real JavaScript files
     #[tokio::test]
     async fn test_rename_symbol_real_javascript_files() {
         let js_dir = Path::new(REAL_WORLD_TEST_DIR).join("javascript");
@@ -942,7 +942,7 @@ mod real_world_refactoring_tests {
         }
     }
 
-    /// Test SmartRefactorTool against real Python files
+    /// Test RenameSymbolTool against real Python files
     #[tokio::test]
     async fn test_rename_symbol_real_python_files() {
         let py_dir = Path::new(REAL_WORLD_TEST_DIR).join("python");
@@ -1017,12 +1017,10 @@ mod real_world_refactoring_tests {
             println!("  🎯 Testing rename: {} -> {}", symbol, new_name);
 
             // Test dry run first
-            let dry_run_tool = SmartRefactorTool {
-                operation: "rename_symbol".to_string(),
-                params: format!(
-                    r#"{{"old_name": "{}", "new_name": "{}", "scope": "workspace"}}"#,
-                    symbol, new_name
-                ),
+            let dry_run_tool = RenameSymbolTool {
+                old_name: symbol.clone(),
+                new_name: new_name.clone(),
+                scope: Some("workspace".to_string()),
                 dry_run: true,
             };
 
@@ -1037,12 +1035,10 @@ mod real_world_refactoring_tests {
                     println!("    ✅ Dry run successful for symbol '{}'", symbol);
 
                     // If dry run found references, test actual rename
-                    let actual_tool = SmartRefactorTool {
-                        operation: "rename_symbol".to_string(),
-                        params: format!(
-                            r#"{{"old_name": "{}", "new_name": "{}", "scope": "workspace"}}"#,
-                            symbol, new_name
-                        ),
+                    let actual_tool = RenameSymbolTool {
+                        old_name: symbol.clone(),
+                        new_name: new_name.clone(),
+                        scope: Some("workspace".to_string()),
                         dry_run: false,
                     };
 

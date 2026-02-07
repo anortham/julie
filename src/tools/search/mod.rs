@@ -72,7 +72,7 @@ fn default_context_lines() -> Option<u32> {
     Some(1) // 1 before + match + 1 after = 3 total lines (minimal context)
 }
 fn default_search_target() -> String {
-    "content".to_string() // fast_search focuses on content, fast_goto handles symbol definitions
+    "content".to_string()
 }
 
 impl FastSearchTool {
@@ -164,7 +164,8 @@ impl FastSearchTool {
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
         }
 
-        let lean_output = formatting::format_lean_search_results(&self.query, &optimized);
+        // Definition search: use promoted formatting (exact matches get "Definition found:" header)
+        let lean_output = formatting::format_definition_search_results(&self.query, &optimized);
             debug!(
                 "✅ Returning lean search results ({} chars, {} results)",
                 lean_output.len(),

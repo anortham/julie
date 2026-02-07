@@ -2,23 +2,14 @@
 //!
 //! This module provides intelligent refactoring operations that combine:
 //! - Code understanding (tree-sitter parsing, symbol analysis)
-//! - Global code intelligence (fast_refs, fast_goto, search)
-//! - Precise text manipulation (diff-match-patch-rs)
+//! - Global code intelligence (fast_refs, search)
+//! - Precise text manipulation
 //!
 //! Unlike simple text editing, these tools understand code semantics and
 //! can perform complex transformations safely across entire codebases.
 
-mod helpers;
-mod indentation;
-mod operations;
 mod rename;
-mod types;
 mod utils;
-
-pub use helpers::{looks_like_doc_comment, replace_identifier_with_boundaries};
-pub use types::{
-    AutoFixResult, DelimiterError, RefactorOperation, SmartRefactorResult, SyntaxError,
-};
 
 use anyhow::Result;
 use schemars::JsonSchema;
@@ -31,20 +22,6 @@ use crate::tools::editing::EditingTransaction;
 
 fn default_dry_run() -> bool {
     true
-}
-
-// ===== NEW FOCUSED TOOLS (Phase 2 - Tool Adoption Improvements) =====
-
-/// Edit operation type for EditSymbolTool
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum EditOperation {
-    /// Replace function/method body
-    ReplaceBody,
-    /// Insert code before/after a symbol
-    InsertRelative,
-    /// Extract symbol to another file
-    ExtractToFile,
 }
 
 /// Rename a symbol across the entire codebase with workspace-wide updates.
@@ -68,75 +45,18 @@ pub struct RenameSymbolTool {
     pub dry_run: bool,
 }
 
-/// AST-aware symbol editing: replace function/method bodies, insert code before/after
-/// symbols, or extract symbols to other files. Finds symbols by name using tree-sitter.
-///
-/// Three operations:
-/// - `replace_body` — rewrite a function's implementation without touching its signature
-/// - `insert_relative` — add code adjacent to a symbol (before or after)
-/// - `extract_to_file` — move a symbol to another file
-///
-/// **Always use `dry_run=true` first** to preview changes before applying.
-#[derive(Debug, Deserialize, Serialize, JsonSchema)]
-pub struct EditSymbolTool {
-    /// File path (relative to workspace root)
-    pub file_path: String,
-    /// Symbol name (function, method, class)
-    pub symbol_name: String,
-    /// Operation type
-    pub operation: EditOperation,
-    /// Content to insert or replace
-    pub content: String,
-    /// Position for insert_relative: "before" or "after" (default: "after")
-    #[serde(default)]
-    pub position: Option<String>,
-    /// Target file for extract_to_file
-    #[serde(default)]
-    pub target_file: Option<String>,
-    /// Preview without applying (default: true)
-    #[serde(default = "default_dry_run")]
-    pub dry_run: bool,
-}
-
-/// Smart refactoring tool for semantic code transformations
+/// Internal refactoring engine used by RenameSymbolTool.
+/// Not exposed as an MCP tool — only used internally for rename operations.
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct SmartRefactorTool {
     /// The refactoring operation to perform
-    /// Valid operations: "rename_symbol", "replace_symbol_body", "insert_relative_to_symbol", "extract_symbol_to_file"
-    /// Examples: "rename_symbol" to rename classes/functions across workspace, "replace_symbol_body" to update method implementations, "extract_symbol_to_file" to move symbols between files
     pub operation: String,
 
     /// Operation-specific parameters as JSON string
-    ///
-    /// **replace_symbol_body:**
-    /// - file (string, required): Path to file containing the symbol
-    /// - symbol_name (string, required): Name of function/method to modify
-    /// - new_body (string, required): New body content (indentation will be normalized)
-    ///
-    /// **insert_relative_to_symbol:**
-    /// - file (string, required): Path to file containing the symbol
-    /// - target_symbol (string, required): Symbol to insert relative to
-    /// - position (string, optional): "before" or "after" (default: "after")
-    /// - content (string, required): Code to insert (indentation will be normalized)
-    ///
-    /// **extract_symbol_to_file:**
-    /// - source_file (string, required): File containing symbol to extract
-    /// - target_file (string, required): Destination file (created if doesn't exist)
-    /// - symbol_name (string, required): Symbol to extract
-    /// - update_imports (bool, optional): Add import statement to source (default: false)
-    ///
-    /// **rename_symbol:**
-    /// - old_name (string, required): Current symbol name
-    /// - new_name (string, required): New symbol name
-    /// - scope (string, optional): Scope limitation
-    /// - update_imports (bool, optional): Update import statements (default: false)
-    ///
-    /// Example: {"file": "src/main.rs", "symbol_name": "calculate_total", "new_body": "items.iter().sum()"}
     #[serde(default = "default_empty_json")]
     pub params: String,
 
     /// Preview changes without applying them (default: false).
-    /// Set true to see what would change before actually modifying files
     #[serde(default)]
     pub dry_run: bool,
 }
@@ -178,74 +98,11 @@ impl RenameSymbolTool {
     }
 }
 
-// ===== EDIT SYMBOL TOOL IMPLEMENTATION =====
-
-impl EditSymbolTool {
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        // Validate based on operation type
-        match self.operation {
-            EditOperation::ReplaceBody => {
-                // Delegate to SmartRefactorTool's replace_symbol_body logic
-                let smart_refactor = SmartRefactorTool {
-                    operation: "replace_symbol_body".to_string(),
-                    params: serde_json::json!({
-                        "file": self.file_path,
-                        "symbol_name": self.symbol_name,
-                        "new_body": self.content,
-                    })
-                    .to_string(),
-                    dry_run: self.dry_run,
-                };
-                smart_refactor.handle_replace_symbol_body(handler).await
-            }
-            EditOperation::InsertRelative => {
-                // Delegate to SmartRefactorTool's insert_relative_to_symbol logic
-                let smart_refactor = SmartRefactorTool {
-                    operation: "insert_relative_to_symbol".to_string(),
-                    params: serde_json::json!({
-                        "file": self.file_path,
-                        "target_symbol": self.symbol_name,
-                        "position": self.position.as_deref().unwrap_or("after"),
-                        "content": self.content,
-                    })
-                    .to_string(),
-                    dry_run: self.dry_run,
-                };
-                smart_refactor
-                    .handle_insert_relative_to_symbol(handler)
-                    .await
-            }
-            EditOperation::ExtractToFile => {
-                // Validate target_file is provided
-                if self.target_file.is_none() {
-                    return Ok(CallToolResult::text_content(vec![Content::text(
-                        "Error: target_file is required for extract_to_file operation".to_string(),
-                    )]));
-                }
-
-                // Delegate to SmartRefactorTool's extract_symbol_to_file logic
-                let smart_refactor = SmartRefactorTool {
-                    operation: "extract_symbol_to_file".to_string(),
-                    params: serde_json::json!({
-                        "source_file": self.file_path,
-                        "target_file": self.target_file.as_ref().unwrap(),
-                        "symbol_name": self.symbol_name,
-                        "update_imports": false,  // Can add parameter later if needed
-                    })
-                    .to_string(),
-                    dry_run: self.dry_run,
-                };
-                smart_refactor.handle_extract_symbol_to_file(handler).await
-            }
-        }
-    }
-}
-
 impl SmartRefactorTool {
     /// Create result for refactoring operations.
-    /// For dry_run: returns before/after preview as text (what agents need).
+    /// For dry_run: returns before/after preview as text.
     /// For applied: returns confirmation summary as text.
-    fn create_result(
+    pub(crate) fn create_result(
         &self,
         operation: &str,
         _success: bool,
@@ -260,25 +117,12 @@ impl SmartRefactorTool {
         } else {
             // Applied: confirmation summary
             format!(
-                "edit_symbol {} — applied {} change(s) to {}",
+                "rename_symbol {} — applied {} change(s) to {}",
                 operation, changes_count, file_list
             )
         };
 
         Ok(CallToolResult::text_content(vec![Content::text(text)]))
-    }
-
-    /// Dispatcher used by tests to route operations to the appropriate handler method.
-    /// Production code uses the focused MCP tools (RenameSymbolTool, EditSymbolTool) directly.
-    #[allow(dead_code)]
-    pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        match self.operation.as_str() {
-            "rename_symbol" => self.handle_rename_symbol(handler).await,
-            "replace_symbol_body" => self.handle_replace_symbol_body(handler).await,
-            "insert_relative_to_symbol" => self.handle_insert_relative_to_symbol(handler).await,
-            "extract_symbol_to_file" => self.handle_extract_symbol_to_file(handler).await,
-            other => Err(anyhow::anyhow!("Unknown refactoring operation: '{}'", other)),
-        }
     }
 
     /// Rename symbol occurrences in a single file using tree-sitter AST-aware replacement
@@ -355,7 +199,7 @@ impl SmartRefactorTool {
             .parse(content, None)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse {} file", language))?;
 
-        // 🌳 AST-AWARE REPLACEMENT: Walk tree to find identifier nodes
+        // AST-AWARE REPLACEMENT: Walk tree to find identifier nodes
         let mut replacements: Vec<(usize, usize, String)> = Vec::new();
         let content_bytes = content.as_bytes();
 

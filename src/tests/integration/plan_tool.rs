@@ -13,6 +13,7 @@ use crate::handler::JulieServerHandler;
 use crate::tools::memory::plan::{PlanStatus, get_plan, list_plans};
 use crate::tools::memory::{PlanAction, PlanTool};
 use anyhow::Result;
+use rmcp::model::CallToolResult;
 use std::fs;
 use tempfile::TempDir;
 
@@ -333,4 +334,151 @@ async fn test_sql_view_integration() -> Result<()> {
     // If list works (doesn't error), the SQL view is working correctly
 
     Ok(())
+}
+
+/// Extract text from CallToolResult content blocks
+fn extract_text_from_result(result: &CallToolResult) -> String {
+    result
+        .content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// === Bug fix: get should return full content, not 10-line preview ===
+
+#[tokio::test]
+async fn test_plan_get_returns_full_content() -> Result<()> {
+    let (handler, _temp_dir) = create_test_handler().await?;
+
+    // Create a plan with 20+ lines of content
+    let long_content = (1..=25)
+        .map(|i| format!("- Task {}: Do something important", i))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let save_tool = PlanTool {
+        action: PlanAction::Save,
+        title: Some("Long Plan".to_string()),
+        id: None,
+        content: Some(long_content.clone()),
+        status: None,
+        activate: Some(false),
+    };
+    save_tool.call_tool(&handler).await?;
+
+    let get_tool = PlanTool {
+        action: PlanAction::Get,
+        title: None,
+        id: Some("plan_long-plan".to_string()),
+        content: None,
+        status: None,
+        activate: None,
+    };
+
+    let result = get_tool.call_tool(&handler).await?;
+    let text = extract_text_from_result(&result);
+
+    // Should contain the LAST line, not just the first 10
+    assert!(
+        text.contains("Task 25"),
+        "get should return full content, not truncated. Got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("more lines"),
+        "should not show truncation indicator"
+    );
+
+    Ok(())
+}
+
+// === Bug fix: update with title should error, not silently ignore ===
+
+#[tokio::test]
+async fn test_plan_update_rejects_title_change() -> Result<()> {
+    let (handler, _temp_dir) = create_test_handler().await?;
+
+    // Create a plan
+    let save_tool = PlanTool {
+        action: PlanAction::Save,
+        title: Some("Original Title".to_string()),
+        id: None,
+        content: Some("Some content".to_string()),
+        status: None,
+        activate: Some(false),
+    };
+    save_tool.call_tool(&handler).await?;
+
+    // Try to update with a title — should error
+    let update_tool = PlanTool {
+        action: PlanAction::Update,
+        title: Some("New Title".to_string()),
+        id: Some("plan_original-title".to_string()),
+        content: None,
+        status: None,
+        activate: None,
+    };
+
+    let result = update_tool.call_tool(&handler).await;
+    assert!(
+        result.is_err(),
+        "update with title should return an error, not silently ignore"
+    );
+
+    Ok(())
+}
+
+// === Enhancement: list should show timestamps ===
+
+#[tokio::test]
+async fn test_plan_list_shows_timestamps() -> Result<()> {
+    let (handler, _temp_dir) = create_test_handler().await?;
+
+    let save_tool = PlanTool {
+        action: PlanAction::Save,
+        title: Some("Timestamped Plan".to_string()),
+        id: None,
+        content: Some("Content".to_string()),
+        status: None,
+        activate: Some(true),
+    };
+    save_tool.call_tool(&handler).await?;
+
+    let list_tool = PlanTool {
+        action: PlanAction::List,
+        title: None,
+        id: None,
+        content: None,
+        status: None,
+        activate: None,
+    };
+
+    let result = list_tool.call_tool(&handler).await?;
+    let text = extract_text_from_result(&result);
+
+    // Should show some time indicator (just created = "just now" or "0m ago" or similar)
+    assert!(
+        text.contains("ago") || text.contains("just now"),
+        "list should show relative timestamps. Got:\n{}",
+        text
+    );
+
+    Ok(())
+}
+
+// === Enhancement: PlanStatus Display impl ===
+
+#[test]
+fn test_plan_status_display() {
+    assert_eq!(PlanStatus::Active.to_string(), "active");
+    assert_eq!(PlanStatus::Completed.to_string(), "completed");
+    assert_eq!(PlanStatus::Archived.to_string(), "archived");
 }

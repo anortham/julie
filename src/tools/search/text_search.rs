@@ -124,14 +124,15 @@ pub async fn text_search_impl(
                 if !ids.is_empty() {
                     match db_lock.get_symbols_by_ids(&ids) {
                         Ok(db_symbols) => {
-                            let ctx_map: std::collections::HashMap<String, Option<String>> =
-                                db_symbols.into_iter().map(|s| (s.id, s.code_context)).collect();
+                            let enrichment_map: std::collections::HashMap<String, _> =
+                                db_symbols.into_iter().map(|s| (s.id, (s.code_context, s.visibility))).collect();
                             for symbol in &mut symbols {
-                                if let Some(ctx) = ctx_map.get(&symbol.id) {
+                                if let Some((ctx, vis)) = enrichment_map.get(&symbol.id) {
                                     symbol.code_context = ctx.clone();
+                                    symbol.visibility = vis.clone();
                                 }
                             }
-                            debug!("✅ Enriched {} symbols with code_context from SQLite", ctx_map.len());
+                            debug!("✅ Enriched {} symbols from SQLite", enrichment_map.len());
                         }
                         Err(e) => {
                             debug!("Could not enrich code_context from SQLite: {}", e);

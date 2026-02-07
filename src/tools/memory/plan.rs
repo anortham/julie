@@ -13,6 +13,7 @@ use anyhow::{Result, anyhow};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -36,6 +37,16 @@ pub enum PlanStatus {
     Active,
     Completed,
     Archived,
+}
+
+impl fmt::Display for PlanStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PlanStatus::Active => write!(f, "active"),
+            PlanStatus::Completed => write!(f, "completed"),
+            PlanStatus::Archived => write!(f, "archived"),
+        }
+    }
 }
 
 /// Plan-specific data structure

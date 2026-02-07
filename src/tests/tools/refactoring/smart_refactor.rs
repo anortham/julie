@@ -1,6 +1,6 @@
-//! Comprehensive tests for SmartRefactorTool
+//! Comprehensive tests for RenameSymbolTool (formerly SmartRefactorTool)
 //!
-//! These tests verify that semantic refactoring operations work correctly
+//! These tests verify that semantic rename operations work correctly
 //! and safely across different code scenarios.
 
 use anyhow::Result;
@@ -8,8 +8,8 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::refactoring::SmartRefactorTool;
-use crate::mcp_compat::{CallToolResult, CallToolResultExt};
+use crate::tools::refactoring::RenameSymbolTool;
+use crate::mcp_compat::CallToolResult;
 
 fn extract_text_from_result(result: &CallToolResult) -> String {
     result
@@ -70,12 +70,10 @@ function processUser() {
 "#;
         let _file_path = fixture.create_test_file("test.js", test_content).unwrap();
 
-        // Create the refactor tool
-        let tool = SmartRefactorTool {
-            operation: "rename_symbol".to_string(),
-            params: format!(
-                r#"{{"old_name": "getUserData", "new_name": "fetchUserProfile", "scope": "file"}}"#
-            ),
+        let tool = RenameSymbolTool {
+            old_name: "getUserData".to_string(),
+            new_name: "fetchUserProfile".to_string(),
+            scope: None, // defaults to "workspace"
             dry_run: false,
         };
 
@@ -85,8 +83,14 @@ function processUser() {
         let response = extract_text_from_result(&result);
         println!("Response: {}", response);
 
-        // Verify the response indicates success
-        assert!(response.contains("Rename successful") || response.contains("No references found"));
+        // Response should indicate success (applied changes) or no references found
+        // (no refs expected since the file isn't indexed in this temp workspace)
+        let response_lower = response.to_lowercase();
+        assert!(
+            response_lower.contains("applied") || response_lower.contains("no references found"),
+            "Unexpected response: {}",
+            response
+        );
     }
 
     #[tokio::test]
@@ -104,11 +108,10 @@ class UserService {
             .create_test_file("service.js", test_content)
             .unwrap();
 
-        let tool = SmartRefactorTool {
-            operation: "rename_symbol".to_string(),
-            params: format!(
-                r#"{{"old_name": "UserService", "new_name": "AccountService", "scope": "workspace"}}"#
-            ),
+        let tool = RenameSymbolTool {
+            old_name: "UserService".to_string(),
+            new_name: "AccountService".to_string(),
+            scope: Some("workspace".to_string()),
             dry_run: true,
         };
 
@@ -116,9 +119,14 @@ class UserService {
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
+        let response_lower = response.to_lowercase();
 
-        // Verify it's a dry run response
-        assert!(response.contains("DRY RUN") || response.contains("No references found"));
+        // Verify it's a dry run response or no references found
+        assert!(
+            response_lower.contains("dry run") || response_lower.contains("no references found"),
+            "Unexpected response: {}",
+            response
+        );
 
         // Verify original file is unchanged
         let original_content = fixture.read_file(&file_path).unwrap();
@@ -127,45 +135,43 @@ class UserService {
     }
 
     #[tokio::test]
-    async fn test_rename_symbol_missing_parameters() {
-        let tool = SmartRefactorTool {
-            operation: "rename_symbol".to_string(),
-            params: r#"{"old_name": "test"}"#.to_string(), // Missing new_name
+    async fn test_rename_symbol_empty_name() {
+        let tool = RenameSymbolTool {
+            old_name: "test".to_string(),
+            new_name: "".to_string(),
+            scope: None,
             dry_run: true,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
+        let result = tool.call_tool(&handler).await.unwrap();
 
-        // The tool should return an error, not a successful CallToolResult
-        let result = tool.call_tool(&handler).await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Missing required parameter"));
+        let response = extract_text_from_result(&result);
+        assert!(response.contains("required") || response.contains("empty"));
     }
 
     #[tokio::test]
-    async fn test_rename_symbol_invalid_json() {
-        let tool = SmartRefactorTool {
-            operation: "rename_symbol".to_string(),
-            params: r#"invalid json{"#.to_string(),
+    async fn test_rename_symbol_identical_names() {
+        let tool = RenameSymbolTool {
+            old_name: "test".to_string(),
+            new_name: "test".to_string(),
+            scope: None,
             dry_run: true,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
+        let result = tool.call_tool(&handler).await.unwrap();
 
-        // The tool should return an error, not a successful CallToolResult
-        let result = tool.call_tool(&handler).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid JSON"));
+        let response = extract_text_from_result(&result);
+        assert!(response.contains("identical"));
     }
 
     #[tokio::test]
     async fn test_rename_symbol_no_references_found() {
-        let tool = SmartRefactorTool {
-            operation: "rename_symbol".to_string(),
-            params: r#"{"old_name": "NonExistentSymbol", "new_name": "NewName"}"#.to_string(),
+        let tool = RenameSymbolTool {
+            old_name: "NonExistentSymbol".to_string(),
+            new_name: "NewName".to_string(),
+            scope: None,
             dry_run: true,
         };
 
@@ -174,72 +180,37 @@ class UserService {
 
         let response = extract_text_from_result(&result);
 
-        // Should indicate no references found
-        assert!(response.contains("No references found"));
+        // Should indicate no references found (case-insensitive)
+        assert!(
+            response.to_lowercase().contains("no references found"),
+            "Unexpected response: {}",
+            response
+        );
     }
 }
 
 #[cfg(test)]
-mod extract_function_tests {
+mod tool_validation_tests {
     use super::*;
-
-    #[tokio::test]
-    async fn test_extract_function_not_implemented() {
-        let tool = SmartRefactorTool {
-            operation: "extract_function".to_string(),
-            params:
-                r#"{"file": "test.js", "start_line": 1, "end_line": 5, "function_name": "test_fn"}"#
-                    .to_string(),
-            dry_run: true,
-        };
-
-        let handler = JulieServerHandler::new().await.unwrap();
-        let result = tool.call_tool(&handler).await.unwrap();
-
-        let response = extract_text_from_result(&result);
-
-        // Should indicate not yet implemented
-        assert!(response.contains("not yet implemented"));
-    }
-}
-
-#[cfg(test)]
-mod operation_validation_tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_unsupported_operation() {
-        let tool = SmartRefactorTool {
-            operation: "inline_variable".to_string(),
-            params: r#"{"variable": "temp"}"#.to_string(),
-            dry_run: true,
-        };
-
-        let handler = JulieServerHandler::new().await.unwrap();
-        let result = tool.call_tool(&handler).await.unwrap();
-
-        let response = extract_text_from_result(&result);
-
-        // Should indicate operation not implemented
-        assert!(response.contains("not yet implemented"));
-    }
 
     #[tokio::test]
     async fn test_tool_creation_and_serialization() {
         // Test that the tool can be created and serialized properly
-        let tool = SmartRefactorTool {
-            operation: "rename_symbol".to_string(),
-            params: r#"{"old_name": "test", "new_name": "newTest"}"#.to_string(),
+        let tool = RenameSymbolTool {
+            old_name: "test".to_string(),
+            new_name: "newTest".to_string(),
+            scope: None,
             dry_run: false,
         };
 
         // Should be able to serialize/deserialize
         let json = serde_json::to_string(&tool).unwrap();
-        let _deserialized: SmartRefactorTool = serde_json::from_str(&json).unwrap();
+        let deserialized: RenameSymbolTool = serde_json::from_str(&json).unwrap();
 
         // Verify basic fields
-        assert_eq!(tool.operation, "rename_symbol");
-        assert!(!tool.dry_run);
+        assert_eq!(deserialized.old_name, "test");
+        assert_eq!(deserialized.new_name, "newTest");
+        assert!(!deserialized.dry_run);
     }
 }
 
@@ -278,9 +249,10 @@ export class UserValidator {
             .unwrap();
 
         // Test dry run first
-        let tool = SmartRefactorTool {
-            operation: "rename_symbol".to_string(),
-            params: r#"{"old_name": "UserValidator", "new_name": "AccountValidator", "scope": "workspace"}"#.to_string(),
+        let tool = RenameSymbolTool {
+            old_name: "UserValidator".to_string(),
+            new_name: "AccountValidator".to_string(),
+            scope: Some("workspace".to_string()),
             dry_run: true,
         };
 
@@ -288,9 +260,14 @@ export class UserValidator {
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
+        let response_lower = response.to_lowercase();
 
-        // Should show dry run results
-        assert!(response.contains("DRY RUN") || response.contains("No references found"));
+        // Should show dry run results or no references found
+        assert!(
+            response_lower.contains("dry run") || response_lower.contains("no references found"),
+            "Unexpected response: {}",
+            response
+        );
     }
 
     #[tokio::test]
@@ -368,26 +345,27 @@ export type ServiceFactory = () => UserService;
             .unwrap();
 
         // Create the rename tool - rename UserService to AccountService
-        let rename_tool = SmartRefactorTool {
-            operation: "rename_symbol".to_string(),
-            params:
-                r#"{"old_name": "UserService", "new_name": "AccountService", "scope": "workspace"}"#
-                    .to_string(),
+        let rename_tool = RenameSymbolTool {
+            old_name: "UserService".to_string(),
+            new_name: "AccountService".to_string(),
+            scope: Some("workspace".to_string()),
             dry_run: false, // Actually perform the rename
         };
 
         // Execute the rename
         let result = rename_tool.call_tool(&handler).await.unwrap();
         let response = extract_text_from_result(&result);
+        let response_lower = response.to_lowercase();
 
         // The response should indicate successful rename or no references found
         // (no references found is expected since we're testing with temp files that may not be indexed properly)
         assert!(
-            response.contains("Rename successful")
-                || response.contains("No references found")
-                || response.contains("Modified")
-                || response.contains("files with")
-                || response.contains("total changes")
+            response_lower.contains("applied")
+                || response_lower.contains("no references found")
+                || response_lower.contains("modified")
+                || response_lower.contains("change"),
+            "Unexpected response: {}",
+            response
         );
 
         // Verify files exist and check their content
@@ -397,7 +375,7 @@ export type ServiceFactory = () => UserService;
 
         // If the rename was successful, the files should contain AccountService instead of UserService
         // If no references were found, the files should be unchanged
-        if response.contains("Rename successful") || response.contains("Modified") {
+        if response_lower.contains("applied") || response_lower.contains("modified") {
             // Files should be updated
             assert!(updated_service.contains("AccountService"));
             assert!(!updated_service.contains("UserService"));

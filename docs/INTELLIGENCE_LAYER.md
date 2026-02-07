@@ -147,7 +147,7 @@ $ grep -r "getUserData"
 
 **Julie with Intelligence Layer**:
 ```rust
-// fast_goto("getUserData")
+// fast_search("getUserData", search_target="definitions")
 
 Strategy 1 (Exact): Found in api.ts ✅
 

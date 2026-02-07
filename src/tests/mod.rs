@@ -3,12 +3,8 @@
 // This module contains test utilities and infrastructure for testing extractors,
 // search functionality, editing tools, and other Julie components.
 //
-// 📝 NOTE: 7 SafeEditTool integration test files (3,714 lines) have been preserved
-// in src/tests/tools/editing/disabled/ for migration to FuzzyReplaceTool and
-// EditLinesTool integration tests. See README.md in that directory for details.
-//
-// Current coverage: 24 unit tests passing (fuzzy_replace.rs + edit_lines.rs)
-// TODO: Add integration tests for concurrency, permissions, UTF-8, security
+// Editing tools (edit_lines, fuzzy_replace, edit_symbol) were removed in the
+// toolset redesign (2026-02-07). Only EditingTransaction remains (used by rename_symbol).
 
 // ============================================================================
 // TEST FIXTURES - Pre-indexed databases and test data
@@ -48,7 +44,6 @@ pub mod memory_tests; // Memory system tests (checkpoint/recall) // Plan system 
 // pub mod test_git_context; // Git context capture tests (debugging crashes) - TODO: File missing
 
 pub mod tools {
-    pub mod ast_symbol_finder; // AST symbol finder tests
     pub mod get_symbols; // GetSymbolsTool tests
     pub mod get_symbols_reference_workspace; // GetSymbolsTool reference workspace bug test
     pub mod get_symbols_relative_paths; // GetSymbolsTool Phase 2 relative path tests (TDD)
@@ -58,8 +53,9 @@ pub mod tools {
     pub mod smart_read; // Smart Read token optimization tests
     // syntax_validation removed - abandoned AutoFixSyntax feature (Oct 2025)
 
-    pub mod editing; // Editing tool tests (FuzzyReplaceTool, EditLinesTool)
+    pub mod editing; // EditingTransaction tests (used by rename_symbol)
 
+    pub mod deep_dive_tests; // DeepDiveTool tests (formatting + data layer)
     pub mod search; // Search tool tests (line mode, quality, race conditions)
     pub mod search_context_lines;
     pub mod search_quality; // Search quality dogfooding tests (regression suite) // FastSearchTool context_lines parameter tests (token optimization)
@@ -77,12 +73,6 @@ pub mod tools {
         pub mod resolver; // Cross-file relationship resolution tests
         pub mod utils; // Workspace utilities tests // Registry service tests
     }
-
-    pub mod navigation; // Navigation tool tests (FastRefsTool, FastGotoTool)
-
-    pub mod exploration; // Exploration tool tests (FastExploreTool, FindLogicTool)
-
-    pub mod trace_call_path; // TraceCallPathTool tests (core + comprehensive)
 
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
 

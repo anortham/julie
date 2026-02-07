@@ -80,6 +80,23 @@ impl SymbolDatabase {
         Ok(symbols)
     }
 
+    /// Get child symbols by parent ID (methods, fields, enum members)
+    pub fn get_children_by_parent_id(&self, parent_id: &str) -> Result<Vec<Symbol>> {
+        let query = format!(
+            "SELECT {} FROM symbols WHERE parent_id = ?1 ORDER BY start_line",
+            SYMBOL_COLUMNS_LIGHTWEIGHT
+        );
+        let mut stmt = self.conn.prepare(&query)?;
+        let symbol_iter =
+            stmt.query_map(params![parent_id], |row| self.row_to_symbol_lightweight(row))?;
+
+        let mut symbols = Vec::new();
+        for symbol_result in symbol_iter {
+            symbols.push(symbol_result?);
+        }
+        Ok(symbols)
+    }
+
     /// Get symbols for a specific file
     pub fn get_symbols_for_file(&self, file_path: &str) -> Result<Vec<Symbol>> {
         let mut stmt = self.conn.prepare(

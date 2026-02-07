@@ -1,6 +1,7 @@
 // Tests extracted from src/tools/search.rs
 // These were previously inline tests that have been moved to follow project standards
 
+mod definition_promotion_tests;
 mod lean_format_tests;
 mod line_mode;
 mod primary_workspace_bug;

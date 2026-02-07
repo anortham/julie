@@ -99,6 +99,12 @@ Plans represent hours of work. Losing them is unacceptable.
 - `language` - Filter by language (e.g., "rust")
 - `context_lines` - Lines before/after each match (default: 1)
 
+**Definition search** promotes exact symbol name matches to the top with kind, visibility, and full signature — use it to jump to definitions:
+```javascript
+fast_search(query="UserService", search_target="definitions")
+// → "Definition found: UserService  src/services.rs:42 (struct, public)"
+```
+
 **Refinement logic:**
 - Too many results (>15)? Add `file_pattern` or `language` filter
 - Too few results (<3)? Try a broader query or different keywords
@@ -133,17 +139,33 @@ get_symbols(
 
 **When NOT to use:** Don't use `mode="full"` without `target` (extracts entire file)
 
-### fast_goto - Jump to Definition
-**Use for:** Finding where a symbol is defined (exact file + line)
+### deep_dive - Progressive Symbol Investigation
+**Use for:** Understanding a symbol in depth — what it does, who uses it, what it depends on
 
-**Never:**
-- Scroll through files manually
-- Use grep to find definitions
+**Replaces multi-tool chains.** Instead of calling fast_search → get_symbols → fast_refs separately, one `deep_dive` call returns everything tailored to the symbol's kind.
 
-Julie knows EXACTLY where every symbol is (<5ms).
+**Parameters:**
+- `symbol` - Symbol name to investigate (supports qualified names like `Processor::process`)
+- `depth` - Detail level: "overview" (default, ~200 tokens), "context" (~600 tokens), "full" (~1500 tokens)
+- `context_file` - Disambiguate when multiple symbols share a name (partial file path match)
+- `workspace` - Workspace filter: "primary" (default) or workspace ID
+
+**Depth levels:**
+- `overview` — Definition header, caller/callee names, children list. Quick orientation.
+- `context` — Adds signatures, code body (30 lines). Enough to understand implementation.
+- `full` — Adds ref bodies (10 lines each), uncapped references, test locations. Deep investigation.
+
+**Kind-aware output:** Functions show callers/callees/types. Traits show required methods and implementations. Structs show fields/methods/implements. Enums show members. Modules show exports/dependencies.
 
 ```javascript
-fast_goto(symbol="UserService")
+// Quick overview — who calls this and what does it call?
+deep_dive(symbol="process_payment", depth="overview")
+
+// Understand implementation — see the code
+deep_dive(symbol="SearchIndex", depth="context")
+
+// Full investigation — all refs, test locations, bodies
+deep_dive(symbol="CodeTokenizer", depth="full", context_file="tokenizer")
 ```
 
 ### fast_refs - Impact Analysis
@@ -164,86 +186,7 @@ fast_refs(
 
 Finds ALL references in <20ms.
 
-### trace_call_path - Cross-Language Flow
-**Use for:** Understanding execution flow across language boundaries
-
-**Unique capability:** Traces TypeScript → Go → Python → SQL execution paths
-
-```javascript
-trace_call_path(
-  symbol="processPayment",
-  direction="upstream",  // or "downstream", "both"
-  max_depth=3
-)
-```
-
-### fast_explore - Codebase Discovery
-**Use for:** Understanding unfamiliar codebases, finding business logic
-
-**Modes:**
-- `logic` - Find business logic by domain (filters boilerplate)
-- `dependencies` - Analyze transitive dependencies
-- `types` - Explore type intelligence (implementations, hierarchies)
-
-```javascript
-// Find payment processing logic
-fast_explore(mode="logic", domain="payment processing")
-
-// Analyze dependencies
-fast_explore(mode="dependencies", symbol="PaymentService", depth=3)
-
-// Explore type hierarchy
-fast_explore(mode="types", type_name="PaymentProcessor")
-```
-
-### Editing Tools — When to Use Which
-
-Julie provides three editing tools plus a rename tool. Each has a unique capability that Claude Code's native Edit/Write tools lack.
-
-**edit_lines** - Line-number-based editing with dry-run preview
-- Best when: You know exact line numbers (from get_symbols or fast_search output)
-- Operations: insert (add lines at position), replace (swap line range), delete (remove lines)
-- Example: Insert import at line 3, delete dead code at lines 45-52
-```javascript
-edit_lines(
-  file_path="src/user.rs",
-  operation="replace",  // or "insert", "delete"
-  start_line=42,
-  end_line=45,
-  content="    let result = validate(input)?;",
-  dry_run=true
-)
-```
-
-**fuzzy_replace** - Fuzzy matching + multi-file refactoring
-- Best when: Pattern has whitespace variations, OR you need to change multiple files at once
-- Unique: `file_pattern="**/*.rs"` applies the same replacement across all matching files
-- Example: Rename `getUserData` to `fetchUserData` across all .ts files in one call
-```javascript
-fuzzy_replace(
-  file_pattern="**/*.ts",
-  pattern="getUserData",
-  replacement="fetchUserData",
-  threshold=0.8,
-  dry_run=true
-)
-```
-
-**edit_symbol** - AST-aware semantic editing
-- Best when: You want to edit a function/class by NAME, not by line number or string match
-- Operations: `replace_body` (rewrite implementation), `insert_relative` (add before/after), `extract_to_file` (move to another file)
-- Example: Replace the body of `calculate_total()` without touching its signature
-```javascript
-edit_symbol(
-  file_path="src/orders.rs",
-  symbol_name="calculate_total",
-  operation="replace_body",
-  content="    self.items.iter().map(|i| i.price * i.qty).sum()",
-  dry_run=true
-)
-```
-
-**rename_symbol** - Workspace-wide symbol renaming
+### rename_symbol - Workspace-wide Symbol Renaming
 ```javascript
 rename_symbol(
   old_name="getUserData",
@@ -252,8 +195,7 @@ rename_symbol(
 )
 ```
 **ALWAYS use fast_refs BEFORE renaming to see impact.**
-
-**ALWAYS use `dry_run=true` first** for all four tools. Review the preview, then apply with `dry_run=false`.
+**ALWAYS use `dry_run=true` first.** Review the preview, then apply with `dry_run=false`.
 
 ### manage_workspace - Workspace Management
 **First action in new workspace:**
@@ -282,17 +224,17 @@ manage_workspace(operation="index")
 ### Fixing Bugs
 1. `recall()` - Check for similar past fixes
 2. `fast_search` - Locate bug
-3. `fast_refs` - Understand impact
-4. Write failing test
-5. Fix bug
-6. `checkpoint()` - Document what was broken and how you fixed it
+3. `deep_dive` - Understand the symbol and its callers
+4. `fast_refs` - Understand impact
+5. Write failing test
+6. Fix bug
+7. `checkpoint()` - Document what was broken and how you fixed it
 
 ### Refactoring Code
 1. `fast_refs` - See all usages (REQUIRED before changes)
-2. Use refactoring tools (`rename_symbol`, `edit_lines`, `fuzzy_replace`)
-3. Preview with `dry_run=true`
-4. Apply changes with `dry_run=false`
-5. `checkpoint()` - Document what changed and why
+2. `deep_dive` - Understand symbol context and dependencies
+3. Use `rename_symbol` for renames (preview with `dry_run=true`)
+4. `checkpoint()` - Document what changed and why
 
 ---
 
@@ -302,9 +244,9 @@ manage_workspace(operation="index")
 - `recall({ limit: 10 })` - MANDATORY first action
 
 **Finding Code:**
-- `fast_search(query="...")` - Find code (content search returns matching lines, definition search returns symbols)
-- `fast_goto(symbol="...")` - Jump to definition
+- `fast_search(query="...")` - Find code (definition search promotes exact matches)
 - `fast_refs(symbol="...")` - See all usages
+- `deep_dive(symbol="...")` - Full symbol context (callers, callees, types, children)
 
 **Understanding Structure:**
 - `get_symbols(file_path="...", max_depth=1)` - See file structure

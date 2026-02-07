@@ -1339,7 +1339,7 @@ dependencies = [
 
 [[package]]
 name = "julie"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -1381,7 +1381,7 @@ dependencies = [
 
 [[package]]
 name = "julie-extractors"
-version = "1.20.1"
+version = "1.21.0"
 dependencies = [
  "anyhow",
  "harper-tree-sitter-dart",

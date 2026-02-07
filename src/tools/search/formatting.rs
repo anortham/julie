@@ -87,3 +87,72 @@ pub fn format_lean_search_results(query: &str, response: &OptimizedResponse<Symb
     // Trim trailing whitespace but keep structure
     output.trim_end().to_string()
 }
+
+/// Format definition search results with exact-match promotion
+///
+/// When a result has `name == query` (exact, case-sensitive), it gets promoted
+/// to the top with a "Definition found:" header showing kind, visibility, and signature.
+/// Remaining results appear as "Other matches:".
+///
+/// If no exact match exists, falls back to `format_lean_search_results`.
+pub fn format_definition_search_results(
+    query: &str,
+    response: &OptimizedResponse<Symbol>,
+) -> String {
+    // Partition into exact matches and other matches
+    let (exact, others): (Vec<&Symbol>, Vec<&Symbol>) = response
+        .results
+        .iter()
+        .partition(|s| s.name == query);
+
+    // No exact match → standard format
+    if exact.is_empty() {
+        return format_lean_search_results(query, response);
+    }
+
+    let mut output = String::new();
+
+    // === Promoted section ===
+    output.push_str(&format!("Definition found: {}\n", query));
+
+    for symbol in &exact {
+        // Location + kind + visibility
+        let kind = symbol.kind.to_string();
+        let vis = symbol
+            .visibility
+            .as_ref()
+            .map(|v| format!(", {}", v.to_string().to_lowercase()))
+            .unwrap_or_default();
+        output.push_str(&format!(
+            "  {}:{} ({}{})\n",
+            symbol.file_path, symbol.start_line, kind, vis
+        ));
+
+        // Signature (prefer it over code_context for the promoted view)
+        if let Some(sig) = &symbol.signature {
+            output.push_str(&format!("  {}\n", sig));
+        } else if let Some(ctx) = &symbol.code_context {
+            // Fallback: first non-empty line of code_context
+            if let Some(first_line) = ctx.lines().find(|l| !l.trim().is_empty()) {
+                output.push_str(&format!("  {}\n", first_line.trim()));
+            }
+        }
+    }
+
+    // === Other matches section ===
+    if !others.is_empty() {
+        output.push_str("\nOther matches:\n\n");
+
+        for symbol in &others {
+            output.push_str(&format!("{}:{}\n", symbol.file_path, symbol.start_line));
+            if let Some(ctx) = &symbol.code_context {
+                for line in ctx.lines() {
+                    output.push_str(&format!("  {}\n", line));
+                }
+            }
+            output.push('\n');
+        }
+    }
+
+    output.trim_end().to_string()
+}
