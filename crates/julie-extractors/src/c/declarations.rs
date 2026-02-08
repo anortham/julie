@@ -316,13 +316,13 @@ pub(super) fn extract_struct(
     extractor: &mut CExtractor,
     node: tree_sitter::Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let struct_name = helpers::extract_struct_name(&extractor.base, node);
+) -> Option<Symbol> {
+    let struct_name = helpers::extract_struct_name(&extractor.base, node)?;
     let signature = signatures::build_struct_signature(&extractor.base, node);
 
     let doc_comment = extractor.base.find_doc_comment(&node);
 
-    extractor.base.create_symbol(
+    Some(extractor.base.create_symbol(
         &node,
         struct_name.clone(),
         SymbolKind::Class,
@@ -343,7 +343,7 @@ pub(super) fn extract_struct(
             ])),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract an enum definition
@@ -351,13 +351,13 @@ pub(super) fn extract_enum(
     extractor: &mut CExtractor,
     node: tree_sitter::Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let enum_name = helpers::extract_enum_name(&extractor.base, node);
+) -> Option<Symbol> {
+    let enum_name = helpers::extract_enum_name(&extractor.base, node)?;
     let signature = signatures::build_enum_signature(&extractor.base, node);
 
     let doc_comment = extractor.base.find_doc_comment(&node);
 
-    extractor.base.create_symbol(
+    Some(extractor.base.create_symbol(
         &node,
         enum_name.clone(),
         SymbolKind::Enum,
@@ -378,7 +378,7 @@ pub(super) fn extract_enum(
             ])),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract enum value symbols

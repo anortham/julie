@@ -166,7 +166,7 @@ impl RelationshipExtractor {
         node: Node,
         symbols: &'a [Symbol],
     ) -> Option<&'a Symbol> {
-        let tag_name = HTMLHelpers::extract_tag_name(base, node);
+        let tag_name = HTMLHelpers::extract_tag_name(base, node)?;
         let target_line = (node.start_position().row + 1) as u32;
 
         symbols.iter().find(|s| {

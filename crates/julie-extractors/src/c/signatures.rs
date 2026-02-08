@@ -80,7 +80,7 @@ pub(super) fn build_variable_signature(
 
 /// Build struct signature: "struct Name { field_type field_name; ... }"
 pub(super) fn build_struct_signature(base: &BaseExtractor, node: tree_sitter::Node) -> String {
-    let struct_name = helpers::extract_struct_name(base, node);
+    let struct_name = helpers::extract_struct_name(base, node).unwrap_or_default();
     let fields = extract_struct_fields(base, node);
     let attributes = types::extract_struct_attributes(base, node);
     let alignment_attrs = types::extract_alignment_attributes(base, node);
@@ -113,7 +113,7 @@ pub(super) fn build_struct_signature(base: &BaseExtractor, node: tree_sitter::No
 
 /// Build enum signature: "enum Name { value, value, ... }"
 pub(super) fn build_enum_signature(base: &BaseExtractor, node: tree_sitter::Node) -> String {
-    let enum_name = helpers::extract_enum_name(base, node);
+    let enum_name = helpers::extract_enum_name(base, node).unwrap_or_default();
     let values = extract_enum_values(base, node);
 
     let mut signature = format!("enum {}", enum_name);

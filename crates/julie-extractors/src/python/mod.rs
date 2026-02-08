@@ -53,16 +53,19 @@ impl PythonExtractor {
     fn traverse_tree(&mut self, node: Node, symbols: &mut Vec<Symbol>) {
         match node.kind() {
             "class_definition" => {
-                let symbol = types::extract_class(self, node);
-                symbols.push(symbol);
+                if let Some(symbol) = types::extract_class(self, node) {
+                    symbols.push(symbol);
+                }
             }
             "function_definition" => {
-                let symbol = functions::extract_function(self, node);
-                symbols.push(symbol);
+                if let Some(symbol) = functions::extract_function(self, node) {
+                    symbols.push(symbol);
+                }
             }
             "async_function_definition" => {
-                let symbol = functions::extract_async_function(self, node);
-                symbols.push(symbol);
+                if let Some(symbol) = functions::extract_async_function(self, node) {
+                    symbols.push(symbol);
+                }
             }
             "assignment" => {
                 // Can produce multiple symbols for tuple unpacking (a, b = 1, 2)

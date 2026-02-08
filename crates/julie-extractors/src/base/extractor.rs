@@ -281,35 +281,6 @@ impl BaseExtractor {
 
     /// Create a symbol - exact port of createSymbol method
 
-    /// Extract identifier name - exact port of extractIdentifierName
-    pub fn extract_identifier_name(&self, node: &Node) -> String {
-        // Try to find the identifier node using field name
-        if let Some(name_node) = node.child_by_field_name("name") {
-            if name_node.kind() == "identifier" {
-                return self.get_node_text(&name_node);
-            }
-        }
-
-        // Try first child
-        if let Some(first_child) = node.child(0) {
-            if first_child.kind() == "identifier" {
-                return self.get_node_text(&first_child);
-            }
-        }
-
-        // Fallback: extract from the node text using regex (standard pattern)
-        let node_text = self.get_node_text(node);
-        let text = node_text.trim();
-        if let Some(captures) = regex::Regex::new(r"^[a-zA-Z_$][a-zA-Z0-9_$]*")
-            .unwrap()
-            .find(text)
-        {
-            captures.as_str().to_string()
-        } else {
-            "Anonymous".to_string()
-        }
-    }
-
     /// Safely truncate a string to a maximum number of characters (not bytes)
     /// This handles UTF-8 multi-byte characters correctly by truncating at character boundaries
     pub fn truncate_string(text: &str, max_chars: usize) -> String {

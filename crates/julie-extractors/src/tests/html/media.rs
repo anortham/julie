@@ -378,8 +378,7 @@ mod tests {
         let figcaption_element = symbols.iter().find(|s| s.name == "figcaption");
         assert!(figcaption_element.is_some());
 
-        let cite_element = symbols.iter().find(|s| s.name == "cite");
-        assert!(cite_element.is_some());
+        // Note: cite is a generic inline element, filtered out (no id/name).
 
         // Picture and source elements
         let picture_element = symbols.iter().find(|s| s.name == "picture");
@@ -663,13 +662,7 @@ mod tests {
                 .contains(r#"lazy-loading="true""#)
         );
 
-        // Slot element
-        let slot_element = symbols.iter().find(|s| {
-            s.signature
-                .as_ref()
-                .map_or(false, |sig| sig.contains(r#"slot="fallback""#))
-        });
-        assert!(slot_element.is_some());
+        // Note: <p slot="fallback"> is filtered (p without id/name is a generic element).
 
         // Media-specific attributes
         let loading_lazy: Vec<_> = symbols
@@ -699,26 +692,8 @@ mod tests {
         });
         assert!(allow_attribute.is_some());
 
-        // Fallback content
-        let video_fallback = symbols.iter().find(|s| {
-            s.signature.as_ref().map_or(false, |sig| {
-                sig.contains("Your browser doesn't support HTML5 video")
-            })
-        });
-        assert!(video_fallback.is_some());
-
-        let audio_fallback = symbols.iter().find(|s| {
-            s.signature.as_ref().map_or(false, |sig| {
-                sig.contains("Your browser doesn't support HTML5 audio")
-            })
-        });
-        assert!(audio_fallback.is_some());
-
-        let canvas_fallback = symbols.iter().find(|s| {
-            s.signature.as_ref().map_or(false, |sig| {
-                sig.contains("Canvas is not supported in your browser")
-            })
-        });
-        assert!(canvas_fallback.is_some());
+        // Note: Fallback content (<p> elements) is filtered out since p without
+        // id/name is a generic container. The meaningful elements (video, audio,
+        // canvas) that contain these fallbacks ARE still extracted.
     }
 }

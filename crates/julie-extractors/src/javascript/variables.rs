@@ -10,11 +10,13 @@ use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
     /// Extract variable declarations - direct Implementation of extractVariable
-    pub(super) fn extract_variable(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
+    pub(super) fn extract_variable(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
         let name_node = node.child_by_field_name("name");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "Anonymous".to_string());
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         let value_node = node.child_by_field_name("value");
         let signature = self.build_variable_signature(&node, &name);
@@ -40,7 +42,7 @@ impl super::JavaScriptExtractor {
                 // Extract JSDoc comment
                 let doc_comment = self.base.find_doc_comment(&doc_node);
 
-                return self.base.create_symbol(
+                return Some(self.base.create_symbol(
                     &node,
                     name,
                     SymbolKind::Import,
@@ -51,7 +53,7 @@ impl super::JavaScriptExtractor {
                         metadata: Some(metadata),
                         doc_comment,
                     },
-                );
+                ));
             }
 
             // For function expressions, create a function symbol with the variable's name (reference logic)
@@ -75,7 +77,7 @@ impl super::JavaScriptExtractor {
                 // Extract JSDoc comment
                 let doc_comment = self.base.find_doc_comment(&doc_node);
 
-                return self.base.create_symbol(
+                return Some(self.base.create_symbol(
                     &node,
                     name,
                     SymbolKind::Function,
@@ -86,7 +88,7 @@ impl super::JavaScriptExtractor {
                         metadata: Some(metadata),
                         doc_comment,
                     },
-                );
+                ));
             }
         }
 
@@ -108,7 +110,7 @@ impl super::JavaScriptExtractor {
         // Extract JSDoc comment
         let doc_comment = self.base.find_doc_comment(&doc_node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Variable,
@@ -119,7 +121,7 @@ impl super::JavaScriptExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 
     /// Extract destructuring variables - implementation's extractDestructuringVariables

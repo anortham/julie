@@ -23,55 +23,55 @@ fn visit_node(extractor: &mut TypeScriptExtractor, node: Node, symbols: &mut Vec
     match node.kind() {
         // Class extraction
         "class_declaration" => {
-            symbol = Some(classes::extract_class(extractor, node));
+            symbol = classes::extract_class(extractor, node);
         }
 
         // Function extraction
         "function_declaration" | "function" => {
-            symbol = Some(functions::extract_function(extractor, node));
+            symbol = functions::extract_function(extractor, node);
         }
 
         // Method extraction (inside classes)
         "method_definition" | "method_signature" => {
-            symbol = Some(functions::extract_method(extractor, node));
+            symbol = functions::extract_method(extractor, node);
         }
 
         // Variable/arrow function assignment
         "variable_declarator" => {
-            symbol = Some(functions::extract_variable(extractor, node));
+            symbol = functions::extract_variable(extractor, node);
         }
 
         // Interface extraction
         "interface_declaration" => {
-            symbol = Some(interfaces::extract_interface(extractor, node));
+            symbol = interfaces::extract_interface(extractor, node);
         }
 
         // Type aliases
         "type_alias_declaration" => {
-            symbol = Some(interfaces::extract_type_alias(extractor, node));
+            symbol = interfaces::extract_type_alias(extractor, node);
         }
 
         // Enums
         "enum_declaration" => {
-            symbol = Some(interfaces::extract_enum(extractor, node));
+            symbol = interfaces::extract_enum(extractor, node);
         }
 
         // Import/export statements
         "import_statement" | "import_declaration" => {
-            symbol = Some(imports_exports::extract_import(extractor, node));
+            symbol = imports_exports::extract_import(extractor, node);
         }
         "export_statement" => {
-            symbol = Some(imports_exports::extract_export(extractor, node));
+            symbol = imports_exports::extract_export(extractor, node);
         }
 
         // Namespaces/modules
         "namespace_declaration" | "module_declaration" => {
-            symbol = Some(interfaces::extract_namespace(extractor, node));
+            symbol = interfaces::extract_namespace(extractor, node);
         }
 
         // Properties and fields
         "property_signature" | "public_field_definition" | "property_definition" => {
-            symbol = Some(interfaces::extract_property(extractor, node));
+            symbol = interfaces::extract_property(extractor, node);
         }
 
         _ => {}

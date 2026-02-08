@@ -7,13 +7,10 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract a regular function definition
-pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Symbol {
+pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Option<Symbol> {
     // Extract function name from 'name' field
-    let name = if let Some(name_node) = node.child_by_field_name("name") {
-        extractor.base_mut().get_node_text(&name_node)
-    } else {
-        "Anonymous".to_string()
-    };
+    let name_node = node.child_by_field_name("name")?;
+    let name = extractor.base_mut().get_node_text(&name_node);
 
     // Check if it's an async function
     let is_async = signatures::has_async_keyword(&node);
@@ -69,7 +66,7 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Symbol {
     metadata.insert("isAsync".to_string(), serde_json::json!(is_async));
     metadata.insert("returnType".to_string(), serde_json::json!(return_type));
 
-    extractor.base_mut().create_symbol(
+    Some(extractor.base_mut().create_symbol(
         &node,
         name,
         symbol_kind,
@@ -80,11 +77,11 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Symbol {
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract an async function definition
-pub fn extract_async_function(extractor: &mut PythonExtractor, node: Node) -> Symbol {
+pub fn extract_async_function(extractor: &mut PythonExtractor, node: Node) -> Option<Symbol> {
     // Async functions are handled the same way as regular functions
     // The has_async_keyword check will detect the async keyword
     extract_function(extractor, node)
@@ -144,10 +141,9 @@ fn determine_function_kind(
         if parent.kind() == "class_definition" {
             // This is a method inside a class
             // Extract the class name to create parent_id
-            let class_name = if let Some(name_node) = parent.child_by_field_name("name") {
-                extractor.base().get_node_text(&name_node)
-            } else {
-                "Anonymous".to_string()
+            let class_name = match parent.child_by_field_name("name") {
+                Some(name_node) => extractor.base().get_node_text(&name_node),
+                None => continue, // Skip if class has no name
             };
 
             // Create parent_id using the same pattern as BaseExtractor

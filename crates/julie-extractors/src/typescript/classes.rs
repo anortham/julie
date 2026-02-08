@@ -10,13 +10,12 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract a class declaration
-pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> Symbol {
+pub(super) fn extract_class(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
-    let name = if let Some(name_node) = name_node {
-        extractor.base().get_node_text(&name_node)
-    } else {
-        "Anonymous".to_string()
-    };
+    let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
     let visibility = extractor.base().extract_visibility(&node);
     let mut metadata = HashMap::new();
@@ -34,7 +33,7 @@ pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    extractor.base_mut().create_symbol(
+    Some(extractor.base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Class,
@@ -45,5 +44,5 @@ pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> 
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }

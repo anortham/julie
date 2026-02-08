@@ -10,11 +10,13 @@ use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
     /// Extract class declarations - direct Implementation of extractClass
-    pub(super) fn extract_class(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
+    pub(super) fn extract_class(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
         let name_node = node.child_by_field_name("name");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "Anonymous".to_string());
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         // Extract extends clause (reference logic)
         let heritage = node.child_by_field_name("heritage").or_else(|| {
@@ -43,7 +45,7 @@ impl super::JavaScriptExtractor {
         // Extract JSDoc comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Class,
@@ -54,19 +56,21 @@ impl super::JavaScriptExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 
     /// Extract property definitions - implementation's extractProperty
-    pub(super) fn extract_property(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
+    pub(super) fn extract_property(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
         let name_node = node
             .child_by_field_name("key")
             .or_else(|| node.child_by_field_name("name"))
             .or_else(|| node.child_by_field_name("property"));
 
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "Anonymous".to_string());
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
         let value_node = node.child_by_field_name("value");
         let signature = self.build_property_signature(&node, &name);
 
@@ -89,7 +93,7 @@ impl super::JavaScriptExtractor {
                 // Extract JSDoc comment
                 let doc_comment = self.base.find_doc_comment(&node);
 
-                return self.base.create_symbol(
+                return Some(self.base.create_symbol(
                     &node,
                     name,
                     SymbolKind::Method,
@@ -100,7 +104,7 @@ impl super::JavaScriptExtractor {
                         metadata: Some(metadata),
                         doc_comment,
                     },
-                );
+                ));
             }
         }
 
@@ -126,7 +130,7 @@ impl super::JavaScriptExtractor {
         // Extract JSDoc comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             symbol_kind,
@@ -137,12 +141,16 @@ impl super::JavaScriptExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 
     /// Extract export declarations - implementation's extractExport
-    pub(super) fn extract_export(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
-        let exported_name = self.extract_exported_name(&node);
+    pub(super) fn extract_export(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
+        let exported_name = self.extract_exported_name(&node)?;
         let signature = self.base.get_node_text(&node);
 
         let mut metadata = HashMap::new();
@@ -156,7 +164,7 @@ impl super::JavaScriptExtractor {
         // Extract JSDoc comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             exported_name.clone(),
             SymbolKind::Export,
@@ -167,11 +175,11 @@ impl super::JavaScriptExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 
     /// Extract exported name - implementation's extractExportedName
-    pub(super) fn extract_exported_name(&self, node: &Node) -> String {
+    pub(super) fn extract_exported_name(&self, node: &Node) -> Option<String> {
         // Handle different export patterns (reference logic)
         for child in node.children(&mut node.walk()) {
             match child.kind() {
@@ -182,18 +190,18 @@ impl super::JavaScriptExtractor {
                         .find(|c| c.kind() == "variable_declarator");
                     if let Some(decl) = declarator {
                         if let Some(name_node) = decl.child_by_field_name("name") {
-                            return self.base.get_node_text(&name_node);
+                            return Some(self.base.get_node_text(&name_node));
                         }
                     }
                 }
                 "class_declaration" | "function_declaration" => {
                     if let Some(name_node) = child.child_by_field_name("name") {
-                        return self.base.get_node_text(&name_node);
+                        return Some(self.base.get_node_text(&name_node));
                     }
                 }
                 "identifier" => {
                     // Simple export: export identifier
-                    return self.base.get_node_text(&child);
+                    return Some(self.base.get_node_text(&child));
                 }
                 "export_clause" => {
                     // Handle export { default as Component } patterns (reference logic)
@@ -205,14 +213,14 @@ impl super::JavaScriptExtractor {
                                 if self.base.get_node_text(&children[i]) == "as"
                                     && i + 1 < children.len()
                                 {
-                                    return self.base.get_node_text(&children[i + 1]);
+                                    return Some(self.base.get_node_text(&children[i + 1]));
                                 }
                             }
                             // If no "as", return the export name
                             if let Some(name_node) =
                                 children.iter().find(|c| c.kind() == "identifier")
                             {
-                                return self.base.get_node_text(name_node);
+                                return Some(self.base.get_node_text(name_node));
                             }
                         }
                     }
@@ -220,7 +228,7 @@ impl super::JavaScriptExtractor {
                 "export_specifier" => {
                     // Named export specifier (direct child)
                     if let Some(name_node) = child.child_by_field_name("name") {
-                        return self.base.get_node_text(&name_node);
+                        return Some(self.base.get_node_text(&name_node));
                     }
                 }
                 _ => {}
@@ -229,9 +237,9 @@ impl super::JavaScriptExtractor {
 
         // Look for default exports (reference logic)
         if self.is_default_export(node) {
-            return "default".to_string();
+            return Some("default".to_string());
         }
 
-        "unknown".to_string()
+        None
     }
 }

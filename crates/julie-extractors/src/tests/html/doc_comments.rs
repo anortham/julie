@@ -75,13 +75,13 @@ mod tests {
     #[test]
     fn test_element_without_comment_has_no_doc_comment() {
         let code = r#"
-            <div class="no-comment">Content</div>
+            <nav class="no-comment">Content</nav>
         "#;
 
         let symbols = extract_symbols(code);
-        let div = symbols.iter().find(|s| s.name == "div").unwrap();
+        let nav = symbols.iter().find(|s| s.name == "nav").unwrap();
 
-        assert!(div.doc_comment.is_none());
+        assert!(nav.doc_comment.is_none());
     }
 
     #[test]

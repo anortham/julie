@@ -10,24 +10,25 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract a function declaration or arrow function
-pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) -> Symbol {
+pub(super) fn extract_function(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
-    let mut name = if let Some(name_node) = name_node {
-        extractor.base().get_node_text(&name_node)
-    } else {
-        "Anonymous".to_string()
-    };
+    let mut name = name_node.map(|n| extractor.base().get_node_text(&n));
 
     // Handle arrow functions assigned to variables
     if node.kind() == "arrow_function" {
         if let Some(parent) = node.parent() {
             if parent.kind() == "variable_declarator" {
                 if let Some(var_name_node) = parent.child_by_field_name("name") {
-                    name = extractor.base().get_node_text(&var_name_node);
+                    name = Some(extractor.base().get_node_text(&var_name_node));
                 }
             }
         }
     }
+
+    let name = name?;
 
     let signature = build_function_signature(extractor, &node, &name);
     let visibility = extractor.base().extract_visibility(&node);
@@ -108,17 +109,16 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
         }
     }
 
-    symbol
+    Some(symbol)
 }
 
 /// Extract a method definition (inside a class)
-pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) -> Symbol {
+pub(super) fn extract_method(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
-    let name = if let Some(name_node) = name_node {
-        extractor.base().get_node_text(&name_node)
-    } else {
-        "Anonymous".to_string()
-    };
+    let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
     // Determine if this is a constructor
     let symbol_kind = if name == "constructor" {
@@ -189,17 +189,16 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
             .insert(new_id, symbol.clone());
     }
 
-    symbol
+    Some(symbol)
 }
 
 /// Extract a variable declarator
-pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) -> Symbol {
+pub(super) fn extract_variable(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
-    let name = if let Some(name_node) = name_node {
-        extractor.base().get_node_text(&name_node)
-    } else {
-        "Anonymous".to_string()
-    };
+    let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
     // Check if this variable contains an arrow function
     if let Some(value_node) = node.child_by_field_name("value") {
@@ -212,7 +211,7 @@ pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    extractor.base_mut().create_symbol(
+    Some(extractor.base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Variable,
@@ -220,7 +219,7 @@ pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) 
             doc_comment,
             ..Default::default()
         },
-    )
+    ))
 }
 
 /// Build a function signature string (e.g., "foo(x, y): string")

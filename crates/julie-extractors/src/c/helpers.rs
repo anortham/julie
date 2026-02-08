@@ -165,21 +165,15 @@ pub(super) fn extract_variable_name(base: &BaseExtractor, declarator: tree_sitte
 }
 
 /// Extract struct name from a struct specifier
-pub(super) fn extract_struct_name(base: &BaseExtractor, node: tree_sitter::Node) -> String {
-    if let Some(name_node) = node.child_by_field_name("name") {
-        base.get_node_text(&name_node)
-    } else {
-        "anonymous".to_string()
-    }
+pub(super) fn extract_struct_name(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
+    let name_node = node.child_by_field_name("name")?;
+    Some(base.get_node_text(&name_node))
 }
 
 /// Extract enum name from an enum specifier
-pub(super) fn extract_enum_name(base: &BaseExtractor, node: tree_sitter::Node) -> String {
-    if let Some(name_node) = node.child_by_field_name("name") {
-        base.get_node_text(&name_node)
-    } else {
-        "anonymous".to_string()
-    }
+pub(super) fn extract_enum_name(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
+    let name_node = node.child_by_field_name("name")?;
+    Some(base.get_node_text(&name_node))
 }
 
 /// Check if this looks like a typedef name by examining parent context

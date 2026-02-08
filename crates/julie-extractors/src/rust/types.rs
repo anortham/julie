@@ -18,12 +18,10 @@ pub(super) fn extract_struct(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "Anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     // Extract visibility and attributes
     let visibility = extract_visibility(base, node);
@@ -49,7 +47,7 @@ pub(super) fn extract_struct(
         Visibility::Public
     };
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Class,
@@ -60,7 +58,7 @@ pub(super) fn extract_struct(
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Extract enum definition
@@ -68,12 +66,10 @@ pub(super) fn extract_enum(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "Anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let visibility = extract_visibility(base, node);
     let attributes = get_preceding_attributes(base, node);
@@ -97,7 +93,7 @@ pub(super) fn extract_enum(
         Visibility::Public
     };
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Class,
@@ -108,7 +104,7 @@ pub(super) fn extract_enum(
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Extract trait definition
@@ -116,12 +112,10 @@ pub(super) fn extract_trait(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "Anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let visibility = extract_visibility(base, node);
 
@@ -168,7 +162,7 @@ pub(super) fn extract_trait(
         Visibility::Public
     };
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Interface,
@@ -179,7 +173,7 @@ pub(super) fn extract_trait(
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Extract union definition
@@ -187,14 +181,12 @@ pub(super) fn extract_union(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node
         .children(&mut node.walk())
         .find(|c| c.kind() == "type_identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "Anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let visibility = extract_visibility(base, node);
     let signature = format!("{}union {}", visibility, name);
@@ -205,7 +197,7 @@ pub(super) fn extract_union(
         Visibility::Public
     };
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Union,
@@ -216,7 +208,7 @@ pub(super) fn extract_union(
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Extract module definition
@@ -224,12 +216,10 @@ pub(super) fn extract_module(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let visibility = extract_visibility(base, node);
     let signature = format!("{}mod {}", visibility, name);
@@ -240,7 +230,7 @@ pub(super) fn extract_module(
         Visibility::Public
     };
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Namespace,
@@ -251,7 +241,7 @@ pub(super) fn extract_module(
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Extract const definition
@@ -259,12 +249,10 @@ pub(super) fn extract_const(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let visibility = extract_visibility(base, node);
     let type_node = node.child_by_field_name("type");
@@ -284,7 +272,7 @@ pub(super) fn extract_const(
         Visibility::Public
     };
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Constant,
@@ -295,7 +283,7 @@ pub(super) fn extract_const(
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Extract static definition
@@ -303,12 +291,10 @@ pub(super) fn extract_static(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let visibility = extract_visibility(base, node);
     let is_mutable = node
@@ -335,7 +321,7 @@ pub(super) fn extract_static(
         Visibility::Public
     };
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Variable,
@@ -346,7 +332,7 @@ pub(super) fn extract_static(
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Extract macro definition
@@ -354,16 +340,14 @@ pub(super) fn extract_macro(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let signature = format!("macro_rules! {}", name);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Function,
@@ -374,7 +358,7 @@ pub(super) fn extract_macro(
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Extract type alias definition
@@ -382,14 +366,12 @@ pub(super) fn extract_type_alias(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node
         .children(&mut node.walk())
         .find(|c| c.kind() == "type_identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let visibility = extract_visibility(base, node);
 
@@ -421,7 +403,7 @@ pub(super) fn extract_type_alias(
         Visibility::Public
     };
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Type,
@@ -432,5 +414,5 @@ pub(super) fn extract_type_alias(
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }

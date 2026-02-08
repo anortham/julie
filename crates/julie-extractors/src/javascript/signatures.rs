@@ -13,7 +13,7 @@ impl super::JavaScriptExtractor {
         let name_node = node.child_by_field_name("name");
         let name = name_node
             .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "Anonymous".to_string());
+            .unwrap_or_default();
 
         let mut signature = format!("class {}", name);
 

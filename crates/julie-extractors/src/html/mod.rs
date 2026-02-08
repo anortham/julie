@@ -85,11 +85,11 @@ impl HTMLExtractor {
 
     fn extract_node_symbol(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         match node.kind() {
-            "element" => Some(elements::ElementExtractor::extract_element(
+            "element" => elements::ElementExtractor::extract_element(
                 &mut self.base,
                 node,
                 parent_id,
-            )),
+            ),
             "script_element" => Some(scripts::ScriptStyleExtractor::extract_script_element(
                 &mut self.base,
                 node,

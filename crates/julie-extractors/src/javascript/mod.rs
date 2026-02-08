@@ -216,7 +216,7 @@ impl JavaScriptExtractor {
         // Port switch statement exactly
         match node.kind() {
             "class_declaration" => {
-                symbol = Some(self.extract_class(node, parent_id.clone()));
+                symbol = self.extract_class(node, parent_id.clone());
             }
             "function_declaration"
             | "function"
@@ -224,10 +224,10 @@ impl JavaScriptExtractor {
             | "function_expression"
             | "generator_function"
             | "generator_function_declaration" => {
-                symbol = Some(self.extract_function(node, parent_id.clone()));
+                symbol = self.extract_function(node, parent_id.clone());
             }
             "method_definition" => {
-                symbol = Some(self.extract_method(node, parent_id.clone()));
+                symbol = self.extract_method(node, parent_id.clone());
             }
             "variable_declarator" => {
                 // Handle destructuring patterns that create multiple symbols (reference logic)
@@ -238,10 +238,10 @@ impl JavaScriptExtractor {
                             self.extract_destructuring_variables(node, parent_id.clone());
                         symbols.extend(destructured_symbols);
                     } else {
-                        symbol = Some(self.extract_variable(node, parent_id.clone()));
+                        symbol = self.extract_variable(node, parent_id.clone());
                     }
                 } else {
-                    symbol = Some(self.extract_variable(node, parent_id.clone()));
+                    symbol = self.extract_variable(node, parent_id.clone());
                 }
             }
             "import_statement" | "import_declaration" => {
@@ -254,10 +254,10 @@ impl JavaScriptExtractor {
                 }
             }
             "export_statement" | "export_declaration" => {
-                symbol = Some(self.extract_export(node, parent_id.clone()));
+                symbol = self.extract_export(node, parent_id.clone());
             }
             "property_definition" | "public_field_definition" | "field_definition" | "pair" => {
-                symbol = Some(self.extract_property(node, parent_id.clone()));
+                symbol = self.extract_property(node, parent_id.clone());
             }
             "assignment_expression" => {
                 if let Some(assignment_symbol) = self.extract_assignment(node, parent_id.clone()) {

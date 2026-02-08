@@ -10,30 +10,34 @@ use tree_sitter::Node;
 
 impl super::JavaScriptExtractor {
     /// Extract function declarations - direct Implementation of extractFunction
-    pub(super) fn extract_function(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
+    pub(super) fn extract_function(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
         let name_node = node.child_by_field_name("name");
-        let mut name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "Anonymous".to_string());
+        let mut name = name_node.map(|n| self.base.get_node_text(&n));
 
         // Handle arrow functions assigned to variables (reference logic)
         if node.kind() == "arrow_function" || node.kind() == "function_expression" {
             if let Some(parent) = node.parent() {
                 if parent.kind() == "variable_declarator" {
                     if let Some(var_name_node) = parent.child_by_field_name("name") {
-                        name = self.base.get_node_text(&var_name_node);
+                        name = Some(self.base.get_node_text(&var_name_node));
                     }
                 } else if parent.kind() == "assignment_expression" {
                     if let Some(left_node) = parent.child_by_field_name("left") {
-                        name = self.base.get_node_text(&left_node);
+                        name = Some(self.base.get_node_text(&left_node));
                     }
                 } else if parent.kind() == "pair" {
                     if let Some(key_node) = parent.child_by_field_name("key") {
-                        name = self.base.get_node_text(&key_node);
+                        name = Some(self.base.get_node_text(&key_node));
                     }
                 }
             }
         }
+
+        let name = name?;
 
         let signature = self.build_function_signature(&node, &name);
 
@@ -56,7 +60,7 @@ impl super::JavaScriptExtractor {
         // Extract JSDoc comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Function,
@@ -67,19 +71,21 @@ impl super::JavaScriptExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 
     /// Extract method definitions - implementation's extractMethod
-    pub(super) fn extract_method(&mut self, node: Node, parent_id: Option<String>) -> Symbol {
+    pub(super) fn extract_method(
+        &mut self,
+        node: Node,
+        parent_id: Option<String>,
+    ) -> Option<Symbol> {
         let name_node = node
             .child_by_field_name("name")
             .or_else(|| node.child_by_field_name("property"))
             .or_else(|| node.child_by_field_name("key"));
 
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "Anonymous".to_string());
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         let signature = self.build_method_signature(&node, &name);
 
@@ -115,7 +121,7 @@ impl super::JavaScriptExtractor {
         // Extract JSDoc comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             symbol_kind,
@@ -126,6 +132,6 @@ impl super::JavaScriptExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 }

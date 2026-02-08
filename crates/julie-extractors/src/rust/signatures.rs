@@ -10,10 +10,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract function return type from a function node
-pub(super) fn extract_return_type(
-    base: &crate::base::BaseExtractor,
-    node: Node,
-) -> String {
+pub(super) fn extract_return_type(base: &crate::base::BaseExtractor, node: Node) -> String {
     let return_type_node = node.child_by_field_name("return_type");
 
     if let Some(ret_type) = return_type_node {
@@ -40,14 +37,12 @@ pub(super) fn extract_function_signature(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node
         .children(&mut node.walk())
         .find(|c| c.kind() == "identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     // Extract parameters
     let params_node = node
@@ -72,7 +67,7 @@ pub(super) fn extract_function_signature(
 
     let signature = format!("fn {}{}{}", name, params, return_type);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Function,
@@ -83,7 +78,7 @@ pub(super) fn extract_function_signature(
             doc_comment: None,
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Extract associated type in a trait
@@ -91,14 +86,12 @@ pub(super) fn extract_associated_type(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node
         .children(&mut node.walk())
         .find(|c| c.kind() == "type_identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     // Extract trait bounds (: Debug + Clone, etc.)
     let trait_bounds = node
@@ -109,7 +102,7 @@ pub(super) fn extract_associated_type(
 
     let signature = format!("type {}{}", name, trait_bounds);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Type,
@@ -120,7 +113,7 @@ pub(super) fn extract_associated_type(
             doc_comment: None,
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Extract macro invocation (for code generation patterns)

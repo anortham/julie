@@ -99,9 +99,9 @@ impl RustExtractor {
 
     fn extract_symbol(&mut self, node: Node, parent_id: Option<String>) -> Option<Symbol> {
         match node.kind() {
-            "struct_item" => Some(types::extract_struct(self, node, parent_id)),
-            "enum_item" => Some(types::extract_enum(self, node, parent_id)),
-            "trait_item" => Some(types::extract_trait(self, node, parent_id)),
+            "struct_item" => types::extract_struct(self, node, parent_id),
+            "enum_item" => types::extract_enum(self, node, parent_id),
+            "trait_item" => types::extract_trait(self, node, parent_id),
             "impl_item" => {
                 functions::extract_impl(self, node, parent_id);
                 None // impl blocks don't create symbols directly
@@ -111,21 +111,21 @@ impl RustExtractor {
                 if is_inside_impl(node) && !self.is_processing_impl_blocks {
                     None
                 } else {
-                    Some(functions::extract_function(self, node, parent_id))
+                    functions::extract_function(self, node, parent_id)
                 }
             }
-            "function_signature_item" => Some(signatures::extract_function_signature(
-                self, node, parent_id,
-            )),
-            "associated_type" => Some(signatures::extract_associated_type(self, node, parent_id)),
-            "union_item" => Some(types::extract_union(self, node, parent_id)),
+            "function_signature_item" => {
+                signatures::extract_function_signature(self, node, parent_id)
+            }
+            "associated_type" => signatures::extract_associated_type(self, node, parent_id),
+            "union_item" => types::extract_union(self, node, parent_id),
             "macro_invocation" => signatures::extract_macro_invocation(self, node, parent_id),
-            "mod_item" => Some(types::extract_module(self, node, parent_id)),
+            "mod_item" => types::extract_module(self, node, parent_id),
             "use_declaration" => signatures::extract_use(self, node, parent_id),
-            "const_item" => Some(types::extract_const(self, node, parent_id)),
-            "static_item" => Some(types::extract_static(self, node, parent_id)),
-            "macro_definition" => Some(types::extract_macro(self, node, parent_id)),
-            "type_item" => Some(types::extract_type_alias(self, node, parent_id)),
+            "const_item" => types::extract_const(self, node, parent_id),
+            "static_item" => types::extract_static(self, node, parent_id),
+            "macro_definition" => types::extract_macro(self, node, parent_id),
+            "type_item" => types::extract_type_alias(self, node, parent_id),
             _ => None,
         }
     }

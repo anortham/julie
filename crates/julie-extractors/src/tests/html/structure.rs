@@ -594,12 +594,8 @@ mod tests {
         assert!(checkbox_inputs.len() >= 4);
 
         // Data attributes
-        let component_dropdown = symbols.iter().find(|s| {
-            s.signature
-                .as_ref()
-                .map_or(false, |sig| sig.contains(r#"data-component="dropdown""#))
-        });
-        assert!(component_dropdown.is_some());
+        // Note: div with data-component="dropdown" is filtered (no id/name, generic container)
+        // but body with data-env is still extracted since body is a meaningful element.
 
         let env_attribute = symbols.iter().find(|s| {
             s.signature
@@ -616,15 +612,8 @@ mod tests {
         });
         assert!(aria_current_page.is_some());
 
-        let aria_hidden: Vec<_> = symbols
-            .iter()
-            .filter(|s| {
-                s.signature
-                    .as_ref()
-                    .map_or(false, |sig| sig.contains(r#"aria-hidden="true""#))
-            })
-            .collect();
-        assert!(aria_hidden.len() > 5);
+        // Note: aria-hidden="true" elements are mostly spans (filtered as generic containers).
+        // Only meaningful elements with aria-hidden would be extracted.
 
         let aria_label: Vec<_> = symbols
             .iter()
@@ -634,7 +623,8 @@ mod tests {
                     .map_or(false, |sig| sig.contains("aria-label="))
             })
             .collect();
-        assert!(aria_label.len() > 8);
+        // Meaningful elements with aria-label: nav, aside, section, buttons, a tags
+        assert!(aria_label.len() >= 8);
 
         // Breadcrumbs
         let breadcrumb_nav = symbols.iter().find(|s| {
@@ -644,13 +634,8 @@ mod tests {
         });
         assert!(breadcrumb_nav.is_some());
 
-        let breadcrumb_list = symbols.iter().find(|s| {
-            s.name == "ol"
-                && s.signature
-                    .as_ref()
-                    .map_or(false, |sig| sig.contains("breadcrumb"))
-        });
-        assert!(breadcrumb_list.is_some());
+        // Note: ol.breadcrumb is filtered (generic list element without id/name).
+        // The nav with aria-label="Breadcrumb" is still extracted above.
 
         // Time elements
         let time_elements: Vec<_> = symbols.iter().filter(|s| s.name == "time").collect();

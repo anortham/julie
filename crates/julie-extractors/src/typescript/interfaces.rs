@@ -8,18 +8,17 @@ use crate::typescript::TypeScriptExtractor;
 use tree_sitter::Node;
 
 /// Extract an interface declaration
-pub(super) fn extract_interface(extractor: &mut TypeScriptExtractor, node: Node) -> Symbol {
+pub(super) fn extract_interface(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
-    let name = if let Some(name_node) = name_node {
-        extractor.base().get_node_text(&name_node)
-    } else {
-        "Anonymous".to_string()
-    };
+    let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    extractor.base_mut().create_symbol(
+    Some(extractor.base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Interface,
@@ -27,22 +26,21 @@ pub(super) fn extract_interface(extractor: &mut TypeScriptExtractor, node: Node)
             doc_comment,
             ..Default::default()
         },
-    )
+    ))
 }
 
 /// Extract a type alias declaration
-pub(super) fn extract_type_alias(extractor: &mut TypeScriptExtractor, node: Node) -> Symbol {
+pub(super) fn extract_type_alias(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
-    let name = if let Some(name_node) = name_node {
-        extractor.base().get_node_text(&name_node)
-    } else {
-        "Anonymous".to_string()
-    };
+    let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    extractor.base_mut().create_symbol(
+    Some(extractor.base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Type,
@@ -50,22 +48,21 @@ pub(super) fn extract_type_alias(extractor: &mut TypeScriptExtractor, node: Node
             doc_comment,
             ..Default::default()
         },
-    )
+    ))
 }
 
 /// Extract an enum declaration
-pub(super) fn extract_enum(extractor: &mut TypeScriptExtractor, node: Node) -> Symbol {
+pub(super) fn extract_enum(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
-    let name = if let Some(name_node) = name_node {
-        extractor.base().get_node_text(&name_node)
-    } else {
-        "Anonymous".to_string()
-    };
+    let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    extractor.base_mut().create_symbol(
+    Some(extractor.base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Enum,
@@ -73,22 +70,21 @@ pub(super) fn extract_enum(extractor: &mut TypeScriptExtractor, node: Node) -> S
             doc_comment,
             ..Default::default()
         },
-    )
+    ))
 }
 
 /// Extract a namespace declaration
-pub(super) fn extract_namespace(extractor: &mut TypeScriptExtractor, node: Node) -> Symbol {
+pub(super) fn extract_namespace(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
-    let name = if let Some(name_node) = name_node {
-        extractor.base().get_node_text(&name_node)
-    } else {
-        "Anonymous".to_string()
-    };
+    let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    extractor.base_mut().create_symbol(
+    Some(extractor.base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Namespace,
@@ -96,24 +92,23 @@ pub(super) fn extract_namespace(extractor: &mut TypeScriptExtractor, node: Node)
             doc_comment,
             ..Default::default()
         },
-    )
+    ))
 }
 
 /// Extract a property (class property or interface property)
-pub(super) fn extract_property(extractor: &mut TypeScriptExtractor, node: Node) -> Symbol {
+pub(super) fn extract_property(
+    extractor: &mut TypeScriptExtractor,
+    node: Node,
+) -> Option<Symbol> {
     let name_node = node
         .child_by_field_name("name")
         .or_else(|| node.child_by_field_name("key"));
-    let name = if let Some(name_node) = name_node {
-        extractor.base().get_node_text(&name_node)
-    } else {
-        "Anonymous".to_string()
-    };
+    let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    extractor.base_mut().create_symbol(
+    Some(extractor.base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Property,
@@ -121,5 +116,5 @@ pub(super) fn extract_property(extractor: &mut TypeScriptExtractor, node: Node) 
             doc_comment,
             ..Default::default()
         },
-    )
+    ))
 }

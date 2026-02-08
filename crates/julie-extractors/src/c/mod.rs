@@ -173,20 +173,21 @@ impl CExtractor {
                 );
             }
             "struct_specifier" => {
-                symbol = Some(declarations::extract_struct(
+                symbol = declarations::extract_struct(
                     self,
                     node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "enum_specifier" => {
-                symbol = Some(declarations::extract_enum(self, node, parent_id.as_deref()));
-                // Also extract enum values as separate constants
-                if let Some(ref enum_symbol) = symbol {
-                    let enum_values =
-                        declarations::extract_enum_value_symbols(self, node, &enum_symbol.id);
-                    symbols.extend(enum_values);
-                }
+                symbol = declarations::extract_enum(self, node, parent_id.as_deref());
+                // Extract enum values as separate constants (even for anonymous enums like `typedef enum { ... } Name;`)
+                let parent_id_for_values = symbol.as_ref()
+                    .map(|s| s.id.as_str())
+                    .unwrap_or("");
+                let enum_values =
+                    declarations::extract_enum_value_symbols(self, node, parent_id_for_values);
+                symbols.extend(enum_values);
             }
             "type_definition" => {
                 symbol = declarations::extract_type_definition(

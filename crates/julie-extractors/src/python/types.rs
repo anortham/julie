@@ -7,16 +7,13 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract a class definition from a class_definition node
-pub(super) fn extract_class(extractor: &mut PythonExtractor, node: Node) -> Symbol {
+pub(super) fn extract_class(extractor: &mut PythonExtractor, node: Node) -> Option<Symbol> {
     // For Python, the class name is typically the second child (after "class" keyword)
-    let name = if let Some(identifier_node) = node.children(&mut node.walk()).nth(1) {
-        if identifier_node.kind() == "identifier" {
-            extractor.base_mut().get_node_text(&identifier_node)
-        } else {
-            "Anonymous".to_string()
-        }
+    let identifier_node = node.children(&mut node.walk()).nth(1)?;
+    let name = if identifier_node.kind() == "identifier" {
+        extractor.base_mut().get_node_text(&identifier_node)
     } else {
-        "Anonymous".to_string()
+        return None;
     };
 
     // Extract base classes and metaclass arguments
@@ -99,7 +96,7 @@ pub(super) fn extract_class(extractor: &mut PythonExtractor, node: Node) -> Symb
     metadata.insert("superclasses".to_string(), serde_json::json!(all_args));
     metadata.insert("isEnum".to_string(), serde_json::json!(is_enum));
 
-    extractor.base_mut().create_symbol(
+    Some(extractor.base_mut().create_symbol(
         &node,
         name,
         symbol_kind,
@@ -110,7 +107,7 @@ pub(super) fn extract_class(extractor: &mut PythonExtractor, node: Node) -> Symb
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract docstring from a function or class

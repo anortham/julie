@@ -760,13 +760,17 @@ function processResponse<T extends ApiResponse>(
 }
 "#;
 
-        let mut parser = init_parser();
+        // TypeScript-specific syntax requires the TypeScript parser
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+            .expect("Error loading TypeScript grammar");
         let tree = parser.parse(code, None).unwrap();
 
         let workspace_root = PathBuf::from("/tmp/test");
 
         let mut extractor = TypeScriptExtractor::new(
-            "javascript".to_string(),
+            "typescript".to_string(),
             "advanced-types.ts".to_string(),
             code.to_string(),
             &workspace_root,

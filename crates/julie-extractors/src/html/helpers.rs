@@ -7,7 +7,7 @@ pub(super) struct HTMLHelpers;
 
 impl HTMLHelpers {
     /// Extract tag name from HTML element node
-    pub(super) fn extract_tag_name(base: &BaseExtractor, node: Node) -> String {
+    pub(super) fn extract_tag_name(base: &BaseExtractor, node: Node) -> Option<String> {
         // Look for start_tag or self_closing_tag child and extract tag name
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -15,7 +15,7 @@ impl HTMLHelpers {
                 let mut inner_cursor = child.walk();
                 for inner_child in child.children(&mut inner_cursor) {
                     if inner_child.kind() == "tag_name" {
-                        return base.get_node_text(&inner_child);
+                        return Some(base.get_node_text(&inner_child));
                     }
                 }
             }
@@ -25,11 +25,11 @@ impl HTMLHelpers {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "tag_name" {
-                return base.get_node_text(&child);
+                return Some(base.get_node_text(&child));
             }
         }
 
-        "unknown".to_string()
+        None
     }
 
     /// Extract all attributes from an HTML element

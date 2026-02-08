@@ -41,12 +41,10 @@ pub(super) fn extract_function(
     extractor: &mut RustExtractor,
     node: Node,
     parent_id: Option<String>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base_mut();
     let name_node = node.child_by_field_name("name");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "anonymous".to_string());
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     // Determine if this is a method (inside impl block) or standalone function
     let kind = if is_inside_impl(node) {
@@ -104,7 +102,7 @@ pub(super) fn extract_function(
         Visibility::Public
     };
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         kind,
@@ -115,7 +113,7 @@ pub(super) fn extract_function(
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),
         },
-    )
+    ))
 }
 
 /// Store information about an impl block for phase 2 processing
@@ -125,9 +123,10 @@ pub(super) fn extract_impl(extractor: &mut RustExtractor, node: Node, _parent_id
     let type_node = node
         .children(&mut node.walk())
         .find(|c| c.kind() == "type_identifier");
-    let type_name = type_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "anonymous".to_string());
+    let type_name = match type_node.map(|n| base.get_node_text(&n)) {
+        Some(name) => name,
+        None => return, // Skip impl blocks where we can't determine the type name
+    };
 
     // SAFETY FIX: Store byte ranges instead of Node references
     // This avoids unsafe lifetime transmutation and is safe to store
@@ -171,22 +170,25 @@ pub(super) fn process_impl_blocks(
             {
                 for child in declaration_list.children(&mut declaration_list.walk()) {
                     if child.kind() == "function_item" {
-                        let mut method_symbol =
-                            extract_function(extractor, child, parent_id.clone());
-                        method_symbol.kind = SymbolKind::Method;
+                        if let Some(mut method_symbol) =
+                            extract_function(extractor, child, parent_id.clone())
+                        {
+                            method_symbol.kind = SymbolKind::Method;
 
-                        // Preserve the impl type name in metadata so cross-file methods stay discoverable
-                        let metadata = method_symbol.metadata.get_or_insert_with(HashMap::new);
-                        metadata.insert(
-                            "impl_type_name".to_string(),
-                            Value::String(impl_block.type_name.clone()),
-                        );
-                        metadata.insert(
-                            "impl_parent_id_resolved".to_string(),
-                            Value::Bool(parent_id.is_some()),
-                        );
+                            // Preserve the impl type name in metadata so cross-file methods stay discoverable
+                            let metadata =
+                                method_symbol.metadata.get_or_insert_with(HashMap::new);
+                            metadata.insert(
+                                "impl_type_name".to_string(),
+                                Value::String(impl_block.type_name.clone()),
+                            );
+                            metadata.insert(
+                                "impl_parent_id_resolved".to_string(),
+                                Value::Bool(parent_id.is_some()),
+                            );
 
-                        symbols.push(method_symbol);
+                            symbols.push(method_symbol);
+                        }
                     }
                 }
             }

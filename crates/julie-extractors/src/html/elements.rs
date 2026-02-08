@@ -10,14 +10,74 @@ use super::types::HTMLTypes;
 pub(super) struct ElementExtractor;
 
 impl ElementExtractor {
-    /// Extract an HTML element and create a symbol
+    /// Check if an HTML element should be extracted as a symbol.
+    ///
+    /// Returns true for meaningful elements:
+    /// - Elements with `id` or `name` attributes (referenceable)
+    /// - Semantic landmark elements (header, nav, main, aside, footer, section, article)
+    /// - Other semantic elements (details, summary, figure, figcaption, time, dialog)
+    /// - Form elements (input, textarea, select, button, form, fieldset, legend, label)
+    /// - Media elements (img, video, audio, picture, source, track)
+    /// - Meta/link/base elements (metadata)
+    /// - Heading elements (h1-h6, title)
+    /// - Interactive/embedding elements (a, canvas, iframe, object, embed, svg)
+    /// - Custom elements (contain a hyphen in the tag name)
+    ///
+    /// Generic containers (div, span, p, ul, ol, li, table, etc.) are skipped
+    /// unless they have an `id` or `name` attribute.
+    fn should_extract_element(tag_name: &str, attributes: &HashMap<String, String>) -> bool {
+        // Elements with id or name are always meaningful (referenceable)
+        if attributes.contains_key("id") || attributes.contains_key("name") {
+            return true;
+        }
+
+        // Custom elements (contain a hyphen) are always meaningful
+        if tag_name.contains('-') {
+            return true;
+        }
+
+        matches!(
+            tag_name,
+            // Document structure
+            "html" | "head" | "body"
+            // Semantic landmarks
+            | "header" | "nav" | "main" | "aside" | "footer" | "section" | "article"
+            // Other semantic elements
+            | "details" | "summary" | "figure" | "figcaption" | "time" | "dialog"
+            // Headings
+            | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "title"
+            // Form elements
+            | "form" | "input" | "textarea" | "select" | "button"
+            | "fieldset" | "legend" | "label" | "option"
+            // Media elements
+            | "img" | "video" | "audio" | "picture" | "source" | "track"
+            // Meta/link/base
+            | "meta" | "link" | "base"
+            // Interactive/embedding elements
+            | "a" | "canvas" | "iframe" | "object" | "embed"
+            // SVG elements
+            | "svg" | "defs" | "linearGradient" | "rect" | "circle"
+            | "path" | "text" | "animate" | "desc" | "stop"
+        )
+    }
+
+    /// Extract an HTML element and create a symbol, if it passes filtering.
+    ///
+    /// Generic container elements (div, span, p, etc.) are skipped unless they
+    /// have an `id` or `name` attribute. This reduces noise by 90-95%.
     pub(super) fn extract_element(
         base: &mut BaseExtractor,
         node: Node,
         parent_id: Option<&str>,
-    ) -> Symbol {
-        let tag_name = HTMLHelpers::extract_tag_name(base, node);
+    ) -> Option<Symbol> {
+        let tag_name = HTMLHelpers::extract_tag_name(base, node)?;
         let attributes = HTMLHelpers::extract_attributes(base, node);
+
+        // Filter: skip generic containers without id/name
+        if !Self::should_extract_element(&tag_name, &attributes) {
+            return None;
+        }
+
         let text_content = HTMLHelpers::extract_element_text_content(base, node);
         let signature = AttributeHandler::build_element_signature(
             &tag_name,
@@ -63,7 +123,7 @@ impl ElementExtractor {
         // Extract HTML comment
         let doc_comment = base.find_doc_comment(&node);
 
-        base.create_symbol(
+        Some(base.create_symbol(
             &node,
             tag_name,
             symbol_kind,
@@ -74,7 +134,7 @@ impl ElementExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 
     /// Extract DOCTYPE declaration
