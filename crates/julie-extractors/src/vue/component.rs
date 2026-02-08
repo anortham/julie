@@ -2,6 +2,12 @@
 ///
 /// Handles extracting component name from export default { name: ... } or filename
 use super::parsing::VueSection;
+use regex::Regex;
+use std::sync::LazyLock;
+
+/// Regex for matching component name in Vue export default { name: '...' }
+static COMPONENT_NAME_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"name\s*:\s*['"]([^'"]+)['"]"#).unwrap());
 
 /// Extract component name from sections or filename
 /// Priority: export default { name: 'X' } > filename
@@ -10,10 +16,7 @@ pub(super) fn extract_component_name(file_path: &str, sections: &[VueSection]) -
     for section in sections {
         if section.section_type == "script" {
             // Look for: name: 'ComponentName' or name: "ComponentName"
-            if let Some(name_match) = regex::Regex::new(r#"name\s*:\s*['"]([^'"]+)['"]"#)
-                .ok()
-                .and_then(|re| re.captures(&section.content))
-            {
+            if let Some(name_match) = COMPONENT_NAME_RE.captures(&section.content) {
                 if let Some(name) = name_match.get(1) {
                     return Some(name.as_str().to_string());
                 }

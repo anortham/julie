@@ -1,7 +1,12 @@
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tree_sitter::Node;
+
+/// Regex for matching partial generic type constructor patterns in fragmented ERROR nodes
+static PARTIAL_GENERIC_CTOR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^const\s+(\w+)\s*\($").unwrap());
 
 /// Extract symbols from ERROR nodes - handles incomplete/fragmented syntax
 pub(super) fn extract_from_error_node(
@@ -13,9 +18,7 @@ pub(super) fn extract_from_error_node(
     let node_text = base.get_node_text(&node);
 
     // Look for partial generic type constructor pattern in fragmented ERROR nodes
-    let partial_match = Regex::new(r"^const\s+(\w+)\s*\($")
-        .unwrap()
-        .captures(&node_text);
+    let partial_match = PARTIAL_GENERIC_CTOR_RE.captures(&node_text);
 
     if let Some(partial_match) = partial_match {
         let name = partial_match[1].to_string();
