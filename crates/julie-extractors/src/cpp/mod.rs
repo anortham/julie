@@ -15,6 +15,7 @@ mod identifiers;
 mod relationships;
 mod signatures;
 mod type_inference;
+mod typedefs;
 mod types;
 mod visibility;
 
@@ -203,8 +204,24 @@ impl CppExtractor {
             "friend_declaration" => {
                 declarations::extract_friend_declaration(&mut self.base, node, parent_id)
             }
+            "type_definition" => {
+                typedefs::extract_typedef(&mut self.base, node, parent_id)
+            }
             "template_declaration" => {
-                declarations::extract_template(&mut self.base, node, parent_id)
+                let result =
+                    declarations::extract_template(&mut self.base, node, parent_id);
+                // When extract_template returns a symbol (template variable case),
+                // mark the inner declaration as processed to prevent walk_children
+                // from extracting it again via extract_declaration.
+                if result.is_some() {
+                    let mut tc = node.walk();
+                    for child in node.children(&mut tc) {
+                        if child.kind() == "declaration" {
+                            self.processed_nodes.insert(self.get_node_key(child));
+                        }
+                    }
+                }
+                result
             }
             "ERROR" => self.extract_from_error_node(node, parent_id),
             _ => None,

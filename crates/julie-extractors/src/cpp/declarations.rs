@@ -112,16 +112,52 @@ pub(super) fn extract_using(
     ))
 }
 
-/// Extract template declaration
-/// Templates are handled during tree walking - this is a stub for now
+/// Extract template declaration.
+/// Returns None for template classes/structs/functions (walk_children handles those).
+/// Extracts template VARIABLES directly (e.g. `template<class T> constexpr T pi = T(3.14)`).
 pub(super) fn extract_template(
-    _base: &mut BaseExtractor,
-    _node: Node,
-    _parent_id: Option<&str>,
+    base: &mut BaseExtractor,
+    node: Node,
+    parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Templates are handled by extracting the inner declaration
-    // during tree walking in the main extract_symbol logic
-    None
+    let mut cursor = node.walk();
+    let inner = node.children(&mut cursor).find(|c| {
+        c.kind() != "template_parameter_list" && c.kind() != "template"
+    })?;
+
+    // Classes/structs/functions already call extract_template_parameters() via walk_children
+    match inner.kind() {
+        "class_specifier" | "struct_specifier" | "union_specifier"
+        | "function_definition" | "template_declaration" => return None,
+        "declaration" => {
+            // Function declarations also handled via walk_children
+            let has_func = inner
+                .children(&mut inner.walk())
+                .any(|c| c.kind() == "function_declarator");
+            if has_func {
+                return None;
+            }
+        }
+        _ => return None,
+    }
+
+    // Extract template parameter prefix
+    let template_params = {
+        let mut c2 = node.walk();
+        node.children(&mut c2)
+            .find(|c| c.kind() == "template_parameter_list")
+            .map(|pl| format!("template{}", base.get_node_text(&pl)))
+    };
+
+    let mut symbol = extract_declaration(base, inner, parent_id)?;
+
+    // Prepend template parameters to the signature
+    if let Some(template_prefix) = template_params {
+        let existing_sig = symbol.signature.unwrap_or_default();
+        symbol.signature = Some(format!("{}\n{}", template_prefix, existing_sig));
+    }
+
+    Some(symbol)
 }
 
 /// Extract declaration (which may contain variables, functions, etc.)
