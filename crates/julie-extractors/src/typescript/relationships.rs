@@ -144,7 +144,7 @@ fn find_containing_function<'a>(node: Node, symbols: &'a [Symbol]) -> Option<&'a
 
         // Find function symbols that contain this position
         for symbol in symbols {
-            if matches!(symbol.kind, SymbolKind::Function)
+            if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor)
                 && symbol.start_line <= pos_line
                 && symbol.end_line >= pos_line
             {
