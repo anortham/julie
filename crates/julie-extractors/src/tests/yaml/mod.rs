@@ -462,4 +462,59 @@ key_with_underscores: value3
             "Should handle special characters in keys"
         );
     }
+
+    // ========================================================================
+    // Merge Key Skip (<<)
+    // ========================================================================
+
+    #[test]
+    fn test_merge_key_not_extracted_as_symbol() {
+        let yaml = "defaults: &defaults\n  adapter: postgres\n\nproduction:\n  <<: *defaults\n  database: prod_db\n";
+        let symbols = extract_symbols(yaml);
+
+        let merge_symbols: Vec<_> = symbols.iter().filter(|s| s.name == "<<").collect();
+        assert!(
+            merge_symbols.is_empty(),
+            "Merge key '<<' should NOT appear as a symbol, but found {} occurrences",
+            merge_symbols.len()
+        );
+
+        // Other keys should still be extracted
+        assert!(
+            symbols.iter().any(|s| s.name == "defaults"),
+            "Should still extract 'defaults'"
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "production"),
+            "Should still extract 'production'"
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "database"),
+            "Should still extract 'database'"
+        );
+    }
+
+    #[test]
+    fn test_multiple_merge_keys_all_skipped() {
+        let yaml = r#"
+defaults: &defaults
+  adapter: postgres
+
+development:
+  <<: *defaults
+  database: dev_db
+
+production:
+  <<: *defaults
+  database: prod_db
+"#;
+        let symbols = extract_symbols(yaml);
+
+        let merge_symbols: Vec<_> = symbols.iter().filter(|s| s.name == "<<").collect();
+        assert!(
+            merge_symbols.is_empty(),
+            "All merge keys should be skipped, but found {}",
+            merge_symbols.len()
+        );
+    }
 }

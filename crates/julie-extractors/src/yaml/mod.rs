@@ -88,6 +88,11 @@ impl YamlExtractor {
         // Extract the key name
         let key_name = self.extract_mapping_key(node)?;
 
+        // Skip merge keys (<<: *alias) — they're YAML syntax, not meaningful symbols
+        if key_name == "<<" {
+            return None;
+        }
+
         // Check for anchor on the value side
         let anchor = self.extract_anchor(node);
         let signature = anchor.map(|a| format!("{}: &{}", key_name, a));
