@@ -44,6 +44,35 @@ impl BashExtractor {
 
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
+
+        // Detect shebang line
+        if let Some(first_line) = self.base.content.lines().next() {
+            if first_line.starts_with("#!") {
+                let interpreter = first_line.trim_start_matches("#!").trim();
+                // Handle "#!/usr/bin/env python3" -> "python3"
+                // Handle "#!/bin/bash" -> "bash"
+                let name = if interpreter.contains("env ") {
+                    interpreter
+                        .rsplit_once(' ')
+                        .map(|(_, cmd)| cmd)
+                        .unwrap_or(interpreter)
+                } else {
+                    interpreter.rsplit('/').next().unwrap_or(interpreter)
+                };
+                let root = tree.root_node();
+                let symbol = self.base.create_symbol(
+                    &root,
+                    name.to_string(),
+                    SymbolKind::Variable,
+                    crate::base::SymbolOptions {
+                        signature: Some(first_line.to_string()),
+                        ..Default::default()
+                    },
+                );
+                symbols.push(symbol);
+            }
+        }
+
         self.walk_tree_for_symbols(tree.root_node(), &mut symbols, None);
         symbols
     }
@@ -109,12 +138,6 @@ impl BashExtractor {
         match node.kind() {
             "command" | "simple_command" => {
                 self.extract_command_relationships(node, symbols, relationships);
-            }
-            "command_substitution" => {
-                self.extract_command_substitution_relationships(node, symbols, relationships);
-            }
-            "file_redirect" => {
-                self.extract_file_relationships(node, symbols, relationships);
             }
             _ => {}
         }

@@ -647,10 +647,39 @@ helper_function() {
             empty_symbols.is_empty(),
             "Empty bash should produce no symbols"
         );
+        // Minimal bash with shebang should produce exactly the shebang symbol
+        let shebang = minimal_symbols.iter().find(|s| s.name == "bash" && s.signature.as_ref().map_or(false, |sig| sig.contains("#!/bin/bash")));
         assert!(
-            minimal_symbols.is_empty(),
-            "Minimal bash should produce no symbols"
+            shebang.is_some(),
+            "Minimal bash with shebang should produce the shebang symbol"
         );
+        // No other symbols besides the shebang
+        assert_eq!(
+            minimal_symbols.len(),
+            1,
+            "Minimal bash should only have the shebang symbol, got: {:?}",
+            minimal_symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_extract_shebang() {
+        let code = "#!/bin/bash\nset -euo pipefail\n\nfunction main() {\n    echo \"Hello\"\n}\n";
+        let symbols = extract_symbols(code);
+        let shebang = symbols.iter().find(|s| s.name == "bash" && s.signature.as_ref().map_or(false, |sig| sig.contains("#!/bin/bash")));
+        assert!(shebang.is_some(), "Shebang line should be extracted as a symbol. Found symbols: {:?}", symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>());
+        let shebang = shebang.unwrap();
+        assert_eq!(shebang.kind, SymbolKind::Variable, "Shebang should be SymbolKind::Variable");
+    }
+
+    #[test]
+    fn test_extract_shebang_env() {
+        let code = "#!/usr/bin/env python3\n\necho 'hello'\n";
+        let symbols = extract_symbols(code);
+        let shebang = symbols.iter().find(|s| s.name == "python3");
+        assert!(shebang.is_some(), "Shebang with env should extract the interpreter name. Found symbols: {:?}", symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>());
+        let shebang = shebang.unwrap();
+        assert_eq!(shebang.signature, Some("#!/usr/bin/env python3".to_string()));
     }
 }
 

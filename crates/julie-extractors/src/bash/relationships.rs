@@ -68,29 +68,6 @@ impl super::BashExtractor {
         }
     }
 
-    /// Extract relationships for command substitutions (for future use)
-    pub(super) fn extract_command_substitution_relationships(
-        &mut self,
-        _node: Node,
-        _symbols: &[Symbol],
-        _relationships: &mut Vec<Relationship>,
-    ) {
-        // Extract relationships for command substitutions $(command) or `command`
-        // These show data flow dependencies
-        // Currently not implemented - available for future enhancement
-    }
-
-    /// Extract relationships for file redirections and pipes (for future use)
-    pub(super) fn extract_file_relationships(
-        &mut self,
-        _node: Node,
-        _symbols: &[Symbol],
-        _relationships: &mut Vec<Relationship>,
-    ) {
-        // Extract relationships for file redirections and pipes
-        // These show data flow between commands
-        // Currently not implemented - available for future enhancement
-    }
 }
 
 /// Check if a command is a built-in shell command
