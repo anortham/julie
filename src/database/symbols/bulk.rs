@@ -274,11 +274,23 @@ impl SymbolDatabase {
             debug!("💾 Committing atomic bulk operation");
             outer_tx.commit()?;
 
-            // Post-transaction: Non-critical WAL checkpoint
-            debug!("💾 RESTART WAL checkpoint (waits for readers, post-commit)");
-            match self.conn.pragma_update(None, "wal_checkpoint", "RESTART") {
-                Ok(_) => debug!("✅ RESTART WAL checkpoint completed"),
-                Err(e) => debug!("⚠️ RESTART WAL checkpoint failed (non-fatal): {}", e),
+            // Post-transaction: TRUNCATE checkpoint to reclaim WAL disk space
+            // TRUNCATE mode merges all frames into the main DB AND shrinks the WAL
+            // file to 0 bytes. RESTART only resets the write position without shrinking.
+            debug!("💾 TRUNCATE WAL checkpoint (reclaims disk space)");
+            match self
+                .conn
+                .prepare("PRAGMA wal_checkpoint(TRUNCATE)")
+                .and_then(|mut stmt| {
+                    stmt.query_row([], |row| {
+                        Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                    })
+                }) {
+                Ok((busy, log, checkpointed)) => debug!(
+                    "✅ WAL TRUNCATE checkpoint: busy={}, log={}, checkpointed={}",
+                    busy, log, checkpointed
+                ),
+                Err(e) => debug!("⚠️ WAL TRUNCATE checkpoint failed (non-fatal): {}", e),
             }
 
             Ok(())

@@ -135,10 +135,20 @@ impl SymbolDatabase {
         }
 
         if result.is_ok() {
-            debug!("💾 RESTART WAL checkpoint (waits for readers)");
-            match self.conn.pragma_update(None, "wal_checkpoint", "RESTART") {
-                Ok(_) => debug!("✅ RESTART WAL checkpoint completed"),
-                Err(e) => debug!("⚠️ RESTART WAL checkpoint failed (non-fatal): {}", e),
+            debug!("💾 TRUNCATE WAL checkpoint (reclaims disk space)");
+            match self
+                .conn
+                .prepare("PRAGMA wal_checkpoint(TRUNCATE)")
+                .and_then(|mut stmt| {
+                    stmt.query_row([], |row| {
+                        Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                    })
+                }) {
+                Ok((busy, log, checkpointed)) => debug!(
+                    "✅ WAL TRUNCATE checkpoint: busy={}, log={}, checkpointed={}",
+                    busy, log, checkpointed
+                ),
+                Err(e) => debug!("⚠️ WAL TRUNCATE checkpoint failed (non-fatal): {}", e),
             }
         }
 
@@ -344,10 +354,20 @@ impl SymbolDatabase {
         }
 
         if result.is_ok() {
-            debug!("💾 RESTART WAL checkpoint (waits for readers)");
-            match self.conn.pragma_update(None, "wal_checkpoint", "RESTART") {
-                Ok(_) => debug!("✅ RESTART WAL checkpoint completed"),
-                Err(e) => debug!("⚠️ RESTART WAL checkpoint failed (non-fatal): {}", e),
+            debug!("💾 TRUNCATE WAL checkpoint (reclaims disk space)");
+            match self
+                .conn
+                .prepare("PRAGMA wal_checkpoint(TRUNCATE)")
+                .and_then(|mut stmt| {
+                    stmt.query_row([], |row| {
+                        Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                    })
+                }) {
+                Ok((busy, log, checkpointed)) => debug!(
+                    "✅ WAL TRUNCATE checkpoint: busy={}, log={}, checkpointed={}",
+                    busy, log, checkpointed
+                ),
+                Err(e) => debug!("⚠️ WAL TRUNCATE checkpoint failed (non-fatal): {}", e),
             }
         }
 
