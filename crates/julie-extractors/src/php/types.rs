@@ -307,6 +307,82 @@ pub(super) fn extract_enum_case(
     ))
 }
 
+/// Extract PHP anonymous class declarations (e.g., `new class implements Foo { ... }`)
+///
+/// Anonymous classes have no name, so we generate one based on the line number.
+/// The anonymous class gets a SymbolKind::Class symbol, and methods inside it
+/// are parented to the anonymous class (not to the enclosing variable assignment).
+pub(super) fn extract_anonymous_class(
+    extractor: &mut PhpExtractor,
+    node: Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    // Anonymous classes don't have a name node.
+    // Generate a name based on line number for uniqueness.
+    let line = node.start_position().row + 1;
+    let name = format!("anonymous_class_L{}", line);
+
+    let extends_node = find_child(extractor, &node, "base_clause");
+    let implements_node = find_child(extractor, &node, "class_interface_clause");
+
+    let mut signature = "class".to_string();
+
+    if let Some(extends_node) = extends_node {
+        let base_class = extractor
+            .get_base()
+            .get_node_text(&extends_node)
+            .replace("extends", "")
+            .trim()
+            .to_string();
+        signature.push_str(&format!(" extends {}", base_class));
+    }
+
+    if let Some(implements_node) = implements_node {
+        let interfaces = extractor
+            .get_base()
+            .get_node_text(&implements_node)
+            .replace("implements", "")
+            .trim()
+            .to_string();
+        signature.push_str(&format!(" implements {}", interfaces));
+    }
+
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "type".to_string(),
+        serde_json::Value::String("anonymous_class".to_string()),
+    );
+
+    if let Some(extends_node) = extends_node {
+        metadata.insert(
+            "extends".to_string(),
+            serde_json::Value::String(extractor.get_base().get_node_text(&extends_node)),
+        );
+    }
+
+    if let Some(implements_node) = implements_node {
+        metadata.insert(
+            "implements".to_string(),
+            serde_json::Value::String(extractor.get_base().get_node_text(&implements_node)),
+        );
+    }
+
+    let doc_comment = extractor.get_base().find_doc_comment(&node);
+
+    Some(extractor.get_base_mut().create_symbol(
+        &node,
+        name,
+        SymbolKind::Class,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Private),
+            parent_id: parent_id.map(|s| s.to_string()),
+            metadata: Some(metadata),
+            doc_comment,
+        },
+    ))
+}
+
 /// Find backing type after colon in enum declaration
 fn find_backing_type(extractor: &PhpExtractor, node: &Node) -> Option<String> {
     let mut cursor = node.walk();

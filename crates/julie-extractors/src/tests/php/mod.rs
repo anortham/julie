@@ -2308,3 +2308,139 @@ class Processor {
         );
     }
 }
+
+#[cfg(test)]
+mod php_anonymous_class_tests {
+    use super::*;
+
+    #[test]
+    fn test_anonymous_class_with_interface() {
+        let code = r#"<?php
+$logger = new class implements LoggerInterface {
+    public function log(string $message): void {
+        echo $message;
+    }
+};
+"#;
+        let symbols = extract_symbols(code);
+
+        // Should have an anonymous class symbol
+        let anon_class = symbols
+            .iter()
+            .find(|s| s.kind == SymbolKind::Class && s.name.starts_with("anonymous_class"));
+        assert!(
+            anon_class.is_some(),
+            "Should extract anonymous class as Class symbol, got: {:?}",
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
+        );
+        let anon_class = anon_class.unwrap();
+        assert!(
+            anon_class
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("implements LoggerInterface"),
+            "Signature should contain 'implements LoggerInterface', got: {}",
+            anon_class.signature.as_ref().unwrap()
+        );
+
+        // Method should be parented to the anonymous class
+        let log_method = symbols
+            .iter()
+            .find(|s| s.name == "log" && s.kind == SymbolKind::Method);
+        assert!(log_method.is_some(), "Should extract log method");
+        assert_eq!(
+            log_method.unwrap().parent_id.as_ref(),
+            Some(&anon_class.id),
+            "log method should be parented to the anonymous class, not the variable"
+        );
+    }
+
+    #[test]
+    fn test_anonymous_class_with_extends() {
+        let code = r#"<?php
+$handler = new class extends BaseHandler {
+    public function handle(): void {}
+};
+"#;
+        let symbols = extract_symbols(code);
+
+        let anon_class = symbols
+            .iter()
+            .find(|s| s.kind == SymbolKind::Class && s.name.starts_with("anonymous_class"));
+        assert!(
+            anon_class.is_some(),
+            "Should extract anonymous class with extends"
+        );
+        assert!(
+            anon_class
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("extends BaseHandler"),
+            "Signature should contain 'extends BaseHandler', got: {}",
+            anon_class.unwrap().signature.as_ref().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_anonymous_class_with_constructor_args() {
+        let code = r#"<?php
+$obj = new class($param1, $param2) {
+    public function __construct(private string $name, private int $age) {}
+    public function getName(): string { return $this->name; }
+};
+"#;
+        let symbols = extract_symbols(code);
+
+        let anon_class = symbols
+            .iter()
+            .find(|s| s.kind == SymbolKind::Class && s.name.starts_with("anonymous_class"));
+        assert!(
+            anon_class.is_some(),
+            "Should extract anonymous class with constructor args"
+        );
+
+        // Constructor should be a child of the anonymous class
+        let constructor = symbols
+            .iter()
+            .find(|s| s.name == "__construct" && s.kind == SymbolKind::Constructor);
+        assert!(constructor.is_some(), "Should extract constructor");
+        assert_eq!(
+            constructor.unwrap().parent_id.as_ref(),
+            Some(&anon_class.unwrap().id),
+            "Constructor should be parented to the anonymous class"
+        );
+    }
+
+    #[test]
+    fn test_anonymous_class_bare() {
+        let code = r#"<?php
+$simple = new class {
+    public string $value = "hello";
+};
+"#;
+        let symbols = extract_symbols(code);
+
+        let anon_class = symbols
+            .iter()
+            .find(|s| s.kind == SymbolKind::Class && s.name.starts_with("anonymous_class"));
+        assert!(
+            anon_class.is_some(),
+            "Should extract bare anonymous class"
+        );
+        assert!(
+            anon_class
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("class"),
+            "Signature should contain 'class'"
+        );
+    }
+}
