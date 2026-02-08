@@ -544,17 +544,19 @@ impl super::RazorExtractor {
         // Handle expressions like ViewData["Title"], ViewBag.MetaDescription
         let element_text = self.base.get_node_text(&node);
 
-        let mut object_name = "unknown".to_string();
+        let mut object_name: Option<String> = None;
         let mut access_key = None;
 
         // Try to find the object being accessed
         if let Some(expression) = self.find_child_by_type(node, "identifier") {
-            object_name = self.base.get_node_text(&expression);
+            object_name = Some(self.base.get_node_text(&expression));
         } else if let Some(member_access) =
             self.find_child_by_type(node, "member_access_expression")
         {
-            object_name = self.base.get_node_text(&member_access);
+            object_name = Some(self.base.get_node_text(&member_access));
         }
+
+        let object_name = object_name?;
 
         // Try to find the access key
         if let Some(bracket_expr) = self.find_child_by_type(node, "bracket_expression") {

@@ -30,7 +30,7 @@ impl RuleExtractor {
         let selector_text = if let Some(selectors) = selectors_node {
             base.get_node_text(&selectors)
         } else {
-            "unknown".to_string()
+            return None;
         };
 
         let signature = Self::build_rule_signature(base, &node, &selector_text);

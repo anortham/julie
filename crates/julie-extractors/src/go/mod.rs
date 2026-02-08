@@ -190,8 +190,8 @@ impl GoExtractor {
         match node.kind() {
             "package_clause" => self.extract_package(node, parent_id),
             "type_declaration" => self.extract_type_declaration(node, parent_id),
-            "function_declaration" => Some(self.extract_function(node, parent_id)),
-            "method_declaration" => Some(self.extract_method(node, parent_id)),
+            "function_declaration" => self.extract_function(node, parent_id),
+            "method_declaration" => self.extract_method(node, parent_id),
             // "field_declaration" handled in walk_tree (can produce multiple symbols)
             "ERROR" => self.extract_from_error_node(node, parent_id),
             _ => None,

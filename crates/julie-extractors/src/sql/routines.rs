@@ -29,7 +29,7 @@ pub(super) fn extract_stored_procedure(
     let name = base.get_node_text(&name_node);
     let is_function = node.kind().contains("function");
 
-    let signature = extract_procedure_signature(base, &node);
+    let signature = extract_procedure_signature(base, &node)?;
 
     let mut metadata = HashMap::new();
     metadata.insert("isFunction".to_string(), Value::Bool(is_function));
@@ -52,7 +52,7 @@ pub(super) fn extract_stored_procedure(
 }
 
 /// Extract procedure/function signature with parameters
-pub(super) fn extract_procedure_signature(base: &BaseExtractor, node: &Node) -> String {
+pub(super) fn extract_procedure_signature(base: &BaseExtractor, node: &Node) -> Option<String> {
     // Extract function/procedure name from object_reference if present
     let object_ref_node = base.find_child_by_type(node, "object_reference");
     let name_node = if let Some(obj_ref) = object_ref_node {
@@ -61,12 +61,8 @@ pub(super) fn extract_procedure_signature(base: &BaseExtractor, node: &Node) -> 
         base.find_child_by_type(node, "identifier")
             .or_else(|| base.find_child_by_type(node, "procedure_name"))
             .or_else(|| base.find_child_by_type(node, "function_name"))
-    };
-    let name = if let Some(name_node) = name_node {
-        base.get_node_text(&name_node)
-    } else {
-        "unknown".to_string()
-    };
+    }?;
+    let name = base.get_node_text(&name_node);
 
     // Extract parameter list
     let mut params: Vec<String> = Vec::new();
@@ -136,14 +132,14 @@ pub(super) fn extract_procedure_signature(base: &BaseExtractor, node: &Node) -> 
         }
     }
 
-    format!(
+    Some(format!(
         "{} {}({}){}{}",
         keyword,
         name,
         params.join(", "),
         return_clause,
         language_clause
-    )
+    ))
 }
 
 /// Extract declared variables from function/procedure body

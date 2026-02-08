@@ -83,34 +83,34 @@ pub(super) fn find_node_by_type<'a>(
 }
 
 /// Extract macro name from a preprocessor node
-pub(super) fn extract_macro_name(base: &BaseExtractor, node: tree_sitter::Node) -> String {
+pub(super) fn extract_macro_name(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "identifier" {
-            return base.get_node_text(&child);
+            return Some(base.get_node_text(&child));
         }
     }
-    "unknown".to_string()
+    None
 }
 
 /// Extract include path from an include directive signature
-pub(super) fn extract_include_path(signature: &str) -> String {
+pub(super) fn extract_include_path(signature: &str) -> Option<String> {
     // Extract include path from #include statement
     if let Some(start) = signature.find('"') {
         if let Some(end) = signature.rfind('"') {
             if start < end {
-                return signature[start + 1..end].to_string();
+                return Some(signature[start + 1..end].to_string());
             }
         }
     }
     if let Some(start) = signature.find('<') {
         if let Some(end) = signature.rfind('>') {
             if start < end {
-                return signature[start + 1..end].to_string();
+                return Some(signature[start + 1..end].to_string());
             }
         }
     }
-    "unknown".to_string()
+    None
 }
 
 /// Check if an include is a system header (uses < > instead of " ")
@@ -119,13 +119,13 @@ pub(super) fn is_system_header(signature: &str) -> bool {
 }
 
 /// Extract function name from a function definition or declaration
-pub(super) fn extract_function_name(base: &BaseExtractor, node: tree_sitter::Node) -> String {
+pub(super) fn extract_function_name(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
     // Look for function declarator
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "function_declarator" {
             if let Some(identifier) = child.child_by_field_name("declarator") {
-                return base.get_node_text(&identifier);
+                return Some(base.get_node_text(&identifier));
             }
         }
         // For pointer return types, check pointer_declarator
@@ -134,26 +134,23 @@ pub(super) fn extract_function_name(base: &BaseExtractor, node: tree_sitter::Nod
             for pointer_child in child.children(&mut pointer_cursor) {
                 if pointer_child.kind() == "function_declarator" {
                     if let Some(identifier) = pointer_child.child_by_field_name("declarator") {
-                        return base.get_node_text(&identifier);
+                        return Some(base.get_node_text(&identifier));
                     }
                 }
             }
         }
     }
-    "unknown".to_string()
+    None
 }
 
 /// Extract function name from a function declaration
 pub(super) fn extract_function_name_from_declaration(
     base: &BaseExtractor,
     node: tree_sitter::Node,
-) -> String {
-    if let Some(function_declarator) = find_function_declarator(node) {
-        if let Some(identifier) = function_declarator.child_by_field_name("declarator") {
-            return base.get_node_text(&identifier);
-        }
-    }
-    "unknown".to_string()
+) -> Option<String> {
+    let function_declarator = find_function_declarator(node)?;
+    let identifier = function_declarator.child_by_field_name("declarator")?;
+    Some(base.get_node_text(&identifier))
 }
 
 /// Extract variable name from a declarator node

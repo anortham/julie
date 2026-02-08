@@ -13,7 +13,7 @@ impl MediaExtractor {
         node: Node,
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
-        let media_query = Self::extract_media_query(base, &node);
+        let media_query = Self::extract_media_query(base, &node)?;
         let signature = base.get_node_text(&node);
 
         // Create metadata
@@ -45,7 +45,7 @@ impl MediaExtractor {
     }
 
     /// Extract media query - port of extractMediaQuery
-    pub(super) fn extract_media_query(base: &BaseExtractor, node: &Node) -> String {
+    pub(super) fn extract_media_query(base: &BaseExtractor, node: &Node) -> Option<String> {
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
 
@@ -67,10 +67,10 @@ impl MediaExtractor {
                     }
                 }
 
-                return format!("@media {}", query_parts.join(" ").trim());
+                return Some(format!("@media {}", query_parts.join(" ").trim()));
             }
         }
 
-        "@media".to_string()
+        None
     }
 }

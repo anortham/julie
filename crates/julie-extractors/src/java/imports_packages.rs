@@ -57,11 +57,17 @@ pub(super) fn extract_import(
 
     // Extract the class/member name (last part after the last dot)
     let parts: Vec<&str> = full_import_path.split('.').collect();
-    let name = parts.last().unwrap_or(&"");
+    let name = parts.last()?;
+    if name.is_empty() {
+        return None;
+    }
 
     // Handle wildcard imports
     let (symbol_name, signature) = if *name == "*" {
-        let package_name = parts.get(parts.len().saturating_sub(2)).unwrap_or(&"");
+        let package_name = parts.get(parts.len().saturating_sub(2))?;
+        if package_name.is_empty() {
+            return None;
+        }
         let sig = if is_static {
             format!("import static {}", full_import_path)
         } else {

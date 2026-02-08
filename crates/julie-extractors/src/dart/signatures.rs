@@ -6,11 +6,10 @@ use super::helpers::*;
 use tree_sitter::Node;
 
 /// Extract class signature with modifiers, generics, inheritance, and interfaces
-pub(super) fn extract_class_signature(node: &Node) -> String {
+pub(super) fn extract_class_signature(node: &Node) -> Option<String> {
     let name_node = find_child_by_type(node, "identifier");
     let name = name_node
-        .map(|n| get_node_text(&n))
-        .unwrap_or_else(|| "Unknown".to_string());
+        .map(|n| get_node_text(&n))?;
 
     let is_abstract = is_abstract_class(node);
     let abstract_prefix = if is_abstract { "abstract " } else { "" };
@@ -56,10 +55,10 @@ pub(super) fn extract_class_signature(node: &Node) -> String {
         String::new()
     };
 
-    format!(
+    Some(format!(
         "{}class {}{}{}{}{}",
         abstract_prefix, name, type_params, extends_text, mixin_text, implements_text
-    )
+    ))
 }
 
 /// Extract function signature with return type, parameters, and async modifier
@@ -113,7 +112,7 @@ pub(super) fn extract_function_signature(node: &Node, content: &str) -> Option<S
 }
 
 /// Extract constructor signature with factory/const modifiers
-pub(super) fn extract_constructor_signature(node: &Node) -> String {
+pub(super) fn extract_constructor_signature(node: &Node) -> Option<String> {
     let is_factory = node.kind() == "factory_constructor_signature";
     let is_const = node.kind() == "constant_constructor_signature";
 
@@ -122,8 +121,7 @@ pub(super) fn extract_constructor_signature(node: &Node) -> String {
         "constant_constructor_signature" => {
             // For const constructors, just get the first identifier
             find_child_by_type(node, "identifier")
-                .map(|n| get_node_text(&n))
-                .unwrap_or_else(|| "Constructor".to_string())
+                .map(|n| get_node_text(&n))?
         }
         "factory_constructor_signature" => {
             // For factory constructors, may need class.name pattern
@@ -133,13 +131,15 @@ pub(super) fn extract_constructor_signature(node: &Node) -> String {
                     identifiers.push(get_node_text(&child));
                 }
             });
+            if identifiers.is_empty() {
+                return None;
+            }
             identifiers.join(".")
         }
         _ => {
             // Regular constructor
             find_child_by_type(node, "identifier")
-                .map(|n| get_node_text(&n))
-                .unwrap_or_else(|| "Constructor".to_string())
+                .map(|n| get_node_text(&n))?
         }
     };
 
@@ -147,7 +147,7 @@ pub(super) fn extract_constructor_signature(node: &Node) -> String {
     let factory_prefix = if is_factory { "factory " } else { "" };
     let const_prefix = if is_const { "const " } else { "" };
 
-    format!("{}{}{}()", factory_prefix, const_prefix, constructor_name)
+    Some(format!("{}{}{}()", factory_prefix, const_prefix, constructor_name))
 }
 
 /// Extract variable signature (just the name)

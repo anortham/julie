@@ -10,7 +10,7 @@ impl super::RazorExtractor {
         node: Node,
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
-        let directive_name = self.extract_directive_name(node);
+        let directive_name = self.extract_directive_name(node)?;
         let directive_value = self.extract_directive_value(node);
 
         let mut signature = format!("@{}", directive_name);
@@ -76,26 +76,26 @@ impl super::RazorExtractor {
     }
 
     /// Extract directive name from node kind or text
-    pub(super) fn extract_directive_name(&self, node: Node) -> String {
+    pub(super) fn extract_directive_name(&self, node: Node) -> Option<String> {
         match node.kind() {
-            "razor_page_directive" => "page".to_string(),
-            "razor_model_directive" => "model".to_string(),
-            "razor_using_directive" => "using".to_string(),
-            "razor_inject_directive" => "inject".to_string(),
-            "razor_attribute_directive" => "attribute".to_string(),
-            "razor_namespace_directive" => "namespace".to_string(),
-            "razor_inherits_directive" => "inherits".to_string(),
-            "razor_implements_directive" => "implements".to_string(),
-            "razor_addtaghelper_directive" => "addTagHelper".to_string(),
+            "razor_page_directive" => Some("page".to_string()),
+            "razor_model_directive" => Some("model".to_string()),
+            "razor_using_directive" => Some("using".to_string()),
+            "razor_inject_directive" => Some("inject".to_string()),
+            "razor_attribute_directive" => Some("attribute".to_string()),
+            "razor_namespace_directive" => Some("namespace".to_string()),
+            "razor_inherits_directive" => Some("inherits".to_string()),
+            "razor_implements_directive" => Some("implements".to_string()),
+            "razor_addtaghelper_directive" => Some("addTagHelper".to_string()),
             _ => {
                 let text = self.base.get_node_text(&node);
                 if text.contains("@addTagHelper") {
-                    "addTagHelper".to_string()
+                    Some("addTagHelper".to_string())
                 } else if let Some(captures) = regex::Regex::new(r"@(\w+)").unwrap().captures(&text)
                 {
-                    captures[1].to_string()
+                    Some(captures[1].to_string())
                 } else {
-                    "unknown".to_string()
+                    None
                 }
             }
         }

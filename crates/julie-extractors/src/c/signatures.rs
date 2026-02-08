@@ -11,7 +11,7 @@ use crate::base::BaseExtractor;
 pub(super) fn build_function_signature(base: &BaseExtractor, node: tree_sitter::Node) -> String {
     let storage_class = types::extract_storage_class(base, node);
     let return_type = types::extract_return_type(base, node);
-    let function_name = helpers::extract_function_name(base, node);
+    let function_name = helpers::extract_function_name(base, node).unwrap_or_default();
     let parameters = extract_function_parameters(base, node);
 
     let storage_prefix = if let Some(sc) = storage_class {
@@ -35,7 +35,7 @@ pub(super) fn build_function_declaration_signature(
     node: tree_sitter::Node,
 ) -> String {
     let return_type = types::extract_return_type(base, node);
-    let function_name = helpers::extract_function_name_from_declaration(base, node);
+    let function_name = helpers::extract_function_name_from_declaration(base, node).unwrap_or_default();
     let parameters = extract_function_parameters_from_declaration(base, node);
 
     format!(

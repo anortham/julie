@@ -147,18 +147,18 @@ impl CExtractor {
         // Port switch statement logic for C constructs
         match node.kind() {
             "preproc_include" => {
-                symbol = Some(declarations::extract_include(
+                symbol = declarations::extract_include(
                     self,
                     node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "preproc_def" | "preproc_function_def" => {
-                symbol = Some(declarations::extract_macro(
+                symbol = declarations::extract_macro(
                     self,
                     node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "declaration" => {
                 let declaration_symbols =
@@ -166,11 +166,11 @@ impl CExtractor {
                 symbols.extend(declaration_symbols);
             }
             "function_definition" => {
-                symbol = Some(declarations::extract_function_definition(
+                symbol = declarations::extract_function_definition(
                     self,
                     node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "struct_specifier" => {
                 symbol = Some(declarations::extract_struct(
@@ -189,11 +189,11 @@ impl CExtractor {
                 }
             }
             "type_definition" => {
-                symbol = Some(declarations::extract_type_definition(
+                symbol = declarations::extract_type_definition(
                     self,
                     node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "linkage_specification" => {
                 symbol =

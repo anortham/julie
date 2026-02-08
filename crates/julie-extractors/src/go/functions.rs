@@ -3,7 +3,7 @@ use tree_sitter::Node;
 
 /// Function and method extraction for Go
 impl super::GoExtractor {
-    pub(super) fn extract_function(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_function(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let mut cursor = node.walk();
         let mut func_name = None;
         let mut type_parameters = None;
@@ -31,7 +31,7 @@ impl super::GoExtractor {
             }
         }
 
-        let name = func_name.unwrap_or_else(|| "anonymous".to_string());
+        let name = func_name?;
         let visibility = if name == "main" || name == "init" {
             Some(Visibility::Private) // Special Go functions
         } else if self.is_public(&name) {
@@ -51,7 +51,7 @@ impl super::GoExtractor {
 
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Function,
@@ -62,10 +62,10 @@ impl super::GoExtractor {
                 metadata: None,
                 doc_comment,
             },
-        )
+        ))
     }
 
-    pub(super) fn extract_method(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_method(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let mut cursor = node.walk();
         let mut receiver = None;
         let mut func_name = None;
@@ -106,7 +106,7 @@ impl super::GoExtractor {
             }
         }
 
-        let name = func_name.unwrap_or_else(|| "anonymous".to_string());
+        let name = func_name?;
         let visibility = if self.is_public(&name) {
             Some(Visibility::Public)
         } else {
@@ -137,7 +137,7 @@ impl super::GoExtractor {
 
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Method,
@@ -148,7 +148,7 @@ impl super::GoExtractor {
                 metadata: None,
                 doc_comment,
             },
-        )
+        ))
     }
 
     pub(super) fn extract_parameter_list(&self, node: Node) -> Vec<String> {

@@ -39,7 +39,7 @@ pub(super) fn extract_function(
         name,
         symbol_kind,
         SymbolOptions {
-            signature: Some(signature),
+            signature,
             visibility: Some(visibility),
             parent_id: parent_id.cloned(),
             metadata: None,
@@ -113,7 +113,7 @@ pub(super) fn extract_parameter(
     let param_type = if let Some(type_node) = type_node {
         base.get_node_text(&type_node)
     } else {
-        "unknown".to_string()
+        String::new()
     };
 
     let signature = format!("{}: {}", param_name, param_type);
@@ -138,13 +138,9 @@ fn extract_function_signature(
     node: Node,
     is_public_fn: fn(&BaseExtractor, Node) -> bool,
     is_export_fn: fn(&BaseExtractor, Node) -> bool,
-) -> String {
-    let name_node = base.find_child_by_type(&node, "identifier");
-    let name = if let Some(name_node) = name_node {
-        base.get_node_text(&name_node)
-    } else {
-        "unknown".to_string()
-    };
+) -> Option<String> {
+    let name_node = base.find_child_by_type(&node, "identifier")?;
+    let name = base.get_node_text(&name_node);
 
     // Check for visibility and function modifiers
     let is_public = is_public_fn(base, node);
@@ -251,14 +247,14 @@ fn extract_function_signature(
         "void".to_string()
     };
 
-    format!(
+    Some(format!(
         "{}{}fn {}({}) {}",
         modifier_prefix,
         extern_prefix,
         name,
         params.join(", "),
         return_type
-    )
+    ))
 }
 
 /// Check if function has inline modifier

@@ -18,9 +18,9 @@ pub(super) fn extract_include(
     extractor: &mut CExtractor,
     node: tree_sitter::Node,
     parent_id: Option<&str>,
-) -> Symbol {
+) -> Option<Symbol> {
     let signature = extractor.base.get_node_text(&node);
-    let include_path = helpers::extract_include_path(&signature);
+    let include_path = helpers::extract_include_path(&signature)?;
 
     let metadata = create_metadata_map(HashMap::from([
         ("type".to_string(), "include".to_string()),
@@ -33,7 +33,7 @@ pub(super) fn extract_include(
 
     let doc_comment = extractor.base.find_doc_comment(&node);
 
-    extractor.base.create_symbol(
+    Some(extractor.base.create_symbol(
         &node,
         include_path.clone(),
         SymbolKind::Import,
@@ -44,7 +44,7 @@ pub(super) fn extract_include(
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a macro directive as a symbol
@@ -52,9 +52,9 @@ pub(super) fn extract_macro(
     extractor: &mut CExtractor,
     node: tree_sitter::Node,
     parent_id: Option<&str>,
-) -> Symbol {
+) -> Option<Symbol> {
     let signature = extractor.base.get_node_text(&node);
-    let macro_name = helpers::extract_macro_name(&extractor.base, node);
+    let macro_name = helpers::extract_macro_name(&extractor.base, node)?;
 
     let metadata = create_metadata_map(HashMap::from([
         ("type".to_string(), "macro".to_string()),
@@ -68,7 +68,7 @@ pub(super) fn extract_macro(
 
     let doc_comment = extractor.base.find_doc_comment(&node);
 
-    extractor.base.create_symbol(
+    Some(extractor.base.create_symbol(
         &node,
         macro_name.clone(),
         SymbolKind::Constant,
@@ -79,7 +79,7 @@ pub(super) fn extract_macro(
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Helper for converting string metadata to serde_json::Value metadata
@@ -132,8 +132,8 @@ pub(super) fn extract_function_definition(
     extractor: &mut CExtractor,
     node: tree_sitter::Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let function_name = helpers::extract_function_name(&extractor.base, node);
+) -> Option<Symbol> {
+    let function_name = helpers::extract_function_name(&extractor.base, node)?;
     let signature = signatures::build_function_signature(&extractor.base, node);
     let visibility = if helpers::is_static_function(&extractor.base, node) {
         "private"
@@ -143,7 +143,7 @@ pub(super) fn extract_function_definition(
 
     let doc_comment = extractor.base.find_doc_comment(&node);
 
-    extractor.base.create_symbol(
+    Some(extractor.base.create_symbol(
         &node,
         function_name.clone(),
         SymbolKind::Function,
@@ -179,7 +179,7 @@ pub(super) fn extract_function_definition(
             ])),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a function declaration
@@ -188,7 +188,7 @@ pub(super) fn extract_function_declaration(
     node: tree_sitter::Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    let function_name = helpers::extract_function_name_from_declaration(&extractor.base, node);
+    let function_name = helpers::extract_function_name_from_declaration(&extractor.base, node)?;
     let signature = signatures::build_function_declaration_signature(&extractor.base, node);
     let visibility = if helpers::is_static_function(&extractor.base, node) {
         "private"
@@ -447,8 +447,8 @@ pub(super) fn extract_type_definition(
     extractor: &mut CExtractor,
     node: tree_sitter::Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let typedef_name = extract_typedef_name_from_type_definition(&extractor.base, node);
+) -> Option<Symbol> {
+    let typedef_name = extract_typedef_name_from_type_definition(&extractor.base, node)?;
     let underlying_type =
         types::extract_underlying_type_from_type_definition(&extractor.base, node);
     let signature = signatures::build_typedef_signature(&extractor.base, &node, &typedef_name);
@@ -468,7 +468,7 @@ pub(super) fn extract_type_definition(
 
     let doc_comment = extractor.base.find_doc_comment(&node);
 
-    extractor.base.create_symbol(
+    Some(extractor.base.create_symbol(
         &node,
         typedef_name.clone(),
         symbol_kind,
@@ -484,7 +484,7 @@ pub(super) fn extract_type_definition(
             ])),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a linkage specification (extern "C" block)
@@ -569,7 +569,7 @@ pub(super) fn extract_from_expression_statement(
 fn extract_typedef_name_from_type_definition(
     base: &BaseExtractor,
     node: tree_sitter::Node,
-) -> String {
+) -> Option<String> {
     let mut all_identifiers = Vec::new();
     helpers::collect_all_identifiers(base, node, &mut all_identifiers);
 
@@ -580,18 +580,18 @@ fn extract_typedef_name_from_type_definition(
 
     for identifier in all_identifiers.iter().rev() {
         if !c_keywords.contains(&identifier.as_str()) {
-            return identifier.clone();
+            return Some(identifier.clone());
         }
     }
 
-    "unknown".to_string()
+    None
 }
 
 /// Extract typedef name from a declaration
-fn extract_typedef_name_from_declaration(base: &BaseExtractor, node: tree_sitter::Node) -> String {
+fn extract_typedef_name_from_declaration(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
     // Special handling for function pointer typedefs
     if let Some(name) = extract_function_pointer_typedef_name(base, node) {
-        return name;
+        return Some(name);
     }
 
     let mut all_identifiers = Vec::new();
@@ -604,11 +604,11 @@ fn extract_typedef_name_from_declaration(base: &BaseExtractor, node: tree_sitter
 
     for identifier in all_identifiers.iter().rev() {
         if !c_keywords.contains(&identifier.as_str()) {
-            return identifier.clone();
+            return Some(identifier.clone());
         }
     }
 
-    "unknown".to_string()
+    None
 }
 
 /// Extract typedef from a declaration node
@@ -617,7 +617,7 @@ pub(super) fn extract_typedef_from_declaration(
     node: tree_sitter::Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    let typedef_name = extract_typedef_name_from_declaration(&extractor.base, node);
+    let typedef_name = extract_typedef_name_from_declaration(&extractor.base, node)?;
     let signature = extractor.base.get_node_text(&node);
     let underlying_type = types::extract_underlying_type_from_declaration(&extractor.base, node);
 
@@ -674,7 +674,6 @@ pub(super) fn fix_function_pointer_typedef_names(symbols: &mut [Symbol]) {
 
                         let should_fix = (symbol.name.len() <= 2
                             && symbol.name.chars().all(|c| c.is_ascii_lowercase()))
-                            || symbol.name == "unknown"
                             || symbol.name != correct_name;
 
                         if should_fix {

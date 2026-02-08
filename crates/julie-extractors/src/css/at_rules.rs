@@ -13,7 +13,7 @@ impl AtRuleExtractor {
         node: Node,
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
-        let rule_name = Self::extract_at_rule_name(base, &node);
+        let rule_name = Self::extract_at_rule_name(base, &node)?;
         let signature = base.get_node_text(&node);
 
         // Determine symbol kind based on at-rule type - match reference logic
@@ -59,21 +59,17 @@ impl AtRuleExtractor {
     }
 
     /// Extract at-rule name - port of extractAtRuleName
-    pub(super) fn extract_at_rule_name(base: &BaseExtractor, node: &Node) -> String {
+    pub(super) fn extract_at_rule_name(base: &BaseExtractor, node: &Node) -> Option<String> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "at_keyword" {
-                return base.get_node_text(&child);
+                return Some(base.get_node_text(&child));
             }
             let text = base.get_node_text(&child);
             if text.starts_with('@') {
-                return text
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("@unknown")
-                    .to_string();
+                return Some(text.split_whitespace().next()?.to_string());
             }
         }
-        "@unknown".to_string()
+        None
     }
 }

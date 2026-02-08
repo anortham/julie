@@ -59,7 +59,7 @@ impl PropertyExtractor {
         node: Node,
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
-        let condition = Self::extract_supports_condition(base, &node);
+        let condition = Self::extract_supports_condition(base, &node)?;
         let signature = base.get_node_text(&node);
 
         // Create metadata
@@ -91,17 +91,13 @@ impl PropertyExtractor {
     }
 
     /// Extract supports condition - port of extractSupportsCondition
-    pub(super) fn extract_supports_condition(base: &BaseExtractor, node: &Node) -> String {
+    pub(super) fn extract_supports_condition(base: &BaseExtractor, node: &Node) -> Option<String> {
         let text = base.get_node_text(node);
-        if let Some(captures) = regex::Regex::new(r"@supports\s+([^{]+)")
+        let captures = regex::Regex::new(r"@supports\s+([^{]+)")
             .unwrap()
-            .captures(&text)
-        {
-            // Safe: capture group 1 exists if regex matched (pattern has one capture group)
-            let condition = captures.get(1).map_or("", |m| m.as_str()).trim();
-            format!("@supports {}", condition)
-        } else {
-            "@supports".to_string()
-        }
+            .captures(&text)?;
+        // Safe: capture group 1 exists if regex matched (pattern has one capture group)
+        let condition = captures.get(1).map_or("", |m| m.as_str()).trim();
+        Some(format!("@supports {}", condition))
     }
 }

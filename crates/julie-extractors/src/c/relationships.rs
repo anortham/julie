@@ -84,7 +84,10 @@ fn extract_include_relationships(
     node: tree_sitter::Node,
     relationships: &mut Vec<Relationship>,
 ) {
-    let include_path = helpers::extract_include_path(&extractor.base.get_node_text(&node));
+    let Some(include_path) = helpers::extract_include_path(&extractor.base.get_node_text(&node))
+    else {
+        return;
+    };
     let from_id = format!("file:{}", extractor.base.file_path);
     let to_id = format!("header:{}", include_path);
     relationships.push(Relationship {

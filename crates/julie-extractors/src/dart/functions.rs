@@ -25,7 +25,7 @@ pub(super) fn extract_class(
         name.clone(),
         SymbolKind::Class,
         SymbolOptions {
-            signature: Some(signatures::extract_class_signature(node)),
+            signature: signatures::extract_class_signature(node),
             visibility: Some(Visibility::Public), // Dart classes are generally public unless private (_)
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
@@ -188,13 +188,15 @@ pub(super) fn extract_constructor(
                     identifiers.push(get_node_text(&child));
                 }
             });
+            if identifiers.is_empty() {
+                return None;
+            }
             identifiers.join(".")
         }
         "constant_constructor_signature" => {
             // Const constructor: const ClassName(...) or const ClassName.namedConstructor(...)
             find_child_by_type(node, "identifier")
-                .map(|n| get_node_text(&n))
-                .unwrap_or_else(|| "Constructor".to_string())
+                .map(|n| get_node_text(&n))?
         }
         _ => {
             // Regular constructor or named constructor
@@ -217,7 +219,7 @@ pub(super) fn extract_constructor(
                         .collect::<Vec<_>>()
                         .join(".")
                 }
-                _ => "Constructor".to_string(),
+                _ => return None,
             }
         }
     };
@@ -230,7 +232,7 @@ pub(super) fn extract_constructor(
         constructor_name,
         SymbolKind::Constructor,
         SymbolOptions {
-            signature: Some(signatures::extract_constructor_signature(node)),
+            signature: signatures::extract_constructor_signature(node),
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|id| id.to_string()),
             metadata: Some(HashMap::new()),
