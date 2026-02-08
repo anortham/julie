@@ -1,9 +1,14 @@
 pub(crate) mod classes;
 pub(crate) mod flags;
 pub(crate) mod groups;
+// NOTE: Some functions in helpers, patterns, and signatures are intentionally
+// unused after noise reduction (2026-02-08). Retained for future use.
+#[allow(dead_code)]
 pub(crate) mod helpers;
 pub(crate) mod identifiers;
+#[allow(dead_code)]
 mod patterns;
+#[allow(dead_code)]
 pub(crate) mod signatures;
 
 use crate::base::{
@@ -32,8 +37,10 @@ impl RegexExtractor {
         let mut symbols = Vec::new();
         self.visit_node(tree.root_node(), &mut symbols, None);
 
-        // Also extract patterns from text content directly
-        self.extract_patterns_from_text(&self.base.content.clone(), &mut symbols);
+        // NOTE: extract_patterns_from_text disabled (2026-02-08)
+        // It duplicated symbols already extracted by tree-sitter traversal,
+        // producing "text-pattern" copies of every line. The tree-sitter
+        // extraction handles all meaningful patterns.
 
         symbols
     }
@@ -45,21 +52,29 @@ impl RegexExtractor {
         parent_id: Option<String>,
     ) -> Option<String> {
         let symbol = match node.kind() {
+            // Top-level patterns: only extract if no parent (root-level)
             "pattern" | "regex" | "expression" => {
-                patterns::extract_pattern(&mut self.base, node, parent_id.clone())
+                if parent_id.is_none() {
+                    patterns::extract_pattern(&mut self.base, node, parent_id.clone())
+                } else {
+                    None // Skip child patterns inside groups
+                }
             }
+            // Character classes: meaningful, always keep
             "character_class" => {
                 patterns::extract_character_class(&mut self.base, node, parent_id.clone())
             }
-            "group" | "capturing_group" | "non_capturing_group" | "named_capturing_group" => {
+            // Groups: only keep named capturing groups
+            "named_capturing_group" => {
                 patterns::extract_group(&mut self.base, node, parent_id.clone())
             }
-            "quantifier" | "quantified_expression" => {
-                patterns::extract_quantifier(&mut self.base, node, parent_id.clone())
-            }
-            "anchor" | "start_assertion" | "end_assertion" | "word_boundary_assertion" => {
-                patterns::extract_anchor(&mut self.base, node, parent_id.clone())
-            }
+            // Skip unnamed/non-capturing groups (noise)
+            "group" | "capturing_group" | "non_capturing_group" => None,
+            // Skip quantifiers (noise)
+            "quantifier" | "quantified_expression" => None,
+            // Skip anchors (noise)
+            "anchor" | "start_assertion" | "end_assertion" | "word_boundary_assertion" => None,
+            // Lookarounds: semantically meaningful, keep
             "lookahead_assertion"
             | "lookbehind_assertion"
             | "positive_lookahead"
@@ -68,40 +83,32 @@ impl RegexExtractor {
             | "negative_lookbehind" => {
                 patterns::extract_lookaround(&mut self.base, node, parent_id.clone())
             }
-            "alternation" | "disjunction" => {
-                patterns::extract_alternation(&mut self.base, node, parent_id.clone())
-            }
-            "character_escape" | "predefined_character_class" => {
-                patterns::extract_predefined_class(&mut self.base, node, parent_id.clone())
-            }
+            // Skip alternation nodes (noise)
+            "alternation" | "disjunction" => None,
+            // Skip predefined character classes (noise - \d, \w, \s)
+            "character_escape" | "predefined_character_class" => None,
+            // Unicode properties: semantically meaningful, keep
             "unicode_property" | "unicode_category" => {
                 patterns::extract_unicode_property(&mut self.base, node, parent_id.clone())
             }
-            "backreference" => {
-                patterns::extract_backreference(&mut self.base, node, parent_id.clone())
-            }
+            // Skip backreferences (noise - references, not definitions)
+            "backreference" => None,
+            // Conditionals: semantically meaningful, keep
             "conditional" => patterns::extract_conditional(&mut self.base, node, parent_id.clone()),
-            // NOTE: "atomic_group" and "comment" branches removed (2025-10-31)
-            // Tree-sitter regex parser doesn't generate these node types:
-            // - Atomic groups (?>...) are parsed as ERROR nodes
-            // - Inline comments (?#...) are parsed as ERROR nodes
-            // Functions extract_atomic_group() and extract_comment() were unreachable dead code
-            "literal" | "character" => {
-                patterns::extract_literal(&mut self.base, node, parent_id.clone())
-            }
-            _ => {
-                if helpers::is_regex_pattern(node.kind()) {
-                    patterns::extract_generic_pattern(&mut self.base, node, parent_id.clone())
-                } else {
-                    None
-                }
-            }
+            // Skip individual literals/characters (noise)
+            "literal" | "character" => None,
+            _ => None,
         };
 
         let current_parent_id = if let Some(symbol) = symbol {
-            symbols.push(symbol.clone());
-            Some(symbol.id)
+            let id = symbol.id.clone();
+            symbols.push(symbol);
+            Some(id)
         } else {
+            // When a node is skipped (noise), its children inherit the grandparent's
+            // parent_id. This "skip-through parenting" flattens the tree — e.g. a
+            // character_class inside an unnamed group gets parented to the top-level
+            // pattern, not the skipped group. This is the desired behavior.
             parent_id
         };
 
@@ -114,6 +121,7 @@ impl RegexExtractor {
         current_parent_id
     }
 
+    #[allow(dead_code)]
     fn extract_patterns_from_text(&mut self, text: &str, symbols: &mut Vec<Symbol>) {
         let lines: Vec<&str> = text.lines().collect();
 
