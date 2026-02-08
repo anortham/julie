@@ -78,64 +78,19 @@ impl AnimationExtractor {
         ))
     }
 
-    /// Extract individual keyframes - port of extractKeyframes
+    /// Extract individual keyframes - intentionally a no-op.
+    ///
+    /// Individual keyframe blocks (0%, 50%, 100%, from, to) are not useful as
+    /// symbols for code intelligence. They pollute search results and have no
+    /// meaningful name. The @keyframes rule itself and the animation name are
+    /// extracted by `extract_keyframes_rule` and `extract_animation_name`.
     pub(super) fn extract_keyframes(
-        base: &mut BaseExtractor,
-        node: Node,
-        symbols: &mut Vec<Symbol>,
-        parent_id: Option<&str>,
+        _base: &mut BaseExtractor,
+        _node: Node,
+        _symbols: &mut Vec<Symbol>,
+        _parent_id: Option<&str>,
     ) {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "keyframe_block" {
-                // Find keyframe selector (from, to, or percentage)
-                let mut keyframe_selector = None;
-                let mut child_cursor = child.walk();
-                for grandchild in child.children(&mut child_cursor) {
-                    match grandchild.kind() {
-                        "from" | "to" => {
-                            keyframe_selector = Some(grandchild);
-                            break;
-                        }
-                        _ => {}
-                    }
-                }
-
-                if let Some(selector) = keyframe_selector {
-                    let selector_text = base.get_node_text(&selector);
-                    let signature = base.get_node_text(&child);
-
-                    // Create metadata
-                    let mut metadata = HashMap::new();
-                    metadata.insert(
-                        "type".to_string(),
-                        serde_json::Value::String("keyframe".to_string()),
-                    );
-                    metadata.insert(
-                        "selector".to_string(),
-                        serde_json::Value::String(selector_text.clone()),
-                    );
-
-                    // Extract CSS comment
-                    let doc_comment = base.find_doc_comment(&child);
-
-                    let symbol = base.create_symbol(
-                        &child,
-                        selector_text,
-                        SymbolKind::Variable,
-                        SymbolOptions {
-                            signature: Some(signature),
-                            visibility: Some(Visibility::Public),
-                            parent_id: parent_id.map(|id| id.to_string()),
-                            metadata: Some(metadata),
-                            doc_comment,
-                        },
-                    );
-
-                    symbols.push(symbol);
-                }
-            }
-        }
+        // Intentionally empty — keyframe percentages/keywords are noise, not symbols.
     }
 
     /// Extract keyframes name - port of extractKeyframesName

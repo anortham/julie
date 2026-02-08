@@ -139,4 +139,73 @@ mod tests {
         let rotate_element = symbols.iter().find(|s| s.name == ".rotate-element");
         assert!(rotate_element.is_some());
     }
+
+    #[test]
+    fn test_keyframe_percentages_not_extracted() {
+        let css_code = r#"
+@keyframes slideIn {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+"#;
+
+        let symbols = extract_symbols(css_code);
+
+        // The @keyframes rules and animation names SHOULD be extracted
+        assert!(
+            symbols.iter().any(|s| s.name == "@keyframes slideIn"),
+            "Expected @keyframes slideIn rule to be extracted"
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "slideIn"),
+            "Expected slideIn animation name to be extracted"
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "@keyframes fadeOut"),
+            "Expected @keyframes fadeOut rule to be extracted"
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "fadeOut"),
+            "Expected fadeOut animation name to be extracted"
+        );
+
+        // Individual keyframe blocks MUST NOT be extracted — they are noise
+        let noise_names = ["from", "to", "0%", "50%", "100%"];
+        for noise in &noise_names {
+            assert!(
+                !symbols.iter().any(|s| s.name == *noise),
+                "Keyframe block '{}' should NOT be extracted as a symbol, but was found",
+                noise
+            );
+        }
+
+        // Also verify no Variable-kind symbols exist at all (keyframe blocks were the only ones)
+        let variable_symbols: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Variable)
+            .collect();
+        assert!(
+            variable_symbols.is_empty(),
+            "No Variable-kind symbols should exist for keyframe blocks, but found: {:?}",
+            variable_symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
 }
