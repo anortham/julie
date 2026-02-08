@@ -574,6 +574,17 @@ impl SymbolDatabase {
         // - Relationships not inserted
         // Manual cleanup code removed - transaction guarantees consistency!
 
+        // Post-transaction: TRUNCATE checkpoint to reclaim WAL disk space
+        if result.is_ok() {
+            match self.checkpoint_wal() {
+                Ok((busy, log, checkpointed)) => debug!(
+                    "✅ WAL TRUNCATE checkpoint: busy={}, log={}, checkpointed={}",
+                    busy, log, checkpointed
+                ),
+                Err(e) => debug!("⚠️ WAL TRUNCATE checkpoint failed (non-fatal): {}", e),
+            }
+        }
+
         if let Ok(()) = result.as_ref() {
             let duration = start_time.elapsed();
             if skipped_count > 0 {
@@ -934,7 +945,16 @@ impl SymbolDatabase {
         // - Database consistent (old state preserved)
         // Next incremental run will re-process the modified files
 
+        // Post-transaction: TRUNCATE checkpoint to reclaim WAL disk space
         if result.is_ok() {
+            match self.checkpoint_wal() {
+                Ok((busy, log, checkpointed)) => info!(
+                    "✅ WAL TRUNCATE checkpoint: busy={}, log={}, checkpointed={}",
+                    busy, log, checkpointed
+                ),
+                Err(e) => warn!("WAL TRUNCATE checkpoint failed (non-fatal): {}", e),
+            }
+
             let duration = start_time.elapsed();
             info!(
                 "✅ Atomic incremental update complete in {:.2}ms",
