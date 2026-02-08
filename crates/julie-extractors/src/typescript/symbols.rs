@@ -62,7 +62,8 @@ fn visit_node(extractor: &mut TypeScriptExtractor, node: Node, symbols: &mut Vec
             symbol = imports_exports::extract_import(extractor, node);
         }
         "export_statement" => {
-            symbol = imports_exports::extract_export(extractor, node);
+            let export_symbols = imports_exports::extract_export(extractor, node);
+            symbols.extend(export_symbols);
         }
 
         // Namespaces/modules
