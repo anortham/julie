@@ -8,6 +8,7 @@
 mod functions;
 mod helpers;
 mod identifiers;
+mod imports;
 mod members;
 mod pending_calls;
 mod relationships;
@@ -149,6 +150,13 @@ impl DartExtractor {
             "type_alias" => {
                 symbol =
                     types::extract_typedef(&mut self.base, &node, current_parent_id.as_deref());
+            }
+            "import_or_export" => {
+                symbol = imports::extract_import_or_export(
+                    &mut self.base,
+                    &node,
+                    current_parent_id.as_deref(),
+                );
             }
             "ERROR" | "expression_statement" => {
                 // harper-tree-sitter-dart misparsees enhanced enums: the body after the first

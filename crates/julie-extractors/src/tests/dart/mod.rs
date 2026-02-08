@@ -2042,5 +2042,230 @@ class Person {
             );
         }
     }
+
+    mod imports {
+        use super::*;
+
+        #[test]
+        fn test_extract_dart_core_import() {
+            let code = r#"import 'dart:async';
+
+class MyApp {}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let import_sym = symbols
+                .iter()
+                .find(|s| s.kind == SymbolKind::Import && s.name == "dart:async");
+            assert!(
+                import_sym.is_some(),
+                "Should extract import with URI as name. Found symbols: {:?}",
+                symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            );
+            let import_sym = import_sym.unwrap();
+            assert!(
+                import_sym
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("import 'dart:async'"),
+                "Signature should contain full directive text"
+            );
+        }
+
+        #[test]
+        fn test_extract_package_import() {
+            let code = r#"import 'package:flutter/material.dart';
+
+class MyWidget {}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let import_sym = symbols.iter().find(|s| {
+                s.kind == SymbolKind::Import && s.name == "package:flutter/material.dart"
+            });
+            assert!(
+                import_sym.is_some(),
+                "Should extract package import. Found symbols: {:?}",
+                symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            );
+        }
+
+        #[test]
+        fn test_extract_export_directive() {
+            let code = r#"export 'src/widgets.dart';
+
+class MyApp {}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let export_sym = symbols
+                .iter()
+                .find(|s| s.kind == SymbolKind::Export && s.name == "src/widgets.dart");
+            assert!(
+                export_sym.is_some(),
+                "Should extract export with URI as name. Found symbols: {:?}",
+                symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            );
+            let export_sym = export_sym.unwrap();
+            assert!(
+                export_sym
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("export 'src/widgets.dart'"),
+                "Signature should contain full directive text"
+            );
+        }
+
+        #[test]
+        fn test_extract_multiple_imports() {
+            let code = r#"import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
+export 'package:foo/bar.dart';
+
+class MyApp {
+  void run() {}
+}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let imports: Vec<_> = symbols
+                .iter()
+                .filter(|s| s.kind == SymbolKind::Import)
+                .collect();
+            assert_eq!(imports.len(), 3, "Should extract 3 imports");
+
+            let exports: Vec<_> = symbols
+                .iter()
+                .filter(|s| s.kind == SymbolKind::Export)
+                .collect();
+            assert_eq!(exports.len(), 1, "Should extract 1 export");
+
+            // Verify none have parent_id (imports are top-level)
+            for imp in &imports {
+                assert!(
+                    imp.parent_id.is_none(),
+                    "Import {} should have no parent",
+                    imp.name
+                );
+            }
+        }
+
+        #[test]
+        fn test_imports_coexist_with_existing_symbols() {
+            // Ensure existing Flutter test still works — the import was always
+            // in the code, it just wasn't extracted before
+            let code = r#"import 'package:flutter/material.dart';
+
+class MyHomePage extends StatefulWidget {
+  final String title;
+
+  const MyHomePage({Key? key, required this.title}) : super(key: key);
+
+  @override
+  State<MyHomePage> createState() => _MyHomePageState();
+}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Import should be extracted
+            let import_sym = symbols.iter().find(|s| {
+                s.kind == SymbolKind::Import && s.name == "package:flutter/material.dart"
+            });
+            assert!(import_sym.is_some(), "Should extract flutter import");
+
+            // Class should still be extracted
+            let class_sym = symbols
+                .iter()
+                .find(|s| s.kind == SymbolKind::Class && s.name == "MyHomePage");
+            assert!(class_sym.is_some(), "Should still extract class");
+        }
+
+        #[test]
+        fn test_import_uri_strips_quotes() {
+            let code = "import 'dart:convert';\n";
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let import_sym = symbols
+                .iter()
+                .find(|s| s.kind == SymbolKind::Import);
+            assert!(import_sym.is_some(), "Should extract import");
+            let name = &import_sym.unwrap().name;
+            assert!(
+                !name.contains('\''),
+                "Import name should not contain quotes, got: {}",
+                name
+            );
+            assert_eq!(name, "dart:convert");
+        }
+    }
 }
 mod types; // Phase 4: Type extraction verification tests
