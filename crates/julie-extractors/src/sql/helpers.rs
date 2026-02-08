@@ -18,16 +18,6 @@ pub(super) static SQL_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| {
 pub(super) static CREATE_VIEW_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"CREATE\s+VIEW\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+AS").unwrap());
 
-/// Regex for extracting ON clauses (used in join conditions and constraints)
-#[allow(dead_code)]
-pub(super) static ON_CLAUSE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"ON\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap());
-
-/// Regex for extracting USING clauses (for index definitions)
-#[allow(dead_code)]
-pub(super) static USING_CLAUSE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"USING\s+([A-Z]+)").unwrap());
-
 /// Regex for extracting index column definitions
 pub(super) static INDEX_COLUMN_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:ON\s+[a-zA-Z_][a-zA-Z0-9_]*(?:\s+USING\s+[A-Z]+)?\s*)?(\([^)]+\))").unwrap()

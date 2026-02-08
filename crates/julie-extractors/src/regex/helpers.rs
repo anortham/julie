@@ -1,42 +1,7 @@
 use crate::base::SymbolKind;
 
-/// Check if a node represents a regex pattern
-pub(super) fn is_regex_pattern(node_kind: &str) -> bool {
-    matches!(
-        node_kind,
-        "pattern"
-            | "regex"
-            | "expression"
-            | "character_class"
-            | "group"
-            | "quantifier"
-            | "anchor"
-            | "lookahead"
-            | "lookbehind"
-            | "alternation"
-            | "character_escape"
-            | "unicode_property"
-            | "backreference"
-            | "conditional"
-    )
-}
-
-/// Clean a regex line by removing comments and extra whitespace
-pub(super) fn clean_regex_line(line: &str) -> String {
-    // Remove inline comments (// or #)
-    let cleaned = if let Some(pos) = line.find("//") {
-        &line[..pos]
-    } else if let Some(pos) = line.find('#') {
-        &line[..pos]
-    } else {
-        line
-    };
-
-    // Remove excessive whitespace
-    cleaned.trim().to_string()
-}
-
 /// Check if text is a valid regex pattern
+#[allow(dead_code)] // Used by tests
 pub(crate) fn is_valid_regex_pattern(text: &str) -> bool {
     // Skip very short patterns or obvious non-regex content
     if text.is_empty() {
@@ -180,9 +145,4 @@ pub(crate) fn calculate_complexity(pattern: &str) -> u32 {
     complexity += pattern.matches('|').count() as u32; // Alternations
 
     complexity
-}
-
-/// Check if a literal is escaped
-pub(super) fn is_escaped_literal(literal_text: &str) -> bool {
-    literal_text.starts_with('\\')
 }

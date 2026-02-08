@@ -110,17 +110,4 @@ impl super::BashExtractor {
         }
     }
 
-    /// Generic tree walk with callback - useful for debugging and analysis
-    #[allow(dead_code)]
-    #[allow(clippy::only_used_in_recursion)] // &self used in recursive calls
-    pub(super) fn walk_tree<'a, F>(&self, node: Node<'a>, callback: &mut F)
-    where
-        F: FnMut(Node<'a>),
-    {
-        callback(node);
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            self.walk_tree(child, callback);
-        }
-    }
 }

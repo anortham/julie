@@ -1,18 +1,13 @@
 pub(crate) mod classes;
 pub(crate) mod flags;
 pub(crate) mod groups;
-// NOTE: Some functions in helpers, patterns, and signatures are intentionally
-// unused after noise reduction (2026-02-08). Retained for future use.
-#[allow(dead_code)]
 pub(crate) mod helpers;
 pub(crate) mod identifiers;
-#[allow(dead_code)]
 mod patterns;
-#[allow(dead_code)]
 pub(crate) mod signatures;
 
 use crate::base::{
-    BaseExtractor, Identifier, Relationship, Symbol, SymbolKind, Visibility,
+    BaseExtractor, Identifier, Relationship, Symbol, SymbolKind,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -36,12 +31,6 @@ impl RegexExtractor {
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.visit_node(tree.root_node(), &mut symbols, None);
-
-        // NOTE: extract_patterns_from_text disabled (2026-02-08)
-        // It duplicated symbols already extracted by tree-sitter traversal,
-        // producing "text-pattern" copies of every line. The tree-sitter
-        // extraction handles all meaningful patterns.
-
         symbols
     }
 
@@ -119,69 +108,6 @@ impl RegexExtractor {
         }
 
         current_parent_id
-    }
-
-    #[allow(dead_code)]
-    fn extract_patterns_from_text(&mut self, text: &str, symbols: &mut Vec<Symbol>) {
-        let lines: Vec<&str> = text.lines().collect();
-
-        for (i, line) in lines.iter().enumerate() {
-            let line = line.trim();
-
-            // Skip comments and empty lines
-            if line.is_empty() || line.starts_with("//") || line.starts_with('#') {
-                continue;
-            }
-
-            // Clean the line - remove comments and extra whitespace
-            let clean_line = helpers::clean_regex_line(line);
-            if clean_line.is_empty() {
-                continue;
-            }
-
-            // Extract meaningful regex patterns
-            if helpers::is_valid_regex_pattern(&clean_line) {
-                let symbol_kind = helpers::determine_pattern_kind(&clean_line);
-                let signature = signatures::build_pattern_signature(&clean_line);
-
-                let metadata = patterns::create_metadata(&[
-                    ("type", "text-pattern"),
-                    ("pattern", &clean_line),
-                    ("lineNumber", &(i + 1).to_string()),
-                    (
-                        "complexity",
-                        &helpers::calculate_complexity(&clean_line).to_string(),
-                    ),
-                ]);
-
-                // Create a symbol using the standard method
-                // For text-based patterns without tree-sitter nodes, we can create a simple Symbol directly
-                let id = self.base.generate_id(&clean_line, (i + 1) as u32, 0);
-                let symbol = Symbol {
-                    id: id.clone(),
-                    name: clean_line.clone(),
-                    kind: symbol_kind,
-                    language: self.base.language.clone(),
-                    file_path: self.base.file_path.clone(),
-                    start_line: (i + 1) as u32,
-                    start_column: 0,
-                    end_line: (i + 1) as u32,
-                    end_column: clean_line.len() as u32,
-                    start_byte: 0,
-                    end_byte: clean_line.len() as u32,
-                    signature: Some(signature),
-                    doc_comment: None,
-                    visibility: Some(Visibility::Public),
-                    parent_id: None,
-                    metadata: Some(metadata),
-                    semantic_group: None, // Regex patterns don't have cross-language groups
-                    confidence: None,     // Will be set during validation
-                    code_context: None,   // Will be populated during context extraction
-                    content_type: None,
-                };
-                symbols.push(symbol);
-            }
-        }
     }
 
     pub fn extract_relationships(

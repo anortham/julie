@@ -4,7 +4,6 @@
 //! and other Bash constructs.
 
 use crate::base::BaseExtractor;
-use std::collections::HashMap;
 use tree_sitter::Node;
 
 impl super::BashExtractor {
@@ -44,59 +43,4 @@ impl super::BashExtractor {
     }
 
 
-    /// Build documentation for a variable (annotations about readonly, exported, etc.)
-    #[allow(dead_code)]
-    pub(super) fn extract_variable_documentation(
-        &self,
-        _node: Node,
-        is_environment: bool,
-        is_exported: bool,
-        is_readonly: bool,
-    ) -> String {
-        let mut annotations = Vec::new();
-
-        if is_readonly {
-            annotations.push("READONLY");
-        }
-        if is_environment {
-            annotations.push("Environment Variable");
-        }
-        if is_exported {
-            annotations.push("Exported");
-        }
-
-        if annotations.is_empty() {
-            String::new()
-        } else {
-            format!("[{}]", annotations.join(", "))
-        }
-    }
-
-    /// Build documentation for a command (identifies what external tool it is)
-    #[allow(dead_code)]
-    pub(super) fn get_command_documentation(&self, command_name: &str) -> String {
-        let command_docs = [
-            ("python", "[Python Interpreter Call]"),
-            ("python3", "[Python 3 Interpreter Call]"),
-            ("node", "[Node.js Runtime Call]"),
-            ("npm", "[NPM Package Manager Call]"),
-            ("bun", "[Bun Runtime Call]"),
-            ("go", "[Go Command Call]"),
-            ("cargo", "[Rust Cargo Call]"),
-            ("java", "[Java Runtime Call]"),
-            ("dotnet", "[.NET CLI Call]"),
-            ("docker", "[Docker Container Call]"),
-            ("kubectl", "[Kubernetes CLI Call]"),
-            ("terraform", "[Infrastructure as Code Call]"),
-            ("git", "[Version Control Call]"),
-        ]
-        .iter()
-        .cloned()
-        .collect::<HashMap<&str, &str>>();
-
-        command_docs
-            .get(command_name)
-            .unwrap_or(&"[External Program Call]")
-            .to_string()
-    }
 }

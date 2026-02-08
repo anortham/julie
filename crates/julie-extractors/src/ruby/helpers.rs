@@ -76,42 +76,11 @@ pub(super) fn infer_symbol_kind_from_assignment(
 }
 
 /// Check if a node is part of an assignment
-#[allow(dead_code)]
 pub(super) fn is_part_of_assignment(node: &Node) -> bool {
     let mut current = *node;
     while let Some(parent) = current.parent() {
         if matches!(parent.kind(), "assignment" | "operator_assignment") {
             return true;
-        }
-        current = parent;
-    }
-    false
-}
-
-/// Check if a node is the name of its parent class/module
-#[allow(dead_code)]
-pub(super) fn is_part_of_class_module_declaration(node: &Node) -> bool {
-    let mut current = *node;
-    while let Some(parent) = current.parent() {
-        if matches!(parent.kind(), "class" | "module") {
-            // Check if this constant is the name of the class/module
-            if let Some(name_node) = parent.child_by_field_name("name") {
-                if name_node.id() == current.id() {
-                    return true;
-                }
-            } else if let Some(name_node) = parent.child_by_field_name("constant") {
-                if name_node.id() == current.id() {
-                    return true;
-                }
-            } else {
-                // Fallback: check if this is the first constant child
-                let mut cursor = parent.walk();
-                for child in parent.children(&mut cursor) {
-                    if child.kind() == "constant" && child.id() == current.id() {
-                        return true;
-                    }
-                }
-            }
         }
         current = parent;
     }
