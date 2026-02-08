@@ -188,9 +188,10 @@ impl RubyExtractor {
             "assignment" | "operator_assignment" => {
                 // Check for Struct.new pattern first (e.g., Person = Struct.new(:name, :age))
                 // Use symbol_opt so do_block methods get parented under the Class
-                if let Some(struct_class) =
+                if let Some((struct_class, field_props)) =
                     calls::try_extract_struct_new(&mut self.base, node, parent_id.clone())
                 {
+                    symbols.extend(field_props);
                     symbol_opt = Some(struct_class);
                 } else if let Some(symbol) =
                     assignments::extract_assignment(&mut self.base, node, parent_id.clone())
