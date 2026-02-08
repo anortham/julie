@@ -1322,30 +1322,22 @@ mod razor_extractor_tests {
 
         let symbols = extract_symbols(razor_code);
 
-        // Two-way binding
-        let first_name_binding = symbols.iter().find(|s| {
-            s.signature
-                .as_ref()
-                .map_or(false, |sig| sig.contains("@bind-Value=\"Model.FirstName\""))
-        });
-        assert!(first_name_binding.is_some());
+        // Two-way bindings are Blazor framework syntax, not code symbols — should NOT be extracted
+        let binding_symbols: Vec<_> = symbols
+            .iter()
+            .filter(|s| {
+                s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("@bind-Value"))
+            })
+            .collect();
+        assert!(
+            binding_symbols.is_empty(),
+            "Binding attributes should NOT be extracted as symbols. Found: {:?}",
+            binding_symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
 
-        let email_binding = symbols.iter().find(|s| {
-            s.signature
-                .as_ref()
-                .map_or(false, |sig| sig.contains("@bind-Value=\"Model.Email\""))
-        });
-        assert!(email_binding.is_some());
-
-        // Event binding with custom event
-        let input_binding = symbols.iter().find(|s| {
-            s.signature
-                .as_ref()
-                .map_or(false, |sig| sig.contains("@bind-Value:event=\"oninput\""))
-        });
-        assert!(input_binding.is_some());
-
-        // Event handlers
+        // Event handlers (from @code block — these SHOULD still be extracted)
         let validate_email = symbols.iter().find(|s| s.name == "ValidateEmail");
         assert!(validate_email.is_some());
         assert!(
@@ -1608,45 +1600,27 @@ mod razor_extractor_tests {
         let symbols = extract_symbols(razor_code);
         let relationships = extract_relationships(razor_code, &symbols);
 
-        // Should find component usage relationships
-        assert!(relationships.len() >= 4);
+        // Component usages (AppHeader, Navigation, AppFooter, NotificationContainer) are no longer
+        // extracted as symbols, so component-usage "uses" relationships shouldn't exist
+        let component_names = ["AppHeader", "Navigation", "AppFooter", "NotificationContainer"];
+        for name in &component_names {
+            assert!(
+                !symbols.iter().any(|s| s.name == *name),
+                "Component usage '{}' should NOT be extracted as a symbol",
+                name
+            );
+        }
 
-        // Component dependencies (uses relationships)
-        let header_usage = relationships.iter().find(|r| {
-            r.kind.to_string() == "uses"
-                && symbols
-                    .iter()
-                    .find(|s| &s.id == &r.to_symbol_id)
-                    .map_or(false, |s| s.name == "AppHeader")
-        });
-        assert!(header_usage.is_some());
+        // C# symbols from @code block should still be present
+        assert!(symbols.iter().any(|s| s.name == "CurrentUser"));
+        assert!(symbols.iter().any(|s| s.name == "IsSidebarOpen"));
+        assert!(symbols.iter().any(|s| s.name == "HandleMenuToggle"));
+        assert!(symbols.iter().any(|s| s.name == "OnInitializedAsync"));
+        assert!(symbols.iter().any(|s| s.name == "Dispose"));
 
-        let navigation_usage = relationships.iter().find(|r| {
-            r.kind.to_string() == "uses"
-                && symbols
-                    .iter()
-                    .find(|s| &s.id == &r.to_symbol_id)
-                    .map_or(false, |s| s.name == "Navigation")
-        });
-        assert!(navigation_usage.is_some());
-
-        let footer_usage = relationships.iter().find(|r| {
-            r.kind.to_string() == "uses"
-                && symbols
-                    .iter()
-                    .find(|s| &s.id == &r.to_symbol_id)
-                    .map_or(false, |s| s.name == "AppFooter")
-        });
-        assert!(footer_usage.is_some());
-
-        let notification_usage = relationships.iter().find(|r| {
-            r.kind.to_string() == "uses"
-                && symbols
-                    .iter()
-                    .find(|s| &s.id == &r.to_symbol_id)
-                    .map_or(false, |s| s.name == "NotificationContainer")
-        });
-        assert!(notification_usage.is_some());
+        // Directives should still be present
+        assert!(symbols.iter().any(|s| s.name == "JSRuntime"));
+        assert!(symbols.iter().any(|s| s.name == "Configuration"));
     }
 }
 
@@ -2080,6 +2054,8 @@ mod blazor_extraction_tests {
 
     #[test]
     fn test_blazor_components_extracted() {
+        // Component USAGES in templates should NOT be extracted as symbols.
+        // Component DEFINITIONS come from the component's own .razor file.
         let code = r#"<ErrorBoundary>
     <ChildContent>
         <HeaderComponent/>
@@ -2094,18 +2070,13 @@ mod blazor_extraction_tests {
             .collect();
 
         assert!(
-            component_names.contains(&"ErrorBoundary"),
-            "Should extract PascalCase component ErrorBoundary. Got: {:?}",
+            !component_names.contains(&"ErrorBoundary"),
+            "Should NOT extract component usages as symbols. Got: {:?}",
             component_names
         );
         assert!(
-            component_names.contains(&"HeaderComponent"),
-            "Should extract PascalCase component HeaderComponent. Got: {:?}",
-            component_names
-        );
-        assert!(
-            component_names.contains(&"FooterComponent"),
-            "Should extract PascalCase component FooterComponent. Got: {:?}",
+            !component_names.contains(&"HeaderComponent"),
+            "Should NOT extract component usages as symbols. Got: {:?}",
             component_names
         );
     }
@@ -2191,10 +2162,10 @@ mod blazor_extraction_tests {
             "Should have event handler method. Got: {:?}", names
         );
 
-        // PascalCase components should be present
+        // PascalCase component usages should NOT be present (they are references, not definitions)
         assert!(
-            symbols.iter().any(|s| s.name == "ChildComponent"),
-            "Should have PascalCase component. Got: {:?}", names
+            !symbols.iter().any(|s| s.name == "ChildComponent"),
+            "Should NOT have component usages as symbols. Got: {:?}", names
         );
 
         // Lowercase HTML should NOT be present
@@ -2210,13 +2181,11 @@ mod blazor_extraction_tests {
     }
 
     /// Test that components after Razor expressions are detected even when
-    /// tree-sitter misparsess `@expr <Component>` as a binary expression.
-    /// This validates the whole-source regex fallback catches parser blind spots.
+    /// Component usages in templates should not be extracted as symbols,
+    /// even when tree-sitter misparsess them. The @code block content
+    /// should still be extracted correctly.
     #[test]
-    fn test_component_after_razor_expression_detected() {
-        // When a component appears after a Razor expression at the top level
-        // (not inside any element), tree-sitter may misparse `@expr <Component>`
-        // as a binary expression. The regex pass should catch it.
+    fn test_component_after_razor_expression_not_extracted() {
         let code = r#"@page "/test"
 
 @Body
@@ -2229,9 +2198,16 @@ mod blazor_extraction_tests {
         let symbols = extract_symbols(code);
         let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();
 
+        // Component usages should NOT be extracted
         assert!(
-            names.contains(&"TopLevelPanel"),
-            "Top-level component after @Body should be detected. Got: {:?}",
+            !names.contains(&"TopLevelPanel"),
+            "Component usages should NOT be extracted. Got: {:?}",
+            names
+        );
+        // But @code block methods should still work
+        assert!(
+            names.contains(&"DoWork"),
+            "@code block methods should still be extracted. Got: {:?}",
             names
         );
     }

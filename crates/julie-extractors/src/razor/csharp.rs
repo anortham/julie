@@ -192,7 +192,7 @@ impl super::RazorExtractor {
 
     /// Extract method declaration
     pub(super) fn extract_method(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let mut name = "unknownMethod".to_string();
+        let mut name: Option<String> = None;
         let mut interface_qualification = String::new();
 
         // Handle explicit interface implementations
@@ -211,7 +211,7 @@ impl super::RazorExtractor {
             // Look backwards from parameter list to find the method name identifier
             for i in (0..param_list_idx).rev() {
                 if children[i].kind() == "identifier" {
-                    name = self.base.get_node_text(&children[i]);
+                    name = Some(self.base.get_node_text(&children[i]));
                     break;
                 }
             }
@@ -219,11 +219,14 @@ impl super::RazorExtractor {
             // Fallback: find the last identifier (which should be method name in most cases)
             for child in children.iter().rev() {
                 if child.kind() == "identifier" {
-                    name = self.base.get_node_text(child);
+                    name = Some(self.base.get_node_text(child));
                     break;
                 }
             }
         }
+
+        // If we couldn't resolve the method name, skip this symbol
+        let name = name?;
 
         let modifiers = self.extract_modifiers(node);
         let parameters = self.extract_method_parameters(node);
@@ -297,7 +300,7 @@ impl super::RazorExtractor {
         node: Node,
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
-        let mut name = "unknownProperty".to_string();
+        let mut name: Option<String> = None;
 
         // Find property name - should be after type but before accessors
         let mut cursor = node.walk();
@@ -321,11 +324,14 @@ impl super::RazorExtractor {
                 });
 
                 if has_preceding_type {
-                    name = self.base.get_node_text(child);
+                    name = Some(self.base.get_node_text(child));
                     break;
                 }
             }
         }
+
+        // If we couldn't resolve the property name, skip this symbol
+        let name = name?;
 
         let modifiers = self.extract_modifiers(node);
         let property_type = self.extract_property_type(node);

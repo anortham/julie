@@ -499,27 +499,18 @@ impl ManageWorkspaceTool {
         let language_clone = language.to_string();
         let workspace_root_clone = workspace_root.to_path_buf();
 
-        let (_canonical_file_path, content, file_info) = tokio::task::spawn_blocking(move || {
-            // 🔍 DEBUG: Log that we're inside spawn_blocking
-            tracing::trace!("🔄 Inside spawn_blocking for: {:?}", file_path_clone);
+        let (_canonical_file_path, content, mut file_info) = tokio::task::spawn_blocking(move || {
             // Blocking operation 1: canonicalize (resolves symlinks: macOS /var -> /private/var)
-            tracing::trace!("🔧 Canonicalizing path...");
             let canonical = file_path_clone
                 .canonicalize()
                 .unwrap_or_else(|_| file_path_clone.clone());
-            tracing::trace!("✅ Canonicalized: {:?}", canonical);
 
             // Blocking operation 2: read file content
-            tracing::trace!("📖 Reading file content...");
             let file_content = std::fs::read_to_string(&canonical)
                 .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", canonical, e))?;
-            tracing::trace!("✅ Read {} bytes", file_content.len());
 
             // Blocking operation 3: create file info (does metadata, hash, etc)
-            // This also reads the file, but we do it here to keep ALL blocking I/O in one place
-            tracing::trace!("📊 Creating file info...");
             let info = crate::database::create_file_info(&file_path_clone, &language_clone, &workspace_root_clone)?;
-            tracing::trace!("✅ File info created");
 
             Ok::<_, anyhow::Error>((canonical, file_content, info))
         })
@@ -631,10 +622,11 @@ impl ManageWorkspaceTool {
             }
         };
 
-        // file_info already created in spawn_blocking above - no need to recreate
-
         // Destructure ExtractionResults into all fields
         let symbols = results.symbols;
+
+        // Update file_info with actual symbol count (was initialized to 0)
+        file_info.symbol_count = symbols.len() as i32;
         let relationships = results.relationships;
         let pending_relationships = results.pending_relationships;
         let identifiers = results.identifiers;

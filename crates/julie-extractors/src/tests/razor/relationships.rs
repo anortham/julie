@@ -49,26 +49,17 @@ fn test_component_identifier_relationship() {
 "#;
 
     let symbols = extract_symbols(razor_code);
-    let relationships = extract_relationships(razor_code, &symbols);
 
-    let component_symbol = symbols
-        .iter()
-        .find(|symbol| symbol.name == "AlertBanner")
-        .expect("missing AlertBanner component symbol");
-
-    let banner_type_symbol = symbols
-        .iter()
-        .find(|symbol| symbol.name == "BannerType")
-        .expect("missing BannerType symbol");
-
+    // Component usages in templates are no longer extracted as symbols
     assert!(
-        relationships.iter().any(|relationship| {
-            relationship.kind == RelationshipKind::Uses
-                && relationship.from_symbol_id == banner_type_symbol.id
-                && relationship.to_symbol_id == component_symbol.id
-        }),
-        "Expected BannerType -> AlertBanner Uses relationship, got {:?}",
-        relationships
+        !symbols.iter().any(|s| s.name == "AlertBanner"),
+        "Component usages should NOT be extracted as symbols"
+    );
+
+    // The @code block member should still be extracted
+    assert!(
+        symbols.iter().any(|s| s.name == "BannerType"),
+        "BannerType property should still be extracted from @code block"
     );
 }
 
@@ -119,25 +110,17 @@ fn test_component_invoke_async_relationship_targets_component_symbol() {
 "#;
 
     let symbols = extract_symbols(razor_code);
-    let relationships = extract_relationships(razor_code, &symbols);
 
+    // Component usages in templates are no longer extracted as symbols
+    assert!(
+        !symbols.iter().any(|s| s.name == "FeaturedProducts"),
+        "Component usages should NOT be extracted as symbols"
+    );
+
+    // The @code block method should still be extracted
     let render_products = symbols
         .iter()
         .find(|symbol| symbol.name == "RenderProducts")
         .expect("missing RenderProducts symbol");
-
-    let featured_products = symbols
-        .iter()
-        .find(|symbol| symbol.name == "FeaturedProducts")
-        .expect("missing FeaturedProducts component symbol");
-
-    assert!(
-        relationships.iter().any(|relationship| {
-            relationship.kind == RelationshipKind::Calls
-                && relationship.from_symbol_id == render_products.id
-                && relationship.to_symbol_id == featured_products.id
-        }),
-        "Expected RenderProducts -> FeaturedProducts Calls relationship, got {:?}",
-        relationships
-    );
+    assert_eq!(render_products.kind, crate::base::SymbolKind::Method);
 }

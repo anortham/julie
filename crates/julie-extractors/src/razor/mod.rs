@@ -13,7 +13,6 @@ use tree_sitter::{Node, Tree};
 mod csharp;
 mod directives;
 mod helpers;
-mod html;
 mod identifiers;
 mod relationships;
 mod stubs;
@@ -23,15 +22,6 @@ pub struct RazorExtractor {
     base: BaseExtractor,
 }
 
-/// Check if a tag name is a Blazor component (PascalCase, starts with uppercase).
-/// Standard HTML elements (div, span, p) start lowercase.
-/// Blazor components and custom elements start uppercase (ErrorBoundary, HeaderComponent).
-fn is_blazor_component(tag_name: &str) -> bool {
-    tag_name
-        .chars()
-        .next()
-        .is_some_and(|c| c.is_ascii_uppercase())
-}
 
 impl RazorExtractor {
     /// Create a new Razor extractor
@@ -50,10 +40,6 @@ impl RazorExtractor {
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
         self.visit_node(tree.root_node(), &mut symbols, None);
-        // Whole-source regex pass for Blazor component detection.
-        // Catches components that tree-sitter misparsess (e.g., @Body <Component>
-        // parsed as a C# comparison). Only creates symbols not already found above.
-        self.extract_template_components(tree, &mut symbols);
         symbols
     }
 
@@ -108,19 +94,10 @@ impl RazorExtractor {
             "razor_expression" | "razor_implicit_expression" => {
                 symbol = self.extract_expression(node, parent_id.as_deref());
             }
-            "html_element" | "element" => {
-                // Only extract PascalCase tags as component symbols (like Vue's approach).
-                // Lowercase HTML elements (div, span, p) are noise for code intelligence.
-                let tag_name = self.extract_html_tag_name(node);
-                if is_blazor_component(&tag_name) {
-                    symbol = self.extract_html_element(node, parent_id.as_deref());
-                }
-                // Extract binding attributes regardless of tag case (@bind-*, @on*)
-                self.extract_binding_attributes_from_element(node, symbols, parent_id.as_deref());
-            }
-            "razor_component" => {
-                symbol = self.extract_component(node, parent_id.as_deref());
-            }
+            // Template component references (<PageTitle>, <EditForm>, etc.) are USAGES
+            // not definitions — skip them. Component definitions come from the
+            // component's own .razor file via @code block extraction.
+            "html_element" | "element" | "razor_component" => {}
             "csharp_code" => {
                 self.extract_csharp_symbols(node, symbols, parent_id.as_deref());
             }
@@ -154,12 +131,10 @@ impl RazorExtractor {
             "invocation_expression" => {
                 symbol = self.extract_invocation(node, parent_id.as_deref());
             }
-            "razor_html_attribute" => {
-                symbol = self.extract_html_attribute(node, parent_id.as_deref(), symbols);
-            }
-            "attribute" => {
-                symbol = self.extract_razor_attribute(node, parent_id.as_deref());
-            }
+            // HTML/Razor attributes (@onclick, @bind, class, id, etc.) are template
+            // markup, not code symbols. Meaningful directives (@inject, @page, etc.)
+            // are handled via their own directive node types above.
+            "razor_html_attribute" | "attribute" => {}
             _ => {}
         }
 
@@ -206,30 +181,6 @@ impl RazorExtractor {
                     },
                 );
                 symbols.push(symbol);
-            }
-        }
-
-        // Look for HTML elements/components
-        let component_regex = Regex::new(r"<(\w+)").unwrap();
-        for captures in component_regex.captures_iter(&content) {
-            if let Some(tag_name) = captures.get(1) {
-                let tag = tag_name.as_str();
-                // Only extract custom components (starting with uppercase)
-                if tag.chars().next().unwrap_or('a').is_uppercase() {
-                    let symbol = self.base.create_symbol(
-                        &node,
-                        tag.to_string(),
-                        SymbolKind::Class,
-                        SymbolOptions {
-                            signature: Some(format!("<{}>", tag)),
-                            visibility: Some(Visibility::Public),
-                            parent_id: parent_id.map(|s| s.to_string()),
-                            metadata: None,
-                            doc_comment: None,
-                        },
-                    );
-                    symbols.push(symbol);
-                }
             }
         }
 

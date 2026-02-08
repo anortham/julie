@@ -149,7 +149,8 @@ impl super::RazorExtractor {
         match directive_name.to_lowercase().as_str() {
             "model" | "layout" => SymbolKind::Class,
             "page" | "using" | "namespace" => SymbolKind::Import,
-            "inherits" | "implements" => SymbolKind::Interface,
+            "inherits" => SymbolKind::Import,
+            "implements" => SymbolKind::Interface,
             "inject" | "attribute" => SymbolKind::Property,
             "code" | "functions" => SymbolKind::Function,
             _ => SymbolKind::Variable,

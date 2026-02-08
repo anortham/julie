@@ -183,14 +183,14 @@ impl super::RazorExtractor {
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
         // Extract variable name and type from local declaration
-        let mut variable_name = "unknownVariable".to_string();
+        let mut variable_name: Option<String> = None;
         let mut variable_type = None;
         let mut initializer = None;
 
         // Find variable declarator
         if let Some(var_declarator) = self.find_child_by_type(node, "variable_declarator") {
             if let Some(identifier) = self.find_child_by_type(var_declarator, "identifier") {
-                variable_name = self.base.get_node_text(&identifier);
+                variable_name = Some(self.base.get_node_text(&identifier));
             }
 
             // Look for initializer (= expression)
@@ -219,6 +219,9 @@ impl super::RazorExtractor {
                 variable_type = Some(self.base.get_node_text(&type_node));
             }
         }
+
+        // If we couldn't resolve the variable name, skip this symbol
+        let variable_name = variable_name?;
 
         let modifiers = self.extract_modifiers(node);
         let attributes = self.extract_attributes(node);
@@ -459,15 +462,18 @@ impl super::RazorExtractor {
         let _invocation_text = self.base.get_node_text(&node);
 
         // Extract method name and arguments
-        let mut method_name = "unknownMethod".to_string();
+        let mut method_name: Option<String> = None;
         let mut arguments = None;
 
         // Look for the invoked expression (method name)
         if let Some(expression) =
             self.find_child_by_types(node, &["identifier", "member_access_expression"])
         {
-            method_name = self.base.get_node_text(&expression);
+            method_name = Some(self.base.get_node_text(&expression));
         }
+
+        // If we couldn't resolve the method name, skip this symbol
+        let method_name = method_name?;
 
         // Look for argument list
         if let Some(arg_list) = self.find_child_by_type(node, "argument_list") {

@@ -9,7 +9,7 @@ use tracing::{debug, warn};
 
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::search::SearchFilter;
+use crate::search::{SearchFilter, SearchIndex};
 use super::query::matches_glob_pattern;
 
 /// Text search with workspace filtering and search target selection
@@ -30,25 +30,43 @@ pub async fn text_search_impl(
     language: &Option<String>,
     file_pattern: &Option<String>,
     limit: u32,
-    _workspace_ids: Option<Vec<String>>,
+    workspace_ids: Option<Vec<String>>,
     search_target: &str,
     _context_lines: Option<u32>,
     handler: &JulieServerHandler,
 ) -> Result<Vec<Symbol>> {
-    // Get the workspace and its search index
+    // Get the primary workspace (always needed for path resolution)
     let workspace = handler
         .get_workspace()
         .await?
         .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
-    let search_index = workspace
-        .search_index
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!(
-            "Search index not initialized. Run 'manage_workspace index' first."
-        ))?;
+    // Determine if we're targeting a reference workspace
+    let ref_workspace_id = if let Some(ref ids) = workspace_ids {
+        if let Some(id) = ids.first() {
+            let registry = crate::workspace::registry_service::WorkspaceRegistryService::new(
+                workspace.root.clone(),
+            );
+            let primary_id = registry
+                .get_primary_workspace_id()
+                .await?
+                .unwrap_or_default();
+            if *id != primary_id {
+                Some(id.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
-    debug!("🔍 Tantivy text search: '{}' (target: {})", query, search_target);
+    debug!(
+        "🔍 Tantivy text search: '{}' (target: {}, ref_workspace: {:?})",
+        query, search_target, ref_workspace_id
+    );
 
     // Build search filter from parameters
     let filter = SearchFilter {
@@ -57,11 +75,115 @@ pub async fn text_search_impl(
         file_pattern: file_pattern.clone(),
     };
 
-    // Clone the Arc so we can move it into spawn_blocking
-    let search_index_clone = search_index.clone();
     let query_clone = query.to_string();
     let limit_usize = limit as usize;
     let search_target_clone = search_target.to_string();
+
+    // Reference workspace: open isolated Tantivy index + SQLite DB
+    if let Some(ref_id) = ref_workspace_id {
+        let tantivy_path = workspace.workspace_tantivy_path(&ref_id);
+        let ref_db_path = workspace.workspace_db_path(&ref_id);
+
+        let results = tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
+            if !tantivy_path.join("meta.json").exists() {
+                debug!("No Tantivy index for reference workspace, returning empty");
+                return Ok(Vec::new());
+            }
+
+            let index = SearchIndex::open(&tantivy_path)?;
+
+            if search_target_clone == "definitions" {
+                let search_results =
+                    index.search_symbols(&query_clone, &filter, limit_usize)?;
+
+                let mut symbols: Vec<Symbol> = search_results
+                    .into_iter()
+                    .map(|result| tantivy_symbol_to_symbol(result))
+                    .collect();
+
+                // Enrich with code_context from reference workspace's SQLite
+                if ref_db_path.exists() {
+                    if let Ok(ref_db) = crate::database::SymbolDatabase::new(&ref_db_path) {
+                        enrich_symbols_from_db(&mut symbols, &ref_db);
+                    }
+                }
+
+                Ok(symbols)
+            } else {
+                // Content search on reference workspace
+                let fetch_limit = limit_usize.saturating_mul(5).max(50);
+                let search_results =
+                    index.search_content(&query_clone, &filter, fetch_limit)?;
+
+                let query_words: Vec<String> = query_clone
+                    .split(|c: char| !c.is_alphanumeric())
+                    .filter(|w| !w.is_empty())
+                    .map(|w| w.to_lowercase())
+                    .collect();
+
+                let mut verified_symbols = Vec::with_capacity(limit_usize);
+
+                if ref_db_path.exists() {
+                    if let Ok(ref_db) = crate::database::SymbolDatabase::new(&ref_db_path) {
+                        for result in search_results {
+                            if verified_symbols.len() >= limit_usize {
+                                break;
+                            }
+                            match ref_db.get_file_content(&result.file_path) {
+                                Ok(Some(content)) => {
+                                    let content_lower = content.to_lowercase();
+                                    if query_words
+                                        .iter()
+                                        .all(|word| content_lower.contains(word.as_str()))
+                                    {
+                                        verified_symbols.push(content_result_to_symbol(result));
+                                    }
+                                }
+                                _ => {
+                                    verified_symbols.push(content_result_to_symbol(result));
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    for result in search_results.into_iter().take(limit_usize) {
+                        verified_symbols.push(content_result_to_symbol(result));
+                    }
+                }
+
+                Ok(verified_symbols)
+            }
+        })
+        .await??;
+
+        // Apply file_pattern glob matching as a post-filter
+        let filtered_results = if let Some(pattern) = file_pattern {
+            results
+                .into_iter()
+                .filter(|symbol| matches_glob_pattern(&symbol.file_path, pattern))
+                .collect()
+        } else {
+            results
+        };
+
+        debug!(
+            "✅ Reference workspace search returned {} results",
+            filtered_results.len()
+        );
+
+        return Ok(filtered_results);
+    }
+
+    // Primary workspace: use shared search index
+    let search_index = workspace
+        .search_index
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!(
+            "Search index not initialized. Run 'manage_workspace index' first."
+        ))?;
+
+    // Clone the Arc so we can move it into spawn_blocking
+    let search_index_clone = search_index.clone();
 
     // Clone DB for both definition search (code_context enrichment) and
     // content search (post-verification filtering)
@@ -76,39 +198,9 @@ pub async fn text_search_impl(
             debug!("🔍 Searching symbols with Tantivy");
             let search_results = index.search_symbols(&query_clone, &filter, limit_usize)?;
 
-            // Convert SymbolSearchResult → Symbol
             let mut symbols: Vec<Symbol> = search_results
                 .into_iter()
-                .map(|result| Symbol {
-                    id: result.id,
-                    name: result.name,
-                    kind: SymbolKind::from_string(&result.kind),
-                    language: result.language,
-                    file_path: result.file_path,
-                    start_line: result.start_line,
-                    signature: if result.signature.is_empty() {
-                        None
-                    } else {
-                        Some(result.signature)
-                    },
-                    doc_comment: if result.doc_comment.is_empty() {
-                        None
-                    } else {
-                        Some(result.doc_comment)
-                    },
-                    start_column: 0,
-                    end_line: 0,
-                    end_column: 0,
-                    start_byte: 0,
-                    end_byte: 0,
-                    visibility: None,
-                    parent_id: None,
-                    metadata: None,
-                    semantic_group: None,
-                    confidence: Some(result.score),
-                    code_context: None,
-                    content_type: None,
-                })
+                .map(|result| tantivy_symbol_to_symbol(result))
                 .collect();
 
             // Enrich with code_context from SQLite (Tantivy doesn't store code_body)
@@ -120,25 +212,7 @@ pub async fn text_search_impl(
                         poisoned.into_inner()
                     }
                 };
-                let ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
-                if !ids.is_empty() {
-                    match db_lock.get_symbols_by_ids(&ids) {
-                        Ok(db_symbols) => {
-                            let enrichment_map: std::collections::HashMap<String, _> =
-                                db_symbols.into_iter().map(|s| (s.id, (s.code_context, s.visibility))).collect();
-                            for symbol in &mut symbols {
-                                if let Some((ctx, vis)) = enrichment_map.get(&symbol.id) {
-                                    symbol.code_context = ctx.clone();
-                                    symbol.visibility = vis.clone();
-                                }
-                            }
-                            debug!("✅ Enriched {} symbols from SQLite", enrichment_map.len());
-                        }
-                        Err(e) => {
-                            debug!("Could not enrich code_context from SQLite: {}", e);
-                        }
-                    }
-                }
+                enrich_symbols_from_db(&mut symbols, &db_lock);
             }
 
             Ok(symbols)
@@ -244,6 +318,66 @@ pub async fn text_search_impl(
     );
 
     Ok(filtered_results)
+}
+
+/// Convert a Tantivy SymbolSearchResult into an extractors Symbol.
+fn tantivy_symbol_to_symbol(result: crate::search::index::SymbolSearchResult) -> Symbol {
+    Symbol {
+        id: result.id,
+        name: result.name,
+        kind: SymbolKind::from_string(&result.kind),
+        language: result.language,
+        file_path: result.file_path,
+        start_line: result.start_line,
+        signature: if result.signature.is_empty() {
+            None
+        } else {
+            Some(result.signature)
+        },
+        doc_comment: if result.doc_comment.is_empty() {
+            None
+        } else {
+            Some(result.doc_comment)
+        },
+        start_column: 0,
+        end_line: 0,
+        end_column: 0,
+        start_byte: 0,
+        end_byte: 0,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: Some(result.score),
+        code_context: None,
+        content_type: None,
+    }
+}
+
+/// Enrich symbols with code_context and visibility from a SQLite database.
+fn enrich_symbols_from_db(symbols: &mut [Symbol], db: &crate::database::SymbolDatabase) {
+    let ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
+    if ids.is_empty() {
+        return;
+    }
+    match db.get_symbols_by_ids(&ids) {
+        Ok(db_symbols) => {
+            let enrichment_map: std::collections::HashMap<String, _> = db_symbols
+                .into_iter()
+                .map(|s| (s.id, (s.code_context, s.visibility)))
+                .collect();
+            for symbol in symbols.iter_mut() {
+                if let Some((ctx, vis)) = enrichment_map.get(&symbol.id) {
+                    symbol.code_context = ctx.clone();
+                    symbol.visibility = vis.clone();
+                }
+            }
+            debug!("✅ Enriched {} symbols from SQLite", enrichment_map.len());
+        }
+        Err(e) => {
+            debug!("Could not enrich code_context from SQLite: {}", e);
+        }
+    }
 }
 
 /// Convert a ContentSearchResult into a Symbol (file-level match).
