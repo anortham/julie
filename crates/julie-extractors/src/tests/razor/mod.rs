@@ -944,13 +944,16 @@ mod razor_extractor_tests {
         });
         assert!(meta_description.is_some());
 
-        // Component invocation
+        // Component invocations are usages, NOT definitions — should not be extracted
         let component_invoke = symbols.iter().find(|s| {
             s.signature.as_ref().map_or(false, |sig| {
                 sig.contains("Component.InvokeAsync(\"FeaturedProducts\"")
             })
         });
-        assert!(component_invoke.is_some());
+        assert!(
+            component_invoke.is_none(),
+            "Component.InvokeAsync() is a usage, not a definition"
+        );
 
         // Sections
         let meta_tags_section = symbols.iter().find(|s| {
@@ -1028,20 +1031,26 @@ mod razor_extractor_tests {
         });
         assert!(add_tag_helper.is_some());
 
-        // Render methods
+        // Render methods are invocations (usages), NOT definitions — should not be extracted
         let render_section_async = layout_symbols.iter().find(|s| {
             s.signature
                 .as_ref()
                 .map_or(false, |sig| sig.contains("RenderSectionAsync(\"MetaTags\""))
         });
-        assert!(render_section_async.is_some());
+        assert!(
+            render_section_async.is_none(),
+            "RenderSectionAsync() is a usage, not a definition"
+        );
 
         let render_body = layout_symbols.iter().find(|s| {
             s.signature
                 .as_ref()
                 .map_or(false, |sig| sig.contains("RenderBody()"))
         });
-        assert!(render_body.is_some());
+        assert!(
+            render_body.is_none(),
+            "RenderBody() is a usage, not a definition"
+        );
     }
 
     #[test]
@@ -1789,11 +1798,9 @@ mod razor_identifier_extraction_tests {
             "Helper call's containing symbol should exist in the symbols list"
         );
 
-        // NOTE: Due to a pre-existing Razor symbol extraction bug, invocation_expression nodes
-        // are incorrectly extracted as Function symbols. This causes the Helper() call to be
-        // contained within the Helper function symbol instead of the Process method.
-        // This is a symbol extraction bug, not an identifier extraction bug.
-        // The identifier extraction is working correctly - it's finding a containing symbol.
+        // NOTE: The invocation_expression bug has been fixed — invocations are no longer
+        // extracted as Function symbols. The Helper() call identifier should now be
+        // correctly contained within the Process method symbol.
     }
 
     #[test]
@@ -2210,5 +2217,66 @@ mod blazor_extraction_tests {
             "@code block methods should still be extracted. Got: {:?}",
             names
         );
+    }
+
+    #[test]
+    fn test_invocations_not_extracted_as_definitions() {
+        // Invocation expressions (Html.Raw(), RenderBody(), Component.InvokeAsync(), etc.)
+        // are USAGES/REFERENCES, not definitions. They should NOT be extracted as symbols.
+        let razor_code = r#"@page "/test-invocations"
+
+@code {
+    private string title = "Hello";
+
+    private void UpdateTitle() {
+        title = "Updated";
+    }
+
+    private async Task RenderProducts() {
+        await Component.InvokeAsync("FeaturedProducts", new { count = 6 });
+    }
+}
+
+<h1>@title</h1>
+<p>@Html.Raw("<b>bold</b>")</p>
+@RenderBody()
+@await RenderSectionAsync("Scripts", required: false)
+"#;
+
+        let symbols = extract_symbols(razor_code);
+
+        // Real definitions should be extracted
+        assert!(
+            symbols.iter().any(|s| s.name == "title"),
+            "Should extract 'title' field. Got: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "UpdateTitle"),
+            "Should extract 'UpdateTitle' method. Got: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "RenderProducts"),
+            "Should extract 'RenderProducts' method. Got: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        // Method calls should NOT be extracted as Function definitions
+        // Note: "Html" may appear as a Variable from razor_expression extraction (@Html.Raw(...)
+        // extracts the first word) — that's a separate issue from invocation-as-definition noise.
+        let invocation_names = ["Raw", "Html.Raw", "RenderBody", "RenderSectionAsync",
+                                "Component.InvokeAsync", "InvokeAsync"];
+        for name in &invocation_names {
+            let found: Vec<_> = symbols.iter()
+                .filter(|s| s.name == *name)
+                .collect();
+            assert!(
+                found.is_empty(),
+                "'{}' is a method call (usage), not a definition. Should NOT be extracted as a symbol. Found: {:?}",
+                name,
+                found.iter().map(|s| format!("{} ({:?})", s.name, s.kind)).collect::<Vec<_>>()
+            );
+        }
     }
 }

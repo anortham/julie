@@ -185,4 +185,19 @@ impl super::RazorExtractor {
     pub(super) fn is_valid_node(&self, node: &Node) -> bool {
         !node.kind().is_empty() && !node.is_error()
     }
+
+    /// Check if a node (or any descendant) contains an invocation_expression.
+    /// Used to skip extracting razor expressions that are actually method calls.
+    pub(super) fn contains_invocation(&self, node: Node) -> bool {
+        if node.kind() == "invocation_expression" {
+            return true;
+        }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if self.contains_invocation(child) {
+                return true;
+            }
+        }
+        false
+    }
 }

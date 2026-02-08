@@ -94,7 +94,11 @@ impl RazorExtractor {
                 return;
             }
             "razor_expression" | "razor_implicit_expression" => {
-                symbol = self.extract_expression(node, parent_id.as_deref());
+                // Skip expressions that are method invocations (@RenderBody(),
+                // @Html.Raw(...), @await RenderSectionAsync(...)) — those are usages.
+                if !self.contains_invocation(node) {
+                    symbol = self.extract_expression(node, parent_id.as_deref());
+                }
             }
             // Template component references (<PageTitle>, <EditForm>, etc.) are USAGES
             // not definitions — skip them. Component definitions come from the
@@ -130,9 +134,9 @@ impl RazorExtractor {
             "assignment_expression" => {
                 symbol = self.extract_assignment(node, parent_id.as_deref());
             }
-            "invocation_expression" => {
-                symbol = self.extract_invocation(node, parent_id.as_deref());
-            }
+            // Invocation expressions (Html.Raw(), RenderBody(), etc.) are USAGES, not definitions.
+            // They are tracked via identifier extraction for call relationships.
+            "invocation_expression" => {}
             // HTML/Razor attributes (@onclick, @bind, class, id, etc.) are template
             // markup, not code symbols. Meaningful directives (@inject, @page, etc.)
             // are handled via their own directive node types above.

@@ -49,9 +49,9 @@ impl super::RazorExtractor {
             "assignment_expression" => {
                 symbol = self.extract_assignment(node, parent_id);
             }
-            "invocation_expression" => {
-                symbol = self.extract_invocation(node, parent_id);
-            }
+            // Invocation expressions are USAGES, not definitions.
+            // They are tracked via identifier extraction for call relationships.
+            "invocation_expression" => {}
             "element_access_expression" => {
                 symbol = self.extract_element_access(node, parent_id);
             }

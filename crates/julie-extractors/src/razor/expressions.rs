@@ -1,4 +1,4 @@
-/// Stub extraction for expression-like C# constructs (assignments, invocations, element access)
+/// Stub extraction for expression-like C# constructs (assignments, element access)
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -182,83 +182,6 @@ impl super::RazorExtractor {
         }
     }
 
-    /// Extract method invocation expression
-    pub(super) fn extract_invocation(
-        &mut self,
-        node: Node,
-        parent_id: Option<&str>,
-    ) -> Option<Symbol> {
-        let _invocation_text = self.base.get_node_text(&node);
-
-        // Extract method name and arguments
-        let mut method_name: Option<String> = None;
-        let mut arguments = None;
-
-        // Look for the invoked expression (method name)
-        if let Some(expression) =
-            self.find_child_by_types(node, &["identifier", "member_access_expression"])
-        {
-            method_name = Some(self.base.get_node_text(&expression));
-        }
-
-        // If we couldn't resolve the method name, skip this symbol
-        let method_name = method_name?;
-
-        // Look for argument list
-        if let Some(arg_list) = self.find_child_by_type(node, "argument_list") {
-            arguments = Some(self.base.get_node_text(&arg_list));
-        }
-
-        let signature = if let Some(args) = &arguments {
-            format!("{}{}", method_name, args)
-        } else {
-            format!("{}()", method_name)
-        };
-
-        Some(self.base.create_symbol(
-            &node,
-            method_name.clone(),
-            SymbolKind::Function,
-            SymbolOptions {
-                signature: Some(signature),
-                visibility: Some(Visibility::Public),
-                parent_id: parent_id.map(|s| s.to_string()),
-                metadata: Some({
-                    let mut metadata = HashMap::new();
-                    metadata.insert(
-                        "type".to_string(),
-                        serde_json::Value::String("method-invocation".to_string()),
-                    );
-                    metadata.insert(
-                        "methodName".to_string(),
-                        serde_json::Value::String(method_name.clone()),
-                    );
-                    if let Some(args) = arguments {
-                        metadata.insert("arguments".to_string(), serde_json::Value::String(args));
-                    }
-                    // Detect special method types
-                    if method_name.contains("Component.InvokeAsync") {
-                        metadata.insert(
-                            "isComponentInvocation".to_string(),
-                            serde_json::Value::Bool(true),
-                        );
-                    }
-                    if method_name.contains("Html.Raw") {
-                        metadata.insert("isHtmlHelper".to_string(), serde_json::Value::Bool(true));
-                    }
-                    if method_name.contains("RenderSectionAsync") {
-                        metadata
-                            .insert("isRenderSection".to_string(), serde_json::Value::Bool(true));
-                    }
-                    if method_name.contains("RenderBody") {
-                        metadata.insert("isRenderBody".to_string(), serde_json::Value::Bool(true));
-                    }
-                    metadata
-                }),
-                doc_comment: None,
-            },
-        ))
-    }
 
     /// Extract element access expression (e.g., ViewData["Title"])
     pub(super) fn extract_element_access(
