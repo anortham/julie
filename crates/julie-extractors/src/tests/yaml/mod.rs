@@ -517,4 +517,100 @@ production:
             merge_symbols.len()
         );
     }
+
+    // ========================================================================
+    // SymbolKind Differentiation (container=Module, leaf=Variable)
+    // ========================================================================
+
+    #[test]
+    fn test_container_keys_are_module() {
+        // Mapping pairs with nested block_mapping values -> SymbolKind::Module
+        // Leaf mapping pairs -> SymbolKind::Variable
+        let yaml = "database:\n  host: localhost\n  port: 5432\nsimple_key: value\n";
+        let symbols = extract_symbols(yaml);
+
+        let database = symbols.iter().find(|s| s.name == "database").expect("Should find 'database'");
+        assert_eq!(
+            database.kind,
+            SymbolKind::Module,
+            "Container key 'database' should be Module, got {:?}",
+            database.kind
+        );
+
+        let host = symbols.iter().find(|s| s.name == "host").expect("Should find 'host'");
+        assert_eq!(
+            host.kind,
+            SymbolKind::Variable,
+            "Leaf key 'host' should be Variable, got {:?}",
+            host.kind
+        );
+
+        let port = symbols.iter().find(|s| s.name == "port").expect("Should find 'port'");
+        assert_eq!(
+            port.kind,
+            SymbolKind::Variable,
+            "Leaf key 'port' should be Variable, got {:?}",
+            port.kind
+        );
+
+        let simple = symbols.iter().find(|s| s.name == "simple_key").expect("Should find 'simple_key'");
+        assert_eq!(
+            simple.kind,
+            SymbolKind::Variable,
+            "Leaf key 'simple_key' should be Variable, got {:?}",
+            simple.kind
+        );
+    }
+
+    #[test]
+    fn test_nested_container_hierarchy() {
+        let yaml = r#"
+level1:
+  level2:
+    level3:
+      key: value
+"#;
+        let symbols = extract_symbols(yaml);
+
+        let level1 = symbols.iter().find(|s| s.name == "level1").expect("Should find 'level1'");
+        let level2 = symbols.iter().find(|s| s.name == "level2").expect("Should find 'level2'");
+        let level3 = symbols.iter().find(|s| s.name == "level3").expect("Should find 'level3'");
+        let key = symbols.iter().find(|s| s.name == "key").expect("Should find 'key'");
+
+        assert_eq!(level1.kind, SymbolKind::Module, "level1 should be Module");
+        assert_eq!(level2.kind, SymbolKind::Module, "level2 should be Module");
+        assert_eq!(level3.kind, SymbolKind::Module, "level3 should be Module");
+        assert_eq!(key.kind, SymbolKind::Variable, "key should be Variable");
+
+        // Verify parent_id chaining
+        assert_eq!(
+            level2.parent_id.as_deref(),
+            Some(level1.id.as_str()),
+            "level2.parent_id should be level1.id"
+        );
+        assert_eq!(
+            level3.parent_id.as_deref(),
+            Some(level2.id.as_str()),
+            "level3.parent_id should be level2.id"
+        );
+        assert_eq!(
+            key.parent_id.as_deref(),
+            Some(level3.id.as_str()),
+            "key.parent_id should be level3.id"
+        );
+    }
+
+    #[test]
+    fn test_array_value_is_not_container() {
+        // A key whose value is a sequence (not a mapping) should stay Variable
+        let yaml = "fruits:\n  - apple\n  - banana\n";
+        let symbols = extract_symbols(yaml);
+
+        let fruits = symbols.iter().find(|s| s.name == "fruits").expect("Should find 'fruits'");
+        assert_eq!(
+            fruits.kind,
+            SymbolKind::Variable,
+            "Key with sequence value should be Variable, not Module"
+        );
+    }
 }

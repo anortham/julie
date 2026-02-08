@@ -97,6 +97,13 @@ impl YamlExtractor {
         let anchor = self.extract_anchor(node);
         let signature = anchor.map(|a| format!("{}: &{}", key_name, a));
 
+        // Determine kind: container keys (with nested mappings) are Module, leaves are Variable
+        let kind = if self.has_nested_mapping(node) {
+            SymbolKind::Module
+        } else {
+            SymbolKind::Variable
+        };
+
         let options = SymbolOptions {
             signature,
             visibility: None,
@@ -108,7 +115,7 @@ impl YamlExtractor {
         let symbol = self.base.create_symbol(
             &node,
             key_name,
-            SymbolKind::Variable, // YAML keys are like variables
+            kind,
             options,
         );
 
@@ -137,6 +144,23 @@ impl YamlExtractor {
             }
         }
         None
+    }
+
+    /// Check if a block_mapping_pair's value side contains a nested block_mapping.
+    /// This distinguishes container keys (database:) from leaf keys (host: localhost).
+    fn has_nested_mapping(&self, node: tree_sitter::Node) -> bool {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "block_node" {
+                let mut block_cursor = child.walk();
+                for block_child in child.children(&mut block_cursor) {
+                    if block_child.kind() == "block_mapping" {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Extract the key from a block_mapping_pair
