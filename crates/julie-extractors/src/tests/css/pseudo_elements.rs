@@ -128,7 +128,7 @@ mod tests {
         // Test pseudo-elements
         let element_before = symbols.iter().find(|s| s.name == ".element::before");
         assert!(element_before.is_some());
-        assert_eq!(element_before.unwrap().kind, SymbolKind::Class);
+        assert_eq!(element_before.unwrap().kind, SymbolKind::Property);
 
         let quote_before = symbols.iter().find(|s| s.name == ".quote::before");
         assert!(quote_before.is_some());

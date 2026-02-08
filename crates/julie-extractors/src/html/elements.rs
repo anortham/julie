@@ -161,7 +161,7 @@ impl ElementExtractor {
         base.create_symbol(
             &node,
             "DOCTYPE".to_string(),
-            SymbolKind::Variable,
+            SymbolKind::Namespace,
             SymbolOptions {
                 signature: Some(doctype_text),
                 visibility: Some(Visibility::Public),

@@ -289,7 +289,9 @@ impl super::RazorExtractor {
                     );
                     metadata.insert(
                         "content".to_string(),
-                        serde_json::Value::String(content[..content.len().min(200)].to_string()),
+                        serde_json::Value::String(
+                            BaseExtractor::truncate_string(&content, 200),
+                        ),
                     );
                     metadata
                 }),

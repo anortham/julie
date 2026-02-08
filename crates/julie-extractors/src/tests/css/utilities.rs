@@ -122,12 +122,12 @@ mod tests {
         // Test custom properties
         let root = symbols.iter().find(|s| s.name == ":root");
         assert!(root.is_some());
-        assert_eq!(root.unwrap().kind, SymbolKind::Class);
+        assert_eq!(root.unwrap().kind, SymbolKind::Property);
 
         // Test classes using custom properties
         let button = symbols.iter().find(|s| s.name == ".button");
         assert!(button.is_some());
-        assert_eq!(button.unwrap().kind, SymbolKind::Class);
+        assert_eq!(button.unwrap().kind, SymbolKind::Property);
 
         let card = symbols.iter().find(|s| s.name == ".card");
         assert!(card.is_some());

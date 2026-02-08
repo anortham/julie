@@ -119,7 +119,7 @@ mod tests {
         // Test media query selectors
         let container = symbols.iter().find(|s| s.name == ".container");
         assert!(container.is_some());
-        assert_eq!(container.unwrap().kind, SymbolKind::Class);
+        assert_eq!(container.unwrap().kind, SymbolKind::Property);
 
         let sidebar = symbols.iter().find(|s| s.name == ".sidebar");
         assert!(sidebar.is_some());

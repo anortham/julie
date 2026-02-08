@@ -37,11 +37,11 @@ impl RuleExtractor {
 
         // Determine symbol kind based on selector type
         let symbol_kind = if selector_text.starts_with('.') {
-            SymbolKind::Class // Class selectors
+            SymbolKind::Property // Class selectors (CSS classes, not OOP classes)
         } else if selector_text.starts_with('#') {
             SymbolKind::Variable // ID selectors (treated as variables)
         } else if selector_text == ":root" {
-            SymbolKind::Class // :root pseudo-class treated as class
+            SymbolKind::Property // :root pseudo-class (document-level property scope)
         } else {
             SymbolKind::Variable // Other selectors
         };

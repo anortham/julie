@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use super::flags;
+use super::groups;
 
 /// Extract all identifier usages (backreferences and named groups)
 /// Following the Rust extractor reference implementation pattern
@@ -97,7 +98,7 @@ fn extract_identifier_from_node(
             let group_text = base.get_node_text(&node);
 
             // Extract the group name using the flags module
-            if let Some(group_name) = extract_group_name(&group_text) {
+            if let Some(group_name) = groups::extract_group_name(&group_text) {
                 let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
 
                 base.create_identifier(
@@ -113,29 +114,6 @@ fn extract_identifier_from_node(
             // Skip other node types for now
         }
     }
-}
-
-/// Extract the name from a named group (?<name>...) or (?P<name>...)
-pub(crate) fn extract_group_name(group_text: &str) -> Option<String> {
-    if let Some(start) = group_text.find("(?<") {
-        if let Some(end) = group_text[start + 3..].find('>') {
-            let end_idx = start + 3 + end;
-            // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
-            if group_text.is_char_boundary(start + 3) && group_text.is_char_boundary(end_idx) {
-                return Some(group_text[start + 3..end_idx].to_string());
-            }
-        }
-    }
-    if let Some(start) = group_text.find("(?P<") {
-        if let Some(end) = group_text[start + 4..].find('>') {
-            let end_idx = start + 4 + end;
-            // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
-            if group_text.is_char_boundary(start + 4) && group_text.is_char_boundary(end_idx) {
-                return Some(group_text[start + 4..end_idx].to_string());
-            }
-        }
-    }
-    None
 }
 
 /// Find the ID of the symbol that contains this node

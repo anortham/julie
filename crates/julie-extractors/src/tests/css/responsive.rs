@@ -181,7 +181,7 @@ mod tests {
         // Test flexbox utilities
         let flex = symbols.iter().find(|s| s.name == ".flex");
         assert!(flex.is_some());
-        assert_eq!(flex.unwrap().kind, SymbolKind::Class);
+        assert_eq!(flex.unwrap().kind, SymbolKind::Property);
 
         let flex_row = symbols.iter().find(|s| s.name == ".flex-row");
         assert!(flex_row.is_some());

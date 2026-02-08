@@ -147,7 +147,7 @@ mod tests {
         // Test animation properties
         let animated_element = symbols.iter().find(|s| s.name == ".animated-element");
         assert!(animated_element.is_some());
-        assert_eq!(animated_element.unwrap().kind, SymbolKind::Class);
+        assert_eq!(animated_element.unwrap().kind, SymbolKind::Property);
 
         let quick_animation = symbols.iter().find(|s| s.name == ".quick-animation");
         assert!(quick_animation.is_some());

@@ -28,9 +28,10 @@ pub(super) fn extract_relationships_internal(
         "foreign_key_constraint" | "references_clause" => {
             extract_foreign_key_relationship(base, node, symbols, relationships);
         }
-        "select_statement" | "from_clause" => {
-            extract_table_references(base, node, symbols, relationships);
-        }
+        // NOTE: select_statement/from_clause table references intentionally not extracted.
+        // The original extract_table_references was a stub that found table names but
+        // never created relationships. If needed in the future, implement here.
+        "select_statement" | "from_clause" => {}
         "join" | "join_clause" => {
             extract_join_relationships(base, node, symbols, relationships);
         }
@@ -149,29 +150,6 @@ pub(super) fn extract_foreign_key_relationship(
             metadata: Some(metadata),
         });
     }
-}
-
-/// Extract table references in SELECT statements
-pub(super) fn extract_table_references(
-    base: &mut BaseExtractor,
-    node: Node,
-    symbols: &[Symbol],
-    _relationships: &mut Vec<Relationship>,
-) {
-    // Port extractTableReferences logic
-    base.traverse_tree(&node, &mut |child_node| {
-        if child_node.kind() == "table_name"
-            || (child_node.kind() == "identifier"
-                && child_node
-                    .parent()
-                    .is_some_and(|p| p.kind() == "from_clause"))
-        {
-            let table_name = base.get_node_text(child_node);
-            let _table_symbol = symbols
-                .iter()
-                .find(|s| s.name == table_name && s.kind == SymbolKind::Class);
-        }
-    });
 }
 
 /// Extract JOIN relationships

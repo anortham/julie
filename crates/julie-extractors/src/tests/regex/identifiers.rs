@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::regex::identifiers::extract_group_name;
+    use crate::regex::groups::extract_group_name;
 
     #[test]
     fn test_extract_group_name() {
