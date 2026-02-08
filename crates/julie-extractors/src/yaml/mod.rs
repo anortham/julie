@@ -14,7 +14,7 @@
 /// - Docker Compose files
 /// - Ansible playbooks
 /// - Configuration files
-use crate::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
+use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol, SymbolKind};
 use std::path::Path;
 
 pub struct YamlExtractor {
@@ -193,10 +193,68 @@ impl YamlExtractor {
 
     pub fn extract_identifiers(
         &mut self,
-        _tree: &tree_sitter::Tree,
-        _symbols: &[Symbol],
+        tree: &tree_sitter::Tree,
+        symbols: &[Symbol],
     ) -> Vec<Identifier> {
-        // YAML is configuration data - no code identifiers
-        Vec::new()
+        self.walk_tree_for_aliases(tree.root_node(), symbols);
+        self.base.identifiers.clone()
+    }
+
+    /// Walk the tree looking for alias nodes (*name) and create VariableRef identifiers
+    fn walk_tree_for_aliases(&mut self, node: tree_sitter::Node, symbols: &[Symbol]) {
+        if node.kind() == "alias" {
+            self.extract_alias_identifier(node, symbols);
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_tree_for_aliases(child, symbols);
+        }
+    }
+
+    /// Extract an alias (*name) as a VariableRef identifier, resolving to the anchor's symbol
+    fn extract_alias_identifier(&mut self, node: tree_sitter::Node, symbols: &[Symbol]) {
+        // Find the alias_name child to get the actual name
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "alias_name" {
+                let alias_name = self.base.get_node_text(&child);
+
+                // Find the containing symbol (which mapping pair contains this alias)
+                let containing_symbol_id = self
+                    .base
+                    .find_containing_symbol(&node, symbols)
+                    .map(|s| s.id.clone());
+
+                // Resolve: find the symbol whose signature contains &{alias_name}
+                let anchor_pattern = format!("&{}", alias_name);
+                let target_symbol_id = symbols
+                    .iter()
+                    .find(|s| {
+                        s.signature
+                            .as_ref()
+                            .is_some_and(|sig| sig.contains(&anchor_pattern))
+                    })
+                    .map(|s| s.id.clone());
+
+                let mut identifier = self.base.create_identifier(
+                    &child,
+                    alias_name,
+                    IdentifierKind::VariableRef,
+                    containing_symbol_id,
+                );
+
+                // Set the resolved target if we found the anchor symbol
+                if target_symbol_id.is_some() {
+                    identifier.target_symbol_id = target_symbol_id.clone();
+                    // Also update in the base's identifiers vec
+                    if let Some(last) = self.base.identifiers.last_mut() {
+                        last.target_symbol_id = target_symbol_id;
+                    }
+                }
+
+                return;
+            }
+        }
     }
 }

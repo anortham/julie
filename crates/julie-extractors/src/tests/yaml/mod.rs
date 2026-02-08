@@ -464,7 +464,7 @@ key_with_underscores: value3
     }
 
     // ========================================================================
-    // Merge Key Skip (<<)
+    // Task 6: Skip Merge Keys (<<)
     // ========================================================================
 
     #[test]
@@ -519,7 +519,7 @@ production:
     }
 
     // ========================================================================
-    // SymbolKind Differentiation (container=Module, leaf=Variable)
+    // Task 4: SymbolKind Differentiation (container=Module, leaf=Variable)
     // ========================================================================
 
     #[test]
@@ -612,5 +612,107 @@ level1:
             SymbolKind::Variable,
             "Key with sequence value should be Variable, not Module"
         );
+    }
+
+    // ========================================================================
+    // Task 5: Alias References as Identifiers
+    // ========================================================================
+
+    #[test]
+    fn test_alias_extracted_as_identifier() {
+        use crate::base::{Identifier, IdentifierKind};
+
+        let yaml = "defaults: &defaults\n  adapter: postgres\n\ndevelopment:\n  <<: *defaults\n  database: dev_db\n";
+        let symbols = extract_symbols(yaml);
+        let identifiers = extract_identifiers(yaml, &symbols);
+
+        let alias_ids: Vec<_> = identifiers.iter().filter(|i| i.name == "defaults").collect();
+        assert!(
+            !alias_ids.is_empty(),
+            "Should extract '*defaults' alias as an identifier"
+        );
+
+        let alias = &alias_ids[0];
+        assert_eq!(
+            alias.kind,
+            IdentifierKind::VariableRef,
+            "Alias should be IdentifierKind::VariableRef"
+        );
+    }
+
+    #[test]
+    fn test_multiple_aliases_same_anchor() {
+        use crate::base::Identifier;
+
+        let yaml = r#"
+base: &base
+  adapter: postgres
+
+development:
+  <<: *base
+  database: dev_db
+
+production:
+  <<: *base
+  database: prod_db
+"#;
+        let symbols = extract_symbols(yaml);
+        let identifiers = extract_identifiers(yaml, &symbols);
+
+        let base_refs: Vec<_> = identifiers.iter().filter(|i| i.name == "base").collect();
+        assert_eq!(
+            base_refs.len(),
+            2,
+            "Two *base aliases should produce 2 identifiers, got {}",
+            base_refs.len()
+        );
+    }
+
+    #[test]
+    fn test_alias_target_resolved_to_anchor_symbol() {
+        use crate::base::Identifier;
+
+        let yaml = "defaults: &defaults\n  adapter: postgres\n\ndev:\n  <<: *defaults\n  db: dev\n";
+        let symbols = extract_symbols(yaml);
+        let identifiers = extract_identifiers(yaml, &symbols);
+
+        let alias = identifiers.iter().find(|i| i.name == "defaults").expect("Should find alias identifier");
+
+        // The target_symbol_id should resolve to the 'defaults' symbol that has &defaults anchor
+        let defaults_sym = symbols.iter().find(|s| s.name == "defaults").expect("Should find defaults symbol");
+        assert_eq!(
+            alias.target_symbol_id.as_deref(),
+            Some(defaults_sym.id.as_str()),
+            "Alias should resolve to the symbol with matching anchor"
+        );
+    }
+
+    #[test]
+    fn test_no_identifiers_without_aliases() {
+        let yaml = "name: julie\nversion: 1.0\n";
+        let symbols = extract_symbols(yaml);
+        let identifiers = extract_identifiers(yaml, &symbols);
+
+        assert!(
+            identifiers.is_empty(),
+            "YAML without aliases should have no identifiers"
+        );
+    }
+
+    // ========================================================================
+    // Identifier test helper
+    // ========================================================================
+
+    fn extract_identifiers(code: &str, symbols: &[Symbol]) -> Vec<crate::base::Identifier> {
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).expect("Failed to parse code");
+        let mut extractor = YamlExtractor::new(
+            "yaml".to_string(),
+            "test.yaml".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        extractor.extract_identifiers(&tree, symbols)
     }
 }
