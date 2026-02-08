@@ -2,9 +2,9 @@
 
 **Started:** 2026-02-07
 **Verified:** 2026-02-07 — All fixes confirmed present in codebase at commit `945e9e4`.
-**Updated:** 2026-02-08 — Tier 1 features + Tier 2 noise fixes applied (8 tasks, 1183 tests pass).
+**Updated:** 2026-02-08 — Round 3 quality improvements applied (10 tasks, 1199 tests pass).
 **Goal:** Systematic per-extractor audit of all 31 language extractors for correctness, completeness, edge cases, and code quality.
-**Status:** Audit complete. Two fix phases complete. All fixes verified.
+**Status:** Audit complete. Three fix phases complete. All fixes verified.
 
 ## Audit Criteria
 
@@ -101,16 +101,47 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 ---
 
+## Round 3: Quality Improvements (2026-02-08)
+
+10 tasks executed via subagent-driven development. 16 new tests added (1199 total extractor tests). All changes verified.
+
+### Rating Changes
+
+| Extractor | Before | After | Reason |
+|-----------|--------|-------|--------|
+| **TypeScript** | B | B+ | Export all specifiers, interface members, method containment fix |
+| **YAML** | B | B+ | Removed noise names, added anchor detection |
+| **Python** | B | B+ | `@property` decorator → SymbolKind::Property |
+
+### Tier 1: Feature Additions (5 extractors)
+
+- **TypeScript (3 fixes)**: `export { a, b, c }` now extracts all specifiers (was only first). Interface members (method_signature, property_signature) extracted with parent_id. `find_containing_function` now matches Method and Constructor (was only Function), fixing call relationships inside class methods.
+- **YAML**: Removed generic `"document"` and `"flow_mapping"` noise names — these are containers, not meaningful symbols. Added anchor (`&name`) detection in block_mapping_pair signatures.
+- **Python**: `@property`, `.setter`, `.getter`, `.deleter` decorated methods now use `SymbolKind::Property` instead of `SymbolKind::Method`.
+- **PHP**: Grouped use declarations (`use App\{Controller, Model, Service}`) now extract all clauses (was only first). Handles namespace prefix concatenation and aliases.
+
+### Tier 2: Noise Elimination (2 extractors)
+
+- **Razor**: `assignment_expression` and `element_access_expression` made no-op in both mod.rs and csharp.rs. ViewData/ViewBag assignments are usages, not definitions.
+- **CSS**: Deduplicated `@keyframes` — animation name no longer extracted as separate symbol. `@keyframes fadeIn` is sufficient; bare `fadeIn` was redundant.
+
+### Tier 3: Code Quality (cross-cutting)
+
+- **LazyLock regex audit**: 14 inline `Regex::new()` calls replaced with `static LazyLock<Regex>` across 6 extractors (Rust, Python, Bash, PowerShell, CSS, SQL). Each regex now compiled exactly once.
+- **Dead code cleanup**: ~676 lines removed across Ruby (helpers, assignments), Regex (7 dead extract functions, 7 dead signature functions, helpers, patterns_from_text), Bash (signatures, helpers), SQL (unused regex statics).
+
+---
+
 ## Extractor Status
 
 ### Group 1: Core High-Level Languages
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
-| **Rust** | 7 | B+ | Struct/Enum SymbolKind; 13 sentinels; field/variant extraction | Macro invocation heuristic; regex in infer_types |
-| **TypeScript** | 10 | B | P0 fixed (TS parser); class sigs; enum members; 8+ sentinels | Decorators, access modifiers |
+| **Rust** | 7 | B+ | Struct/Enum SymbolKind; 13 sentinels; field/variant extraction; LazyLock regex | Macro invocation heuristic |
+| **TypeScript** | 10 | B+ | P0 fixed (TS parser); class sigs; enum members; 8+ sentinels; export all specifiers; interface members; method containment | Decorators, access modifiers |
 | **JavaScript** | 11 | B | 7 sentinels eliminated | Comprehensive as-is |
-| **Python** | 10 | B | 4 sentinels; parent_id; nested class support | @property as Property kind |
+| **Python** | 10 | B+ | 4 sentinels; parent_id; nested class support; @property→Property kind; LazyLock regex | Wildcard imports |
 
 ### Group 2: JVM & .NET Languages
 
@@ -134,11 +165,11 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
-| **PHP** | 8 | B | Methods→SymbolKind::Method | Anonymous classes; arrow functions |
-| **Ruby** | 8 | B | 2 sentinel fallbacks eliminated | Struct.new; module_function |
+| **PHP** | 8 | B+ | Methods→Method; grouped use declarations fixed | Anonymous classes; arrow functions |
+| **Ruby** | 8 | B | 2 sentinel fallbacks eliminated; dead code cleanup | Struct.new; module_function |
 | **Lua** | 9 | B | "unknown" in type inference acceptable | variables.rs near 500-line limit |
-| **Bash** | 8 | B | Control flow verified not extracted; regression tests | Regex caching in variables.rs |
-| **PowerShell** | 11 | B | "ModuleMember" sentinel fixed | Regex caching inconsistency |
+| **Bash** | 8 | B | Control flow verified; regression tests; LazyLock regex; dead code cleanup | None significant |
+| **PowerShell** | 11 | B | "ModuleMember" sentinel fixed; LazyLock regex | None significant |
 | **R** | 3 | **B** ↑ | **Full rework**: sigs, imports, roxygen2, S3 | Was D; major improvement |
 
 ### Group 5: Web & UI Languages
@@ -146,9 +177,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
 | **HTML** | 9 | B | Noise filter added; tag sentinel eliminated | Comments named "comment" |
-| **CSS** | 8 | B | 4 sentinels eliminated; keyframe noise fixed | Duplicate @keyframes/animation name; regex caching |
+| **CSS** | 8 | B+ | 4 sentinels eliminated; keyframe noise fixed; @keyframes deduped; LazyLock regex | None significant |
 | **Vue** | 8 | B+ | "VueComponent" sentinel; Composition API + `<script setup>` | Style section limited to class selectors |
-| **Razor** | 10 | B | Both files split; 2 sentinels; invocation noise fixed | Assignment/element_access as symbols |
+| **Razor** | 10 | B+ | Both files split; 2 sentinels; invocation noise fixed; assignment/element_access noise fixed | None significant |
 | **QML** | 3 | B | None needed | Missing: id, enum, alias |
 | **GDScript** | 10 | A | None needed | None significant |
 
@@ -156,12 +187,12 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
-| **SQL** | 9 | B | mod.rs split; 4 sentinels eliminated | error_handling.rs at limit |
+| **SQL** | 9 | B | mod.rs split; 4 sentinels eliminated; LazyLock regex; dead regex statics removed | error_handling.rs at limit |
 | **Dart** | 10 | **B** ↑ | **P0 fixed**: generic recovery; mod split; imports added | Was C; thread-local cache acceptable |
-| **Regex** | 8 | B | 3 sentinels→Option\<String\>; noise reduction (10+ → 4 symbols) | Dead code in helpers/patterns/signatures |
+| **Regex** | 8 | B+ | 3 sentinels→Option\<String\>; noise reduction (10+ → 4 symbols); ~676 lines dead code removed | None significant |
 | **JSON** | 1 | A | None needed | None significant |
 | **TOML** | 1 | A | Key-value pair extraction added | None significant |
-| **YAML** | 1 | B | None needed | Synthetic names |
+| **YAML** | 1 | B+ | Noise names removed; anchor detection added | Anchor/alias as references; sequences |
 | **Markdown** | 1 | A | None needed | None significant |
 
 ---
