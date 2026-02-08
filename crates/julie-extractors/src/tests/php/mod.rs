@@ -2066,3 +2066,152 @@ class Configuration
     }
 }
 mod types; // Phase 4: Type extraction verification tests
+
+#[cfg(test)]
+mod php_grouped_use_tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_grouped_use_declarations() {
+        let php_code = r#"<?php
+
+use App\{Controller, Model, Service};
+"#;
+
+        let symbols = extract_symbols(php_code);
+        let imports: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Import)
+            .collect();
+
+        // Should extract ALL 3 clauses, not just the first
+        assert_eq!(
+            imports.len(),
+            3,
+            "Expected 3 imports from grouped use, got {}: {:?}",
+            imports.len(),
+            imports.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        // Each should have the fully-qualified name (prefix + clause name)
+        assert!(
+            imports.iter().any(|s| s.name == "App\\Controller"),
+            "Expected App\\Controller import"
+        );
+        assert!(
+            imports.iter().any(|s| s.name == "App\\Model"),
+            "Expected App\\Model import"
+        );
+        assert!(
+            imports.iter().any(|s| s.name == "App\\Service"),
+            "Expected App\\Service import"
+        );
+    }
+
+    #[test]
+    fn test_extract_grouped_use_with_nested_prefix() {
+        let php_code = r#"<?php
+
+use App\Models\{User, Post, Comment};
+"#;
+
+        let symbols = extract_symbols(php_code);
+        let imports: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Import)
+            .collect();
+
+        assert_eq!(imports.len(), 3, "Expected 3 imports from grouped use");
+
+        assert!(imports.iter().any(|s| s.name == "App\\Models\\User"));
+        assert!(imports.iter().any(|s| s.name == "App\\Models\\Post"));
+        assert!(imports.iter().any(|s| s.name == "App\\Models\\Comment"));
+    }
+
+    #[test]
+    fn test_extract_grouped_use_with_alias() {
+        let php_code = r#"<?php
+
+use App\Models\{User, Post as BlogPost};
+"#;
+
+        let symbols = extract_symbols(php_code);
+        let imports: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Import)
+            .collect();
+
+        assert_eq!(imports.len(), 2, "Expected 2 imports from grouped use");
+
+        // User should have no alias
+        let user = imports.iter().find(|s| s.name == "App\\Models\\User");
+        assert!(user.is_some(), "Expected App\\Models\\User import");
+
+        // Post should have alias BlogPost
+        let post = imports.iter().find(|s| s.name == "App\\Models\\Post");
+        assert!(post.is_some(), "Expected App\\Models\\Post import");
+        let post_meta = post.unwrap().metadata.as_ref().unwrap();
+        assert_eq!(
+            post_meta.get("alias").and_then(|v| v.as_str()),
+            Some("BlogPost"),
+            "Expected alias 'BlogPost' for Post"
+        );
+    }
+
+    #[test]
+    fn test_single_use_still_works_after_grouped_use_change() {
+        // Regression test: ensure non-grouped use declarations still work
+        let php_code = r#"<?php
+
+use App\Models\User;
+use App\Contracts\UserRepositoryInterface as UserRepo;
+"#;
+
+        let symbols = extract_symbols(php_code);
+        let imports: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Import)
+            .collect();
+
+        assert_eq!(imports.len(), 2, "Expected 2 single-use imports");
+
+        let user = imports.iter().find(|s| s.name == "App\\Models\\User");
+        assert!(user.is_some(), "Expected App\\Models\\User import");
+
+        let user_repo = imports
+            .iter()
+            .find(|s| s.name == "App\\Contracts\\UserRepositoryInterface");
+        assert!(user_repo.is_some(), "Expected UserRepositoryInterface import");
+    }
+
+    #[test]
+    fn test_mixed_grouped_and_single_use() {
+        let php_code = r#"<?php
+
+use App\Models\User;
+use App\Services\{AuthService, UserService, EmailService};
+use Illuminate\Support\Collection;
+"#;
+
+        let symbols = extract_symbols(php_code);
+        let imports: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Import)
+            .collect();
+
+        // 1 single + 3 grouped + 1 single = 5 total
+        assert_eq!(
+            imports.len(),
+            5,
+            "Expected 5 imports (2 single + 3 grouped), got {}: {:?}",
+            imports.len(),
+            imports.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        assert!(imports.iter().any(|s| s.name == "App\\Models\\User"));
+        assert!(imports.iter().any(|s| s.name == "App\\Services\\AuthService"));
+        assert!(imports.iter().any(|s| s.name == "App\\Services\\UserService"));
+        assert!(imports.iter().any(|s| s.name == "App\\Services\\EmailService"));
+        assert!(imports.iter().any(|s| s.name == "Illuminate\\Support\\Collection"));
+    }
+}

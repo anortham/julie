@@ -114,7 +114,9 @@ impl PhpExtractor {
             "const_declaration" => extract_constant(self, node, parent_id.as_deref()),
             "namespace_definition" => extract_namespace(self, node, parent_id.as_deref()),
             "use_declaration" | "namespace_use_declaration" => {
-                extract_use(self, node, parent_id.as_deref())
+                let use_symbols = extract_use(self, node, parent_id.as_deref());
+                symbols.extend(use_symbols);
+                None // Already added to symbols; imports have no children
             }
             "enum_case" => extract_enum_case(self, node, parent_id.as_deref()),
             "assignment_expression" => {
