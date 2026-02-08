@@ -37,7 +37,7 @@ mod tests {
         "#;
 
         let symbols = extract_symbols(code);
-        let animation = symbols.iter().find(|s| s.name == "fadeIn").unwrap();
+        let animation = symbols.iter().find(|s| s.name == "@keyframes fadeIn").unwrap();
 
         assert!(animation.doc_comment.is_some());
         let doc = animation.doc_comment.as_ref().unwrap();

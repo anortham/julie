@@ -7,6 +7,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_keyframes_no_duplicate_animation_name() {
+        // @keyframes slideIn should produce exactly ONE symbol: "@keyframes slideIn"
+        // It must NOT produce a second "slideIn" symbol (that was a redundant duplicate).
+        let css_code = r#"
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+"#;
+        let symbols = extract_symbols(css_code);
+
+        let keyframes_symbols: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.name.contains("slideIn"))
+            .collect();
+
+        assert_eq!(
+            keyframes_symbols.len(),
+            1,
+            "Expected exactly 1 symbol for @keyframes slideIn, got {}: {:?}",
+            keyframes_symbols.len(),
+            keyframes_symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert_eq!(keyframes_symbols[0].name, "@keyframes slideIn");
+        assert_eq!(keyframes_symbols[0].kind, SymbolKind::Function);
+    }
+
+    #[test]
     fn test_extract_css_animations_keyframes_and_transitions() {
         let css_code = r#"
 /* Keyframe animations */
@@ -102,18 +130,18 @@ mod tests {
 
         let symbols = extract_symbols(css_code);
 
-        // Test keyframe animations
-        let slide_in = symbols.iter().find(|s| s.name == "slideIn");
+        // Test keyframe animations — only the @keyframes rule symbol, no duplicate animation name
+        let slide_in = symbols.iter().find(|s| s.name == "@keyframes slideIn");
         assert!(slide_in.is_some());
-        assert_eq!(slide_in.unwrap().kind, SymbolKind::Function); // Keyframes are treated as functions
+        assert_eq!(slide_in.unwrap().kind, SymbolKind::Function);
 
-        let fade_out = symbols.iter().find(|s| s.name == "fadeOut");
+        let fade_out = symbols.iter().find(|s| s.name == "@keyframes fadeOut");
         assert!(fade_out.is_some());
 
-        let bounce = symbols.iter().find(|s| s.name == "bounce");
+        let bounce = symbols.iter().find(|s| s.name == "@keyframes bounce");
         assert!(bounce.is_some());
 
-        let spin = symbols.iter().find(|s| s.name == "spin");
+        let spin = symbols.iter().find(|s| s.name == "@keyframes spin");
         assert!(spin.is_some());
 
         // Test animation properties
@@ -169,22 +197,22 @@ mod tests {
 
         let symbols = extract_symbols(css_code);
 
-        // The @keyframes rules and animation names SHOULD be extracted
+        // The @keyframes rules SHOULD be extracted (no duplicate animation name symbols)
         assert!(
             symbols.iter().any(|s| s.name == "@keyframes slideIn"),
             "Expected @keyframes slideIn rule to be extracted"
         );
         assert!(
-            symbols.iter().any(|s| s.name == "slideIn"),
-            "Expected slideIn animation name to be extracted"
+            !symbols.iter().any(|s| s.name == "slideIn"),
+            "Bare 'slideIn' animation name should NOT be extracted (it's a duplicate)"
         );
         assert!(
             symbols.iter().any(|s| s.name == "@keyframes fadeOut"),
             "Expected @keyframes fadeOut rule to be extracted"
         );
         assert!(
-            symbols.iter().any(|s| s.name == "fadeOut"),
-            "Expected fadeOut animation name to be extracted"
+            !symbols.iter().any(|s| s.name == "fadeOut"),
+            "Bare 'fadeOut' animation name should NOT be extracted (it's a duplicate)"
         );
 
         // Individual keyframe blocks MUST NOT be extracted — they are noise

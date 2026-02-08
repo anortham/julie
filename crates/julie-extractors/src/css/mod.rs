@@ -82,14 +82,6 @@ impl CSSExtractor {
                     current_parent_id = Some(keyframes_symbol.id.clone());
                     symbols.push(keyframes_symbol);
                 }
-                // Also extract the animation name as a separate symbol
-                if let Some(animation_symbol) = AnimationExtractor::extract_animation_name(
-                    &mut self.base,
-                    node,
-                    current_parent_id.as_deref(),
-                ) {
-                    symbols.push(animation_symbol);
-                }
                 // Also extract individual keyframes
                 AnimationExtractor::extract_keyframes(
                     &mut self.base,
