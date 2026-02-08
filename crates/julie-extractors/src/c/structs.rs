@@ -24,23 +24,13 @@ pub(super) fn extract_struct(
 
     Some(extractor.base.create_symbol(
         &node,
-        struct_name.clone(),
+        struct_name,
         SymbolKind::Struct,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
-            metadata: Some(HashMap::from([
-                ("type".to_string(), Value::String("struct".to_string())),
-                ("name".to_string(), Value::String(struct_name)),
-                (
-                    "fields".to_string(),
-                    Value::String(format!(
-                        "{} fields",
-                        signatures::extract_struct_fields(&extractor.base, node).len()
-                    )),
-                ),
-            ])),
+            metadata: None,
             doc_comment,
         },
     ))
@@ -59,23 +49,13 @@ pub(super) fn extract_union(
 
     Some(extractor.base.create_symbol(
         &node,
-        union_name.clone(),
+        union_name,
         SymbolKind::Union,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
-            metadata: Some(HashMap::from([
-                ("type".to_string(), Value::String("union".to_string())),
-                ("name".to_string(), Value::String(union_name)),
-                (
-                    "fields".to_string(),
-                    Value::String(format!(
-                        "{} fields",
-                        signatures::extract_struct_fields(&extractor.base, node).len()
-                    )),
-                ),
-            ])),
+            metadata: None,
             doc_comment,
         },
     ))
@@ -94,26 +74,80 @@ pub(super) fn extract_enum(
 
     Some(extractor.base.create_symbol(
         &node,
-        enum_name.clone(),
+        enum_name,
         SymbolKind::Enum,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
-            metadata: Some(HashMap::from([
-                ("type".to_string(), Value::String("enum".to_string())),
-                ("name".to_string(), Value::String(enum_name)),
-                (
-                    "values".to_string(),
-                    Value::String(format!(
-                        "{} values",
-                        signatures::extract_enum_values(&extractor.base, node).len()
-                    )),
-                ),
-            ])),
+            metadata: None,
             doc_comment,
         },
     ))
+}
+
+/// Extract struct/union field symbols as SymbolKind::Field children
+///
+/// Delegates to `extract_struct_fields` for the field traversal, then wraps each
+/// `StructField` into a full `Symbol`. This avoids duplicating the tree-sitter
+/// walking logic between signature building and symbol extraction.
+///
+/// For each field we also need the tree-sitter node for position info and doc comments,
+/// so we walk the body a second time to pair fields with their declarator nodes.
+pub(super) fn extract_struct_field_symbols(
+    extractor: &mut CExtractor,
+    node: tree_sitter::Node,
+    parent_struct_id: &str,
+) -> Vec<Symbol> {
+    let mut field_symbols = Vec::new();
+
+    let Some(body) = node.child_by_field_name("body") else {
+        return field_symbols;
+    };
+
+    // Walk field_declarations to get both StructField data and the tree-sitter nodes
+    // needed for position info, signatures, and doc comments
+    let mut cursor = body.walk();
+    for child in body.children(&mut cursor) {
+        if child.kind() != "field_declaration" {
+            continue;
+        }
+
+        let field_type = child
+            .child_by_field_name("type")
+            .map(|t| extractor.base.get_node_text(&t))
+            .unwrap_or_default();
+
+        let mut decl_cursor = child.walk();
+        for decl_child in child.children_by_field_name("declarator", &mut decl_cursor) {
+            let Some(field_name) = helpers::find_field_identifier_name(&extractor.base, decl_child) else {
+                continue;
+            };
+
+            let signature = format!("{} {}", field_type, extractor.base.get_node_text(&decl_child));
+            let doc_comment = extractor.base.find_doc_comment(&child);
+
+            let field_symbol = extractor.base.create_symbol(
+                &decl_child,
+                field_name,
+                SymbolKind::Field,
+                SymbolOptions {
+                    signature: Some(signature),
+                    visibility: Some(Visibility::Public),
+                    parent_id: Some(parent_struct_id.to_string()),
+                    metadata: Some(HashMap::from([(
+                        "fieldType".to_string(),
+                        Value::String(field_type.clone()),
+                    )])),
+                    doc_comment,
+                },
+            );
+
+            field_symbols.push(field_symbol);
+        }
+    }
+
+    field_symbols
 }
 
 /// Extract enum value symbols
@@ -145,24 +179,20 @@ pub(super) fn extract_enum_value_symbols(
 
                         let enum_value_symbol = extractor.base.create_symbol(
                             &enum_child,
-                            name.clone(),
+                            name,
                             SymbolKind::Constant,
                             SymbolOptions {
                                 signature: Some(signature),
                                 visibility: Some(Visibility::Public),
                                 parent_id: Some(parent_enum_id.to_string()),
-                                metadata: Some(HashMap::from([
-                                    ("type".to_string(), Value::String("enum_value".to_string())),
-                                    ("name".to_string(), Value::String(name)),
-                                    (
+                                metadata: if value.is_some() {
+                                    Some(HashMap::from([(
                                         "value".to_string(),
                                         Value::String(value.unwrap_or_default()),
-                                    ),
-                                    (
-                                        "enumParent".to_string(),
-                                        Value::String(parent_enum_id.to_string()),
-                                    ),
-                                ])),
+                                    )]))
+                                } else {
+                                    None
+                                },
                                 doc_comment,
                             },
                         );

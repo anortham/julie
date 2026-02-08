@@ -12,7 +12,9 @@
 //! - `relationships` - Relationship extraction (calls, imports)
 //! - `identifiers` - Identifier usage tracking (calls, member access)
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
+};
 use tree_sitter::Tree;
 
 // Internal modules
@@ -182,6 +184,19 @@ impl CExtractor {
                     node,
                     parent_id.as_deref(),
                 );
+                // Extract struct fields as SymbolKind::Field children
+                // Skip if inside a type_definition — the type_definition handler already extracts fields
+                let inside_typedef = node.parent().map_or(false, |p| p.kind() == "type_definition");
+                if !inside_typedef {
+                    let parent_id_for_fields = symbol.as_ref()
+                        .map(|s| s.id.as_str())
+                        .unwrap_or("");
+                    if !parent_id_for_fields.is_empty() {
+                        let field_symbols =
+                            structs::extract_struct_field_symbols(self, node, parent_id_for_fields);
+                        symbols.extend(field_symbols);
+                    }
+                }
             }
             "union_specifier" => {
                 symbol = structs::extract_union(
@@ -189,6 +204,19 @@ impl CExtractor {
                     node,
                     parent_id.as_deref(),
                 );
+                // Extract union fields as SymbolKind::Field children
+                // Skip if inside a type_definition — the type_definition handler already extracts fields
+                let inside_typedef = node.parent().map_or(false, |p| p.kind() == "type_definition");
+                if !inside_typedef {
+                    let parent_id_for_fields = symbol.as_ref()
+                        .map(|s| s.id.as_str())
+                        .unwrap_or("");
+                    if !parent_id_for_fields.is_empty() {
+                        let field_symbols =
+                            structs::extract_struct_field_symbols(self, node, parent_id_for_fields);
+                        symbols.extend(field_symbols);
+                    }
+                }
             }
             "enum_specifier" => {
                 symbol = structs::extract_enum(self, node, parent_id.as_deref());
@@ -206,6 +234,27 @@ impl CExtractor {
                     node,
                     parent_id.as_deref(),
                 );
+                // For typedef struct/union, extract fields from the inner specifier
+                // e.g., `typedef struct { int x; int y; } Point;`
+                if let Some(ref sym) = symbol {
+                    if sym.kind == SymbolKind::Struct || sym.kind == SymbolKind::Union {
+                        // Find the struct_specifier or union_specifier child inside the type_definition
+                        let mut td_cursor = node.walk();
+                        for td_child in node.children(&mut td_cursor) {
+                            if td_child.kind() == "struct_specifier"
+                                || td_child.kind() == "union_specifier"
+                            {
+                                let field_symbols = structs::extract_struct_field_symbols(
+                                    self,
+                                    td_child,
+                                    &sym.id,
+                                );
+                                symbols.extend(field_symbols);
+                                break;
+                            }
+                        }
+                    }
+                }
             }
             "linkage_specification" => {
                 symbol =

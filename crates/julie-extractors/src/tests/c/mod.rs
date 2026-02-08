@@ -41,4 +41,5 @@ pub mod identifier_extraction;
 pub mod pointers;
 pub mod preprocessor;
 pub mod relationships;
+pub mod structs;
 pub mod types;

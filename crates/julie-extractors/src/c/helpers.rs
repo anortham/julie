@@ -321,3 +321,25 @@ pub(super) fn is_volatile_variable(base: &BaseExtractor, node: tree_sitter::Node
 pub(super) fn is_array_variable(declarator: tree_sitter::Node) -> bool {
     find_node_by_type(declarator, "array_declarator").is_some()
 }
+
+/// Find the `field_identifier` name within a struct/union field declarator subtree.
+///
+/// In tree-sitter C, struct field declarators use `field_identifier` (not `identifier`).
+/// The declarator can be a plain `field_identifier`, or wrapped in `pointer_declarator`
+/// or `array_declarator`. This function recursively searches for the deepest
+/// `field_identifier` in the subtree.
+pub(super) fn find_field_identifier_name(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Option<String> {
+    if node.kind() == "field_identifier" {
+        return Some(base.get_node_text(&node));
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Some(name) = find_field_identifier_name(base, child) {
+            return Some(name);
+        }
+    }
+    None
+}

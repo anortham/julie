@@ -277,29 +277,41 @@ pub(super) fn extract_function_parameters_from_declaration(
     Vec::new()
 }
 
-/// Extract struct fields
+/// Extract struct fields from a struct_specifier or union_specifier node.
+///
+/// Uses tree-sitter C grammar field names directly:
+/// - `field_declaration` has a `type` field and one or more `declarator` fields
+/// - `declarator` can be `field_identifier`, `pointer_declarator`, or `array_declarator`
+/// - The field name is the deepest `field_identifier` in the declarator subtree
 pub(super) fn extract_struct_fields(
     base: &BaseExtractor,
     node: tree_sitter::Node,
 ) -> Vec<StructField> {
     let mut fields = Vec::new();
 
-    if let Some(body) = node.child_by_field_name("body") {
-        let mut cursor = body.walk();
-        for child in body.children(&mut cursor) {
-            if child.kind() == "field_declaration" {
-                let field_type = types::extract_variable_type(base, child);
-                let declarators = helpers::find_variable_declarators(child);
+    let Some(body) = node.child_by_field_name("body") else {
+        return fields;
+    };
 
-                for declarator in declarators {
-                    let Some(field_name) = helpers::extract_variable_name(base, declarator) else {
-                        continue;
-                    };
-                    fields.push(StructField {
-                        name: field_name,
-                        field_type: field_type.clone(),
-                    });
-                }
+    let mut cursor = body.walk();
+    for child in body.children(&mut cursor) {
+        if child.kind() != "field_declaration" {
+            continue;
+        }
+
+        let field_type = child
+            .child_by_field_name("type")
+            .map(|t| base.get_node_text(&t))
+            .unwrap_or_default();
+
+        // Iterate over all `declarator` fields (handles multi-declarations like `int x, y;`)
+        let mut decl_cursor = child.walk();
+        for decl_child in child.children_by_field_name("declarator", &mut decl_cursor) {
+            if let Some(field_name) = helpers::find_field_identifier_name(base, decl_child) {
+                fields.push(StructField {
+                    name: field_name,
+                    field_type: field_type.clone(),
+                });
             }
         }
     }
