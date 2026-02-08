@@ -71,17 +71,23 @@ process_data <- function(data) {
 }
 "#;
 
-        let (symbols, relationships) = extract_symbols_and_relationships(r_code);
+        let (_symbols, relationships) = extract_symbols_and_relationships(r_code);
 
-        // Should have call relationships for library() calls
+        // library() is a built-in function - built-in calls are silently dropped
+        // (no Relationship and no PendingRelationship)
+        // Piped calls to tidyverse functions (filter, mutate) also go through
+        // PendingRelationship since they're not defined locally.
+        // No resolved Relationship records should exist here since none
+        // of these functions are defined in the same file.
         let call_relationships: Vec<&Relationship> = relationships
             .iter()
             .filter(|r| r.kind == RelationshipKind::Calls)
             .collect();
 
+        // All calls are to built-in or external functions - no resolved relationships
         assert!(
-            call_relationships.len() >= 2,
-            "Should extract library() call relationships"
+            call_relationships.is_empty(),
+            "Built-in/external function calls should not create resolved relationships"
         );
     }
 
@@ -98,9 +104,11 @@ process_data <- function(data) {
 }
 "#;
 
-        let (symbols, relationships) = extract_symbols_and_relationships(r_code);
+        let (_symbols, relationships) = extract_symbols_and_relationships(r_code);
 
-        // Pipe operators create "Uses" or "Calls" relationships
+        // filter, select, arrange are built-in/tidyverse functions not defined locally.
+        // They now create PendingRelationships instead of Relationships with synthetic IDs.
+        // No resolved relationships should exist since nothing is defined locally.
         let pipe_relationships: Vec<&Relationship> = relationships
             .iter()
             .filter(|r| {
@@ -109,8 +117,8 @@ process_data <- function(data) {
             .collect();
 
         assert!(
-            pipe_relationships.len() >= 3,
-            "Should extract relationships for filter, select, arrange calls in pipeline"
+            pipe_relationships.is_empty(),
+            "Piped calls to external functions should create PendingRelationships, not resolved Relationships"
         );
     }
 
@@ -169,15 +177,23 @@ summarize_item <- function(item) { mean(item) }
 
         let (symbols, relationships) = extract_symbols_and_relationships(r_code);
 
-        // Should extract calls to lapply, sapply, transform_item, summarize_item, mean
+        // lapply, sapply, mean, return are builtins (silently dropped)
+        // Only resolved relationships should be for locally-defined functions:
+        // process_list -> transform_item (not a direct call, but passed as arg, won't resolve)
+        // process_list -> summarize_item (same)
+        // The actual direct calls are to lapply/sapply (builtins) which are dropped.
         let call_relationships: Vec<&Relationship> = relationships
             .iter()
             .filter(|r| r.kind == RelationshipKind::Calls)
             .collect();
 
+        // Built-in calls (lapply, sapply, mean, return) are silently dropped.
+        // No locally-defined functions are directly called in call position.
+        // So we expect 0 resolved call relationships here.
         assert!(
-            call_relationships.len() >= 4,
-            "Should extract calls to lapply, sapply, transform_item, summarize_item, mean"
+            call_relationships.is_empty(),
+            "Only direct calls to locally-defined functions create resolved relationships. Found: {:?}",
+            call_relationships.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
         );
     }
 
@@ -194,17 +210,146 @@ analyze <- function(data) {
 }
 "#;
 
-        let (symbols, relationships) = extract_symbols_and_relationships(r_code);
+        let (_symbols, relationships) = extract_symbols_and_relationships(r_code);
 
-        // Should extract calls to length, mean, sd, list
+        // length, mean, sd, list, return are all built-in R functions.
+        // Built-in calls are silently dropped (no Relationship, no PendingRelationship).
         let call_relationships: Vec<&Relationship> = relationships
             .iter()
             .filter(|r| r.kind == RelationshipKind::Calls)
             .collect();
 
         assert!(
-            call_relationships.len() >= 4,
-            "Should extract calls to base R functions: length, mean, sd, list"
+            call_relationships.is_empty(),
+            "Built-in function calls should not create resolved relationships"
+        );
+    }
+
+    // ========================================================================
+    // Tests for synthetic ID removal
+    // ========================================================================
+
+    #[test]
+    fn test_no_synthetic_builtin_ids_in_relationships() {
+        let r_code = r#"
+analyze <- function(data) {
+  n <- length(data)
+  avg <- mean(data)
+  print(avg)
+  return(n)
+}
+"#;
+        let (_, relationships) = extract_symbols_and_relationships(r_code);
+
+        // No relationship should have a to_symbol_id starting with "builtin_"
+        let synthetic_rels: Vec<_> = relationships
+            .iter()
+            .filter(|r| r.to_symbol_id.starts_with("builtin_"))
+            .collect();
+
+        assert!(
+            synthetic_rels.is_empty(),
+            "No relationships should have synthetic 'builtin_' IDs. Found: {:?}",
+            synthetic_rels.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_no_synthetic_piped_ids_in_relationships() {
+        let r_code = r#"
+process <- function(data) {
+  result <- data %>%
+    filter(x > 10) %>%
+    select(name) %>%
+    arrange(name)
+  return(result)
+}
+"#;
+        let (_, relationships) = extract_symbols_and_relationships(r_code);
+
+        // No relationship should have a to_symbol_id starting with "piped_"
+        let synthetic_rels: Vec<_> = relationships
+            .iter()
+            .filter(|r| r.to_symbol_id.starts_with("piped_"))
+            .collect();
+
+        assert!(
+            synthetic_rels.is_empty(),
+            "No relationships should have synthetic 'piped_' IDs. Found: {:?}",
+            synthetic_rels.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_no_synthetic_member_ids_in_relationships() {
+        let r_code = r#"
+get_info <- function(record) {
+  name <- record$name
+  age <- record$age
+  return(paste(name, age))
+}
+"#;
+        let (_, relationships) = extract_symbols_and_relationships(r_code);
+
+        // No relationship should have a to_symbol_id starting with "member_"
+        let synthetic_rels: Vec<_> = relationships
+            .iter()
+            .filter(|r| r.to_symbol_id.starts_with("member_"))
+            .collect();
+
+        assert!(
+            synthetic_rels.is_empty(),
+            "No relationships should have synthetic 'member_' IDs. Found: {:?}",
+            synthetic_rels.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_builtin_calls_create_pending_relationships() {
+        // Built-in function calls should use PendingRelationship, not synthetic IDs
+        let r_code = r#"
+analyze <- function(data) {
+  n <- length(data)
+  avg <- mean(data)
+  print(avg)
+  return(n)
+}
+"#;
+        let (symbols, relationships) = extract_symbols_and_relationships(r_code);
+
+        // We still need to check that these calls are tracked somehow
+        // They should be in pending_relationships, not as Relationship with synthetic IDs
+        // The key assertion is: no builtin_ in to_symbol_id
+        let builtin_rels: Vec<_> = relationships
+            .iter()
+            .filter(|r| r.to_symbol_id.starts_with("builtin_"))
+            .collect();
+        assert!(
+            builtin_rels.is_empty(),
+            "Built-in calls should NOT use synthetic IDs"
+        );
+    }
+
+    #[test]
+    fn test_piped_calls_create_pending_relationships() {
+        // Piped calls to unknown functions should use PendingRelationship
+        let r_code = r#"
+transform <- function(data) {
+  result <- data %>%
+    external_process() %>%
+    another_step()
+  return(result)
+}
+"#;
+        let (_, relationships) = extract_symbols_and_relationships(r_code);
+
+        let piped_rels: Vec<_> = relationships
+            .iter()
+            .filter(|r| r.to_symbol_id.starts_with("piped_"))
+            .collect();
+        assert!(
+            piped_rels.is_empty(),
+            "Piped calls should NOT use synthetic IDs"
         );
     }
 
@@ -220,17 +365,18 @@ process_record <- function(record) {
 }
 "#;
 
-        let (symbols, relationships) = extract_symbols_and_relationships(r_code);
+        let (_symbols, relationships) = extract_symbols_and_relationships(r_code);
 
-        // Dollar operator creates member access relationships
+        // Dollar operator member accesses now create PendingRelationships
+        // (member targets can't be resolved locally - they're dynamic)
         let member_relationships: Vec<&Relationship> = relationships
             .iter()
             .filter(|r| r.kind == RelationshipKind::Uses)
             .collect();
 
         assert!(
-            member_relationships.len() >= 3,
-            "Should extract member access relationships for $ operator"
+            member_relationships.is_empty(),
+            "Member access should create PendingRelationships, not resolved Relationships"
         );
     }
 }

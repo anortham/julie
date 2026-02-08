@@ -74,28 +74,9 @@ fn extract_call_relationships(
                         metadata: None,
                     };
                     relationships.push(relationship);
-                } else if is_builtin_function(&function_name) {
-                    // Built-in function call - create relationship with builtin_ prefix
-                    // (same as old behavior, to maintain backward compatibility with tests)
-                    let relationship = Relationship {
-                        id: format!(
-                            "{}_{:?}_{}_{}",
-                            caller_symbol.id,
-                            RelationshipKind::Calls,
-                            function_name,
-                            node.start_position().row
-                        ),
-                        from_symbol_id: caller_symbol.id.clone(),
-                        to_symbol_id: format!("builtin_{}", function_name),
-                        kind: RelationshipKind::Calls,
-                        file_path: extractor.base.file_path.clone(),
-                        line_number: (node.start_position().row + 1) as u32,
-                        confidence: 0.8,
-                        metadata: None,
-                    };
-                    relationships.push(relationship);
-                } else {
-                    // Unknown function call - create PendingRelationship for cross-file resolution
+                } else if !is_builtin_function(&function_name) {
+                    // Unknown non-builtin function - create PendingRelationship
+                    // for cross-file resolution
                     let pending = PendingRelationship {
                         from_symbol_id: caller_symbol.id.clone(),
                         callee_name: function_name.clone(),
@@ -106,6 +87,8 @@ fn extract_call_relationships(
                     };
                     extractor.add_pending_relationship(pending);
                 }
+                // Built-in functions (print, mean, length, etc.) are silently
+                // dropped - they're known base R functions that don't need resolution
             }
         }
     }
@@ -141,24 +124,39 @@ fn extract_pipe_relationships(
                             // Find containing function
                             if let Some(containing_symbol) = find_containing_function(node, symbols)
                             {
-                                // Create a relationship for the piped call
-                                let relationship = Relationship {
-                                    id: format!(
-                                        "{}_{:?}_{}_{}",
-                                        containing_symbol.id,
-                                        RelationshipKind::Calls,
-                                        function_name,
-                                        node.start_position().row
-                                    ),
-                                    from_symbol_id: containing_symbol.id.clone(),
-                                    to_symbol_id: format!("piped_{}", function_name),
-                                    kind: RelationshipKind::Calls,
-                                    file_path: extractor.base.file_path.clone(),
-                                    line_number: (node.start_position().row + 1) as u32,
-                                    confidence: 0.9,
-                                    metadata: None,
-                                };
-                                relationships.push(relationship);
+                                // Check if the piped function is defined locally
+                                if let Some(called_symbol) = symbols.iter().find(|s| {
+                                    s.name == function_name && s.kind == SymbolKind::Function
+                                }) {
+                                    let relationship = Relationship {
+                                        id: format!(
+                                            "{}_{}_{:?}_{}",
+                                            containing_symbol.id,
+                                            called_symbol.id,
+                                            RelationshipKind::Calls,
+                                            node.start_position().row
+                                        ),
+                                        from_symbol_id: containing_symbol.id.clone(),
+                                        to_symbol_id: called_symbol.id.clone(),
+                                        kind: RelationshipKind::Calls,
+                                        file_path: extractor.base.file_path.clone(),
+                                        line_number: (node.start_position().row + 1) as u32,
+                                        confidence: 1.0,
+                                        metadata: None,
+                                    };
+                                    relationships.push(relationship);
+                                } else {
+                                    // Not found locally - create PendingRelationship
+                                    let pending = PendingRelationship {
+                                        from_symbol_id: containing_symbol.id.clone(),
+                                        callee_name: function_name.clone(),
+                                        kind: RelationshipKind::Calls,
+                                        file_path: extractor.base.file_path.clone(),
+                                        line_number: (node.start_position().row + 1) as u32,
+                                        confidence: 0.7,
+                                    };
+                                    extractor.add_pending_relationship(pending);
+                                }
                             }
                         }
                     }
@@ -189,24 +187,17 @@ fn extract_member_access_relationships(
 
             // Find containing function
             if let Some(containing_symbol) = find_containing_function(node, symbols) {
-                // Create a Uses relationship for member access
-                let relationship = Relationship {
-                    id: format!(
-                        "{}_{:?}_{}_{}",
-                        containing_symbol.id,
-                        RelationshipKind::Uses,
-                        member_name,
-                        node.start_position().row
-                    ),
+                // Member access targets can't be resolved locally (they're dynamic)
+                // Use PendingRelationship for cross-file resolution
+                let pending = PendingRelationship {
                     from_symbol_id: containing_symbol.id.clone(),
-                    to_symbol_id: format!("member_{}", member_name),
+                    callee_name: member_name.clone(),
                     kind: RelationshipKind::Uses,
                     file_path: extractor.base.file_path.clone(),
                     line_number: (node.start_position().row + 1) as u32,
-                    confidence: 0.8,
-                    metadata: None,
+                    confidence: 0.6,
                 };
-                relationships.push(relationship);
+                extractor.add_pending_relationship(pending);
             }
         }
     }

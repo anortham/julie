@@ -52,6 +52,23 @@ pub fn extract_identifiers(code: &str) -> Vec<Identifier> {
     extractor.extract_identifiers(&tree, &symbols)
 }
 
+/// Helper function to extract symbols, relationships, and identifiers together
+/// Used for tests that need to verify scope_id on identifiers and relationship targets
+pub fn extract_all(code: &str) -> (Vec<Symbol>, Vec<Relationship>, Vec<Identifier>) {
+    let tree = init_parser(code, "r");
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = RExtractor::new(
+        "r".to_string(),
+        "test.R".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let relationships = extractor.extract_relationships(&tree, &symbols);
+    let identifiers = extractor.extract_identifiers(&tree, &symbols);
+    (symbols, relationships, identifiers)
+}
+
 // Test module organization
 // Each module focuses on a specific aspect of R functionality
 pub mod basics; // Core R: functions, assignments, variables

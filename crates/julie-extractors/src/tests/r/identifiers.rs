@@ -7,6 +7,7 @@ use crate::base::{IdentifierKind, SymbolKind};
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::extract_all;
 
     #[test]
     fn test_extract_function_call_identifiers() {
@@ -290,6 +291,142 @@ test <- function() {
             calc_sum_id.start_line <= calc_sum_id.end_line,
             "start_line should be <= end_line"
         );
+    }
+
+    // ========================================================================
+    // Tests for containing_symbol_id (identifier containment within symbols)
+    // ========================================================================
+
+    #[test]
+    fn test_identifier_inside_function_has_scope() {
+        let code = r#"
+my_function <- function(x) {
+    result <- process(x)
+    print(result)
+}
+"#;
+        let (symbols, _, identifiers) = extract_all(code);
+        let func = symbols
+            .iter()
+            .find(|s| s.name == "my_function")
+            .expect("Should find my_function symbol");
+
+        let process_id = identifiers
+            .iter()
+            .find(|i| i.name == "process" && i.kind == IdentifierKind::Call)
+            .expect("Should find process call identifier");
+
+        // process() call should be scoped to my_function
+        assert_eq!(
+            process_id.containing_symbol_id.as_deref(),
+            Some(func.id.as_str()),
+            "process() call inside my_function should have containing_symbol_id = my_function's id"
+        );
+    }
+
+    #[test]
+    fn test_identifier_scoping_distinguishes_inside_vs_outside_function() {
+        // Identifiers inside a function should be scoped to it;
+        // a top-level variable assignment scopes its RHS identifiers to that variable
+        let code = r#"
+result <- compute(42)
+
+my_function <- function(x) {
+    inner_result <- process(x)
+}
+"#;
+        let (symbols, _, identifiers) = extract_all(code);
+
+        // compute() is in a top-level assignment `result <- compute(42)`
+        // so it should be scoped to the `result` variable symbol
+        let result_var = symbols.iter().find(|s| s.name == "result");
+        let compute_id = identifiers
+            .iter()
+            .find(|i| i.name == "compute" && i.kind == IdentifierKind::Call)
+            .expect("Should find compute call identifier");
+
+        if let Some(result_sym) = result_var {
+            // If result is extracted as a variable, compute should be scoped to it
+            assert_eq!(
+                compute_id.containing_symbol_id.as_deref(),
+                Some(result_sym.id.as_str()),
+                "compute() in `result <- compute(42)` should be scoped to result variable"
+            );
+        }
+
+        // process() inside my_function should be scoped to my_function (not to inner_result)
+        let func = symbols
+            .iter()
+            .find(|s| s.name == "my_function")
+            .expect("Should find my_function");
+        let process_id = identifiers
+            .iter()
+            .find(|i| i.name == "process" && i.kind == IdentifierKind::Call)
+            .expect("Should find process call identifier");
+        assert_eq!(
+            process_id.containing_symbol_id.as_deref(),
+            Some(func.id.as_str()),
+            "process() inside my_function should be scoped to it (function takes priority over variable)"
+        );
+    }
+
+    #[test]
+    fn test_member_access_identifier_has_scope() {
+        let code = r#"
+get_name <- function(obj) {
+    name <- obj$first_name
+    return(name)
+}
+"#;
+        let (symbols, _, identifiers) = extract_all(code);
+        let func = symbols
+            .iter()
+            .find(|s| s.name == "get_name")
+            .expect("Should find get_name function");
+
+        let member_id = identifiers
+            .iter()
+            .find(|i| i.name == "first_name" && i.kind == IdentifierKind::MemberAccess)
+            .expect("Should find first_name member access");
+
+        assert_eq!(
+            member_id.containing_symbol_id.as_deref(),
+            Some(func.id.as_str()),
+            "obj$first_name access inside get_name should be scoped to it"
+        );
+    }
+
+    #[test]
+    fn test_variable_ref_identifier_has_scope() {
+        let code = r#"
+calculate <- function(a, b) {
+    total <- a + b
+    return(total)
+}
+"#;
+        let (symbols, _, identifiers) = extract_all(code);
+        let func = symbols
+            .iter()
+            .find(|s| s.name == "calculate")
+            .expect("Should find calculate function");
+
+        // 'a' used in 'a + b' should be a variable ref scoped to calculate
+        let a_refs: Vec<_> = identifiers
+            .iter()
+            .filter(|i| i.name == "a" && i.kind == IdentifierKind::VariableRef)
+            .collect();
+
+        assert!(
+            !a_refs.is_empty(),
+            "Should find variable reference to 'a'"
+        );
+        for a_ref in &a_refs {
+            assert_eq!(
+                a_ref.containing_symbol_id.as_deref(),
+                Some(func.id.as_str()),
+                "Variable ref 'a' inside calculate should be scoped to it"
+            );
+        }
     }
 
     #[test]

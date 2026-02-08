@@ -175,26 +175,22 @@ fn extract_identifier_from_node(
     }
 }
 
-/// Find the containing symbol ID for a node
+/// Find the containing symbol ID for a node using byte-range containment
+/// Uses BaseExtractor::find_containing_symbol for accurate position-based matching
 fn find_containing_symbol_id(
-    _extractor: &RExtractor,
+    extractor: &RExtractor,
     node: Node,
     symbol_map: &HashMap<String, &Symbol>,
 ) -> Option<String> {
-    let mut current = node;
+    // Only search symbols from THIS FILE (standard pattern across extractors)
+    let file_symbols: Vec<Symbol> = symbol_map
+        .values()
+        .filter(|s| s.file_path == extractor.base.file_path)
+        .map(|&s| s.clone())
+        .collect();
 
-    while let Some(parent) = current.parent() {
-        let parent_line = parent.start_position().row + 1;
-
-        // Check if this parent matches any symbol by line number
-        for symbol in symbol_map.values() {
-            if symbol.start_line == parent_line as u32 {
-                return Some(symbol.id.clone());
-            }
-        }
-
-        current = parent;
-    }
-
-    None
+    extractor
+        .base
+        .find_containing_symbol(&node, &file_symbols)
+        .map(|s| s.id.clone())
 }
