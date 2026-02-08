@@ -2,9 +2,9 @@
 
 **Started:** 2026-02-07
 **Verified:** 2026-02-07 — All fixes confirmed present in codebase at commit `945e9e4`.
-**Updated:** 2026-02-08 — Round 4 quality improvements applied (10 tasks, 1216 tests pass).
+**Updated:** 2026-02-08 — Round 5 quality improvements applied (10 tasks, 1277 tests pass).
 **Goal:** Systematic per-extractor audit of all 31 language extractors for correctness, completeness, edge cases, and code quality.
-**Status:** Audit complete. Four fix rounds complete. All fixes verified.
+**Status:** Audit complete. Five fix rounds complete. All fixes verified.
 
 ## Audit Criteria
 
@@ -183,16 +183,78 @@ During Round 4 research, several audit claims were found to be wrong:
 
 ---
 
+## Round 5: Quality Improvements (2026-02-08)
+
+10 tasks executed via subagent-driven development. 61 new tests added (1277 total extractor tests). All changes verified.
+
+### Rating Changes
+
+| Extractor | Before | After | Reason |
+|-----------|--------|-------|--------|
+| **C** | B | B+ | Struct/union field extraction as SymbolKind::Field children |
+| **C++** | B | B+ | Template variable extraction + typedef handler |
+| **Ruby** | B | B+ | Struct.new as Class + Property children, module_function visibility |
+| **R** | B | B+ | Identifier scope fix (byte-range containment), synthetic ID removal |
+| **Rust** | B+ | A | Grouped/glob imports, macro empty name fix, static→Constant |
+| **Python** | B+ | A | Wildcard imports, child_by_field_name for class, lambda naming fix |
+| **TypeScript** | B+ | A | Decorators in signatures, access modifier visibility |
+| **Kotlin** | B+ | A | Secondary constructors, double return type fix |
+
+### B → B+ Promotions (4 extractors)
+
+- **C**: Struct and union fields now extracted as `SymbolKind::Field` children with correct parent_id and type in signature. Handles pointer/array declarators, typedef structs, multi-field declarations. Shared `find_field_identifier_name` helper for tree-sitter's `field_identifier` nodes.
+- **C++**: Template variable declarations (`template<class T> constexpr T pi = T(3.14)`) now extracted as `SymbolKind::Constant` (or Variable for non-constexpr). New `typedefs.rs` module handles `type_definition` nodes as `SymbolKind::Type` with multi-strategy name finding. Dedup logic prevents double extraction via `processed_nodes`.
+- **Ruby**: `Struct.new(:name, :age)` patterns now detected as `SymbolKind::Class` with fields extracted as `SymbolKind::Property` children. Bare `module_function` recognized as visibility modifier (→ Public). Constant dedup guard prevents double extraction.
+- **R**: `find_containing_symbol_id` fixed to use standard `BaseExtractor::find_containing_symbol()` byte-range containment (was broken line-number matching). All synthetic IDs removed from relationships (`builtin_`, `piped_`, `member_` prefixes → PendingRelationship or silently dropped for builtins). `find_containing_function` also fixed to use byte-range containment.
+
+### B+ → A Promotions (4 extractors)
+
+- **Rust**: Grouped imports (`use foo::{Bar, Baz}`) and glob imports (`use foo::*`) now properly extracted. Inline regex in use extraction replaced with tree-sitter + `rsplit("::")`. Static items use `SymbolKind::Constant` (static mut stays Variable). Macro empty name already fixed; tests added.
+- **Python**: Wildcard imports (`from module import *`) extracted as `SymbolKind::Import` with name `"*"`. Class name extraction uses robust `child_by_field_name("name")` (was fragile positional indexing). Lambda naming changed from `<lambda:N>` to `lambda_N` (no angle brackets for search tokenization).
+- **TypeScript**: Decorators (`@Component`, `@Input()`) extracted and prepended to signatures for classes, properties, and methods. Access modifiers (`private`/`protected`/`public`) mapped to `Visibility` enum. `readonly` modifier included in signatures. Three extraction paths: child decorators (class/property), sibling decorators (method).
+- **Kotlin**: Secondary constructors (`constructor(...)`) extracted as `SymbolKind::Constructor` with class parent, parameter types in signature, and delegation target (`: this(...)`). Double `extract_return_type` and `extract_property_type` calls fixed with `ref` borrow pattern.
+
+### Cross-cutting Quality (2 tasks)
+
+- **LazyLock regex sweep**: 2 remaining inline `Regex::new()` calls converted to `static LazyLock<Regex>` (Zig error_handling.rs, Vue component.rs). 5 other flagged sites were already converted in prior rounds.
+- **Code quality fixes**:
+  - CSS: Class selectors (`.button`) changed from `SymbolKind::Class` to `SymbolKind::Property`. `:root` also changed.
+  - HTML: DOCTYPE changed from `SymbolKind::Variable` to `SymbolKind::Namespace`.
+  - Regex: Duplicate `extract_group_name` removed from identifiers.rs (now imports from groups.rs). 5 test-only functions changed from `#[allow(dead_code)]` to `#[cfg(test)]`.
+  - SQL: Dead `extract_table_references` function removed (found table names but never created relationships).
+  - Razor: Unsafe byte-slice truncation `content[..200]` replaced with char-boundary-safe `BaseExtractor::truncate_string()`.
+
+### Re-evaluation: B+ → A Promotions (15 extractors)
+
+After Round 5, 15 B+ extractors were re-evaluated against the A-rating criteria. Existing A-rated extractors (Go, Java, C#) all have P2-level remaining issues, confirming that P2s are acceptable for A rating. Extractors with only P2-level or no remaining issues were promoted:
+
+**Promoted to A (no remaining issues):** JavaScript, Zig, Lua, Bash, PowerShell, HTML, CSS, Razor, QML, SQL, Regex
+
+**Promoted to A (P2-level remaining):** C (metadata "unknown"), C++ (concepts), Ruby (module_function :symbol retroactive), R (was D → B → A across 5 rounds), Dart (thread-local cache)
+
+**Remain B+ (missing features):** PHP (anonymous classes, arrow functions), Vue (style section), YAML (anchor/alias references)
+
+### Final Tally
+
+| Rating | Count | Extractors |
+|--------|-------|-----------|
+| **A** | 28 | Rust, TypeScript, JavaScript, Python, Java, C#, Kotlin, Swift, C, C++, Go, Zig, Ruby, Lua, Bash, PowerShell, R, HTML, CSS, Razor, QML, GDScript, SQL, Dart, Regex, JSON, TOML, Markdown |
+| **B+** | 3 | PHP, Vue, YAML |
+| **B** | 0 | — |
+| **C/D** | 0 | — |
+
+---
+
 ## Extractor Status
 
 ### Group 1: Core High-Level Languages
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
-| **Rust** | 7 | B+ | Struct/Enum SymbolKind; 13 sentinels; field/variant extraction; LazyLock regex | Macro invocation heuristic |
-| **TypeScript** | 10 | B+ | P0 fixed (TS parser); class sigs; enum members; 8+ sentinels; export all specifiers; interface members; method containment | Decorators, access modifiers |
-| **JavaScript** | 11 | B+ | 7 sentinels eliminated; aliased import deduplication | Comprehensive as-is |
-| **Python** | 10 | B+ | 4 sentinels; parent_id; nested class support; @property→Property kind; LazyLock regex | Wildcard imports |
+| **Rust** | 7 | **A** ↑ | Struct/Enum SymbolKind; 13 sentinels; field/variant extraction; LazyLock regex; grouped/glob imports; static→Constant | Macro invocation heuristic (P2) |
+| **TypeScript** | 10 | **A** ↑ | P0 fixed (TS parser); class sigs; enum members; 8+ sentinels; export all specifiers; interface members; method containment; decorators; access modifiers | None significant |
+| **JavaScript** | 11 | **A** ↑ | 7 sentinels eliminated; aliased import deduplication | None significant |
+| **Python** | 10 | **A** ↑ | 4 sentinels; parent_id; nested class support; @property→Property kind; LazyLock regex; wildcard imports; lambda naming; child_by_field_name | None significant |
 
 ### Group 2: JVM & .NET Languages
 
@@ -200,47 +262,47 @@ During Round 4 research, several audit claims were found to be wrong:
 |-----------|-------|--------|---------------|------------------|
 | **Java** | 10 | A | Minor import fix | None significant |
 | **C#** | 8 | A | None needed | None significant |
-| **Kotlin** | 6 | B+ | types.rs split (533→296+247); internal→Private; constructor param types in signatures | Secondary constructors |
+| **Kotlin** | 6 | **A** ↑ | types.rs split (533→296+247); internal→Private; constructor param types; secondary constructors; double extraction fix | None significant |
 | **Swift** | 10 | A | None needed | None significant |
 
 ### Group 3: Systems Languages
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
-| **C** | 9 | B | Union added; Struct SymbolKind; decl split; 6 sentinels | 3 type "unknown" (metadata, acceptable) |
-| **C++** | 12 | B | declarations split (4 new files); multi-var extraction | Template variables; concepts |
-| **Go** | 8 | A | 2 sentinels; type def/alias signature fix | Embedding relationships stub |
-| **Zig** | 9 | B+ | 4 SymbolKind fixes (Type, Struct, Union, Enum); @import detection | None significant |
+| **C** | 9 | **A** ↑ | Union added; Struct SymbolKind; decl split; 6 sentinels; struct/union field extraction | 3 type "unknown" (metadata, P2) |
+| **C++** | 12 | **A** ↑ | declarations split (4 new files); multi-var extraction; template variables; typedef handler | Concepts (P2) |
+| **Go** | 8 | A | 2 sentinels; type def/alias signature fix | Embedding relationships stub (P2) |
+| **Zig** | 9 | **A** ↑ | 4 SymbolKind fixes (Type, Struct, Union, Enum); @import detection; LazyLock regex | None significant |
 
 ### Group 4: Scripting Languages
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
 | **PHP** | 8 | B+ | Methods→Method; grouped use declarations fixed | Anonymous classes; arrow functions |
-| **Ruby** | 8 | B | 2 sentinel fallbacks eliminated; dead code cleanup | Struct.new; module_function |
-| **Lua** | 9 | B+ | variables.rs refactored (461→410 lines) | None significant |
-| **Bash** | 8 | B+ | Control flow verified; regression tests; LazyLock regex; dead code cleanup; shebang detection; empty stubs removed | None significant |
-| **PowerShell** | 11 | B+ | "ModuleMember" sentinel fixed; LazyLock regex in imports.rs (3 statics) | None significant |
-| **R** | 3 | **B** ↑ | **Full rework**: sigs, imports, roxygen2, S3 | Was D; major improvement |
+| **Ruby** | 8 | **A** ↑ | 2 sentinel fallbacks; dead code cleanup; Struct.new as Class + Property children; module_function visibility | module_function :symbol retroactive (P2) |
+| **Lua** | 9 | **A** ↑ | variables.rs refactored (461→410 lines) | None significant |
+| **Bash** | 8 | **A** ↑ | Control flow verified; regression tests; LazyLock regex; dead code cleanup; shebang detection; empty stubs removed | None significant |
+| **PowerShell** | 11 | **A** ↑ | "ModuleMember" sentinel fixed; LazyLock regex in imports.rs (3 statics) | None significant |
+| **R** | 3 | **A** ↑ | **Full rework**: sigs, imports, roxygen2, S3; identifier scope fix; synthetic ID removal; byte-range containment | Was D; now production quality |
 
 ### Group 5: Web & UI Languages
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
-| **HTML** | 9 | B+ | Noise filter added; tag sentinel eliminated; dead code removed; fallback noise filter | None significant |
-| **CSS** | 8 | B+ | 4 sentinels eliminated; keyframe noise fixed; @keyframes deduped; LazyLock regex | None significant |
-| **Vue** | 8 | B+ | "VueComponent" sentinel; Composition API + `<script setup>` | Style section limited to class selectors |
-| **Razor** | 10 | B+ | Both files split; 2 sentinels; invocation noise fixed; assignment/element_access noise fixed | None significant |
-| **QML** | 3 | B+ | id: bindings, enum declarations, alias property signatures added | None significant |
+| **HTML** | 9 | **A** ↑ | Noise filter added; tag sentinel eliminated; dead code removed; fallback noise filter; DOCTYPE→Namespace | None significant |
+| **CSS** | 8 | **A** ↑ | 4 sentinels eliminated; keyframe noise fixed; @keyframes deduped; LazyLock regex; class selector→Property | None significant |
+| **Vue** | 8 | B+ | "VueComponent" sentinel; Composition API + `<script setup>`; LazyLock regex | Style section limited to class selectors |
+| **Razor** | 10 | **A** ↑ | Both files split; 2 sentinels; invocation noise fixed; assignment/element_access noise; UTF-8 safety fix | None significant |
+| **QML** | 3 | **A** ↑ | id: bindings, enum declarations, alias property signatures added | None significant |
 | **GDScript** | 10 | A | None needed | None significant |
 
 ### Group 6: Data & Specialized
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
-| **SQL** | 9 | B+ | mod.rs split; 4 sentinels eliminated; LazyLock regex; dead regex statics removed; error_handling.rs split (503→220) | None significant |
-| **Dart** | 10 | **B+** ↑ | **P0 fixed**: generic recovery; mod split; imports added; typedef→Type; ERROR recovery tightened | Was C; thread-local cache acceptable |
-| **Regex** | 8 | B+ | 3 sentinels→Option\<String\>; noise reduction (10+ → 4 symbols); ~676 lines dead code removed | None significant |
+| **SQL** | 9 | **A** ↑ | mod.rs split; 4 sentinels; LazyLock regex; dead regex statics; error_handling.rs split; dead code removed | None significant |
+| **Dart** | 10 | **A** ↑ | **P0 fixed**: generic recovery; mod split; imports added; typedef→Type; ERROR recovery tightened | Was C; thread-local cache acceptable (P2) |
+| **Regex** | 8 | **A** ↑ | 3 sentinels→Option\<String\>; noise reduction (10+ → 4 symbols); ~676 lines dead code; duplicate fn removed; #[cfg(test)] | None significant |
 | **JSON** | 1 | A | None needed | None significant |
 | **TOML** | 1 | A | Key-value pair extraction added | None significant |
 | **YAML** | 1 | B+ | Noise names removed; anchor detection added | Anchor/alias as references; sequences |
@@ -254,9 +316,9 @@ During Round 4 research, several audit claims were found to be wrong:
 
 #### Rust
 
-**Rating: B+**
+**Rating: A** ↑ (was B+)
 
-**Post-Audit Fixes:** Struct/Enum SymbolKind corrected; 13 sentinel sites eliminated across types.rs, functions.rs, signatures.rs; dead `extract_identifier_name()` removed from base extractor. **2026-02-08:** Struct fields as `SymbolKind::Field` and enum variants as `SymbolKind::EnumMember` now extracted with visibility, type, and doc_comment.
+**Post-Audit Fixes:** Struct/Enum SymbolKind corrected; 13 sentinel sites eliminated across types.rs, functions.rs, signatures.rs; dead `extract_identifier_name()` removed from base extractor. **2026-02-08:** Struct fields as `SymbolKind::Field` and enum variants as `SymbolKind::EnumMember` now extracted with visibility, type, and doc_comment. **Round 5:** Grouped/glob imports; inline regex in use extraction replaced with tree-sitter + rsplit; static→Constant (static mut stays Variable); macro empty name tests added.
 
 **What it extracts:** structs (with fields), enums (with variants), traits, unions, functions, methods (via two-phase impl block processing), modules, constants, statics, macro definitions (`macro_rules!`), macro invocations (struct-generating only), type aliases, use declarations (imports), associated types, function signatures (extern), doc comments (`///`, `//!`, `/** */`, `#[doc = "..."]`), derive attributes, generic type parameters, where clauses, async/unsafe/extern modifiers, struct fields, enum variants.
 
@@ -289,9 +351,9 @@ During Round 4 research, several audit claims were found to be wrong:
 
 #### TypeScript
 
-**Rating: B+**
+**Rating: A** ↑ (was B+)
 
-**Post-Audit Fixes:** P0 — inference.rs now uses `tree_sitter_typescript`; class signatures added; enum member extraction added; 8+ sentinels eliminated; test fixed to use TS parser. **2026-02-08 Round 3:** Export all specifiers; interface members; method containment fix.
+**Post-Audit Fixes:** P0 — inference.rs now uses `tree_sitter_typescript`; class signatures added; enum member extraction added; 8+ sentinels eliminated; test fixed to use TS parser. **Round 3:** Export all specifiers; interface members; method containment fix. **Round 5:** Decorators extracted in class/property/method signatures; access modifiers (private/protected/public) mapped to Visibility; readonly in signatures.
 
 **What it extracts:** classes (with inheritance, abstract modifier), functions, methods, constructors, arrow functions (assigned to variables), variables, interfaces, type aliases, enums, namespaces/modules, properties (class and interface), imports, exports, doc comments. Also extracts identifiers (calls, member access) and relationships (calls, extends). Includes type inference module.
 
@@ -359,9 +421,9 @@ During Round 4 research, several audit claims were found to be wrong:
 
 #### Python
 
-**Rating: B**
+**Rating: A** ↑ (was B+)
 
-**Post-Audit Fixes:** 4 sentinel sites eliminated; parent_id added for class attributes and nested classes; `extract_class`/`extract_function`/`extract_async_function` → `Option<Symbol>`.
+**Post-Audit Fixes:** 4 sentinel sites eliminated; parent_id added for class attributes and nested classes; `extract_class`/`extract_function`/`extract_async_function` → `Option<Symbol>`. **Round 5:** Wildcard imports (`from X import *`); class name via `child_by_field_name("name")`; lambda naming `lambda_N` (no angle brackets).
 
 **What it extracts:** classes (with inheritance, metaclass, Enum/Protocol detection), functions (with decorators, async, type hints, return type annotations), methods (__init__ -> Constructor, others -> Method), lambdas, variables (with type annotations, constant detection via uppercase naming), enum members (uppercase names inside Enum subclasses), imports (import, from...import, aliased imports), self.attribute assignments as Properties, __slots__ as Property, docstrings (triple-quoted strings in function/class body), decorators (@property, @staticmethod, @classmethod, custom), identifiers (calls, attribute access), relationships (inheritance with Implements/Extends distinction, calls with pending cross-file resolution).
 
@@ -463,9 +525,9 @@ During Round 4 research, several audit claims were found to be wrong:
 
 #### Kotlin
 
-**Rating: B+**
+**Rating: A** ↑ (was B+)
 
-**Post-Audit Fixes:** types.rs split (532→296+247); `internal` visibility now mapped to Private. **2026-02-08 Round 4:** Constructor parameter signatures now include types; companion object naming verified correct.
+**Post-Audit Fixes:** types.rs split (532→296+247); `internal` visibility now mapped to Private. **Round 4:** Constructor parameter signatures now include types; companion object naming verified correct. **Round 5:** Secondary constructors extracted as SymbolKind::Constructor with delegation target in signature; double return type/property type extraction fixed with `ref` borrow.
 
 **What it extracts:** Classes (regular, data, sealed, abstract, inner), enum classes (with members), interfaces (including fun interfaces), objects, companion objects, functions (top-level and methods), extension functions, properties (val/var with delegation and initializers), constructor parameters (as properties), type aliases, imports, package declarations, operator functions, KDoc comments.
 
@@ -541,9 +603,9 @@ During Round 4 research, several audit claims were found to be wrong:
 
 #### C
 
-**Rating: B**
+**Rating: A** ↑ (was B)
 
-**Post-Audit Fixes:** Union extraction added; struct→SymbolKind::Struct; declarations.rs split (737→349+178+254); 6 sentinel sites fixed; `extract_struct_name`/`extract_enum_name` → `Option<String>`.
+**Post-Audit Fixes:** Union extraction added; struct→SymbolKind::Struct; declarations.rs split (737→349+178+254); 6 sentinel sites fixed; `extract_struct_name`/`extract_enum_name` → `Option<String>`. **Round 5:** Struct/union fields extracted as SymbolKind::Field children with type in signature. Shared `find_field_identifier_name` helper. Dedup guard for typedef structs.
 
 **What it extracts:** Functions (definitions and declarations), structs, enums (with enum values as separate Constant symbols), typedefs (including function pointer typedefs), macros (#define, function-like macros), variables (global/static/extern/const/volatile/array), includes (#include), linkage specifications (extern "C"), expression statement typedefs (edge case recovery).
 
@@ -582,9 +644,9 @@ During Round 4 research, several audit claims were found to be wrong:
 
 #### C++ (cpp)
 
-**Rating: B**
+**Rating: A** ↑ (was B)
 
-**Post-Audit Fixes:** declarations.rs split (790→459 + visibility.rs + signatures.rs + fields.rs); multi-variable declaration extraction added.
+**Post-Audit Fixes:** declarations.rs split (790→459 + visibility.rs + signatures.rs + fields.rs); multi-variable declaration extraction added. **Round 5:** Template variable extraction (constexpr→Constant, non-constexpr→Variable). New typedefs.rs module handles type_definition as SymbolKind::Type with multi-strategy name finding. Dedup via processed_nodes.
 
 **What it extracts:** Classes (with template parameters and inheritance), structs (with alignas), unions (including anonymous), enums (regular and `enum class` with underlying type), enum members, functions, methods, constructors, destructors, operators (overloaded and conversion), namespaces, using declarations/namespace aliases, friend declarations, fields (including multi-declarator), variables, constants (const/constexpr/static members), template declarations.
 
@@ -745,9 +807,9 @@ During Round 4 research, several audit claims were found to be wrong:
 
 #### Ruby
 
-**Rating: B**
+**Rating: A** ↑ (was B)
 
-**Post-Audit Fixes:** 2 sentinel fallbacks eliminated ("alias_method", "delegated_method").
+**Post-Audit Fixes:** 2 sentinel fallbacks eliminated ("alias_method", "delegated_method"). **Round 5:** Struct.new detected as SymbolKind::Class with field arguments as SymbolKind::Property children. Bare `module_function` as visibility modifier. Constant dedup guard. Unnecessary allocation removed.
 
 **What it extracts:** Modules, classes (with inheritance), singleton classes, methods, singleton methods, variables (instance, class, global, local, constants), constants, aliases, require/require_relative/include/extend calls, attr_accessor/attr_reader/attr_writer, define_method, def_delegator/def_delegators, parallel assignments, RDoc/YARD comments.
 
@@ -898,7 +960,7 @@ During Round 4 research, several audit claims were found to be wrong:
 
 #### R
 
-**Rating: D → B (reworked)**
+**Rating: D → A** ↑ (reworked across 5 rounds)
 
 **Post-Audit Fixes:** Complete rework — function signatures with parameter extraction, library()/require() imports, roxygen2 documentation, S3 class detection via UseMethod(), proper SymbolKind::Function classification.
 
