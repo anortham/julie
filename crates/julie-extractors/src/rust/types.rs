@@ -50,7 +50,7 @@ pub(super) fn extract_struct(
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Class,
+        SymbolKind::Struct,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility_enum),
@@ -96,7 +96,7 @@ pub(super) fn extract_enum(
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Class,
+        SymbolKind::Enum,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility_enum),

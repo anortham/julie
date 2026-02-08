@@ -12,8 +12,10 @@ use tree_sitter::{Node, Tree};
 // Module declarations
 mod csharp;
 mod directives;
+mod expressions;
 mod helpers;
 mod identifiers;
+mod relationship_helpers;
 mod relationships;
 mod stubs;
 mod type_inference;

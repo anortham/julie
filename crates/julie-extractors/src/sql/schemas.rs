@@ -39,7 +39,7 @@ pub(super) fn extract_table_definition(
     metadata.insert("isTable".to_string(), Value::Bool(true));
 
     let options = SymbolOptions {
-        signature: Some(signature),
+        signature,
         visibility: Some(crate::base::Visibility::Public),
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment: base.find_doc_comment(&node),
@@ -50,7 +50,7 @@ pub(super) fn extract_table_definition(
 }
 
 /// Extract table signature showing column count
-pub(super) fn extract_table_signature(base: &mut BaseExtractor, node: Node) -> String {
+pub(super) fn extract_table_signature(base: &mut BaseExtractor, node: Node) -> Option<String> {
     // Look for table name inside object_reference node (same as extractTableDefinition)
     let object_ref_node = base.find_child_by_type(&node, "object_reference");
     let name_node = if let Some(obj_ref) = object_ref_node {
@@ -58,13 +58,9 @@ pub(super) fn extract_table_signature(base: &mut BaseExtractor, node: Node) -> S
     } else {
         base.find_child_by_type(&node, "identifier")
             .or_else(|| base.find_child_by_type(&node, "table_name"))
-    };
+    }?;
 
-    let table_name = if let Some(name_node) = name_node {
-        base.get_node_text(&name_node)
-    } else {
-        "unknown".to_string()
-    };
+    let table_name = base.get_node_text(&name_node);
 
     // Count columns for a brief signature
     let mut column_count = 0;
@@ -74,7 +70,7 @@ pub(super) fn extract_table_signature(base: &mut BaseExtractor, node: Node) -> S
         }
     });
 
-    format!("CREATE TABLE {} ({} columns)", table_name, column_count)
+    Some(format!("CREATE TABLE {} ({} columns)", table_name, column_count))
 }
 
 /// Extract view from CREATE VIEW statement

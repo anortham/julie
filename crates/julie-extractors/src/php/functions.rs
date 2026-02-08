@@ -32,6 +32,7 @@ pub(super) fn extract_function(
     let symbol_kind = match name.as_str() {
         "__construct" => SymbolKind::Constructor,
         "__destruct" => SymbolKind::Destructor,
+        _ if parent_id.is_some() => SymbolKind::Method,
         _ => SymbolKind::Function,
     };
 

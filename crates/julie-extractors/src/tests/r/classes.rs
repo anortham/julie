@@ -59,12 +59,34 @@ plot.my_class <- function(x, ...) {
 
         let symbols = extract_symbols(r_code);
 
-        let functions: Vec<&Symbol> = symbols
+        // S3 methods should be extracted as SymbolKind::Method
+        let methods: Vec<&Symbol> = symbols
             .iter()
-            .filter(|s| s.kind == SymbolKind::Function)
+            .filter(|s| s.kind == SymbolKind::Method)
             .collect();
 
-        assert!(functions.len() >= 3, "Should extract S3 method functions");
+        assert!(
+            methods.len() >= 3,
+            "Should extract S3 methods as Method kind (found {})",
+            methods.len()
+        );
+
+        // Verify S3 metadata
+        let print_person = methods
+            .iter()
+            .find(|m| m.name == "print.person")
+            .expect("Should find print.person method");
+        let meta = print_person.metadata.as_ref().unwrap();
+        assert_eq!(
+            meta.get("s3_method").and_then(|v| v.as_str()),
+            Some("print"),
+            "Should have s3_method metadata"
+        );
+        assert_eq!(
+            meta.get("s3_class").and_then(|v| v.as_str()),
+            Some("person"),
+            "Should have s3_class metadata"
+        );
     }
 
     #[test]

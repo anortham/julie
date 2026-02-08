@@ -33,10 +33,9 @@ impl super::JavaScriptExtractor {
         if let Some(value) = &value_node {
             if self.is_require_call(value) {
                 let mut metadata = HashMap::new();
-                metadata.insert(
-                    "source".to_string(),
-                    json!(self.extract_require_source(value)),
-                );
+                if let Some(source) = self.extract_require_source(value) {
+                    metadata.insert("source".to_string(), json!(source));
+                }
                 metadata.insert("isCommonJS".to_string(), json!(true));
 
                 // Extract JSDoc comment

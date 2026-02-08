@@ -126,41 +126,27 @@ pub(super) fn extract_macro_invocation(
     let macro_name_node = node
         .children(&mut node.walk())
         .find(|c| c.kind() == "identifier");
-    let macro_name = macro_name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_default();
+    let macro_name = macro_name_node.map(|n| base.get_node_text(&n))?;
 
-    // Look for struct-generating macros or known patterns
-    if macro_name.contains("struct") || macro_name.contains("generate") {
-        let token_tree_node = node
-            .children(&mut node.walk())
-            .find(|c| c.kind() == "token_tree");
-        if let Some(token_tree) = token_tree_node {
-            // Extract the first identifier from the token tree as the struct name
-            let struct_name_node = token_tree
-                .children(&mut token_tree.walk())
-                .find(|c| c.kind() == "identifier");
-            if let Some(struct_name_node) = struct_name_node {
-                let struct_name = base.get_node_text(&struct_name_node);
-                let signature = format!("struct {}", struct_name);
-
-                return Some(base.create_symbol(
-                    &node,
-                    struct_name,
-                    SymbolKind::Class,
-                    SymbolOptions {
-                        signature: Some(signature),
-                        visibility: Some(Visibility::Public), // assume macro-generated types are public
-                        parent_id,
-                        doc_comment: None,
-                        metadata: Some(HashMap::new()),
-                    },
-                ));
-            }
-        }
+    if macro_name.is_empty() {
+        return None;
     }
 
-    None
+    // Extract all macro invocations as symbols
+    let signature = format!("{}!(..)", macro_name);
+
+    Some(base.create_symbol(
+        &node,
+        macro_name,
+        SymbolKind::Function,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            doc_comment: None,
+            metadata: Some(HashMap::new()),
+        },
+    ))
 }
 
 /// Extract use statement (imports)

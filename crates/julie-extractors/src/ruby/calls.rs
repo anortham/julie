@@ -124,14 +124,17 @@ fn extract_define_method(
 /// Extract def_delegator calls
 fn extract_def_delegator(base: &mut BaseExtractor, node: Node) -> Option<Symbol> {
     let arg_node = node.child_by_field_name("arguments")?;
-    let args: Vec<_> = arg_node.children(&mut arg_node.walk()).collect();
+    let args: Vec<_> = arg_node
+        .children(&mut arg_node.walk())
+        .filter(|n| n.kind() != "," && n.kind() != "(" && n.kind() != ")")
+        .collect();
 
     if args.len() >= 2 {
         let method_arg = &args[1];
         let delegated_method_name = if matches!(method_arg.kind(), "simple_symbol" | "symbol") {
             base.get_node_text(method_arg).replace(':', "")
         } else {
-            "delegated_method".to_string()
+            return None;
         };
 
         Some(base.create_symbol(

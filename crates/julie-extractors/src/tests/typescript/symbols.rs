@@ -63,3 +63,85 @@ fn test_visit_all_symbol_kinds() {
         "Should extract variable"
     );
 }
+
+#[test]
+fn test_enum_members_extracted() {
+    let code = r#"
+    enum Direction {
+        Up,
+        Down,
+        Left,
+        Right
+    }
+    "#;
+
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+
+    let mut extractor = TypeScriptExtractor::new(
+        "typescript".to_string(),
+        "test.ts".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+
+    // Should have the enum itself
+    let direction_enum = symbols.iter().find(|s| s.name == "Direction" && s.kind == SymbolKind::Enum);
+    assert!(direction_enum.is_some(), "Should extract Direction enum");
+    let enum_id = &direction_enum.unwrap().id;
+
+    // Should have enum members
+    let members: Vec<_> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::EnumMember && s.parent_id.as_ref() == Some(enum_id))
+        .collect();
+    assert!(
+        members.len() >= 2,
+        "Should extract at least 2 enum members, got {}",
+        members.len()
+    );
+}
+
+#[test]
+fn test_class_signature_with_extends() {
+    let code = r#"
+    class Animal {
+        name: string;
+    }
+
+    class Dog extends Animal {
+        breed: string;
+    }
+    "#;
+
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+
+    let mut extractor = TypeScriptExtractor::new(
+        "typescript".to_string(),
+        "test.ts".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+
+    let dog_class = symbols.iter().find(|s| s.name == "Dog" && s.kind == SymbolKind::Class);
+    assert!(dog_class.is_some(), "Should extract Dog class");
+    let dog = dog_class.unwrap();
+    assert!(
+        dog.signature.as_ref().map_or(false, |sig| sig.contains("extends Animal")),
+        "Dog class signature should contain 'extends Animal', got: {:?}",
+        dog.signature
+    );
+}

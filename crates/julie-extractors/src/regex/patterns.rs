@@ -159,7 +159,7 @@ pub(super) fn extract_anchor(
     parent_id: Option<String>,
 ) -> Option<Symbol> {
     let anchor_text = base.get_node_text(&node);
-    let anchor_type = flags::get_anchor_type(&anchor_text);
+    let anchor_type = flags::get_anchor_type(&anchor_text)?;
     let signature = signatures::build_anchor_signature(&anchor_text, &anchor_type);
 
     let metadata = create_metadata(&[
@@ -298,7 +298,7 @@ pub(super) fn extract_unicode_property(
     parent_id: Option<String>,
 ) -> Option<Symbol> {
     let property_text = base.get_node_text(&node);
-    let property = flags::extract_unicode_property_name(&property_text);
+    let property = flags::extract_unicode_property_name(&property_text)?;
     let signature = signatures::build_unicode_property_signature(&property_text, &property);
 
     let metadata = create_metadata(&[
@@ -371,7 +371,7 @@ pub(super) fn extract_conditional(
     parent_id: Option<String>,
 ) -> Option<Symbol> {
     let conditional_text = base.get_node_text(&node);
-    let condition = flags::extract_condition(&conditional_text);
+    let condition = flags::extract_condition(&conditional_text)?;
     let signature = signatures::build_conditional_signature(&conditional_text, &condition);
 
     let metadata = create_metadata(&[

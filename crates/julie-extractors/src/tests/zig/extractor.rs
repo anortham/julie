@@ -50,8 +50,8 @@ pub const Point = struct {
     );
     let symbols = extractor.extract_symbols(&tree);
 
-    // Should extract struct (as Class)
-    assert!(symbols.iter().any(|s| s.kind == SymbolKind::Class));
+    // Should extract struct (as Struct)
+    assert!(symbols.iter().any(|s| s.kind == SymbolKind::Struct));
 }
 
 #[test]

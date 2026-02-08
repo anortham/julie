@@ -126,7 +126,6 @@ impl ZigExtractor {
                 parent_id,
                 helpers::is_public_declaration,
             ),
-            "parameter" => functions::extract_parameter(&mut self.base, node, parent_id),
             "field_declaration" | "struct_field" | "container_field" => {
                 types::extract_struct_field(&mut self.base, node, parent_id)
             }

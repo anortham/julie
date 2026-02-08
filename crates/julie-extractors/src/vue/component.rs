@@ -22,23 +22,20 @@ pub(super) fn extract_component_name(file_path: &str, sections: &[VueSection]) -
     }
 
     // Fallback: use filename (convert kebab-case to PascalCase)
-    if let Some(filename) = std::path::Path::new(file_path).file_stem() {
-        let name = filename.to_str().unwrap_or("VueComponent");
+    let filename = std::path::Path::new(file_path).file_stem()?;
+    let name = filename.to_str()?;
 
-        // Convert my-component.vue -> MyComponent
-        let pascal_case = name
-            .split('-')
-            .map(|part| {
-                let mut chars = part.chars();
-                match chars.next() {
-                    None => String::new(),
-                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                }
-            })
-            .collect::<String>();
+    // Convert my-component.vue -> MyComponent
+    let pascal_case = name
+        .split('-')
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect::<String>();
 
-        return Some(pascal_case);
-    }
-
-    Some("VueComponent".to_string())
+    Some(pascal_case)
 }

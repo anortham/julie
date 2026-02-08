@@ -69,10 +69,10 @@ char *(*get_string_func(void))(void);
         assert!(add_func.is_some());
         assert_eq!(add_func.unwrap().kind, SymbolKind::Function);
 
-        // Verify struct with pointer members (extracted as Class in C)
+        // Verify struct with pointer members
         let node_struct = symbols.iter().find(|s| s.name == "Node");
         assert!(node_struct.is_some());
-        assert_eq!(node_struct.unwrap().kind, SymbolKind::Class);
+        assert_eq!(node_struct.unwrap().kind, SymbolKind::Struct);
     }
 
     #[test]
@@ -113,7 +113,7 @@ int main() {
         // Verify struct with function pointer
         let event_handler_struct = symbols.iter().find(|s| s.name == "EventHandler");
         assert!(event_handler_struct.is_some());
-        assert_eq!(event_handler_struct.unwrap().kind, SymbolKind::Class);
+        assert_eq!(event_handler_struct.unwrap().kind, SymbolKind::Struct);
 
         // Verify function that accepts function pointer
         let register_callback_func = symbols.iter().find(|s| s.name == "register_callback");
@@ -171,28 +171,30 @@ struct __attribute__((packed)) PackedData {
 
         let symbols = extract_symbols(code);
 
-        // Verify complex linked list struct (extracted as Class in C)
+        // Verify complex linked list struct
         let linked_list_struct = symbols.iter().find(|s| s.name == "LinkedList");
         assert!(linked_list_struct.is_some());
-        assert_eq!(linked_list_struct.unwrap().kind, SymbolKind::Class);
+        assert_eq!(linked_list_struct.unwrap().kind, SymbolKind::Struct);
 
-        // Verify nested Node struct (extracted as Class in C)
+        // Verify nested Node struct
         let node_struct = symbols.iter().find(|s| s.name == "Node");
         assert!(node_struct.is_some());
-        assert_eq!(node_struct.unwrap().kind, SymbolKind::Class);
+        assert_eq!(node_struct.unwrap().kind, SymbolKind::Struct);
 
-        // Note: Unions may not be extracted by the current C extractor
-        // Focus on structs that are actually extracted
+        // Verify union extraction
+        let data_value_union = symbols.iter().find(|s| s.name == "DataValue");
+        assert!(data_value_union.is_some());
+        assert_eq!(data_value_union.unwrap().kind, SymbolKind::Union);
 
         // Verify bit field struct
         let flags_struct = symbols.iter().find(|s| s.name == "Flags");
         assert!(flags_struct.is_some());
-        assert_eq!(flags_struct.unwrap().kind, SymbolKind::Class);
+        assert_eq!(flags_struct.unwrap().kind, SymbolKind::Struct);
 
         // Verify packed struct
         let packed_data_struct = symbols.iter().find(|s| s.name == "PackedData");
         assert!(packed_data_struct.is_some());
-        assert_eq!(packed_data_struct.unwrap().kind, SymbolKind::Class);
+        assert_eq!(packed_data_struct.unwrap().kind, SymbolKind::Struct);
     }
 
     #[test]

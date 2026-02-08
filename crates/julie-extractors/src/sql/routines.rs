@@ -169,10 +169,10 @@ pub(super) fn extract_declare_variables(
             if let Some(captures) = VAR_DECL_RE.captures(declaration_text) {
                 let variable_name = captures.get(1).map_or("", |m| m.as_str());
                 let variable_type_full = captures.get(2).map_or("", |m| m.as_str());
-                let variable_type = variable_type_full
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("unknown"); // Get first word as type
+                let variable_type = match variable_type_full.split_whitespace().next() {
+                    Some(t) => t,
+                    None => continue,
+                };
 
                 // Skip if variable name is empty
                 if variable_name.is_empty() {

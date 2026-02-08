@@ -27,7 +27,12 @@ fn parse_content(
     extractor: &TypeScriptExtractor,
 ) -> Result<tree_sitter::Tree, Box<dyn std::error::Error>> {
     let mut parser = tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_javascript::LANGUAGE.into())?;
+    let language = if extractor.base().language == "tsx" {
+        tree_sitter_typescript::LANGUAGE_TSX.into()
+    } else {
+        tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
+    };
+    parser.set_language(&language)?;
     let tree = parser
         .parse(&extractor.base().content, None)
         .ok_or("Failed to parse content")?;

@@ -151,7 +151,14 @@ pub(super) fn process_impl_blocks(
         // Find the struct/enum this impl is for
         let struct_symbol = symbols.iter().find(|s| {
             s.name == impl_block.type_name
-                && (s.kind == SymbolKind::Class || s.kind == SymbolKind::Interface)
+                && matches!(
+                    s.kind,
+                    SymbolKind::Class
+                        | SymbolKind::Struct
+                        | SymbolKind::Enum
+                        | SymbolKind::Union
+                        | SymbolKind::Interface
+                )
         });
 
         let parent_id = struct_symbol.map(|s| s.id.clone());

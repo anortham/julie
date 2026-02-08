@@ -208,7 +208,7 @@ impl RubyExtractor {
                 ));
             }
             "alias" => {
-                symbol_opt = Some(symbols::extract_alias(&mut self.base, node));
+                symbol_opt = symbols::extract_alias(&mut self.base, node);
             }
             "identifier" => {
                 // Handle visibility modifiers

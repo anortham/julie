@@ -185,7 +185,9 @@ type Config map[string]interface{}
                 .signature
                 .as_ref()
                 .unwrap()
-                .contains("type UserID = int64")
+                .contains("type UserID int64"),
+            "Type definition should NOT have '=' sign. Got: {}",
+            user_id.signature.as_ref().unwrap()
         );
 
         let config = symbols.iter().find(|s| s.name == "Config");
@@ -196,7 +198,9 @@ type Config map[string]interface{}
                 .signature
                 .as_ref()
                 .unwrap()
-                .contains("type Config = map[string]interface{}")
+                .contains("type Config map[string]interface{}"),
+            "Type definition should NOT have '=' sign. Got: {}",
+            config.signature.as_ref().unwrap()
         );
     }
 

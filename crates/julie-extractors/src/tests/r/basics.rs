@@ -131,12 +131,25 @@ plot <- ggplot2::ggplot(data, aes(x, y))
             .filter(|s| s.kind == SymbolKind::Import)
             .collect();
 
-        // Note: This test documents expected behavior for future implementation
-        // Extractors might not capture imports initially
-        // assert!(imports.len() >= 2, "Should extract library() calls");
+        assert!(
+            imports.len() >= 3,
+            "Should extract library() and require() calls as imports (found {})",
+            imports.len()
+        );
 
-        // For now, we just verify the code parses without errors
-        // and extracts some symbols
-        assert!(symbols.len() >= 0, "Should parse R code successfully");
+        let import_names: Vec<&str> = imports.iter().map(|s| s.name.as_str()).collect();
+        assert!(import_names.contains(&"dplyr"), "Should find dplyr import");
+        assert!(
+            import_names.contains(&"ggplot2"),
+            "Should find ggplot2 import"
+        );
+        assert!(import_names.contains(&"tidyr"), "Should find tidyr import");
+
+        // Should also extract variables from namespace usage
+        let variables: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Variable)
+            .collect();
+        assert!(variables.len() >= 2, "Should extract result and plot variables");
     }
 }

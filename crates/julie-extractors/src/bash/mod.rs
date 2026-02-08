@@ -88,9 +88,7 @@ impl BashExtractor {
             "variable_assignment" => self.extract_variable(node, parent_id),
             "declaration_command" => self.extract_declaration(node, parent_id),
             "command" | "simple_command" => self.extract_command(node, parent_id),
-            "for_statement" | "while_statement" | "if_statement" => {
-                self.extract_control_flow(node, parent_id)
-            }
+            "for_statement" | "while_statement" | "if_statement" => None,
             _ => None,
         }
     }

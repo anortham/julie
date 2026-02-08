@@ -178,19 +178,20 @@ impl super::JavaScriptExtractor {
     }
 
     /// Extract require source - direct Implementation of extractRequireSource
-    pub(super) fn extract_require_source(&self, node: &Node) -> String {
+    pub(super) fn extract_require_source(&self, node: &Node) -> Option<String> {
         if node.kind() == "call_expression" {
             if let Some(args) = node.child_by_field_name("arguments") {
                 for child in args.children(&mut args.walk()) {
                     if child.kind() == "string" {
-                        return self
-                            .base
-                            .get_node_text(&child)
-                            .replace(&['\'', '"', '`'][..], "");
+                        return Some(
+                            self.base
+                                .get_node_text(&child)
+                                .replace(&['\'', '"', '`'][..], ""),
+                        );
                     }
                 }
             }
         }
-        "unknown".to_string()
+        None
     }
 }

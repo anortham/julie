@@ -15,9 +15,10 @@ mod tests {
 
     #[test]
     fn test_get_anchor_type() {
-        assert_eq!(get_anchor_type("^"), "start");
-        assert_eq!(get_anchor_type("$"), "end");
-        assert_eq!(get_anchor_type(r"\b"), "word-boundary");
+        assert_eq!(get_anchor_type("^"), Some("start".to_string()));
+        assert_eq!(get_anchor_type("$"), Some("end".to_string()));
+        assert_eq!(get_anchor_type(r"\b"), Some("word-boundary".to_string()));
+        assert_eq!(get_anchor_type("???"), None);
     }
 
     #[test]
@@ -48,7 +49,11 @@ mod tests {
 
     #[test]
     fn test_extract_unicode_property_name() {
-        assert_eq!(extract_unicode_property_name(r"\p{Letter}"), "Letter");
+        assert_eq!(
+            extract_unicode_property_name(r"\p{Letter}"),
+            Some("Letter".to_string())
+        );
+        assert_eq!(extract_unicode_property_name("no-match"), None);
     }
 
     #[test]
@@ -71,6 +76,10 @@ mod tests {
 
     #[test]
     fn test_extract_condition() {
-        assert_eq!(extract_condition("(?(1)yes|no)"), "1");
+        assert_eq!(
+            extract_condition("(?(1)yes|no)"),
+            Some("1".to_string())
+        );
+        assert_eq!(extract_condition("no-match"), None);
     }
 }

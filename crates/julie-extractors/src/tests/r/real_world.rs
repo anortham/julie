@@ -171,18 +171,30 @@ mutate.data.frame <- function(.data, ...) {
 
         let symbols = extract_symbols(r_code);
 
-        // Should extract multiple dplyr verbs
+        // Generic functions (filter, select, mutate) contain UseMethod() -> SymbolKind::Function
         let functions: Vec<&Symbol> = symbols
             .iter()
             .filter(|s| s.kind == SymbolKind::Function)
             .collect();
 
+        // S3 methods (filter.data.frame, select.data.frame, mutate.data.frame) -> SymbolKind::Method
+        let methods: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Method)
+            .collect();
+
         assert!(
-            functions.len() >= 6,
-            "Should extract filter, select, mutate and their methods"
+            functions.len() >= 3,
+            "Should extract filter, select, mutate as functions (found {})",
+            functions.len()
+        );
+        assert!(
+            methods.len() >= 3,
+            "Should extract .data.frame S3 methods (found {})",
+            methods.len()
         );
 
-        // Verify key dplyr functions exist
+        // Verify key dplyr generic functions exist
         let func_names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
         assert!(
             func_names.contains(&"filter"),
@@ -195,6 +207,18 @@ mutate.data.frame <- function(.data, ...) {
         assert!(
             func_names.contains(&"mutate"),
             "Should find mutate function"
+        );
+
+        // Verify UseMethod() is detected in generics
+        let filter_fn = functions
+            .iter()
+            .find(|f| f.name == "filter")
+            .expect("filter should exist");
+        let filter_meta = filter_fn.metadata.as_ref().unwrap();
+        assert_eq!(
+            filter_meta.get("s3_generic").and_then(|v| v.as_bool()),
+            Some(true),
+            "filter should be marked as s3_generic"
         );
     }
 

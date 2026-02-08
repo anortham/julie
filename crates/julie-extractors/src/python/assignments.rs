@@ -2,7 +2,7 @@
 /// Handles variable assignments, type annotations, enum members, and constants
 use super::super::base::{Symbol, SymbolKind, SymbolOptions};
 use super::PythonExtractor;
-use super::{signatures, types};
+use super::{helpers, signatures, types};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -78,9 +78,7 @@ pub(super) fn extract_assignment(extractor: &mut PythonExtractor, node: Node) ->
     // Infer visibility from name
     let visibility = signatures::infer_visibility(&name);
 
-    // Parent tracking not yet implemented for assignments
-    // Enhancement: Could walk AST to find parent class (see functions.rs:determine_function_kind for pattern)
-    let parent_id = None;
+    let parent_id = helpers::find_parent_class_id(extractor, &node);
 
     let mut metadata = HashMap::new();
     metadata.insert(
@@ -121,6 +119,8 @@ fn extract_multiple_assignment_targets(
         String::new()
     };
 
+    let parent_id = helpers::find_parent_class_id(extractor, &left_node);
+
     // Iterate through all identifiers in the pattern
     let mut cursor = left_node.walk();
     for child in left_node.children(&mut cursor) {
@@ -151,7 +151,7 @@ fn extract_multiple_assignment_targets(
                 SymbolOptions {
                     signature: Some(signature),
                     visibility: Some(visibility),
-                    parent_id: None,
+                    parent_id: parent_id.clone(),
                     metadata: None,
                     doc_comment,
                 },

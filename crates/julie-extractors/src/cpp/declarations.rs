@@ -1,11 +1,19 @@
 //! Declaration extraction for C++ symbols
-//! Handles extraction of declarations, fields, friend declarations, and using declarations
+//! Handles extraction of declarations, friend declarations, and using declarations
 
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
 
 use super::functions;
 use super::helpers;
+use super::signatures;
+use super::visibility;
+
+// Re-export field/multi-declaration extractors so mod.rs callers don't need to change
+pub(super) use super::fields::{extract_field, extract_multi_declarations};
+
+// Re-export visibility so existing callers (e.g. functions.rs) can use declarations::extract_cpp_visibility
+pub(super) use super::visibility::extract_cpp_visibility;
 
 /// Extract namespace declaration
 pub(super) fn extract_namespace(
@@ -196,8 +204,8 @@ pub(super) fn extract_declaration(
         };
 
         // Build signature
-        let signature = build_direct_variable_signature(base, node, &name);
-        let visibility = extract_visibility_from_node(base, node);
+        let signature = signatures::build_direct_variable_signature(base, node, &name);
+        let vis = visibility::extract_visibility_from_node(base, node);
 
         let doc_comment = base.find_doc_comment(&node);
 
@@ -207,7 +215,7 @@ pub(super) fn extract_declaration(
             kind,
             SymbolOptions {
                 signature: Some(signature),
-                visibility: Some(visibility),
+                visibility: Some(vis),
                 parent_id: parent_id.map(String::from),
                 metadata: None,
                 doc_comment,
@@ -232,8 +240,8 @@ pub(super) fn extract_declaration(
     };
 
     // Build signature
-    let signature = build_variable_signature(base, node, &name);
-    let visibility = extract_visibility_from_node(base, node);
+    let signature = signatures::build_variable_signature(base, node, &name);
+    let vis = visibility::extract_visibility_from_node(base, node);
 
     let doc_comment = base.find_doc_comment(&node);
 
@@ -243,167 +251,12 @@ pub(super) fn extract_declaration(
         kind,
         SymbolOptions {
             signature: Some(signature),
-            visibility: Some(visibility),
+            visibility: Some(vis),
             parent_id: parent_id.map(String::from),
             metadata: None,
             doc_comment,
         },
     ))
-}
-
-/// Extract field declaration (class member variable)
-/// Returns Vec<Symbol> because a single declaration can define multiple fields
-/// Examples:
-///   size_t rows, cols;  → extracts both "rows" and "cols"
-///   double* data;       → extracts "data" (pointer_declarator)
-pub(super) fn extract_field(
-    base: &mut BaseExtractor,
-    node: Node,
-    parent_id: Option<&str>,
-) -> Vec<Symbol> {
-    // C++ field declarations can have multiple declarators on same line
-    // Also need to handle pointer_declarator for pointer fields
-    let declarators: Vec<Node> = node
-        .children(&mut node.walk())
-        .filter(|c| {
-            matches!(
-                c.kind(),
-                "field_declarator" | "init_declarator" | "pointer_declarator"
-            )
-        })
-        .collect();
-
-    if declarators.is_empty() {
-        // No declarators found - could be:
-        // 1. Direct field_identifiers (e.g., size_t rows, cols;)
-        // 2. function_declarator (method declaration inside class)
-
-        // Check for function_declarator (method declarations)
-        if node
-            .children(&mut node.walk())
-            .any(|c| c.kind() == "function_declarator")
-        {
-            // This is a method declaration inside a class - not a field
-            // Don't handle it here - let it be processed as a function
-            // Return empty vec to signal this should be handled elsewhere
-            return vec![];
-        }
-
-        // Check for direct field_identifiers
-        let field_identifiers: Vec<Node> = node
-            .children(&mut node.walk())
-            .filter(|c| c.kind() == "field_identifier")
-            .collect();
-
-        if field_identifiers.is_empty() {
-            return vec![];
-        }
-
-        // Get storage class and type specifiers once (shared by all fields)
-        let storage_class = helpers::extract_storage_class(base, node);
-        let type_specifiers = helpers::extract_type_specifiers(base, node);
-        let is_constant = helpers::is_constant_declaration(&storage_class, &type_specifiers);
-        let is_static_member = helpers::is_static_member_variable(node, &storage_class);
-
-        // Create a symbol for EACH field_identifier (handles: size_t rows, cols;)
-        let mut symbols = Vec::new();
-        let doc_comment = base.find_doc_comment(&node);
-        for field_node in field_identifiers {
-            let name = base.get_node_text(&field_node);
-
-            let kind = if is_constant || is_static_member {
-                SymbolKind::Constant
-            } else {
-                SymbolKind::Field
-            };
-
-            // Build signature
-            let signature = build_field_signature(base, node, &name);
-            let visibility = extract_field_visibility(base, node);
-
-            symbols.push(base.create_symbol(
-                &node,
-                name,
-                kind,
-                SymbolOptions {
-                    signature: Some(signature),
-                    visibility: Some(visibility),
-                    parent_id: parent_id.map(String::from),
-                    metadata: None,
-                    doc_comment: doc_comment.clone(),
-                },
-            ));
-        }
-
-        return symbols;
-    }
-
-    // Get storage class and type specifiers once (shared by all declarators)
-    let storage_class = helpers::extract_storage_class(base, node);
-    let type_specifiers = helpers::extract_type_specifiers(base, node);
-    let is_constant = helpers::is_constant_declaration(&storage_class, &type_specifiers);
-    let is_static_member = helpers::is_static_member_variable(node, &storage_class);
-
-    // Handle ALL declarators (size_t rows, cols; extracts both rows and cols)
-    let mut symbols = Vec::new();
-    let doc_comment = base.find_doc_comment(&node);
-    for declarator in declarators {
-        // Extract field name from declarator (handles pointer_declarator, field_declarator, etc.)
-        let name_node = match extract_field_name_from_declarator(declarator) {
-            Some(n) => n,
-            None => continue, // Skip if we can't find the name
-        };
-
-        let name = base.get_node_text(&name_node);
-
-        let kind = if is_constant || is_static_member {
-            SymbolKind::Constant
-        } else {
-            SymbolKind::Field
-        };
-
-        // Build signature
-        let signature = build_field_signature(base, node, &name);
-        let visibility = extract_field_visibility(base, node);
-
-        symbols.push(base.create_symbol(
-            &node,
-            name,
-            kind,
-            SymbolOptions {
-                signature: Some(signature),
-                visibility: Some(visibility),
-                parent_id: parent_id.map(String::from),
-                metadata: None,
-                doc_comment: doc_comment.clone(),
-            },
-        ));
-    }
-
-    symbols
-}
-
-/// Extract field name from various declarator types
-/// Handles: field_declarator, pointer_declarator, init_declarator, etc.
-fn extract_field_name_from_declarator(declarator: Node) -> Option<Node> {
-    // For pointer_declarator: need to recursively find field_identifier
-    if declarator.kind() == "pointer_declarator" {
-        return declarator.children(&mut declarator.walk()).find_map(|c| {
-            if c.kind() == "field_identifier" || c.kind() == "identifier" {
-                Some(c)
-            } else if matches!(c.kind(), "pointer_declarator" | "field_declarator") {
-                // Recursively search nested declarators (e.g., double**)
-                extract_field_name_from_declarator(c)
-            } else {
-                None
-            }
-        });
-    }
-
-    // For field_declarator and init_declarator: direct children
-    declarator
-        .children(&mut declarator.walk())
-        .find(|c| c.kind() == "field_identifier" || c.kind() == "identifier")
 }
 
 /// Extract friend declaration
@@ -467,7 +320,9 @@ pub(super) fn extract_friend_declaration(
     Some(symbol)
 }
 
-// Helper functions
+// ========================================================================
+// Private helpers for special declaration types
+// ========================================================================
 
 fn extract_conversion_operator(
     base: &mut BaseExtractor,
@@ -601,190 +456,4 @@ fn extract_constructor_from_declaration(
             doc_comment,
         },
     ))
-}
-
-fn build_direct_variable_signature(base: &mut BaseExtractor, node: Node, name: &str) -> String {
-    let mut signature = String::new();
-
-    // Add storage class
-    let storage_class = helpers::extract_storage_class(base, node);
-    if !storage_class.is_empty() {
-        signature.push_str(&storage_class.join(" "));
-        signature.push(' ');
-    }
-
-    // Add type specifiers
-    let type_specifiers = helpers::extract_type_specifiers(base, node);
-    if !type_specifiers.is_empty() {
-        signature.push_str(&type_specifiers.join(" "));
-        signature.push(' ');
-    }
-
-    // Add type
-    for child in node.children(&mut node.walk()) {
-        if matches!(
-            child.kind(),
-            "primitive_type" | "type_identifier" | "qualified_identifier"
-        ) {
-            signature.push_str(&base.get_node_text(&child));
-            signature.push(' ');
-            break;
-        }
-    }
-
-    signature.push_str(name);
-    signature
-}
-
-fn build_variable_signature(base: &mut BaseExtractor, node: Node, name: &str) -> String {
-    let mut signature = String::new();
-
-    // Add storage class and type specifiers
-    let storage_class = helpers::extract_storage_class(base, node);
-    let type_specifiers = helpers::extract_type_specifiers(base, node);
-
-    let mut parts = Vec::new();
-    parts.extend(storage_class);
-    parts.extend(type_specifiers);
-
-    // Add type from node
-    for child in node.children(&mut node.walk()) {
-        if matches!(
-            child.kind(),
-            "primitive_type" | "type_identifier" | "qualified_identifier"
-        ) {
-            parts.push(base.get_node_text(&child));
-            break;
-        }
-    }
-
-    if !parts.is_empty() {
-        signature.push_str(&parts.join(" "));
-        signature.push(' ');
-    }
-
-    signature.push_str(name);
-    signature
-}
-
-fn build_field_signature(base: &mut BaseExtractor, node: Node, name: &str) -> String {
-    let mut signature = String::new();
-
-    // Add storage class and type specifiers
-    let storage_class = helpers::extract_storage_class(base, node);
-    let type_specifiers = helpers::extract_type_specifiers(base, node);
-
-    let mut parts = Vec::new();
-    parts.extend(storage_class);
-    parts.extend(type_specifiers);
-
-    // Add type from node
-    for child in node.children(&mut node.walk()) {
-        if matches!(
-            child.kind(),
-            "primitive_type" | "type_identifier" | "qualified_identifier"
-        ) {
-            parts.push(base.get_node_text(&child));
-            break;
-        }
-    }
-
-    if !parts.is_empty() {
-        signature.push_str(&parts.join(" "));
-        signature.push(' ');
-    }
-
-    signature.push_str(name);
-    signature
-}
-
-/// Extract visibility for any C++ member (field, method, constructor, etc.)
-/// This is the main public interface for visibility extraction
-pub(super) fn extract_cpp_visibility(base: &mut BaseExtractor, node: Node) -> Visibility {
-    extract_field_visibility(base, node)
-}
-
-fn extract_visibility_from_node(base: &mut BaseExtractor, node: Node) -> Visibility {
-    // Same logic as extract_field_visibility - access specifiers apply to all members
-    extract_field_visibility(base, node)
-}
-
-fn extract_field_visibility(base: &mut BaseExtractor, node: Node) -> Visibility {
-    // C++ visibility is determined by the most recent access_spec node in the class body
-    // Walk up to find the parent class/struct, then walk through siblings backwards
-
-    // First, find the parent class/struct/union specifier
-    let parent = find_parent_class_or_struct(node);
-
-    match parent {
-        Some((parent_kind, parent_node)) => {
-            // Determine default visibility based on parent type
-            let default_visibility = if parent_kind == "class_specifier" {
-                Visibility::Private // class defaults to private
-            } else {
-                Visibility::Public // struct and union default to public
-            };
-
-            // Find the field_list body
-            let field_list = parent_node
-                .children(&mut parent_node.walk())
-                .find(|c| c.kind() == "field_declaration_list");
-
-            if let Some(field_list) = field_list {
-                // Walk through field_list children to find the most recent access_spec before our node
-                find_access_spec_before_node(base, field_list, node, default_visibility)
-            } else {
-                default_visibility
-            }
-        }
-        None => Visibility::Public, // Not inside a class/struct, assume public
-    }
-}
-
-/// Find the parent class_specifier or struct_specifier node
-fn find_parent_class_or_struct(mut node: Node) -> Option<(&'static str, Node)> {
-    while let Some(parent) = node.parent() {
-        match parent.kind() {
-            "class_specifier" => return Some(("class_specifier", parent)),
-            "struct_specifier" => return Some(("struct_specifier", parent)),
-            "union_specifier" => return Some(("union_specifier", parent)),
-            _ => node = parent,
-        }
-    }
-    None
-}
-
-/// Find the most recent access_spec before the target node
-fn find_access_spec_before_node(
-    base: &BaseExtractor,
-    field_list: Node,
-    target: Node,
-    default_visibility: Visibility,
-) -> Visibility {
-    let target_start = target.start_position();
-    let mut current_visibility = default_visibility;
-
-    // Walk through all children of field_list
-    for child in field_list.children(&mut field_list.walk()) {
-        let child_pos = child.start_position();
-
-        // If we've passed the target node, return the last visibility we saw
-        if child_pos >= target_start {
-            break;
-        }
-
-        // Check if this is an access_specifier node (private, protected, public keywords)
-        // Note: tree-sitter uses "access_specifier" not "access_spec"
-        if child.kind() == "access_specifier" {
-            let spec_text = base.get_node_text(&child);
-            current_visibility = match spec_text.trim() {
-                "private" => Visibility::Private,
-                "protected" => Visibility::Protected,
-                "public" => Visibility::Public,
-                _ => current_visibility, // Unknown, keep current
-            };
-        }
-    }
-
-    current_visibility
 }

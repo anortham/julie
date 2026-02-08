@@ -117,7 +117,7 @@ pub(super) fn extract_table_columns(
             let data_type = if let Some(type_node) = data_type_node {
                 base.get_node_text(&type_node)
             } else {
-                "unknown".to_string()
+                String::new()
             };
 
             // Extract column constraints and build signature standard format
@@ -150,7 +150,6 @@ pub(super) fn extract_table_constraints(
     let constraint_nodes = base.find_nodes_by_type(&table_node, "constraint");
 
     for node in constraint_nodes {
-        let mut constraint_type = "unknown";
         let mut constraint_name = format!("constraint_{}", node.start_position().row);
 
         // Determine constraint type based on child nodes (reference logic)
@@ -166,17 +165,20 @@ pub(super) fn extract_table_constraints(
         }
 
         // Determine constraint type (reference logic)
-        if has_check {
-            constraint_type = "check";
+        // Skip constraints whose type can't be determined
+        let constraint_type = if has_check {
+            "check"
         } else if has_primary {
-            constraint_type = "primary_key";
+            "primary_key"
         } else if has_foreign {
-            constraint_type = "foreign_key";
+            "foreign_key"
         } else if has_unique {
-            constraint_type = "unique";
+            "unique"
         } else if has_index {
-            constraint_type = "index";
-        }
+            "index"
+        } else {
+            continue;
+        };
 
         // Create constraint symbol standard format
         let constraint_symbol = create_constraint_symbol(

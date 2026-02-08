@@ -90,48 +90,6 @@ pub(super) fn extract_test(
     ))
 }
 
-/// Extract parameter declarations
-pub(super) fn extract_parameter(
-    base: &mut BaseExtractor,
-    node: Node,
-    parent_id: Option<&String>,
-) -> Option<Symbol> {
-    let name_node = base.find_child_by_type(&node, "identifier")?;
-    let param_name = base.get_node_text(&name_node);
-
-    let type_node = base
-        .find_child_by_type(&node, "type_expression")
-        .or_else(|| base.find_child_by_type(&node, "builtin_type"))
-        .or_else(|| {
-            // Look for identifier after colon for type
-            let mut cursor = node.walk();
-            let children: Vec<Node> = node.children(&mut cursor).collect();
-            let colon_index = children.iter().position(|child| child.kind() == ":")?;
-            children.get(colon_index + 1).copied()
-        });
-
-    let param_type = if let Some(type_node) = type_node {
-        base.get_node_text(&type_node)
-    } else {
-        String::new()
-    };
-
-    let signature = format!("{}: {}", param_name, param_type);
-
-    Some(base.create_symbol(
-        &node,
-        param_name,
-        SymbolKind::Variable,
-        SymbolOptions {
-            signature: Some(signature),
-            visibility: Some(Visibility::Public),
-            parent_id: parent_id.cloned(),
-            metadata: None,
-            doc_comment: None,
-        },
-    ))
-}
-
 /// Extract full function signature including modifiers, parameters, and return type
 fn extract_function_signature(
     base: &mut BaseExtractor,

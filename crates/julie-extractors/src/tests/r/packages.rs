@@ -20,10 +20,24 @@ library(data.table, quietly = TRUE)
 
         let symbols = extract_symbols(r_code);
 
-        // The code should parse successfully even if imports aren't fully extracted yet
+        let imports: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Import)
+            .collect();
+
+        // Should extract at least dplyr, ggplot2, and data.table as imports
+        // (tidyr via string notation may or may not work depending on parser)
         assert!(
-            symbols.len() >= 0,
-            "Should parse library() calls successfully"
+            imports.len() >= 3,
+            "Should extract library() calls as imports (found {})",
+            imports.len()
+        );
+
+        let import_names: Vec<&str> = imports.iter().map(|s| s.name.as_str()).collect();
+        assert!(import_names.contains(&"dplyr"), "Should find dplyr import");
+        assert!(
+            import_names.contains(&"ggplot2"),
+            "Should find ggplot2 import"
         );
     }
 
@@ -41,9 +55,23 @@ if (require(somePackage)) {
 "#;
 
         let symbols = extract_symbols(r_code);
+
+        let imports: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Import)
+            .collect();
+
         assert!(
-            symbols.len() >= 0,
-            "Should parse require() calls successfully"
+            imports.len() >= 2,
+            "Should extract require() calls as imports (found {})",
+            imports.len()
+        );
+
+        let import_names: Vec<&str> = imports.iter().map(|s| s.name.as_str()).collect();
+        assert!(import_names.contains(&"dplyr"), "Should find dplyr import");
+        assert!(
+            import_names.contains(&"ggplot2"),
+            "Should find ggplot2 import"
         );
     }
 

@@ -182,7 +182,7 @@ const IoError = error{
         // Should extract structs
         let point_struct = symbols
             .iter()
-            .find(|s| s.name == "Point" && s.kind == SymbolKind::Class);
+            .find(|s| s.name == "Point" && s.kind == SymbolKind::Struct);
         assert!(point_struct.is_some());
         assert!(
             point_struct
@@ -1600,11 +1600,11 @@ fn workerFunction() !void {
             // Test concurrency types
             let channel = symbols.iter().find(|s| s.name == "Channel");
             assert!(channel.is_some());
-            assert_eq!(channel.unwrap().kind, SymbolKind::Class);
+            assert_eq!(channel.unwrap().kind, SymbolKind::Struct);
 
             let thread_pool = symbols.iter().find(|s| s.name == "ThreadPool");
             assert!(thread_pool.is_some());
-            assert_eq!(thread_pool.unwrap().kind, SymbolKind::Class);
+            assert_eq!(thread_pool.unwrap().kind, SymbolKind::Struct);
 
             // Test worker function
             let worker_function = symbols.iter().find(|s| s.name == "workerFunction");
@@ -1907,7 +1907,7 @@ fn example() !void {
             // Test error types
             let file_error = symbols.iter().find(|s| s.name == "FileError");
             assert!(file_error.is_some());
-            assert_eq!(file_error.unwrap().kind, SymbolKind::Class);
+            assert_eq!(file_error.unwrap().kind, SymbolKind::Enum);
 
             let parser_error = symbols.iter().find(|s| s.name == "ParserError");
             assert!(parser_error.is_some());
@@ -1938,7 +1938,7 @@ fn example() !void {
             // Test custom error struct
             let parse_error = symbols.iter().find(|s| s.name == "ParseError");
             assert!(parse_error.is_some());
-            assert_eq!(parse_error.unwrap().kind, SymbolKind::Class);
+            assert_eq!(parse_error.unwrap().kind, SymbolKind::Struct);
 
             // Test result type
             let result = symbols.iter().find(|s| s.name == "Result");

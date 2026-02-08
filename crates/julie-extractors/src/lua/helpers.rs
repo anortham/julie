@@ -52,8 +52,8 @@ pub(crate) fn infer_type_from_expression(base: &BaseExtractor, node: Node) -> St
                     return "import".to_string();
                 }
             }
-            "unknown".to_string()
+            String::new()
         }
-        _ => "unknown".to_string(),
+        _ => String::new(),
     }
 }

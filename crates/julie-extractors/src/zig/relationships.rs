@@ -60,14 +60,14 @@ fn extract_struct_relationships(
     let struct_symbol = symbols
         .iter()
         .find(|s| {
-            s.kind == SymbolKind::Class
+            s.kind == SymbolKind::Struct
                 && s.start_line == (node.start_position().row + 1) as u32
                 && s.start_column == node.start_position().column as u32
         })
         .or_else(|| {
             // Try finding by nearby position (within a few lines)
             symbols.iter().find(|s| {
-                s.kind == SymbolKind::Class
+                s.kind == SymbolKind::Struct
                     && (s.start_line as i32 - (node.start_position().row + 1) as i32).abs() <= 2
             })
         });
@@ -113,7 +113,7 @@ fn traverse_struct_fields(
                         s.name == type_name
                             && matches!(
                                 s.kind,
-                                SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct
+                                SymbolKind::Struct | SymbolKind::Union | SymbolKind::Type | SymbolKind::Enum
                             )
                     });
 

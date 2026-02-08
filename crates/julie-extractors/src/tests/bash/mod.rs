@@ -403,38 +403,15 @@ deploy_with_rollback() {
             Some(crate::base::Visibility::Public)
         ); // exported
 
-        // Should extract control flow
+        // Control flow blocks (for, while, if) should NOT be extracted as symbols
         let control_flow: Vec<&Symbol> = symbols
             .iter()
-            .filter(|s| s.kind == SymbolKind::Method)
+            .filter(|s| s.kind == SymbolKind::Method && s.name.contains("block"))
             .collect();
         assert!(
-            control_flow.len() >= 2,
-            "Expected at least 2 control flow blocks, got {}",
+            control_flow.is_empty(),
+            "Expected no control flow blocks, got {}",
             control_flow.len()
-        );
-
-        let if_block = control_flow.iter().find(|c| c.name.contains("if block"));
-        assert!(if_block.is_some(), "if block not found");
-        let if_block = if_block.unwrap();
-        // Now extracts real doc comment from code (Conditional deployment section)
-        assert!(
-            if_block
-                .doc_comment
-                .as_ref()
-                .map(|d| d.contains("Conditional") || d.contains("deployment"))
-                .unwrap_or(false),
-            "If block comment should mention deployment, got: {:?}",
-            if_block.doc_comment
-        );
-
-        let for_block = control_flow.iter().find(|c| c.name.contains("for block"));
-        assert!(for_block.is_some(), "for block not found");
-        let for_block = for_block.unwrap();
-        // Now extracts real doc comment from code (Conditional deployment section)
-        assert!(
-            for_block.doc_comment.is_some(),
-            "For block should have doc_comment"
         );
 
         // Should extract functions

@@ -242,14 +242,14 @@ pub(super) fn extract_constant(
 }
 
 /// Extract an alias symbol
-pub(super) fn extract_alias(base: &mut BaseExtractor, node: Node) -> Symbol {
+pub(super) fn extract_alias(base: &mut BaseExtractor, node: Node) -> Option<Symbol> {
     let signature = base.get_node_text(&node);
-    let alias_name = extract_alias_name(node, |n| base.get_node_text(n));
+    let alias_name = extract_alias_name(node, |n| base.get_node_text(n))?;
 
     // Extract RDoc/YARD comment
     let doc_comment = base.find_doc_comment(&node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         alias_name,
         SymbolKind::Method,
@@ -260,5 +260,5 @@ pub(super) fn extract_alias(base: &mut BaseExtractor, node: Node) -> Symbol {
             metadata: None,
             doc_comment,
         },
-    )
+    ))
 }

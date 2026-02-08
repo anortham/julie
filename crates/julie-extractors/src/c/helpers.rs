@@ -176,6 +176,12 @@ pub(super) fn extract_enum_name(base: &BaseExtractor, node: tree_sitter::Node) -
     Some(base.get_node_text(&name_node))
 }
 
+/// Extract union name from a union specifier
+pub(super) fn extract_union_name(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
+    let name_node = node.child_by_field_name("name")?;
+    Some(base.get_node_text(&name_node))
+}
+
 /// Check if this looks like a typedef name by examining parent context
 pub(super) fn looks_like_typedef_name(
     base: &BaseExtractor,
@@ -224,6 +230,22 @@ pub(super) fn contains_struct(node: tree_sitter::Node) -> bool {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if contains_struct(child) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Check if a tree contains a union specifier
+pub(super) fn contains_union(node: tree_sitter::Node) -> bool {
+    if node.kind() == "union_specifier" {
+        return true;
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if contains_union(child) {
             return true;
         }
     }

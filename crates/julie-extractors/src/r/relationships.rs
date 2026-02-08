@@ -231,7 +231,7 @@ fn find_containing_function<'a>(node: Node, symbols: &'a [Symbol]) -> Option<&'a
                     let func_line = parent.start_position().row + 1;
                     if let Some(symbol) = symbols
                         .iter()
-                        .find(|s| s.kind == SymbolKind::Function && s.start_line == func_line as u32)
+                        .find(|s| (s.kind == SymbolKind::Function || s.kind == SymbolKind::Method) && s.start_line == func_line as u32)
                     {
                         return Some(symbol);
                     }

@@ -337,6 +337,8 @@ pub(super) fn determine_visibility(modifiers: &[String]) -> Visibility {
         Visibility::Private
     } else if modifiers.contains(&"protected".to_string()) {
         Visibility::Protected
+    } else if modifiers.contains(&"internal".to_string()) {
+        Visibility::Private // Kotlin internal maps to Private (module-scoped, not fully public)
     } else {
         Visibility::Public // Kotlin defaults to public
     }

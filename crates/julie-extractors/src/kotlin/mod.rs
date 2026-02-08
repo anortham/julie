@@ -11,6 +11,7 @@
 //! - Property delegation
 //! - Constructor parameters
 
+mod declarations;
 mod helpers;
 mod identifiers;
 mod properties;
@@ -94,7 +95,7 @@ impl KotlinExtractor {
                 ));
             }
             "function_declaration" => {
-                symbol = types::extract_function(
+                symbol = declarations::extract_function(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
@@ -119,21 +120,21 @@ impl KotlinExtractor {
                 );
             }
             "package_header" => {
-                symbol = types::extract_package(
+                symbol = declarations::extract_package(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
                 );
             }
             "import" => {
-                symbol = types::extract_import(
+                symbol = declarations::extract_import(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
                 );
             }
             "type_alias" => {
-                symbol = types::extract_type_alias(
+                symbol = declarations::extract_type_alias(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),

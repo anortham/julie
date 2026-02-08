@@ -176,7 +176,7 @@ fn test_infer_type_from_expression_unknown() {
             &workspace_root,
         );
         let inferred = infer_type_from_expression(base.base(), id_node);
-        assert_eq!(inferred, "unknown", "Identifier should infer as 'unknown'");
+        assert_eq!(inferred, "", "Identifier should infer as empty string");
     } else {
         panic!("Could not find identifier node in parsed code");
     }

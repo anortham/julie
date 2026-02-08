@@ -8,12 +8,15 @@
 //! - type_inference: Return type and variable type inference
 
 mod declarations;
+mod fields;
 mod functions;
 mod helpers;
 mod identifiers;
 mod relationships;
+mod signatures;
 mod type_inference;
 mod types;
+mod visibility;
 
 use crate::base::{
     BaseExtractor, PendingRelationship, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
@@ -114,6 +117,15 @@ impl CppExtractor {
             }
             // If extract_field returned empty, this might be a method declaration
             // Fall through to normal handling
+        }
+
+        // Handle multi-variable declarations (int x = 1, y = 2; extracts y too)
+        if node.kind() == "declaration" {
+            let extra =
+                declarations::extract_multi_declarations(&mut self.base, node, parent_id.as_deref());
+            if !extra.is_empty() {
+                symbols.extend(extra);
+            }
         }
 
         // Extract symbol from current node

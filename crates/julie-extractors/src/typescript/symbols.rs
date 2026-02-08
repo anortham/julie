@@ -53,7 +53,8 @@ fn visit_node(extractor: &mut TypeScriptExtractor, node: Node, symbols: &mut Vec
 
         // Enums
         "enum_declaration" => {
-            symbol = interfaces::extract_enum(extractor, node);
+            let enum_symbols = interfaces::extract_enum(extractor, node);
+            symbols.extend(enum_symbols);
         }
 
         // Import/export statements

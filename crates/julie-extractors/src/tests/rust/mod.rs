@@ -70,7 +70,7 @@ struct Point(f64, f64);
             let user_struct = symbols.iter().find(|s| s.name == "User");
             assert!(user_struct.is_some());
             let user_struct = user_struct.unwrap();
-            assert_eq!(user_struct.kind, SymbolKind::Class);
+            assert_eq!(user_struct.kind, SymbolKind::Struct);
             assert!(
                 user_struct
                     .signature
@@ -86,7 +86,7 @@ struct Point(f64, f64);
             let point_struct = symbols.iter().find(|s| s.name == "Point");
             assert!(point_struct.is_some());
             let point_struct = point_struct.unwrap();
-            assert_eq!(point_struct.kind, SymbolKind::Class);
+            assert_eq!(point_struct.kind, SymbolKind::Struct);
             assert_eq!(
                 point_struct.visibility.as_ref().unwrap(),
                 &Visibility::Private
@@ -127,7 +127,7 @@ enum Color { Red, Green, Blue }
             let status_enum = symbols.iter().find(|s| s.name == "Status");
             assert!(status_enum.is_some());
             let status_enum = status_enum.unwrap();
-            assert_eq!(status_enum.kind, SymbolKind::Class);
+            assert_eq!(status_enum.kind, SymbolKind::Enum);
             assert!(
                 status_enum
                     .signature
@@ -731,7 +731,7 @@ where
             let container = symbols.iter().find(|s| s.name == "Container");
             assert!(container.is_some());
             let container = container.unwrap();
-            assert_eq!(container.kind, SymbolKind::Class);
+            assert_eq!(container.kind, SymbolKind::Struct);
             assert!(
                 container
                     .signature
@@ -932,7 +932,7 @@ pub extern "C" fn create_point(x: f64, y: f64, z: f64) -> Point3D {
             let raw_buffer = symbols.iter().find(|s| s.name == "RawBuffer");
             assert!(raw_buffer.is_some());
             let raw_buffer = raw_buffer.unwrap();
-            assert_eq!(raw_buffer.kind, SymbolKind::Class);
+            assert_eq!(raw_buffer.kind, SymbolKind::Struct);
             assert!(
                 raw_buffer
                     .signature

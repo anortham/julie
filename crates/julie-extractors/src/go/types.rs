@@ -73,6 +73,7 @@ impl super::GoExtractor {
         let mut type_parameters = None;
         let mut type_def = None;
         let mut second_type_identifier = None;
+        let mut has_equals = false;
 
         for child in node.children(&mut cursor) {
             match child.kind() {
@@ -80,14 +81,18 @@ impl super::GoExtractor {
                 "type_identifier"
                     if type_identifier.is_some() && second_type_identifier.is_none() =>
                 {
-                    // Second type_identifier indicates type alias (type Alias = Target)
                     second_type_identifier = Some(child);
-                    type_def = Some(("alias", child));
+                    // Only classify as alias if we saw an "=" token
+                    if has_equals {
+                        type_def = Some(("alias", child));
+                    } else {
+                        type_def = Some(("definition", child));
+                    }
                 }
                 "type_parameter_list" => type_parameters = Some(child),
                 "struct_type" => type_def = Some(("struct", child)),
                 "interface_type" => type_def = Some(("interface", child)),
-                "=" => {} // Type alias syntax detected (handled by second_type_identifier)
+                "=" => { has_equals = true; } // Type alias syntax detected
                 // Handle basic type definitions (type UserID int64) and aliases (type UserID = int64)
                 "primitive_type" if type_identifier.is_some() && type_def.is_none() => {
                     type_def = Some(("definition", child));
@@ -170,9 +175,9 @@ impl super::GoExtractor {
                     ))
                 }
                 "definition" => {
-                    // For type definition (no equals sign) - formats these like aliases
+                    // For type definition (no equals sign) - NOT an alias
                     let aliased_type = self.extract_type_from_node(type_node);
-                    let signature = format!("type {}{} = {}", name, type_params, aliased_type);
+                    let signature = format!("type {}{} {}", name, type_params, aliased_type);
                     Some(self.base.create_symbol(
                         &type_id,
                         name,

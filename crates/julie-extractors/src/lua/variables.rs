@@ -60,7 +60,7 @@ pub(super) fn extract_local_variable_declaration(
             // Check if the corresponding expression is a function or import
             let expression = expressions.get(i);
             let mut kind = SymbolKind::Variable;
-            let mut data_type = "unknown".to_string();
+            let mut data_type = String::new();
 
             if let Some(expression) = expression {
                 match expression.kind() {
@@ -201,7 +201,7 @@ pub(super) fn extract_assignment_statement(
             // Determine kind and type based on the assignment
             let is_field_assignment = matches!(kind_override, Some(SymbolKind::Field));
             let mut kind = kind_override.unwrap_or(SymbolKind::Variable);
-            let mut data_type = "unknown".to_string();
+            let mut data_type = String::new();
 
             if right.kind() == "expression_list" {
                 let mut right_cursor = right.walk();
@@ -375,7 +375,7 @@ pub(super) fn extract_variable_assignment(
                 // Determine kind and type based on the assignment
                 // Module properties (M.PI) should be classified as Field
                 let mut kind = SymbolKind::Field;
-                let mut data_type = "unknown".to_string();
+                let mut data_type = String::new();
 
                 if let Some(expression) = expressions.get(i) {
                     if expression.kind() == "function_definition" {
@@ -421,7 +421,7 @@ pub(super) fn extract_variable_assignment(
 
             // Determine kind and type based on the assignment
             let mut kind = SymbolKind::Variable;
-            let mut data_type = "unknown".to_string();
+            let mut data_type = String::new();
 
             if let Some(expression) = expressions.get(i) {
                 if expression.kind() == "function_definition" {

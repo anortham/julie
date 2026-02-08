@@ -67,27 +67,4 @@ impl super::BashExtractor {
         }
     }
 
-    /// Extract control flow constructs (for, while, if)
-    pub(super) fn extract_control_flow(
-        &mut self,
-        node: Node,
-        parent_id: Option<&str>,
-    ) -> Option<Symbol> {
-        // Extract control flow constructs for understanding script logic
-        let control_type = node.kind().replace("_statement", "");
-        let name = format!("{} block", control_type);
-
-        let options = SymbolOptions {
-            signature: Some(self.extract_control_flow_signature(node)),
-            visibility: Some(Visibility::Private),
-            parent_id: parent_id.map(|s| s.to_string()),
-            doc_comment: self.base.find_doc_comment(&node),
-            ..Default::default()
-        };
-
-        Some(
-            self.base
-                .create_symbol(&node, name, SymbolKind::Method, options),
-        )
-    }
 }

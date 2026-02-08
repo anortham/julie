@@ -43,23 +43,6 @@ impl super::BashExtractor {
         BaseExtractor::truncate_string(&command_text, 97)
     }
 
-    /// Build signature for control flow constructs (if, while, for)
-    pub(super) fn extract_control_flow_signature(&self, node: Node) -> String {
-        let control_type = node.kind().replace("_statement", "");
-
-        // Try to extract the condition for if/while
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if matches!(child.kind(), "test_command" | "condition") {
-                let condition = self.base.get_node_text(&child);
-                // Safely truncate UTF-8 string at character boundary
-                let condition = BaseExtractor::truncate_string(&condition, 47);
-                return format!("{} ({})", control_type, condition);
-            }
-        }
-
-        format!("{} block", control_type)
-    }
 
     /// Build documentation for a variable (annotations about readonly, exported, etc.)
     #[allow(dead_code)]

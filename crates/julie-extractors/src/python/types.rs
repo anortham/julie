@@ -91,6 +91,9 @@ pub(super) fn extract_class(extractor: &mut PythonExtractor, node: Node) -> Opti
     // Extract docstring
     let doc_comment = extract_docstring(extractor, &node);
 
+    // Check for parent class (nested class support)
+    let parent_id = helpers::find_parent_class_id(extractor, &node);
+
     let mut metadata = HashMap::new();
     metadata.insert("decorators".to_string(), serde_json::json!(decorators_list));
     metadata.insert("superclasses".to_string(), serde_json::json!(all_args));
@@ -103,7 +106,7 @@ pub(super) fn extract_class(extractor: &mut PythonExtractor, node: Node) -> Opti
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(Visibility::Public),
-            parent_id: None,
+            parent_id,
             metadata: Some(metadata),
             doc_comment,
         },

@@ -95,8 +95,6 @@ pub(super) fn extract_import_command(
                 module_name = "Variable".to_string();
             } else if node_text.contains("-Alias") {
                 module_name = "Alias".to_string();
-            } else {
-                module_name = "ModuleMember".to_string();
             }
         }
     }

@@ -198,7 +198,7 @@ mod tests {
         // Complex structs - Tests advanced data structures
         let account_struct = symbols.iter().find(|s| s.name == "Account");
         assert!(account_struct.is_some());
-        assert_eq!(account_struct.unwrap().kind, SymbolKind::Class);
+        assert_eq!(account_struct.unwrap().kind, SymbolKind::Struct);
         assert!(
             account_struct
                 .unwrap()

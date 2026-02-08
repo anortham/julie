@@ -6,7 +6,9 @@
 //! - `helpers` - Node finding, name extraction, and tree navigation utilities
 //! - `signatures` - Signature building methods for various C constructs
 //! - `types` - Type and attribute extraction from the syntax tree
-//! - `declarations` - Extraction of declarations (includes, macros, functions, variables, typedefs, structs, enums)
+//! - `declarations` - Extraction of includes, macros, functions, and variables
+//! - `structs` - Extraction of structs, unions, and enums
+//! - `typedefs` - Typedef extraction and post-processing
 //! - `relationships` - Relationship extraction (calls, imports)
 //! - `identifiers` - Identifier usage tracking (calls, member access)
 
@@ -19,6 +21,8 @@ mod helpers;
 mod identifiers;
 mod relationships;
 mod signatures;
+mod structs;
+mod typedefs;
 mod types;
 
 /// Main C extractor struct combining all extraction functionality
@@ -63,8 +67,8 @@ impl CExtractor {
         self.visit_node(tree.root_node(), &mut symbols, None);
 
         // Post-process: Fix function pointer typedef names and struct alignment attributes
-        declarations::fix_function_pointer_typedef_names(&mut symbols);
-        declarations::fix_struct_alignment_attributes(&mut symbols);
+        typedefs::fix_function_pointer_typedef_names(&mut symbols);
+        typedefs::fix_struct_alignment_attributes(&mut symbols);
 
         symbols
     }
@@ -173,24 +177,31 @@ impl CExtractor {
                 );
             }
             "struct_specifier" => {
-                symbol = declarations::extract_struct(
+                symbol = structs::extract_struct(
+                    self,
+                    node,
+                    parent_id.as_deref(),
+                );
+            }
+            "union_specifier" => {
+                symbol = structs::extract_union(
                     self,
                     node,
                     parent_id.as_deref(),
                 );
             }
             "enum_specifier" => {
-                symbol = declarations::extract_enum(self, node, parent_id.as_deref());
+                symbol = structs::extract_enum(self, node, parent_id.as_deref());
                 // Extract enum values as separate constants (even for anonymous enums like `typedef enum { ... } Name;`)
                 let parent_id_for_values = symbol.as_ref()
                     .map(|s| s.id.as_str())
                     .unwrap_or("");
                 let enum_values =
-                    declarations::extract_enum_value_symbols(self, node, parent_id_for_values);
+                    structs::extract_enum_value_symbols(self, node, parent_id_for_values);
                 symbols.extend(enum_values);
             }
             "type_definition" => {
-                symbol = declarations::extract_type_definition(
+                symbol = typedefs::extract_type_definition(
                     self,
                     node,
                     parent_id.as_deref(),
@@ -202,7 +213,7 @@ impl CExtractor {
             }
             "expression_statement" => {
                 // Handle cases like "} PACKED NetworkHeader;" where NetworkHeader is in expression_statement
-                symbol = declarations::extract_from_expression_statement(
+                symbol = typedefs::extract_from_expression_statement(
                     self,
                     node,
                     parent_id.as_deref(),

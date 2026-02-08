@@ -206,4 +206,37 @@ mod tests {
         // Type inference should work
         assert!(!types.is_empty());
     }
+
+    #[test]
+    fn test_extract_multi_variable_declarations() {
+        let cpp_code = r#"
+    int x = 1, y = 2, z = 3;
+    const double a = 1.0, b = 2.0;
+    "#;
+
+        let (mut extractor, tree) = parse_cpp(cpp_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        // All three variables from "int x = 1, y = 2, z = 3;" should be extracted
+        let x = symbols.iter().find(|s| s.name == "x");
+        assert!(x.is_some(), "Should extract first variable 'x'");
+        assert_eq!(x.unwrap().kind, SymbolKind::Variable);
+
+        let y = symbols.iter().find(|s| s.name == "y");
+        assert!(y.is_some(), "Should extract second variable 'y' from multi-declaration");
+        assert_eq!(y.unwrap().kind, SymbolKind::Variable);
+
+        let z = symbols.iter().find(|s| s.name == "z");
+        assert!(z.is_some(), "Should extract third variable 'z' from multi-declaration");
+        assert_eq!(z.unwrap().kind, SymbolKind::Variable);
+
+        // Both constants from "const double a = 1.0, b = 2.0;" should be extracted
+        let a = symbols.iter().find(|s| s.name == "a");
+        assert!(a.is_some(), "Should extract first constant 'a'");
+        assert_eq!(a.unwrap().kind, SymbolKind::Constant);
+
+        let b = symbols.iter().find(|s| s.name == "b");
+        assert!(b.is_some(), "Should extract second constant 'b' from multi-declaration");
+        assert_eq!(b.unwrap().kind, SymbolKind::Constant);
+    }
 }

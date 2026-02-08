@@ -25,7 +25,7 @@ pub(super) fn extract_struct(
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Class,
+        SymbolKind::Struct,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility),
@@ -67,7 +67,7 @@ pub(super) fn extract_union(
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Class,
+        SymbolKind::Union,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility),
@@ -160,7 +160,7 @@ pub(super) fn extract_struct_field(
     let field_type = if let Some(type_node) = type_node {
         base.get_node_text(&type_node)
     } else {
-        "unknown".to_string()
+        String::new()
     };
 
     let signature = format!("{}: {}", field_name, field_type);
@@ -198,7 +198,7 @@ pub(super) fn extract_error_type(
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Class,
+        SymbolKind::Enum,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(Visibility::Public),
@@ -236,7 +236,7 @@ pub(super) fn extract_type_alias(
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Interface,
+        SymbolKind::Type,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility),

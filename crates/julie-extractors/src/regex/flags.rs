@@ -1,14 +1,14 @@
 /// Get the type/position of an anchor
-pub(crate) fn get_anchor_type(anchor_text: &str) -> String {
+pub(crate) fn get_anchor_type(anchor_text: &str) -> Option<String> {
     match anchor_text {
-        "^" => "start".to_string(),
-        "$" => "end".to_string(),
-        r"\b" => "word-boundary".to_string(),
-        r"\B" => "non-word-boundary".to_string(),
-        r"\A" => "string-start".to_string(),
-        r"\Z" => "string-end".to_string(),
-        r"\z" => "absolute-end".to_string(),
-        _ => "unknown".to_string(),
+        "^" => Some("start".to_string()),
+        "$" => Some("end".to_string()),
+        r"\b" => Some("word-boundary".to_string()),
+        r"\B" => Some("non-word-boundary".to_string()),
+        r"\A" => Some("string-start".to_string()),
+        r"\Z" => Some("string-end".to_string()),
+        r"\z" => Some("absolute-end".to_string()),
+        _ => None,
     }
 }
 
@@ -56,24 +56,19 @@ pub(crate) fn get_predefined_class_category(class_text: &str) -> String {
 }
 
 /// Extract unicode property name from pattern like \p{Letter}
-pub(crate) fn extract_unicode_property_name(property_text: &str) -> String {
-    if let Some(start) = property_text
+pub(crate) fn extract_unicode_property_name(property_text: &str) -> Option<String> {
+    let start = property_text
         .find(r"\p{")
-        .or_else(|| property_text.find(r"\P{"))
-    {
-        if let Some(end) = property_text[start..].find('}') {
-            let inner_start = start + 3;
-            let inner_end = start + end;
-            // SAFETY: Check char boundaries before slicing to prevent UTF-8 panic
-            if property_text.is_char_boundary(inner_start)
-                && property_text.is_char_boundary(inner_end)
-            {
-                let inner = &property_text[inner_start..inner_end];
-                return inner.to_string();
-            }
-        }
+        .or_else(|| property_text.find(r"\P{"))?;
+    let end = property_text[start..].find('}')?;
+    let inner_start = start + 3;
+    let inner_end = start + end;
+    // SAFETY: Check char boundaries before slicing to prevent UTF-8 panic
+    if property_text.is_char_boundary(inner_start) && property_text.is_char_boundary(inner_end) {
+        Some(property_text[inner_start..inner_end].to_string())
+    } else {
+        None
     }
-    "unknown".to_string()
 }
 
 /// Extract group number from a numeric backreference like \1 or \2
@@ -112,18 +107,17 @@ pub(crate) fn extract_backref_group_name(backref_text: &str) -> Option<String> {
 }
 
 /// Extract the condition from a conditional pattern like (?(1)...)
-pub(crate) fn extract_condition(conditional_text: &str) -> String {
-    if let Some(start) = conditional_text.find("(?(") {
-        if let Some(end) = conditional_text[start + 3..].find(')') {
-            let cond_start = start + 3;
-            let cond_end = start + 3 + end;
-            // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
-            if conditional_text.is_char_boundary(cond_start)
-                && conditional_text.is_char_boundary(cond_end)
-            {
-                return conditional_text[cond_start..cond_end].to_string();
-            }
-        }
+pub(crate) fn extract_condition(conditional_text: &str) -> Option<String> {
+    let start = conditional_text.find("(?(")?;
+    let end = conditional_text[start + 3..].find(')')?;
+    let cond_start = start + 3;
+    let cond_end = start + 3 + end;
+    // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
+    if conditional_text.is_char_boundary(cond_start)
+        && conditional_text.is_char_boundary(cond_end)
+    {
+        Some(conditional_text[cond_start..cond_end].to_string())
+    } else {
+        None
     }
-    "unknown".to_string()
 }

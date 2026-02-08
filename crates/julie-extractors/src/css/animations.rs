@@ -93,7 +93,7 @@ impl AnimationExtractor {
                 let mut child_cursor = child.walk();
                 for grandchild in child.children(&mut child_cursor) {
                     match grandchild.kind() {
-                        "from" | "to" | "percentage" => {
+                        "from" | "to" => {
                             keyframe_selector = Some(grandchild);
                             break;
                         }

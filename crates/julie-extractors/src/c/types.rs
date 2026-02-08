@@ -126,7 +126,7 @@ pub(super) fn extract_variable_type(base: &BaseExtractor, node: tree_sitter::Nod
     }
 
     if base_type.is_empty() {
-        return "unknown".to_string();
+        return String::new();
     }
 
     // Search for pointer declarators in the entire subtree
@@ -284,7 +284,7 @@ pub(super) fn extract_underlying_type_from_type_definition(
             _ => return base.get_node_text(&child),
         }
     }
-    "unknown".to_string()
+    String::new()
 }
 
 /// Extract the underlying type from a typedef declaration
@@ -329,7 +329,7 @@ pub(super) fn extract_underlying_type_from_declaration(
     }
 
     if types.is_empty() {
-        "unknown".to_string()
+        String::new()
     } else {
         types.join(" ")
     }

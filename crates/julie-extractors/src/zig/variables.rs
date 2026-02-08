@@ -129,7 +129,7 @@ fn extract_struct_assignment(
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Class,
+        SymbolKind::Struct,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility),
@@ -164,7 +164,7 @@ fn extract_union_assignment(
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Class,
+        SymbolKind::Union,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility),
@@ -249,7 +249,7 @@ fn extract_error_set_assignment(
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Class,
+        SymbolKind::Enum,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility),
@@ -293,7 +293,7 @@ fn extract_function_type_assignment(
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Interface,
+        SymbolKind::Type,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility),

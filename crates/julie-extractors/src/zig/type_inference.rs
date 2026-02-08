@@ -43,7 +43,7 @@ pub(super) fn infer_types(symbols: &[Symbol]) -> HashMap<String, String> {
 
         use crate::base::SymbolKind;
         match symbol.kind {
-            SymbolKind::Class => {
+            SymbolKind::Struct => {
                 if symbol
                     .metadata
                     .as_ref()

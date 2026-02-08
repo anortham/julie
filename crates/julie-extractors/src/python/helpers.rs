@@ -3,6 +3,34 @@
 use super::PythonExtractor;
 use tree_sitter::Node;
 
+/// Walk up the AST tree to find the nearest enclosing class_definition
+/// and return its generated symbol ID. Returns None if not inside a class.
+pub fn find_parent_class_id(extractor: &PythonExtractor, node: &Node) -> Option<String> {
+    let mut current = *node;
+    while let Some(parent) = current.parent() {
+        if parent.kind() == "class_definition" {
+            let class_name = match parent.child_by_field_name("name") {
+                Some(name_node) => extractor.base().get_node_text(&name_node),
+                None => {
+                    current = parent;
+                    continue;
+                }
+            };
+
+            let start_pos = parent.start_position();
+            let parent_id = extractor.base().generate_id(
+                &class_name,
+                start_pos.row as u32,
+                start_pos.column as u32,
+            );
+
+            return Some(parent_id);
+        }
+        current = parent;
+    }
+    None
+}
+
 /// Extract argument list from a superclasses node
 pub fn extract_argument_list(extractor: &PythonExtractor, node: &Node) -> Vec<String> {
     let mut args = Vec::new();

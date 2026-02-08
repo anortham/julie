@@ -310,16 +310,16 @@ mod tests {
                 .contains("typedef struct Point")
         );
 
-        // Struct definitions - expects these as classes
+        // Struct definitions
         let point_struct = symbols.iter().find(|s| {
             s.name == "Point"
-                && s.kind == SymbolKind::Class
+                && s.kind == SymbolKind::Struct
                 && s.signature
                     .as_ref()
                     .map_or(false, |sig| sig.contains("struct Point"))
         });
         assert!(point_struct.is_some());
-        assert_eq!(point_struct.unwrap().kind, SymbolKind::Class); // Structs as classes
+        assert_eq!(point_struct.unwrap().kind, SymbolKind::Struct);
 
         let rectangle_struct = symbols.iter().find(|s| {
             s.signature
