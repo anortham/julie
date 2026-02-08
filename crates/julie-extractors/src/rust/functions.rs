@@ -120,10 +120,29 @@ pub(super) fn extract_function(
 pub(super) fn extract_impl(extractor: &mut RustExtractor, node: Node, _parent_id: Option<String>) {
     let base = extractor.get_base_mut();
     // Store impl block info for phase 2 processing
-    let type_node = node
+    //
+    // Handle both direct types and scoped paths:
+    //   impl MyStruct { ... }          → child is "type_identifier"
+    //   impl super::MyStruct { ... }   → child is "scoped_type_identifier"
+    //   impl crate::foo::Bar { ... }   → child is "scoped_type_identifier"
+    let type_name = node
         .children(&mut node.walk())
-        .find(|c| c.kind() == "type_identifier");
-    let type_name = match type_node.map(|n| base.get_node_text(&n)) {
+        .find_map(|c| match c.kind() {
+            "type_identifier" => Some(base.get_node_text(&c)),
+            "scoped_type_identifier" => {
+                // Extract the last segment (the actual type name) from the scoped path
+                let mut last_type = None;
+                let mut cursor = c.walk();
+                for child in c.children(&mut cursor) {
+                    if child.kind() == "type_identifier" {
+                        last_type = Some(base.get_node_text(&child));
+                    }
+                }
+                last_type
+            }
+            _ => None,
+        });
+    let type_name = match type_name {
         Some(name) => name,
         None => return, // Skip impl blocks where we can't determine the type name
     };
