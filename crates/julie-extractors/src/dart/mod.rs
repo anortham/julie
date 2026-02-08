@@ -334,7 +334,7 @@ fn recover_from_node_recursive(
             // e.g. green('Green') parses as member_access with identifier "green"
             if let Some(id_node) = find_child_by_type(node, "identifier") {
                 let name = get_node_text(&id_node);
-                if !already_extracted.contains(&name) {
+                if !already_extracted.contains(&name) && looks_like_enum_value(&name) {
                     let sym = base.create_symbol(
                         &id_node,
                         name,
@@ -389,4 +389,33 @@ fn recover_from_node_recursive(
     for child in node.children(&mut cursor) {
         recover_from_node_recursive(base, &child, parent_id, symbols, already_extracted);
     }
+}
+
+/// Check whether an identifier plausibly looks like a Dart enum value.
+///
+/// Filters out noise that can leak through ERROR recovery:
+/// - Private identifiers (start with `_`) are never enum values
+/// - Dart keywords/built-ins that appear as identifiers in misparsed trees
+/// - Single-character identifiers (loop variables, type params)
+fn looks_like_enum_value(name: &str) -> bool {
+    // Private identifiers are never enum values
+    if name.starts_with('_') {
+        return false;
+    }
+
+    // Single characters are noise (loop vars, type params)
+    if name.len() <= 1 {
+        return false;
+    }
+
+    // Dart keywords and built-in names that can appear as identifiers in ERROR nodes
+    !matches!(
+        name,
+        "return" | "switch" | "case" | "default" | "throw" | "break" | "continue"
+            | "this" | "super" | "if" | "else" | "for" | "while" | "do" | "try" | "catch"
+            | "finally" | "new" | "const" | "var" | "final" | "static" | "void" | "null"
+            | "true" | "false" | "async" | "await" | "yield" | "get" | "set"
+            | "String" | "int" | "double" | "bool" | "List" | "Map" | "Set"
+            | "Future" | "Stream" | "dynamic" | "Object" | "num"
+    )
 }

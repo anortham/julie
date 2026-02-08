@@ -2043,6 +2043,177 @@ class Person {
         }
     }
 
+    mod typedef_kind {
+        use super::*;
+
+        #[test]
+        fn test_typedef_uses_type_kind() {
+            let code = r#"
+typedef StringCallback = void Function(String);
+typedef NumberProcessor<T extends num> = T Function(T);
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let callback = symbols
+                .iter()
+                .find(|s| s.name == "StringCallback")
+                .expect("Should extract StringCallback typedef");
+            assert_eq!(
+                callback.kind,
+                SymbolKind::Type,
+                "typedef should be SymbolKind::Type, not Class"
+            );
+
+            let processor = symbols
+                .iter()
+                .find(|s| s.name == "NumberProcessor")
+                .expect("Should extract NumberProcessor typedef");
+            assert_eq!(
+                processor.kind,
+                SymbolKind::Type,
+                "generic typedef should also be SymbolKind::Type"
+            );
+        }
+    }
+
+    mod error_recovery {
+        use super::*;
+
+        #[test]
+        fn test_error_recovery_no_false_positives_from_method_bodies() {
+            // Enhanced enum with member accesses in method bodies.
+            // The recovery should only extract actual enum values, not
+            // identifiers from method bodies (which the misparsed tree
+            // may present as member_access nodes).
+            let code = r#"
+enum Color {
+  red('Red'),
+  green('Green'),
+  blue('Blue');
+
+  const Color(this.displayName);
+  final String displayName;
+
+  static Color fromHex(String hex) {
+    switch (hex) {
+      case '#FF0000': return Color.red;
+      case '#00FF00': return Color.green;
+      case '#0000FF': return Color.blue;
+      default: throw ArgumentError('Invalid hex: $hex');
+    }
+  }
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let enum_members: Vec<_> = symbols
+                .iter()
+                .filter(|s| s.kind == SymbolKind::EnumMember)
+                .collect();
+
+            // Only red, green, blue should be EnumMember -- nothing else
+            let expected = ["red", "green", "blue"];
+            let false_positives: Vec<_> = enum_members
+                .iter()
+                .filter(|s| !expected.contains(&s.name.as_str()))
+                .map(|s| s.name.as_str())
+                .collect();
+            assert!(
+                false_positives.is_empty(),
+                "Should not have false positive EnumMembers: {:?}",
+                false_positives
+            );
+        }
+
+        #[test]
+        fn test_error_recovery_skips_non_enum_identifiers() {
+            // Enhanced enum with method bodies containing member accesses.
+            // The tree-sitter parser misparsees the body after the first enum_constant,
+            // pushing it into ERROR/expression_statement nodes. The recovery should
+            // NOT extract identifiers from method bodies as EnumMember.
+            let code = r#"
+enum Vehicle {
+  car('Car', 4),
+  truck('Truck', 6),
+  bike('Bike', 2);
+
+  const Vehicle(this.displayName, this.wheels);
+  final String displayName;
+  final int wheels;
+
+  String describe() {
+    return '$displayName has $wheels wheels';
+  }
+
+  static Vehicle fromName(String name) {
+    return values.firstWhere((v) => v.displayName == name);
+  }
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Enum constants should be extracted
+            assert!(
+                symbols
+                    .iter()
+                    .any(|s| s.name == "car" && s.kind == SymbolKind::EnumMember),
+                "Should extract 'car' enum member"
+            );
+
+            // Should NOT extract method parameters or local identifiers as EnumMember
+            // "displayName" is a field, not an enum constant
+            let false_enum_members: Vec<_> = symbols
+                .iter()
+                .filter(|s| {
+                    s.kind == SymbolKind::EnumMember
+                        && !["car", "truck", "bike"].contains(&s.name.as_str())
+                })
+                .map(|s| s.name.as_str())
+                .collect();
+            assert!(
+                false_enum_members.is_empty(),
+                "Should not extract non-enum identifiers as EnumMember, but found: {:?}",
+                false_enum_members
+            );
+        }
+    }
+
     mod imports {
         use super::*;
 

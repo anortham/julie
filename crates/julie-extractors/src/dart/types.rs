@@ -210,7 +210,7 @@ pub(super) fn extract_typedef(
     let mut symbol = base.create_symbol(
         node,
         name,
-        SymbolKind::Class,
+        SymbolKind::Type,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(if is_private {
