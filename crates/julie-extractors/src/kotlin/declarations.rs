@@ -47,7 +47,7 @@ pub(super) fn extract_function(
 
     signature.push_str(&parameters.unwrap_or_else(|| "()".to_string()));
 
-    if let Some(return_type) = return_type {
+    if let Some(ref return_type) = return_type {
         signature.push_str(&format!(": {}", return_type));
     }
 
@@ -77,7 +77,6 @@ pub(super) fn extract_function(
     };
 
     let visibility = helpers::determine_visibility(&modifiers);
-    let return_type = helpers::extract_return_type(base, node);
 
     let mut metadata = HashMap::from([
         (
@@ -111,6 +110,58 @@ pub(super) fn extract_function(
             visibility: Some(visibility),
             parent_id: parent_id.map(|s| s.to_string()),
             metadata: Some(metadata),
+            doc_comment,
+        },
+    ))
+}
+
+/// Extract a Kotlin secondary constructor
+///
+/// Secondary constructors use the `constructor` keyword and delegate to the
+/// primary constructor via `this(...)` or to a parent class via `super(...)`.
+/// Tree-sitter node type: `secondary_constructor` with children:
+///   - `function_value_parameters` (the parameter list)
+///   - `constructor_delegation_call` (the `this(...)` / `super(...)` call)
+///   - `modifiers` (optional)
+///   - `block` (optional body)
+pub(super) fn extract_secondary_constructor(
+    base: &mut BaseExtractor,
+    node: &Node,
+    parent_id: Option<&str>,
+    class_name: &str,
+) -> Option<Symbol> {
+    let modifiers = helpers::extract_modifiers(base, node);
+    let parameters = helpers::extract_parameters(base, node);
+
+    let mut signature = "constructor".to_string();
+
+    if !modifiers.is_empty() {
+        signature = format!("{} {}", modifiers.join(" "), signature);
+    }
+
+    signature.push_str(&parameters.unwrap_or_else(|| "()".to_string()));
+
+    let visibility = helpers::determine_visibility(&modifiers);
+
+    // Extract KDoc comment
+    let doc_comment = base.find_doc_comment(node);
+
+    Some(base.create_symbol(
+        node,
+        class_name.to_string(),
+        SymbolKind::Constructor,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(visibility),
+            parent_id: parent_id.map(|s| s.to_string()),
+            metadata: Some(HashMap::from([
+                ("type".to_string(), Value::String("constructor".to_string())),
+                ("modifiers".to_string(), Value::String(modifiers.join(","))),
+                (
+                    "constructorKind".to_string(),
+                    Value::String("secondary".to_string()),
+                ),
+            ])),
             doc_comment,
         },
     ))

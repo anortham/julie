@@ -119,6 +119,20 @@ impl KotlinExtractor {
                     parent_id.as_deref(),
                 );
             }
+            "secondary_constructor" => {
+                // Look up the parent class name from already-extracted symbols
+                let class_name = parent_id
+                    .as_deref()
+                    .and_then(|pid| symbols.iter().find(|s| s.id == pid))
+                    .map(|s| s.name.clone())
+                    .unwrap_or_else(|| "constructor".to_string());
+                symbol = declarations::extract_secondary_constructor(
+                    &mut self.base,
+                    &node,
+                    parent_id.as_deref(),
+                    &class_name,
+                );
+            }
             "package_header" => {
                 symbol = declarations::extract_package(
                     &mut self.base,

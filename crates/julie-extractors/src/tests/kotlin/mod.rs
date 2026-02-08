@@ -1886,6 +1886,140 @@ class MyClass {
     }
 
     #[test]
+    fn test_secondary_constructor() {
+        let code = r#"
+class Person(val name: String) {
+    var age: Int = 0
+
+    constructor(name: String, age: Int) : this(name) {
+        this.age = age
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let constructors: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Constructor)
+            .collect();
+        assert!(
+            !constructors.is_empty(),
+            "Secondary constructor should be extracted, got symbols: {:?}",
+            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        );
+        let secondary = constructors.iter().find(|c| {
+            c.signature
+                .as_deref()
+                .unwrap_or("")
+                .contains("age")
+        });
+        assert!(
+            secondary.is_some(),
+            "Secondary constructor should have parameters in signature"
+        );
+
+        // Should be a child of the Person class
+        let person = symbols.iter().find(|s| s.name == "Person").unwrap();
+        let secondary = secondary.unwrap();
+        assert_eq!(
+            secondary.parent_id.as_ref(),
+            Some(&person.id),
+            "Secondary constructor should be a child of its containing class"
+        );
+    }
+
+    #[test]
+    fn test_multiple_secondary_constructors() {
+        let code = r#"
+class Color(val hex: String) {
+    constructor(r: Int, g: Int, b: Int) : this(toHex(r, g, b))
+    constructor(name: String) : this(resolveHex(name))
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let constructors: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Constructor)
+            .collect();
+        assert!(
+            constructors.len() >= 2,
+            "Both secondary constructors should be extracted, got {} constructors: {:?}",
+            constructors.len(),
+            constructors.iter().map(|c| &c.signature).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_secondary_constructor_signature_format() {
+        let code = r#"
+class Config(val name: String) {
+    constructor(name: String, port: Int) : this(name) {
+        // body
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let constructor = symbols
+            .iter()
+            .find(|s| s.kind == SymbolKind::Constructor)
+            .expect("Should find secondary constructor");
+
+        // The constructor should use the class name
+        assert!(
+            constructor.name == "Config",
+            "Secondary constructor should use class name, got: {}",
+            constructor.name
+        );
+        // Signature should contain parameters
+        let sig = constructor.signature.as_deref().unwrap_or("");
+        assert!(
+            sig.contains("constructor"),
+            "Signature should contain 'constructor', got: {}",
+            sig
+        );
+        assert!(
+            sig.contains("name: String") && sig.contains("port: Int"),
+            "Signature should include parameter types, got: {}",
+            sig
+        );
+    }
+
+    #[test]
     fn test_constructor_param_types_in_signature() {
         // Constructor parameters with types should include types in property signatures
         let code = r#"

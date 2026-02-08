@@ -69,7 +69,7 @@ pub(super) fn extract_property(
         signature = format!("{} {}", modifiers.join(" "), signature);
     }
 
-    if let Some(property_type) = property_type {
+    if let Some(ref property_type) = property_type {
         signature.push_str(&format!(": {}", property_type));
     }
 
@@ -92,7 +92,6 @@ pub(super) fn extract_property(
     };
 
     let visibility = helpers::determine_visibility(&modifiers);
-    let property_type = helpers::extract_property_type(base, node);
 
     let mut metadata = HashMap::from([
         (
