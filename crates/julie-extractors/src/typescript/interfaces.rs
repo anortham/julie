@@ -205,21 +205,108 @@ pub(super) fn extract_property(
     extractor: &mut TypeScriptExtractor,
     node: Node,
 ) -> Option<Symbol> {
+    use super::helpers;
+
     let name_node = node
         .child_by_field_name("name")
         .or_else(|| node.child_by_field_name("key"));
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
+    // Extract visibility from accessibility_modifier (private/protected/public)
+    let visibility = helpers::extract_ts_visibility(node);
+
+    // Extract decorators
+    let content = extractor.base().content.clone();
+    let decorators = helpers::extract_decorator_names(node, &content);
+
+    // Check for readonly
+    let is_readonly = helpers::has_readonly(node);
+
+    // Build signature with decorators, access modifier, readonly, and type annotation
+    let mut sig_parts = Vec::new();
+    let decorator_prefix = helpers::decorator_prefix(&decorators);
+    if !decorator_prefix.is_empty() {
+        sig_parts.push(decorator_prefix.trim().to_string());
+    }
+    if is_readonly {
+        sig_parts.push("readonly".to_string());
+    }
+    sig_parts.push(name.clone());
+    // Append type annotation if present
+    if let Some(type_ann) = extractor.base().get_field_text(&node, "type") {
+        sig_parts.push(format!(": {}", type_ann));
+    }
+    let signature = if sig_parts.len() > 1 || !decorators.is_empty() || is_readonly {
+        Some(sig_parts.join(" "))
+    } else {
+        None
+    };
+
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
+
+    // Find parent class
+    let parent_id = find_parent_class_or_interface_id(extractor, &node);
 
     Some(extractor.base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Property,
         SymbolOptions {
+            signature,
+            visibility,
+            parent_id,
             doc_comment,
             ..Default::default()
         },
     ))
+}
+
+/// Find the parent class or interface ID for a member node
+fn find_parent_class_or_interface_id(
+    extractor: &TypeScriptExtractor,
+    node: &Node,
+) -> Option<String> {
+    let mut current = node.parent();
+    while let Some(parent_node) = current {
+        match parent_node.kind() {
+            "class_declaration" | "interface_declaration" => {
+                if let Some(class_name_node) = parent_node.child_by_field_name("name") {
+                    let class_name = extractor.base().get_node_text(&class_name_node);
+                    let class_start = parent_node.start_position();
+                    let candidates = [
+                        extractor.base().generate_id(
+                            &class_name,
+                            class_start.row as u32,
+                            class_start.column as u32,
+                        ),
+                        extractor.base().generate_id(
+                            &class_name,
+                            class_name_node.start_position().row as u32,
+                            class_name_node.start_position().column as u32,
+                        ),
+                    ];
+
+                    for candidate in candidates {
+                        if extractor.base().symbol_map.contains_key(&candidate) {
+                            return Some(candidate);
+                        }
+                    }
+
+                    if let Some((id, _symbol)) =
+                        extractor.base().symbol_map.iter().find(|(_, symbol)| {
+                            symbol.name == class_name
+                                && (symbol.kind == SymbolKind::Class
+                                    || symbol.kind == SymbolKind::Interface)
+                        })
+                    {
+                        return Some(id.clone());
+                    }
+                }
+            }
+            _ => {}
+        }
+        current = parent_node.parent();
+    }
+    None
 }

@@ -127,8 +127,18 @@ pub(super) fn extract_method(
         SymbolKind::Method
     };
 
-    let signature = build_function_signature(extractor, &node, &name);
-    let visibility = extractor.base().extract_visibility(&node);
+    // Build base signature, then prepend decorators
+    let base_sig = build_function_signature(extractor, &node, &name);
+
+    // Extract decorators from preceding siblings (tree-sitter TS puts method decorators as siblings)
+    let content = extractor.base().content.clone();
+    let decorators = helpers::extract_preceding_decorator_names(node, &content);
+    let decorator_prefix = helpers::decorator_prefix(&decorators);
+    let signature = format!("{}{}", decorator_prefix, base_sig);
+
+    // Use TypeScript-specific visibility extraction (accessibility_modifier nodes)
+    let visibility = helpers::extract_ts_visibility(node)
+        .or_else(|| extractor.base().extract_visibility(&node));
 
     // Check for modifiers
     let is_async = helpers::has_modifier(node, "async");

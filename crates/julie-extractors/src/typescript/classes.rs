@@ -72,8 +72,14 @@ pub(super) fn extract_class(
     let is_abstract = helpers::has_modifier(node, "abstract");
     metadata.insert("isAbstract".to_string(), serde_json::json!(is_abstract));
 
+    // Extract decorators from child nodes
+    let content = extractor.base().content.clone();
+    let decorators = helpers::extract_decorator_names(node, &content);
+
     // Build signature
     let mut signature = String::new();
+    let decorator_prefix = helpers::decorator_prefix(&decorators);
+    signature.push_str(&decorator_prefix);
     if is_abstract {
         signature.push_str("abstract ");
     }
