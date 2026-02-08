@@ -165,7 +165,7 @@ pub(super) fn extract_constructor_parameters(
                 });
                 let param_type = type_node
                     .map(|n| base.get_node_text(&n))
-                    .unwrap_or_else(|| "".to_string());
+                    .unwrap_or_default();
 
                 // Get modifiers (like private)
                 let modifiers_node = child
@@ -173,7 +173,7 @@ pub(super) fn extract_constructor_parameters(
                     .find(|n| n.kind() == "modifiers");
                 let modifiers = modifiers_node
                     .map(|n| base.get_node_text(&n))
-                    .unwrap_or_else(|| "".to_string());
+                    .unwrap_or_default();
 
                 // Get default value (handle various literal types and expressions)
                 let default_value = child.children(&mut child.walk()).find(|n| {
@@ -188,42 +188,33 @@ pub(super) fn extract_constructor_parameters(
                 });
                 let default_val = default_value
                     .map(|n| format!(" = {}", base.get_node_text(&n)))
-                    .unwrap_or_else(|| "".to_string());
+                    .unwrap_or_default();
 
-                // Alternative: look for assignment pattern (= value)
-                let final_signature = if default_val.is_empty() {
-                    let children: Vec<Node> = child.children(&mut child.walk()).collect();
-                    if let Some(equal_index) =
-                        children.iter().position(|n| base.get_node_text(n) == "=")
-                    {
-                        if equal_index + 1 < children.len() {
-                            let value_node = &children[equal_index + 1];
-                            let default_assignment =
-                                format!(" = {}", base.get_node_text(value_node));
-                            let signature2 = format!("{} {}", binding, name);
-                            let final_sig = if !param_type.is_empty() {
-                                format!("{}: {}{}", signature2, param_type, default_assignment)
-                            } else {
-                                format!("{}{}", signature2, default_assignment)
-                            };
-                            if !modifiers.is_empty() {
-                                format!("{} {}", modifiers, final_sig)
-                            } else {
-                                final_sig
-                            }
-                        } else {
-                            format!("{} {}", binding, name)
-                        }
-                    } else {
-                        format!("{} {}", binding, name)
-                    }
-                } else {
-                    // Build signature
+                // Build the base signature: [modifiers] binding name[: type][ = default]
+                let final_signature = {
                     let mut signature = format!("{} {}", binding, name);
                     if !param_type.is_empty() {
                         signature.push_str(&format!(": {}", param_type));
                     }
-                    signature.push_str(&default_val);
+
+                    // Check for default value (either from matched literal or from = token)
+                    if !default_val.is_empty() {
+                        signature.push_str(&default_val);
+                    } else {
+                        // Alternative: look for assignment pattern (= value)
+                        let children: Vec<Node> = child.children(&mut child.walk()).collect();
+                        if let Some(equal_index) =
+                            children.iter().position(|n| base.get_node_text(n) == "=")
+                        {
+                            if equal_index + 1 < children.len() {
+                                let value_node = &children[equal_index + 1];
+                                signature.push_str(&format!(
+                                    " = {}",
+                                    base.get_node_text(value_node)
+                                ));
+                            }
+                        }
+                    }
 
                     // Add modifiers to signature if present
                     if !modifiers.is_empty() {

@@ -1787,5 +1787,161 @@ class Test {
         );
     }
 }
+
+// ========================================================================
+// Companion Object & Constructor Parameter Tests
+// ========================================================================
+
+#[cfg(test)]
+mod companion_and_constructor_tests {
+    use super::*;
+
+    #[test]
+    fn test_named_companion_object() {
+        let code = r#"
+class MyClass {
+    companion object Factory {
+        fun create(): MyClass = MyClass()
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Named companion object should use the custom name "Factory"
+        let factory = symbols.iter().find(|s| s.name == "Factory");
+        assert!(
+            factory.is_some(),
+            "Named companion object should have name 'Factory', got symbols: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        let factory = factory.unwrap();
+        assert_eq!(factory.kind, SymbolKind::Class);
+        assert!(
+            factory.signature.as_ref().unwrap().contains("companion object Factory"),
+            "Signature should contain 'companion object Factory', got: {}",
+            factory.signature.as_ref().unwrap()
+        );
+
+        // The create() method should be a child of Factory
+        let create = symbols.iter().find(|s| s.name == "create");
+        assert!(create.is_some(), "Should find 'create' method");
+        assert_eq!(
+            create.unwrap().parent_id.as_ref(),
+            Some(&factory.id),
+            "create() should be a child of the Factory companion object"
+        );
+    }
+
+    #[test]
+    fn test_unnamed_companion_object_remains_companion() {
+        // This is the existing behavior — unnamed companions should still be "Companion"
+        let code = r#"
+class MyClass {
+    companion object {
+        fun getInstance(): MyClass = MyClass()
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        let companion = symbols.iter().find(|s| s.name == "Companion");
+        assert!(
+            companion.is_some(),
+            "Unnamed companion object should have name 'Companion'"
+        );
+        assert!(
+            companion
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                == "companion object",
+            "Signature should be exactly 'companion object', got: {}",
+            companion.unwrap().signature.as_ref().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_constructor_param_types_in_signature() {
+        // Constructor parameters with types should include types in property signatures
+        let code = r#"
+class Config(val name: String, val count: Int) {
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Verify typed params include type in signature
+        let name_param = symbols.iter().find(|s| s.name == "name");
+        assert!(name_param.is_some());
+        let sig = name_param.unwrap().signature.as_ref().unwrap();
+        assert!(
+            sig.contains("name: String"),
+            "Should have proper type in signature, got: {}",
+            sig
+        );
+
+        let count_param = symbols.iter().find(|s| s.name == "count");
+        assert!(count_param.is_some());
+        let sig = count_param.unwrap().signature.as_ref().unwrap();
+        assert!(
+            sig.contains("count: Int"),
+            "Should have proper type in signature, got: {}",
+            sig
+        );
+
+        // Verify no trailing ": " with empty type in any signature
+        for s in &symbols {
+            if let Some(ref sig) = s.signature {
+                assert!(
+                    !sig.ends_with(": "),
+                    "Signature for '{}' should not end with trailing ': ', got: '{}'",
+                    s.name, sig
+                );
+                // Also check for ": )" pattern which would indicate empty type before closing paren
+                assert!(
+                    !sig.contains(": )"),
+                    "Signature for '{}' should not contain ': )', got: '{}'",
+                    s.name, sig
+                );
+            }
+        }
+    }
+}
 mod types; // Phase 4: Type extraction verification tests
 mod cross_file_relationships; // Cross-file relationship resolution tests
