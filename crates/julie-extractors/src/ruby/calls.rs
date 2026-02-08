@@ -58,12 +58,11 @@ pub(super) fn try_extract_struct_new(
     let name = base.get_node_text(&left_side);
 
     // Build signature: "Person = Struct.new(:name, :age, :email)"
-    let call_text = base.get_node_text(&right_side);
     // Strip the do_block from the signature if present (keep just the Struct.new(...) part)
     let signature = if let Some(arg_list) = right_side.child_by_field_name("arguments") {
         format!("{} = Struct.new{}", name, base.get_node_text(&arg_list))
     } else {
-        format!("{} = {}", name, call_text)
+        format!("{} = {}", name, base.get_node_text(&right_side))
     };
 
     // Extract doc comment from the assignment node

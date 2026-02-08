@@ -197,6 +197,9 @@ Color = Struct.new(:r, :g, :b)
 
     #[test]
     fn test_module_function_with_arg() {
+        // NOTE: The argument form 'module_function :helper' is recognized but does not
+        // retroactively change helper's visibility. This test ensures it doesn't crash
+        // or produce spurious symbols.
         let code = r#"
 module MyModule
   def helper
