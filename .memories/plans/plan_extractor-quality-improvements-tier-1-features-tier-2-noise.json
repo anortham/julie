@@ -1,0 +1,13 @@
+{
+  "id": "plan_extractor-quality-improvements-tier-1-features-tier-2-noise",
+  "timestamp": 1770565069,
+  "type": "plan",
+  "title": "Extractor Quality Improvements: Tier 1 Features + Tier 2 Noise",
+  "status": "active",
+  "content": "## Goals\n- Fill critical feature gaps in 4 extractors (Vue Composition API, Rust fields/variants, Dart imports, TOML key-value pairs)\n- Eliminate search-polluting noise from 4 extractors (CSS keyframe %, Bash control flow, Regex atoms, Razor invocations-as-definitions)\n\n## Tasks (8 total, sequential)\n1. **TOML key-value pairs** — extract `pair` nodes as `SymbolKind::Property`\n2. **Rust struct fields + enum variants** — `SymbolKind::Field` and `SymbolKind::EnumMember`\n3. **CSS keyframe noise** — stop extracting `0%`/`50%`/`from`/`to` as symbols\n4. **Bash control flow** — verify + test that for/while/if don't produce symbols\n5. **Dart imports** — new `imports.rs` module for import/export/library/part\n6. **Vue Composition API** — `<script setup>` with tree-sitter JS/TS parsing\n7. **Razor invocation noise** — stop extracting `Html.Raw()` etc. as definitions\n8. **Regex noise** — skip individual literals/anchors/quantifiers\n\n## Plan file\n`docs/plans/2026-02-08-extractor-quality-improvements.md`",
+  "git": {
+    "branch": "main",
+    "commit": "bd78329",
+    "dirty": true
+  }
+}
