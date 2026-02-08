@@ -1,5 +1,3 @@
-use super::helpers;
-use super::tables;
 /// Variable and assignment extraction
 ///
 /// Handles extraction of:
@@ -8,9 +6,133 @@ use super::tables;
 /// - Assignment statements: `x, y = 1, 2`
 /// - Property assignments: `obj.prop = value`
 /// - Module property assignments: `M.PI = 3.14159`
+use super::helpers;
+use super::tables;
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;
+
+/// Collect non-comma children from an expression_list node.
+fn collect_expression_nodes<'a>(expr_list: Node<'a>) -> Vec<Node<'a>> {
+    let mut cursor = expr_list.walk();
+    expr_list
+        .children(&mut cursor)
+        .filter(|child| child.kind() != ",")
+        .collect()
+}
+
+/// Infer SymbolKind and data type from an expression node.
+///
+/// `is_field` controls whether function definitions become Method (true) or Function (false).
+/// Returns (kind, data_type) where kind is the override (if any) and data_type is the
+/// inferred type string.
+fn infer_kind_and_type(
+    base: &BaseExtractor,
+    expression: Node,
+    is_field: bool,
+) -> (SymbolKind, String) {
+    match expression.kind() {
+        "function_definition" | "function" | "function_expression" => {
+            let kind = if is_field {
+                SymbolKind::Method
+            } else {
+                SymbolKind::Function
+            };
+            (kind, "function".to_string())
+        }
+        "expression_list" => {
+            if helpers::contains_function_definition(expression) {
+                let kind = if is_field {
+                    SymbolKind::Method
+                } else {
+                    SymbolKind::Function
+                };
+                (kind, "function".to_string())
+            } else {
+                let data_type = helpers::infer_type_from_expression(base, expression);
+                let kind = if data_type == "import" {
+                    SymbolKind::Import
+                } else if is_field {
+                    SymbolKind::Field
+                } else {
+                    SymbolKind::Variable
+                };
+                (kind, data_type)
+            }
+        }
+        _ => {
+            let data_type = helpers::infer_type_from_expression(base, expression);
+            let kind = if data_type == "import" {
+                SymbolKind::Import
+            } else if is_field {
+                SymbolKind::Field
+            } else {
+                SymbolKind::Variable
+            };
+            (kind, data_type)
+        }
+    }
+}
+
+/// Resolve dot-notation name (e.g., "M.PI") into property name and parent symbol ID.
+///
+/// Returns Some((property_name, parent_id)) for valid two-part dot notation,
+/// or None if the name doesn't contain a dot or has more than two parts.
+fn resolve_dot_property(name: &str, symbols: &[Symbol]) -> Option<(String, Option<String>)> {
+    if !name.contains('.') {
+        return None;
+    }
+    let parts: Vec<&str> = name.split('.').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let object_name = parts[0];
+    let property_name = parts[1];
+    let parent_id = symbols
+        .iter()
+        .find(|s| s.name == object_name)
+        .map(|s| s.id.clone());
+    Some((property_name.to_string(), parent_id))
+}
+
+/// Build metadata HashMap with dataType and create + push a symbol.
+///
+/// If the expression is a table constructor, also extracts table fields as children.
+fn push_variable_symbol(
+    symbols: &mut Vec<Symbol>,
+    base: &mut BaseExtractor,
+    name_node: &Node,
+    name: String,
+    kind: SymbolKind,
+    data_type: String,
+    signature: String,
+    parent_id: Option<String>,
+    visibility: Visibility,
+    doc_comment: Option<String>,
+    expression: Option<&Node>,
+) {
+    let mut metadata = HashMap::new();
+    metadata.insert("dataType".to_string(), data_type.into());
+
+    let options = SymbolOptions {
+        signature: Some(signature),
+        parent_id,
+        visibility: Some(visibility),
+        metadata: Some(metadata),
+        doc_comment,
+    };
+
+    let symbol = base.create_symbol(name_node, name, kind, options);
+    symbols.push(symbol);
+
+    // If the expression is a table, extract its fields with this symbol as parent
+    if let Some(expr) = expression {
+        if expr.kind() == "table_constructor" || expr.kind() == "table" {
+            let parent_id = symbols.last().unwrap().id.clone();
+            tables::extract_table_fields(symbols, base, *expr, Some(&parent_id));
+        }
+    }
+}
 
 /// Extract local variable declarations: `local x = 5` or `local x, y = 1, 2`
 pub(super) fn extract_local_variable_declaration(
@@ -19,10 +141,7 @@ pub(super) fn extract_local_variable_declaration(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Get the assignment_statement child first
     let assignment_statement = helpers::find_child_by_type(node, "assignment_statement")?;
-
-    // Now get variable_list and expression_list from assignment_statement
     let variable_list = helpers::find_child_by_type(assignment_statement, "variable_list")?;
     let expression_list = helpers::find_child_by_type(assignment_statement, "expression_list");
 
@@ -33,18 +152,10 @@ pub(super) fn extract_local_variable_declaration(
         .filter(|child| child.kind() == "variable" || child.kind() == "identifier")
         .collect();
 
-    // Get the corresponding expressions if they exist
-    let expressions: Vec<Node> = if let Some(expr_list) = expression_list {
-        let mut expr_cursor = expr_list.walk();
-        expr_list
-            .children(&mut expr_cursor)
-            .filter(|child| child.kind() != ",") // Filter out commas
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let expressions: Vec<Node> = expression_list
+        .map(collect_expression_nodes)
+        .unwrap_or_default();
 
-    // Create symbols for each local variable
     for (i, var_node) in variables.iter().enumerate() {
         let name_node = if var_node.kind() == "identifier" {
             Some(*var_node)
@@ -56,73 +167,27 @@ pub(super) fn extract_local_variable_declaration(
 
         if let Some(name_node) = name_node {
             let name = base.get_node_text(&name_node);
-
-            // Check if the corresponding expression is a function or import
             let expression = expressions.get(i);
-            let mut kind = SymbolKind::Variable;
-            let mut data_type = String::new();
 
-            if let Some(expression) = expression {
-                match expression.kind() {
-                    "function_definition" | "function" | "function_expression" => {
-                        kind = SymbolKind::Function;
-                        data_type = "function".to_string();
-                    }
-                    "expression_list" => {
-                        // Check if expression_list contains a function_definition (for anonymous functions)
-                        if helpers::contains_function_definition(*expression) {
-                            kind = SymbolKind::Function;
-                            data_type = "function".to_string();
-                        } else {
-                            data_type = helpers::infer_type_from_expression(base, *expression);
-                            if data_type == "import" {
-                                kind = SymbolKind::Import;
-                            }
-                        }
-                    }
-                    _ => {
-                        data_type = helpers::infer_type_from_expression(base, *expression);
-                        if data_type == "import" {
-                            kind = SymbolKind::Import;
-                        }
-                    }
-                }
-            }
+            let (kind, data_type) = expression
+                .map(|expr| infer_kind_and_type(base, *expr, false))
+                .unwrap_or((SymbolKind::Variable, String::new()));
 
-            let mut metadata = HashMap::new();
-            metadata.insert("dataType".to_string(), data_type.clone().into());
-
-            // Extract LuaDoc comment
             let doc_comment = base.find_doc_comment(&node);
 
-            let options = SymbolOptions {
-                signature: Some(signature.clone()),
-                parent_id: parent_id.map(|s| s.to_string()),
-                visibility: Some(Visibility::Private),
-                metadata: Some(metadata),
+            push_variable_symbol(
+                symbols,
+                base,
+                &name_node,
+                name,
+                kind,
+                data_type,
+                signature.clone(),
+                parent_id.map(|s| s.to_string()),
+                Visibility::Private,
                 doc_comment,
-            };
-
-            let mut symbol = base.create_symbol(&name_node, name, kind, options);
-
-            // Set dataType as direct property for tests (matching pattern)
-            if let Some(ref mut metadata) = symbol.metadata {
-                metadata.insert("dataType".to_string(), data_type.into());
-            } else {
-                let mut metadata = HashMap::new();
-                metadata.insert("dataType".to_string(), data_type.into());
-                symbol.metadata = Some(metadata);
-            }
-
-            symbols.push(symbol.clone());
-
-            // If this is a table, extract its fields with this symbol as parent
-            if let Some(expression) = expression {
-                if expression.kind() == "table_constructor" || expression.kind() == "table" {
-                    let parent_id = symbols.last().unwrap().id.clone();
-                    tables::extract_table_fields(symbols, base, *expression, Some(&parent_id));
-                }
-            }
+                expression,
+            );
         }
     }
 
@@ -159,11 +224,9 @@ pub(super) fn extract_assignment_statement(
             .collect();
 
         for (i, var_node) in variables.iter().enumerate() {
-            // Handle "variable" nodes, direct "identifier" nodes, and "dot_index_expression" nodes
             let name_node = if var_node.kind() == "identifier" {
                 *var_node
             } else if var_node.kind() == "dot_index_expression" {
-                // Handle dot notation assignments like M.PI = 3.14159
                 *var_node
             } else {
                 helpers::find_child_by_type(*var_node, "identifier")?
@@ -172,161 +235,101 @@ pub(super) fn extract_assignment_statement(
             let name = base.get_node_text(&name_node);
             let signature = base.get_node_text(&node);
 
-            // Handle dot notation assignments like M.PI = 3.14159
-            let (actual_name, parent_symbol_id, kind_override) =
-                if var_node.kind() == "dot_index_expression" && name.contains('.') {
-                    let parts: Vec<&str> = name.split('.').collect();
-                    if parts.len() == 2 {
-                        let object_name = parts[0];
-                        let property_name = parts[1];
-
-                        // Find the parent object
-                        let parent_id = symbols
-                            .iter()
-                            .find(|s| s.name == object_name)
-                            .map(|s| s.id.clone());
-
-                        (
-                            property_name.to_string(),
-                            parent_id,
-                            Some(SymbolKind::Field),
-                        )
+            // Resolve dot notation (e.g., M.PI = 3.14159)
+            let (actual_name, parent_symbol_id, is_field) =
+                if var_node.kind() == "dot_index_expression" {
+                    if let Some((prop_name, prop_parent_id)) =
+                        resolve_dot_property(&name, symbols)
+                    {
+                        (prop_name, prop_parent_id, true)
                     } else {
-                        (name, None, None)
+                        (name, None, false)
                     }
                 } else {
-                    (name, None, None)
+                    (name, None, false)
                 };
 
-            // Determine kind and type based on the assignment
-            let is_field_assignment = matches!(kind_override, Some(SymbolKind::Field));
-            let mut kind = kind_override.unwrap_or(SymbolKind::Variable);
-            let mut data_type = String::new();
-
-            if right.kind() == "expression_list" {
-                let mut right_cursor = right.walk();
-                let expressions: Vec<Node> = right
-                    .children(&mut right_cursor)
-                    .filter(|child| child.kind() != ",")
-                    .collect();
-
+            // Determine kind and type from the right-hand side
+            let (kind, data_type) = if right.kind() == "expression_list" {
+                let expressions = collect_expression_nodes(right);
                 if let Some(expression) = expressions.get(i) {
-                    if expression.kind() == "function_definition" {
-                        // Override kind based on context
-                        kind = if is_field_assignment {
-                            SymbolKind::Method // Function assigned to object property = Method
+                    infer_kind_and_type(base, *expression, is_field)
+                } else {
+                    (
+                        if is_field {
+                            SymbolKind::Field
                         } else {
-                            SymbolKind::Function
-                        };
-                        data_type = "function".to_string();
-                    } else {
-                        data_type = helpers::infer_type_from_expression(base, *expression);
-                    }
+                            SymbolKind::Variable
+                        },
+                        String::new(),
+                    )
                 }
-            } else if right.kind() == "function_definition" {
-                kind = SymbolKind::Function;
-                data_type = "function".to_string();
             } else {
-                data_type = helpers::infer_type_from_expression(base, right);
-                // Update kind based on inferred type
-                if data_type == "import" {
-                    kind = SymbolKind::Import;
-                }
-            }
-
-            let mut metadata = HashMap::new();
-            metadata.insert("dataType".to_string(), data_type.clone().into());
-
-            // Extract LuaDoc comment
-            let doc_comment = base.find_doc_comment(&node);
-
-            let options = SymbolOptions {
-                signature: Some(signature),
-                parent_id: parent_symbol_id,
-                visibility: Some(Visibility::Public),
-                metadata: Some(metadata),
-                doc_comment,
+                infer_kind_and_type(base, right, is_field)
             };
 
-            let symbol = base.create_symbol(&name_node, actual_name, kind, options);
-            symbols.push(symbol);
+            let doc_comment = base.find_doc_comment(&node);
+
+            push_variable_symbol(
+                symbols,
+                base,
+                &name_node,
+                actual_name,
+                kind,
+                data_type,
+                signature,
+                parent_symbol_id,
+                Visibility::Public,
+                doc_comment,
+                None, // extract_assignment_statement doesn't extract table fields
+            );
         }
     }
     // Handle simple identifier assignments and dot notation
     else if left.kind() == "variable" {
         let full_variable_name = base.get_node_text(&left);
 
-        // Handle dot notation assignments: M.PI = 3.14159
-        if full_variable_name.contains('.') {
-            let parts: Vec<&str> = full_variable_name.split('.').collect();
-            if parts.len() == 2 {
-                let object_name = parts[0];
-                let property_name = parts[1];
-                let signature = base.get_node_text(&node);
-
-                // Determine kind and type based on the assignment
-                let mut kind = SymbolKind::Field; // Property assignments are fields
-                let data_type = if right.kind() == "function_definition" {
-                    kind = SymbolKind::Method; // Methods on objects
-                    "function".to_string()
-                } else {
-                    helpers::infer_type_from_expression(base, right)
-                };
-
-                // Find the object this property belongs to
-                let property_parent_id = symbols
-                    .iter()
-                    .find(|s| s.name == object_name)
-                    .map(|s| s.id.clone());
-
-                let mut metadata = HashMap::new();
-                metadata.insert("dataType".to_string(), data_type.clone().into());
-
-                // Extract LuaDoc comment
-                let doc_comment = base.find_doc_comment(&node);
-
-                let options = SymbolOptions {
-                    signature: Some(signature),
-                    parent_id: property_parent_id,
-                    visibility: Some(Visibility::Public),
-                    metadata: Some(metadata),
-                    doc_comment,
-                };
-
-                let symbol = base.create_symbol(&left, property_name.to_string(), kind, options);
-                symbols.push(symbol);
-            }
-        }
-        // Handle simple identifier assignments: PI = 3.14159
-        else if let Some(name_node) = helpers::find_child_by_type(left, "identifier") {
-            let name = base.get_node_text(&name_node);
+        if let Some((property_name, property_parent_id)) =
+            resolve_dot_property(&full_variable_name, symbols)
+        {
+            // Dot notation assignment: M.PI = 3.14159
+            let (kind, data_type) = infer_kind_and_type(base, right, true);
             let signature = base.get_node_text(&node);
-
-            // Determine kind and type based on the assignment
-            let mut kind = SymbolKind::Variable;
-            let data_type = if right.kind() == "function_definition" {
-                kind = SymbolKind::Function;
-                "function".to_string()
-            } else {
-                helpers::infer_type_from_expression(base, right)
-            };
-
-            let mut metadata = HashMap::new();
-            metadata.insert("dataType".to_string(), data_type.clone().into());
-
-            // Extract LuaDoc comment
             let doc_comment = base.find_doc_comment(&node);
 
-            let options = SymbolOptions {
-                signature: Some(signature),
-                parent_id: parent_id.map(|s| s.to_string()),
-                visibility: Some(Visibility::Public), // Global assignments are public
-                metadata: Some(metadata),
+            push_variable_symbol(
+                symbols,
+                base,
+                &left,
+                property_name,
+                kind,
+                data_type,
+                signature,
+                property_parent_id,
+                Visibility::Public,
                 doc_comment,
-            };
+                None,
+            );
+        } else if let Some(name_node) = helpers::find_child_by_type(left, "identifier") {
+            // Simple identifier assignment: PI = 3.14159
+            let name = base.get_node_text(&name_node);
+            let (kind, data_type) = infer_kind_and_type(base, right, false);
+            let signature = base.get_node_text(&node);
+            let doc_comment = base.find_doc_comment(&node);
 
-            let symbol = base.create_symbol(&name_node, name, kind, options);
-            symbols.push(symbol);
+            push_variable_symbol(
+                symbols,
+                base,
+                &name_node,
+                name,
+                kind,
+                data_type,
+                signature,
+                parent_id.map(|s| s.to_string()),
+                Visibility::Public,
+                doc_comment,
+                None,
+            );
         }
     }
 
@@ -340,7 +343,6 @@ pub(super) fn extract_variable_assignment(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    // Extract global variable assignments like: PI = 3.14159
     let variable_list = helpers::find_child_by_type(node, "variable_list")?;
     let expression_list = helpers::find_child_by_type(node, "expression_list");
 
@@ -351,108 +353,56 @@ pub(super) fn extract_variable_assignment(
         .filter(|child| child.kind() == "variable")
         .collect();
 
-    let expressions: Vec<Node> = if let Some(expr_list) = expression_list {
-        let mut expr_cursor = expr_list.walk();
-        expr_list
-            .children(&mut expr_cursor)
-            .filter(|child| child.kind() != ",") // Filter out commas
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let expressions: Vec<Node> = expression_list
+        .map(collect_expression_nodes)
+        .unwrap_or_default();
 
-    // Create symbols for each variable
     for (i, var_node) in variables.iter().enumerate() {
         let full_variable_name = base.get_node_text(var_node);
+        let expression = expressions.get(i);
 
-        // Handle dot notation: M.PI = 3.14159
-        if full_variable_name.contains('.') {
-            let parts: Vec<&str> = full_variable_name.split('.').collect();
-            if parts.len() == 2 {
-                let object_name = parts[0];
-                let property_name = parts[1];
+        if let Some((property_name, property_parent_id)) =
+            resolve_dot_property(&full_variable_name, symbols)
+        {
+            // Dot notation: M.PI = 3.14159
+            let (kind, data_type) = expression
+                .map(|expr| infer_kind_and_type(base, *expr, true))
+                .unwrap_or((SymbolKind::Field, String::new()));
 
-                // Determine kind and type based on the assignment
-                // Module properties (M.PI) should be classified as Field
-                let mut kind = SymbolKind::Field;
-                let mut data_type = String::new();
-
-                if let Some(expression) = expressions.get(i) {
-                    if expression.kind() == "function_definition" {
-                        kind = SymbolKind::Method; // Module methods should be Method, not Function
-                        data_type = "function".to_string();
-                    } else {
-                        data_type = helpers::infer_type_from_expression(base, *expression);
-                    }
-                }
-
-                // Find the object this property belongs to
-                let property_parent_id = symbols
-                    .iter()
-                    .find(|s| s.name == object_name)
-                    .map(|s| s.id.clone());
-
-                let mut metadata = HashMap::new();
-                metadata.insert("dataType".to_string(), data_type.clone().into());
-
-                let options = SymbolOptions {
-                    signature: Some(signature.clone()),
-                    parent_id: property_parent_id,
-                    visibility: Some(Visibility::Public),
-                    metadata: Some(metadata),
-                    ..Default::default()
-                };
-
-                let symbol = base.create_symbol(var_node, property_name.to_string(), kind, options);
-                symbols.push(symbol);
-
-                // If this is a table, extract its fields with this symbol as parent
-                if let Some(expression) = expressions.get(i) {
-                    if expression.kind() == "table_constructor" || expression.kind() == "table" {
-                        let parent_id = symbols.last().unwrap().id.clone();
-                        tables::extract_table_fields(symbols, base, *expression, Some(&parent_id));
-                    }
-                }
-            }
-        }
-        // Handle simple variable: PI = 3.14159
-        else if let Some(name_node) = helpers::find_child_by_type(*var_node, "identifier") {
+            push_variable_symbol(
+                symbols,
+                base,
+                var_node,
+                property_name,
+                kind,
+                data_type,
+                signature.clone(),
+                property_parent_id,
+                Visibility::Public,
+                None, // doc_comment handled by create_symbol fallback
+                expression,
+            );
+        } else if let Some(name_node) = helpers::find_child_by_type(*var_node, "identifier") {
+            // Simple variable: PI = 3.14159
             let name = base.get_node_text(&name_node);
 
-            // Determine kind and type based on the assignment
-            let mut kind = SymbolKind::Variable;
-            let mut data_type = String::new();
+            let (kind, data_type) = expression
+                .map(|expr| infer_kind_and_type(base, *expr, false))
+                .unwrap_or((SymbolKind::Variable, String::new()));
 
-            if let Some(expression) = expressions.get(i) {
-                if expression.kind() == "function_definition" {
-                    kind = SymbolKind::Function;
-                    data_type = "function".to_string();
-                } else {
-                    data_type = helpers::infer_type_from_expression(base, *expression);
-                }
-            }
-
-            let mut metadata = HashMap::new();
-            metadata.insert("dataType".to_string(), data_type.clone().into());
-
-            let options = SymbolOptions {
-                signature: Some(signature.clone()),
-                parent_id: parent_id.map(|s| s.to_string()),
-                visibility: Some(Visibility::Public), // Global variables are public
-                metadata: Some(metadata),
-                ..Default::default()
-            };
-
-            let symbol = base.create_symbol(&name_node, name, kind, options);
-            symbols.push(symbol);
-
-            // If this is a table, extract its fields with this symbol as parent
-            if let Some(expression) = expressions.get(i) {
-                if expression.kind() == "table_constructor" || expression.kind() == "table" {
-                    let parent_id = symbols.last().unwrap().id.clone();
-                    tables::extract_table_fields(symbols, base, *expression, Some(&parent_id));
-                }
-            }
+            push_variable_symbol(
+                symbols,
+                base,
+                &name_node,
+                name,
+                kind,
+                data_type,
+                signature.clone(),
+                parent_id.map(|s| s.to_string()),
+                Visibility::Public,
+                None, // doc_comment handled by create_symbol fallback
+                expression,
+            );
         }
     }
 
