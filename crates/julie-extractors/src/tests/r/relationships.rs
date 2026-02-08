@@ -315,7 +315,7 @@ analyze <- function(data) {
   return(n)
 }
 "#;
-        let (symbols, relationships) = extract_symbols_and_relationships(r_code);
+        let (_symbols, relationships) = extract_symbols_and_relationships(r_code);
 
         // We still need to check that these calls are tracked somehow
         // They should be in pending_relationships, not as Relationship with synthetic IDs

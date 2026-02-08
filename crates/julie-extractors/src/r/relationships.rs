@@ -51,7 +51,7 @@ fn extract_call_relationships(
             };
 
             // Find the containing function (caller)
-            if let Some(caller_symbol) = find_containing_function(node, symbols) {
+            if let Some(caller_symbol) = find_containing_function(extractor, node, symbols) {
                 // Find the called function symbol (might be user-defined or built-in)
                 if let Some(called_symbol) = symbols
                     .iter()
@@ -122,7 +122,7 @@ fn extract_pipe_relationships(
                             let function_name = extractor.base.get_node_text(&function_node);
 
                             // Find containing function
-                            if let Some(containing_symbol) = find_containing_function(node, symbols)
+                            if let Some(containing_symbol) = find_containing_function(extractor, node, symbols)
                             {
                                 // Check if the piped function is defined locally
                                 if let Some(called_symbol) = symbols.iter().find(|s| {
@@ -186,7 +186,7 @@ fn extract_member_access_relationships(
             let member_name = extractor.base.get_node_text(&member_node);
 
             // Find containing function
-            if let Some(containing_symbol) = find_containing_function(node, symbols) {
+            if let Some(containing_symbol) = find_containing_function(extractor, node, symbols) {
                 // Member access targets can't be resolved locally (they're dynamic)
                 // Use PendingRelationship for cross-file resolution
                 let pending = PendingRelationship {
@@ -209,29 +209,29 @@ fn extract_member_access_relationships(
     }
 }
 
-/// Find the containing function for a node
-fn find_containing_function<'a>(node: Node, symbols: &'a [Symbol]) -> Option<&'a Symbol> {
-    let mut current = node;
-    while let Some(parent) = current.parent() {
-        // R function definitions are inside binary_operator nodes
-        if parent.kind() == "binary_operator" {
-            // Check if the right side is a function_definition
-            if let Some(right_child) = parent.child(2) {
-                if right_child.kind() == "function_definition" {
-                    // Find the symbol that matches this function
-                    let func_line = parent.start_position().row + 1;
-                    if let Some(symbol) = symbols
-                        .iter()
-                        .find(|s| (s.kind == SymbolKind::Function || s.kind == SymbolKind::Method) && s.start_line == func_line as u32)
-                    {
-                        return Some(symbol);
-                    }
-                }
-            }
-        }
-        current = parent;
-    }
-    None
+/// Find the containing function for a node using byte-range containment
+/// Delegates to BaseExtractor::find_containing_symbol for accurate position-based matching,
+/// then filters to only Function/Method kinds.
+fn find_containing_function<'a>(
+    extractor: &RExtractor,
+    node: Node,
+    symbols: &'a [Symbol],
+) -> Option<&'a Symbol> {
+    // Filter to only functions/methods, then use standard containment logic
+    let func_symbols: Vec<Symbol> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::Function || s.kind == SymbolKind::Method)
+        .cloned()
+        .collect();
+
+    extractor
+        .base
+        .find_containing_symbol(&node, &func_symbols)
+        .and_then(|found| {
+            // Map back to the original slice reference (find_containing_symbol returns
+            // a reference into func_symbols which is local, so re-lookup in the original)
+            symbols.iter().find(|s| s.id == found.id)
+        })
 }
 
 /// Check if a function name is a built-in R function
