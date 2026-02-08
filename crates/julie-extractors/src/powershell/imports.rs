@@ -3,7 +3,20 @@
 
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use regex::Regex;
+use std::sync::LazyLock;
 use tree_sitter::Node;
+
+static IMPORT_MODULE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#).unwrap()
+});
+
+static USING_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)").unwrap()
+});
+
+static EXPORT_MODULE_MEMBER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"Export-ModuleMember\s+-(\w+)").unwrap()
+});
 
 /// Extract import statements (Import-Module, using, etc.)
 pub(super) fn extract_import(
@@ -59,31 +72,21 @@ pub(super) fn extract_import_command(
 
     if command_name == "Import-Module" {
         // Extract module name from "Import-Module Az.Accounts" or "Import-Module -Name 'Custom.Tools'"
-        if let Some(captures) =
-            Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#)
-                .unwrap()
-                .captures(&node_text)
-        {
+        if let Some(captures) = IMPORT_MODULE_RE.captures(&node_text) {
             if let Some(m) = captures.get(1).or_else(|| captures.get(2)) {
                 module_name = m.as_str().to_string();
             }
         }
     } else if command_name == "using" {
         // Extract from "using namespace System.Collections.Generic" or "using module Az.Storage"
-        if let Some(captures) = Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)")
-            .unwrap()
-            .captures(&node_text)
-        {
+        if let Some(captures) = USING_RE.captures(&node_text) {
             if let Some(m) = captures.get(1) {
                 module_name = m.as_str().to_string();
             }
         }
     } else if command_name == "Export-ModuleMember" {
         // Extract the type being exported (Function, Variable, Alias)
-        if let Some(captures) = Regex::new(r"Export-ModuleMember\s+-(\w+)")
-            .unwrap()
-            .captures(&node_text)
-        {
+        if let Some(captures) = EXPORT_MODULE_MEMBER_RE.captures(&node_text) {
             if let Some(m) = captures.get(1) {
                 module_name = m.as_str().to_string();
             }
@@ -176,10 +179,7 @@ pub(super) fn extract_dot_sourcing(
 
 /// Extract module name from Import-Module command
 fn extract_import_module_name(node_text: &str) -> Option<String> {
-    let captures =
-        Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#)
-            .unwrap()
-            .captures(node_text)?;
+    let captures = IMPORT_MODULE_RE.captures(node_text)?;
     captures
         .get(1)
         .or_else(|| captures.get(2))
@@ -188,9 +188,7 @@ fn extract_import_module_name(node_text: &str) -> Option<String> {
 
 /// Extract module/namespace name from using statement
 fn extract_using_name(node_text: &str) -> Option<String> {
-    let captures = Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)")
-        .unwrap()
-        .captures(node_text)?;
+    let captures = USING_RE.captures(node_text)?;
     captures.get(1).map(|m| m.as_str().to_string())
 }
 
