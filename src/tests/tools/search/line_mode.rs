@@ -480,7 +480,6 @@ def python_function():
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    #[ignore = "FTS content indexing timing issue - needs investigation"]
     async fn test_fast_search_line_mode_file_pattern_filter() -> Result<()> {
         unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
@@ -573,7 +572,6 @@ def python_function():
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    #[ignore = "FTS content indexing timing issue - needs investigation"]
     async fn test_fast_search_line_mode_combined_filters() -> Result<()> {
         unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");

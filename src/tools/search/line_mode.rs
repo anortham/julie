@@ -65,11 +65,18 @@ pub async fn line_mode_search(
 
     let match_strategy = line_match_strategy(query);
     let base_limit = limit.max(1) as usize;
-    let fetch_limit = base_limit.saturating_mul(5);
+    let has_file_filter = file_pattern.is_some();
+    let fetch_limit = if has_file_filter {
+        // When file_pattern is active, most Tantivy results will be filtered out.
+        // Fetch more candidates so matching files aren't missed by the limit cap.
+        base_limit.saturating_mul(100).max(500).min(1000)
+    } else {
+        base_limit.saturating_mul(5)
+    };
     let filter = SearchFilter {
-        language: None,
+        language: language.clone(),
         kind: None,
-        file_pattern: None,
+        file_pattern: file_pattern.clone(),
     };
 
     // Search the single target workspace
@@ -88,6 +95,8 @@ pub async fn line_mode_search(
         let db = db.clone();
         let query = query.to_string();
         let match_strategy = match_strategy.clone();
+        let file_pattern_clone = file_pattern.clone();
+        let language_clone = language.clone();
 
         tokio::task::spawn_blocking(move || -> Result<Vec<LineMatch>> {
             let index = match search_index.lock() {
@@ -114,6 +123,20 @@ pub async fn line_mode_search(
                     break;
                 }
 
+                // Apply file_pattern filter BEFORE expensive DB content retrieval
+                if let Some(ref pattern) = file_pattern_clone {
+                    if !matches_glob_pattern(&file_result.file_path, pattern) {
+                        continue;
+                    }
+                }
+
+                // Apply language filter BEFORE DB lookup (defense-in-depth; Tantivy also filters)
+                if let Some(ref lang) = language_clone {
+                    if !file_matches_language(&file_result.file_path, lang) {
+                        continue;
+                    }
+                }
+
                 if let Some(content) = db_lock.get_file_content(&file_result.file_path)? {
                     collect_line_matches(
                         &mut matches,
@@ -134,6 +157,8 @@ pub async fn line_mode_search(
         let ref_db_path = workspace_struct.workspace_db_path(&target_workspace_id);
         let query_clone = query.to_string();
         let strategy = match_strategy.clone();
+        let ref_file_pattern = file_pattern.clone();
+        let ref_language = language.clone();
 
         tokio::task::spawn_blocking(move || -> Result<Vec<LineMatch>> {
             if !tantivy_path.join("meta.json").exists() {
@@ -142,7 +167,11 @@ pub async fn line_mode_search(
             }
 
             let ref_index = SearchIndex::open(&tantivy_path)?;
-            let ref_filter = SearchFilter::default();
+            let ref_filter = SearchFilter {
+                language: ref_language.clone(),
+                kind: None,
+                file_pattern: ref_file_pattern.clone(),
+            };
             let file_results =
                 ref_index.search_content(&query_clone, &ref_filter, fetch_limit)?;
 
@@ -155,6 +184,20 @@ pub async fn line_mode_search(
             for file_result in file_results {
                 if matches.len() >= base_limit {
                     break;
+                }
+
+                // Apply file_pattern filter BEFORE expensive DB content retrieval
+                if let Some(ref pattern) = ref_file_pattern {
+                    if !matches_glob_pattern(&file_result.file_path, pattern) {
+                        continue;
+                    }
+                }
+
+                // Apply language filter BEFORE DB lookup
+                if let Some(ref lang) = ref_language {
+                    if !file_matches_language(&file_result.file_path, lang) {
+                        continue;
+                    }
                 }
 
                 if let Some(content) = ref_db.get_file_content(&file_result.file_path)? {
@@ -174,36 +217,16 @@ pub async fn line_mode_search(
         .map_err(|e| anyhow::anyhow!("Failed to spawn reference workspace search: {}", e))??
     };
 
-    // Apply language and file pattern filtering
+    // Defense-in-depth: post-filter by language and file_pattern
+    // (primary filtering now happens inside the collection loop above)
     let filtered_matches: Vec<LineMatch> = all_line_matches
         .into_iter()
         .filter(|line_match| {
-            // Apply language filter if specified
-            let language_match = if let Some(lang) = language {
-                // Extract file extension and match against language
-                let path = std::path::Path::new(&line_match.file_path);
-                if let Some(ext) = path.extension() {
-                    let ext_str = ext.to_string_lossy().to_lowercase();
-                    // Simple extension matching - could be enhanced with language detection
-                    match lang.to_lowercase().as_str() {
-                        "rust" => ext_str == "rs",
-                        "typescript" => ext_str == "ts" || ext_str == "tsx",
-                        "javascript" => ext_str == "js" || ext_str == "jsx" || ext_str == "mjs",
-                        "python" => ext_str == "py",
-                        "java" => ext_str == "java",
-                        "csharp" | "c#" => ext_str == "cs",
-                        "cpp" | "c++" => ext_str == "cpp" || ext_str == "cc" || ext_str == "cxx",
-                        "c" => ext_str == "c" || ext_str == "h",
-                        _ => ext_str == lang.to_lowercase(),
-                    }
-                } else {
-                    false
-                }
-            } else {
-                true // No language filter, accept all
-            };
+            let language_match = language
+                .as_ref()
+                .map(|lang| file_matches_language(&line_match.file_path, lang))
+                .unwrap_or(true);
 
-            // Apply file pattern filter if specified
             let file_match = file_pattern
                 .as_ref()
                 .map(|pattern| matches_glob_pattern(&line_match.file_path, pattern))
@@ -243,6 +266,26 @@ pub async fn line_mode_search(
     Ok(CallToolResult::text_content(vec![Content::text(
         lines.join("\n"),
     )]))
+}
+
+/// Check if a file path matches the given language filter by extension.
+fn file_matches_language(file_path: &str, lang: &str) -> bool {
+    let path = std::path::Path::new(file_path);
+    let Some(ext) = path.extension() else {
+        return false;
+    };
+    let ext_str = ext.to_string_lossy().to_lowercase();
+    match lang.to_lowercase().as_str() {
+        "rust" => ext_str == "rs",
+        "typescript" => ext_str == "ts" || ext_str == "tsx",
+        "javascript" => ext_str == "js" || ext_str == "jsx" || ext_str == "mjs",
+        "python" => ext_str == "py",
+        "java" => ext_str == "java",
+        "csharp" | "c#" => ext_str == "cs",
+        "cpp" | "c++" => ext_str == "cpp" || ext_str == "cc" || ext_str == "cxx",
+        "c" => ext_str == "c" || ext_str == "h",
+        _ => ext_str == lang.to_lowercase(),
+    }
 }
 
 /// Collect line matches from file content using the given strategy

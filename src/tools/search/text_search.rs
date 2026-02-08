@@ -93,10 +93,27 @@ pub async fn text_search_impl(
             let index = SearchIndex::open(&tantivy_path)?;
 
             if search_target_clone == "definitions" {
+                // When file_pattern is active, fetch more candidates to find matches
+                let tantivy_limit = if filter.file_pattern.is_some() {
+                    limit_usize.saturating_mul(50).max(500).min(5000)
+                } else {
+                    limit_usize
+                };
                 let search_results =
-                    index.search_symbols(&query_clone, &filter, limit_usize)?;
+                    index.search_symbols(&query_clone, &filter, tantivy_limit)?;
 
-                let mut symbols: Vec<Symbol> = search_results
+                // Apply file_pattern filter BEFORE symbol conversion + enrichment
+                let filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
+                    search_results
+                        .into_iter()
+                        .filter(|r| matches_glob_pattern(&r.file_path, pattern))
+                        .take(limit_usize)
+                        .collect()
+                } else {
+                    search_results
+                };
+
+                let mut symbols: Vec<Symbol> = filtered_results
                     .into_iter()
                     .map(|result| tantivy_symbol_to_symbol(result))
                     .collect();
@@ -111,7 +128,11 @@ pub async fn text_search_impl(
                 Ok(symbols)
             } else {
                 // Content search on reference workspace
-                let fetch_limit = limit_usize.saturating_mul(5).max(50);
+                let fetch_limit = if filter.file_pattern.is_some() {
+                    limit_usize.saturating_mul(100).max(500).min(1000)
+                } else {
+                    limit_usize.saturating_mul(5).max(50)
+                };
                 let search_results =
                     index.search_content(&query_clone, &filter, fetch_limit)?;
 
@@ -129,6 +150,14 @@ pub async fn text_search_impl(
                             if verified_symbols.len() >= limit_usize {
                                 break;
                             }
+
+                            // Apply file_pattern filter BEFORE content verification
+                            if let Some(ref pattern) = filter.file_pattern {
+                                if !matches_glob_pattern(&result.file_path, pattern) {
+                                    continue;
+                                }
+                            }
+
                             match ref_db.get_file_content(&result.file_path) {
                                 Ok(Some(content)) => {
                                     let content_lower = content.to_lowercase();
@@ -156,7 +185,8 @@ pub async fn text_search_impl(
         })
         .await??;
 
-        // Apply file_pattern glob matching as a post-filter
+        // Defense-in-depth: post-filter by file_pattern
+        // (primary filtering now happens inside the collection loops above)
         let filtered_results = if let Some(pattern) = file_pattern {
             results
                 .into_iter()
@@ -196,9 +226,28 @@ pub async fn text_search_impl(
         // Route based on search_target
         if search_target_clone == "definitions" {
             debug!("🔍 Searching symbols with Tantivy");
-            let search_results = index.search_symbols(&query_clone, &filter, limit_usize)?;
 
-            let mut symbols: Vec<Symbol> = search_results
+            // When file_pattern is active, fetch more candidates to find matches
+            // in target files that may be ranked low globally
+            let tantivy_limit = if filter.file_pattern.is_some() {
+                limit_usize.saturating_mul(50).max(500).min(5000)
+            } else {
+                limit_usize
+            };
+            let search_results = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
+
+            // Apply file_pattern filter BEFORE symbol conversion + enrichment
+            let filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
+                search_results
+                    .into_iter()
+                    .filter(|r| matches_glob_pattern(&r.file_path, pattern))
+                    .take(limit_usize)
+                    .collect()
+            } else {
+                search_results
+            };
+
+            let mut symbols: Vec<Symbol> = filtered_results
                 .into_iter()
                 .map(|result| tantivy_symbol_to_symbol(result))
                 .collect();
@@ -223,7 +272,13 @@ pub async fn text_search_impl(
             // Fetch more candidates than the limit for post-verification.
             // CodeTokenizer may over-split queries (e.g. "Blake3 hash" → ["blake","3","hash"]),
             // producing Tantivy matches that don't actually contain the query substring.
-            let fetch_limit = limit_usize.saturating_mul(5).max(50);
+            // When file_pattern is active, fetch significantly more to find matches
+            // in target files that may be ranked low globally.
+            let fetch_limit = if filter.file_pattern.is_some() {
+                limit_usize.saturating_mul(100).max(500).min(1000)
+            } else {
+                limit_usize.saturating_mul(5).max(50)
+            };
             let search_results = index.search_content(&query_clone, &filter, fetch_limit)?;
 
             // Post-verify: check that all query words appear in each file's content.
@@ -255,6 +310,13 @@ pub async fn text_search_impl(
                 for result in search_results {
                     if verified_symbols.len() >= limit_usize {
                         break;
+                    }
+
+                    // Apply file_pattern filter BEFORE expensive content verification
+                    if let Some(ref pattern) = filter.file_pattern {
+                        if !matches_glob_pattern(&result.file_path, pattern) {
+                            continue;
+                        }
                     }
 
                     // Verify all query words appear in actual file content
@@ -301,8 +363,8 @@ pub async fn text_search_impl(
     })
     .await??;
 
-    // Apply file_pattern glob matching as a post-filter if needed
-    // (Tantivy may not have indexed full paths for glob matching)
+    // Defense-in-depth: post-filter by file_pattern
+    // (primary filtering now happens inside the collection loops above)
     let filtered_results = if let Some(pattern) = file_pattern {
         results
             .into_iter()
