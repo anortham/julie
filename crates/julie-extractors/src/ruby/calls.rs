@@ -27,11 +27,13 @@ pub(super) fn extract_call(base: &mut BaseExtractor, node: Node) -> Option<Symbo
 /// Called from the traversal when we encounter an assignment node.
 /// Detects `Name = Struct.new(:field1, :field2, ...)` and returns a Class symbol.
 /// Returns None if the assignment RHS is not a Struct.new call.
+/// Returns `(class_symbol, field_properties)` so the caller can set `symbol_opt`
+/// to the class (for child parenting) and push the properties into the symbols vec.
 pub(super) fn try_extract_struct_new(
     base: &mut BaseExtractor,
     assignment_node: Node,
     parent_id: Option<String>,
-) -> Option<Symbol> {
+) -> Option<(Symbol, Vec<Symbol>)> {
     // Get the left (name) and right (call) sides of the assignment
     let left_side = assignment_node.child_by_field_name("left")?;
     let right_side = assignment_node.child_by_field_name("right")?;
@@ -67,7 +69,7 @@ pub(super) fn try_extract_struct_new(
     // Extract doc comment from the assignment node
     let doc_comment = base.find_doc_comment(&assignment_node);
 
-    Some(base.create_symbol(
+    let class_symbol = base.create_symbol(
         &assignment_node,
         name,
         SymbolKind::Class,
@@ -78,7 +80,34 @@ pub(super) fn try_extract_struct_new(
             metadata: None,
             doc_comment,
         },
-    ))
+    );
+
+    // Extract field arguments as Property children of the class
+    let mut field_properties = Vec::new();
+    if let Some(arg_list) = right_side.child_by_field_name("arguments") {
+        let mut arg_cursor = arg_list.walk();
+        for arg_child in arg_list.children(&mut arg_cursor) {
+            if arg_child.kind() == "simple_symbol" {
+                let field_text = base.get_node_text(&arg_child);
+                let field_name = field_text.trim_start_matches(':').to_string();
+                let prop = base.create_symbol(
+                    &arg_child,
+                    field_name,
+                    SymbolKind::Property,
+                    SymbolOptions {
+                        signature: Some(field_text),
+                        visibility: Some(Visibility::Public),
+                        parent_id: Some(class_symbol.id.clone()),
+                        metadata: None,
+                        doc_comment: None,
+                    },
+                );
+                field_properties.push(prop);
+            }
+        }
+    }
+
+    Some((class_symbol, field_properties))
 }
 
 /// Extract require/require_relative calls

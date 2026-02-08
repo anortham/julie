@@ -161,6 +161,37 @@ Color = Struct.new(:r, :g, :b)
     }
 
     // ========================================================================
+    // Struct.new Field Properties Tests
+    // ========================================================================
+
+    #[test]
+    fn test_struct_new_field_properties() {
+        let code = r#"Person = Struct.new(:name, :age, :email)"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let person = symbols
+            .iter()
+            .find(|s| s.name == "Person" && s.kind == SymbolKind::Class)
+            .unwrap();
+        let props: Vec<_> = symbols
+            .iter()
+            .filter(|s| {
+                s.kind == SymbolKind::Property && s.parent_id.as_deref() == Some(&person.id)
+            })
+            .collect();
+        assert_eq!(
+            props.len(),
+            3,
+            "Struct.new fields should be Property children"
+        );
+        let names: Vec<_> = props.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"name"));
+        assert!(names.contains(&"age"));
+        assert!(names.contains(&"email"));
+    }
+
+    // ========================================================================
     // module_function Tests
     // ========================================================================
 
