@@ -69,18 +69,91 @@ impl QmlExtractor {
                 }
             }
 
-            // QML properties (property int age: 42)
+            // QML properties (property int age: 42, property alias foo: bar.baz)
             "ui_property" => {
                 if let Some(name_node) = node.child_by_field_name("name") {
                     let name = self.base.get_node_text(&name_node);
+                    // Include full declaration text as signature for alias and typed properties
+                    let signature = Some(self.base.get_node_text(&node));
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
+                        signature,
                         ..Default::default()
                     };
                     let symbol =
                         self.base
                             .create_symbol(&node, name, SymbolKind::Property, options);
                     self.symbols.push(symbol);
+                }
+            }
+
+            // QML id bindings (id: root) — critical for QML component referencing
+            "ui_binding" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let binding_name = self.base.get_node_text(&name_node);
+                    if binding_name == "id" {
+                        // Extract the id value from the expression_statement > identifier
+                        if let Some(value_node) = node.child_by_field_name("value") {
+                            // value is an expression_statement wrapping an identifier
+                            let id_value = if value_node.kind() == "expression_statement" {
+                                if let Some(inner) = value_node.named_child(0) {
+                                    self.base.get_node_text(&inner)
+                                } else {
+                                    self.base.get_node_text(&value_node)
+                                }
+                            } else {
+                                self.base.get_node_text(&value_node)
+                            };
+                            let signature = Some(format!("id: {}", id_value));
+                            let options = SymbolOptions {
+                                parent_id: parent_id.clone(),
+                                signature,
+                                ..Default::default()
+                            };
+                            let symbol = self.base.create_symbol(
+                                &node,
+                                id_value,
+                                SymbolKind::Property,
+                                options,
+                            );
+                            self.symbols.push(symbol);
+                        }
+                    }
+                }
+            }
+
+            // QML enum declarations (enum Direction { Left, Right, Up, Down })
+            "enum_declaration" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = self.base.get_node_text(&name_node);
+                    let options = SymbolOptions {
+                        parent_id: parent_id.clone(),
+                        ..Default::default()
+                    };
+                    let enum_symbol =
+                        self.base
+                            .create_symbol(&node, name, SymbolKind::Enum, options);
+                    let enum_id = enum_symbol.id.clone();
+                    self.symbols.push(enum_symbol);
+
+                    // Extract enum members from the enum_body
+                    if let Some(body) = node.child_by_field_name("body") {
+                        let mut body_cursor = body.walk();
+                        for member in body.children_by_field_name("name", &mut body_cursor) {
+                            let member_name = self.base.get_node_text(&member);
+                            let member_options = SymbolOptions {
+                                parent_id: Some(enum_id.clone()),
+                                ..Default::default()
+                            };
+                            let member_symbol = self.base.create_symbol(
+                                &member,
+                                member_name,
+                                SymbolKind::EnumMember,
+                                member_options,
+                            );
+                            self.symbols.push(member_symbol);
+                        }
+                    }
                 }
             }
 

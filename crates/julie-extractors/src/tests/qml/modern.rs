@@ -112,8 +112,53 @@ Item {
 
         let symbols = extract_symbols(qml_code);
 
-        // Enums might be extracted as types or constants
-        // Document expected behavior
+        // Enum type should be extracted
+        let enum_sym = symbols
+            .iter()
+            .find(|s| s.name == "Status" && s.kind == SymbolKind::Enum);
+        assert!(
+            enum_sym.is_some(),
+            "Should extract enum Status. Got: {:?}",
+            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        );
+
+        // Enum members should be extracted
+        let members: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::EnumMember)
+            .collect();
+        let member_names: Vec<&str> = members.iter().map(|s| s.name.as_str()).collect();
+        assert!(member_names.contains(&"Ready"), "Should extract Ready member");
+        assert!(member_names.contains(&"Loading"), "Should extract Loading member");
+        assert!(member_names.contains(&"Error"), "Should extract Error member");
+    }
+
+    #[test]
+    fn test_extract_enum_with_values() {
+        let qml_code = r#"
+import QtQuick 2.15
+
+Item {
+    enum Direction { Left, Right, Up, Down }
+}
+"#;
+
+        let symbols = extract_symbols(qml_code);
+
+        let enum_sym = symbols
+            .iter()
+            .find(|s| s.name == "Direction" && s.kind == SymbolKind::Enum);
+        assert!(
+            enum_sym.is_some(),
+            "Should extract enum Direction. Got: {:?}",
+            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        );
+
+        let members: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::EnumMember)
+            .collect();
+        assert_eq!(members.len(), 4, "Should extract all 4 enum members");
     }
 
     #[test]

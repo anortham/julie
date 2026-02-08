@@ -244,4 +244,87 @@ Rectangle {
             "Should extract Rectangle with Binding object"
         );
     }
+
+    #[test]
+    fn test_extract_id_binding() {
+        let qml_code = r#"
+import QtQuick 2.15
+
+Rectangle {
+    id: root
+    width: 400
+    height: 300
+}
+"#;
+
+        let symbols = extract_symbols(qml_code);
+
+        let id_sym = symbols
+            .iter()
+            .find(|s| s.name == "root" && s.kind == SymbolKind::Property);
+        assert!(
+            id_sym.is_some(),
+            "id: root should be extracted as Property. Got: {:?}",
+            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_extract_multiple_id_bindings() {
+        let qml_code = r#"
+import QtQuick 2.15
+
+Rectangle {
+    id: root
+
+    Text {
+        id: titleText
+        text: "Hello"
+    }
+
+    Item {
+        id: content
+        width: 100
+    }
+}
+"#;
+
+        let symbols = extract_symbols(qml_code);
+
+        let id_symbols: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Property && ["root", "titleText", "content"].contains(&s.name.as_str()))
+            .collect();
+
+        assert_eq!(
+            id_symbols.len(),
+            3,
+            "Should extract all three id bindings. Got: {:?}",
+            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_id_binding_signature() {
+        let qml_code = r#"
+import QtQuick 2.15
+
+Rectangle {
+    id: myComponent
+}
+"#;
+
+        let symbols = extract_symbols(qml_code);
+
+        let id_sym = symbols
+            .iter()
+            .find(|s| s.name == "myComponent" && s.kind == SymbolKind::Property)
+            .expect("Should find id: myComponent");
+
+        assert_eq!(
+            id_sym.signature.as_deref(),
+            Some("id: myComponent"),
+            "id binding should have 'id: <name>' as signature"
+        );
+    }
 }

@@ -262,6 +262,22 @@ Rectangle {
             .filter(|p| p.name.starts_with("content"))
             .collect();
 
-        assert!(aliases.len() >= 1, "Should extract alias properties");
+        assert!(aliases.len() >= 2, "Should extract both alias properties");
+
+        // Alias properties should include the full declaration text as signature
+        let content_width = properties
+            .iter()
+            .find(|p| p.name == "contentWidth")
+            .expect("Should find contentWidth alias");
+
+        assert!(
+            content_width
+                .signature
+                .as_deref()
+                .unwrap_or("")
+                .contains("alias"),
+            "Alias property signature should contain 'alias'. Got: {:?}",
+            content_width.signature
+        );
     }
 }
