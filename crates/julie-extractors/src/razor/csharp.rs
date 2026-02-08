@@ -46,15 +46,15 @@ impl super::RazorExtractor {
             "variable_declaration" => {
                 symbol = self.extract_variable_declaration(node, parent_id);
             }
-            "assignment_expression" => {
-                symbol = self.extract_assignment(node, parent_id);
-            }
+            // Assignment expressions (ViewData["Title"] = "Home", Layout = "_Layout", etc.)
+            // are USAGES, not definitions. Tracked via identifier extraction for reference relationships.
+            "assignment_expression" => {}
             // Invocation expressions are USAGES, not definitions.
             // They are tracked via identifier extraction for call relationships.
             "invocation_expression" => {}
-            "element_access_expression" => {
-                symbol = self.extract_element_access(node, parent_id);
-            }
+            // Element access expressions (ViewData["Title"], etc.) are USAGES, not definitions.
+            // Tracked via identifier extraction for reference relationships.
+            "element_access_expression" => {}
             "class_declaration" => {
                 symbol = self.extract_class(node, parent_id);
             }

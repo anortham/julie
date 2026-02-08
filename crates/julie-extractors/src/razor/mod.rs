@@ -131,9 +131,9 @@ impl RazorExtractor {
             "local_declaration_statement" => {
                 symbol = self.extract_local_variable(node, parent_id.as_deref());
             }
-            "assignment_expression" => {
-                symbol = self.extract_assignment(node, parent_id.as_deref());
-            }
+            // Assignment expressions (ViewData["Title"] = "Home", Layout = "_Layout", etc.)
+            // are USAGES, not definitions. Tracked via identifier extraction for reference relationships.
+            "assignment_expression" => {}
             // Invocation expressions (Html.Raw(), RenderBody(), etc.) are USAGES, not definitions.
             // They are tracked via identifier extraction for call relationships.
             "invocation_expression" => {}

@@ -236,13 +236,18 @@ mod razor_extractor_tests {
                 .contains("Model.Product?.Name ?? \"Unknown Product\"")
         );
 
-        // ViewData assignment
-        let view_data_title = symbols.iter().find(|s| {
-            s.signature
+        // ViewData assignment is a USAGE, not a definition — should NOT produce a symbol
+        let view_data_assignment = symbols.iter().find(|s| {
+            s.metadata.as_ref().map_or(false, |m| {
+                m.get("type").map_or(false, |t| t == "assignment")
+            }) && s.signature
                 .as_ref()
                 .map_or(false, |sig| sig.contains("ViewData[\"Title\"]"))
         });
-        assert!(view_data_title.is_some());
+        assert!(
+            view_data_assignment.is_none(),
+            "ViewData assignment is a usage, not a definition"
+        );
 
         // Section blocks
         let scripts_section = symbols.iter().find(|s| s.name == "Scripts");
@@ -921,28 +926,42 @@ mod razor_extractor_tests {
 
         let symbols = extract_symbols(razor_code);
 
-        // Layout assignment
+        // Assignment expressions are USAGES, not definitions — should NOT produce symbols
         let layout_assignment = symbols.iter().find(|s| {
-            s.signature
+            s.metadata.as_ref().map_or(false, |m| {
+                m.get("type").map_or(false, |t| t == "assignment")
+            }) && s.signature
                 .as_ref()
                 .map_or(false, |sig| sig.contains("Layout = \"_Layout\""))
         });
-        assert!(layout_assignment.is_some());
+        assert!(
+            layout_assignment.is_none(),
+            "Layout assignment is a usage, not a definition"
+        );
 
-        // ViewData assignments
         let title_assignment = symbols.iter().find(|s| {
-            s.signature
+            s.metadata.as_ref().map_or(false, |m| {
+                m.get("type").map_or(false, |t| t == "assignment")
+            }) && s.signature
                 .as_ref()
                 .map_or(false, |sig| sig.contains("ViewData[\"Title\"]"))
         });
-        assert!(title_assignment.is_some());
+        assert!(
+            title_assignment.is_none(),
+            "ViewData assignment is a usage, not a definition"
+        );
 
-        let meta_description = symbols.iter().find(|s| {
-            s.signature
+        let meta_description_assignment = symbols.iter().find(|s| {
+            s.metadata.as_ref().map_or(false, |m| {
+                m.get("type").map_or(false, |t| t == "assignment")
+            }) && s.signature
                 .as_ref()
                 .map_or(false, |sig| sig.contains("ViewBag.MetaDescription"))
         });
-        assert!(meta_description.is_some());
+        assert!(
+            meta_description_assignment.is_none(),
+            "ViewBag assignment is a usage, not a definition"
+        );
 
         // Component invocations are usages, NOT definitions — should not be extracted
         let component_invoke = symbols.iter().find(|s| {
@@ -2278,5 +2297,63 @@ mod blazor_extraction_tests {
                 found.iter().map(|s| format!("{} ({:?})", s.name, s.kind)).collect::<Vec<_>>()
             );
         }
+    }
+
+    #[test]
+    fn test_assignment_and_element_access_not_extracted_as_definitions() {
+        // Assignment expressions (ViewData["Title"] = "Home", Layout = "_Layout",
+        // ViewBag.MetaDescription = "...") and element access expressions
+        // (ViewData["Title"]) inside code blocks are USAGES, not definitions.
+        // They should NOT produce Variable symbols with assignment/element-access metadata.
+        let razor_code = r#"@{
+    ViewData["Title"] = "Home Page";
+    Layout = "_Layout";
+    ViewBag.MetaDescription = "Welcome to our site";
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        ViewData["Header"] = "Dashboard";
+    }
+}"#;
+
+        let symbols = extract_symbols(razor_code);
+
+        // No symbols should have assignment or element-access metadata type
+        // (these come from extract_assignment and extract_element_access)
+        let assignment_symbols: Vec<_> = symbols
+            .iter()
+            .filter(|s| {
+                s.metadata.as_ref().map_or(false, |m| {
+                    m.get("type").map_or(false, |t| {
+                        t == "assignment" || t == "element-access"
+                    })
+                })
+            })
+            .collect();
+        assert!(
+            assignment_symbols.is_empty(),
+            "Assignment/element access expressions are USAGES, not definitions. \
+             Should NOT be extracted as Variable symbols. Found: {:?}",
+            assignment_symbols
+                .iter()
+                .map(|s| format!("{} ({:?}, type={:?})", s.name, s.kind,
+                    s.metadata.as_ref().and_then(|m| m.get("type"))))
+                .collect::<Vec<_>>()
+        );
+
+        // Specifically: no Variable named "Layout" from assignment extraction
+        let layout_var = symbols.iter().find(|s| {
+            s.name == "Layout"
+                && s.kind == SymbolKind::Variable
+                && s.metadata.as_ref().map_or(false, |m| {
+                    m.get("type").map_or(false, |t| t == "assignment")
+                })
+        });
+        assert!(
+            layout_var.is_none(),
+            "Layout assignment should NOT produce a Variable definition"
+        );
     }
 }
