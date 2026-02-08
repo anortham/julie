@@ -1,10 +1,10 @@
-/// TOML extractor - Extract tables and keys as symbols
+/// TOML extractor - Extract tables and key-value pairs as symbols
 ///
-/// Extracts TOML tables as symbols for semantic search and navigation.
-/// - Regular tables: [table_name]
-/// - Nested tables: [parent.child]
-/// - Array tables: [[array_table]]
-/// All tables are treated as SymbolKind::Module (containers)
+/// Extracts TOML tables and key-value pairs for semantic search and navigation.
+/// - Regular tables: [table_name] -> SymbolKind::Module
+/// - Nested tables: [parent.child] -> SymbolKind::Module
+/// - Array tables: [[array_table]] -> SymbolKind::Module
+/// - Key-value pairs: key = value -> SymbolKind::Property
 use crate::base::{BaseExtractor, Identifier, Symbol, SymbolKind};
 use std::path::Path;
 
@@ -60,6 +60,7 @@ impl TomlExtractor {
         match node.kind() {
             "table" => self.extract_table(node, parent_id, false),
             "table_array_element" => self.extract_table(node, parent_id, true),
+            "pair" => self.extract_pair(node, parent_id),
             _ => None,
         }
     }
@@ -94,6 +95,89 @@ impl TomlExtractor {
             SymbolKind::Module, // All tables are modules/containers
             options,
         );
+
+        Some(symbol)
+    }
+
+    /// Extract a key-value pair as a Property symbol
+    fn extract_pair(
+        &mut self,
+        node: tree_sitter::Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
+        use crate::base::SymbolOptions;
+
+        let mut cursor = node.walk();
+        let children: Vec<_> = node.children(&mut cursor).collect();
+
+        // Need at least key, =, value
+        if children.len() < 3 {
+            return None;
+        }
+
+        // Extract key name from first child (bare_key, quoted_key, or dotted_key)
+        let key_node = children[0];
+        let key_name = match key_node.kind() {
+            "bare_key" => self.base.get_node_text(&key_node),
+            "quoted_key" => {
+                let text = self.base.get_node_text(&key_node);
+                text.trim_matches('"').trim_matches('\'').to_string()
+            }
+            "dotted_key" => {
+                // dotted_key has children: bare_key . bare_key . bare_key
+                self.base.get_node_text(&key_node)
+            }
+            _ => return None,
+        };
+
+        if key_name.is_empty() {
+            return None;
+        }
+
+        // Value is the last child (after key and =)
+        let value_node = *children.last().unwrap();
+        let value_text = self.base.get_node_text(&value_node);
+
+        // Build signature as "key = value", truncating long values
+        let max_sig_len = 80;
+        let prefix = format!("{} = ", key_name);
+        let signature = if prefix.len() + value_text.len() > max_sig_len {
+            let available = max_sig_len.saturating_sub(prefix.len() + 3); // 3 for "..."
+            // Find a safe char boundary for truncation
+            let truncated: String = value_text.chars().take(available).collect();
+            format!("{}{}...", prefix, truncated)
+        } else {
+            format!("{}{}", prefix, value_text)
+        };
+
+        // Extract string values into doc_comment for semantic search
+        let doc_comment = if value_node.kind() == "string" {
+            let trimmed = value_text.trim_matches('"').trim_matches('\'');
+            if !trimmed.is_empty() {
+                Some(if trimmed.len() <= 2000 {
+                    trimmed.to_string()
+                } else {
+                    // Truncate at char boundary to avoid panic on multi-byte UTF-8
+                    trimmed.chars().take(2000).collect()
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let options = SymbolOptions {
+            signature: Some(signature),
+            visibility: None,
+            parent_id: parent_id.map(|s| s.to_string()),
+            doc_comment,
+            ..Default::default()
+        };
+
+        let symbol = self
+            .base
+            .create_symbol(&node, key_name, SymbolKind::Property, options);
 
         Some(symbol)
     }

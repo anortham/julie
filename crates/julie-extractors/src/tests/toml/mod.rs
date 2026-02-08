@@ -87,12 +87,22 @@ ratio = 3.14
 
         let symbols = extract_symbols(toml);
 
-        // Key-value pairs at root level might or might not be extracted
-        // Depends on implementation - at minimum should parse without errors
-        assert!(
-            symbols.len() >= 0,
-            "Should handle root-level key-value pairs"
+        assert_eq!(
+            symbols.len(),
+            4,
+            "Should extract 4 root-level key-value pairs"
         );
+
+        // All should be Property kind
+        for sym in &symbols {
+            assert_eq!(sym.kind, SymbolKind::Property, "Pair {} should be Property", sym.name);
+        }
+
+        let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"title"), "Should find 'title'");
+        assert!(names.contains(&"count"), "Should find 'count'");
+        assert!(names.contains(&"enabled"), "Should find 'enabled'");
+        assert!(names.contains(&"ratio"), "Should find 'ratio'");
     }
 
     // ========================================================================
@@ -841,5 +851,257 @@ key4 = "extra newlines"
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"table1"), "Should find table1");
         assert!(names.contains(&"table2"), "Should find table2");
+    }
+
+    // ========================================================================
+    // Key-Value Pair Extraction (TDD: RED phase)
+    // ========================================================================
+
+    #[test]
+    fn test_key_value_pairs_under_table() {
+        let toml = r#"
+[package]
+name = "julie"
+version = "1.0.0"
+edition = "2021"
+"#;
+
+        let symbols = extract_symbols(toml);
+
+        // Should have the table + 3 key-value pairs
+        let package = symbols.iter().find(|s| s.name == "package").unwrap();
+        assert_eq!(package.kind, SymbolKind::Module);
+
+        let name_sym = symbols.iter().find(|s| s.name == "name").unwrap();
+        assert_eq!(name_sym.kind, SymbolKind::Property);
+        assert!(
+            name_sym.parent_id.is_some(),
+            "name should have a parent_id"
+        );
+        assert_eq!(
+            name_sym.parent_id.as_ref().unwrap(),
+            &package.id,
+            "name's parent should be the package table"
+        );
+        assert!(
+            name_sym.signature.as_ref().unwrap().contains("name = \"julie\""),
+            "Signature should show key = value, got: {:?}",
+            name_sym.signature
+        );
+
+        let version_sym = symbols.iter().find(|s| s.name == "version").unwrap();
+        assert_eq!(version_sym.kind, SymbolKind::Property);
+        assert_eq!(
+            version_sym.parent_id.as_ref().unwrap(),
+            &package.id,
+            "version's parent should be the package table"
+        );
+
+        let edition_sym = symbols.iter().find(|s| s.name == "edition").unwrap();
+        assert_eq!(edition_sym.kind, SymbolKind::Property);
+    }
+
+    #[test]
+    fn test_top_level_key_value_pairs() {
+        let toml = r#"
+title = "My Config"
+debug = false
+count = 42
+"#;
+
+        let symbols = extract_symbols(toml);
+
+        assert_eq!(symbols.len(), 3, "Should extract 3 top-level key-value pairs");
+
+        let title = symbols.iter().find(|s| s.name == "title").unwrap();
+        assert_eq!(title.kind, SymbolKind::Property);
+        assert!(
+            title.parent_id.is_none(),
+            "Top-level pairs should have no parent"
+        );
+
+        let debug = symbols.iter().find(|s| s.name == "debug").unwrap();
+        assert_eq!(debug.kind, SymbolKind::Property);
+
+        let count = symbols.iter().find(|s| s.name == "count").unwrap();
+        assert_eq!(count.kind, SymbolKind::Property);
+    }
+
+    #[test]
+    fn test_various_value_types_in_pairs() {
+        let toml = r#"
+[types]
+string_val = "hello"
+integer_val = 42
+float_val = 3.14
+bool_val = true
+array_val = [1, 2, 3]
+inline_table_val = { a = 1, b = 2 }
+"#;
+
+        let symbols = extract_symbols(toml);
+
+        // All should be Property kind regardless of value type
+        let string_val = symbols.iter().find(|s| s.name == "string_val").unwrap();
+        assert_eq!(string_val.kind, SymbolKind::Property);
+
+        let integer_val = symbols.iter().find(|s| s.name == "integer_val").unwrap();
+        assert_eq!(integer_val.kind, SymbolKind::Property);
+        assert!(
+            integer_val.signature.as_ref().unwrap().contains("42"),
+            "Integer value should appear in signature"
+        );
+
+        let float_val = symbols.iter().find(|s| s.name == "float_val").unwrap();
+        assert_eq!(float_val.kind, SymbolKind::Property);
+
+        let bool_val = symbols.iter().find(|s| s.name == "bool_val").unwrap();
+        assert_eq!(bool_val.kind, SymbolKind::Property);
+
+        let array_val = symbols.iter().find(|s| s.name == "array_val").unwrap();
+        assert_eq!(array_val.kind, SymbolKind::Property);
+
+        let inline_table_val = symbols.iter().find(|s| s.name == "inline_table_val").unwrap();
+        assert_eq!(inline_table_val.kind, SymbolKind::Property);
+    }
+
+    #[test]
+    fn test_quoted_key_pair() {
+        let toml = r#"
+[special]
+"quoted-key" = "value"
+'literal-key' = "other"
+"#;
+
+        let symbols = extract_symbols(toml);
+
+        // Quoted keys should have quotes stripped from the name
+        let quoted = symbols.iter().find(|s| s.name == "quoted-key");
+        assert!(
+            quoted.is_some(),
+            "Should extract quoted key without quotes in name, got: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert_eq!(quoted.unwrap().kind, SymbolKind::Property);
+    }
+
+    #[test]
+    fn test_dotted_key_pair() {
+        let toml = r#"
+[server]
+server.port = 8080
+server.ssl.enabled = true
+"#;
+
+        let symbols = extract_symbols(toml);
+
+        // Dotted keys should use the full dotted name
+        let port = symbols.iter().find(|s| s.name == "server.port");
+        assert!(
+            port.is_some(),
+            "Should extract dotted key as full name, got: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert_eq!(port.unwrap().kind, SymbolKind::Property);
+
+        let ssl_enabled = symbols.iter().find(|s| s.name == "server.ssl.enabled");
+        assert!(
+            ssl_enabled.is_some(),
+            "Should extract deeply dotted key"
+        );
+    }
+
+    #[test]
+    fn test_long_value_truncation_in_signature() {
+        let toml = r#"
+[config]
+short = "brief"
+long_array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+long_inline = { a = 1, b = 2, c = 3, d = 4, e = 5, f = 6, g = 7, h = 8, i = 9, j = 10, k = 11, l = 12 }
+"#;
+
+        let symbols = extract_symbols(toml);
+
+        let short = symbols.iter().find(|s| s.name == "short").unwrap();
+        assert!(
+            short.signature.as_ref().unwrap().contains("\"brief\""),
+            "Short values should not be truncated"
+        );
+
+        let long_array = symbols.iter().find(|s| s.name == "long_array").unwrap();
+        let sig = long_array.signature.as_ref().unwrap();
+        assert!(
+            sig.len() <= 100,
+            "Long array signature should be truncated, got len: {}",
+            sig.len()
+        );
+        assert!(
+            sig.ends_with("..."),
+            "Truncated signature should end with '...', got: {:?}",
+            sig
+        );
+
+        let long_inline = symbols.iter().find(|s| s.name == "long_inline").unwrap();
+        let sig = long_inline.signature.as_ref().unwrap();
+        assert!(
+            sig.len() <= 100,
+            "Long inline table signature should be truncated"
+        );
+    }
+
+    #[test]
+    fn test_existing_table_tests_still_pass_with_pairs() {
+        // Regression test: tables should still be extracted correctly
+        // even now that we also extract pairs
+        let toml = r#"
+[package]
+name = "julie"
+
+[dependencies]
+tokio = "1.0"
+
+[dev-dependencies]
+proptest = "1.0"
+"#;
+
+        let symbols = extract_symbols(toml);
+
+        let tables: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Module).collect();
+        assert_eq!(
+            tables.len(),
+            3,
+            "Should still find exactly 3 tables: {:?}",
+            tables.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        let pairs: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Property).collect();
+        assert_eq!(
+            pairs.len(),
+            3,
+            "Should find 3 key-value pairs: {:?}",
+            pairs.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_pair_string_value_in_doc_comment() {
+        // String values should be stored in doc_comment for semantic search
+        let toml = r#"
+[package]
+name = "julie"
+description = "A code intelligence server"
+"#;
+
+        let symbols = extract_symbols(toml);
+
+        let desc = symbols.iter().find(|s| s.name == "description").unwrap();
+        assert!(
+            desc.doc_comment.is_some(),
+            "String values should be in doc_comment for search"
+        );
+        assert_eq!(
+            desc.doc_comment.as_ref().unwrap(),
+            "A code intelligence server"
+        );
     }
 }
