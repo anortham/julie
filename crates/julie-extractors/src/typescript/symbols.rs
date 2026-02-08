@@ -15,6 +15,13 @@ pub(super) fn extract_symbols(extractor: &mut TypeScriptExtractor, tree: &Tree) 
     symbols
 }
 
+/// Check if a node is a direct child of an interface_body
+fn is_inside_interface(node: &Node) -> bool {
+    node.parent()
+        .map(|p| p.kind() == "interface_body")
+        .unwrap_or(false)
+}
+
 /// Recursively visit nodes and extract symbols based on node kind
 fn visit_node(extractor: &mut TypeScriptExtractor, node: Node, symbols: &mut Vec<Symbol>) {
     let mut symbol: Option<Symbol> = None;
@@ -31,9 +38,15 @@ fn visit_node(extractor: &mut TypeScriptExtractor, node: Node, symbols: &mut Vec
             symbol = functions::extract_function(extractor, node);
         }
 
-        // Method extraction (inside classes)
-        "method_definition" | "method_signature" => {
+        // Method extraction (inside classes, not interfaces — interface methods
+        // are extracted by extract_interface to get correct parent_id)
+        "method_definition" => {
             symbol = functions::extract_method(extractor, node);
+        }
+        "method_signature" => {
+            if !is_inside_interface(&node) {
+                symbol = functions::extract_method(extractor, node);
+            }
         }
 
         // Variable/arrow function assignment
@@ -41,9 +54,10 @@ fn visit_node(extractor: &mut TypeScriptExtractor, node: Node, symbols: &mut Vec
             symbol = functions::extract_variable(extractor, node);
         }
 
-        // Interface extraction
+        // Interface extraction (with members)
         "interface_declaration" => {
-            symbol = interfaces::extract_interface(extractor, node);
+            let interface_symbols = interfaces::extract_interface(extractor, node);
+            symbols.extend(interface_symbols);
         }
 
         // Type aliases
@@ -71,8 +85,13 @@ fn visit_node(extractor: &mut TypeScriptExtractor, node: Node, symbols: &mut Vec
             symbol = interfaces::extract_namespace(extractor, node);
         }
 
-        // Properties and fields
-        "property_signature" | "public_field_definition" | "property_definition" => {
+        // Properties and fields (skip interface members — already handled by extract_interface)
+        "property_signature" => {
+            if !is_inside_interface(&node) {
+                symbol = interfaces::extract_property(extractor, node);
+            }
+        }
+        "public_field_definition" | "property_definition" => {
             symbol = interfaces::extract_property(extractor, node);
         }
 

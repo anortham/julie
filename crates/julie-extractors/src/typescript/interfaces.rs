@@ -7,18 +7,23 @@ use crate::base::{Symbol, SymbolKind, SymbolOptions};
 use crate::typescript::TypeScriptExtractor;
 use tree_sitter::Node;
 
-/// Extract an interface declaration
+/// Extract an interface declaration and its members (properties and methods)
 pub(super) fn extract_interface(
     extractor: &mut TypeScriptExtractor,
     node: Node,
-) -> Option<Symbol> {
+) -> Vec<Symbol> {
+    let mut symbols = Vec::new();
+
     let name_node = node.child_by_field_name("name");
-    let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
+    let name = match name_node.map(|n| extractor.base().get_node_text(&n)) {
+        Some(name) => name,
+        None => return symbols,
+    };
 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
-    Some(extractor.base_mut().create_symbol(
+    let iface_symbol = extractor.base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Interface,
@@ -26,7 +31,60 @@ pub(super) fn extract_interface(
             doc_comment,
             ..Default::default()
         },
-    ))
+    );
+
+    let parent_id = iface_symbol.id.clone();
+    symbols.push(iface_symbol);
+
+    // Extract interface members from the interface body
+    if let Some(body) = node.child_by_field_name("body") {
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            match child.kind() {
+                "property_signature" => {
+                    if let Some(member_name_node) = child.child_by_field_name("name") {
+                        let member_name = extractor.base().get_node_text(&member_name_node);
+                        if !member_name.is_empty() {
+                            let signature = extractor.base().get_node_text(&child);
+                            let member_symbol = extractor.base_mut().create_symbol(
+                                &child,
+                                member_name,
+                                SymbolKind::Property,
+                                SymbolOptions {
+                                    parent_id: Some(parent_id.clone()),
+                                    signature: Some(signature),
+                                    ..Default::default()
+                                },
+                            );
+                            symbols.push(member_symbol);
+                        }
+                    }
+                }
+                "method_signature" => {
+                    if let Some(member_name_node) = child.child_by_field_name("name") {
+                        let member_name = extractor.base().get_node_text(&member_name_node);
+                        if !member_name.is_empty() {
+                            let signature = extractor.base().get_node_text(&child);
+                            let member_symbol = extractor.base_mut().create_symbol(
+                                &child,
+                                member_name,
+                                SymbolKind::Method,
+                                SymbolOptions {
+                                    parent_id: Some(parent_id.clone()),
+                                    signature: Some(signature),
+                                    ..Default::default()
+                                },
+                            );
+                            symbols.push(member_symbol);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    symbols
 }
 
 /// Extract a type alias declaration
