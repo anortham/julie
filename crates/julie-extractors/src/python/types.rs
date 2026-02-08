@@ -8,13 +8,9 @@ use tree_sitter::Node;
 
 /// Extract a class definition from a class_definition node
 pub(super) fn extract_class(extractor: &mut PythonExtractor, node: Node) -> Option<Symbol> {
-    // For Python, the class name is typically the second child (after "class" keyword)
-    let identifier_node = node.children(&mut node.walk()).nth(1)?;
-    let name = if identifier_node.kind() == "identifier" {
-        extractor.base_mut().get_node_text(&identifier_node)
-    } else {
-        return None;
-    };
+    // Use field-based lookup for robustness against grammar changes
+    let identifier_node = node.child_by_field_name("name")?;
+    let name = extractor.base_mut().get_node_text(&identifier_node);
 
     // Extract base classes and metaclass arguments
     let superclasses_node = node.child_by_field_name("superclasses");

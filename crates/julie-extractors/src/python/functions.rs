@@ -108,9 +108,9 @@ pub(super) fn extract_lambda(extractor: &mut PythonExtractor, node: Node) -> Sym
     // Create signature: lambda params: body
     let signature = format!("lambda {}: {}", params.join(", "), body);
 
-    // Create name with row number: <lambda:row>
+    // Create name with row number: lambda_row (no angle brackets for search tokenization)
     let start_pos = node.start_position();
-    let name = format!("<lambda:{}>", start_pos.row);
+    let name = format!("lambda_{}", start_pos.row);
 
     // Extract doc comment (preceding comments)
     let doc_comment = extractor.base().find_doc_comment(&node);

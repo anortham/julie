@@ -49,6 +49,17 @@ pub fn extract_imports(extractor: &mut PythonExtractor, node: Node) -> Vec<Symbo
                                     imports.push(symbol);
                                 }
                             }
+                            "wildcard_import" => {
+                                // Wildcard import: from module import *
+                                let import_text = format!("from {} import *", module);
+                                let symbol = create_import_symbol(
+                                    extractor,
+                                    &node,
+                                    "*".to_string(),
+                                    import_text,
+                                );
+                                imports.push(symbol);
+                            }
                             _ => {}
                         }
                     }

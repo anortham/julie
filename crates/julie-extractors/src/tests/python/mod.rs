@@ -414,7 +414,7 @@ filtered = list(filter(lambda n: n > 3, numbers))
 
         let lambdas: Vec<_> = symbols
             .iter()
-            .filter(|s| s.name.starts_with("<lambda:"))
+            .filter(|s| s.name.starts_with("lambda_"))
             .collect();
         assert!(lambdas.len() >= 2);
 
@@ -888,6 +888,139 @@ class Temperature:
             SymbolKind::Constructor,
             "__init__ should remain Constructor"
         );
+    }
+
+    #[test]
+    fn test_wildcard_import() {
+        let code = r#"from os.path import *"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let imports: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Import)
+            .collect();
+        assert!(
+            !imports.is_empty(),
+            "Wildcard import should be extracted as Import symbol"
+        );
+        let import = imports.first().unwrap();
+        // Either the name or signature should indicate wildcard
+        let combined = format!(
+            "{} {}",
+            import.name,
+            import.signature.as_deref().unwrap_or("")
+        );
+        assert!(
+            combined.contains("*"),
+            "Wildcard import should indicate * in name or signature, got: {}",
+            combined
+        );
+    }
+
+    #[test]
+    fn test_wildcard_import_from_relative_module() {
+        let code = r#"from .utils import *"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let imports: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Import)
+            .collect();
+        assert!(
+            !imports.is_empty(),
+            "Relative wildcard import should be extracted"
+        );
+        let import = imports.first().unwrap();
+        assert!(
+            import.name.contains("*"),
+            "Wildcard import name should contain *, got: {}",
+            import.name
+        );
+        assert!(
+            import
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("from .utils import *"),
+            "Signature should show full import statement, got: {}",
+            import.signature.as_ref().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_lambda_naming_no_angle_brackets() {
+        let code = r#"transform = lambda x: x * 2"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let lambda = symbols.iter().find(|s| s.name.contains("lambda"));
+        assert!(lambda.is_some(), "Should find a lambda symbol");
+        let l = lambda.unwrap();
+        assert!(
+            !l.name.contains('<'),
+            "Lambda name should not contain '<', got: {}",
+            l.name
+        );
+        assert!(
+            !l.name.contains('>'),
+            "Lambda name should not contain '>', got: {}",
+            l.name
+        );
+        // Should use underscore format
+        assert!(
+            l.name.starts_with("lambda_"),
+            "Lambda name should start with 'lambda_', got: {}",
+            l.name
+        );
+    }
+
+    #[test]
+    fn test_lambda_naming_multiple_lambdas() {
+        let code = r#"
+a = lambda x: x + 1
+b = lambda y: y * 2
+"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let lambdas: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.name.contains("lambda"))
+            .collect();
+        assert!(lambdas.len() >= 2, "Should find at least 2 lambdas");
+        for l in &lambdas {
+            assert!(
+                !l.name.contains('<') && !l.name.contains('>'),
+                "Lambda name should not contain angle brackets, got: {}",
+                l.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_class_name_extraction_robust() {
+        // This test ensures class extraction works with various class patterns
+        // by relying on child_by_field_name("name") rather than positional indexing
+        let code = r#"
+class SimpleClass:
+    pass
+
+class DecoratedBase(metaclass=ABCMeta):
+    pass
+
+class MultiInherit(Base1, Base2, Base3):
+    pass
+"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let simple = symbols.iter().find(|s| s.name == "SimpleClass");
+        assert!(simple.is_some(), "Should extract SimpleClass");
+        assert_eq!(simple.unwrap().kind, SymbolKind::Class);
+
+        let decorated = symbols.iter().find(|s| s.name == "DecoratedBase");
+        assert!(decorated.is_some(), "Should extract DecoratedBase");
+
+        let multi = symbols.iter().find(|s| s.name == "MultiInherit");
+        assert!(multi.is_some(), "Should extract MultiInherit");
     }
 }
 
