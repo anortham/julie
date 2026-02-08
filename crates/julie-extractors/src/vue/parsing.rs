@@ -16,6 +16,7 @@ pub(crate) struct VueSection {
     #[allow(dead_code)]
     pub(crate) end_line: usize,
     pub(crate) lang: Option<String>, // e.g., 'ts', 'scss'
+    pub(crate) is_setup: bool,       // true for <script setup>
 }
 
 impl fmt::Display for VueSection {
@@ -39,6 +40,7 @@ pub(crate) struct VueSectionBuilder {
     pub(crate) section_type: String,
     pub(crate) start_line: usize,
     pub(crate) lang: Option<String>,
+    pub(crate) is_setup: bool,
 }
 
 impl VueSectionBuilder {
@@ -49,6 +51,7 @@ impl VueSectionBuilder {
             start_line: self.start_line,
             end_line,
             lang: self.lang,
+            is_setup: self.is_setup,
         }
     }
 }
@@ -102,10 +105,15 @@ pub(crate) fn parse_vue_sfc(content: &str) -> Result<Vec<VueSection>, Box<dyn st
                     _ => "html".to_string(),
                 });
 
+            // Detect <script setup> attribute
+            let is_setup =
+                section_type == "script" && attrs.split_whitespace().any(|a| a == "setup");
+
             current_section = Some(VueSectionBuilder {
                 section_type: section_type.to_string(),
                 start_line: i + 1,
                 lang: Some(lang),
+                is_setup,
             });
             section_content.clear();
             continue;

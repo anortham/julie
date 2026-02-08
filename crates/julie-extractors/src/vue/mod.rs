@@ -16,6 +16,7 @@ mod helpers;
 mod identifiers;
 pub(crate) mod parsing;
 mod script;
+mod script_setup;
 mod style;
 
 // Public re-exports
@@ -150,8 +151,13 @@ impl VueExtractor {
     fn extract_section_symbols(&self, section: &VueSection) -> Vec<Symbol> {
         match section.section_type.as_str() {
             "script" => {
-                // Extract basic Vue component structure - following standard approach
-                script::extract_script_symbols(&self.base, section)
+                if section.is_setup {
+                    // <script setup> uses tree-sitter for Composition API extraction
+                    script_setup::extract_script_setup_symbols(&self.base, section)
+                } else {
+                    // Regular <script> uses regex for Options API extraction
+                    script::extract_script_symbols(&self.base, section)
+                }
             }
             "template" => {
                 // Template component usages (<UserProfile />) and directives (v-if, v-for)

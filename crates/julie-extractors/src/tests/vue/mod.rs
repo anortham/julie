@@ -1156,3 +1156,4 @@ export default {
     }
 }
 mod types; // Phase 4: Type extraction verification tests
+mod script_setup; // Phase 5: Vue 3 Composition API / <script setup> tests
