@@ -6,9 +6,38 @@
 //! - ALTER TABLE ADD CONSTRAINT statements
 
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions};
+use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tree_sitter::Node;
+
+/// Matches ALTER TABLE ADD CONSTRAINT with constraint type
+static ALTER_CONSTRAINT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"ADD\s+CONSTRAINT\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(CHECK|FOREIGN\s+KEY|UNIQUE|PRIMARY\s+KEY)",
+    )
+    .unwrap()
+});
+
+/// Matches CHECK constraint condition (handles nested parens)
+static CHECK_CONDITION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)").unwrap());
+
+/// Matches FOREIGN KEY column list and REFERENCES table
+static FOREIGN_KEY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z_][a-zA-Z0-9_]*)").unwrap()
+});
+
+/// Matches ON DELETE action
+static ON_DELETE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)").unwrap()
+});
+
+/// Matches ON UPDATE action
+static ON_UPDATE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)").unwrap()
+});
 
 /// Extract column constraints (PRIMARY KEY, NOT NULL, UNIQUE, etc.)
 pub(super) fn extract_column_constraints(base: &BaseExtractor, column_node: &Node) -> String {
@@ -235,11 +264,7 @@ pub(super) fn extract_constraints_from_alter_table(
     let node_text = base.get_node_text(&node);
 
     // Extract ADD CONSTRAINT statements
-    let constraint_regex = regex::Regex::new(
-        r"ADD\s+CONSTRAINT\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(CHECK|FOREIGN\s+KEY|UNIQUE|PRIMARY\s+KEY)",
-    )
-    .unwrap();
-    if let Some(captures) = constraint_regex.captures(&node_text) {
+    if let Some(captures) = ALTER_CONSTRAINT_RE.captures(&node_text) {
         if let Some(constraint_name) = captures.get(1) {
             let name = constraint_name.as_str().to_string();
             let constraint_type = captures.get(2).map_or("", |m| m.as_str()).to_uppercase();
@@ -253,20 +278,14 @@ pub(super) fn extract_constraints_from_alter_table(
 
             // Add more details based on constraint type
             if constraint_type == "CHECK" {
-                let check_regex =
-                    regex::Regex::new(r"CHECK\s*\(([^)]+(?:\([^)]*\)[^)]*)*)").unwrap();
-                if let Some(check_captures) = check_regex.captures(&node_text) {
+                if let Some(check_captures) = CHECK_CONDITION_RE.captures(&node_text) {
                     let check_condition = check_captures.get(1).map_or("", |m| m.as_str()).trim();
                     if !check_condition.is_empty() {
                         signature.push_str(&format!(" ({})", check_condition));
                     }
                 }
             } else if constraint_type.contains("FOREIGN") {
-                let fk_regex = regex::Regex::new(
-                    r"FOREIGN\s+KEY\s*\(([^)]+)\)\s*REFERENCES\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-                )
-                .unwrap();
-                if let Some(fk_captures) = fk_regex.captures(&node_text) {
+                if let Some(fk_captures) = FOREIGN_KEY_RE.captures(&node_text) {
                     let fk_columns = fk_captures.get(1).map_or("", |m| m.as_str());
                     let fk_ref_table = fk_captures.get(2).map_or("", |m| m.as_str());
 
@@ -277,10 +296,7 @@ pub(super) fn extract_constraints_from_alter_table(
                 }
 
                 // Add ON DELETE/UPDATE actions
-                let on_delete_regex =
-                    regex::Regex::new(r"ON\s+DELETE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
-                        .unwrap();
-                if let Some(on_delete_captures) = on_delete_regex.captures(&node_text) {
+                if let Some(on_delete_captures) = ON_DELETE_RE.captures(&node_text) {
                     let on_delete_action = on_delete_captures
                         .get(1)
                         .map_or("", |m| m.as_str())
@@ -290,10 +306,7 @@ pub(super) fn extract_constraints_from_alter_table(
                     }
                 }
 
-                let on_update_regex =
-                    regex::Regex::new(r"ON\s+UPDATE\s+(CASCADE|RESTRICT|SET\s+NULL|NO\s+ACTION)")
-                        .unwrap();
-                if let Some(on_update_captures) = on_update_regex.captures(&node_text) {
+                if let Some(on_update_captures) = ON_UPDATE_RE.captures(&node_text) {
                     let on_update_action = on_update_captures
                         .get(1)
                         .map_or("", |m| m.as_str())

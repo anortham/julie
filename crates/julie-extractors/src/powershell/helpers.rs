@@ -2,7 +2,21 @@
 //! Provides utilities for navigating the PowerShell AST and extracting node information
 
 use crate::base::BaseExtractor;
+use regex::Regex;
+use std::sync::LazyLock;
 use tree_sitter::Node;
+
+/// Matches `[Parameter(...)]` attributes
+static PARAMETER_ATTR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[Parameter[^\]]*\]").unwrap());
+
+/// Matches inheritance declaration: `: ClassName`
+static INHERITANCE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r":\s*(\w+)").unwrap());
+
+/// Matches type annotation brackets: `[TypeName]`
+static BRACKET_TYPE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[(\w+)\]").unwrap());
 
 /// Find the function name node from a function_statement
 pub(super) fn find_function_name_node<'a>(node: Node<'a>) -> Option<Node<'a>> {
@@ -137,10 +151,7 @@ pub(super) fn has_modifier(base: &BaseExtractor, node: Node, modifier: &str) -> 
 /// Extract parameter attributes from a parameter definition
 pub(super) fn extract_parameter_attributes(base: &BaseExtractor, node: Node) -> String {
     let node_text = base.get_node_text(&node);
-    if let Some(captures) = regex::Regex::new(r"\[Parameter[^\]]*\]")
-        .unwrap()
-        .captures(&node_text)
-    {
+    if let Some(captures) = PARAMETER_ATTR_RE.captures(&node_text) {
         captures
             .get(0)
             .map_or(String::new(), |m| m.as_str().to_string())
@@ -152,8 +163,7 @@ pub(super) fn extract_parameter_attributes(base: &BaseExtractor, node: Node) -> 
 /// Extract inheritance relationship from a class definition
 pub(super) fn extract_inheritance(base: &BaseExtractor, node: Node) -> Option<String> {
     let node_text = base.get_node_text(&node);
-    regex::Regex::new(r":\s*(\w+)")
-        .unwrap()
+    INHERITANCE_RE
         .captures(&node_text)
         .and_then(|captures| captures.get(1).map(|m| m.as_str().to_string()))
 }
@@ -161,8 +171,7 @@ pub(super) fn extract_inheritance(base: &BaseExtractor, node: Node) -> Option<St
 /// Extract return type annotation from a method definition
 pub(super) fn extract_return_type(base: &BaseExtractor, node: Node) -> Option<String> {
     let node_text = base.get_node_text(&node);
-    regex::Regex::new(r"\[(\w+)\]")
-        .unwrap()
+    BRACKET_TYPE_RE
         .captures(&node_text)
         .and_then(|captures| captures.get(1).map(|m| format!("[{}]", m.as_str())))
 }
@@ -170,8 +179,7 @@ pub(super) fn extract_return_type(base: &BaseExtractor, node: Node) -> Option<St
 /// Extract property type annotation from a property definition
 pub(super) fn extract_property_type(base: &BaseExtractor, node: Node) -> Option<String> {
     let node_text = base.get_node_text(&node);
-    regex::Regex::new(r"\[(\w+)\]")
-        .unwrap()
+    BRACKET_TYPE_RE
         .captures(&node_text)
         .and_then(|captures| captures.get(1).map(|m| format!("[{}]", m.as_str())))
 }

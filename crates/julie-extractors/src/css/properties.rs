@@ -2,8 +2,14 @@
 
 use super::helpers::PropertyHelper;
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tree_sitter::Node;
+
+/// Matches `@supports` condition
+static SUPPORTS_CONDITION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"@supports\s+([^{]+)").unwrap());
 
 pub(super) struct PropertyExtractor;
 
@@ -93,9 +99,7 @@ impl PropertyExtractor {
     /// Extract supports condition - port of extractSupportsCondition
     pub(super) fn extract_supports_condition(base: &BaseExtractor, node: &Node) -> Option<String> {
         let text = base.get_node_text(node);
-        let captures = regex::Regex::new(r"@supports\s+([^{]+)")
-            .unwrap()
-            .captures(&text)?;
+        let captures = SUPPORTS_CONDITION_RE.captures(&text)?;
         // Safe: capture group 1 exists if regex matched (pattern has one capture group)
         let condition = captures.get(1).map_or("", |m| m.as_str()).trim();
         Some(format!("@supports {}", condition))

@@ -4,7 +4,13 @@
 //! and environment variable classification.
 
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use regex::Regex;
+use std::sync::LazyLock;
 use tree_sitter::Node;
+
+/// Matches ALL_CAPS environment variable names
+static ENV_VAR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Z_][A-Z0-9_]*$").unwrap());
 
 impl super::BashExtractor {
     /// Extract a variable assignment (VAR=value)
@@ -110,10 +116,7 @@ impl super::BashExtractor {
             "KUBECONFIG",
         ];
 
-        env_vars.contains(&name)
-            || regex::Regex::new(r"^[A-Z_][A-Z0-9_]*$")
-                .unwrap()
-                .is_match(name)
+        env_vars.contains(&name) || ENV_VAR_RE.is_match(name)
     }
 
     /// Check if a variable assignment is preceded by 'export'

@@ -9,7 +9,17 @@
 use crate::base::{
     BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
 };
+use regex::Regex;
+use std::sync::LazyLock;
 use tree_sitter::{Node, Tree};
+
+/// Matches return type in function signatures: `-> ReturnType`
+static RETURN_TYPE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"->\s*([^{]+)").unwrap());
+
+/// Matches type annotations: `: Type`
+static VAR_TYPE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r":\s*([^=\s{]+)").unwrap());
 
 // Private modules
 mod functions;
@@ -152,11 +162,8 @@ impl RustExtractor {
             // For functions/methods, try to extract return type from signature
             if matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method) {
                 if let Some(ref signature) = symbol.signature {
-                    // Extract return type using regex: "-> Type"
-                    if let Some(captures) = regex::Regex::new(r"->\s*([^{]+)")
-                        .unwrap()
-                        .captures(signature)
-                    {
+                    // Extract return type: "-> Type"
+                    if let Some(captures) = RETURN_TYPE_RE.captures(signature) {
                         let return_type = captures[1].trim().to_string();
                         if !return_type.is_empty() {
                             type_map.insert(symbol.id.clone(), return_type);
@@ -171,10 +178,7 @@ impl RustExtractor {
             ) {
                 if let Some(ref signature) = symbol.signature {
                     // Extract type from annotations: "name: Type" or "name: Type ="
-                    if let Some(captures) = regex::Regex::new(r":\s*([^=\s{]+)")
-                        .unwrap()
-                        .captures(signature)
-                    {
+                    if let Some(captures) = VAR_TYPE_RE.captures(signature) {
                         let type_str = captures[1].trim().to_string();
                         if !type_str.is_empty() {
                             type_map.insert(symbol.id.clone(), type_str);

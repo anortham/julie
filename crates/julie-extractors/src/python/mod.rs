@@ -22,8 +22,18 @@ pub(crate) mod signatures;
 pub(crate) mod types;
 
 use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
+use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tree_sitter::{Node, Tree};
+
+/// Matches return type hint at end of signature: `: ReturnType`
+static RETURN_HINT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r":\s*([^=\s]+)\s*$").unwrap());
+
+/// Matches type annotation with default value: `: Type =`
+static VAR_ANNOTATION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r":\s*([^=]+)\s*=").unwrap());
 
 // All public API is through PythonExtractor methods
 // Internal functions are used via module paths within the parent module
@@ -116,19 +126,13 @@ impl PythonExtractor {
         match kind {
             SymbolKind::Function | SymbolKind::Method => {
                 // Extract type hints from function signatures
-                if let Some(captures) = regex::Regex::new(r":\s*([^=\s]+)\s*$")
-                    .unwrap()
-                    .captures(signature)
-                {
+                if let Some(captures) = RETURN_HINT_RE.captures(signature) {
                     return Some(captures[1].to_string());
                 }
             }
             SymbolKind::Variable | SymbolKind::Property => {
                 // Extract type from variable annotations
-                if let Some(captures) = regex::Regex::new(r":\s*([^=]+)\s*=")
-                    .unwrap()
-                    .captures(signature)
-                {
+                if let Some(captures) = VAR_ANNOTATION_RE.captures(signature) {
                     return Some(captures[1].trim().to_string());
                 }
             }
