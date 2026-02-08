@@ -19,6 +19,11 @@ pub(super) fn extract_variable(
 
     let node_text = base.get_node_text(&node);
 
+    // Check for @import — Zig's module import mechanism
+    if node_text.contains("@import(") {
+        return extract_import(base, node, name, parent_id, is_public, &node_text);
+    }
+
     // Check for generic type constructor
     if node_text.contains("(comptime") && node_text.contains("= struct") {
         return extract_generic_type_constructor(base, node, name, parent_id, is_public);
@@ -56,6 +61,46 @@ pub(super) fn extract_variable(
 
     // Standard variable/constant extraction
     extract_standard_variable(base, node, name, parent_id, is_public, is_const)
+}
+
+fn extract_import(
+    base: &mut BaseExtractor,
+    node: Node,
+    name: String,
+    parent_id: Option<&String>,
+    is_public: bool,
+    node_text: &str,
+) -> Option<Symbol> {
+    // Extract the module path from @import("...")
+    let module_path = Regex::new(r#"@import\("([^"]+)"\)"#)
+        .unwrap()
+        .captures(node_text)
+        .map(|caps| caps[1].to_string());
+
+    let signature = if let Some(ref path) = module_path {
+        format!("const {} = @import(\"{}\")", name, path)
+    } else {
+        format!("const {} = @import(...)", name)
+    };
+
+    let visibility = if is_public {
+        Visibility::Public
+    } else {
+        Visibility::Private
+    };
+
+    Some(base.create_symbol(
+        &node,
+        name,
+        SymbolKind::Import,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(visibility),
+            parent_id: parent_id.cloned(),
+            metadata: None,
+            doc_comment: base.extract_documentation(&node),
+        },
+    ))
 }
 
 fn extract_generic_type_constructor(

@@ -1197,6 +1197,38 @@ const Container(comptime T: type) = struct {
                 .contains("[]const BaseShape")
         );
     }
+
+    #[test]
+    fn test_import_detection() {
+        let code = r#"
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const testing = @import("testing");
+"#;
+        let symbols = extract_symbols(code);
+
+        let std_import = symbols.iter().find(|s| s.name == "std").unwrap();
+        assert_eq!(
+            std_import.kind,
+            SymbolKind::Import,
+            "const with @import should be SymbolKind::Import"
+        );
+
+        let testing_import = symbols.iter().find(|s| s.name == "testing").unwrap();
+        assert_eq!(
+            testing_import.kind,
+            SymbolKind::Import,
+            "const with @import should be SymbolKind::Import"
+        );
+
+        // Non-import const should remain Constant
+        let allocator = symbols.iter().find(|s| s.name == "Allocator").unwrap();
+        assert_ne!(
+            allocator.kind,
+            SymbolKind::Import,
+            "Non-import const should not be Import"
+        );
+    }
 }
 
 // ========================================================================
@@ -1958,5 +1990,6 @@ fn example() !void {
         }
     }
 }
+
 mod types; // Phase 4: Type extraction verification tests
 pub mod cross_file_relationships;
