@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use super::attributes::AttributeHandler;
+use super::elements::should_extract_element;
 use super::types::HTMLTypes;
 
 /// Fallback extraction when normal parsing fails
@@ -91,12 +92,19 @@ impl FallbackExtractor {
 
         for captures in re.captures_iter(content) {
             if let Some(tag_name_match) = captures.get(1) {
-                let tag_name = tag_name_match.as_str().to_string();
+                // HTML tags are case-insensitive; normalize to lowercase
+                // for consistent filtering and symbol naming
+                let tag_name = tag_name_match.as_str().to_lowercase();
                 let attributes_text = captures.get(2).map(|m| m.as_str()).unwrap_or("");
                 let text_content = captures.get(3).map(|m| m.as_str());
 
                 // Parse attributes
                 let attributes = AttributeHandler::parse_attributes_from_text(attributes_text);
+
+                // Filter: skip generic containers without id/name (same as normal extraction)
+                if !should_extract_element(&tag_name, &attributes) {
+                    continue;
+                }
 
                 // Build signature
                 let signature =
