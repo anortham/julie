@@ -21,7 +21,7 @@ impl super::BashExtractor {
         let is_exported = self.is_exported_variable(node);
 
         let options = SymbolOptions {
-            signature: Some(self.extract_variable_signature(node)),
+            signature: self.extract_variable_signature(node),
             visibility: if is_exported {
                 Some(Visibility::Public)
             } else {

@@ -127,7 +127,7 @@ export default {
     }
 
     #[test]
-    fn test_extract_template_symbols() {
+    fn test_template_usages_not_extracted_as_symbols() {
         let vue_code = r#"
 <template>
   <div>
@@ -141,27 +141,29 @@ export default {
         let mut extractor = create_extractor("template.vue", vue_code);
         let symbols = extractor.extract_symbols(None);
 
-        // Should find component usages
-        let user_profile = symbols.iter().find(|s| s.name == "UserProfile");
-        assert!(user_profile.is_some());
-        assert_eq!(user_profile.unwrap().kind, SymbolKind::Class);
+        // Component usages in <template> are references, not definitions — should NOT be extracted
+        assert!(
+            !symbols.iter().any(|s| s.name == "UserProfile"),
+            "Component usages should NOT be extracted as symbols"
+        );
+        assert!(
+            !symbols.iter().any(|s| s.name == "ProductCard"),
+            "Component usages should NOT be extracted as symbols"
+        );
+        assert!(
+            !symbols.iter().any(|s| s.name == "CustomButton"),
+            "Component usages should NOT be extracted as symbols"
+        );
 
-        let product_card = symbols.iter().find(|s| s.name == "ProductCard");
-        assert!(product_card.is_some());
-        assert_eq!(product_card.unwrap().kind, SymbolKind::Class);
-
-        let custom_button = symbols.iter().find(|s| s.name == "CustomButton");
-        assert!(custom_button.is_some());
-        assert_eq!(custom_button.unwrap().kind, SymbolKind::Class);
-
-        // Should find directives
-        let v_for = symbols.iter().find(|s| s.name == "v-for");
-        assert!(v_for.is_some());
-        assert_eq!(v_for.unwrap().kind, SymbolKind::Property);
-
-        let v_if = symbols.iter().find(|s| s.name == "v-if");
-        assert!(v_if.is_some());
-        assert_eq!(v_if.unwrap().kind, SymbolKind::Property);
+        // Directives (v-for, v-if) are framework syntax, not definitions
+        assert!(
+            !symbols.iter().any(|s| s.name == "v-for"),
+            "Vue directives should NOT be extracted as symbols"
+        );
+        assert!(
+            !symbols.iter().any(|s| s.name == "v-if"),
+            "Vue directives should NOT be extracted as symbols"
+        );
     }
 
     #[test]
@@ -274,9 +276,9 @@ export default {
         let mut extractor = create_extractor("app-layout.vue", vue_code);
         let symbols = extractor.extract_symbols(None);
 
-        assert!(symbols.len() > 5);
+        assert!(symbols.len() > 4);
 
-        // Component
+        // Component name from <script> section
         let component = symbols.iter().find(|s| s.name == "AppLayout");
         assert!(component.is_some());
 
@@ -286,8 +288,11 @@ export default {
         assert!(symbols.iter().find(|s| s.name == "methods").is_some());
         assert!(symbols.iter().find(|s| s.name == "initialize").is_some());
 
-        // Template symbols
-        assert!(symbols.iter().find(|s| s.name == "Header").is_some());
+        // Template component usages should NOT be extracted
+        assert!(
+            !symbols.iter().any(|s| s.name == "Header"),
+            "Template component usages should NOT be extracted"
+        );
 
         // Style symbols
         assert!(symbols.iter().find(|s| s.name == "app").is_some());

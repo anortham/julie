@@ -21,7 +21,7 @@ impl super::BashExtractor {
         let name = self.base.get_node_text(&name_node);
 
         let options = SymbolOptions {
-            signature: Some(self.extract_function_signature(node)),
+            signature: self.extract_function_signature(node),
             visibility: Some(Visibility::Public), // Bash functions are generally accessible within the script
             parent_id: parent_id.map(|s| s.to_string()),
             doc_comment: self.base.find_doc_comment(&node),

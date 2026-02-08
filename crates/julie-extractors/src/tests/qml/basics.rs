@@ -103,24 +103,18 @@ Window {
 
         let symbols = extract_symbols(qml_code);
 
-        // Should extract all components
+        // Should extract only the root component (Window)
         let components: Vec<&Symbol> = symbols
             .iter()
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        // Window, Rectangle, Text, ListView, Text (delegate)
-        assert!(
-            components.len() >= 4,
-            "Should extract Window, Rectangle, Text, and ListView components"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root Window component"
         );
-
-        // Check we have Window as root
-        let window = components
-            .iter()
-            .find(|c| c.name == "Window")
-            .expect("Should find Window component");
-        assert_eq!(window.name, "Window");
+        assert_eq!(components[0].name, "Window");
     }
 
     #[test]

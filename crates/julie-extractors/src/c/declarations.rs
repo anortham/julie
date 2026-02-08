@@ -252,7 +252,7 @@ pub(super) fn extract_variable_declaration(
     declarator: tree_sitter::Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    let variable_name = helpers::extract_variable_name(&extractor.base, declarator);
+    let variable_name = helpers::extract_variable_name(&extractor.base, declarator)?;
     let signature = signatures::build_variable_signature(&extractor.base, node, declarator);
     let visibility = if helpers::is_static_function(&extractor.base, node) {
         "private"

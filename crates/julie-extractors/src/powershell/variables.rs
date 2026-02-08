@@ -33,7 +33,7 @@ pub(super) fn extract_variable(
     let is_environment = full_text.contains("env:") || is_environment_variable(&name);
     let is_automatic = is_automatic_variable(&name);
 
-    let signature = extract_variable_signature(base, node);
+    let signature = extract_variable_signature(base, node)?;
     let visibility = if is_global {
         Visibility::Public
     } else {
@@ -117,17 +117,16 @@ pub(super) fn extract_variable_reference(
 }
 
 /// Extract variable assignment signature
-fn extract_variable_signature(base: &BaseExtractor, node: Node) -> String {
+fn extract_variable_signature(base: &BaseExtractor, node: Node) -> Option<String> {
     let full_text = base.get_node_text(&node);
     let equal_index = full_text.find('=');
 
     if let Some(pos) = equal_index {
         if pos < full_text.len() - 1 {
-            return full_text.trim().to_string();
+            return Some(full_text.trim().to_string());
         }
     }
 
     find_variable_name_node(node)
         .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "unknown".to_string())
 }

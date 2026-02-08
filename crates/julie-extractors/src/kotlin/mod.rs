@@ -66,25 +66,25 @@ impl KotlinExtractor {
 
         match node.kind() {
             "class_declaration" | "enum_declaration" => {
-                symbol = Some(types::extract_class(
+                symbol = types::extract_class(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "interface_declaration" => {
-                symbol = Some(types::extract_interface(
+                symbol = types::extract_interface(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "object_declaration" => {
-                symbol = Some(types::extract_object(
+                symbol = types::extract_object(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "companion_object" => {
                 symbol = Some(types::extract_companion_object(
@@ -94,18 +94,18 @@ impl KotlinExtractor {
                 ));
             }
             "function_declaration" => {
-                symbol = Some(types::extract_function(
+                symbol = types::extract_function(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "property_declaration" | "property_signature" => {
-                symbol = Some(properties::extract_property(
+                symbol = properties::extract_property(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "enum_class_body" => {
                 types::extract_enum_members(&mut self.base, &node, symbols, parent_id.as_deref());
@@ -119,25 +119,25 @@ impl KotlinExtractor {
                 );
             }
             "package_header" => {
-                symbol = Some(types::extract_package(
+                symbol = types::extract_package(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "import" => {
-                symbol = Some(types::extract_import(
+                symbol = types::extract_import(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             "type_alias" => {
-                symbol = Some(types::extract_type_alias(
+                symbol = types::extract_type_alias(
                     &mut self.base,
                     &node,
                     parent_id.as_deref(),
-                ));
+                );
             }
             _ => {}
         }

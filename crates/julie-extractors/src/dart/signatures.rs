@@ -63,11 +63,10 @@ pub(super) fn extract_class_signature(node: &Node) -> String {
 }
 
 /// Extract function signature with return type, parameters, and async modifier
-pub(super) fn extract_function_signature(node: &Node, content: &str) -> String {
+pub(super) fn extract_function_signature(node: &Node, content: &str) -> Option<String> {
     let name_node = find_child_by_type(node, "identifier");
     let name = name_node
-        .map(|n| get_node_text(&n))
-        .unwrap_or_else(|| "unknown".to_string());
+        .map(|n| get_node_text(&n))?;
 
     // Get return type (can be type_identifier or void_type)
     let return_type_node = find_child_by_type(node, "type_identifier")
@@ -104,12 +103,12 @@ pub(super) fn extract_function_signature(node: &Node, content: &str) -> String {
 
     // Build signature with return type, generic parameters, and async modifier
     if !return_type.is_empty() {
-        format!(
+        Some(format!(
             "{} {}{}{}{}",
             return_type, name, type_params, params, async_modifier
-        )
+        ))
     } else {
-        format!("{}{}{}{}", name, type_params, params, async_modifier)
+        Some(format!("{}{}{}{}", name, type_params, params, async_modifier))
     }
 }
 
@@ -152,9 +151,8 @@ pub(super) fn extract_constructor_signature(node: &Node) -> String {
 }
 
 /// Extract variable signature (just the name)
-pub(super) fn extract_variable_signature(node: &Node) -> String {
+pub(super) fn extract_variable_signature(node: &Node) -> Option<String> {
     let name_node = find_child_by_type(node, "identifier");
     name_node
         .map(|n| get_node_text(&n))
-        .unwrap_or_else(|| "unknown".to_string())
 }

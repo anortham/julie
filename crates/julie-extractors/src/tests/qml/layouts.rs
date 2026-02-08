@@ -45,8 +45,8 @@ Rectangle {
 
         assert_eq!(
             components.len(),
-            3,
-            "Should extract container and nested rectangles"
+            1,
+            "Should extract only the root Rectangle component"
         );
     }
 
@@ -76,9 +76,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 2,
-            "Should extract Item with nested rectangles"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root Item component"
         );
     }
 
@@ -118,9 +119,10 @@ RowLayout {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 3,
-            "Should extract RowLayout with rectangles"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root RowLayout component"
         );
     }
 
@@ -288,9 +290,10 @@ Column {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 3,
-            "Should extract Column, Row, and Grid"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root Column component"
         );
     }
 }

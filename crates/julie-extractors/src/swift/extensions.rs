@@ -8,13 +8,12 @@ use super::SwiftExtractor;
 /// Extracts Swift extensions, imports, and type aliases
 impl SwiftExtractor {
     /// Implementation of extractExtension method
-    pub(super) fn extract_extension(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_extension(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let type_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = type_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "UnknownExtension".to_string());
+            .map(|n| self.base.get_node_text(&n))?;
 
         let modifiers = self.extract_modifiers(node);
         let conformance = self.extract_inheritance(node);
@@ -46,18 +45,16 @@ impl SwiftExtractor {
             doc_comment,
         );
 
-        self.base
-            .create_symbol(&node, name, SymbolKind::Class, options)
+        Some(self.base
+            .create_symbol(&node, name, SymbolKind::Class, options))
     }
 
     /// Implementation of extractImport method
-    pub(super) fn extract_import(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node
+    pub(super) fn extract_import(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        let name = node
             .children(&mut node.walk())
-            .find(|c| c.kind() == "identifier");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "UnknownImport".to_string());
+            .find(|c| c.kind() == "identifier")
+            .map(|n| self.base.get_node_text(&n))?;
 
         let metadata = HashMap::from([("type".to_string(), "import".to_string())]);
 
@@ -72,18 +69,16 @@ impl SwiftExtractor {
             doc_comment,
         );
 
-        self.base
-            .create_symbol(&node, name, SymbolKind::Import, options)
+        Some(self.base
+            .create_symbol(&node, name, SymbolKind::Import, options))
     }
 
     /// Implementation of extractTypeAlias method
-    pub(super) fn extract_type_alias(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
-        let name_node = node
+    pub(super) fn extract_type_alias(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+        let name = node
             .children(&mut node.walk())
-            .find(|c| c.kind() == "type_identifier");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "UnknownTypeAlias".to_string());
+            .find(|c| c.kind() == "type_identifier")
+            .map(|n| self.base.get_node_text(&n))?;
 
         // Find the type that the alias refers to
         let children: Vec<_> = node.children(&mut node.walk()).collect();
@@ -133,8 +128,8 @@ impl SwiftExtractor {
             doc_comment,
         );
 
-        self.base
-            .create_symbol(&node, name, SymbolKind::Type, options)
+        Some(self.base
+            .create_symbol(&node, name, SymbolKind::Type, options))
     }
 
     /// Helper method to create SymbolOptions with proper serde_json::Value metadata

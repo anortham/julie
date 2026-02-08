@@ -142,20 +142,20 @@ impl RubyExtractor {
 
         match node.kind() {
             "module" => {
-                symbol_opt = Some(symbols::extract_module(
+                symbol_opt = symbols::extract_module(
                     &mut self.base,
                     node,
                     parent_id.clone(),
                     self.current_visibility.clone(),
-                ));
+                );
             }
             "class" => {
-                symbol_opt = Some(symbols::extract_class(
+                symbol_opt = symbols::extract_class(
                     &mut self.base,
                     node,
                     parent_id.clone(),
                     self.current_visibility.clone(),
-                ));
+                );
             }
             "singleton_class" => {
                 symbol_opt = Some(symbols::extract_singleton_class(
@@ -165,20 +165,20 @@ impl RubyExtractor {
                 ));
             }
             "method" => {
-                symbol_opt = Some(symbols::extract_method(
+                symbol_opt = symbols::extract_method(
                     &mut self.base,
                     node,
                     parent_id.clone(),
                     self.current_visibility.clone(),
-                ));
+                );
             }
             "singleton_method" => {
-                symbol_opt = Some(symbols::extract_singleton_method(
+                symbol_opt = symbols::extract_singleton_method(
                     &mut self.base,
                     node,
                     parent_id.clone(),
                     self.current_visibility.clone(),
-                ));
+                );
             }
             "call" => {
                 if let Some(symbol) = calls::extract_call(&mut self.base, node) {

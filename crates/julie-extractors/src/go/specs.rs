@@ -131,8 +131,7 @@ impl super::GoExtractor {
                 import_path
                     .trim_matches('"')
                     .split('/')
-                    .next_back()
-                    .unwrap_or("unknown")
+                    .next_back()?
                     .to_string()
             };
 

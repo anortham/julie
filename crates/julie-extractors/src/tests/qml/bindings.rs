@@ -35,8 +35,8 @@ Rectangle {
 
         assert_eq!(
             components.len(),
-            2,
-            "Should extract both Rectangle components"
+            1,
+            "Should extract only the root Rectangle component"
         );
     }
 

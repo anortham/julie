@@ -157,15 +157,14 @@ pub(super) fn extract_function_name_from_declaration(
 }
 
 /// Extract variable name from a declarator node
-pub(super) fn extract_variable_name(base: &BaseExtractor, declarator: tree_sitter::Node) -> String {
+pub(super) fn extract_variable_name(base: &BaseExtractor, declarator: tree_sitter::Node) -> Option<String> {
     if declarator.kind() == "identifier" {
-        return base.get_node_text(&declarator);
+        return Some(base.get_node_text(&declarator));
     }
 
     // Find deepest identifier in declarator tree
     find_deepest_identifier(declarator)
         .map(|node| base.get_node_text(&node))
-        .unwrap_or_else(|| "unknown".to_string())
 }
 
 /// Extract struct name from a struct specifier

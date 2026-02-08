@@ -14,7 +14,7 @@ pub(super) fn extract_property(
     base: &mut BaseExtractor,
     node: &Node,
     parent_id: Option<&str>,
-) -> Symbol {
+) -> Option<Symbol> {
     // Look for name in variable_declaration first (the proper place for property names)
     let mut name_node = None;
     let var_decl = node
@@ -33,8 +33,7 @@ pub(super) fn extract_property(
             .find(|n| n.kind() == "identifier");
     }
     let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "unknownProperty".to_string());
+        .map(|n| base.get_node_text(&n))?;
 
     let modifiers = helpers::extract_modifiers(base, node);
     let property_type = helpers::extract_property_type(base, node);
@@ -113,7 +112,7 @@ pub(super) fn extract_property(
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         node,
         name,
         symbol_kind,
@@ -124,7 +123,7 @@ pub(super) fn extract_property(
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract constructor parameters and create symbols for them
@@ -145,9 +144,9 @@ pub(super) fn extract_constructor_parameters(
                 let name_node = child
                     .children(&mut child.walk())
                     .find(|n| n.kind() == "identifier");
-                let name = name_node
-                    .map(|n| base.get_node_text(&n))
-                    .unwrap_or_else(|| "unknownParam".to_string());
+                let Some(name) = name_node.map(|n| base.get_node_text(&n)) else {
+                    continue;
+                };
 
                 // Get binding pattern (val/var)
                 let binding_node = child

@@ -288,9 +288,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 2,
-            "Should extract Item and Rectangle with SpringAnimation"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root Item component"
         );
     }
 

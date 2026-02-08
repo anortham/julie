@@ -103,18 +103,18 @@ impl PhpExtractor {
 
         let mut current_parent_id = parent_id.clone();
         let symbol = match node.kind() {
-            "class_declaration" => Some(extract_class(self, node, parent_id.as_deref())),
-            "interface_declaration" => Some(extract_interface(self, node, parent_id.as_deref())),
-            "trait_declaration" => Some(extract_trait(self, node, parent_id.as_deref())),
-            "enum_declaration" => Some(extract_enum(self, node, parent_id.as_deref())),
+            "class_declaration" => extract_class(self, node, parent_id.as_deref()),
+            "interface_declaration" => extract_interface(self, node, parent_id.as_deref()),
+            "trait_declaration" => extract_trait(self, node, parent_id.as_deref()),
+            "enum_declaration" => extract_enum(self, node, parent_id.as_deref()),
             "function_definition" | "method_declaration" => {
-                Some(extract_function(self, node, parent_id.as_deref()))
+                extract_function(self, node, parent_id.as_deref())
             }
             "property_declaration" => extract_property(self, node, parent_id.as_deref()),
             "const_declaration" => extract_constant(self, node, parent_id.as_deref()),
-            "namespace_definition" => Some(extract_namespace(self, node, parent_id.as_deref())),
+            "namespace_definition" => extract_namespace(self, node, parent_id.as_deref()),
             "use_declaration" | "namespace_use_declaration" => {
-                Some(extract_use(self, node, parent_id.as_deref()))
+                extract_use(self, node, parent_id.as_deref())
             }
             "enum_case" => extract_enum_case(self, node, parent_id.as_deref()),
             "assignment_expression" => {

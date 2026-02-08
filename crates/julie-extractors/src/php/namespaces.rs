@@ -10,11 +10,10 @@ pub(super) fn extract_namespace(
     extractor: &mut PhpExtractor,
     node: Node,
     parent_id: Option<&str>,
-) -> Symbol {
+) -> Option<Symbol> {
     let base = extractor.get_base();
     let name = find_child(extractor, &node, "namespace_name")
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "UnknownNamespace".to_string());
+        .map(|n| base.get_node_text(&n))?;
 
     let mut metadata = HashMap::new();
     metadata.insert(
@@ -25,7 +24,7 @@ pub(super) fn extract_namespace(
     // Extract PHPDoc comment
     let doc_comment = extractor.get_base().find_doc_comment(&node);
 
-    extractor.get_base_mut().create_symbol(
+    Some(extractor.get_base_mut().create_symbol(
         &node,
         name.clone(),
         SymbolKind::Namespace,
@@ -36,7 +35,7 @@ pub(super) fn extract_namespace(
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract PHP use/import declarations
@@ -44,29 +43,22 @@ pub(super) fn extract_use(
     extractor: &mut PhpExtractor,
     node: Node,
     parent_id: Option<&str>,
-) -> Symbol {
+) -> Option<Symbol> {
     let (name, alias) = match node.kind() {
         "namespace_use_declaration" => {
             // Handle new namespace_use_declaration format
-            if let Some(use_clause) = find_child(extractor, &node, "namespace_use_clause") {
-                if let Some(qualified_name) = find_child(extractor, &use_clause, "qualified_name") {
-                    let name = extractor.get_base().get_node_text(&qualified_name);
-                    let alias = find_child(extractor, &node, "namespace_aliasing_clause")
-                        .map(|alias_node| extractor.get_base().get_node_text(&alias_node));
-                    (name, alias)
-                } else {
-                    ("UnknownImport".to_string(), None)
-                }
-            } else {
-                ("UnknownImport".to_string(), None)
-            }
+            let use_clause = find_child(extractor, &node, "namespace_use_clause")?;
+            let qualified_name = find_child(extractor, &use_clause, "qualified_name")?;
+            let name = extractor.get_base().get_node_text(&qualified_name);
+            let alias = find_child(extractor, &node, "namespace_aliasing_clause")
+                .map(|alias_node| extractor.get_base().get_node_text(&alias_node));
+            (name, alias)
         }
         _ => {
             // Handle legacy use_declaration format
             let name = find_child(extractor, &node, "namespace_name")
                 .or_else(|| find_child(extractor, &node, "qualified_name"))
-                .map(|n| extractor.get_base().get_node_text(&n))
-                .unwrap_or_else(|| "UnknownImport".to_string());
+                .map(|n| extractor.get_base().get_node_text(&n))?;
             let alias = find_child(extractor, &node, "namespace_aliasing_clause")
                 .map(|alias_node| extractor.get_base().get_node_text(&alias_node));
             (name, alias)
@@ -90,7 +82,7 @@ pub(super) fn extract_use(
     // Extract PHPDoc comment
     let doc_comment = extractor.get_base().find_doc_comment(&node);
 
-    extractor.get_base_mut().create_symbol(
+    Some(extractor.get_base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Import,
@@ -101,7 +93,7 @@ pub(super) fn extract_use(
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract variable assignments

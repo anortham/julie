@@ -43,6 +43,9 @@ pub struct RenameSymbolTool {
     /// Preview without applying (default: true)
     #[serde(default = "default_dry_run")]
     pub dry_run: bool,
+    /// Workspace filter: "primary" (default) or workspace ID
+    #[serde(default)]
+    pub workspace: Option<String>,
 }
 
 /// Internal refactoring engine used by RenameSymbolTool.
@@ -89,6 +92,7 @@ impl RenameSymbolTool {
                 "old_name": self.old_name,
                 "new_name": self.new_name,
                 "scope": self.scope,
+                "workspace": self.workspace,
             })
             .to_string(),
             dry_run: self.dry_run,

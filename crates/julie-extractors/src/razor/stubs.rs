@@ -7,7 +7,7 @@ impl super::RazorExtractor {
     /// Extract field declaration
     pub(super) fn extract_field(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         // Extract field name and type
-        let mut field_name = "unknownField".to_string();
+        let mut field_name: Option<String> = None;
         let mut field_type = None;
 
         // Find variable declarator in field declaration
@@ -30,10 +30,12 @@ impl super::RazorExtractor {
             // Find variable declarator(s)
             if let Some(var_declarator) = self.find_child_by_type(var_decl, "variable_declarator") {
                 if let Some(identifier) = self.find_child_by_type(var_declarator, "identifier") {
-                    field_name = self.base.get_node_text(&identifier);
+                    field_name = Some(self.base.get_node_text(&identifier));
                 }
             }
         }
+
+        let field_name = field_name?;
 
         let modifiers = self.extract_modifiers(node);
         let attributes = self.extract_attributes(node);
@@ -89,7 +91,7 @@ impl super::RazorExtractor {
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
         // Extract function name using same logic as extract_method
-        let mut name = "unknownFunction".to_string();
+        let mut name: Option<String> = None;
 
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();
@@ -98,7 +100,7 @@ impl super::RazorExtractor {
             // Look backwards from parameter list to find the method name identifier
             for i in (0..param_list_idx).rev() {
                 if children[i].kind() == "identifier" {
-                    name = self.base.get_node_text(&children[i]);
+                    name = Some(self.base.get_node_text(&children[i]));
                     break;
                 }
             }
@@ -106,11 +108,13 @@ impl super::RazorExtractor {
             // Fallback: find the last identifier (which should be method name in most cases)
             for child in children.iter().rev() {
                 if child.kind() == "identifier" {
-                    name = self.base.get_node_text(child);
+                    name = Some(self.base.get_node_text(child));
                     break;
                 }
             }
         }
+
+        let name = name?;
 
         let modifiers = self.extract_modifiers(node);
         let parameters = self.extract_method_parameters(node);

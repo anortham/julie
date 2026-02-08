@@ -45,7 +45,7 @@ pub(super) fn extract_variable_statement(
 
     // Determine data type
     let data_type = extract_variable_type(base, parent_node, &name_node)
-        .unwrap_or_else(|| "unknown".to_string());
+        .unwrap_or_else(|| "Variant".to_string());
 
     // Determine visibility
     let visibility = if is_exported {
@@ -116,7 +116,7 @@ pub(super) fn extract_constant_statement(
 
     // Get type annotation
     let data_type = extract_variable_type(base, parent_node, &name_node)
-        .unwrap_or_else(|| "unknown".to_string());
+        .unwrap_or_else(|| "Variant".to_string());
 
     let mut metadata = HashMap::new();
     metadata.insert("dataType".to_string(), Value::String(data_type));

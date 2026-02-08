@@ -75,6 +75,7 @@ function processUser() {
             new_name: "fetchUserProfile".to_string(),
             scope: None, // defaults to "workspace"
             dry_run: false,
+            workspace: None,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -113,6 +114,7 @@ class UserService {
             new_name: "AccountService".to_string(),
             scope: Some("workspace".to_string()),
             dry_run: true,
+            workspace: None,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -141,6 +143,7 @@ class UserService {
             new_name: "".to_string(),
             scope: None,
             dry_run: true,
+            workspace: None,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -157,6 +160,7 @@ class UserService {
             new_name: "test".to_string(),
             scope: None,
             dry_run: true,
+            workspace: None,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -173,6 +177,7 @@ class UserService {
             new_name: "NewName".to_string(),
             scope: None,
             dry_run: true,
+            workspace: None,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -201,6 +206,7 @@ mod tool_validation_tests {
             new_name: "newTest".to_string(),
             scope: None,
             dry_run: false,
+            workspace: None,
         };
 
         // Should be able to serialize/deserialize
@@ -254,6 +260,7 @@ export class UserValidator {
             new_name: "AccountValidator".to_string(),
             scope: Some("workspace".to_string()),
             dry_run: true,
+            workspace: None,
         };
 
         let handler = JulieServerHandler::new().await.unwrap();
@@ -350,6 +357,7 @@ export type ServiceFactory = () => UserService;
             new_name: "AccountService".to_string(),
             scope: Some("workspace".to_string()),
             dry_run: false, // Actually perform the rename
+            workspace: None,
         };
 
         // Execute the rename

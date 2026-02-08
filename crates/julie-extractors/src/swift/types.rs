@@ -8,14 +8,12 @@ use super::SwiftExtractor;
 /// Extracts Swift type declarations: classes, structs, protocols, and enums
 impl SwiftExtractor {
     /// Implementation of extractClass method with full Swift class support
-    pub(super) fn extract_class(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_class(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         // Swift parser uses class_declaration for classes
-        let name_node = node
+        let name = node
             .children(&mut node.walk())
-            .find(|c| c.kind() == "type_identifier" || c.kind() == "user_type");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "UnknownClass".to_string());
+            .find(|c| c.kind() == "type_identifier" || c.kind() == "user_type")
+            .map(|n| self.base.get_node_text(&n))?;
 
         // Check what type this actually is
         let is_enum = node.children(&mut node.walk()).any(|c| c.kind() == "enum");
@@ -84,7 +82,7 @@ impl SwiftExtractor {
         // Extract Swift documentation comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             symbol_kind,
@@ -95,17 +93,16 @@ impl SwiftExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 
     /// Implementation of extractStruct method
-    pub(super) fn extract_struct(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_struct(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "UnknownStruct".to_string());
+            .map(|n| self.base.get_node_text(&n))?;
 
         let modifiers = self.extract_modifiers(node);
         let generic_params = self.extract_generic_parameters(node);
@@ -139,7 +136,7 @@ impl SwiftExtractor {
         // Extract Swift documentation comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Struct,
@@ -150,17 +147,16 @@ impl SwiftExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 
     /// Implementation of extractProtocol method
-    pub(super) fn extract_protocol(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_protocol(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "UnknownProtocol".to_string());
+            .map(|n| self.base.get_node_text(&n))?;
 
         let modifiers = self.extract_modifiers(node);
         let inheritance = self.extract_inheritance(node);
@@ -189,7 +185,7 @@ impl SwiftExtractor {
         // Extract Swift documentation comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Interface,
@@ -200,17 +196,16 @@ impl SwiftExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 
     /// Implementation of extractEnum method
-    pub(super) fn extract_enum(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_enum(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
         let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "UnknownEnum".to_string());
+            .map(|n| self.base.get_node_text(&n))?;
 
         let modifiers = self.extract_modifiers(node);
         let generic_params = self.extract_generic_parameters(node);
@@ -244,7 +239,7 @@ impl SwiftExtractor {
         // Extract Swift documentation comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Enum,
@@ -255,6 +250,6 @@ impl SwiftExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 }

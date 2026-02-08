@@ -22,7 +22,7 @@ impl super::JavaScriptExtractor {
                     .get_node_text(&s)
                     .replace(&['\'', '"', '`'][..], "")
             })
-            .unwrap_or_else(|| "unknown".to_string());
+            .unwrap_or_default();
 
         let mut metadata = HashMap::new();
         metadata.insert("source".to_string(), json!(source_path));

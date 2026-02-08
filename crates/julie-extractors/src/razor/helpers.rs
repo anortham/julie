@@ -176,12 +176,9 @@ impl super::RazorExtractor {
     }
 
     /// Extract namespace name from a using directive or namespace declaration
-    pub(super) fn extract_namespace_name(&self, node: Node) -> String {
-        if let Some(name_node) = self.find_child_by_types(node, &["qualified_name", "identifier"]) {
-            self.base.get_node_text(&name_node)
-        } else {
-            "UnknownNamespace".to_string()
-        }
+    pub(super) fn extract_namespace_name(&self, node: Node) -> Option<String> {
+        let name_node = self.find_child_by_types(node, &["qualified_name", "identifier"])?;
+        Some(self.base.get_node_text(&name_node))
     }
 
     /// Check if a node is valid (not empty, not an error)

@@ -47,18 +47,23 @@ impl SmartRefactorTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        let workspace = params
+            .get("workspace")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
         debug!(
-            "🎯 Rename '{}' -> '{}' (scope: {}, imports: {}, comments: {})",
-            old_name, new_name, scope, update_imports, update_comments
+            "🎯 Rename '{}' -> '{}' (scope: {}, imports: {}, comments: {}, workspace: {:?})",
+            old_name, new_name, scope, update_imports, update_comments, workspace
         );
 
         // Step 1: Find all references to the symbol
         let refs_tool = FastRefsTool {
             symbol: old_name.to_string(),
             include_definition: true,
-            limit: 1000,                            // High limit for comprehensive rename
-            workspace: Some("primary".to_string()), // Rename only in primary workspace (you own these files)
-            reference_kind: None,                   // No filtering - find all reference kinds
+            limit: 1000, // High limit for comprehensive rename
+            workspace: workspace.clone().or_else(|| Some("primary".to_string())),
+            reference_kind: None, // No filtering - find all reference kinds
         };
 
         let refs_result = refs_tool.call_tool(handler).await?;
@@ -188,14 +193,18 @@ impl SmartRefactorTool {
                 .iter()
                 .map(|(f, c)| format!("  {} ({} changes)", f, c))
                 .collect();
+            let workspace_label = match &workspace {
+                Some(ws) if ws != "primary" => format!(" (workspace: {})", ws),
+                _ => String::new(),
+            };
             return self.create_result(
                 "rename_symbol",
                 true,
                 files,
                 total_changes,
                 Some(format!(
-                    "rename_symbol dry run — '{}' → '{}'\n{} changes across {} files:\n{}\n\n(dry run — no changes applied)",
-                    old_name, new_name, total_changes, renamed_files.len(),
+                    "rename_symbol dry run{} — '{}' → '{}'\n{} changes across {} files:\n{}\n\n(dry run — no changes applied)",
+                    workspace_label, old_name, new_name, total_changes, renamed_files.len(),
                     file_summary.join("\n")
                 )),
             );

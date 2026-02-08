@@ -14,13 +14,11 @@ pub(super) fn extract_class(
     base: &mut BaseExtractor,
     node: &Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let name_node = node
+) -> Option<Symbol> {
+    let name = node
         .children(&mut node.walk())
-        .find(|n| n.kind() == "identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "UnknownClass".to_string());
+        .find(|n| n.kind() == "identifier")
+        .map(|n| base.get_node_text(&n))?;
 
     // Check if this is actually an interface by looking for 'interface' child node
     let is_interface = node
@@ -90,7 +88,7 @@ pub(super) fn extract_class(
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         node,
         name,
         symbol_kind,
@@ -107,7 +105,7 @@ pub(super) fn extract_class(
             ])),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a Kotlin interface declaration
@@ -115,13 +113,11 @@ pub(super) fn extract_interface(
     base: &mut BaseExtractor,
     node: &Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let name_node = node
+) -> Option<Symbol> {
+    let name = node
         .children(&mut node.walk())
-        .find(|n| n.kind() == "identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "UnknownInterface".to_string());
+        .find(|n| n.kind() == "identifier")
+        .map(|n| base.get_node_text(&n))?;
 
     let modifiers = helpers::extract_modifiers(base, node);
     let type_params = helpers::extract_type_parameters(base, node);
@@ -146,7 +142,7 @@ pub(super) fn extract_interface(
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         node,
         name,
         SymbolKind::Interface,
@@ -160,7 +156,7 @@ pub(super) fn extract_interface(
             ])),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a Kotlin object declaration
@@ -168,13 +164,11 @@ pub(super) fn extract_object(
     base: &mut BaseExtractor,
     node: &Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let name_node = node
+) -> Option<Symbol> {
+    let name = node
         .children(&mut node.walk())
-        .find(|n| n.kind() == "identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "UnknownObject".to_string());
+        .find(|n| n.kind() == "identifier")
+        .map(|n| base.get_node_text(&n))?;
 
     let modifiers = helpers::extract_modifiers(base, node);
     let super_types = helpers::extract_super_types(base, node);
@@ -194,7 +188,7 @@ pub(super) fn extract_object(
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         node,
         name,
         SymbolKind::Class,
@@ -208,7 +202,7 @@ pub(super) fn extract_object(
             ])),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a Kotlin companion object
@@ -256,13 +250,12 @@ pub(super) fn extract_function(
     base: &mut BaseExtractor,
     node: &Node,
     parent_id: Option<&str>,
-) -> Symbol {
+) -> Option<Symbol> {
     let name_node = node
         .children(&mut node.walk())
         .find(|n| n.kind() == "identifier");
     let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "unknownFunction".to_string());
+        .map(|n| base.get_node_text(&n))?;
 
     let modifiers = helpers::extract_modifiers(base, node);
     let type_params = helpers::extract_type_parameters(base, node);
@@ -345,7 +338,7 @@ pub(super) fn extract_function(
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         node,
         name,
         symbol_kind,
@@ -356,7 +349,7 @@ pub(super) fn extract_function(
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a Kotlin package declaration
@@ -364,19 +357,17 @@ pub(super) fn extract_package(
     base: &mut BaseExtractor,
     node: &Node,
     parent_id: Option<&str>,
-) -> Symbol {
+) -> Option<Symbol> {
     // Look for qualified_identifier which contains the full package name
-    let name_node = node
+    let name = node
         .children(&mut node.walk())
-        .find(|n| n.kind() == "qualified_identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "UnknownPackage".to_string());
+        .find(|n| n.kind() == "qualified_identifier")
+        .map(|n| base.get_node_text(&n))?;
 
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         node,
         name.clone(),
         SymbolKind::Namespace,
@@ -390,7 +381,7 @@ pub(super) fn extract_package(
             )])),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a Kotlin import statement
@@ -398,19 +389,17 @@ pub(super) fn extract_import(
     base: &mut BaseExtractor,
     node: &Node,
     parent_id: Option<&str>,
-) -> Symbol {
+) -> Option<Symbol> {
     // Look for qualified_identifier which contains the full import name
-    let name_node = node
+    let name = node
         .children(&mut node.walk())
-        .find(|n| n.kind() == "qualified_identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "UnknownImport".to_string());
+        .find(|n| n.kind() == "qualified_identifier")
+        .map(|n| base.get_node_text(&n))?;
 
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         node,
         name.clone(),
         SymbolKind::Import,
@@ -424,7 +413,7 @@ pub(super) fn extract_import(
             )])),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a Kotlin type alias
@@ -432,13 +421,11 @@ pub(super) fn extract_type_alias(
     base: &mut BaseExtractor,
     node: &Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let name_node = node
+) -> Option<Symbol> {
+    let name = node
         .children(&mut node.walk())
-        .find(|n| n.kind() == "identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "UnknownTypeAlias".to_string());
+        .find(|n| n.kind() == "identifier")
+        .map(|n| base.get_node_text(&n))?;
 
     let modifiers = helpers::extract_modifiers(base, node);
     let type_params = helpers::extract_type_parameters(base, node);
@@ -477,7 +464,7 @@ pub(super) fn extract_type_alias(
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         node,
         name,
         SymbolKind::Type,
@@ -492,7 +479,7 @@ pub(super) fn extract_type_alias(
             ])),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract enum members from an enum class body

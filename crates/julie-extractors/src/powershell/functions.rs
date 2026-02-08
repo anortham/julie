@@ -27,7 +27,7 @@ pub(super) fn extract_function(
     // Check if it's an advanced function with [CmdletBinding()]
     let _is_advanced = has_attribute(base, node, "CmdletBinding");
 
-    let signature = extract_function_signature(base, node);
+    let signature = extract_function_signature(base, node)?;
 
     // Extract doc comment (PowerShell comment-based help)
     let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
@@ -95,7 +95,9 @@ pub(super) fn extract_function_parameters(
                 let param_name = base.get_node_text(&name_node).replace("$", "");
                 let is_mandatory = has_parameter_attribute(base, param_def, "Mandatory");
 
-                let signature = extract_parameter_signature(base, param_def);
+                let Some(signature) = extract_parameter_signature(base, param_def) else {
+                    continue;
+                };
                 let doc_comment = if is_mandatory {
                     Some("Mandatory parameter".to_string())
                 } else {
@@ -136,7 +138,9 @@ pub(super) fn extract_function_parameters(
                 let param_name = base.get_node_text(&variable_node).replace("$", "");
                 let is_mandatory = has_parameter_attribute(base, script_param, "Mandatory");
 
-                let signature = extract_script_parameter_signature(base, script_param);
+                let Some(signature) = extract_script_parameter_signature(base, script_param) else {
+                    continue;
+                };
                 let doc_comment = if is_mandatory {
                     Some("Mandatory parameter".to_string())
                 } else {
@@ -165,10 +169,9 @@ pub(super) fn extract_function_parameters(
 }
 
 /// Extract function signature
-fn extract_function_signature(base: &BaseExtractor, node: Node) -> String {
+fn extract_function_signature(base: &BaseExtractor, node: Node) -> Option<String> {
     let name = find_function_name_node(node)
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "unknown".to_string());
+        .map(|n| base.get_node_text(&n))?;
 
     let has_attributes = has_attribute(base, node, "CmdletBinding");
     let prefix = if has_attributes {
@@ -177,7 +180,7 @@ fn extract_function_signature(base: &BaseExtractor, node: Node) -> String {
         ""
     };
 
-    format!("{}function {}()", prefix, name)
+    Some(format!("{}function {}()", prefix, name))
 }
 
 /// Extract advanced function signature
@@ -202,31 +205,29 @@ fn extract_advanced_function_signature(
 }
 
 /// Extract parameter signature
-fn extract_parameter_signature(base: &BaseExtractor, node: Node) -> String {
+fn extract_parameter_signature(base: &BaseExtractor, node: Node) -> Option<String> {
     let name = find_parameter_name_node(node)
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "unknown".to_string());
+        .map(|n| base.get_node_text(&n))?;
 
     let attributes = extract_parameter_attributes(base, node);
     if !attributes.is_empty() {
-        format!("{} {}", attributes, name)
+        Some(format!("{} {}", attributes, name))
     } else {
-        name
+        Some(name)
     }
 }
 
 /// Extract script parameter signature
-fn extract_script_parameter_signature(base: &BaseExtractor, node: Node) -> String {
+fn extract_script_parameter_signature(base: &BaseExtractor, node: Node) -> Option<String> {
     // Extract variable name
     let name = find_nodes_by_type(node, "variable")
         .first()
-        .map(|n| base.get_node_text(n))
-        .unwrap_or_else(|| "$unknown".to_string());
+        .map(|n| base.get_node_text(n))?;
 
     // Extract type and attributes from attribute_list
     let attribute_list = find_nodes_by_type(node, "attribute_list");
     if attribute_list.is_empty() {
-        return name;
+        return Some(name);
     }
 
     let mut attributes = Vec::new();
@@ -242,8 +243,8 @@ fn extract_script_parameter_signature(base: &BaseExtractor, node: Node) -> Strin
     }
 
     if !attributes.is_empty() {
-        format!("{} {}", attributes.join(" "), name)
+        Some(format!("{} {}", attributes.join(" "), name))
     } else {
-        name
+        Some(name)
     }
 }

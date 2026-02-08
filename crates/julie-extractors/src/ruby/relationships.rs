@@ -59,7 +59,7 @@ fn extract_inheritance_relationship(
 ) {
     let base = extractor.base();
     if let Some(superclass_node) = node.child_by_field_name("superclass") {
-        let class_name = extract_name_from_node(node, |n| base.get_node_text(n), "name")
+        let Some(class_name) = extract_name_from_node(node, |n| base.get_node_text(n), "name")
             .or_else(|| extract_name_from_node(node, |n| base.get_node_text(n), "constant"))
             .or_else(|| {
                 // Fallback: find first constant child
@@ -71,7 +71,9 @@ fn extract_inheritance_relationship(
                 }
                 None
             })
-            .unwrap_or_else(|| "UnknownClass".to_string());
+        else {
+            return;
+        };
 
         let superclass_name = base
             .get_node_text(&superclass_node)
@@ -111,19 +113,22 @@ fn extract_module_inclusion_relationships(
     relationships: &mut Vec<Relationship>,
 ) {
     let base = extractor.base();
-    let class_or_module_name = extract_name_from_node(node, |n| base.get_node_text(n), "name")
-        .or_else(|| extract_name_from_node(node, |n| base.get_node_text(n), "constant"))
-        .or_else(|| {
-            // Fallback: find first constant child
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                if child.kind() == "constant" {
-                    return Some(base.get_node_text(&child));
+    let Some(class_or_module_name) =
+        extract_name_from_node(node, |n| base.get_node_text(n), "name")
+            .or_else(|| extract_name_from_node(node, |n| base.get_node_text(n), "constant"))
+            .or_else(|| {
+                // Fallback: find first constant child
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "constant" {
+                        return Some(base.get_node_text(&child));
+                    }
                 }
-            }
-            None
-        })
-        .unwrap_or_else(|| "Unknown".to_string());
+                None
+            })
+    else {
+        return;
+    };
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {

@@ -46,19 +46,26 @@ impl QmlExtractor {
         let mut current_symbol: Option<Symbol> = None;
 
         match node.kind() {
-            // QML component definitions (Rectangle, Window, Button, etc.)
+            // QML object definitions (Rectangle, Window, Button, etc.)
+            // Only the root object (parent_id is None) is a true definition —
+            // it declares the file's component base type. Nested objects are
+            // component instantiations (usages), not definitions.
             "ui_object_definition" => {
                 if let Some(type_name) = node.child_by_field_name("type_name") {
-                    let name = self.base.get_node_text(&type_name);
-                    let options = SymbolOptions {
-                        parent_id: parent_id.clone(),
-                        ..Default::default()
-                    };
-                    let symbol = self
-                        .base
-                        .create_symbol(&node, name, SymbolKind::Class, options);
-                    self.symbols.push(symbol.clone());
-                    current_symbol = Some(symbol);
+                    if parent_id.is_none() {
+                        // Root object: the file's component base type declaration
+                        let name = self.base.get_node_text(&type_name);
+                        let options = SymbolOptions {
+                            parent_id: parent_id.clone(),
+                            ..Default::default()
+                        };
+                        let symbol = self
+                            .base
+                            .create_symbol(&node, name, SymbolKind::Class, options);
+                        self.symbols.push(symbol.clone());
+                        current_symbol = Some(symbol);
+                    }
+                    // Nested objects: skip Class symbol, still recurse into children
                 }
             }
 

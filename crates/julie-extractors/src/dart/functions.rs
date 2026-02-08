@@ -66,7 +66,7 @@ pub(super) fn extract_function(
         name,
         symbol_kind,
         SymbolOptions {
-            signature: Some(signatures::extract_function_signature(node, &base.content)),
+            signature: signatures::extract_function_signature(node, &base.content),
             visibility: Some(if is_private {
                 Visibility::Private
             } else {
@@ -112,7 +112,8 @@ pub(super) fn extract_method(
     let is_flutter_lifecycle = is_flutter_lifecycle_method(&name);
 
     // Get the base function signature (return type + name + params)
-    let base_signature = signatures::extract_function_signature(&target_node, &base.content);
+    let base_signature = signatures::extract_function_signature(&target_node, &base.content)
+        .unwrap_or_default();
 
     // Build method signature with modifiers
     let mut modifiers = Vec::new();
@@ -280,7 +281,7 @@ pub(super) fn extract_variable(
                     name,
                     symbol_kind,
                     SymbolOptions {
-                        signature: Some(signatures::extract_variable_signature(&child)),
+                        signature: signatures::extract_variable_signature(&child),
                         visibility: Some(if is_private {
                             Visibility::Private
                         } else {

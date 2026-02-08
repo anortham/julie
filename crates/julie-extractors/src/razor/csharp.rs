@@ -80,7 +80,7 @@ impl super::RazorExtractor {
 
     /// Extract using directive (namespace import)
     pub(super) fn extract_using(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let namespace_name = self.extract_namespace_name(node);
+        let namespace_name = self.extract_namespace_name(node)?;
 
         // Extract C# XML doc comment
         let doc_comment = self.base.find_doc_comment(&node);
@@ -121,7 +121,7 @@ impl super::RazorExtractor {
         {
             self.base.get_node_text(&name_node)
         } else {
-            "UnknownNamespace".to_string()
+            return None;
         };
 
         // Extract C# XML doc comment
@@ -150,11 +150,8 @@ impl super::RazorExtractor {
 
     /// Extract class declaration
     pub(super) fn extract_class(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        let name = if let Some(name_node) = self.find_child_by_type(node, "identifier") {
-            self.base.get_node_text(&name_node)
-        } else {
-            "UnknownClass".to_string()
-        };
+        let name_node = self.find_child_by_type(node, "identifier")?;
+        let name = self.base.get_node_text(&name_node);
 
         let modifiers = self.extract_modifiers(node);
         let mut signature = format!("class {}", name);

@@ -10,9 +10,8 @@ pub(super) fn extract_class(
     extractor: &mut PhpExtractor,
     node: Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let name =
-        find_child_text(extractor, &node, "name").unwrap_or_else(|| "UnknownClass".to_string());
+) -> Option<Symbol> {
+    let name = find_child_text(extractor, &node, "name")?;
 
     let modifiers = extract_modifiers(extractor, &node);
     let extends_node = find_child(extractor, &node, "base_clause");
@@ -96,7 +95,7 @@ pub(super) fn extract_class(
     // Extract PHPDoc comment
     let doc_comment = extractor.get_base().find_doc_comment(&node);
 
-    extractor.get_base_mut().create_symbol(
+    Some(extractor.get_base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Class,
@@ -107,7 +106,7 @@ pub(super) fn extract_class(
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract PHP interface declarations
@@ -115,9 +114,8 @@ pub(super) fn extract_interface(
     extractor: &mut PhpExtractor,
     node: Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let name =
-        find_child_text(extractor, &node, "name").unwrap_or_else(|| "UnknownInterface".to_string());
+) -> Option<Symbol> {
+    let name = find_child_text(extractor, &node, "name")?;
 
     let extends_node = find_child(extractor, &node, "base_clause");
     let mut signature = format!("interface {}", name);
@@ -147,7 +145,7 @@ pub(super) fn extract_interface(
     // Extract PHPDoc comment
     let doc_comment = extractor.get_base().find_doc_comment(&node);
 
-    extractor.get_base_mut().create_symbol(
+    Some(extractor.get_base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Interface,
@@ -158,7 +156,7 @@ pub(super) fn extract_interface(
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract PHP trait declarations
@@ -166,9 +164,8 @@ pub(super) fn extract_trait(
     extractor: &mut PhpExtractor,
     node: Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let name =
-        find_child_text(extractor, &node, "name").unwrap_or_else(|| "UnknownTrait".to_string());
+) -> Option<Symbol> {
+    let name = find_child_text(extractor, &node, "name")?;
 
     let mut metadata = HashMap::new();
     metadata.insert(
@@ -179,7 +176,7 @@ pub(super) fn extract_trait(
     // Extract PHPDoc comment
     let doc_comment = extractor.get_base().find_doc_comment(&node);
 
-    extractor.get_base_mut().create_symbol(
+    Some(extractor.get_base_mut().create_symbol(
         &node,
         name.clone(),
         SymbolKind::Trait,
@@ -190,7 +187,7 @@ pub(super) fn extract_trait(
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract PHP enum declarations
@@ -198,9 +195,8 @@ pub(super) fn extract_enum(
     extractor: &mut PhpExtractor,
     node: Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let name =
-        find_child_text(extractor, &node, "name").unwrap_or_else(|| "UnknownEnum".to_string());
+) -> Option<Symbol> {
+    let name = find_child_text(extractor, &node, "name")?;
 
     // Check for backing type (e.g., enum Status: string)
     let backing_type = find_backing_type(extractor, &node);
@@ -237,7 +233,7 @@ pub(super) fn extract_enum(
     // Extract PHPDoc comment
     let doc_comment = extractor.get_base().find_doc_comment(&node);
 
-    extractor.get_base_mut().create_symbol(
+    Some(extractor.get_base_mut().create_symbol(
         &node,
         name,
         SymbolKind::Enum,
@@ -248,7 +244,7 @@ pub(super) fn extract_enum(
             metadata: Some(metadata),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract PHP enum cases

@@ -37,9 +37,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 2,
-            "Should extract Item, Component, and nested components"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root Item component"
         );
     }
 
@@ -75,9 +76,10 @@ Item {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 2,
-            "Should extract Item with Loader components"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root Item component"
         );
     }
 
@@ -109,9 +111,10 @@ Column {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 2,
-            "Should extract Column, Repeater, and delegate"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root Column component"
         );
     }
 
@@ -155,9 +158,10 @@ ListView {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 3,
-            "Should extract ListView, delegate, header, and footer"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root ListView component"
         );
     }
 
@@ -296,9 +300,10 @@ PathView {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 2,
-            "Should extract PathView with delegate and path"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root PathView component"
         );
     }
 }

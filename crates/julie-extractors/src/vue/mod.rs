@@ -17,7 +17,6 @@ mod identifiers;
 pub(crate) mod parsing;
 mod script;
 mod style;
-mod template;
 
 // Public re-exports
 pub use crate::base::{IdentifierKind, RelationshipKind};
@@ -155,8 +154,10 @@ impl VueExtractor {
                 script::extract_script_symbols(&self.base, section)
             }
             "template" => {
-                // Extract template symbols (components, directives, etc.)
-                template::extract_template_symbols(&self.base, section)
+                // Template component usages (<UserProfile />) and directives (v-if, v-for)
+                // are references, not definitions — skip them.
+                // Component definitions come from the <script> section (name: 'MyComponent').
+                Vec::new()
             }
             "style" => {
                 // Extract CSS class names, etc.

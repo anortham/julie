@@ -63,34 +63,34 @@ impl SwiftExtractor {
 
         match node.kind() {
             "class_declaration" => {
-                symbol = Some(self.extract_class(node, parent_id.as_deref()));
+                symbol = self.extract_class(node, parent_id.as_deref());
             }
             "struct_declaration" => {
-                symbol = Some(self.extract_struct(node, parent_id.as_deref()));
+                symbol = self.extract_struct(node, parent_id.as_deref());
             }
             "protocol_declaration" => {
-                symbol = Some(self.extract_protocol(node, parent_id.as_deref()));
+                symbol = self.extract_protocol(node, parent_id.as_deref());
             }
             "enum_declaration" => {
-                symbol = Some(self.extract_enum(node, parent_id.as_deref()));
+                symbol = self.extract_enum(node, parent_id.as_deref());
             }
             "enum_case_declaration" => {
                 self.extract_enum_cases(node, symbols, parent_id.as_deref());
             }
             "enum_entry" => {
-                symbol = Some(self.extract_enum_case(node, parent_id.as_deref()));
+                symbol = self.extract_enum_case(node, parent_id.as_deref());
             }
             "function_declaration" => {
-                symbol = Some(self.extract_function(node, parent_id.as_deref()));
+                symbol = self.extract_function(node, parent_id.as_deref());
             }
             "protocol_function_declaration" => {
-                symbol = Some(self.extract_protocol_function(node, parent_id.as_deref()));
+                symbol = self.extract_protocol_function(node, parent_id.as_deref());
             }
             "protocol_property_declaration" => {
-                symbol = Some(self.extract_protocol_property(node, parent_id.as_deref()));
+                symbol = self.extract_protocol_property(node, parent_id.as_deref());
             }
             "associatedtype_declaration" => {
-                symbol = Some(self.extract_associated_type(node, parent_id.as_deref()));
+                symbol = self.extract_associated_type(node, parent_id.as_deref());
             }
             "subscript_declaration" => {
                 symbol = Some(self.extract_subscript(node, parent_id.as_deref()));
@@ -107,16 +107,16 @@ impl SwiftExtractor {
                 }
             }
             "property_declaration" => {
-                symbol = Some(self.extract_property(node, parent_id.as_deref()));
+                symbol = self.extract_property(node, parent_id.as_deref());
             }
             "extension_declaration" => {
-                symbol = Some(self.extract_extension(node, parent_id.as_deref()));
+                symbol = self.extract_extension(node, parent_id.as_deref());
             }
             "import_declaration" => {
-                symbol = Some(self.extract_import(node, parent_id.as_deref()));
+                symbol = self.extract_import(node, parent_id.as_deref());
             }
             "typealias_declaration" => {
-                symbol = Some(self.extract_type_alias(node, parent_id.as_deref()));
+                symbol = self.extract_type_alias(node, parent_id.as_deref());
             }
             _ => {}
         }

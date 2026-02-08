@@ -30,7 +30,7 @@ pub(super) fn extract_field(
     });
     let field_type = type_node
         .map(|n| extractor.base().get_node_text(&n))
-        .unwrap_or_else(|| "unknown".to_string());
+        .unwrap_or_else(|| "Object".to_string());
 
     // Get variable declarator(s) - there can be multiple fields in one declaration
     let declarators: Vec<Node> = node

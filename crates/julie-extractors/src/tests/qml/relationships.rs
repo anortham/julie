@@ -124,16 +124,20 @@ Item {
 
         let (symbols, relationships) = extract_symbols_and_relationships(qml_code);
 
-        // Should have instantiation relationships for Rectangle and Text components
-        let instantiation_relationships: Vec<&Relationship> = relationships
+        // Only the root component (Item) is extracted as a Class symbol.
+        // Nested components (Rectangle, Text) are no longer extracted,
+        // so there are no instantiation relationships for them.
+        let components: Vec<&Symbol> = symbols
             .iter()
-            .filter(|r| r.kind == RelationshipKind::Instantiates)
+            .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            instantiation_relationships.len() >= 2,
-            "Should extract instantiation relationships for Rectangle and Text"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root Item component"
         );
+        assert_eq!(components[0].name, "Item");
     }
 
     #[test]

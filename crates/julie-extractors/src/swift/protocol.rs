@@ -12,13 +12,12 @@ impl SwiftExtractor {
         &mut self,
         node: Node,
         parent_id: Option<&str>,
-    ) -> Symbol {
+    ) -> Option<Symbol> {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "simple_identifier");
         let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "unknownFunction".to_string());
+            .map(|n| self.base.get_node_text(&n))?;
 
         let parameters = self.extract_parameters(node);
         let return_type = self.extract_return_type(node);
@@ -48,7 +47,7 @@ impl SwiftExtractor {
             ),
         ]);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Method,
@@ -59,7 +58,7 @@ impl SwiftExtractor {
                 metadata: Some(metadata),
                 doc_comment: None,
             },
-        )
+        ))
     }
 
     /// Implementation of extractProtocolProperty method
@@ -67,19 +66,14 @@ impl SwiftExtractor {
         &mut self,
         node: Node,
         parent_id: Option<&str>,
-    ) -> Symbol {
+    ) -> Option<Symbol> {
         let pattern_node = node
             .children(&mut node.walk())
-            .find(|c| c.kind() == "pattern");
-        let name = if let Some(pattern_node) = pattern_node {
-            pattern_node
-                .children(&mut pattern_node.walk())
-                .find(|c| c.kind() == "simple_identifier")
-                .map(|n| self.base.get_node_text(&n))
-                .unwrap_or_else(|| "unknownProperty".to_string())
-        } else {
-            "unknownProperty".to_string()
-        };
+            .find(|c| c.kind() == "pattern")?;
+        let name = pattern_node
+            .children(&mut pattern_node.walk())
+            .find(|c| c.kind() == "simple_identifier")
+            .map(|n| self.base.get_node_text(&n))?;
 
         // Check for static modifier
         let modifiers_node = node
@@ -138,7 +132,7 @@ impl SwiftExtractor {
             ),
         ]);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Property,
@@ -149,7 +143,7 @@ impl SwiftExtractor {
                 metadata: Some(metadata),
                 doc_comment: None,
             },
-        )
+        ))
     }
 
     /// Implementation of extractAssociatedType method
@@ -157,13 +151,11 @@ impl SwiftExtractor {
         &mut self,
         node: Node,
         parent_id: Option<&str>,
-    ) -> Symbol {
-        let name_node = node
+    ) -> Option<Symbol> {
+        let name = node
             .children(&mut node.walk())
-            .find(|c| c.kind() == "type_identifier" || c.kind() == "simple_identifier");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "UnknownType".to_string());
+            .find(|c| c.kind() == "type_identifier" || c.kind() == "simple_identifier")
+            .map(|n| self.base.get_node_text(&n))?;
 
         let mut signature = format!("associatedtype {}", name);
 
@@ -177,7 +169,7 @@ impl SwiftExtractor {
             serde_json::Value::String("associatedtype".to_string()),
         )]);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Type,
@@ -188,6 +180,6 @@ impl SwiftExtractor {
                 metadata: Some(metadata),
                 doc_comment: None,
             },
-        )
+        ))
     }
 }

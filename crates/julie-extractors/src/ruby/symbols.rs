@@ -11,7 +11,7 @@ pub(super) fn extract_module(
     node: Node,
     parent_id: Option<String>,
     _current_visibility: Visibility,
-) -> Symbol {
+) -> Option<Symbol> {
     // Try different field names that Ruby tree-sitter uses
     let name = extract_name_from_node(node, |n| base.get_node_text(n), "name")
         .or_else(|| extract_name_from_node(node, |n| base.get_node_text(n), "constant"))
@@ -24,15 +24,14 @@ pub(super) fn extract_module(
                 }
             }
             None
-        })
-        .unwrap_or_else(|| "UnknownModule".to_string());
+        })?;
 
     let signature = signatures::build_module_signature(&node, &name, |n| base.get_node_text(n));
 
     // Extract RDoc/YARD comment
     let doc_comment = base.find_doc_comment(&node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Module,
@@ -43,7 +42,7 @@ pub(super) fn extract_module(
             metadata: None,
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a class symbol
@@ -52,7 +51,7 @@ pub(super) fn extract_class(
     node: Node,
     parent_id: Option<String>,
     _current_visibility: Visibility,
-) -> Symbol {
+) -> Option<Symbol> {
     // Try different field names that Ruby tree-sitter uses
     let name = extract_name_from_node(node, |n| base.get_node_text(n), "name")
         .or_else(|| extract_name_from_node(node, |n| base.get_node_text(n), "constant"))
@@ -65,15 +64,14 @@ pub(super) fn extract_class(
                 }
             }
             None
-        })
-        .unwrap_or_else(|| "UnknownClass".to_string());
+        })?;
 
     let signature = signatures::build_class_signature(&node, &name, |n| base.get_node_text(n));
 
     // Extract RDoc/YARD comment
     let doc_comment = base.find_doc_comment(&node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Class,
@@ -84,7 +82,7 @@ pub(super) fn extract_class(
             metadata: None,
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a singleton class symbol
@@ -125,7 +123,7 @@ pub(super) fn extract_method(
     node: Node,
     parent_id: Option<String>,
     current_visibility: Visibility,
-) -> Symbol {
+) -> Option<Symbol> {
     let name = extract_name_from_node(node, |n| base.get_node_text(n), "name")
         .or_else(|| extract_name_from_node(node, |n| base.get_node_text(n), "identifier"))
         .or_else(|| extract_name_from_node(node, |n| base.get_node_text(n), "operator"))
@@ -141,8 +139,7 @@ pub(super) fn extract_method(
                 }
             }
             None
-        })
-        .unwrap_or_else(|| "unknownMethod".to_string());
+        })?;
 
     let signature = signatures::build_method_signature(&node, &name, |n| base.get_node_text(n));
     let kind = if name == "initialize" {
@@ -154,7 +151,7 @@ pub(super) fn extract_method(
     // Extract RDoc/YARD comment
     let doc_comment = base.find_doc_comment(&node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         kind,
@@ -165,7 +162,7 @@ pub(super) fn extract_method(
             metadata: None,
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a singleton method symbol
@@ -174,15 +171,15 @@ pub(super) fn extract_singleton_method(
     node: Node,
     parent_id: Option<String>,
     current_visibility: Visibility,
-) -> Symbol {
-    let name = extract_singleton_method_name(node, |n| base.get_node_text(n));
+) -> Option<Symbol> {
+    let name = extract_singleton_method_name(node, |n| base.get_node_text(n))?;
     let signature =
         signatures::build_singleton_method_signature(&node, &name, |n| base.get_node_text(n));
 
     // Extract RDoc/YARD comment
     let doc_comment = base.find_doc_comment(&node);
 
-    base.create_symbol(
+    Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Method,
@@ -193,7 +190,7 @@ pub(super) fn extract_singleton_method(
             metadata: None,
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Extract a variable symbol

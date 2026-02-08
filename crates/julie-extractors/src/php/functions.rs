@@ -10,9 +10,8 @@ pub(super) fn extract_function(
     extractor: &mut PhpExtractor,
     node: Node,
     parent_id: Option<&str>,
-) -> Symbol {
-    let name =
-        find_child_text(extractor, &node, "name").unwrap_or_else(|| "unknownFunction".to_string());
+) -> Option<Symbol> {
+    let name = find_child_text(extractor, &node, "name")?;
 
     let modifiers = extract_modifiers(extractor, &node);
     let parameters_node = find_child(extractor, &node, "formal_parameters");
@@ -89,7 +88,7 @@ pub(super) fn extract_function(
     // Extract PHPDoc comment
     let doc_comment = extractor.get_base().find_doc_comment(&node);
 
-    extractor.get_base_mut().create_symbol(
+    Some(extractor.get_base_mut().create_symbol(
         &node,
         name,
         symbol_kind,
@@ -105,7 +104,7 @@ pub(super) fn extract_function(
             ),
             doc_comment,
         },
-    )
+    ))
 }
 
 /// Find return type node after colon

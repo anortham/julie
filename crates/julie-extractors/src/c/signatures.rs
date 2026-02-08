@@ -55,7 +55,8 @@ pub(super) fn build_variable_signature(
     let storage_class = types::extract_storage_class(base, node);
     let type_qualifiers = types::extract_type_qualifiers(base, node);
     let data_type = types::extract_variable_type(base, node);
-    let variable_name = helpers::extract_variable_name(base, declarator);
+    let variable_name = helpers::extract_variable_name(base, declarator)
+        .unwrap_or_default();
     let array_spec = types::extract_array_specifier(base, declarator);
     let initializer = types::extract_initializer(base, declarator);
 
@@ -267,7 +268,9 @@ pub(super) fn extract_struct_fields(
                 let declarators = helpers::find_variable_declarators(child);
 
                 for declarator in declarators {
-                    let field_name = helpers::extract_variable_name(base, declarator);
+                    let Some(field_name) = helpers::extract_variable_name(base, declarator) else {
+                        continue;
+                    };
                     fields.push(StructField {
                         name: field_name,
                         field_type: field_type.clone(),

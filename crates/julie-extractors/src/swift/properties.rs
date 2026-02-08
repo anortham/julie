@@ -22,8 +22,7 @@ impl SwiftExtractor {
                 .children(&mut binding_node.walk())
                 .find(|c| c.kind() == "simple_identifier" || c.kind() == "pattern");
             let name = name_node
-                .map(|n| self.base.get_node_text(&n))
-                .unwrap_or_else(|| "unknownVariable".to_string());
+                .map(|n| self.base.get_node_text(&n))?;
 
             let modifiers = self.extract_modifiers(node);
             let var_type = self.extract_variable_type(node);
@@ -89,13 +88,12 @@ impl SwiftExtractor {
     }
 
     /// Implementation of extractProperty method
-    pub(super) fn extract_property(&mut self, node: Node, parent_id: Option<&str>) -> Symbol {
+    pub(super) fn extract_property(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "pattern");
         let name = name_node
-            .map(|n| self.base.get_node_text(&n))
-            .unwrap_or_else(|| "unknownProperty".to_string());
+            .map(|n| self.base.get_node_text(&n))?;
 
         let modifiers = self.extract_modifiers(node);
         let property_type = self.extract_property_type(node);
@@ -157,7 +155,7 @@ impl SwiftExtractor {
         // Extract Swift documentation comment
         let doc_comment = self.base.find_doc_comment(&node);
 
-        self.base.create_symbol(
+        Some(self.base.create_symbol(
             &node,
             name,
             SymbolKind::Property,
@@ -168,7 +166,7 @@ impl SwiftExtractor {
                 metadata: Some(metadata),
                 doc_comment,
             },
-        )
+        ))
     }
 
     /// Implementation of extractSubscript method

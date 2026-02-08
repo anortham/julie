@@ -20,7 +20,7 @@ pub(super) fn extract_class(
     let name_node = find_class_name_node(node)?;
     let name = base.get_node_text(&name_node);
 
-    let signature = extract_class_signature(base, node);
+    let signature = extract_class_signature(base, node)?;
 
     // Extract doc comment (PowerShell comment-based help)
     let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
@@ -50,7 +50,7 @@ pub(super) fn extract_method(
     let _is_static = has_modifier(base, node, "static");
     let is_hidden = has_modifier(base, node, "hidden");
 
-    let signature = extract_method_signature(base, node);
+    let signature = extract_method_signature(base, node)?;
     let visibility = if is_hidden {
         Visibility::Private
     } else {
@@ -85,7 +85,7 @@ pub(super) fn extract_property(
     name = name.replace("$", ""); // Remove $ prefix
 
     let is_hidden = has_modifier(base, node, "hidden");
-    let signature = extract_property_signature(base, node);
+    let signature = extract_property_signature(base, node)?;
     let visibility = if is_hidden {
         Visibility::Private
     } else {
@@ -168,24 +168,22 @@ pub(super) fn extract_enum_member(
 }
 
 /// Extract class signature
-fn extract_class_signature(base: &BaseExtractor, node: Node) -> String {
+fn extract_class_signature(base: &BaseExtractor, node: Node) -> Option<String> {
     let name = find_class_name_node(node)
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "unknown".to_string());
+        .map(|n| base.get_node_text(&n))?;
 
     // Check for inheritance
     if let Some(inheritance) = extract_inheritance(base, node) {
-        format!("class {} : {}", name, inheritance)
+        Some(format!("class {} : {}", name, inheritance))
     } else {
-        format!("class {}", name)
+        Some(format!("class {}", name))
     }
 }
 
 /// Extract method signature
-fn extract_method_signature(base: &BaseExtractor, node: Node) -> String {
+fn extract_method_signature(base: &BaseExtractor, node: Node) -> Option<String> {
     let name = find_method_name_node(node)
-        .map(|n| base.get_node_text(&n))
-        .unwrap_or_else(|| "unknown".to_string());
+        .map(|n| base.get_node_text(&n))?;
 
     let return_type = extract_return_type(base, node);
     let is_static = has_modifier(base, node, "static");
@@ -193,22 +191,21 @@ fn extract_method_signature(base: &BaseExtractor, node: Node) -> String {
     let prefix = if is_static { "static " } else { "" };
     let suffix = return_type.map_or(String::new(), |t| format!(" {}", t));
 
-    format!("{}{} {}()", prefix, suffix, name)
+    Some(format!("{}{} {}()", prefix, suffix, name))
 }
 
 /// Extract property signature
-fn extract_property_signature(base: &BaseExtractor, node: Node) -> String {
+fn extract_property_signature(base: &BaseExtractor, node: Node) -> Option<String> {
     let name = find_property_name_node(node)
-        .map(|n| base.get_node_text(&n).replace("$", ""))
-        .unwrap_or_else(|| "unknown".to_string());
+        .map(|n| base.get_node_text(&n).replace("$", ""))?;
 
     let property_type = extract_property_type(base, node);
     let is_hidden = has_modifier(base, node, "hidden");
 
     let prefix = if is_hidden { "hidden " } else { "" };
     if let Some(ptype) = property_type {
-        format!("{}{}${}", prefix, ptype, name)
+        Some(format!("{}{}${}", prefix, ptype, name))
     } else {
-        format!("{}${}", prefix, name)
+        Some(format!("{}${}", prefix, name))
     }
 }

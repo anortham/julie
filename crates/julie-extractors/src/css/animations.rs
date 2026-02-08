@@ -13,7 +13,7 @@ impl AnimationExtractor {
         node: Node,
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
-        let keyframes_name = Self::extract_keyframes_name(base, &node);
+        let keyframes_name = Self::extract_keyframes_name(base, &node)?;
         let signature = base.get_node_text(&node);
         let symbol_name = format!("@keyframes {}", keyframes_name);
 
@@ -51,7 +51,7 @@ impl AnimationExtractor {
         node: Node,
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
-        let animation_name = Self::extract_keyframes_name(base, &node);
+        let animation_name = Self::extract_keyframes_name(base, &node)?;
         let signature = format!("@keyframes {}", animation_name);
 
         // Create metadata
@@ -139,19 +139,11 @@ impl AnimationExtractor {
     }
 
     /// Extract keyframes name - port of extractKeyframesName
-    pub(super) fn extract_keyframes_name(base: &BaseExtractor, node: &Node) -> String {
+    pub(super) fn extract_keyframes_name(base: &BaseExtractor, node: &Node) -> Option<String> {
         let text = base.get_node_text(node);
-        if let Some(captures) = regex::Regex::new(r"@keyframes\s+([^\s{]+)")
+        let captures = regex::Regex::new(r"@keyframes\s+([^\s{]+)")
             .unwrap()
-            .captures(&text)
-        {
-            // Safe: capture group 1 exists if regex matched (pattern has one capture group)
-            captures
-                .get(1)
-                .map_or("unknown", |m| m.as_str())
-                .to_string()
-        } else {
-            "unknown".to_string()
-        }
+            .captures(&text)?;
+        captures.get(1).map(|m| m.as_str().to_string())
     }
 }

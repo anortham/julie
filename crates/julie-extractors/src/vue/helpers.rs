@@ -36,11 +36,5 @@ pub(super) static PROPS_OBJECT_RE: LazyLock<Regex> =
 pub(super) static FUNCTION_DEF_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{").unwrap());
 
-pub(super) static COMPONENT_USAGE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"<([A-Z][a-zA-Z0-9-]*)").unwrap());
-
-pub(super) static DIRECTIVE_USAGE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\s(v-[a-zA-Z-]+)=").unwrap());
-
 pub(super) static CSS_CLASS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\.([a-zA-Z_-][a-zA-Z0-9_-]*)\s*\{").unwrap());

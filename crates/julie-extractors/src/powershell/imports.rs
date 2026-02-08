@@ -64,10 +64,9 @@ pub(super) fn extract_import_command(
                 .unwrap()
                 .captures(&node_text)
         {
-            module_name = captures
-                .get(1)
-                .or_else(|| captures.get(2))
-                .map_or("unknown".to_string(), |m| m.as_str().to_string());
+            if let Some(m) = captures.get(1).or_else(|| captures.get(2)) {
+                module_name = m.as_str().to_string();
+            }
         }
     } else if command_name == "using" {
         // Extract from "using namespace System.Collections.Generic" or "using module Az.Storage"
@@ -75,9 +74,9 @@ pub(super) fn extract_import_command(
             .unwrap()
             .captures(&node_text)
         {
-            module_name = captures
-                .get(1)
-                .map_or("unknown".to_string(), |m| m.as_str().to_string());
+            if let Some(m) = captures.get(1) {
+                module_name = m.as_str().to_string();
+            }
         }
     } else if command_name == "Export-ModuleMember" {
         // Extract the type being exported (Function, Variable, Alias)
@@ -85,9 +84,9 @@ pub(super) fn extract_import_command(
             .unwrap()
             .captures(&node_text)
         {
-            module_name = captures
-                .get(1)
-                .map_or("unknown".to_string(), |m| m.as_str().to_string());
+            if let Some(m) = captures.get(1) {
+                module_name = m.as_str().to_string();
+            }
         } else {
             // Fallback: try to extract from the full text
             if node_text.contains("-Function") {
@@ -102,7 +101,7 @@ pub(super) fn extract_import_command(
         }
     }
 
-    if module_name.is_empty() || module_name == "unknown" {
+    if module_name.is_empty() {
         return None;
     }
 
@@ -179,27 +178,22 @@ pub(super) fn extract_dot_sourcing(
 
 /// Extract module name from Import-Module command
 fn extract_import_module_name(node_text: &str) -> Option<String> {
-    Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#)
-        .unwrap()
-        .captures(node_text)
-        .map(|captures| {
-            captures
-                .get(1)
-                .or_else(|| captures.get(2))
-                .map_or("unknown".to_string(), |m| m.as_str().to_string())
-        })
+    let captures =
+        Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#)
+            .unwrap()
+            .captures(node_text)?;
+    captures
+        .get(1)
+        .or_else(|| captures.get(2))
+        .map(|m| m.as_str().to_string())
 }
 
 /// Extract module/namespace name from using statement
 fn extract_using_name(node_text: &str) -> Option<String> {
-    Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)")
+    let captures = Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)")
         .unwrap()
-        .captures(node_text)
-        .map(|captures| {
-            captures
-                .get(1)
-                .map_or("unknown".to_string(), |m| m.as_str().to_string())
-        })
+        .captures(node_text)?;
+    captures.get(1).map(|m| m.as_str().to_string())
 }
 
 /// Extract filename from dot source command

@@ -1022,6 +1022,7 @@ mod real_world_refactoring_tests {
                 new_name: new_name.clone(),
                 scope: Some("workspace".to_string()),
                 dry_run: true,
+                workspace: None,
             };
 
             match dry_run_tool.call_tool(handler).await {
@@ -1040,6 +1041,7 @@ mod real_world_refactoring_tests {
                         new_name: new_name.clone(),
                         scope: Some("workspace".to_string()),
                         dry_run: false,
+                        workspace: None,
                     };
 
                     match actual_tool.call_tool(handler).await {

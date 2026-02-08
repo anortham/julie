@@ -42,6 +42,7 @@ async fn test_rename_symbol_basic() -> Result<()> {
         new_name: "fetchUserData".to_string(),
         scope: None,
         dry_run: false,
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -87,6 +88,7 @@ async fn test_rename_symbol_validation_same_name() -> Result<()> {
         new_name: "getUserData".to_string(), // Same name!
         scope: None,
         dry_run: false,
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await;
@@ -117,6 +119,7 @@ async fn test_rename_symbol_validation_empty_names() -> Result<()> {
         new_name: "fetchUserData".to_string(),
         scope: None,
         dry_run: false,
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await;
@@ -159,6 +162,7 @@ async fn test_rename_symbol_dry_run() -> Result<()> {
         new_name: "fetchUserData".to_string(),
         scope: None,
         dry_run: true, // DRY RUN
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -226,6 +230,7 @@ async fn test_rename_symbol_multiple_files() -> Result<()> {
         new_name: "fetchUserData".to_string(),
         scope: None,
         dry_run: false,
+        workspace: None,
     };
 
     let result = tool.call_tool(&handler).await?;

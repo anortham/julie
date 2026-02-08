@@ -55,9 +55,10 @@ PlasmaCore.Dialog {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 2,
-            "Should extract KDE Plasma components"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root PlasmaCore.Dialog component"
         );
 
         let properties: Vec<&Symbol> = symbols
@@ -129,9 +130,10 @@ Window {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 2,
-            "Should extract Window and nested components"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root Window component"
         );
 
         let properties: Vec<&Symbol> = symbols
@@ -225,9 +227,10 @@ ApplicationWindow {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 5,
-            "Should extract ApplicationWindow and controls"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root ApplicationWindow component"
         );
 
         let functions: Vec<&Symbol> = symbols
@@ -317,9 +320,10 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 2,
-            "Should extract Rectangle with BusyIndicator"
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root Rectangle component"
         );
 
         let functions: Vec<&Symbol> = symbols
@@ -352,9 +356,10 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 5,
-            "Should extract multiple components from production code (found {})",
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root component from production code (found {})",
             components.len()
         );
 
@@ -397,9 +402,10 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
 
-        assert!(
-            components.len() >= 10,
-            "Should extract many components from KDE Plasma code (found {})",
+        assert_eq!(
+            components.len(),
+            1,
+            "Should extract only the root component from KDE Plasma code (found {})",
             components.len()
         );
 

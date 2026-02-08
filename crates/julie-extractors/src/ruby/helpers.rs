@@ -136,15 +136,15 @@ pub(super) fn extract_method_name_from_call(
 pub(super) fn extract_singleton_method_name(
     node: Node,
     base_get_text: impl Fn(&Node) -> String,
-) -> String {
+) -> Option<String> {
     // Ruby singleton method structure: def target.method_name
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "identifier" && child.prev_sibling().is_some_and(|s| s.kind() == ".") {
-            return base_get_text(&child);
+            return Some(base_get_text(&child));
         }
     }
-    "unknownMethod".to_string()
+    None
 }
 
 /// Extract target of a singleton method (e.g., 'self' or object name)

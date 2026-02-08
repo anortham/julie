@@ -13,6 +13,7 @@ use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
+use crate::tools::navigation::resolution::resolve_workspace_filter;
 
 fn default_depth() -> String {
     "overview".to_string()
@@ -66,7 +67,33 @@ impl DeepDiveTool {
             }
         };
 
-        // Get workspace and database
+        // Resolve workspace parameter: None = primary, Some(id) = reference
+        let workspace_filter = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+
+        let symbol_name = self.symbol.clone();
+        let context_file = self.context_file.clone();
+        let depth_owned = depth.to_string();
+        let (incoming_cap, outgoing_cap) = ref_caps(depth);
+
+        if let Some(ref_workspace_id) = workspace_filter {
+            // Reference workspace: open separate database
+            let workspace = handler
+                .get_workspace()
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+            let ref_db_path = workspace.workspace_db_path(&ref_workspace_id);
+
+            let result = tokio::task::spawn_blocking(move || -> Result<String> {
+                let db = crate::database::SymbolDatabase::new(ref_db_path)?;
+                deep_dive_query(&db, &symbol_name, context_file.as_deref(), &depth_owned, incoming_cap, outgoing_cap)
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
+
+            return Ok(CallToolResult::text_content(vec![Content::text(result)]));
+        }
+
+        // Primary workspace: use shared database via Arc<Mutex>
         let workspace = handler
             .get_workspace()
             .await?
@@ -78,60 +105,66 @@ impl DeepDiveTool {
             .ok_or_else(|| anyhow::anyhow!("Database not available. Run manage_workspace(operation=\"index\") first."))?
             .clone();
 
-        let symbol_name = self.symbol.clone();
-        let context_file = self.context_file.clone();
-        let depth_owned = depth.to_string();
-        let (incoming_cap, outgoing_cap) = ref_caps(depth);
-
         // All database work in spawn_blocking (SQLite is synchronous)
         let result = tokio::task::spawn_blocking(move || -> Result<String> {
             let db = db_arc.lock().map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
-
-            // Step 1: Find the symbol
-            let symbols = data::find_symbol(&db, &symbol_name, context_file.as_deref())?;
-
-            if symbols.is_empty() {
-                return Ok(format!(
-                    "No symbol found: '{}'\nTry fast_search(query=\"{}\", search_target=\"definitions\") for fuzzy matching.",
-                    symbol_name, symbol_name
-                ));
-            }
-
-            // Step 2: Build context for each matching symbol
-            // (usually 1, but could be multiple if name is ambiguous)
-            let mut output = String::new();
-
-            if symbols.len() > 1 {
-                output.push_str(&format!(
-                    "Found {} definitions of '{}'. Use context_file to disambiguate.\n\n",
-                    symbols.len(),
-                    symbol_name
-                ));
-            }
-
-            for symbol in &symbols {
-                let ctx = data::build_symbol_context(
-                    &db,
-                    symbol,
-                    &depth_owned,
-                    incoming_cap,
-                    outgoing_cap,
-                )?;
-
-                // Step 3: Format with kind-aware output
-                let formatted = formatting::format_symbol_context(&ctx, &depth_owned);
-                output.push_str(&formatted);
-
-                if symbols.len() > 1 {
-                    output.push_str("\n---\n\n");
-                }
-            }
-
-            Ok(output)
+            deep_dive_query(&db, &symbol_name, context_file.as_deref(), &depth_owned, incoming_cap, outgoing_cap)
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
 
         Ok(CallToolResult::text_content(vec![Content::text(result)]))
     }
+}
+
+/// Shared query logic for both primary and reference workspace deep dives
+fn deep_dive_query(
+    db: &crate::database::SymbolDatabase,
+    symbol_name: &str,
+    context_file: Option<&str>,
+    depth: &str,
+    incoming_cap: usize,
+    outgoing_cap: usize,
+) -> Result<String> {
+    // Step 1: Find the symbol
+    let symbols = data::find_symbol(db, symbol_name, context_file)?;
+
+    if symbols.is_empty() {
+        return Ok(format!(
+            "No symbol found: '{}'\nTry fast_search(query=\"{}\", search_target=\"definitions\") for fuzzy matching.",
+            symbol_name, symbol_name
+        ));
+    }
+
+    // Step 2: Build context for each matching symbol
+    // (usually 1, but could be multiple if name is ambiguous)
+    let mut output = String::new();
+
+    if symbols.len() > 1 {
+        output.push_str(&format!(
+            "Found {} definitions of '{}'. Use context_file to disambiguate.\n\n",
+            symbols.len(),
+            symbol_name
+        ));
+    }
+
+    for symbol in &symbols {
+        let ctx = data::build_symbol_context(
+            db,
+            symbol,
+            depth,
+            incoming_cap,
+            outgoing_cap,
+        )?;
+
+        // Step 3: Format with kind-aware output
+        let formatted = formatting::format_symbol_context(&ctx, depth);
+        output.push_str(&formatted);
+
+        if symbols.len() > 1 {
+            output.push_str("\n---\n\n");
+        }
+    }
+
+    Ok(output)
 }
