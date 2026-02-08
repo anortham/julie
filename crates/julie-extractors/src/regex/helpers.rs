@@ -1,7 +1,7 @@
 use crate::base::SymbolKind;
 
 /// Check if text is a valid regex pattern
-#[allow(dead_code)] // Used by tests
+#[cfg(test)]
 pub(crate) fn is_valid_regex_pattern(text: &str) -> bool {
     // Skip very short patterns or obvious non-regex content
     if text.is_empty() {

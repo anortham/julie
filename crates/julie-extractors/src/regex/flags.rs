@@ -1,5 +1,5 @@
 /// Get the type/position of an anchor
-#[allow(dead_code)] // Used by tests
+#[cfg(test)]
 pub(crate) fn get_anchor_type(anchor_text: &str) -> Option<String> {
     match anchor_text {
         "^" => Some("start".to_string()),
@@ -28,7 +28,7 @@ pub(crate) fn is_positive_lookaround(lookaround_text: &str) -> bool {
 }
 
 /// Extract alternation options separated by |
-#[allow(dead_code)] // Used by tests
+#[cfg(test)]
 pub(crate) fn extract_alternation_options(alternation_text: &str) -> Vec<String> {
     alternation_text
         .split('|')
@@ -37,7 +37,7 @@ pub(crate) fn extract_alternation_options(alternation_text: &str) -> Vec<String>
 }
 
 /// Get the category of a predefined character class
-#[allow(dead_code)] // Used by tests
+#[cfg(test)]
 pub(crate) fn get_predefined_class_category(class_text: &str) -> String {
     match class_text {
         r"\d" => "digit".to_string(),
@@ -75,7 +75,7 @@ pub(crate) fn extract_unicode_property_name(property_text: &str) -> Option<Strin
 }
 
 /// Extract group number from a numeric backreference like \1 or \2
-#[allow(dead_code)] // Used by tests
+#[cfg(test)]
 pub(crate) fn extract_group_number(backref_text: &str) -> Option<String> {
     if let Some(start) = backref_text.find('\\') {
         let rest = &backref_text[start + 1..];
