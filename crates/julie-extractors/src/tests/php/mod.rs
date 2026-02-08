@@ -2215,3 +2215,96 @@ use Illuminate\Support\Collection;
         assert!(imports.iter().any(|s| s.name == "Illuminate\\Support\\Collection"));
     }
 }
+
+#[cfg(test)]
+mod php_arrow_function_tests {
+    use super::*;
+
+    #[test]
+    fn test_arrow_function_assigned_to_variable() {
+        let php_code = r#"<?php
+$double = fn($x) => $x * 2;
+"#;
+
+        let symbols = extract_symbols(php_code);
+        let double = symbols.iter().find(|s| s.name == "double");
+        assert!(double.is_some(), "Expected variable 'double' symbol for arrow function assignment");
+        let double = double.unwrap();
+        assert_eq!(double.kind, SymbolKind::Variable);
+        let sig = double.signature.as_ref().expect("Expected signature on arrow function variable");
+        assert!(
+            sig.contains("fn($x) => $x * 2"),
+            "Signature should contain arrow function text, got: {sig}"
+        );
+    }
+
+    #[test]
+    fn test_arrow_function_with_type_annotations() {
+        let php_code = r#"<?php
+$multiply = fn(int $n): int => $n * 2;
+"#;
+
+        let symbols = extract_symbols(php_code);
+        let multiply = symbols.iter().find(|s| s.name == "multiply");
+        assert!(multiply.is_some(), "Expected variable 'multiply' symbol");
+        let sig = multiply.unwrap().signature.as_ref().expect("Expected signature");
+        assert!(
+            sig.contains("fn(int $n): int => $n * 2"),
+            "Signature should contain typed arrow function, got: {sig}"
+        );
+    }
+
+    #[test]
+    fn test_arrow_function_no_params() {
+        let php_code = r#"<?php
+$noop = fn() => null;
+"#;
+
+        let symbols = extract_symbols(php_code);
+        let noop = symbols.iter().find(|s| s.name == "noop");
+        assert!(noop.is_some(), "Expected variable 'noop' symbol for no-param arrow function");
+        let sig = noop.unwrap().signature.as_ref().expect("Expected signature");
+        assert!(
+            sig.contains("fn() => null"),
+            "Signature should contain no-param arrow function text, got: {sig}"
+        );
+    }
+
+    #[test]
+    fn test_arrow_function_inside_class_method_no_duplicate_symbol() {
+        let php_code = r#"<?php
+class Processor {
+    public function transform(array $items): array {
+        return array_map(fn($item) => $item * 2, $items);
+    }
+}
+"#;
+
+        let symbols = extract_symbols(php_code);
+
+        // The class and method should exist
+        let class_sym = symbols.iter().find(|s| s.name == "Processor");
+        assert!(class_sym.is_some(), "Expected Processor class");
+
+        let transform = symbols.iter().find(|s| s.name == "transform");
+        assert!(transform.is_some(), "Expected transform method");
+        assert_eq!(transform.unwrap().kind, SymbolKind::Method);
+
+        // There should be NO top-level Function symbol for the arrow function itself.
+        // Arrow functions are anonymous — they should not produce their own symbol.
+        let arrow_fns: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| {
+                s.kind == SymbolKind::Function
+                    && s.signature
+                        .as_ref()
+                        .map_or(false, |sig| sig.contains("fn($item) => $item * 2"))
+            })
+            .collect();
+        assert!(
+            arrow_fns.is_empty(),
+            "Arrow function inside method body should NOT create a separate Function symbol, found: {:?}",
+            arrow_fns.iter().map(|s| (&s.name, &s.signature)).collect::<Vec<_>>()
+        );
+    }
+}
