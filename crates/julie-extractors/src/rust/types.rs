@@ -390,10 +390,17 @@ pub(super) fn extract_static(
         Visibility::Public
     };
 
+    // static mut is mutable → Variable; non-mut static is semantically constant → Constant
+    let kind = if is_mutable {
+        SymbolKind::Variable
+    } else {
+        SymbolKind::Constant
+    };
+
     Some(base.create_symbol(
         &node,
         name,
-        SymbolKind::Variable,
+        kind,
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility_enum),
