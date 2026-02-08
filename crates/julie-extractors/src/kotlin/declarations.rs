@@ -141,6 +141,15 @@ pub(super) fn extract_secondary_constructor(
 
     signature.push_str(&parameters.unwrap_or_else(|| "()".to_string()));
 
+    // Append delegation call (`: this(...)` or `: super(...)`) if present
+    if let Some(delegation) = node
+        .children(&mut node.walk())
+        .find(|n| n.kind() == "constructor_delegation_call")
+    {
+        let delegation_text = base.get_node_text(&delegation);
+        signature.push_str(&format!(": {}", delegation_text));
+    }
+
     let visibility = helpers::determine_visibility(&modifiers);
 
     // Extract KDoc comment

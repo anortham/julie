@@ -2017,6 +2017,12 @@ class Config(val name: String) {
             "Signature should include parameter types, got: {}",
             sig
         );
+        // Delegation target should be included
+        assert!(
+            sig.contains(": this("),
+            "Signature should include delegation target ': this(...)', got: {}",
+            sig
+        );
     }
 
     #[test]
