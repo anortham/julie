@@ -1712,4 +1712,550 @@ pub trait Container {
             );
         }
     }
+
+    // ========================================================================
+    // Struct Field and Enum Variant Extraction Tests (TDD RED)
+    // ========================================================================
+    //
+    // These tests validate extraction of struct fields and enum variants:
+    // - Struct fields as SymbolKind::Field with correct parent_id
+    // - Visibility on fields (pub vs private)
+    // - Field type information in signature
+    // - Enum variants as SymbolKind::EnumMember with correct parent_id
+    // - Unit, tuple, and struct enum variants
+    // - Tuple structs should NOT produce field symbols
+    // - Doc comments on fields and variants
+
+    mod struct_field_extraction {
+        use super::*;
+
+        #[test]
+        fn test_extract_struct_fields_basic() {
+            let rust_code = r#"
+pub struct User {
+    pub id: u64,
+    name: String,
+    pub email: Option<String>,
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Find the User struct
+            let user_struct = symbols
+                .iter()
+                .find(|s| s.name == "User" && s.kind == SymbolKind::Struct)
+                .expect("Should extract User struct");
+            let user_id = user_struct.id.clone();
+
+            // Find field symbols
+            let id_field = symbols
+                .iter()
+                .find(|s| s.name == "id" && s.kind == SymbolKind::Field)
+                .expect("Should extract 'id' field");
+            assert_eq!(
+                id_field.parent_id.as_ref(),
+                Some(&user_id),
+                "id field should have User struct as parent"
+            );
+            assert_eq!(
+                id_field.visibility.as_ref().unwrap(),
+                &Visibility::Public,
+                "pub id field should be Public"
+            );
+            assert!(
+                id_field.signature.as_ref().unwrap().contains("u64"),
+                "id field signature should contain type 'u64', got: {}",
+                id_field.signature.as_ref().unwrap()
+            );
+
+            let name_field = symbols
+                .iter()
+                .find(|s| s.name == "name" && s.kind == SymbolKind::Field)
+                .expect("Should extract 'name' field");
+            assert_eq!(
+                name_field.parent_id.as_ref(),
+                Some(&user_id),
+                "name field should have User struct as parent"
+            );
+            assert_eq!(
+                name_field.visibility.as_ref().unwrap(),
+                &Visibility::Private,
+                "name field without pub should be Private"
+            );
+            assert!(
+                name_field.signature.as_ref().unwrap().contains("String"),
+                "name field signature should contain type 'String'"
+            );
+
+            let email_field = symbols
+                .iter()
+                .find(|s| s.name == "email" && s.kind == SymbolKind::Field)
+                .expect("Should extract 'email' field");
+            assert_eq!(
+                email_field.parent_id.as_ref(),
+                Some(&user_id),
+                "email field should have User struct as parent"
+            );
+            assert_eq!(
+                email_field.visibility.as_ref().unwrap(),
+                &Visibility::Public,
+                "pub email field should be Public"
+            );
+            assert!(
+                email_field
+                    .signature
+                    .as_ref()
+                    .unwrap()
+                    .contains("Option<String>"),
+                "email field signature should contain type 'Option<String>'"
+            );
+        }
+
+        #[test]
+        fn test_tuple_struct_no_fields() {
+            let rust_code = r#"
+struct Point(f64, f64);
+struct Wrapper(String);
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Tuple structs should be extracted as Struct
+            assert!(
+                symbols
+                    .iter()
+                    .any(|s| s.name == "Point" && s.kind == SymbolKind::Struct),
+                "Should extract Point tuple struct"
+            );
+            assert!(
+                symbols
+                    .iter()
+                    .any(|s| s.name == "Wrapper" && s.kind == SymbolKind::Struct),
+                "Should extract Wrapper tuple struct"
+            );
+
+            // But should NOT produce any Field symbols (tuple positions aren't named)
+            let field_symbols: Vec<_> = symbols
+                .iter()
+                .filter(|s| s.kind == SymbolKind::Field)
+                .collect();
+            assert!(
+                field_symbols.is_empty(),
+                "Tuple structs should NOT produce Field symbols, but found: {:?}",
+                field_symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+            );
+        }
+
+        #[test]
+        fn test_unit_struct_no_fields() {
+            let rust_code = r#"
+struct Empty;
+pub struct Marker;
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Unit structs should be extracted
+            assert!(
+                symbols
+                    .iter()
+                    .any(|s| s.name == "Empty" && s.kind == SymbolKind::Struct),
+                "Should extract Empty unit struct"
+            );
+            assert!(
+                symbols
+                    .iter()
+                    .any(|s| s.name == "Marker" && s.kind == SymbolKind::Struct),
+                "Should extract Marker unit struct"
+            );
+
+            // No fields should be extracted
+            let field_symbols: Vec<_> = symbols
+                .iter()
+                .filter(|s| s.kind == SymbolKind::Field)
+                .collect();
+            assert!(
+                field_symbols.is_empty(),
+                "Unit structs should NOT produce Field symbols"
+            );
+        }
+
+        #[test]
+        fn test_field_with_doc_comment() {
+            let rust_code = r#"
+pub struct Config {
+    /// The hostname to connect to
+    pub host: String,
+    /// The port number
+    pub port: u16,
+    /// Optional timeout in seconds
+    timeout: Option<u64>,
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let host_field = symbols
+                .iter()
+                .find(|s| s.name == "host" && s.kind == SymbolKind::Field)
+                .expect("Should extract 'host' field");
+            assert!(
+                host_field.doc_comment.is_some(),
+                "host field should have doc comment"
+            );
+            assert!(
+                host_field
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("hostname to connect to"),
+                "host field doc comment should contain expected text, got: {}",
+                host_field.doc_comment.as_ref().unwrap()
+            );
+
+            let port_field = symbols
+                .iter()
+                .find(|s| s.name == "port" && s.kind == SymbolKind::Field)
+                .expect("Should extract 'port' field");
+            assert!(
+                port_field.doc_comment.is_some(),
+                "port field should have doc comment"
+            );
+            assert!(
+                port_field
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("port number"),
+                "port field doc comment should contain expected text"
+            );
+        }
+
+        #[test]
+        fn test_field_signature_format() {
+            let rust_code = r#"
+struct Database {
+    pub connection_string: String,
+    max_connections: usize,
+    pub(crate) pool: Vec<Connection>,
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let conn_field = symbols
+                .iter()
+                .find(|s| s.name == "connection_string" && s.kind == SymbolKind::Field)
+                .expect("Should extract 'connection_string' field");
+            let sig = conn_field.signature.as_ref().unwrap();
+            assert!(
+                sig.contains("pub") && sig.contains("connection_string") && sig.contains("String"),
+                "Public field signature should contain 'pub', name, and type. Got: {}",
+                sig
+            );
+
+            let max_field = symbols
+                .iter()
+                .find(|s| s.name == "max_connections" && s.kind == SymbolKind::Field)
+                .expect("Should extract 'max_connections' field");
+            let sig = max_field.signature.as_ref().unwrap();
+            assert!(
+                sig.contains("max_connections") && sig.contains("usize"),
+                "Private field signature should contain name and type. Got: {}",
+                sig
+            );
+            assert!(
+                !sig.starts_with("pub"),
+                "Private field signature should NOT start with 'pub'. Got: {}",
+                sig
+            );
+        }
+    }
+
+    mod enum_variant_extraction {
+        use super::*;
+
+        #[test]
+        fn test_extract_enum_variants_all_kinds() {
+            let rust_code = r#"
+pub enum Message {
+    Quit,
+    Move { x: i32, y: i32 },
+    Write(String),
+    ChangeColor(u8, u8, u8),
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Find the enum
+            let message_enum = symbols
+                .iter()
+                .find(|s| s.name == "Message" && s.kind == SymbolKind::Enum)
+                .expect("Should extract Message enum");
+            let enum_id = message_enum.id.clone();
+
+            // Unit variant
+            let quit = symbols
+                .iter()
+                .find(|s| s.name == "Quit" && s.kind == SymbolKind::EnumMember)
+                .expect("Should extract 'Quit' variant");
+            assert_eq!(
+                quit.parent_id.as_ref(),
+                Some(&enum_id),
+                "Quit variant should have Message enum as parent"
+            );
+            assert_eq!(
+                quit.visibility.as_ref().unwrap(),
+                &Visibility::Public,
+                "Enum variants should inherit Public visibility"
+            );
+
+            // Struct variant
+            let move_variant = symbols
+                .iter()
+                .find(|s| s.name == "Move" && s.kind == SymbolKind::EnumMember)
+                .expect("Should extract 'Move' variant");
+            assert_eq!(
+                move_variant.parent_id.as_ref(),
+                Some(&enum_id),
+                "Move variant should have Message enum as parent"
+            );
+            let move_sig = move_variant.signature.as_ref().unwrap();
+            assert!(
+                move_sig.contains("x") && move_sig.contains("y"),
+                "Struct variant signature should contain field names. Got: {}",
+                move_sig
+            );
+
+            // Single-element tuple variant
+            let write = symbols
+                .iter()
+                .find(|s| s.name == "Write" && s.kind == SymbolKind::EnumMember)
+                .expect("Should extract 'Write' variant");
+            assert_eq!(
+                write.parent_id.as_ref(),
+                Some(&enum_id),
+                "Write variant should have Message enum as parent"
+            );
+            let write_sig = write.signature.as_ref().unwrap();
+            assert!(
+                write_sig.contains("String"),
+                "Tuple variant signature should contain type. Got: {}",
+                write_sig
+            );
+
+            // Multi-element tuple variant
+            let change_color = symbols
+                .iter()
+                .find(|s| s.name == "ChangeColor" && s.kind == SymbolKind::EnumMember)
+                .expect("Should extract 'ChangeColor' variant");
+            assert_eq!(
+                change_color.parent_id.as_ref(),
+                Some(&enum_id),
+                "ChangeColor variant should have Message enum as parent"
+            );
+        }
+
+        #[test]
+        fn test_enum_variant_with_doc_comment() {
+            let rust_code = r#"
+pub enum Status {
+    /// The operation is currently running
+    Running,
+    /// The operation completed successfully
+    Success,
+    /// The operation failed with an error
+    Failed(String),
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let running = symbols
+                .iter()
+                .find(|s| s.name == "Running" && s.kind == SymbolKind::EnumMember)
+                .expect("Should extract 'Running' variant");
+            assert!(
+                running.doc_comment.is_some(),
+                "Running variant should have doc comment"
+            );
+            assert!(
+                running
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("currently running"),
+                "Running doc comment should contain expected text, got: {}",
+                running.doc_comment.as_ref().unwrap()
+            );
+
+            let failed = symbols
+                .iter()
+                .find(|s| s.name == "Failed" && s.kind == SymbolKind::EnumMember)
+                .expect("Should extract 'Failed' variant");
+            assert!(
+                failed.doc_comment.is_some(),
+                "Failed variant should have doc comment"
+            );
+            assert!(
+                failed
+                    .doc_comment
+                    .as_ref()
+                    .unwrap()
+                    .contains("failed with an error"),
+                "Failed doc comment should contain expected text"
+            );
+        }
+
+        #[test]
+        fn test_private_enum_variants_are_public() {
+            // Even in a private enum, variants are "public" (inherit enum's visibility)
+            let rust_code = r#"
+enum InternalState {
+    Idle,
+    Processing,
+    Done,
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let idle = symbols
+                .iter()
+                .find(|s| s.name == "Idle" && s.kind == SymbolKind::EnumMember)
+                .expect("Should extract 'Idle' variant");
+
+            // Variants are always Public (they inherit from the enum's own accessibility)
+            assert_eq!(
+                idle.visibility.as_ref().unwrap(),
+                &Visibility::Public,
+                "Enum variants should always be Public"
+            );
+        }
+
+        #[test]
+        fn test_enum_variant_signature_unit() {
+            let rust_code = r#"
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+
+            let red = symbols
+                .iter()
+                .find(|s| s.name == "Red" && s.kind == SymbolKind::EnumMember)
+                .expect("Should extract 'Red' variant");
+            let sig = red.signature.as_ref().unwrap();
+            assert!(
+                sig.contains("Red"),
+                "Unit variant signature should contain variant name. Got: {}",
+                sig
+            );
+        }
+    }
 }

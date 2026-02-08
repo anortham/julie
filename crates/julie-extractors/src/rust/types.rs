@@ -1,13 +1,8 @@
 use super::helpers::{
     extract_derived_traits, extract_visibility, find_doc_comment, get_preceding_attributes,
 };
-/// Rust type definitions extraction
-/// - Structs and enums
-/// - Traits
-/// - Unions
-/// - Modules
-/// - Constants and statics
-/// - Macros and type aliases
+// Rust type definitions: structs, enums, fields, variants, traits,
+// unions, modules, consts, statics, macros, type aliases.
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::rust::RustExtractor;
 use std::collections::HashMap;
@@ -100,6 +95,80 @@ pub(super) fn extract_enum(
         SymbolOptions {
             signature: Some(signature),
             visibility: Some(visibility_enum),
+            parent_id,
+            doc_comment: find_doc_comment(base, node),
+            metadata: Some(HashMap::new()),
+        },
+    ))
+}
+
+/// Extract struct field declaration (e.g., `pub name: String`)
+pub(super) fn extract_field(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let base = extractor.get_base_mut();
+    let name = base.get_node_text(&node.child_by_field_name("name")?);
+    let visibility = extract_visibility(base, node);
+    let type_text = node
+        .child_by_field_name("type")
+        .map(|t| base.get_node_text(&t))
+        .unwrap_or_default();
+
+    let signature = if type_text.is_empty() {
+        format!("{}{}", visibility, name)
+    } else {
+        format!("{}{}: {}", visibility, name, type_text)
+    };
+
+    let visibility_enum = if visibility.trim().is_empty() {
+        Visibility::Private
+    } else {
+        Visibility::Public
+    };
+
+    Some(base.create_symbol(
+        &node,
+        name,
+        SymbolKind::Field,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(visibility_enum),
+            parent_id,
+            doc_comment: find_doc_comment(base, node),
+            metadata: Some(HashMap::new()),
+        },
+    ))
+}
+
+/// Extract enum variant (e.g., `Quit`, `Move { x: i32 }`, `Write(String)`)
+pub(super) fn extract_enum_variant(
+    extractor: &mut RustExtractor,
+    node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    let base = extractor.get_base_mut();
+    let name = base.get_node_text(&node.child_by_field_name("name")?);
+    let body_text = node
+        .child_by_field_name("body")
+        .map(|b| base.get_node_text(&b))
+        .unwrap_or_default();
+
+    let signature = if body_text.is_empty() {
+        name.clone()
+    } else {
+        format!("{}{}", name, body_text)
+    };
+
+    // Enum variants are always public (they inherit the enum's accessibility)
+    Some(base.create_symbol(
+        &node,
+        name,
+        SymbolKind::EnumMember,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
             parent_id,
             doc_comment: find_doc_comment(base, node),
             metadata: Some(HashMap::new()),

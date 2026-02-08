@@ -118,6 +118,8 @@ impl RustExtractor {
                 signatures::extract_function_signature(self, node, parent_id)
             }
             "associated_type" => signatures::extract_associated_type(self, node, parent_id),
+            "field_declaration" => types::extract_field(self, node, parent_id),
+            "enum_variant" => types::extract_enum_variant(self, node, parent_id),
             "union_item" => types::extract_union(self, node, parent_id),
             "macro_invocation" => signatures::extract_macro_invocation(self, node, parent_id),
             "mod_item" => types::extract_module(self, node, parent_id),
