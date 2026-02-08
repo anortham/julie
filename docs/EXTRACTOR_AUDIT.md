@@ -2,9 +2,9 @@
 
 **Started:** 2026-02-07
 **Verified:** 2026-02-07 — All fixes confirmed present in codebase at commit `945e9e4`.
-**Updated:** 2026-02-08 — Round 3 quality improvements applied (10 tasks, 1199 tests pass).
+**Updated:** 2026-02-08 — Round 4 quality improvements applied (10 tasks, 1216 tests pass).
 **Goal:** Systematic per-extractor audit of all 31 language extractors for correctness, completeness, edge cases, and code quality.
-**Status:** Audit complete. Three fix phases complete. All fixes verified.
+**Status:** Audit complete. Four fix rounds complete. All fixes verified.
 
 ## Audit Criteria
 
@@ -132,6 +132,57 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 ---
 
+## Round 4: Quality Improvements (2026-02-08)
+
+10 tasks executed via subagent-driven development. 17 new tests added (1216 total extractor tests). All changes verified.
+
+### Rating Changes
+
+| Extractor | Before | After | Reason |
+|-----------|--------|-------|--------|
+| **JavaScript** | B | B+ | Aliased import deduplication fixed |
+| **Kotlin** | B | B+ | Constructor parameter types in signatures fixed |
+| **Zig** | B | B+ | `@import` detection added |
+| **Lua** | B | B+ | variables.rs refactored (461→410 lines, 4 helpers extracted) |
+| **QML** | B | B+ | `id:` bindings, enum declarations, alias property signatures added |
+| **HTML** | B | B+ | Dead code removed, fallback noise filter applied |
+| **Dart** | B | B+ | typedef→Type, ERROR recovery tightened |
+| **SQL** | B | B+ | error_handling.rs split (503→220 lines), hardcoded skip list replaced |
+| **PowerShell** | B | B+ | LazyLock regex in imports.rs (3 statics, 5 inline calls eliminated) |
+| **Bash** | B | B+ | Empty relationship stubs removed, shebang detection added |
+
+### Audit Inaccuracies Corrected
+
+During Round 4 research, several audit claims were found to be wrong:
+- **Zig** "Parameters as symbols (noisy)" — WRONG. Parameters are correctly in signatures only, not individual symbols.
+- **Zig** `"unknown"` sentinel in types.rs:163 — Already cleaned up (uses `String::new()`).
+- **Lua** `"unknown"` sentinels — Already cleaned up (uses `String::new()`).
+- **Lua** "No visibility model" — WRONG. `local`→Private, global→Public already implemented.
+- **Lua** "Missing: require() as Import" — WRONG. Already works via `infer_type_from_expression`.
+- **Kotlin** "Companion objects always get name 'Companion'" — WRONG. `extract_companion_object` already uses custom names when present.
+
+### Feature Additions (5 extractors)
+
+- **JavaScript**: Aliased imports (`import { createElement as h }`) now use alias name only. No more duplicate import symbols.
+- **Kotlin**: Constructor parameter signatures now include types (e.g., `val name: String` instead of `val name`).
+- **Zig**: `const std = @import("std")` now detected as `SymbolKind::Import` with module path in signature.
+- **QML**: `id:` bindings extracted as Property. `enum` declarations extracted as Enum + EnumMember children. Property signatures now include alias keyword.
+- **Bash**: Shebang lines (`#!/bin/bash`, `#!/usr/bin/env python3`) extracted as symbols with interpreter name.
+
+### Noise Reduction (2 extractors)
+
+- **HTML**: Dead `extract_comment` function removed (44 lines). Fallback regex extractor now applies `should_extract_element` noise filter.
+- **Dart**: `looks_like_enum_value()` guard added to ERROR recovery. Filters out private identifiers, single-char names, Dart keywords, and built-in type names.
+
+### Code Quality (4 extractors)
+
+- **Lua**: `variables.rs` refactored from 461→410 lines. Extracted 4 helper functions: `collect_expression_nodes`, `infer_kind_and_type`, `resolve_dot_property`, `push_variable_symbol`.
+- **Dart**: `typedef` now uses `SymbolKind::Type` (was `SymbolKind::Class`).
+- **SQL**: `error_handling.rs` split from 503→220 lines. 5 error recovery functions moved to domain modules (constraints.rs, routines.rs, views.rs). Hardcoded alias skip list replaced with `alias_name.len() <= 2` heuristic.
+- **PowerShell**: 3 `LazyLock<Regex>` statics replace 5 inline `Regex::new()` calls in imports.rs. Duplicate Import-Module/using regex eliminated.
+
+---
+
 ## Extractor Status
 
 ### Group 1: Core High-Level Languages
@@ -140,7 +191,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 |-----------|-------|--------|---------------|------------------|
 | **Rust** | 7 | B+ | Struct/Enum SymbolKind; 13 sentinels; field/variant extraction; LazyLock regex | Macro invocation heuristic |
 | **TypeScript** | 10 | B+ | P0 fixed (TS parser); class sigs; enum members; 8+ sentinels; export all specifiers; interface members; method containment | Decorators, access modifiers |
-| **JavaScript** | 11 | B | 7 sentinels eliminated | Comprehensive as-is |
+| **JavaScript** | 11 | B+ | 7 sentinels eliminated; aliased import deduplication | Comprehensive as-is |
 | **Python** | 10 | B+ | 4 sentinels; parent_id; nested class support; @property→Property kind; LazyLock regex | Wildcard imports |
 
 ### Group 2: JVM & .NET Languages
@@ -149,7 +200,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 |-----------|-------|--------|---------------|------------------|
 | **Java** | 10 | A | Minor import fix | None significant |
 | **C#** | 8 | A | None needed | None significant |
-| **Kotlin** | 6 | B | types.rs split (533→296+247); internal→Private | Companion naming; secondary constructors |
+| **Kotlin** | 6 | B+ | types.rs split (533→296+247); internal→Private; constructor param types in signatures | Secondary constructors |
 | **Swift** | 10 | A | None needed | None significant |
 
 ### Group 3: Systems Languages
@@ -159,7 +210,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 | **C** | 9 | B | Union added; Struct SymbolKind; decl split; 6 sentinels | 3 type "unknown" (metadata, acceptable) |
 | **C++** | 12 | B | declarations split (4 new files); multi-var extraction | Template variables; concepts |
 | **Go** | 8 | A | 2 sentinels; type def/alias signature fix | Embedding relationships stub |
-| **Zig** | 9 | B | 4 SymbolKind fixes (Type, Struct, Union, Enum) | Parameters as symbols (noisy) |
+| **Zig** | 9 | B+ | 4 SymbolKind fixes (Type, Struct, Union, Enum); @import detection | None significant |
 
 ### Group 4: Scripting Languages
 
@@ -167,28 +218,28 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 |-----------|-------|--------|---------------|------------------|
 | **PHP** | 8 | B+ | Methods→Method; grouped use declarations fixed | Anonymous classes; arrow functions |
 | **Ruby** | 8 | B | 2 sentinel fallbacks eliminated; dead code cleanup | Struct.new; module_function |
-| **Lua** | 9 | B | "unknown" in type inference acceptable | variables.rs near 500-line limit |
-| **Bash** | 8 | B | Control flow verified; regression tests; LazyLock regex; dead code cleanup | None significant |
-| **PowerShell** | 11 | B | "ModuleMember" sentinel fixed; LazyLock regex | None significant |
+| **Lua** | 9 | B+ | variables.rs refactored (461→410 lines) | None significant |
+| **Bash** | 8 | B+ | Control flow verified; regression tests; LazyLock regex; dead code cleanup; shebang detection; empty stubs removed | None significant |
+| **PowerShell** | 11 | B+ | "ModuleMember" sentinel fixed; LazyLock regex in imports.rs (3 statics) | None significant |
 | **R** | 3 | **B** ↑ | **Full rework**: sigs, imports, roxygen2, S3 | Was D; major improvement |
 
 ### Group 5: Web & UI Languages
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
-| **HTML** | 9 | B | Noise filter added; tag sentinel eliminated | Comments named "comment" |
+| **HTML** | 9 | B+ | Noise filter added; tag sentinel eliminated; dead code removed; fallback noise filter | None significant |
 | **CSS** | 8 | B+ | 4 sentinels eliminated; keyframe noise fixed; @keyframes deduped; LazyLock regex | None significant |
 | **Vue** | 8 | B+ | "VueComponent" sentinel; Composition API + `<script setup>` | Style section limited to class selectors |
 | **Razor** | 10 | B+ | Both files split; 2 sentinels; invocation noise fixed; assignment/element_access noise fixed | None significant |
-| **QML** | 3 | B | None needed | Missing: id, enum, alias |
+| **QML** | 3 | B+ | id: bindings, enum declarations, alias property signatures added | None significant |
 | **GDScript** | 10 | A | None needed | None significant |
 
 ### Group 6: Data & Specialized
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
-| **SQL** | 9 | B | mod.rs split; 4 sentinels eliminated; LazyLock regex; dead regex statics removed | error_handling.rs at limit |
-| **Dart** | 10 | **B** ↑ | **P0 fixed**: generic recovery; mod split; imports added | Was C; thread-local cache acceptable |
+| **SQL** | 9 | B+ | mod.rs split; 4 sentinels eliminated; LazyLock regex; dead regex statics removed; error_handling.rs split (503→220) | None significant |
+| **Dart** | 10 | **B+** ↑ | **P0 fixed**: generic recovery; mod split; imports added; typedef→Type; ERROR recovery tightened | Was C; thread-local cache acceptable |
 | **Regex** | 8 | B+ | 3 sentinels→Option\<String\>; noise reduction (10+ → 4 symbols); ~676 lines dead code removed | None significant |
 | **JSON** | 1 | A | None needed | None significant |
 | **TOML** | 1 | A | Key-value pair extraction added | None significant |
@@ -238,9 +289,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### TypeScript
 
-**Rating: B**
+**Rating: B+**
 
-**Post-Audit Fixes:** P0 — inference.rs now uses `tree_sitter_typescript`; class signatures added; enum member extraction added; 8+ sentinels eliminated; test fixed to use TS parser.
+**Post-Audit Fixes:** P0 — inference.rs now uses `tree_sitter_typescript`; class signatures added; enum member extraction added; 8+ sentinels eliminated; test fixed to use TS parser. **2026-02-08 Round 3:** Export all specifiers; interface members; method containment fix.
 
 **What it extracts:** classes (with inheritance, abstract modifier), functions, methods, constructors, arrow functions (assigned to variables), variables, interfaces, type aliases, enums, namespaces/modules, properties (class and interface), imports, exports, doc comments. Also extracts identifiers (calls, member access) and relationships (calls, extends). Includes type inference module.
 
@@ -275,9 +326,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### JavaScript
 
-**Rating: B**
+**Rating: B+**
 
-**Post-Audit Fixes:** 7 sentinel sites eliminated including "unknown" in helpers.rs; all extraction functions return `Option<Symbol>`.
+**Post-Audit Fixes:** 7 sentinel sites eliminated including "unknown" in helpers.rs; all extraction functions return `Option<Symbol>`. **2026-02-08 Round 4:** Aliased import deduplication fixed — `import { createElement as h }` now uses alias name only.
 
 **What it extracts:** classes (with extends), functions (declarations, expressions, arrow, generators), methods (with static, getter, setter, async, generator detection), constructors, variables (const/let/var with initializer tracking), destructuring assignments (object and array patterns, rest parameters), imports (ES6 named, default, namespace, CommonJS require), exports (named, default, re-exports), properties (class fields, object properties with function-as-method promotion), prototype method assignments, static method assignments, doc comments (JSDoc), identifiers (calls, member access), relationships (calls, extends).
 
@@ -293,7 +344,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 **Issues:**
 - [P1] [FIXED] Sentinel value `"unknown"` in `extract_require_source` eliminated — now returns `Option<String>`.
-- [P2] Import specifier extraction (imports.rs:57-100) may extract both original name AND alias for aliased imports (lines 69-74: pushes both `name` and `alias`), creating duplicate import symbols.
+- [P2] [FIXED] Import specifier extraction now uses alias-first logic — if an alias exists, only the alias is pushed. No more duplicate import symbols for aliased imports.
 - [P2] `get_declaration_type` (helpers.rs:144-168) defaults to `"var"` when no declaration keyword is found. Symbols inside non-standard contexts will be labeled as `var` declarations.
 - [P2] `build_class_signature` (signatures.rs:12-43) uses `unwrap_or_default()` for the class name, silently producing "class " with no name if the name node is missing.
 - [P2] No extraction of object literal keys as properties when the object is assigned to a named variable (e.g., `const config = { port: 3000, host: 'localhost' }` keys are not extracted).
@@ -412,9 +463,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### Kotlin
 
-**Rating: B**
+**Rating: B+**
 
-**Post-Audit Fixes:** types.rs split (532→296+247); `internal` visibility now mapped to Private.
+**Post-Audit Fixes:** types.rs split (532→296+247); `internal` visibility now mapped to Private. **2026-02-08 Round 4:** Constructor parameter signatures now include types; companion object naming verified correct.
 
 **What it extracts:** Classes (regular, data, sealed, abstract, inner), enum classes (with members), interfaces (including fun interfaces), objects, companion objects, functions (top-level and methods), extension functions, properties (val/var with delegation and initializers), constructor parameters (as properties), type aliases, imports, package declarations, operator functions, KDoc comments.
 
@@ -432,9 +483,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 **Issues:**
 - [P1] [FIXED] `types.rs` split into types(296) + declarations(247) — both under 500-line limit.
-- [P2] Companion objects always get the symbol name `"Companion"` even when they have a custom name (types.rs:215) -- the custom name only appears in the signature. A companion object declared as `companion object Factory` should have the name `Factory`
+- [P2] [VERIFIED] Companion objects already use custom names when present. `extract_companion_object` correctly finds named companions (e.g., `companion object Factory` → name "Factory"). The audit claim was inaccurate.
 - [P2] [FIXED] `internal` visibility now mapped to `Visibility::Private` (was falling through to Public).
-- [P2] Constructor parameter type defaults to empty string `""` when not found (properties.rs:168) -- used as a sentinel-like value, though the code checks `if !param_type.is_empty()` before using it
+- [P2] [FIXED] Constructor parameter signatures now include types (e.g., `val name: String` instead of `val name`). Replaced `unwrap_or_else(|| "".to_string())` with `unwrap_or_default()`.
 - [P2] `extract_function` calls `extract_return_type` twice -- once for the signature and again for metadata (types.rs:264, 316)
 
 **Missing extractions:**
@@ -613,9 +664,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### Zig
 
-**Rating: B**
+**Rating: B+**
 
-**Post-Audit Fixes:** 4 SymbolKind corrections — type alias→Type, struct→Struct, union→Union, error→Enum.
+**Post-Audit Fixes:** 4 SymbolKind corrections — type alias→Type, struct→Struct, union→Union, error→Enum. **2026-02-08 Round 4:** `@import` detection added — `const std = @import("std")` now extracted as `SymbolKind::Import`.
 
 **What it extracts:** Functions (pub/export/inline/extern modifiers), methods (inside structs), test declarations, structs (regular/packed/extern), unions (regular/union(enum)), enums (with backing type), enum variants, struct/container fields, variables (`var`/`const`), type aliases, error types, error sets (with union support), function type aliases, generic type constructors (`fn(comptime T: type) type` pattern), parameters.
 
@@ -634,15 +685,15 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - [P1] [FIXED] Type aliases now use `SymbolKind::Type` (was Interface).
 - [P1] [FIXED] Function type aliases now use `SymbolKind::Type` (was Interface).
 - [P1] [FIXED] Error types now use `SymbolKind::Enum` (was Class) — error sets are enumerated values.
-- [P2] One sentinel `"unknown".to_string()` in `types.rs:163` when struct field type cannot be determined.
-- [P2] Parameters are extracted as individual `Variable` symbols (`functions.rs:94-133`). This is noisy -- function parameters are not typically standalone definitions. They inflate the symbol count and can pollute search results.
+- [P2] [VERIFIED] `"unknown"` sentinel in types.rs:163 was already cleaned up — uses `String::new()`.
+- [P2] [VERIFIED] Parameters are NOT extracted as individual symbols. The audit claim was inaccurate — parameters appear correctly only in function signatures, not as standalone Variable symbols.
 - [P2] [FIXED] Structs now use `SymbolKind::Struct`, unions now use `SymbolKind::Union` (were both Class).
 - [P2] `extract_function_signature` has a heuristic that checks raw function text for `"..."` and adds variadic parameter (`functions.rs:228-231`). This could false-positive on string literals containing `"..."`.
 - [P2] Zig test `mod.rs` is 1962 lines (over 1000-line test file limit).
 
 **Missing extractions:**
 - `usingnamespace` declarations
-- `@import` as Import symbols (currently only extracted as const assignments)
+- [FIXED] `@import` now detected as `SymbolKind::Import` with module path in signature
 - Comptime blocks (`comptime { ... }`)
 - Assembly blocks (`asm volatile (...)`)
 - Labeled blocks and loops
@@ -732,7 +783,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### Lua
 
-**Rating: B**
+**Rating: B+**
+
+**Post-Audit Fixes:** **2026-02-08 Round 4:** variables.rs refactored from 461→410 lines with 4 extracted helpers. Audit inaccuracies corrected (visibility model exists, require() imports work, "unknown" sentinels already cleaned up).
 
 **What it extracts:** Functions (regular, local, colon-method, dot-method), variables (local and global, with table field detection), table fields, metatable-based class detection (via `setmetatable` pattern), function calls, method calls, member access identifiers.
 
@@ -745,15 +798,15 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - All files under 500 lines (largest is `variables.rs` at 460 lines, close to limit)
 
 **Issues:**
-- [P1] `"unknown"` sentinel in type inference: `helpers.rs` lines 55 and 57 return `"unknown"` as default data type when type cannot be determined. Six total occurrences across `variables.rs` (4 places setting `dataType` to `"unknown"`) and `helpers.rs` (2 places).
-- [P2] `variables.rs` at 460 lines is close to the 500-line limit and has significant code duplication between `extract_local_variable` and `extract_global_variable` -- the logic for detecting table fields, function values, and building metadata is nearly identical between the two functions.
+- [P1] [VERIFIED] `"unknown"` sentinels already cleaned up — uses `String::new()`. The audit claim was inaccurate.
+- [P2] [FIXED] `variables.rs` refactored from 461→410 lines. Extracted 4 helpers: `collect_expression_nodes`, `infer_kind_and_type`, `resolve_dot_property`, `push_variable_symbol`. Reduced duplication between local/global variable extraction.
 - [P2] Class detection regex in `classes.rs:28` (`r"setmetatable\(\s*(\w+)\s*,"`) is fragile -- won't match `setmetatable(self, {__index = Base})` with complex second arguments or multiline calls, though it handles the common case.
-- [P2] No visibility model -- all symbols are `Visibility::Public`. Lua has no native visibility, but `local` could reasonably map to `Private`.
+- [P2] [VERIFIED] Visibility model already exists: `local`→Private, global→Public. The audit claim was inaccurate.
 
 **Missing extractions:**
 - Metatables beyond `setmetatable` (e.g., `getmetatable`, `__index` chain analysis)
 - Module patterns (`return M` at end of file)
-- `require` calls as Import symbols
+- [VERIFIED] `require` calls already detected as Import symbols via `infer_type_from_expression`
 - Vararg functions (`...` parameter)
 - Coroutine definitions (`coroutine.create`/`coroutine.wrap`)
 - Table constructors as named types
@@ -765,9 +818,11 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### Bash
 
-**Rating: B**
+**Rating: B+**
 
-**What it extracts:** Functions (POSIX and bash-style), variables (declarations, assignments, exports, readonly, local, environment), commands (source, eval, exec, trap, alias), positional parameters, command relationships, function signatures with parameter detection. Control flow blocks (if/for/while/case) are intentionally not extracted.
+**Post-Audit Fixes:** **2026-02-08 Round 3:** Control flow verified correct; regression tests added; LazyLock regex; dead code cleanup. **Round 4:** Empty relationship stubs removed; shebang detection added.
+
+**What it extracts:** Functions (POSIX and bash-style), variables (declarations, assignments, exports, readonly, local, environment), commands (source, eval, exec, trap, alias), positional parameters, shebang lines, command relationships, function signatures with parameter detection. Control flow blocks (if/for/while/case) are intentionally not extracted.
 
 **Strengths:**
 - Good DevOps/scripting focus: tracks `source`, `eval`, `exec`, `trap`, `alias` as significant commands
@@ -782,7 +837,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 **Issues:**
 - [P1] [VERIFIED] Control flow blocks (`if`, `for`, `while`, `case`) return `None` in `extract_symbol_from_node` (mod.rs:91). The original audit description was inaccurate — these were never extracted as symbols in the current code. Regression tests added to confirm.
 - [P2] `is_environment_variable` in `variables.rs:114` creates a new `Regex` on every call instead of using `LazyLock`. This function is called for every variable encountered.
-- [P2] `relationships.rs` has empty stub methods: `extract_command_substitution_relationships` and `extract_file_relationships` are defined but contain no logic (lines 52-117) -- just comments describing what they should do.
+- [P2] [FIXED] Empty stub methods `extract_command_substitution_relationships` and `extract_file_relationships` removed along with their dispatch arms in mod.rs.
 - [P2] `types.rs` type inference is extremely basic (51 lines) -- only checks for integer, array, and associative array patterns.
 - [P2] No heredoc content extraction -- heredocs are common in bash scripts for configuration/templates.
 
@@ -792,7 +847,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - Subshell blocks (`(...)` and `$(...)`)
 - Arithmetic expressions (`$((...))`)
 - Bash-specific features: `select` loops, `coproc`, process substitution
-- Shebang line detection
+- [FIXED] Shebang line detection — `#!/bin/bash` → "bash", `#!/usr/bin/env python3` → "python3"
 - `set -e`, `set -o pipefail` and other option settings
 - Function `return` value patterns
 
@@ -802,9 +857,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### PowerShell
 
-**Rating: B**
+**Rating: B+**
 
-**Post-Audit Fixes:** "ModuleMember" sentinel fallback eliminated.
+**Post-Audit Fixes:** "ModuleMember" sentinel fallback eliminated. **2026-02-08 Round 3:** LazyLock regex in types.rs. **Round 4:** 3 LazyLock statics in imports.rs replacing 5 inline Regex::new() calls; duplicate Import-Module/using regex eliminated.
 
 **What it extracts:** Functions (simple and advanced with CmdletBinding), parameters (with types and attributes), classes (with inheritance), class methods, class properties, enums (with members), variables (with scope prefixes: script, global, local, private), Import-Module, Export-ModuleMember, using statements, dot sourcing, DSC configurations, pipelines, well-known DevOps commands, comment-based help, ERROR node recovery.
 
@@ -823,9 +878,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 **Issues:**
 - [P1] [FIXED] `"ModuleMember"` sentinel eliminated — now returns `None`.
 - [P2] `helpers.rs` lines 155-177 create regex patterns on every call without `LazyLock` caching. Multiple regex compilations per node visit for parameter attribute extraction.
-- [P2] `types.rs` correctly uses `LazyLock` for its regexes (good), but `helpers.rs` and `imports.rs` do not (inconsistent).
+- [P2] [FIXED] `imports.rs` now uses 3 `LazyLock<Regex>` statics. Duplicate regex between `extract_import_command` and helper functions eliminated.
 - [P2] Pipeline extraction creates symbols for each pipeline segment, which can be noisy for long pipelines like `Get-Process | Where-Object | Select-Object | Export-Csv`.
-- [P2] `extract_import_module_name` and `extract_import_command` have duplicated regex patterns for Import-Module (`imports.rs:63` and `imports.rs:182`).
+- [P2] `helpers.rs` lines 155-177 still creates regex patterns on every call without `LazyLock` caching.
 
 **Missing extractions:**
 - Workflow functions (`workflow { ... }`)
@@ -890,9 +945,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### HTML
 
-**Rating: B**
+**Rating: B+**
 
-**Post-Audit Fixes:** `should_extract_element()` noise filter added — only extracts semantic landmarks, forms, media, elements with id/name, custom elements. "unknown" tag sentinel eliminated.
+**Post-Audit Fixes:** `should_extract_element()` noise filter added — only extracts semantic landmarks, forms, media, elements with id/name, custom elements. "unknown" tag sentinel eliminated. **2026-02-08 Round 4:** Dead `extract_comment` function removed (44 lines). Fallback regex extractor now applies `should_extract_element` noise filter.
 
 **What it extracts:** Semantic HTML elements (header, nav, main, footer, section, article, etc.), form elements, media elements, headings, script/style tags, DOCTYPE, custom elements (contain hyphen), elements with id/name attributes, HTML comments (3+ chars), SVG elements.
 
@@ -907,9 +962,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - File-scoped identifier filtering (critical fix applied correctly)
 
 **Issues:**
-- [P2] Comments are extracted as symbols with the literal name `"comment"` and kind `Property` (elements.rs:208-209). Every comment becomes a symbol named "comment". While the signature includes the actual text, the symbol name is useless for search.
+- [P2] [FIXED] Dead `extract_comment` function removed (44 lines). Made `should_extract_element` a standalone `pub(super)` function accessible from fallback.rs.
 - [P2] DOCTYPE is extracted as `SymbolKind::Variable` (elements.rs:164). `Variable` is a somewhat arbitrary choice for a document type declaration.
-- [P2] The fallback regex extractor (fallback.rs:78-156) does not apply `should_extract_element` filtering, so it will extract every element including generic containers like `<div>` and `<p>`. This partially defeats the noise filtering when the fallback path is taken.
+- [P2] [FIXED] The fallback regex extractor now applies `should_extract_element` filtering with `to_lowercase()` normalization. Generic containers like `<div>` and `<p>` are no longer extracted via fallback.
 - [P2] Hardcoded custom element attribute priorities for specific elements like `custom-video-player` and `image-gallery` (attributes.rs:134-136) -- these are examples, not real elements.
 
 **Missing extractions:**
@@ -1038,9 +1093,11 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### QML
 
-**Rating: B**
+**Rating: B+**
 
-**What it extracts:** Root QML object definitions (the file's component base type), QML properties (property declarations), QML signals, JavaScript function declarations.
+**Post-Audit Fixes:** **2026-02-08 Round 4:** `id:` bindings extracted as Property. Enum declarations extracted as Enum + EnumMember children. Property signatures enriched (alias keyword, full type info).
+
+**What it extracts:** Root QML object definitions (the file's component base type), QML properties (property declarations), QML signals, JavaScript function declarations, `id:` bindings, enum declarations, alias properties.
 
 **Strengths:**
 - Clean, focused design: only 3 source files (mod.rs, identifiers.rs, relationships.rs), all under 500 lines
@@ -1057,9 +1114,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - [P2] `match symbol_map.get(...) { None => {...} _ => {} }` in mod.rs:166-183 -- the catch-all `_ => {}` arm silently ignores the `Some` case. Cleaner pattern: `if symbol_map.get(...).is_none() { ... }`.
 
 **Missing extractions:**
-- QML `id:` property declarations (e.g., `id: myButton`) -- critical for QML referencing
-- QML `enum` declarations (available in Qt 5.10+)
-- QML `alias` property declarations (`property alias text: label.text`)
+- [FIXED] QML `id:` property declarations now extracted as Property with signature `"id: <name>"`
+- [FIXED] QML `enum` declarations now extracted as Enum + EnumMember children with parent_id
+- [FIXED] QML `alias` property declarations — property signatures now include alias keyword and full type info
 - QML `required` property declarations
 - QML `Connections` blocks
 - QML `Component` inline definitions
@@ -1115,9 +1172,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### SQL
 
-**Rating: B**
+**Rating: B+**
 
-**Post-Audit Fixes:** mod.rs split (662→269 + views.rs + identifiers.rs); 4 sentinel "unknown" values eliminated across schemas.rs, constraints.rs, routines.rs.
+**Post-Audit Fixes:** mod.rs split (662→269 + views.rs + identifiers.rs); 4 sentinel "unknown" values eliminated across schemas.rs, constraints.rs, routines.rs. **2026-02-08 Round 4:** error_handling.rs split from 503→220 lines (5 functions moved to domain modules). Hardcoded alias skip list replaced with `alias_name.len() <= 2` heuristic.
 
 **What it extracts:** Tables (Class), columns (Field), views (Interface), indexes (Property), triggers (Method), stored procedures (Method), functions (Function), CTEs (Interface), schemas (Namespace), sequences (Variable), domains (Class), custom types/enums (Class), constraints (Interface/Property), SELECT aliases (Field), DECLARE variables (Variable), ALTER TABLE constraints (Property), aggregate functions (Function)
 
@@ -1133,12 +1190,12 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 **Issues:**
 - [P1] [FIXED] `mod.rs` split to 269 lines + views.rs + identifiers.rs.
-- [P1] `error_handling.rs` at 503 lines is right at the limit. Contains code duplication with `constraints.rs` — not yet addressed.
+- [P1] [FIXED] `error_handling.rs` split from 503→220 lines. 5 error recovery functions moved to constraints.rs, routines.rs, and views.rs.
 - [P2] [FIXED] Sentinel "unknown" at `schemas.rs` — `extract_table_signature` now returns `Option<String>`.
 - [P2] [FIXED] Sentinel "unknown" at `constraints.rs` — data type now uses `.map()` pattern.
 - [P2] [FIXED] Sentinel "unknown" at `constraints.rs` — constraint_type now uses `continue` on unknown.
 - [P2] [FIXED] Sentinel "unknown" at `routines.rs` — variable type now uses `match`/`continue`.
-- [P2] `mod.rs:459-471` has a hardcoded skip list of table alias names ("u", "ae", "users", "analytics_events", "id", "username", "email") that is test-data-specific
+- [P2] [FIXED] Hardcoded alias skip list replaced with `alias_name.len() <= 2` heuristic in views.rs.
 - [P2] Regex objects recompiled on every call in `constraints.rs` instead of using `LazyLock`
 - [P2] `extract_table_references` at `relationships.rs:155-175` finds table references but does nothing with them (assigns to `_table_symbol`)
 
@@ -1154,9 +1211,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### Dart
 
-**Rating: C → B (fixed)**
+**Rating: C → B+ (fixed)**
 
-**Post-Audit Fixes:** P0 — hardcoded test values removed, generic AST-walking enum recovery added; mod.rs split (706→384 + identifiers(84) + pending_calls(168)); dedup via HashSet. **2026-02-08:** Import/export extraction added via new `imports.rs` (124 lines).
+**Post-Audit Fixes:** P0 — hardcoded test values removed, generic AST-walking enum recovery added; mod.rs split (706→384 + identifiers(84) + pending_calls(168)); dedup via HashSet. **2026-02-08:** Import/export extraction added via new `imports.rs` (124 lines). **Round 4:** typedef→SymbolKind::Type; ERROR recovery tightened with `looks_like_enum_value()` guard.
 
 **What it extracts:** Classes (Class), functions (Function), methods (Method), constructors (Constructor), getters/setters (Property), fields (Field), enums (Enum), enum constants (EnumMember), mixins (Interface), extensions (Module), type aliases (Class), variables/constants (Variable/Constant), imports/exports (Import), Flutter widget detection
 
@@ -1176,9 +1233,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - [P1] [FIXED] `mod.rs` split to 384 lines + identifiers(84) + pending_calls(168).
 - [P1] [FIXED] Import/export extraction added. Handles `import_or_export` nodes, extracts URI from `configurable_uri → uri → string_literal` chain. Documents tree-sitter-dart grammar limitations: `as`/`show`/`hide`/`library`/`part` produce ERROR nodes and cannot be parsed.
 - [P1] Thread-local content cache (`helpers.rs:23-45`) is a fragile borrow-checker workaround
-- [P2] `extract_enum_constants_from_error_recursive` extracts ANY identifier from ERROR nodes as EnumMember -- extremely noisy
+- [P2] [FIXED] `recover_from_node_recursive` now guarded by `looks_like_enum_value()` — filters out private identifiers (`_` prefix), single-char names, Dart keywords, and built-in type names. Dramatically reduced noise from ERROR node recovery.
 - [P2] No sealed/base/final/interface class modifiers (Dart 3.0)
-- [P2] Typedef uses `SymbolKind::Class` instead of `SymbolKind::Type`
+- [P2] [FIXED] Typedef now uses `SymbolKind::Type` (was `SymbolKind::Class`).
 
 **Missing extractions:**
 - Import modifiers: `as` aliases, `show`/`hide` filters (tree-sitter grammar limitation — produces ERROR nodes)
