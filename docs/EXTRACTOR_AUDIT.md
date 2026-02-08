@@ -2,8 +2,9 @@
 
 **Started:** 2026-02-07
 **Verified:** 2026-02-07 — All fixes confirmed present in codebase at commit `945e9e4`.
+**Updated:** 2026-02-08 — Tier 1 features + Tier 2 noise fixes applied (8 tasks, 1183 tests pass).
 **Goal:** Systematic per-extractor audit of all 31 language extractors for correctness, completeness, edge cases, and code quality.
-**Status:** Audit complete. Fix phase complete. All fixes verified.
+**Status:** Audit complete. Two fix phases complete. All fixes verified.
 
 ## Audit Criteria
 
@@ -72,13 +73,41 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 ---
 
+## Quality Improvements: Tier 1 Features + Tier 2 Noise (2026-02-08)
+
+8 tasks executed via subagent-driven development. 57 new tests added (1183 total extractor tests). All changes verified.
+
+### Rating Changes
+
+| Extractor | Before | After | Reason |
+|-----------|--------|-------|--------|
+| **TOML** | B | A | Key-value pair extraction added (was tables-only) |
+| **Rust** | B | B+ | Struct field + enum variant extraction added |
+| **Vue** | B | B+ | Composition API + `<script setup>` support added |
+
+### Tier 1: Feature Additions (4 extractors)
+
+- **TOML**: Key-value pairs now extracted as `SymbolKind::Property` with parent_id to table. String values in doc_comment for semantic search (matches JSON pattern).
+- **Rust**: Struct fields as `SymbolKind::Field` with type in signature. Enum variants as `SymbolKind::EnumMember` with tuple/struct body. Both parented to their container.
+- **Dart**: Import/export directives now extracted as `SymbolKind::Import`. Handles core, package, and relative imports. Documents tree-sitter-dart grammar limitations (as/show/hide produce ERROR nodes).
+- **Vue**: `<script setup>` support via tree-sitter JS/TS parsing. Extracts ref(), computed(), defineProps(), defineEmits(), function declarations, arrow functions, imports. Options API path preserved.
+
+### Tier 2: Noise Elimination (4 extractors)
+
+- **CSS**: `extract_keyframes` made no-op — individual keyframe blocks (0%, 50%, from, to) no longer extracted as symbols. @keyframes rules still extracted.
+- **Bash**: Control flow (for/while/if/case) confirmed already returning None. Added 3 regression tests.
+- **Razor**: `invocation_expression` made no-op in both Razor and C# code paths. Html.Raw(), RenderBody() no longer extracted as definitions. Dead `extract_invocation` removed (76 lines).
+- **Regex**: Eliminated individual atoms (literals, anchors, quantifiers, predefined classes, unnamed groups, alternations, backreferences). Kept named groups, character classes, lookarounds, unicode properties, top-level patterns. `extract_patterns_from_text` disabled to prevent duplicates. Email regex: 10+ → 4 symbols.
+
+---
+
 ## Extractor Status
 
 ### Group 1: Core High-Level Languages
 
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
-| **Rust** | 7 | B | Struct/Enum SymbolKind; 13 sentinels eliminated | No field/variant extraction |
+| **Rust** | 7 | B+ | Struct/Enum SymbolKind; 13 sentinels; field/variant extraction | Macro invocation heuristic; regex in infer_types |
 | **TypeScript** | 10 | B | P0 fixed (TS parser); class sigs; enum members; 8+ sentinels | Decorators, access modifiers |
 | **JavaScript** | 11 | B | 7 sentinels eliminated | Comprehensive as-is |
 | **Python** | 10 | B | 4 sentinels; parent_id; nested class support | @property as Property kind |
@@ -108,7 +137,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 | **PHP** | 8 | B | Methods→SymbolKind::Method | Anonymous classes; arrow functions |
 | **Ruby** | 8 | B | 2 sentinel fallbacks eliminated | Struct.new; module_function |
 | **Lua** | 9 | B | "unknown" in type inference acceptable | variables.rs near 500-line limit |
-| **Bash** | 8 | B | None needed (zero sentinels) | Control flow as Method |
+| **Bash** | 8 | B | Control flow verified not extracted; regression tests | Regex caching in variables.rs |
 | **PowerShell** | 11 | B | "ModuleMember" sentinel fixed | Regex caching inconsistency |
 | **R** | 3 | **B** ↑ | **Full rework**: sigs, imports, roxygen2, S3 | Was D; major improvement |
 
@@ -117,9 +146,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
 | **HTML** | 9 | B | Noise filter added; tag sentinel eliminated | Comments named "comment" |
-| **CSS** | 8 | B | 4 sentinels eliminated | Keyframe percentage noise |
-| **Vue** | 7 | B | "VueComponent" sentinel fixed | No Composition API support |
-| **Razor** | 10 | B | Both files split; 2 sentinels fixed | Invocation-as-definition noise |
+| **CSS** | 8 | B | 4 sentinels eliminated; keyframe noise fixed | Duplicate @keyframes/animation name; regex caching |
+| **Vue** | 8 | B+ | "VueComponent" sentinel; Composition API + `<script setup>` | Style section limited to class selectors |
+| **Razor** | 10 | B | Both files split; 2 sentinels; invocation noise fixed | Assignment/element_access as symbols |
 | **QML** | 3 | B | None needed | Missing: id, enum, alias |
 | **GDScript** | 10 | A | None needed | None significant |
 
@@ -128,10 +157,10 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 | Extractor | Files | Rating | Fixes Applied | Remaining Issues |
 |-----------|-------|--------|---------------|------------------|
 | **SQL** | 9 | B | mod.rs split; 4 sentinels eliminated | error_handling.rs at limit |
-| **Dart** | 9 | **B** ↑ | **P0 fixed**: generic recovery; mod split | Was C; thread-local cache acceptable |
-| **Regex** | 8 | B | 3 sentinels→Option\<String\> | Very noisy by nature |
+| **Dart** | 10 | **B** ↑ | **P0 fixed**: generic recovery; mod split; imports added | Was C; thread-local cache acceptable |
+| **Regex** | 8 | B | 3 sentinels→Option\<String\>; noise reduction (10+ → 4 symbols) | Dead code in helpers/patterns/signatures |
 | **JSON** | 1 | A | None needed | None significant |
-| **TOML** | 1 | B | None needed | Only table headers |
+| **TOML** | 1 | A | Key-value pair extraction added | None significant |
 | **YAML** | 1 | B | None needed | Synthetic names |
 | **Markdown** | 1 | A | None needed | None significant |
 
@@ -143,11 +172,11 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### Rust
 
-**Rating: B**
+**Rating: B+**
 
-**Post-Audit Fixes:** Struct/Enum SymbolKind corrected; 13 sentinel sites eliminated across types.rs, functions.rs, signatures.rs; dead `extract_identifier_name()` removed from base extractor.
+**Post-Audit Fixes:** Struct/Enum SymbolKind corrected; 13 sentinel sites eliminated across types.rs, functions.rs, signatures.rs; dead `extract_identifier_name()` removed from base extractor. **2026-02-08:** Struct fields as `SymbolKind::Field` and enum variants as `SymbolKind::EnumMember` now extracted with visibility, type, and doc_comment.
 
-**What it extracts:** structs, enums, traits, unions, functions, methods (via two-phase impl block processing), modules, constants, statics, macro definitions (`macro_rules!`), macro invocations (struct-generating only), type aliases, use declarations (imports), associated types, function signatures (extern), doc comments (`///`, `//!`, `/** */`, `#[doc = "..."]`), derive attributes, generic type parameters, where clauses, async/unsafe/extern modifiers.
+**What it extracts:** structs (with fields), enums (with variants), traits, unions, functions, methods (via two-phase impl block processing), modules, constants, statics, macro definitions (`macro_rules!`), macro invocations (struct-generating only), type aliases, use declarations (imports), associated types, function signatures (extern), doc comments (`///`, `//!`, `/** */`, `#[doc = "..."]`), derive attributes, generic type parameters, where clauses, async/unsafe/extern modifiers, struct fields, enum variants.
 
 **Strengths:**
 - Two-phase impl block processing is well-engineered: phase 1 collects all types, phase 2 links methods to parent types via byte-range reconstruction. Avoids unsafe lifetime issues.
@@ -162,7 +191,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 **Issues:**
 - [P1] [FIXED] Rust enums mapped to `SymbolKind::Class` → now `SymbolKind::Enum`.
 - [P1] [FIXED] Rust structs mapped to `SymbolKind::Class` → now `SymbolKind::Struct`.
-- [P1] No extraction of struct fields or enum variants as child symbols. The relationship extractor walks field_declaration_list/enum_variant_list for type references, but individual fields/variants are not extracted as `SymbolKind::Field`/`SymbolKind::EnumMember` symbols. Cannot search for or navigate to fields.
+- [P1] [FIXED] Struct fields now extracted as `SymbolKind::Field` with type in signature, parented to struct. Enum variants extracted as `SymbolKind::EnumMember` with body in signature.
 - [P2] Macro invocation extraction (signatures.rs:120-163) only triggers when the macro name contains "struct" or "generate". This narrow heuristic misses most real-world macro invocations (`lazy_static!`, `bitflags!`, etc.).
 - [P2] `extract_macro_invocation` uses `unwrap_or_default()` on the macro name (signatures.rs:131), silently producing an empty string if no identifier is found rather than returning `None` early.
 - [P2] Use declaration extraction (signatures.rs:167-219) uses regex instead of tree-sitter node traversal. Grouped imports (`use foo::{bar, baz}`) and glob imports (`use foo::*`) are not handled.
@@ -170,8 +199,6 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - [P2] Static items mapped to `SymbolKind::Variable` (types.rs:327). Statics are semantically closer to constants.
 
 **Missing extractions:**
-- Struct fields (`field_declaration`) as `SymbolKind::Field`
-- Enum variants as `SymbolKind::EnumMember`
 - `let` bindings / local variables (intentional for noise reduction, acceptable)
 - `extern` blocks and their contained FFI declarations
 - Glob imports (`use foo::*`) and grouped imports (`use foo::{bar, baz}`)
@@ -709,7 +736,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 **Rating: B**
 
-**What it extracts:** Functions (POSIX and bash-style), variables (declarations, assignments, exports, readonly, local, environment), commands (source, eval, exec, trap, alias), control flow blocks (if/for/while/case as symbols), positional parameters, command relationships, function signatures with parameter detection.
+**What it extracts:** Functions (POSIX and bash-style), variables (declarations, assignments, exports, readonly, local, environment), commands (source, eval, exec, trap, alias), positional parameters, command relationships, function signatures with parameter detection. Control flow blocks (if/for/while/case) are intentionally not extracted.
 
 **Strengths:**
 - Good DevOps/scripting focus: tracks `source`, `eval`, `exec`, `trap`, `alias` as significant commands
@@ -722,7 +749,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - Zero sentinel values
 
 **Issues:**
-- [P1] Control flow blocks (`if`, `for`, `while`, `case`) are extracted as `SymbolKind::Method` with synthetic names like `"for block"`, `"while block"`, `"if block"` (`commands.rs:78-91`). These are not methods -- they should either not be extracted or use a more appropriate kind. This creates noise in search results and misrepresents the code structure.
+- [P1] [VERIFIED] Control flow blocks (`if`, `for`, `while`, `case`) return `None` in `extract_symbol_from_node` (mod.rs:91). The original audit description was inaccurate — these were never extracted as symbols in the current code. Regression tests added to confirm.
 - [P2] `is_environment_variable` in `variables.rs:114` creates a new `Regex` on every call instead of using `LazyLock`. This function is called for every variable encountered.
 - [P2] `relationships.rs` has empty stub methods: `extract_command_substitution_relationships` and `extract_file_relationships` are defined but contain no logic (lines 52-117) -- just comments describing what they should do.
 - [P2] `types.rs` type inference is extremely basic (51 lines) -- only checks for integer, array, and associative array patterns.
@@ -870,9 +897,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 **Rating: B**
 
-**Post-Audit Fixes:** 4 sentinel sites eliminated across at_rules.rs, rules.rs, media.rs, properties.rs.
+**Post-Audit Fixes:** 4 sentinel sites eliminated across at_rules.rs, rules.rs, media.rs, properties.rs. **2026-02-08:** `extract_keyframes` made no-op — individual keyframe percentages no longer extracted.
 
-**What it extracts:** CSS rule sets (selectors), @keyframes rules and individual keyframe blocks, @media queries, @import/@charset/@namespace at-rules, @supports rules, CSS custom properties (--variables), animation names.
+**What it extracts:** CSS rule sets (selectors), @keyframes rules, @media queries, @import/@charset/@namespace at-rules, @supports rules, CSS custom properties (--variables), animation names.
 
 **Strengths:**
 - Clean modular design with focused files (rules, animations, at_rules, media, properties, helpers, identifiers)
@@ -884,7 +911,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - No sentinel values anywhere
 
 **Issues:**
-- [P1] Keyframe percentages like `0%`, `50%`, `100%`, `from`, `to` are extracted as individual symbols (animations.rs:82-138) with `SymbolKind::Variable`. These are noise -- having a symbol named "50%" is not useful for code intelligence.
+- [P1] [FIXED] Keyframe percentages (`0%`, `50%`, `from`, `to`) no longer extracted as symbols. `extract_keyframes` is now an intentional no-op. The @keyframes rule itself (via `extract_keyframes_rule`) is still extracted.
 - [P2] Class selectors (`.button`) are mapped to `SymbolKind::Class` (rules.rs:40). CSS class selectors are not classes in the OOP sense.
 - [P2] ID selectors (`#header`) and most other selectors are mapped to `SymbolKind::Variable` (rules.rs:42-47). This is a catch-all with no semantic meaning.
 - [P2] `@keyframes` animation name is extracted twice: once as `@keyframes fadeIn` (the rule) and once as `fadeIn` (the animation name). Creates duplicate symbols for the same concept.
@@ -905,11 +932,11 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### Vue
 
-**Rating: B**
+**Rating: B+**
 
-**Post-Audit Fixes:** "VueComponent" sentinel fallback eliminated.
+**Post-Audit Fixes:** "VueComponent" sentinel fallback eliminated. **2026-02-08:** Composition API and `<script setup>` support added via new `script_setup.rs` (405 lines). Tree-sitter JS/TS parsing for setup content. `parsing.rs` updated to detect `setup` attribute.
 
-**What it extracts:** Vue SFC component name (from `export default { name: ... }` or filename), script section options (data, methods, computed, props), function definitions within script, CSS class names from style section.
+**What it extracts:** Vue SFC component name (from `export default { name: ... }` or filename), script section options (data, methods, computed, props), function definitions within script, CSS class names from style section. **`<script setup>`:** ref/reactive/computed variables, function declarations, arrow functions, imports, defineProps/defineEmits/defineExpose.
 
 **Strengths:**
 - Does not use tree-sitter for Vue SFC parsing (correctly uses regex-based section splitting since tree-sitter-html cannot parse `.vue` files)
@@ -917,26 +944,25 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - Correct line offset adjustment for identifiers extracted from script sections
 - Template section correctly returns no symbols (component usages in templates are references, not definitions)
 - File-scoped identifier filtering applied correctly
-- All files well under 500-line limit (max: 245 lines)
+- `<script setup>` uses tree-sitter JS/TS for AST-based extraction (more reliable than regex)
+- Routing in mod.rs delegates to `script_setup.rs` when `is_setup` detected, preserving Options API path
+- All files well under 500-line limit (max: 405 lines for script_setup.rs)
 
 **Issues:**
-- [P1] Regex-based script parsing (script.rs) only extracts Options API patterns (`data()`, `methods:`, `computed:`, `props:`, and raw function definitions). The Composition API (`setup()`, `ref()`, `computed()`, `watch()`, `onMounted()`, `defineComponent()`, `defineProps()`, `defineEmits()`) is completely unhandled. In modern Vue 3 codebases, this means most meaningful symbols are missed.
+- [P1] [FIXED] Composition API and `<script setup>` now supported. Tree-sitter JS/TS parsing extracts ref(), computed(), defineProps(), defineEmits(), functions, arrow functions, and imports.
 - [P1] [FIXED] `"VueComponent"` sentinel eliminated — now returns `None` when name cannot be determined.
 - [P2] Style section only extracts class selectors via regex (`.className {`), missing ID selectors, keyframes, custom properties, and nested selectors (SCSS/Less when `lang="scss"`)
 - [P2] The `create_identifier_with_offset` function (identifiers.rs:185-226) re-parses the entire Vue SFC with `parse_vue_sfc` on every identifier creation. It also does a `std::mem::take` content swap trick that is fragile.
-- [P2] No extraction from `<script setup>` syntax (Vue 3's recommended pattern). The `setup` attribute is not checked.
 
 **Missing extractions:**
-- Vue 3 Composition API: `ref()`, `reactive()`, `computed()`, `watch()`, `defineProps()`, `defineEmits()`, `defineExpose()`
-- `<script setup>` variable declarations (top-level bindings auto-exposed)
 - Template `v-slot` definitions, template refs (`ref="..."`)
-- Emits declarations, watchers (`watch:` option)
-- Lifecycle hooks (`created`, `mounted`, `beforeDestroy`, etc.)
+- Watchers (`watch:` option, `watch()` in Composition API)
+- Lifecycle hooks (`created`, `mounted`, `beforeDestroy`, etc.) as named symbols
 - Mixins and plugin usage
 
 **Sentinel residue:** `"VueComponent"` in component.rs:26,43 -- used as fallback component name when filename cannot be determined.
 
-**Test coverage:** Moderate -- 3 test files (mod.rs at 31k is substantial, plus parsing.rs and types.rs). Tests cover Options API well but likely do not cover Composition API or `<script setup>`.
+**Test coverage:** Good -- 4 test files (mod.rs, parsing.rs, types.rs, script_setup.rs). Tests cover both Options API and `<script setup>` including ref/computed, functions, TypeScript, defineProps/defineEmits, imports, and line number verification. 10 new `<script setup>` tests added.
 
 ---
 
@@ -944,9 +970,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 **Rating: B**
 
-**Post-Audit Fixes:** stubs.rs split (606→281+331); relationships.rs split (554→269+289); "expression" and "unknown" sentinels eliminated.
+**Post-Audit Fixes:** stubs.rs split (606→281+331); relationships.rs split (554→269+289); "expression" and "unknown" sentinels eliminated. **2026-02-08:** `invocation_expression` made no-op in both Razor and C# paths. Dead `extract_invocation` removed (76 lines). `contains_invocation` helper added.
 
-**What it extracts:** Razor directives (@page, @model, @using, @inject, @inherits, @implements, @namespace, @attribute, @addTagHelper), code blocks (@code, @functions, @{...}), Razor expressions, sections (@section), C# symbols within code blocks (classes, methods, properties, fields, local functions, local variables, variable declarations, assignments, invocations, element access), using directives, namespace/class declarations.
+**What it extracts:** Razor directives (@page, @model, @using, @inject, @inherits, @implements, @namespace, @attribute, @addTagHelper), code blocks (@code, @functions, @{...}), Razor expressions, sections (@section), C# symbols within code blocks (classes, methods, properties, fields, local functions, local variables, variable declarations, assignments, element access), using directives, namespace/class declarations.
 
 **Strengths:**
 - Very comprehensive C# code block extraction -- handles method parameters, return types, modifiers, attributes, visibility determination, explicit interface implementations, accessor lists (get/set)
@@ -960,7 +986,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - [P1] [FIXED] `stubs.rs` split (606→281+331); `relationships.rs` split (554→269+289). All files now under 500-line limit.
 - [P1] [FIXED] `"expression"` sentinel eliminated — now returns `None`.
 - [P1] [FIXED] `"unknown"` type sentinel eliminated.
-- [P2] Invocation expressions are extracted as symbols (stubs.rs:460-536) with `SymbolKind::Function`. Method calls like `Html.Raw(...)` or `RenderBody()` are usages/references, not definitions. Extracting them as symbols creates noise.
+- [P2] [FIXED] Invocation expressions (`Html.Raw()`, `RenderBody()`, etc.) no longer extracted as symbol definitions. `invocation_expression` is now a no-op in both `mod.rs` and `csharp.rs`. Dead `extract_invocation` removed from `expressions.rs` (76 lines deleted). Invocations are still tracked via identifier extraction for call relationships.
 - [P2] Assignment expressions are extracted as symbols (stubs.rs:387-458). `ViewData["Title"] = "Home"` creates a Variable symbol named "ViewData", which is a usage, not a definition.
 - [P2] Element access expressions like `ViewData["Title"]` are extracted as symbols (stubs.rs:538-606), which are again usages, not definitions.
 - [P2] `content[..content.len().min(200)]` in directives.rs:292 is not UTF-8 boundary safe -- it could panic on multi-byte characters. The `BaseExtractor::truncate_string` helper is used elsewhere but not here.
@@ -1099,9 +1125,9 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 **Rating: C → B (fixed)**
 
-**Post-Audit Fixes:** P0 — hardcoded test values removed, generic AST-walking enum recovery added; mod.rs split (706→384 + identifiers(84) + pending_calls(168)); dedup via HashSet.
+**Post-Audit Fixes:** P0 — hardcoded test values removed, generic AST-walking enum recovery added; mod.rs split (706→384 + identifiers(84) + pending_calls(168)); dedup via HashSet. **2026-02-08:** Import/export extraction added via new `imports.rs` (124 lines).
 
-**What it extracts:** Classes (Class), functions (Function), methods (Method), constructors (Constructor), getters/setters (Property), fields (Field), enums (Enum), enum constants (EnumMember), mixins (Interface), extensions (Module), type aliases (Class), variables/constants (Variable/Constant), Flutter widget detection
+**What it extracts:** Classes (Class), functions (Function), methods (Method), constructors (Constructor), getters/setters (Property), fields (Field), enums (Enum), enum constants (EnumMember), mixins (Interface), extensions (Module), type aliases (Class), variables/constants (Variable/Constant), imports/exports (Import), Flutter widget detection
 
 **Strengths:**
 - Good coverage of Dart-specific constructs including mixins, extensions, factory/const/named constructors, and typedefs
@@ -1117,14 +1143,15 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - [P0] [FIXED] `extract_enum_constants_from_error` deleted — replaced by generic `recover_from_node_recursive()`.
 - [P0] [FIXED] `extract_enum_constants_from_text` deleted — no longer needed.
 - [P1] [FIXED] `mod.rs` split to 384 lines + identifiers(84) + pending_calls(168).
-- [P1] Doc comment claims "Imports and library dependencies" support but zero import extraction implemented
+- [P1] [FIXED] Import/export extraction added. Handles `import_or_export` nodes, extracts URI from `configurable_uri → uri → string_literal` chain. Documents tree-sitter-dart grammar limitations: `as`/`show`/`hide`/`library`/`part` produce ERROR nodes and cannot be parsed.
 - [P1] Thread-local content cache (`helpers.rs:23-45`) is a fragile borrow-checker workaround
 - [P2] `extract_enum_constants_from_error_recursive` extracts ANY identifier from ERROR nodes as EnumMember -- extremely noisy
 - [P2] No sealed/base/final/interface class modifiers (Dart 3.0)
 - [P2] Typedef uses `SymbolKind::Class` instead of `SymbolKind::Type`
 
 **Missing extractions:**
-- Import/export statements (import, export, part, part of, library)
+- Import modifiers: `as` aliases, `show`/`hide` filters (tree-sitter grammar limitation — produces ERROR nodes)
+- `library`, `part`, `part of` directives (tree-sitter grammar limitation)
 - Extension types (Dart 3.3)
 - Sealed/base/final/interface class modifiers (Dart 3.0)
 - Pattern matching declarations
@@ -1138,27 +1165,26 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 **Rating: B**
 
-**Post-Audit Fixes:** 3 sentinel "unknown" values in flags.rs replaced with `Option<String>` returns; callers in patterns.rs propagate `None` via `?`.
+**Post-Audit Fixes:** 3 sentinel "unknown" values in flags.rs replaced with `Option<String>` returns; callers in patterns.rs propagate `None` via `?`. **2026-02-08:** Major noise reduction — `visit_node` now skips individual atoms (literals, anchors, quantifiers, predefined classes, unnamed groups, alternations, backreferences). `extract_patterns_from_text` disabled to prevent duplicates. Email regex: 10+ → 4 symbols.
 
-**What it extracts:** Patterns (Variable/Function/Class/Constant/Method), character classes (Class), groups including named/non-capturing (Class), quantifiers (Function), anchors (Constant), lookaheads/lookbehinds (Method), alternations (Variable), predefined character classes (Constant), unicode properties (Constant), backreferences (Variable), conditionals (Method), literals (Variable), generic patterns
+**What it extracts:** Top-level patterns, named capturing groups, character classes, lookaround assertions, unicode properties, conditionals. Individual literals, anchors, quantifiers, predefined classes, unnamed groups, alternations, and backreferences are intentionally skipped (noise reduction).
 
 **Strengths:**
-- Comprehensive regex construct coverage: groups, quantifiers, anchors, lookaround assertions, alternations, character classes, unicode properties, backreferences, and conditionals
-- Dual extraction: tree-sitter parsing AND text-based pattern extraction
+- Focused extraction: only meaningful constructs are indexed (named groups, character classes, lookarounds, unicode properties, top-level patterns)
 - Good metadata: each symbol includes type, pattern text, and computed complexity score
 - Named group extraction for both `(?<name>...)` and `(?P<name>...)` syntax
-- Backreference resolution (numeric `\1` and named `\k<name>`)
+- Backreference tracking via identifier extraction (as calls, not symbols)
 - UTF-8 boundary safety checks throughout
-- Clean dead code removal with documented reasoning
+- Skip-through parenting: children of skipped nodes inherit grandparent's parent_id for correct flattened hierarchy
 - All files well under 500-line limit (largest: patterns.rs at 473 lines)
 
 **Issues:**
-- [P1] Very noisy: extracts individual literal characters, anchors, and every quantified expression as separate symbols. A simple regex produces 10+ symbols, flooding the index.
+- [P1] [FIXED] Noise reduced dramatically. `visit_node` now skips: literals, anchors, quantifiers, predefined classes, unnamed groups, alternations, backreferences. Only named groups, character classes, lookarounds, unicode properties, conditionals, and top-level patterns are extracted. `extract_patterns_from_text` disabled to prevent text-pattern duplicates.
 - [P2] [FIXED] Sentinel "unknown" at `flags.rs` — `get_anchor_type` now returns `Option<String>`.
 - [P2] [FIXED] Sentinel "unknown" at `flags.rs` — `extract_unicode_property_name` now returns `Option<String>`.
 - [P2] [FIXED] Sentinel "unknown" at `flags.rs` — `extract_condition` now returns `Option<String>`.
+- [P2] `#[allow(dead_code)]` on helpers, patterns, and signatures modules is too broad — should be narrowed to individual dead functions
 - [P2] SymbolKind mapping is unconventional (groups as Class, quantifiers as Function, etc.)
-- [P2] `is_valid_regex_pattern` is too permissive -- any alphanumeric string passes
 - [P2] Duplicate `extract_group_name` in both `groups.rs` and `identifiers.rs`
 
 **Missing extractions:**
@@ -1166,7 +1192,7 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 - Inline comments (`(?#...)`) -- tree-sitter limitation
 - Subroutine references, mode modifiers
 
-**Test coverage:** Good -- 10 test files, ~1,216 lines.
+**Test coverage:** Good -- 10 test files, ~1,700+ lines (16 new noise reduction tests + 16 updated tests).
 
 ---
 
@@ -1197,28 +1223,32 @@ All `"unknown"`, `"Anonymous"`, `"Constructor"`, `"VueComponent"`, `"ModuleMembe
 
 #### TOML
 
-**Rating: B**
+**Rating: A**
 
-**What it extracts:** Table headers (`[table]` and `[[array_table]]`) as Module symbols. Only table-level structure, not individual key-value pairs.
+**Post-Audit Fixes:** None needed in initial audit. **2026-02-08:** Key-value pair extraction added as `SymbolKind::Property` with parent_id to containing table. String values stored in doc_comment for semantic search (matches JSON pattern).
+
+**What it extracts:** Table headers (`[table]` and `[[array_table]]`) as Module symbols. Key-value pairs as Property symbols with parent_id linking to their table. String values captured as doc_comment for semantic search.
 
 **Strengths:**
-- Clean, focused 132-line implementation
+- Clean, focused ~215-line implementation
 - Handles regular tables and array tables
 - Supports bare keys, quoted keys, and dotted keys
+- Key-value pairs extracted with correct parent_id hierarchy
+- String values in doc_comment enable semantic search over config values (matches JSON extractor pattern)
+- Long string truncation at 200 characters
 - No sentinel values
 
 **Issues:**
-- [P1] Does not extract individual key-value pairs -- only table headers. Config keys like `name = "julie"` are invisible to the symbol index. The JSON extractor handles pairs; TOML should too for consistency.
+- [P1] [FIXED] Key-value pairs now extracted as `SymbolKind::Property` with parent_id to containing table. Bare keys, quoted keys, and dotted keys all supported.
 - [P2] No differentiation between regular and array tables (the `_is_array` parameter is unused at line 72)
 - [P2] Dotted keys like `[parent.child]` extracted as flat name without parent-child relationships
 
 **Missing extractions:**
-- Individual key-value pairs
 - Inline tables
 - Array of tables relationship tracking
 - Value type metadata
 
-**Test coverage:** Good -- 845 lines.
+**Test coverage:** Good -- ~1,107 lines (8 new key-value pair tests added).
 
 ---
 
