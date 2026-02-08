@@ -38,3 +38,9 @@ pub(super) static FUNCTION_DEF_RE: LazyLock<Regex> =
 
 pub(super) static CSS_CLASS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\.([a-zA-Z_-][a-zA-Z0-9_-]*)\s*\{").unwrap());
+
+pub(super) static CSS_ID_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"#([a-zA-Z_-][a-zA-Z0-9_-]*)\s*\{").unwrap());
+
+pub(super) static CSS_CUSTOM_PROP_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(--[a-zA-Z_-][a-zA-Z0-9_-]*)\s*:").unwrap());

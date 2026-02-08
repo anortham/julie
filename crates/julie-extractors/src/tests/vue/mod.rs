@@ -1157,3 +1157,147 @@ export default {
 }
 mod types; // Phase 4: Type extraction verification tests
 mod script_setup; // Phase 5: Vue 3 Composition API / <script setup> tests
+
+// ========================================================================
+// Vue Style Section Enhanced Tests (TDD RED phase)
+// ========================================================================
+//
+// These tests validate extraction of ID selectors and CSS custom properties
+// from Vue SFC <style> sections, beyond the existing class selector support.
+
+#[cfg(test)]
+mod vue_style_enhanced_tests {
+    use crate::base::SymbolKind;
+    use crate::vue::VueExtractor;
+
+    fn create_extractor(file_path: &str, code: &str) -> VueExtractor {
+        VueExtractor::new(
+            "vue".to_string(),
+            file_path.to_string(),
+            code.to_string(),
+            &std::path::PathBuf::from("/test"),
+        )
+    }
+
+    #[test]
+    fn test_extract_id_selectors() {
+        let vue_code = r#"
+<style scoped>
+#app {
+  font-family: Arial, sans-serif;
+}
+
+#sidebar {
+  width: 250px;
+}
+</style>
+        "#;
+
+        let mut extractor = create_extractor("id-selectors.vue", vue_code);
+        let symbols = extractor.extract_symbols(None);
+
+        let app = symbols.iter().find(|s| s.name == "app" && s.kind == SymbolKind::Property);
+        assert!(app.is_some(), "Should extract #app ID selector");
+        assert_eq!(app.unwrap().signature.as_ref().unwrap(), "#app");
+
+        let sidebar = symbols
+            .iter()
+            .find(|s| s.name == "sidebar" && s.kind == SymbolKind::Property);
+        assert!(sidebar.is_some(), "Should extract #sidebar ID selector");
+        assert_eq!(sidebar.unwrap().signature.as_ref().unwrap(), "#sidebar");
+    }
+
+    #[test]
+    fn test_extract_css_custom_properties() {
+        let vue_code = r#"
+<style>
+:root {
+  --primary-color: #3498db;
+  --font-size: 16px;
+}
+</style>
+        "#;
+
+        let mut extractor = create_extractor("custom-props.vue", vue_code);
+        let symbols = extractor.extract_symbols(None);
+
+        let primary_color = symbols
+            .iter()
+            .find(|s| s.name == "--primary-color" && s.kind == SymbolKind::Variable);
+        assert!(
+            primary_color.is_some(),
+            "Should extract --primary-color custom property"
+        );
+        assert_eq!(
+            primary_color.unwrap().signature.as_ref().unwrap(),
+            "--primary-color"
+        );
+
+        let font_size = symbols
+            .iter()
+            .find(|s| s.name == "--font-size" && s.kind == SymbolKind::Variable);
+        assert!(
+            font_size.is_some(),
+            "Should extract --font-size custom property"
+        );
+        assert_eq!(
+            font_size.unwrap().signature.as_ref().unwrap(),
+            "--font-size"
+        );
+    }
+
+    #[test]
+    fn test_mixed_style_selectors() {
+        let vue_code = r#"
+<style scoped>
+.container {
+  display: flex;
+}
+
+#main-content {
+  padding: 20px;
+}
+
+:root {
+  --spacing: 8px;
+}
+</style>
+        "#;
+
+        let mut extractor = create_extractor("mixed-styles.vue", vue_code);
+        let symbols = extractor.extract_symbols(None);
+
+        // Class selector
+        let container = symbols
+            .iter()
+            .find(|s| s.name == "container" && s.kind == SymbolKind::Property);
+        assert!(container.is_some(), "Should extract .container class selector");
+        assert_eq!(
+            container.unwrap().signature.as_ref().unwrap(),
+            ".container"
+        );
+
+        // ID selector
+        let main_content = symbols
+            .iter()
+            .find(|s| s.name == "main-content" && s.kind == SymbolKind::Property);
+        assert!(
+            main_content.is_some(),
+            "Should extract #main-content ID selector"
+        );
+        assert_eq!(
+            main_content.unwrap().signature.as_ref().unwrap(),
+            "#main-content"
+        );
+
+        // CSS custom property
+        let spacing = symbols
+            .iter()
+            .find(|s| s.name == "--spacing" && s.kind == SymbolKind::Variable);
+        assert!(
+            spacing.is_some(),
+            "Should extract --spacing custom property"
+        );
+        assert_eq!(spacing.unwrap().signature.as_ref().unwrap(), "--spacing");
+    }
+}
