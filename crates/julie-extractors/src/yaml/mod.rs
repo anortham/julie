@@ -1,11 +1,12 @@
-/// YAML extractor - Extract documents, mappings, and keys as symbols
+/// YAML extractor - Extract mapping keys as symbols
 ///
 /// Extracts YAML structure as symbols for semantic search and navigation.
-/// - Documents: Top-level YAML documents
-/// - Block mappings: Key-value sections (objects)
-/// - Flow mappings: Inline objects {...}
-/// - Mapping pairs: Individual key: value entries
-/// - Sequences: Arrays/lists
+/// - Mapping pairs: Individual key: value entries (the useful symbols)
+/// - Anchors: Detected and included in signature (e.g., `defaults: &defaults`)
+///
+/// Intentionally skipped (noise):
+/// - Documents: Generic container, every YAML file has one
+/// - Flow mappings: Inline objects {...} — generic name, not useful
 ///
 /// Common use cases:
 /// - CI/CD configs (GitHub Actions, GitLab CI)
@@ -66,43 +67,17 @@ impl YamlExtractor {
         parent_id: Option<&str>,
     ) -> Option<Symbol> {
         match node.kind() {
-            // Documents (top-level)
-            "document" => self.extract_document(node, parent_id),
-
-            // Block mappings (objects with key-value pairs)
+            // Block mapping pairs are the useful symbols (key: value entries)
             "block_mapping_pair" => self.extract_mapping_pair(node, parent_id),
 
-            // Flow mappings (inline objects)
-            "flow_mapping" => self.extract_flow_mapping(node, parent_id),
-
+            // "document" and "flow_mapping" are noise — generic names with no
+            // search value. Their children are still walked and extracted.
             _ => None,
         }
     }
 
-    /// Extract a YAML document as a symbol
-    fn extract_document(
-        &mut self,
-        node: tree_sitter::Node,
-        parent_id: Option<&str>,
-    ) -> Option<Symbol> {
-        use crate::base::SymbolOptions;
-
-        let options = SymbolOptions {
-            signature: None,
-            visibility: None,
-            parent_id: parent_id.map(|s| s.to_string()),
-            doc_comment: Some("YAML document".to_string()),
-            ..Default::default()
-        };
-
-        let symbol =
-            self.base
-                .create_symbol(&node, "document".to_string(), SymbolKind::Module, options);
-
-        Some(symbol)
-    }
-
-    /// Extract a block mapping pair (key: value) as a symbol
+    /// Extract a block mapping pair (key: value) as a symbol.
+    /// If the value has a YAML anchor (`&name`), include it in the signature.
     fn extract_mapping_pair(
         &mut self,
         node: tree_sitter::Node,
@@ -113,8 +88,12 @@ impl YamlExtractor {
         // Extract the key name
         let key_name = self.extract_mapping_key(node)?;
 
+        // Check for anchor on the value side
+        let anchor = self.extract_anchor(node);
+        let signature = anchor.map(|a| format!("{}: &{}", key_name, a));
+
         let options = SymbolOptions {
-            signature: None,
+            signature,
             visibility: None,
             parent_id: parent_id.map(|s| s.to_string()),
             doc_comment: None,
@@ -131,30 +110,28 @@ impl YamlExtractor {
         Some(symbol)
     }
 
-    /// Extract a flow mapping (inline object) as a symbol
-    fn extract_flow_mapping(
-        &mut self,
-        node: tree_sitter::Node,
-        parent_id: Option<&str>,
-    ) -> Option<Symbol> {
-        use crate::base::SymbolOptions;
-
-        let options = SymbolOptions {
-            signature: None,
-            visibility: None,
-            parent_id: parent_id.map(|s| s.to_string()),
-            doc_comment: Some("Inline mapping".to_string()),
-            ..Default::default()
-        };
-
-        let symbol = self.base.create_symbol(
-            &node,
-            "flow_mapping".to_string(),
-            SymbolKind::Module,
-            options,
-        );
-
-        Some(symbol)
+    /// Extract anchor name from a block_mapping_pair's value side.
+    /// In `defaults: &defaults`, the AST has:
+    ///   block_mapping_pair -> block_node -> anchor -> anchor_name
+    fn extract_anchor(&self, node: tree_sitter::Node) -> Option<String> {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "block_node" {
+                let mut block_cursor = child.walk();
+                for block_child in child.children(&mut block_cursor) {
+                    if block_child.kind() == "anchor" {
+                        // Find the anchor_name child
+                        let mut anchor_cursor = block_child.walk();
+                        for anchor_child in block_child.children(&mut anchor_cursor) {
+                            if anchor_child.kind() == "anchor_name" {
+                                return Some(self.base.get_node_text(&anchor_child));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Extract the key from a block_mapping_pair

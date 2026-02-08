@@ -375,6 +375,77 @@ normal_key: value3
         assert!(symbols.len() >= 1, "Should handle quoted keys");
     }
 
+    // ========================================================================
+    // Noise Removal & Anchor Detection Tests
+    // ========================================================================
+
+    #[test]
+    fn test_no_document_symbol_created() {
+        // "document" is a generic container — should NOT create a symbol for it
+        let yaml = "name: julie\nversion: 1.0\n";
+        let symbols = extract_symbols(yaml);
+
+        let doc_symbols: Vec<_> = symbols.iter().filter(|s| s.name == "document").collect();
+        assert!(
+            doc_symbols.is_empty(),
+            "Should NOT create 'document' symbol (noise), but found {} document symbols",
+            doc_symbols.len()
+        );
+
+        // The actual keys should still be extracted
+        assert!(symbols.iter().any(|s| s.name == "name"), "Should still extract 'name' key");
+        assert!(symbols.iter().any(|s| s.name == "version"), "Should still extract 'version' key");
+    }
+
+    #[test]
+    fn test_no_flow_mapping_symbol_created() {
+        // Flow mappings like {host: localhost, port: 8080} should NOT create a generic symbol
+        let yaml = "config: {host: localhost, port: 8080}\n";
+        let symbols = extract_symbols(yaml);
+
+        let flow_symbols: Vec<_> = symbols.iter().filter(|s| s.name == "flow_mapping").collect();
+        assert!(
+            flow_symbols.is_empty(),
+            "Should NOT create 'flow_mapping' symbol (noise), but found {} flow_mapping symbols",
+            flow_symbols.len()
+        );
+
+        // The parent key should still be extracted
+        assert!(symbols.iter().any(|s| s.name == "config"), "Should still extract 'config' key");
+    }
+
+    #[test]
+    fn test_anchor_detected_in_signature() {
+        // When a block_mapping_pair has an anchor, include it in the signature
+        let yaml = "defaults: &defaults\n  adapter: postgres\n  host: localhost\n";
+        let symbols = extract_symbols(yaml);
+
+        let defaults = symbols.iter().find(|s| s.name == "defaults");
+        assert!(defaults.is_some(), "Should extract 'defaults' key");
+
+        let defaults = defaults.unwrap();
+        let sig = defaults.signature.as_deref().unwrap_or("");
+        assert!(
+            sig.contains("&defaults"),
+            "Signature should contain anchor '&defaults', got: {:?}",
+            sig
+        );
+    }
+
+    #[test]
+    fn test_no_anchor_no_signature() {
+        // When a block_mapping_pair has no anchor, signature should be None
+        let yaml = "name: julie\n";
+        let symbols = extract_symbols(yaml);
+
+        let name = symbols.iter().find(|s| s.name == "name");
+        assert!(name.is_some(), "Should extract 'name' key");
+        assert!(
+            name.unwrap().signature.is_none(),
+            "Key without anchor should have no signature"
+        );
+    }
+
     #[test]
     fn test_special_characters_in_keys() {
         let yaml = r#"
