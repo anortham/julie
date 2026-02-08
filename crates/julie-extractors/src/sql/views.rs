@@ -5,10 +5,12 @@
 //! - View columns from CREATE VIEW statements
 //! - View columns from ERROR nodes containing CREATE VIEW
 
-use crate::base::{SymbolKind, SymbolOptions, Symbol};
+use crate::base::{BaseExtractor, SymbolKind, SymbolOptions, Symbol};
 use std::collections::HashMap;
+use tree_sitter::Node;
 
 use super::SqlExtractor;
+use crate::sql::helpers::CREATE_VIEW_RE;
 
 impl SqlExtractor {
     /// Extract SELECT query aliases as fields
@@ -201,18 +203,9 @@ impl SqlExtractor {
                 continue;
             }
 
-            // Skip if this looks like a table alias or common SQL keywords
-            if [
-                "u",
-                "ae",
-                "users",
-                "analytics_events",
-                "id",
-                "username",
-                "email",
-            ]
-            .contains(&alias_name)
-            {
+            // Skip single-character aliases (common table abbreviations like u, t, p)
+            // and two-character aliases (common shorthand like ae, ur, ev)
+            if alias_name.len() <= 2 {
                 continue;
             }
 
@@ -252,6 +245,40 @@ impl SqlExtractor {
                 self.base
                     .create_symbol(&node, alias_name.to_string(), SymbolKind::Field, options);
             symbols.push(alias_symbol);
+        }
+    }
+}
+
+/// Extract views from ERROR node text
+pub(super) fn extract_views_from_error(
+    error_text: &str,
+    base: &mut BaseExtractor,
+    node: &Node,
+    symbols: &mut Vec<Symbol>,
+    parent_id: Option<&str>,
+) {
+    if let Some(captures) = CREATE_VIEW_RE.captures(error_text) {
+        if let Some(view_name) = captures.get(1) {
+            let name = view_name.as_str().to_string();
+
+            let mut metadata = HashMap::new();
+            metadata.insert("isView".to_string(), serde_json::Value::Bool(true));
+            metadata.insert(
+                "extractedFromError".to_string(),
+                serde_json::Value::Bool(true),
+            );
+
+            let options = SymbolOptions {
+                signature: Some(format!("CREATE VIEW {}", name)),
+                visibility: Some(crate::base::Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                doc_comment: None,
+                metadata: Some(metadata),
+            };
+
+            let view_symbol =
+                base.create_symbol(node, name.clone(), SymbolKind::Interface, options);
+            symbols.push(view_symbol.clone());
         }
     }
 }

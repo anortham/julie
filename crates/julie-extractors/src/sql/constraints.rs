@@ -337,3 +337,88 @@ pub(super) fn extract_constraints_from_alter_table(
         }
     }
 }
+
+/// Extract constraints from ERROR node text (ALTER TABLE ADD CONSTRAINT)
+pub(super) fn extract_constraints_from_error(
+    error_text: &str,
+    base: &mut BaseExtractor,
+    node: &Node,
+    symbols: &mut Vec<Symbol>,
+    parent_id: Option<&str>,
+) {
+    let constraint_regex = regex::Regex::new(r"ALTER\s+TABLE\s+[a-zA-Z_][a-zA-Z0-9_]*\s+ADD\s+CONSTRAINT\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(CHECK|FOREIGN\s+KEY|UNIQUE|PRIMARY\s+KEY)").unwrap();
+    if let Some(captures) = constraint_regex.captures(error_text) {
+        if let Some(constraint_name) = captures.get(1) {
+            let name = constraint_name.as_str().to_string();
+            let constraint_type = captures.get(2).map_or("", |m| m.as_str()).to_uppercase();
+
+            // Skip if constraint type is empty
+            if constraint_type.is_empty() {
+                return;
+            }
+
+            let mut signature = format!("ALTER TABLE ADD CONSTRAINT {} {}", name, constraint_type);
+
+            if constraint_type == "CHECK" {
+                if let Some(check_captures) = CHECK_CONDITION_RE.captures(error_text) {
+                    let check_condition = check_captures.get(1).map_or("", |m| m.as_str()).trim();
+                    if !check_condition.is_empty() {
+                        signature.push_str(&format!(" ({})", check_condition));
+                    }
+                }
+            } else if constraint_type.contains("FOREIGN") {
+                if let Some(fk_captures) = FOREIGN_KEY_RE.captures(error_text) {
+                    let fk_columns = fk_captures.get(1).map_or("", |m| m.as_str());
+                    let fk_ref_table = fk_captures.get(2).map_or("", |m| m.as_str());
+
+                    if !fk_columns.is_empty() && !fk_ref_table.is_empty() {
+                        signature
+                            .push_str(&format!(" ({}) REFERENCES {}", fk_columns, fk_ref_table));
+                    }
+                }
+
+                if let Some(on_delete_captures) = ON_DELETE_RE.captures(error_text) {
+                    let on_delete_action = on_delete_captures
+                        .get(1)
+                        .map_or("", |m| m.as_str())
+                        .to_uppercase();
+                    if !on_delete_action.is_empty() {
+                        signature.push_str(&format!(" ON DELETE {}", on_delete_action));
+                    }
+                }
+
+                if let Some(on_update_captures) = ON_UPDATE_RE.captures(error_text) {
+                    let on_update_action = on_update_captures
+                        .get(1)
+                        .map_or("", |m| m.as_str())
+                        .to_uppercase();
+                    if !on_update_action.is_empty() {
+                        signature.push_str(&format!(" ON UPDATE {}", on_update_action));
+                    }
+                }
+            }
+
+            let mut metadata = HashMap::new();
+            metadata.insert("isConstraint".to_string(), Value::Bool(true));
+            metadata.insert(
+                "constraintType".to_string(),
+                Value::String(constraint_type.clone()),
+            );
+            metadata.insert(
+                "extractedFromError".to_string(),
+                Value::Bool(true),
+            );
+
+            let options = SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(crate::base::Visibility::Public),
+                parent_id: parent_id.map(|s| s.to_string()),
+                doc_comment: None,
+                metadata: Some(metadata),
+            };
+
+            let constraint_symbol = base.create_symbol(node, name, SymbolKind::Property, options);
+            symbols.push(constraint_symbol);
+        }
+    }
+}
