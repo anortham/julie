@@ -186,8 +186,13 @@ impl RubyExtractor {
                 }
             }
             "assignment" | "operator_assignment" => {
-                // Handle assignments by extracting symbols
-                if let Some(symbol) =
+                // Check for Struct.new pattern first (e.g., Person = Struct.new(:name, :age))
+                // Use symbol_opt so do_block methods get parented under the Class
+                if let Some(struct_class) =
+                    calls::try_extract_struct_new(&mut self.base, node, parent_id.clone())
+                {
+                    symbol_opt = Some(struct_class);
+                } else if let Some(symbol) =
                     assignments::extract_assignment(&mut self.base, node, parent_id.clone())
                 {
                     symbols.push(symbol);
@@ -200,12 +205,14 @@ impl RubyExtractor {
                 }
             }
             "constant" => {
-                // Extract all constants for now to debug the parent_id issue
-                symbol_opt = Some(symbols::extract_constant(
-                    &mut self.base,
-                    node,
-                    parent_id.clone(),
-                ));
+                // Skip constants that are assignment targets (assignment handler creates the symbol)
+                if !helpers::is_assignment_target(&node) {
+                    symbol_opt = Some(symbols::extract_constant(
+                        &mut self.base,
+                        node,
+                        parent_id.clone(),
+                    ));
+                }
             }
             "alias" => {
                 symbol_opt = symbols::extract_alias(&mut self.base, node);

@@ -87,6 +87,16 @@ pub(super) fn is_part_of_assignment(node: &Node) -> bool {
     false
 }
 
+/// Check if a node is the left-hand side target of an assignment.
+/// Used to skip duplicate symbol creation for constants already handled by the assignment.
+pub(super) fn is_assignment_target(node: &Node) -> bool {
+    node.parent().is_some_and(|p| {
+        matches!(p.kind(), "assignment" | "operator_assignment")
+            && p.child_by_field_name("left")
+                .is_some_and(|left| left.id() == node.id())
+    })
+}
+
 /// Extract method name from a call node
 pub(super) fn extract_method_name_from_call(
     node: Node,
@@ -182,12 +192,13 @@ fn find_includes_and_extends_recursive(
     }
 }
 
-/// Parse visibility from identifier string
+/// Parse visibility from identifier string.
+/// Includes `module_function` which makes subsequent methods public as module-level functions.
 pub(super) fn parse_visibility(text: &str) -> Option<Visibility> {
     match text {
         "private" => Some(Visibility::Private),
         "protected" => Some(Visibility::Protected),
-        "public" => Some(Visibility::Public),
+        "public" | "module_function" => Some(Visibility::Public),
         _ => None,
     }
 }

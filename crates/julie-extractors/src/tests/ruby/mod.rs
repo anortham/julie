@@ -5,6 +5,7 @@
 pub mod cross_file_relationships;
 pub mod doc_comments;
 pub mod extractor;
+pub mod struct_and_module_function;
 pub mod types;
 
 use crate::base::{RelationshipKind, SymbolKind, Visibility};

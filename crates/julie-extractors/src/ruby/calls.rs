@@ -1,6 +1,6 @@
 use super::helpers::extract_method_name_from_call;
 /// Special method call extraction for Ruby
-/// Handles require, attr_accessor, define_method, def_delegator
+/// Handles require, attr_accessor, define_method, def_delegator, module_function, Struct.new
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
 
@@ -17,8 +17,68 @@ pub(super) fn extract_call(base: &mut BaseExtractor, node: Node) -> Option<Symbo
             extract_define_method(base, node, &method_name)
         }
         "def_delegator" => extract_def_delegator(base, node),
+        "module_function" => None, // Recognized but no separate symbol needed
         _ => None,
     }
+}
+
+/// Try to extract a Struct.new assignment as a Class symbol.
+///
+/// Called from the traversal when we encounter an assignment node.
+/// Detects `Name = Struct.new(:field1, :field2, ...)` and returns a Class symbol.
+/// Returns None if the assignment RHS is not a Struct.new call.
+pub(super) fn try_extract_struct_new(
+    base: &mut BaseExtractor,
+    assignment_node: Node,
+    parent_id: Option<String>,
+) -> Option<Symbol> {
+    // Get the left (name) and right (call) sides of the assignment
+    let left_side = assignment_node.child_by_field_name("left")?;
+    let right_side = assignment_node.child_by_field_name("right")?;
+
+    // Check if the RHS is a call node with Struct.new pattern
+    if right_side.kind() != "call" {
+        return None;
+    }
+
+    // Verify the call is Struct.new: constant("Struct") . identifier("new")
+    let mut cursor = right_side.walk();
+    let children: Vec<_> = right_side.children(&mut cursor).collect();
+    if children.len() < 3
+        || children[0].kind() != "constant"
+        || base.get_node_text(&children[0]) != "Struct"
+        || children[2].kind() != "identifier"
+        || base.get_node_text(&children[2]) != "new"
+    {
+        return None;
+    }
+
+    let name = base.get_node_text(&left_side);
+
+    // Build signature: "Person = Struct.new(:name, :age, :email)"
+    let call_text = base.get_node_text(&right_side);
+    // Strip the do_block from the signature if present (keep just the Struct.new(...) part)
+    let signature = if let Some(arg_list) = right_side.child_by_field_name("arguments") {
+        format!("{} = Struct.new{}", name, base.get_node_text(&arg_list))
+    } else {
+        format!("{} = {}", name, call_text)
+    };
+
+    // Extract doc comment from the assignment node
+    let doc_comment = base.find_doc_comment(&assignment_node);
+
+    Some(base.create_symbol(
+        &assignment_node,
+        name,
+        SymbolKind::Class,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id,
+            metadata: None,
+            doc_comment,
+        },
+    ))
 }
 
 /// Extract require/require_relative calls
