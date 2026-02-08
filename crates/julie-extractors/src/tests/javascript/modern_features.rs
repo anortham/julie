@@ -452,12 +452,12 @@ async function* fetchPages(baseUrl) {
 
     let symbols = extractor.extract_symbols(&tree);
 
-    // Destructuring imports with aliases
+    // Aliased imports should use the alias (local binding name), not the original
     let react_import = symbols
         .iter()
-        .find(|s| s.name == "createElement" && s.signature.as_ref().unwrap().contains("as h"));
-    assert!(react_import.is_some());
-    assert_eq!(react_import.unwrap().kind, SymbolKind::Import);
+        .find(|s| s.name == "h" && s.kind == SymbolKind::Import);
+    assert!(react_import.is_some(), "Aliased import `createElement as h` should produce symbol named 'h'");
+    assert!(react_import.unwrap().signature.as_ref().unwrap().contains("as h"));
 
     // Dynamic import function
     let load_module = symbols.iter().find(|s| s.name == "loadModule");
@@ -587,5 +587,78 @@ async function* fetchPages(baseUrl) {
             .as_ref()
             .unwrap()
             .contains("async function* fetchPages(baseUrl)")
+    );
+}
+
+#[test]
+fn test_aliased_imports_no_duplicates() {
+    let code = r#"
+import { createElement as h, Fragment } from 'react';
+import { connect as reduxConnect } from 'react-redux';
+import { useState } from 'react';
+"#;
+
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = JavaScriptExtractor::new(
+        "javascript".to_string(),
+        "alias_test.js".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+
+    let symbols = extractor.extract_symbols(&tree);
+    let imports: Vec<_> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::Import)
+        .collect();
+
+    // Aliased import `createElement as h` should produce only "h", not both
+    let h_import = imports.iter().find(|s| s.name == "h");
+    assert!(h_import.is_some(), "Expected alias 'h' as import name");
+
+    let create_element_import = imports.iter().find(|s| s.name == "createElement");
+    assert!(
+        create_element_import.is_none(),
+        "Original name 'createElement' should NOT appear as a separate import symbol"
+    );
+
+    // Aliased import `connect as reduxConnect` should produce only "reduxConnect"
+    let redux_connect = imports.iter().find(|s| s.name == "reduxConnect");
+    assert!(
+        redux_connect.is_some(),
+        "Expected alias 'reduxConnect' as import name"
+    );
+
+    let connect_import = imports.iter().find(|s| s.name == "connect");
+    assert!(
+        connect_import.is_none(),
+        "Original name 'connect' should NOT appear as a separate import symbol"
+    );
+
+    // Non-aliased import `Fragment` should still work
+    let fragment_import = imports.iter().find(|s| s.name == "Fragment");
+    assert!(
+        fragment_import.is_some(),
+        "Non-aliased import 'Fragment' should still appear"
+    );
+
+    // Non-aliased import `useState` should still work
+    let use_state_import = imports.iter().find(|s| s.name == "useState");
+    assert!(
+        use_state_import.is_some(),
+        "Non-aliased import 'useState' should still appear"
+    );
+
+    // Total import count: h, Fragment, reduxConnect, useState = 4
+    // (Not 6 with the duplicate createElement and connect)
+    assert_eq!(
+        imports.len(),
+        4,
+        "Expected exactly 4 imports (h, Fragment, reduxConnect, useState), got {}: {:?}",
+        imports.len(),
+        imports.iter().map(|s| &s.name).collect::<Vec<_>>()
     );
 }

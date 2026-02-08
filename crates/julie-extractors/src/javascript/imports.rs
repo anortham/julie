@@ -66,11 +66,12 @@ impl super::JavaScriptExtractor {
                 match child.kind() {
                     "import_specifier" => {
                         // For named imports like { debounce, throttle } (reference logic)
-                        if let Some(name_node) = child.child_by_field_name("name") {
-                            specifiers.push(self.base.get_node_text(&name_node));
-                        }
+                        // When aliased (e.g., `createElement as h`), use only the alias
+                        // (the local binding name), not the original name.
                         if let Some(alias_node) = child.child_by_field_name("alias") {
                             specifiers.push(self.base.get_node_text(&alias_node));
+                        } else if let Some(name_node) = child.child_by_field_name("name") {
+                            specifiers.push(self.base.get_node_text(&name_node));
                         }
                     }
                     "identifier" => {
@@ -83,9 +84,16 @@ impl super::JavaScriptExtractor {
                     }
                     "named_imports" => {
                         // Look inside named_imports for specifiers (reference logic)
+                        // When aliased, use only the alias (local binding name).
                         for named_child in child.children(&mut child.walk()) {
                             if named_child.kind() == "import_specifier" {
-                                if let Some(name_node) = named_child.child_by_field_name("name") {
+                                if let Some(alias_node) =
+                                    named_child.child_by_field_name("alias")
+                                {
+                                    specifiers.push(self.base.get_node_text(&alias_node));
+                                } else if let Some(name_node) =
+                                    named_child.child_by_field_name("name")
+                                {
                                     specifiers.push(self.base.get_node_text(&name_node));
                                 }
                             }
