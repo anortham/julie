@@ -810,6 +810,85 @@ from typing import List, Dict
         let list_import = symbols.iter().find(|s| s.name == "List");
         assert!(list_import.is_some());
     }
+
+    #[test]
+    fn test_property_decorated_methods_use_property_kind() {
+        let python_code = r#"
+class Temperature:
+    def __init__(self, celsius: float):
+        self._celsius = celsius
+
+    @property
+    def celsius(self) -> float:
+        """Get temperature in Celsius."""
+        return self._celsius
+
+    @celsius.setter
+    def celsius(self, value: float):
+        if value < -273.15:
+            raise ValueError("Temperature below absolute zero!")
+        self._celsius = value
+
+    @celsius.deleter
+    def celsius(self):
+        del self._celsius
+
+    @property
+    def fahrenheit(self) -> float:
+        return self._celsius * 9 / 5 + 32
+
+    def regular_method(self):
+        """This should remain a Method, not a Property."""
+        pass
+"#;
+
+        let (mut extractor, tree) = create_extractor_and_parse(python_code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        // @property getter should be SymbolKind::Property
+        let celsius_props: Vec<_> = symbols.iter().filter(|s| s.name == "celsius").collect();
+        assert!(
+            celsius_props.len() >= 2,
+            "Should extract multiple celsius symbols (getter, setter, deleter). Found: {}",
+            celsius_props.len()
+        );
+        for celsius in &celsius_props {
+            assert_eq!(
+                celsius.kind,
+                SymbolKind::Property,
+                "celsius with decorator should be Property, got {:?}. Signature: {:?}",
+                celsius.kind,
+                celsius.signature,
+            );
+        }
+
+        // @property on fahrenheit should also be Property
+        let fahrenheit = symbols.iter().find(|s| s.name == "fahrenheit");
+        assert!(fahrenheit.is_some(), "Should extract fahrenheit property");
+        assert_eq!(
+            fahrenheit.unwrap().kind,
+            SymbolKind::Property,
+            "fahrenheit with @property should be Property"
+        );
+
+        // regular_method should remain Method
+        let regular = symbols.iter().find(|s| s.name == "regular_method");
+        assert!(regular.is_some(), "Should extract regular_method");
+        assert_eq!(
+            regular.unwrap().kind,
+            SymbolKind::Method,
+            "regular_method without @property should remain Method"
+        );
+
+        // __init__ should remain Constructor
+        let init = symbols.iter().find(|s| s.name == "__init__");
+        assert!(init.is_some(), "Should extract __init__");
+        assert_eq!(
+            init.unwrap().kind,
+            SymbolKind::Constructor,
+            "__init__ should remain Constructor"
+        );
+    }
 }
 
 // ========================================================================

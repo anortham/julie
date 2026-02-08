@@ -53,7 +53,7 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Option<S
     );
 
     // Determine if it's a method or function based on context
-    let (symbol_kind, parent_id) = determine_function_kind(extractor, &node, &name);
+    let (symbol_kind, parent_id) = determine_function_kind(extractor, &node, &name, &decorators_list);
 
     // Extract docstring
     let doc_comment = super::types::extract_docstring(extractor, &node);
@@ -134,6 +134,7 @@ fn determine_function_kind(
     extractor: &PythonExtractor,
     node: &Node,
     name: &str,
+    decorators: &[String],
 ) -> (SymbolKind, Option<String>) {
     // Check if this function is inside a class definition
     let mut current = *node;
@@ -157,6 +158,8 @@ fn determine_function_kind(
             // Determine method type
             let symbol_kind = if name == "__init__" {
                 SymbolKind::Constructor
+            } else if is_property_decorator(decorators) {
+                SymbolKind::Property
             } else {
                 SymbolKind::Method
             };
@@ -168,4 +171,14 @@ fn determine_function_kind(
 
     // Not inside a class, so it's a standalone function
     (SymbolKind::Function, None)
+}
+
+/// Check if any decorator indicates this is a property
+fn is_property_decorator(decorators: &[String]) -> bool {
+    decorators.iter().any(|d| {
+        d == "property"
+            || d.ends_with(".setter")
+            || d.ends_with(".getter")
+            || d.ends_with(".deleter")
+    })
 }
