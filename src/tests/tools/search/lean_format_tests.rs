@@ -164,7 +164,7 @@ mod tests {
             confidence: 0.85,
             total_found: 2,
             insights: Some("Mostly Methods".to_string()),
-            next_actions: vec!["Use fast_goto".to_string()],
+            next_actions: vec!["Use deep_dive".to_string()],
         };
 
         let lean_output = format_lean_search_results("call_tool", &response);

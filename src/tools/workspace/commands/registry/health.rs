@@ -53,7 +53,7 @@ impl ManageWorkspaceTool {
         if detailed {
             health_report.push_str("\nPerformance Recommendations\n");
             health_report.push_str("• Use fast_search for lightning-fast code discovery\n");
-            health_report.push_str("• Use fast_goto for instant symbol navigation\n");
+            health_report.push_str("• Use deep_dive to understand symbols before modifying them\n");
             health_report.push_str("• Use fast_refs to understand code dependencies\n");
             health_report.push_str("• Background indexing ensures minimal startup delay\n");
         }

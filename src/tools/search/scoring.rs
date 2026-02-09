@@ -109,7 +109,7 @@ pub fn suggest_next_actions(query: &str, symbols: &[Symbol]) -> Vec<String> {
     let mut actions = Vec::new();
 
     if symbols.len() == 1 {
-        actions.push("Use fast_goto to jump to definition".to_string());
+        actions.push("Use deep_dive to understand this symbol".to_string());
         actions.push("Use fast_refs to see all usages".to_string());
     } else if symbols.len() > 1 {
         actions.push("Narrow search with language filter".to_string());
