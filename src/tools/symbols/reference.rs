@@ -133,7 +133,10 @@ pub async fn get_symbols_from_reference(
     }
 
     // Extract code bodies based on mode
-    let symbols_to_return = extract_code_bodies(symbols_to_return, &absolute_path, mode)?;
+    // When target is set, upgrade "minimal" to "full" — the user explicitly asked for this
+    // symbol, so always include its body even if it's a child (has parent_id).
+    let body_mode = if target.is_some() && mode == "minimal" { "full" } else { mode };
+    let symbols_to_return = extract_code_bodies(symbols_to_return, &absolute_path, body_mode)?;
 
     // Format and return the response
     format_symbol_response(
