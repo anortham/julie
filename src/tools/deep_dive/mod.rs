@@ -26,6 +26,9 @@ fn default_workspace() -> Option<String> {
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 /// Investigate a symbol with progressive depth. Returns definition, references, children,
 /// and type info in a single call — tailored to the symbol's kind.
+///
+/// **Always use BEFORE modifying or extending a symbol.** Replaces the common chain of
+/// fast_search → get_symbols → fast_refs → Read with a single call.
 pub struct DeepDiveTool {
     /// Symbol name to investigate (supports qualified names like `Processor::process`)
     pub symbol: String,

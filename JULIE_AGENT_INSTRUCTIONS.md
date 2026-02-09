@@ -21,7 +21,13 @@
 - This is required, not optional
 - Professional developers always check references first
 
-### Rule 4: Trust Results Completely
+### Rule 4: Deep Dive Before Modifying
+**ALWAYS** use `deep_dive` to understand a symbol before modifying or extending it.
+- One call replaces 3-4 separate tool calls (fast_search → get_symbols → fast_refs → Read)
+- Shows callers, callees, children, types — everything you need to make safe changes
+- Use it when investigating unfamiliar code, debugging, or planning changes
+
+### Rule 5: Trust Results Completely
 Julie's results are pre-indexed and accurate. You **NEVER** need to verify them.
 - ❌ Search → Verify with Read → Confirm → Use (WRONG - wasteful)
 - ✅ Search → Use immediately (CORRECT - efficient)
@@ -139,10 +145,18 @@ get_symbols(
 
 **When NOT to use:** Don't use `mode="full"` without `target` (extracts entire file)
 
-### deep_dive - Progressive Symbol Investigation
-**Use for:** Understanding a symbol in depth — what it does, who uses it, what it depends on
+### deep_dive - Understand Any Symbol in One Call (Replaces 3-4 Tool Chains)
+**Use for:** Understanding what a symbol does, who calls it, what it depends on, and what it contains
 
-**Replaces multi-tool chains.** Instead of calling fast_search → get_symbols → fast_refs separately, one `deep_dive` call returns everything tailored to the symbol's kind.
+**Always use BEFORE:**
+- Modifying or extending a function, struct, trait, or class
+- Debugging unfamiliar code (understand callers + callees in one shot)
+- Planning changes (see full dependency picture before touching code)
+- Investigating a symbol you haven't seen before
+
+**Why this beats chaining tools manually:**
+- ❌ fast_search → get_symbols → fast_refs → Read = 4 round trips, ~2000 tokens of overhead
+- ✅ deep_dive = 1 call, ~200-1500 tokens, kind-aware output
 
 **Parameters:**
 - `symbol` - Symbol name to investigate (supports qualified names like `Processor::process`)
@@ -216,8 +230,8 @@ manage_workspace(operation="index")
 ### Starting New Work
 1. `recall({ limit: 10 })` - Restore context (MANDATORY first action)
 2. `fast_search` - Check for existing implementations
-3. `get_symbols` - Understand structure
-4. `fast_refs` - Check impact before changes
+3. `deep_dive` - Understand key symbols you'll modify (callers, callees, children)
+4. `fast_refs` - Check impact on symbols you'll change
 5. Implement
 6. `checkpoint()` - Save progress immediately
 
@@ -245,15 +259,16 @@ manage_workspace(operation="index")
 
 **Finding Code:**
 - `fast_search(query="...")` - Find code (definition search promotes exact matches)
-- `fast_refs(symbol="...")` - See all usages
-- `deep_dive(symbol="...")` - Full symbol context (callers, callees, types, children)
+- `deep_dive(symbol="...")` - Understand a symbol before modifying it (callers, callees, types, children — one call)
+- `fast_refs(symbol="...")` - See all usages of a symbol
 
 **Understanding Structure:**
 - `get_symbols(file_path="...", max_depth=1)` - See file structure
 - `get_symbols(file_path="...", target="Symbol", mode="minimal")` - Extract specific symbol
 
 **Before Changes:**
-- `fast_refs(symbol="...")` - REQUIRED before modifying symbols
+- `deep_dive(symbol="...")` - REQUIRED: understand the symbol before modifying it
+- `fast_refs(symbol="...")` - REQUIRED: see all usages before modifying symbols
 
 **After Work:**
 - `checkpoint({ description: "...", tags: [...] })` - Save progress (MANDATORY)
@@ -266,13 +281,15 @@ manage_workspace(operation="index")
 ✅ **START** with recall (every session)
 ✅ **SEARCH** before coding (always)
 ✅ **STRUCTURE** before reading (get_symbols first)
+✅ **DEEP DIVE** before modifying (understand callers, callees, types)
 ✅ **REFERENCES** before changes (fast_refs required)
 ✅ **CHECKPOINT** after every task (immediately)
 ✅ **TRUST** results (no verification needed)
 
 ❌ Don't use grep when Julie tools available
 ❌ Don't read files without get_symbols first
-❌ Don't modify symbols without checking fast_refs
+❌ Don't modify symbols without deep_dive first
+❌ Don't chain fast_search → get_symbols → fast_refs when deep_dive does it in one call
 ❌ Don't verify Julie results with manual tools
 ❌ Don't skip checkpointing
 
