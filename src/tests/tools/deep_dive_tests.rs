@@ -849,6 +849,7 @@ mod data_tests {
         Relationship, RelationshipKind, Symbol, SymbolKind, Visibility,
     };
     use crate::tools::deep_dive::data::{build_symbol_context, find_symbol};
+    use crate::tools::deep_dive::deep_dive_query;
     use tempfile::TempDir;
 
     fn setup_db() -> (TempDir, SymbolDatabase) {
@@ -1450,5 +1451,140 @@ mod data_tests {
 
         assert_eq!(ctx.incoming.len(), 2, "should cap at 2");
         assert_eq!(ctx.incoming_total, 5, "total should reflect all 5");
+    }
+
+    // === disambiguation threshold tests ===
+
+    #[test]
+    fn test_deep_dive_query_returns_compact_list_when_too_many_matches() {
+        let (_tmp, mut db) = setup_db();
+
+        // Register extra files beyond what setup_db provides
+        let extra_files = [
+            "src/a.rs", "src/b.rs", "src/c.rs",
+            "src/d.rs", "src/e.rs", "src/f.rs",
+        ];
+        for file in &extra_files {
+            db.store_file_info(&FileInfo {
+                path: file.to_string(),
+                language: "rust".to_string(),
+                hash: format!("hash_{}", file),
+                size: 100,
+                last_modified: 1000000,
+                last_indexed: 0,
+                symbol_count: 1,
+                content: None,
+            })
+            .unwrap();
+        }
+
+        // Create 6 symbols with the same name in different files (exceeds threshold of 5)
+        let symbols: Vec<Symbol> = extra_files
+            .iter()
+            .enumerate()
+            .map(|(i, file)| {
+                make_symbol(
+                    &format!("sym-extract-{}", i),
+                    "extract",
+                    SymbolKind::Function,
+                    file,
+                    10,
+                    None,
+                    Some("pub fn extract()"),
+                    Some(Visibility::Public),
+                    None,
+                )
+            })
+            .collect();
+        db.store_symbols(&symbols).unwrap();
+
+        // Call deep_dive_query — should get compact disambiguation, not full contexts
+        let result = deep_dive_query(&db, "extract", None, "overview", 10, 10).unwrap();
+
+        // Should mention the count and disambiguation hint
+        assert!(
+            result.contains("Found 6 definitions"),
+            "Should report 6 definitions, got: {}",
+            result
+        );
+        assert!(
+            result.contains("context_file"),
+            "Should suggest using context_file"
+        );
+
+        // Should list file paths compactly
+        for file in &extra_files {
+            assert!(
+                result.contains(file),
+                "Should list file path '{}' in compact output",
+                file
+            );
+        }
+
+        // Should NOT contain full context markers (callers, callees, body sections)
+        assert!(
+            !result.contains("Callers"),
+            "Should NOT build full context for 6+ matches"
+        );
+        assert!(
+            !result.contains("Callees"),
+            "Should NOT build full context for 6+ matches"
+        );
+    }
+
+    #[test]
+    fn test_deep_dive_query_shows_full_context_at_threshold() {
+        let (_tmp, mut db) = setup_db();
+
+        // Create exactly 5 symbols (at the threshold — should get full context)
+        let files = ["src/engine.rs", "src/main.rs", "src/handler.rs"];
+        let extra_files = ["src/a2.rs", "src/b2.rs"];
+        for file in &extra_files {
+            db.store_file_info(&FileInfo {
+                path: file.to_string(),
+                language: "rust".to_string(),
+                hash: format!("hash_{}", file),
+                size: 100,
+                last_modified: 1000000,
+                last_indexed: 0,
+                symbol_count: 1,
+                content: None,
+            })
+            .unwrap();
+        }
+
+        let all_files: Vec<&str> = files.iter().chain(extra_files.iter()).copied().collect();
+        let symbols: Vec<Symbol> = all_files
+            .iter()
+            .enumerate()
+            .map(|(i, file)| {
+                make_symbol(
+                    &format!("sym-proc-{}", i),
+                    "process",
+                    SymbolKind::Function,
+                    file,
+                    10,
+                    None,
+                    Some("pub fn process()"),
+                    Some(Visibility::Public),
+                    None,
+                )
+            })
+            .collect();
+        db.store_symbols(&symbols).unwrap();
+
+        // 5 matches — at threshold, should get full context (not compact list)
+        let result = deep_dive_query(&db, "process", None, "overview", 10, 10).unwrap();
+
+        assert!(
+            result.contains("Found 5 definitions"),
+            "Should report 5 definitions, got: {}",
+            result
+        );
+        // Full context includes the definition header with signature
+        assert!(
+            result.contains("pub fn process()"),
+            "Should include full context with signature at threshold of 5"
+        );
     }
 }

@@ -190,16 +190,18 @@ async fn test_add_workspace_updates_statistics() {
     let reference_dir = TempDir::new().unwrap();
 
     // Create a simple test file in reference workspace
+    // NOTE: Avoid macro invocations (e.g. println!) in test fixtures — the Rust
+    // extractor captures them as symbols, which inflates counts unexpectedly.
     let test_file = reference_dir.path().join("test.rs");
     fs::write(
         &test_file,
         r#"
 fn hello_world() {
-    println!("Hello, world!");
+    let _ = 42;
 }
 
 fn goodbye_world() {
-    println!("Goodbye, world!");
+    let _ = 99;
 }
         "#,
     )
@@ -562,12 +564,14 @@ async fn test_incremental_indexing_detects_empty_database() {
     let temp_dir = TempDir::new().unwrap();
 
     // Create test files with actual code
+    // NOTE: Avoid macro invocations (e.g. println!) — the Rust extractor captures
+    // them as symbols, inflating counts beyond the intended function-only assertions.
     let test_file_1 = temp_dir.path().join("file1.rs");
     fs::write(
         &test_file_1,
         r#"
 fn function_one() {
-    println!("one");
+    let _ = 1;
 }
         "#,
     )
@@ -578,7 +582,7 @@ fn function_one() {
         &test_file_2,
         r#"
 fn function_two() {
-    println!("two");
+    let _ = 2;
 }
         "#,
     )

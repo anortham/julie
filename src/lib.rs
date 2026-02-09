@@ -15,6 +15,7 @@ pub mod tools;
 pub mod tracing;
 pub mod utils;
 pub mod watcher;
+pub mod user_registry;
 pub mod workspace;
 
 #[cfg(test)]

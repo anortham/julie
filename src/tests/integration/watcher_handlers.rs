@@ -118,10 +118,12 @@ async fn test_incremental_indexing_absolute_path_handling() {
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
     // Create initial test file with one function
+    // NOTE: Avoid macro invocations (e.g. println!) — the Rust extractor captures
+    // them as symbols, inflating counts beyond the intended function-only assertions.
     let test_file = workspace_root.join("test.rs");
     let initial_content = r#"
 fn initial_function() {
-    println!("initial");
+    let _ = 0;
 }
 "#;
     fs::write(&test_file, initial_content).unwrap();
@@ -179,7 +181,7 @@ fn initial_function() {
     // STEP 2: Modify file content (change function name)
     let modified_content = r#"
 fn modified_function() {
-    println!("modified");
+    let _ = 1;
 }
 "#;
     fs::write(&test_file, modified_content).unwrap();
@@ -272,7 +274,7 @@ fn modified_function() {
     // STEP 4.5: Modify file AGAIN to expose accumulation
     let third_content = r#"
 fn third_function() {
-    println!("third");
+    let _ = 2;
 }
 "#;
     fs::write(&test_file, third_content).unwrap();
@@ -377,7 +379,7 @@ fn third_function() {
     // STEP 7: The REAL test - modify with DIFFERENT content, verify it re-indexes
     let final_content = r#"
 fn final_function() {
-    println!("final");
+    let _ = 3;
 }
 "#;
     fs::write(&test_file, final_content).unwrap();

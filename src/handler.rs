@@ -514,6 +514,19 @@ impl ServerHandler for JulieServerHandler {
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
         info!("🔗 MCP connection established - client initialized");
 
+        // Register in user-level project registry (fire-and-forget)
+        let workspace_root = self.get_workspace_path();
+        tokio::spawn(async move {
+            if let Err(e) = tokio::task::spawn_blocking(move || {
+                crate::user_registry::register_project(&workspace_root)
+            })
+            .await
+            .unwrap_or_else(|e| Err(anyhow::anyhow!("{}", e)))
+            {
+                debug!("Project registry update failed (non-critical): {}", e);
+            }
+        });
+
         // Run auto-indexing in background task after handshake completes
         let handler = self.clone();
         tokio::spawn(async move {

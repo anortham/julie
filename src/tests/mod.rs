@@ -41,6 +41,8 @@ pub mod memory_plan_tests;
 pub mod memory_recall_tests; // Recall tool tests (reading from disk)
 pub mod memory_sql_views_tests; // SQL views and indexes for memories
 pub mod memory_tests; // Memory system tests (checkpoint/recall) // Plan system tests (mutable plans - Phase 1.5)
+pub mod user_registry_tests; // User-level project registry tests
+pub mod cross_project_recall_tests; // Cross-project recall integration tests
 // pub mod test_git_context; // Git context capture tests (debugging crashes) - TODO: File missing
 
 pub mod tools {

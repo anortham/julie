@@ -121,7 +121,7 @@ impl DeepDiveTool {
 }
 
 /// Shared query logic for both primary and reference workspace deep dives
-fn deep_dive_query(
+pub(crate) fn deep_dive_query(
     db: &crate::database::SymbolDatabase,
     symbol_name: &str,
     context_file: Option<&str>,
@@ -142,6 +142,26 @@ fn deep_dive_query(
     // Step 2: Build context for each matching symbol
     // (usually 1, but could be multiple if name is ambiguous)
     let mut output = String::new();
+
+    // Guard: too many matches → return compact disambiguation list instead of
+    // building full context for every match (which can burn 10k+ tokens).
+    const DISAMBIGUATION_THRESHOLD: usize = 5;
+    if symbols.len() > DISAMBIGUATION_THRESHOLD {
+        output.push_str(&format!(
+            "Found {} definitions of '{}'. Use context_file to disambiguate.\n\n",
+            symbols.len(),
+            symbol_name
+        ));
+        for symbol in &symbols {
+            let kind = format!("{:?}", symbol.kind).to_lowercase();
+            let vis = format!("{:?}", symbol.visibility).to_lowercase();
+            output.push_str(&format!(
+                "  {}:{} ({}, {})\n",
+                symbol.file_path, symbol.start_line, kind, vis
+            ));
+        }
+        return Ok(output);
+    }
 
     if symbols.len() > 1 {
         output.push_str(&format!(
