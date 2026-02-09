@@ -195,7 +195,12 @@ impl FastRefsTool {
         // Strategy 2: Find direct relationships - REFERENCES TO this symbol (not FROM it)
         // PERFORMANCE FIX: Use targeted queries instead of loading ALL relationships
         // This changes from O(n) linear scan to O(k * log n) indexed queries where k = definitions.len()
-        let mut references: Vec<Relationship> = import_refs;
+        //
+        // Filter synthetic import refs if reference_kind is set and isn't "import"
+        let mut references: Vec<Relationship> = match &self.reference_kind {
+            Some(kind) if kind != "import" => Vec::new(),
+            _ => import_refs,
+        };
 
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
