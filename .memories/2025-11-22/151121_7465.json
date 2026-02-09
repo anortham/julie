@@ -1,0 +1,35 @@
+{
+  "id": "checkpoint_6921d299_7985fc",
+  "timestamp": 1763824281,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "741bd7b",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_type-identifier-intelligence-gpt-51-findings-implementation.json",
+      "TODO.md",
+      "src/extractors/base/mod.rs",
+      "src/extractors/base/types.rs",
+      "src/extractors/factory.rs",
+      "src/extractors/rust/mod.rs",
+      "src/extractors/rust/relationships.rs",
+      "src/tests/extractors/rust/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/navigation/mod.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/trace_call_path/formatting.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/trace_call_path/types.rs"
+    ]
+  },
+  "description": "Implemented PendingRelationship infrastructure for cross-file call resolution. Added PendingRelationship struct to types.rs, updated ExtractionResults to include pending_relationships field, modified Rust extractor to create PendingRelationship when target is Import or not found (instead of creating useless relationships pointing to Import symbols). Updated 3 cross-file relationship tests to verify new behavior. All 1862 tests pass. Next step: Add resolution pass in database/indexing to resolve pending relationships to actual function definitions after workspace indexing completes.",
+  "tags": [
+    "pending-relationships",
+    "cross-file",
+    "trace-call-path",
+    "tdd",
+    "green-phase"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "id": "checkpoint_6921db31_c9fdf5",
+  "timestamp": 1763826481,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "741bd7b",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_type-identifier-intelligence-gpt-51-findings-implementation.json",
+      "TODO.md",
+      "src/extractors/base/mod.rs",
+      "src/extractors/base/types.rs",
+      "src/extractors/factory.rs",
+      "src/extractors/mod.rs",
+      "src/extractors/rust/mod.rs",
+      "src/extractors/rust/relationships.rs",
+      "src/tests/extractors/rust/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/navigation/mod.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/trace_call_path/formatting.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/trace_call_path/types.rs",
+      "src/tools/workspace/indexing/processor.rs"
+    ]
+  },
+  "description": "Implemented complete cross-file relationship resolution pipeline: (1) PendingRelationship struct for unresolved calls, (2) Modified Rust extractor to create PendingRelationship when target is Import or not found, (3) Updated indexing pipeline to collect pending relationships during file processing, (4) Added resolution pass after bulk storage that looks up callee names in symbols table and creates resolved Relationship records pointing to actual Function definitions. All 1862 tests pass. trace_call_path should now work correctly for cross-file calls after re-indexing.",
+  "tags": [
+    "cross-file-resolution",
+    "pending-relationships",
+    "trace-call-path",
+    "indexing",
+    "relationships"
+  ]
+}

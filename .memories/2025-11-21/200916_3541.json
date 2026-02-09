@@ -1,0 +1,26 @@
+{
+  "id": "checkpoint_6920c6ec_eb7223",
+  "timestamp": 1763755756,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "73b7512",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/tools/get_symbols.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/mod.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/symbols/mod.rs"
+    ]
+  },
+  "description": "Implemented output_format=\"code\" for fast_goto - returns raw source code instead of JSON/TOON metadata. Smart default: uses \"code\" when code bodies available, falls back to \"auto\" for structured output. Added format_code_output function, updated create_result with code format handling, updated tool docs. All 4 fast_goto tests passing. Note: Currently definitions from database don't have code_context populated, so smart default falls back to structured output. Users can explicitly request output_format=\"code\" to get signatures as fallback.",
+  "tags": [
+    "feature",
+    "fast_goto",
+    "output_format",
+    "code",
+    "contributor-feedback"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "checkpoint_6920c332_c874a5",
+  "timestamp": 1763754802,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "73b7512",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/tools/get_symbols.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/symbols/mod.rs"
+    ]
+  },
+  "description": "Implemented output_format=\"code\" for get_symbols - returns raw source code without JSON/TOON wrapper. Smart default: uses \"code\" when code bodies are available (mode=minimal/full), otherwise falls back to \"auto\" (TOON/JSON). This is optimal for AI agents that can read code directly. 12 get_symbols tests passing. Based on contributor suggestion from PR #4 about returning code instead of structured metadata for code extraction use cases.",
+  "tags": [
+    "feature",
+    "get_symbols",
+    "output_format",
+    "code",
+    "contributor-feedback"
+  ]
+}

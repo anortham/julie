@@ -1,0 +1,18 @@
+{
+  "id": "checkpoint_6920a75c_4ceb0d",
+  "timestamp": 1763747676,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "73b7512",
+    "dirty": true
+  },
+  "description": "Released Julie v1.14.0 - TOON Format Integration. Major release featuring 35-70% token savings via TOON format across all major tools, default limits reduced to 10 for 80% efficiency, data structure optimization (39% additional reduction), Gemini review improvements, and toon-format v0.3.7 with round-trip capability. All 1,846 tests passing, release build successful. Commit 73b7512 tagged and pushed to main.",
+  "tags": [
+    "release",
+    "v1.14.0",
+    "toon",
+    "token-efficiency",
+    "milestone"
+  ]
+}

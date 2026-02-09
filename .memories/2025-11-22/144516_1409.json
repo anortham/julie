@@ -1,0 +1,30 @@
+{
+  "id": "checkpoint_6921cc7c_40e06c",
+  "timestamp": 1763822716,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "741bd7b",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_type-identifier-intelligence-gpt-51-findings-implementation.json",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/navigation/mod.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/trace_call_path/formatting.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/trace_call_path/types.rs"
+    ]
+  },
+  "description": "Implemented lean output formats as default across 5 major tools: fast_search (grep-style), fast_refs (reference list), fast_goto (definition list), trace_call_path (ASCII tree), get_symbols (raw code). Each tool now returns its optimal human/AI readable format by default with 60-80% token savings. JSON/TOON still available via output_format param for compatibility. Fixed fast_search semantic fallback inconsistency. Created formatting.rs module for navigation tools with comprehensive tests (6 passing).",
+  "tags": [
+    "lean-output",
+    "token-efficiency",
+    "fast_search",
+    "fast_refs",
+    "fast_goto",
+    "trace_call_path",
+    "formatting"
+  ]
+}

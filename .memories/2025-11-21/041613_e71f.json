@@ -1,0 +1,36 @@
+{
+  "id": "checkpoint_691fe78d_c5251e",
+  "timestamp": 1763698573,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "f77ce89",
+    "dirty": true,
+    "files_changed": [
+      "TODO.md",
+      "src/tests/mod.rs",
+      "src/tests/shared_tests.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search/toon_formatting_tests.rs",
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/exploration/find_logic/mod.rs",
+      "src/tools/exploration/types.rs",
+      "src/tools/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/shared.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/trace_call_path/types.rs"
+    ]
+  },
+  "description": "Fixed fast_explore default output format - changed from None to \"auto\" in both FindLogicTool struct and FastExploreTool's explore_logic delegation. Root cause: #[serde(default)] defaulted output_format to None, causing create_toonable_result to always return JSON instead of auto-selecting TOON for 5+ results. Added default_output_format() helper returning Some(\"auto\") and updated fast_explore's delegation to pass Some(\"auto\") instead of None.",
+  "tags": [
+    "toon-encoding",
+    "fast-explore",
+    "default-values",
+    "output-format"
+  ]
+}

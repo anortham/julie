@@ -1,0 +1,17 @@
+{
+  "id": "plan_final-three-extractors-b-a",
+  "timestamp": 1770581203,
+  "type": "plan",
+  "title": "Final Three Extractors B+ → A",
+  "status": "active",
+  "content": "## Goal\nElevate PHP, Vue, YAML — the last 3 B+ extractors — to A rating.\n\n## Tasks\n1. **PHP Arrow Functions** — verify coverage via variable assignment, add tests\n2. **PHP Anonymous Classes** — add `anonymous_class` node handling in `types.rs` + `visit_node`\n3. **Vue Style Enhancement** — add ID selector + CSS custom property regex patterns\n4. **YAML SymbolKind Differentiation** — container keys → Module, leaf keys → Variable\n5. **YAML Alias References** — extract `*name` as identifiers referencing anchors\n6. **YAML Merge Keys** — skip `<<` as symbol, treat as operator\n7. **Update Audit** — all 30 → A\n\n## Plan File\n`docs/plans/2026-02-08-final-three-extractors-to-a.md`",
+  "git": {
+    "branch": "main",
+    "commit": "b9838ed",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_extractor-round-3-quality-improvements.json",
+      "TODO.md"
+    ]
+  }
+}

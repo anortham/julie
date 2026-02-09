@@ -1,0 +1,16 @@
+{
+  "id": "plan_round-5-extractor-quality-bb-a-grade-push",
+  "timestamp": 1770581203,
+  "type": "plan",
+  "title": "Round 5: Extractor Quality — B→B+ & A-Grade Push",
+  "status": "archived",
+  "content": "# Round 5: Extractor Quality — B→B+ Promotions & A-Grade Push\n\n## 11 Tasks\n\n### Priority 1: B → B+ (4 tasks)\n1. **C** — Struct/union fields as Field children\n2. **C++** — Template variable extraction + typedef handler\n3. **Ruby** — Struct.new detection + module_function + dead code\n4. **R** — Fix identifier matching + remove synthetic IDs\n\n### Priority 2: Cross-cutting quality (2 tasks)\n5. **LazyLock regex** — Final sweep (Zig, Vue, SQL, Java — 7 sites)\n6. **Code quality** — SymbolKind corrections (CSS, HTML), dead code (Regex, SQL), UTF-8 safety (Razor)\n\n### Priority 3: B+ → A feature push (4 tasks)\n7. **Rust → A** — Grouped/glob imports + macro fix + static→Constant\n8. **Python → A** — Wildcard imports + class name fix + lambda naming\n9. **TypeScript → A** — Decorators + access modifiers\n10. **Kotlin → A** — Secondary constructors + double return type fix\n\n### Priority 4: Documentation (1 task)\n11. **Audit doc update** — Re-rate all extractors, evaluate B+ for A promotion\n\n## Expected outcome\n- Zero B-rated extractors (all → B+)\n- 4 new A promotions (Rust, Python, TypeScript, Kotlin)\n- ~10+ B+ extractors re-rated to A after review",
+  "git": {
+    "branch": "main",
+    "commit": "34643c8",
+    "dirty": true,
+    "files_changed": [
+      "TODO.md"
+    ]
+  }
+}

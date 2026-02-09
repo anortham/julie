@@ -1,0 +1,23 @@
+{
+  "id": "checkpoint_69207fcd_c4cad8",
+  "timestamp": 1763737549,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "0ab6e52",
+    "dirty": true,
+    "files_changed": [
+      "examples/toon_poc.rs",
+      "src/tests/mod.rs",
+      "src/tools/search/formatting.rs"
+    ]
+  },
+  "description": "Gemini TOON Review - Recommendation #2 Complete: POC Decoding Documented. Investigated TOON decoding fragility and determined it's an expected limitation, not a bug. TOON's compact table notation (results[N]{...}) cannot be deserialized back to Vec<T> in Rust - this is by design. TOON is optimized for LLM reading (35% token savings), not programmatic round-trips. Updated toon_poc.rs with comprehensive documentation explaining this is acceptable: Julie never needs to decode TOON output, LLMs consume it as text directly. Impact: None - write-only format is perfect for our use case. POC now serves as living documentation of TOON's design tradeoffs.",
+  "tags": [
+    "toon",
+    "gemini-review",
+    "poc",
+    "documentation",
+    "write-only-format"
+  ]
+}

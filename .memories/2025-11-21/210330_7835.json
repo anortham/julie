@@ -1,0 +1,17 @@
+{
+  "id": "checkpoint_6920d3a2_2e61b5",
+  "timestamp": 1763759010,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "4dca3fb",
+    "dirty": true,
+    "files_changed": [
+      "src/tools/memory/checkpoint.rs"
+    ]
+  },
+  "description": "Testing minimal checkpoint output after restart",
+  "tags": [
+    "test"
+  ]
+}

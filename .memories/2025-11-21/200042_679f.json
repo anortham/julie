@@ -1,0 +1,23 @@
+{
+  "id": "checkpoint_6920c4ea_bd58a8",
+  "timestamp": 1763755242,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "73b7512",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/tools/get_symbols.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/symbols/mod.rs"
+    ]
+  },
+  "description": "Changed get_symbols default mode from \"structure\" to \"minimal\". Combined with the earlier output_format=\"code\" smart default, calling get_symbols(file_path=\"foo.rs\") now returns actual readable source code by default - optimal for AI agents. Updated tool description and parameter docs to reflect new defaults. All 12 get_symbols tests passing.",
+  "tags": [
+    "feature",
+    "get_symbols",
+    "default-mode",
+    "minimal",
+    "code-output"
+  ]
+}

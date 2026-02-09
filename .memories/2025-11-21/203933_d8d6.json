@@ -1,0 +1,18 @@
+{
+  "id": "checkpoint_6920ce05_9d3e5a",
+  "timestamp": 1763757573,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "4dca3fb",
+    "dirty": true
+  },
+  "description": "Committed and pushed v1.14.1: get_symbols output_format=\"code\" with smart defaults (mode=\"minimal\", format=\"code\" when bodies available), removed dead code from fast_goto (output_format=\"code\" was never functional since code_context not populated from DB). Clarified tool purposes: fast_goto = navigation (WHERE), get_symbols = reading (WHAT).",
+  "tags": [
+    "release",
+    "v1.14.1",
+    "get_symbols",
+    "fast_goto",
+    "cleanup"
+  ]
+}

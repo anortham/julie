@@ -1,0 +1,36 @@
+{
+  "id": "checkpoint_6921de39_20ca82",
+  "timestamp": 1763827257,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "741bd7b",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_type-identifier-intelligence-gpt-51-findings-implementation.json",
+      "TODO.md",
+      "src/extractors/base/mod.rs",
+      "src/extractors/base/types.rs",
+      "src/extractors/factory.rs",
+      "src/extractors/mod.rs",
+      "src/extractors/rust/mod.rs",
+      "src/extractors/rust/relationships.rs",
+      "src/tests/extractors/rust/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/navigation/mod.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/trace_call_path/formatting.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/trace_call_path/types.rs",
+      "src/tools/workspace/indexing/processor.rs"
+    ]
+  },
+  "description": "Verified cross-file relationship resolution is working end-to-end. After rebuild and force re-index: 10,452 relationships (up from ~2,491). trace_call_path now returns actual code callers across file boundaries. Tested with find_symbols_by_name (found 2 cross-file callers) and extract_symbols_and_relationships (found 42 callers across test files). Bug fix complete and verified in production.",
+  "tags": [
+    "verified",
+    "cross-file-resolution",
+    "trace-call-path",
+    "production-tested"
+  ]
+}

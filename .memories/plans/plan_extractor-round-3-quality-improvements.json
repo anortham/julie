@@ -1,9 +1,9 @@
 {
   "id": "plan_extractor-round-3-quality-improvements",
-  "timestamp": 1770570224,
+  "timestamp": 1770575338,
   "type": "plan",
   "title": "Extractor Round 3: Quality Improvements",
-  "status": "active",
+  "status": "archived",
   "content": "## Goals\n- 10 tasks across 9 extractors + cross-cutting cleanup\n- TypeScript: export all specifiers, interface members, method containment fix (B → B+)\n- YAML: remove noise names, add anchor detection (B → B+)\n- Python: @property as SymbolKind::Property (B → B+)\n- PHP: grouped use declarations (correctness fix)\n- Razor: stop extracting assignment/element_access noise\n- CSS: deduplicate @keyframes animation name\n- LazyLock regex audit across 6 extractors\n- Dead code cleanup across 4 extractors\n\n## Plan File\n`docs/plans/2026-02-08-extractor-round3-quality.md`",
   "git": {
     "branch": "main",

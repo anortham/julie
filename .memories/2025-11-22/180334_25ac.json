@@ -1,0 +1,18 @@
+{
+  "id": "checkpoint_6921faf6_161c8f",
+  "timestamp": 1763834614,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b9e0f60",
+    "dirty": false
+  },
+  "description": "Released v1.15.0: Cross-file relationship resolution for all 21 languages + trace_call_path safety limits (MAX_CALLERS_PER_LEVEL=50, MAX_TOTAL_NODES=500). Fixed 7 build warnings. 98 files changed, +10190/-632 lines, 1931 tests passing. Tag pushed to GitHub.",
+  "tags": [
+    "release",
+    "v1.15.0",
+    "cross-file-relationships",
+    "trace_call_path",
+    "21-languages"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "plan_tool-specific-lean-output-formats",
+  "timestamp": 1770575338,
+  "type": "plan",
+  "title": "Tool-Specific Lean Output Formats",
+  "status": "archived",
+  "content": "## Goal\nEach Julie tool should have its own **specialized, minimal output format** as the default.\n\n## Status: ✅ COMPLETE (Lean Formats)\n\nAll 5 major tools now have lean defaults with 60-80% token savings:\n- `fast_search` - grep-style text\n- `fast_refs` - reference list  \n- `fast_goto` - definition list\n- `trace_call_path` - ASCII tree\n- `get_symbols` - raw code\n\n## 🚨 NEW: Cross-File Relationship Bug Found\n\nDuring testing `trace_call_path`, discovered it returns semantic matches from docs instead of code callers.\n\n**Root Cause**: Relationships point to Import symbols, not actual Function definitions.\n\n**Fix Plan**: Option A - Post-indexing resolution with `PendingRelationship` struct.\n\n**Details**: See TODO.md \"CRITICAL BUG: Cross-File Relationship Resolution\" section.\n\n**Next Steps**:\n1. `cargo test cross_file_relationships --lib` (2 failing tests ready)\n2. Add `PendingRelationship` struct to `src/extractors/base/types.rs`\n3. Modify Rust extractor to create pending instead of dropping\n4. Add resolution pass after workspace indexing\n",
+  "git": {
+    "branch": "main",
+    "commit": "741bd7bcb34f2bfe0ddbf9d51cb75d67e7c2e8af",
+    "dirty": false
+  }
+}

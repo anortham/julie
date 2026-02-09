@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_69273580_f09844",
+  "timestamp": 1764177280,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "b8646dd",
+    "dirty": true,
+    "files_changed": [
+      ".claude/settings.local.json",
+      "crates/julie-extractors/src/markdown/mod.rs",
+      "crates/julie-extractors/src/tests/markdown/mod.rs"
+    ]
+  },
+  "description": "Added frontmatter support to markdown extractor (TDD). Extracts YAML (---) and TOML (+++) frontmatter as symbols with SymbolKind::Property. Content stored in doc_comment for semantic search. 11 new tests, all 1,110 extractor tests pass.",
+  "tags": [
+    "markdown",
+    "frontmatter",
+    "tdd",
+    "feature"
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "checkpoint_6921d0b5_84da51",
+  "timestamp": 1763823797,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "741bd7b",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_type-identifier-intelligence-gpt-51-findings-implementation.json",
+      "TODO.md",
+      "src/tests/extractors/rust/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/navigation/mod.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/trace_call_path/formatting.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/trace_call_path/types.rs"
+    ]
+  },
+  "description": "Session complete: (1) Implemented lean output formats for 5 tools (fast_search, fast_refs, fast_goto, trace_call_path, get_symbols) with 60-80% token savings. (2) Discovered and documented critical cross-file relationship bug - trace_call_path fails because relationships point to Import symbols not actual Function definitions. Created 3 failing tests in src/tests/extractors/rust/cross_file_relationships.rs. Added comprehensive fix plan to TODO.md with Option A (post-indexing resolution) as the professional long-term solution. Ready to implement PendingRelationship struct in next context.",
+  "tags": [
+    "session-complete",
+    "lean-output",
+    "cross-file-bug",
+    "tdd",
+    "pending-relationships"
+  ]
+}

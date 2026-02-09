@@ -1,0 +1,31 @@
+{
+  "id": "checkpoint_691fd397_3418b8",
+  "timestamp": 1763693463,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "f77ce89",
+    "dirty": true,
+    "files_changed": [
+      "TODO.md",
+      "src/tests/mod.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search/toon_formatting_tests.rs",
+      "src/tools/mod.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/shared.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/trace_call_path/types.rs"
+    ]
+  },
+  "description": "get_symbols TOON Encoding Complete - 50% Token Savings! Fixed get_symbols to use true tabular TOON format instead of YAML fallback. Created ToonFlatSymbol struct (primitives only, no skip_serializing_if) to ensure uniform key sets required by TOON spec. Updated format_symbol_response to convert Symbol → ToonFlatSymbol → TOON tabular encoding. Results: 50% token savings proven (6,586 → 3,297 chars for 18 symbols). True tabular format working: [18]{id,name,kind,...} with comma-separated rows. Same fix pattern as trace_call_path: complex Rust structs need flattening to primitives-only structures with uniform keys for TOON's tabular encoder. Supports output_format=\"toon\" and \"auto\" (5+ threshold). Both trace_call_path and get_symbols now using optimal TOON encoding!",
+  "tags": [
+    "get-symbols",
+    "toon-encoding",
+    "50-percent-savings",
+    "production-ready",
+    "tabular-format"
+  ]
+}

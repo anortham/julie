@@ -1,0 +1,30 @@
+{
+  "id": "checkpoint_691fd034_0795ce",
+  "timestamp": 1763692596,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "f77ce89",
+    "dirty": true,
+    "files_changed": [
+      "TODO.md",
+      "src/tests/mod.rs",
+      "src/tests/tools/search/mod.rs",
+      "src/tests/tools/search/tools.rs",
+      "src/tests/tools/search/toon_formatting_tests.rs",
+      "src/tools/mod.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/shared.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/trace_call_path/types.rs"
+    ]
+  },
+  "description": "Phase 5 Hierarchical TOON Fix Complete - True Tabular Format Working! Fixed TOON's YAML fallback issue by removing #[serde(skip_serializing_if)] attributes from ToonFlatCallPathNode. Root cause: TOON spec requires ALL objects to have IDENTICAL key sets for tabular encoding. Skipping None values created heterogeneous schemas (different objects had different keys), violating TOON's homogeneity requirement and triggering YAML fallback. Solution: Always serialize Option fields as null to maintain uniform schema. Results: 43.1% token savings proven (19,170 → 10,900 chars, test_token_savings_hierarchical_toon_vs_json passing). True tabular format now working: [275]{id,parent_id,group,...} with comma-separated rows (not YAML \"- id: 0\"). Cleaned up obsolete code: Removed encode_to_toon_with_fallback function and obsolete test files (tools.rs, toon_formatting_tests.rs), kept ToonSymbol/ToonResponse (still used by fast_search). All 1,853 tests passing. Phase 5 production ready!",
+  "tags": [
+    "phase-5-complete",
+    "toon-tabular-fix",
+    "43-percent-savings",
+    "all-tests-passing",
+    "production-ready"
+  ]
+}

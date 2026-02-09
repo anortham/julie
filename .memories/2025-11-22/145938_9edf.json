@@ -1,0 +1,29 @@
+{
+  "id": "checkpoint_6921cfda_b54e58",
+  "timestamp": 1763823578,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "741bd7b",
+    "dirty": true,
+    "files_changed": [
+      ".memories/plans/plan_type-identifier-intelligence-gpt-51-findings-implementation.json",
+      "src/tests/extractors/rust/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/navigation/mod.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/trace_call_path/formatting.rs",
+      "src/tools/trace_call_path/mod.rs",
+      "src/tools/trace_call_path/types.rs"
+    ]
+  },
+  "description": "Created failing tests for cross-file relationship bug. Found two distinct issues: (1) Function calls that resolve to import symbols point to the Import not the actual Function definition - useless for trace_call_path; (2) Method calls to imported types create NO relationships at all. Tests in src/tests/extractors/rust/cross_file_relationships.rs document these bugs clearly.",
+  "tags": [
+    "tdd",
+    "red-phase",
+    "cross-file",
+    "relationships",
+    "bug-hunt"
+  ]
+}

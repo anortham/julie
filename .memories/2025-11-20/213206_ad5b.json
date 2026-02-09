@@ -1,0 +1,22 @@
+{
+  "id": "checkpoint_691f88d6_b374fe",
+  "timestamp": 1763674326,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "f77ce89",
+    "dirty": true,
+    "files_changed": [
+      "TODO.md"
+    ]
+  },
+  "description": "Phase 5 Hierarchical TOON Optimization - Design Complete! trace_call_path identified as \"token monster\" (10k-30k chars) with YAML-ish fallback. Designed single flat table approach with trait-based architecture for maximum token efficiency (63% reduction, 77% combined with Phase 4). Key insight: Both JSON and TOON are for AI/machine consumption, not humans - optimize purely for token efficiency, parseability, lossless data, reconstruction via parent_id. Architecture: HierarchicalToonable trait + FlatNode<T> struct with id/parent_id/group/level fields. Reusable for trace_call_path, get_symbols, any hierarchical data. Ready to implement following TDD in fresh context. Saved complete design to TODO.md with example output, implementation steps, success criteria.",
+  "tags": [
+    "phase-5",
+    "hierarchical-toon",
+    "design-complete",
+    "trace-call-path",
+    "token-optimization",
+    "63-percent-savings"
+  ]
+}

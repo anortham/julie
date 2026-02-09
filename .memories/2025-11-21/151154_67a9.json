@@ -1,0 +1,31 @@
+{
+  "id": "checkpoint_6920813a_3336fe",
+  "timestamp": 1763737914,
+  "type": "checkpoint",
+  "git": {
+    "branch": "main",
+    "commit": "0ab6e52",
+    "dirty": true,
+    "files_changed": [
+      "Cargo.toml",
+      "examples/toon_poc.rs",
+      "src/tests/mod.rs",
+      "src/tools/exploration/fast_explore/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/fast_refs.rs",
+      "src/tools/search/formatting.rs",
+      "src/tools/search/mod.rs",
+      "src/tools/symbols/mod.rs",
+      "src/tools/trace_call_path/mod.rs"
+    ]
+  },
+  "description": "Upgraded to official toon-format v0.3.7 - Round-Trip Capability Restored! Switched from forked version back to official crates.io release. Major discovery: v0.3.7 fixed both the parentheses bug (our PR) AND the Vec<T> deserialization limitation that Gemini was concerned about. Round-trip tests now PASSING: both unwrapped and wrapped OptimizedResponse decode successfully. Updated POC to reflect this improvement - TOON is no longer write-only, it's now a true bidirectional format achieving both token efficiency (35-70% savings) AND programmatic validation. Gemini's Recommendation #2 concern is now completely resolved - TOON supports full round-trips. Our earlier analysis (write-only is acceptable) was correct for v0.3.6, but v0.3.7 exceeded expectations. Updated Cargo.toml: toon-format = \"0.3.7\"",
+  "tags": [
+    "toon",
+    "upgrade",
+    "v0.3.7",
+    "round-trip",
+    "bidirectional",
+    "major-improvement"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "decision_6920ca41_24945e",
+  "timestamp": 1763756609,
+  "type": "decision",
+  "git": {
+    "branch": "main",
+    "commit": "73b7512",
+    "dirty": true,
+    "files_changed": [
+      "src/tests/tools/get_symbols.rs",
+      "src/tests/tools/navigation/mod.rs",
+      "src/tools/navigation/fast_goto.rs",
+      "src/tools/navigation/mod.rs",
+      "src/tools/symbols/formatting.rs",
+      "src/tools/symbols/mod.rs"
+    ]
+  },
+  "description": "Implemented output_format=\"code\" for get_symbols (with smart default) and fast_goto (opt-in). Key discovery: code_context was already stored in DB and excluded from embeddings - infrastructure was ready. Important realization: fast_goto should default to structured output (for navigation to file:line), not code output, as code context bloats response tokens. get_symbols defaults to code (for reading), fast_goto keeps structured default (for jumping).",
+  "tags": [
+    "output_format",
+    "code",
+    "fast_goto",
+    "get_symbols",
+    "token-efficiency"
+  ]
+}
