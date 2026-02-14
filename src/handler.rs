@@ -18,8 +18,7 @@ use tokio::sync::RwLock;
 // Import tool parameter types
 use crate::tools::{
     FastSearchTool, FastRefsTool, GetSymbolsTool, DeepDiveTool,
-    RenameSymbolTool, CheckpointTool, RecallTool, PlanTool,
-    ManageWorkspaceTool,
+    RenameSymbolTool, ManageWorkspaceTool,
 };
 
 /// Tracks which indexes are ready for search operations
@@ -407,65 +406,6 @@ impl JulieServerHandler {
         let _guard = self.tool_execution_lock.lock().await;
         params.call_tool(self).await.map_err(|e| {
             McpError::internal_error(format!("rename_symbol failed: {}", e), None)
-        })
-    }
-
-    // ========== Memory Tools ==========
-
-    #[tool(
-        name = "checkpoint",
-        description = "Save development memory checkpoint to .memories/ directory. Captures git context (branch, commit, changed files) automatically. Supports types: checkpoint, decision, learning, observation.",
-        annotations(
-            title = "Save Memory Checkpoint",
-            read_only_hint = false,
-            destructive_hint = false,
-            idempotent_hint = false,
-            open_world_hint = false
-        )
-    )]
-    async fn checkpoint(&self, Parameters(params): Parameters<CheckpointTool>) -> Result<CallToolResult, McpError> {
-        debug!("💾 Checkpoint: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("checkpoint failed: {}", e), None)
-        })
-    }
-
-    #[tool(
-        name = "recall",
-        description = "Retrieve development memories using text search with code-aware tokenization.",
-        annotations(
-            title = "Recall Memories",
-            read_only_hint = true,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    async fn recall(&self, Parameters(params): Parameters<RecallTool>) -> Result<CallToolResult, McpError> {
-        debug!("🔍 Recall: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("recall failed: {}", e), None)
-        })
-    }
-
-    #[tool(
-        name = "plan",
-        description = "Manage working plans with atomic updates. One active plan at a time.",
-        annotations(
-            title = "Manage Plans",
-            read_only_hint = false,
-            destructive_hint = false,
-            idempotent_hint = false,
-            open_world_hint = false
-        )
-    )]
-    async fn plan(&self, Parameters(params): Parameters<PlanTool>) -> Result<CallToolResult, McpError> {
-        debug!("📋 Plan: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("plan failed: {}", e), None)
         })
     }
 

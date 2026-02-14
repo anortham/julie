@@ -36,13 +36,7 @@ pub mod regression_prevention_tests; // Tests for bugs that have regressed multi
 // ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
-pub mod memory_checkpoint_tests; // Checkpoint tool tests (file operations)
-pub mod memory_plan_tests;
-pub mod memory_recall_tests; // Recall tool tests (reading from disk)
-pub mod memory_sql_views_tests; // SQL views and indexes for memories
-pub mod memory_tests; // Memory system tests (checkpoint/recall) // Plan system tests (mutable plans - Phase 1.5)
 pub mod user_registry_tests; // User-level project registry tests
-pub mod cross_project_recall_tests; // Cross-project recall integration tests
 // pub mod test_git_context; // Git context capture tests (debugging crashes) - TODO: File missing
 
 pub mod tools {
@@ -104,7 +98,6 @@ pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
     pub mod documentation_indexing; // Documentation indexing E2E tests (RAG POC)
     pub mod lock_contention; // Lock contention regression tests
-    pub mod plan_tool; // PlanTool integration tests (Phase 1.5 - Mutable Plans)
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests

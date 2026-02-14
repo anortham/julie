@@ -17,8 +17,6 @@
       "Bash(cargo clippy:*)",
       "mcp__julie__deep_dive",
       "mcp__julie__rename_symbol",
-      "mcp__julie__checkpoint",
-      "mcp__julie__plan",
       "Bash(cargo clean:*)",
       "Bash(time:*)",
       "mcp__codex__codex",
@@ -150,8 +148,7 @@
       "Read(//home/murphy/source/coa-codesearch-mcp/COA.CodeSearch.McpServer/Tools/**)",
       "Read(//home/murphy/source/coa-codesearch-mcp/**)",
       "Bash(brew install starship)",
-      "Read(//c/Users/CHS300372/.claude/**)",
-      "mcp__julie__recall"
+      "Read(//c/Users/CHS300372/.claude/**)"
     ],
     "deny": [],
     "ask": []

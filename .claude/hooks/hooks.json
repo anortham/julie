@@ -1,15 +1,3 @@
 {
-  "hooks": {
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo '[Julie] Context compaction imminent. If significant work was done (code changes, decisions, bug fixes), save a checkpoint now using mcp__julie__checkpoint before context is lost. Skip if only discussion occurred.'",
-            "statusMessage": "Julie: Reminding to save progress before compaction"
-          }
-        ]
-      }
-    ]
-  }
+  "hooks": {}
 }

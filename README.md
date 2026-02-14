@@ -6,10 +6,8 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 
 - **Fast symbol search** with code-aware tokenization
 - **Cross-language code navigation** (go-to-definition, find-references)
-- **Intelligent code editing** with fuzzy matching and AST-aware refactoring
-- **Development memory system** - checkpoint and recall significant development moments
+- **AST-aware refactoring** with workspace-wide rename
 - **Multi-workspace support** for indexing and searching related codebases (one workspace at a time)
-- **Call path tracing** across language boundaries
 
 ### Performance Characteristics
 
@@ -160,7 +158,7 @@ cargo build --release
 # Binary will be at: target/release/julie-server[.exe]
 ```
 
-## Tools (9)
+## Tools (6)
 
 ### Search & Navigation
 
@@ -184,12 +182,6 @@ cargo build --release
 - `rename_symbol` - Rename symbols across entire workspace
   - Updates all references atomically
   - Preview mode with dry_run parameter
-
-### Memory
-
-- `checkpoint` - Save development memory checkpoints
-- `recall` - Retrieve development memories by search query
-- `plan` - Manage working plans with atomic updates
 
 ### Workspace Management
 
@@ -217,27 +209,6 @@ third-party/
 ```
 
 Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patterns cover 99% of use cases - only use `.julieignore` for project-specific needs.
-
-### Development Memory
-
-- `checkpoint` - Save immutable development memories (bug fixes, decisions, learnings)
-  - **Never ask permission** - create checkpoints proactively after significant work
-  - Automatically captures git context (branch, commit, dirty state)
-  - Stored as human-readable JSON in `.memories/` directory
-  - Performance: <50ms per checkpoint
-- `recall` - Query development history with filtering
-  - Filter by type (checkpoint, decision, learning, observation)
-  - Date range filtering (since/until)
-  - Returns most recent memories first
-  - Use for understanding past decisions and avoiding repeated mistakes
-  - Performance: <5ms for chronological queries
-
-**Memory System Benefits:**
-- Build persistent context across sessions
-- Understand why architectural decisions were made
-- Learn from previous debugging sessions
-- Create searchable development history (use `fast_search` with `file_pattern=".memories/**"`)
-
 
 ## Architecture
 
@@ -271,7 +242,6 @@ Julie uses a comprehensive testing methodology:
 - **Unit tests** for all 31 language extractors
 - **Real-world validation** against GitHub repositories
 - **SOURCE/CONTROL methodology** for editing tools (original files vs expected results)
-- **Memory system integration tests** (26 tests covering checkpoint/recall/SQL views)
 - **Coverage targets**: 80% general, 90% for editing tools
 
 ```bash
@@ -294,15 +264,15 @@ src/
 ├── search/          # Tantivy search engine and tokenizer
 ├── tools/           # MCP tool implementations
 │   ├── deep_dive/   # Progressive-depth symbol investigation
-│   ├── memory/      # Development memory system (checkpoint/recall/plan)
-│   ├── navigation/  # fast_refs, rename_symbol
-│   ├── search/      # fast_search, get_symbols
+│   ├── navigation/  # fast_refs
+│   ├── refactoring/ # rename_symbol
+│   ├── search/      # fast_search
+│   ├── symbols/     # get_symbols
 │   └── workspace/   # Workspace management
 ├── workspace/       # Multi-workspace management
 └── tests/           # Test infrastructure
 
 fixtures/            # Test data (SOURCE/CONTROL files, real-world samples)
-.memories/           # Development memories (checkpoints, decisions, learnings)
 ```
 
 ## License

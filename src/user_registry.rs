@@ -2,7 +2,7 @@
 //!
 //! Maintains a global registry at `~/.julie/project_registry.json` that tracks
 //! all Julie-enabled projects. Projects auto-register on MCP initialization,
-//! enabling cross-project features like standup summaries and global recall.
+//! enabling cross-project features like workspace discovery.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};

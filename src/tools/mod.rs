@@ -6,7 +6,6 @@ pub mod shared;
 // Tool modules organized by functionality
 pub mod deep_dive; // Progressive-depth symbol investigation
 pub mod editing; // EditingTransaction infrastructure (shared by refactoring tools)
-pub mod memory; // Memory system (checkpoint/recall)
 pub mod navigation;
 pub mod refactoring;
 pub mod search;
@@ -15,7 +14,6 @@ pub mod workspace;
 
 // Re-export all tools for external use
 pub use deep_dive::DeepDiveTool;
-pub use memory::{CheckpointTool, PlanTool, RecallTool}; // Memory system (checkpoint/recall/plans)
 pub use navigation::FastRefsTool;
 pub use refactoring::RenameSymbolTool;
 pub use search::FastSearchTool;

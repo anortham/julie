@@ -635,7 +635,7 @@ fn test_is_known_dotfile_accepts_config_files_but_not_memories() {
     assert!(tool.is_known_dotfile(std::path::Path::new(".eslintrc")));
     assert!(tool.is_known_dotfile(std::path::Path::new(".npmrc")));
 
-    // .memories should NOT be a known dotfile (recall() searches these directly)
+    // .memories should NOT be a known dotfile (user data, not config)
     assert!(
         !tool.is_known_dotfile(std::path::Path::new(".memories")),
         ".memories should not be whitelisted as a known dotfile"

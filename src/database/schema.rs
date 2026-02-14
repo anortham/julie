@@ -23,10 +23,6 @@ impl SymbolDatabase {
         self.create_types_table()?; // Type intelligence
         self.create_relationships_table()?;
 
-        // Create memory views (depends on files table)
-        self.create_memories_view()?;
-        self.create_plans_view()?; // Phase 1.5: Mutable plans
-
         debug!("Database schema created successfully");
         Ok(())
     }
@@ -311,107 +307,4 @@ impl SymbolDatabase {
         Ok(())
     }
 
-    /// Create the memories view for querying memory files
-    ///
-    /// This view extracts memory data from JSON files stored in `.memories/`
-    /// by querying the files table and using SQLite's json_extract() function.
-    ///
-    /// The view filters to only include JSON files in the `.memories/` directory,
-    /// excluding mutable plans (which live in `.memories/plans/` and will be added in Phase 2).
-    pub(crate) fn create_memories_view(&self) -> Result<()> {
-        // Create view that extracts JSON fields from memory files
-        self.conn.execute(
-            r#"CREATE VIEW IF NOT EXISTS memories AS
-            SELECT
-                f.path,
-                f.hash,
-                f.last_modified,
-                json_extract(f.content, '$.id') as id,
-                json_extract(f.content, '$.timestamp') as timestamp,
-                json_extract(f.content, '$.type') as type,
-                json_extract(f.content, '$.description') as description,
-                json_extract(f.content, '$.tags') as tags,
-                json_extract(f.content, '$.git.branch') as git_branch,
-                json_extract(f.content, '$.git.commit') as git_commit,
-                json_extract(f.content, '$.git.dirty') as git_dirty
-            FROM files f
-            WHERE f.path LIKE '.memories/%'
-              AND f.path LIKE '%.json'
-              AND f.path NOT LIKE '.memories/plans/%'"#,
-            [],
-        )?;
-
-        // Create index on timestamp for fast chronological queries
-        self.conn.execute(
-            r#"CREATE INDEX IF NOT EXISTS idx_memories_timestamp
-            ON files(json_extract(content, '$.timestamp'))
-            WHERE path LIKE '.memories/%'
-              AND path LIKE '%.json'"#,
-            [],
-        )?;
-
-        // Create index on type for fast filtering by memory type
-        self.conn.execute(
-            r#"CREATE INDEX IF NOT EXISTS idx_memories_type
-            ON files(json_extract(content, '$.type'))
-            WHERE path LIKE '.memories/%'
-              AND path LIKE '%.json'"#,
-            [],
-        )?;
-
-        debug!("Created memories view and indexes");
-        Ok(())
-    }
-
-    /// Create the plans view for mutable development plans (Phase 1.5)
-    ///
-    /// This view provides structured access to plan JSON files stored in `.memories/plans/`.
-    /// Plans are mutable (can be updated in-place) unlike immutable checkpoint memories.
-    ///
-    /// The view extracts plan-specific fields including status, title, and content,
-    /// making plans queryable via SQL for recall() and plan management operations.
-    pub(crate) fn create_plans_view(&self) -> Result<()> {
-        // Create view that extracts JSON fields from plan files
-        self.conn.execute(
-            r#"CREATE VIEW IF NOT EXISTS plans AS
-            SELECT
-                f.path,
-                f.hash,
-                f.last_modified,
-                json_extract(f.content, '$.id') as id,
-                json_extract(f.content, '$.timestamp') as timestamp,
-                json_extract(f.content, '$.type') as type,
-                json_extract(f.content, '$.title') as title,
-                json_extract(f.content, '$.status') as status,
-                json_extract(f.content, '$.content') as content,
-                json_extract(f.content, '$.git.branch') as git_branch,
-                json_extract(f.content, '$.git.commit') as git_commit,
-                json_extract(f.content, '$.git.dirty') as git_dirty
-            FROM files f
-            WHERE f.path LIKE '.memories/plans/%'
-              AND f.path LIKE '%.json'"#,
-            [],
-        )?;
-
-        // Create index on timestamp for fast chronological queries
-        self.conn.execute(
-            r#"CREATE INDEX IF NOT EXISTS idx_plans_timestamp
-            ON files(json_extract(content, '$.timestamp'))
-            WHERE path LIKE '.memories/plans/%'
-              AND path LIKE '%.json'"#,
-            [],
-        )?;
-
-        // Create index on status for fast filtering (active/completed/archived)
-        self.conn.execute(
-            r#"CREATE INDEX IF NOT EXISTS idx_plans_status
-            ON files(json_extract(content, '$.status'))
-            WHERE path LIKE '.memories/plans/%'
-              AND path LIKE '%.json'"#,
-            [],
-        )?;
-
-        debug!("Created plans view and indexes");
-        Ok(())
-    }
 }
