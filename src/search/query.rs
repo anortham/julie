@@ -137,6 +137,8 @@ pub fn build_content_query(
         let content_term = Term::from_field_text(content_field, &term_lower);
         let term_query = TermQuery::new(content_term, IndexRecordOption::Basic);
 
+        // Heuristic: underscores indicate snake_case compound tokens from CodeTokenizer.
+        // CamelCase compounds are lowercased without underscores, so they pass through as atomic.
         if term.contains('_') {
             // Compound token → SHOULD with boost (promotes exact identifier matches)
             subqueries.push((

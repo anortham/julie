@@ -303,6 +303,8 @@ impl SearchIndex {
     ) -> Result<Vec<ContentSearchResult>> {
         let f = &self.schema_fields;
 
+        // Note: no filter_compound_tokens here — compound tokens (e.g. "search_term")
+        // are boosted via SHOULD+BoostQuery in build_content_query instead of stripped.
         let terms = self.tokenize_query(query_str);
         if terms.is_empty() {
             return Ok(Vec::new());

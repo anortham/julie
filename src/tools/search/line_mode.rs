@@ -71,6 +71,8 @@ pub async fn line_mode_search(
         // Fetch more candidates so matching files aren't missed by the limit cap.
         base_limit.saturating_mul(100).max(500).min(1000)
     } else {
+        // 20x: compound token boosting broadens matching, so we need more candidates
+        // to surface precise matches after line-level re-ranking.
         base_limit.saturating_mul(20)
     };
     let filter = SearchFilter {
