@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod line_match_strategy_tests {
-    use crate::tools::search::query::line_match_strategy;
+    use crate::tools::search::query::{line_match_strategy, line_matches};
     use crate::tools::search::LineMatchStrategy;
 
     #[test]
@@ -60,5 +60,20 @@ mod line_match_strategy_tests {
                 std::mem::discriminant(other)
             ),
         }
+    }
+
+    #[test]
+    fn test_file_level_line_matches_or_logic() {
+        let strategy = LineMatchStrategy::FileLevel {
+            terms: vec!["spawn_blocking".to_string(), "statistics".to_string()],
+        };
+        // Matches line with first term
+        assert!(line_matches(&strategy, "let handle = spawn_blocking(move || {"));
+        // Matches line with second term
+        assert!(line_matches(&strategy, "// compute statistics for the batch"));
+        // Does NOT match line with neither term
+        assert!(!line_matches(&strategy, "fn process_data(input: &[u8]) -> Result<()> {"));
+        // Case-insensitive
+        assert!(line_matches(&strategy, "SPAWN_BLOCKING is loud"));
     }
 }
