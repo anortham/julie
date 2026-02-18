@@ -106,7 +106,9 @@ pub fn build_symbol_query(
 
 /// Build a file content search query with optional language filter.
 ///
-/// Requires `doc_type = "file"` (Must) and matches terms in the `content` field.
+/// Compound tokens (containing `_`) are added as boosted SHOULD clauses to
+/// promote files containing the exact identifier. Atomic sub-parts remain
+/// as MUST clauses for baseline matching.
 pub fn build_content_query(
     terms: &[String],
     content_field: Field,
@@ -130,14 +132,21 @@ pub fn build_content_query(
         ));
     }
 
-    // Require ALL terms to match in content (AND per term).
     for term in terms {
         let term_lower = term.to_lowercase();
         let content_term = Term::from_field_text(content_field, &term_lower);
-        subqueries.push((
-            Occur::Must,
-            Box::new(TermQuery::new(content_term, IndexRecordOption::Basic)),
-        ));
+        let term_query = TermQuery::new(content_term, IndexRecordOption::Basic);
+
+        if term.contains('_') {
+            // Compound token → SHOULD with boost (promotes exact identifier matches)
+            subqueries.push((
+                Occur::Should,
+                Box::new(BoostQuery::new(Box::new(term_query), 5.0)),
+            ));
+        } else {
+            // Atomic sub-part → MUST (ensures file contains the word)
+            subqueries.push((Occur::Must, Box::new(term_query)));
+        }
     }
 
     BooleanQuery::new(subqueries)

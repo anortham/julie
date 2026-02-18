@@ -396,3 +396,58 @@ fn test_multi_token_search_requires_all_tokens() {
         result_names
     );
 }
+
+#[test]
+fn test_compound_token_finds_exact_identifier() {
+    // Regression test: searching for a snake_case identifier should find it
+    // even when its sub-parts are very common words
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    // File that contains the exact identifier
+    index
+        .add_file_content(&FileDocument {
+            file_path: "src/processor.rs".into(),
+            content: "let mut files_by_language: HashMap<String, Vec<PathBuf>> = HashMap::new();"
+                .into(),
+            language: "rust".into(),
+        })
+        .unwrap();
+
+    // File that contains the sub-parts scattered (should also match but rank lower)
+    index
+        .add_file_content(&FileDocument {
+            file_path: "src/utils.rs".into(),
+            content: "// process files for each language detected by the scanner".into(),
+            language: "rust".into(),
+        })
+        .unwrap();
+
+    index.commit().unwrap();
+
+    let filter = crate::search::SearchFilter {
+        language: None,
+        kind: None,
+        file_pattern: None,
+    };
+
+    let results = index
+        .search_content("files_by_language", &filter, 10)
+        .unwrap();
+
+    // Must find at least the file with the exact identifier
+    assert!(
+        !results.is_empty(),
+        "Should find files matching compound identifier"
+    );
+
+    // The file with the exact identifier should rank first
+    assert_eq!(
+        results[0].file_path, "src/processor.rs",
+        "File with exact identifier should rank higher. Got: {:?}",
+        results
+            .iter()
+            .map(|r| &r.file_path)
+            .collect::<Vec<_>>()
+    );
+}

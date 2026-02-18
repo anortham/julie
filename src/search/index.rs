@@ -303,7 +303,7 @@ impl SearchIndex {
     ) -> Result<Vec<ContentSearchResult>> {
         let f = &self.schema_fields;
 
-        let terms = Self::filter_compound_tokens(self.tokenize_query(query_str));
+        let terms = self.tokenize_query(query_str);
         if terms.is_empty() {
             return Ok(Vec::new());
         }
