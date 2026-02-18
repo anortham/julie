@@ -20,6 +20,7 @@ use anyhow::{Context, Result};
 use notify::Watcher;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::SystemTime;
 use tokio::sync::{Mutex as TokioMutex, mpsc};
@@ -50,6 +51,9 @@ pub struct IncrementalIndexer {
 
     // Configuration
     workspace_root: PathBuf,
+
+    /// Shared flag checked by spawned tasks — when set to true, tasks exit their loops.
+    cancel_flag: Arc<AtomicBool>,
 }
 
 impl IncrementalIndexer {
@@ -73,6 +77,7 @@ impl IncrementalIndexer {
             supported_extensions,
             ignore_patterns,
             workspace_root,
+            cancel_flag: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -104,10 +109,15 @@ impl IncrementalIndexer {
         let supported_extensions = self.supported_extensions.clone();
         let ignore_patterns = self.ignore_patterns.clone();
         let index_queue = self.index_queue.clone();
+        let cancel_flag_events = self.cancel_flag.clone();
 
         tokio::spawn(async move {
             info!("File system event detector started");
             while let Some(event_result) = rx.recv().await {
+                if cancel_flag_events.load(Ordering::Relaxed) {
+                    info!("Event detector cancelled, exiting");
+                    break;
+                }
                 match event_result {
                     Ok(event) => {
                         debug!("File system event detected: {:?}", event);
@@ -137,6 +147,7 @@ impl IncrementalIndexer {
         let queue_for_processing = self.index_queue.clone();
         let last_processed = self.last_processed.clone();
         let workspace_root = self.workspace_root.clone();
+        let cancel_flag_queue = self.cancel_flag.clone();
 
         tokio::spawn(async move {
             use tokio::time::{Duration, interval};
@@ -145,6 +156,11 @@ impl IncrementalIndexer {
             info!("Background queue processor started");
             loop {
                 tick.tick().await;
+
+                if cancel_flag_queue.load(Ordering::Relaxed) {
+                    info!("Queue processor cancelled, exiting");
+                    break;
+                }
 
                 // Process all items currently in the queue
                 let queue_size = {
@@ -279,8 +295,11 @@ impl IncrementalIndexer {
         Ok(())
     }
 
-    /// Stop the file watcher
+    /// Stop the file watcher and signal spawned tasks to exit.
     pub async fn stop(&mut self) -> Result<()> {
+        // Signal spawned tasks to exit their loops
+        self.cancel_flag.store(true, Ordering::Relaxed);
+
         if let Some(watcher) = self.watcher.take() {
             drop(watcher);
             info!("File watcher stopped");

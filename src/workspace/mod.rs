@@ -538,6 +538,15 @@ impl JulieWorkspace {
         }
         Ok(())
     }
+
+    /// Stop file watching and signal background tasks to exit.
+    pub async fn stop_file_watching(&mut self) -> Result<()> {
+        if let Some(ref mut watcher) = self.watcher {
+            watcher.stop().await?;
+            info!("File watching stopped");
+        }
+        Ok(())
+    }
 }
 
 /// Health status of a Julie workspace

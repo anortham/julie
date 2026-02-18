@@ -121,6 +121,42 @@ impl JulieServerHandler {
         let mut workspace = if force {
             info!("🔄 Force reinitialization requested - clearing derived data only");
 
+            // Teardown old workspace: stop watcher tasks, shut down search index to
+            // release the Tantivy file lock. Without this, the new SearchIndex will
+            // get LockBusy errors because the old writer is still held by background tasks.
+            {
+                let mut workspace_guard = self.workspace.write().await;
+                if let Some(ref mut old_workspace) = *workspace_guard {
+                    info!("Tearing down old workspace before force re-index");
+
+                    // 1. Stop file watcher (signals spawned tasks to exit)
+                    if let Err(e) = old_workspace.stop_file_watching().await {
+                        warn!("Failed to stop file watching during teardown: {}", e);
+                    }
+
+                    // 2. Shut down search index (commits + releases Tantivy file lock)
+                    if let Some(ref search_index) = old_workspace.search_index {
+                        match search_index.lock() {
+                            Ok(idx) => {
+                                if let Err(e) = idx.shutdown() {
+                                    warn!("Failed to shut down search index: {}", e);
+                                } else {
+                                    info!("Old search index shut down, file lock released");
+                                }
+                            }
+                            Err(poisoned) => {
+                                // Recover from poisoned mutex — we still need to release the lock
+                                let idx = poisoned.into_inner();
+                                let _ = idx.shutdown();
+                                warn!("Recovered from poisoned search index mutex during teardown");
+                            }
+                        }
+                    }
+                }
+                // Drop the old workspace reference
+                *workspace_guard = None;
+            }
+
             // For force reindex, we only clear derived data, NOT the database (source of truth)
             let julie_dir = target_path.join(".julie");
             if julie_dir.exists() {

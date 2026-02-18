@@ -8,6 +8,7 @@
 //! searching "user" finds both `getUserData` and `get_user_data`.
 
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tantivy::collector::TopDocs;
@@ -113,6 +114,9 @@ pub struct SearchIndex {
     /// Language configs for post-search scoring (important_patterns boost).
     /// Present when created via `_with_language_configs` constructors.
     language_configs: Option<LanguageConfigs>,
+    /// When true, `get_or_create_writer()` returns `Err(Shutdown)` and no new
+    /// writes are accepted. Set by `shutdown()` after committing + dropping the writer.
+    shutdown: AtomicBool,
 }
 
 impl SearchIndex {
@@ -358,6 +362,7 @@ impl SearchIndex {
             writer: Mutex::new(None),
             schema_fields,
             language_configs,
+            shutdown: AtomicBool::new(false),
         })
     }
 
@@ -379,6 +384,7 @@ impl SearchIndex {
             writer: Mutex::new(None),
             schema_fields,
             language_configs,
+            shutdown: AtomicBool::new(false),
         })
     }
 
@@ -400,6 +406,7 @@ impl SearchIndex {
             writer: Mutex::new(None),
             schema_fields,
             language_configs,
+            shutdown: AtomicBool::new(false),
         })
     }
 
@@ -412,11 +419,36 @@ impl SearchIndex {
     fn get_or_create_writer(
         &self,
     ) -> Result<std::sync::MutexGuard<'_, Option<IndexWriter>>> {
-        let mut guard = self.writer.lock().unwrap();
+        if self.shutdown.load(Ordering::Acquire) {
+            return Err(SearchError::Shutdown);
+        }
+        let mut guard = self.writer.lock().unwrap_or_else(|e| e.into_inner());
         if guard.is_none() {
             *guard = Some(self.index.writer(WRITER_HEAP_SIZE)?);
         }
         Ok(guard)
+    }
+
+    /// Gracefully shut down this index: commit pending writes, release the
+    /// Tantivy file lock, and prevent any future writes.
+    ///
+    /// After shutdown, `get_or_create_writer()` returns `Err(Shutdown)`.
+    /// Reads (search) continue to work — the `IndexReader` is independent.
+    pub fn shutdown(&self) -> Result<()> {
+        self.shutdown.store(true, Ordering::Release);
+
+        let mut guard = self.writer.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(mut writer) = guard.take() {
+            // Best-effort commit — if it fails, we still drop the writer to release the lock
+            let _ = writer.commit();
+            // writer is dropped here, releasing the Tantivy file lock
+        }
+        Ok(())
+    }
+
+    /// Returns true if this index has been shut down.
+    pub fn is_shutdown(&self) -> bool {
+        self.shutdown.load(Ordering::Acquire)
     }
 
     /// Tokenize a query string using the registered code tokenizer.

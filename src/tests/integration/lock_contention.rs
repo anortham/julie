@@ -100,3 +100,75 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
     println!("✅ 10 concurrent content searches completed without corruption errors");
     Ok(())
 }
+
+/// Test that force re-index tears down the old workspace cleanly and doesn't
+/// produce LockBusy errors when the new SearchIndex tries to acquire the writer.
+///
+/// REGRESSION TEST: Prevents the scenario where:
+/// 1. Auto-index at startup creates SearchIndex A (acquires Tantivy writer lock)
+/// 2. File watcher tasks clone Arc<Mutex<SearchIndex A>>
+/// 3. Force re-index creates SearchIndex B at the same path
+/// 4. SearchIndex B gets LockBusy because A's writer is still held
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_force_reindex_no_lock_busy_errors() -> Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let workspace_path = temp_dir.path().to_path_buf();
+
+    // Create some source files to index
+    std::fs::create_dir_all(workspace_path.join("src"))?;
+    std::fs::write(
+        workspace_path.join("src/main.rs"),
+        "fn main() { println!(\"hello\"); }\n",
+    )?;
+    std::fs::write(
+        workspace_path.join("src/lib.rs"),
+        "pub fn greet() -> &'static str { \"hello\" }\npub fn farewell() -> &'static str { \"bye\" }\n",
+    )?;
+
+    let handler = Arc::new(JulieServerHandler::new().await?);
+
+    // First initialization (simulates startup auto-index)
+    handler
+        .initialize_workspace_with_force(
+            Some(workspace_path.to_str().unwrap().to_string()),
+            false,
+        )
+        .await?;
+
+    // Force re-index (simulates manage_workspace(operation="index", force=true))
+    // This is where the LockBusy bug manifested — the old SearchIndex still held the lock
+    let reindex_result = handler
+        .initialize_workspace_with_force(
+            Some(workspace_path.to_str().unwrap().to_string()),
+            true,
+        )
+        .await;
+
+    assert!(
+        reindex_result.is_ok(),
+        "Force re-index should succeed without lock errors: {:?}",
+        reindex_result.err()
+    );
+
+    // Verify the new workspace can actually write to the search index
+    // by running a content search (which requires the index to have been populated)
+    use crate::tools::search::FastSearchTool;
+    let tool = FastSearchTool {
+        query: "greet".to_string(),
+        language: None,
+        file_pattern: None,
+        limit: 10,
+        workspace: Some("primary".to_string()),
+        search_target: "content".to_string(),
+        context_lines: None,
+    };
+    let search_result = tool.call_tool(&handler).await;
+    assert!(
+        search_result.is_ok(),
+        "Content search after force re-index should work: {:?}",
+        search_result.err()
+    );
+
+    println!("✅ Force re-index completed without LockBusy errors");
+    Ok(())
+}

@@ -3,6 +3,7 @@
 use tempfile::TempDir;
 
 use crate::search::index::{FileDocument, SearchFilter, SearchIndex, SymbolDocument};
+use crate::search::SearchError;
 
 #[test]
 fn test_create_index() {
@@ -450,4 +451,99 @@ fn test_compound_token_finds_exact_identifier() {
             .map(|r| &r.file_path)
             .collect::<Vec<_>>()
     );
+}
+
+// --- Shutdown mechanism tests ---
+
+#[test]
+fn test_shutdown_prevents_writer_creation() {
+    let temp = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp.path()).unwrap();
+
+    // Write something first to prove it works
+    index
+        .add_file_content(&FileDocument {
+            file_path: "src/lib.rs".to_string(),
+            content: "fn hello() {}".to_string(),
+            language: "rust".to_string(),
+        })
+        .unwrap();
+    index.commit().unwrap();
+
+    // Shut down
+    index.shutdown().unwrap();
+    assert!(index.is_shutdown());
+
+    // All write operations should now return Err(Shutdown)
+    let result = index.add_file_content(&FileDocument {
+        file_path: "src/other.rs".to_string(),
+        content: "fn other() {}".to_string(),
+        language: "rust".to_string(),
+    });
+    assert!(result.is_err());
+    assert!(
+        matches!(result.unwrap_err(), SearchError::Shutdown),
+        "Expected Shutdown error after shutdown"
+    );
+}
+
+#[test]
+fn test_shutdown_releases_lock_for_new_index() {
+    let temp = TempDir::new().unwrap();
+
+    // Create index A, write to it (acquires the Tantivy file lock)
+    let index_a = SearchIndex::create(temp.path()).unwrap();
+    index_a
+        .add_file_content(&FileDocument {
+            file_path: "src/old.rs".to_string(),
+            content: "fn old() {}".to_string(),
+            language: "rust".to_string(),
+        })
+        .unwrap();
+    index_a.commit().unwrap();
+
+    // Shut down A — this must release the file lock
+    index_a.shutdown().unwrap();
+
+    // Open index B at the SAME path — this would get LockBusy without shutdown
+    let index_b = SearchIndex::open(temp.path()).unwrap();
+    let write_result = index_b.add_file_content(&FileDocument {
+        file_path: "src/new.rs".to_string(),
+        content: "fn new_stuff() {}".to_string(),
+        language: "rust".to_string(),
+    });
+    assert!(
+        write_result.is_ok(),
+        "Index B should be able to write after A was shut down: {:?}",
+        write_result.err()
+    );
+    index_b.commit().unwrap();
+}
+
+#[test]
+fn test_search_works_after_shutdown() {
+    let temp = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp.path()).unwrap();
+
+    // Write and commit data
+    index
+        .add_file_content(&FileDocument {
+            file_path: "src/searchable.rs".to_string(),
+            content: "fn uniqueSearchableFunction() { let x = 42; }".to_string(),
+            language: "rust".to_string(),
+        })
+        .unwrap();
+    index.commit().unwrap();
+
+    // Shut down — writes are blocked, but reads should still work
+    index.shutdown().unwrap();
+
+    let results = index
+        .search_content("uniqueSearchableFunction", &SearchFilter::default(), 10)
+        .unwrap();
+    assert!(
+        !results.is_empty(),
+        "Search should still return results after shutdown (reader is independent)"
+    );
+    assert_eq!(results[0].file_path, "src/searchable.rs");
 }

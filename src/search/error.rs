@@ -16,6 +16,9 @@ pub enum SearchError {
 
     #[error("Index not found at path: {0}")]
     IndexNotFound(String),
+
+    #[error("Search index has been shut down")]
+    Shutdown,
 }
 
 pub type Result<T> = std::result::Result<T, SearchError>;
