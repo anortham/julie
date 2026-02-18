@@ -835,3 +835,59 @@ async fn test_fast_refs_reference_kind_filter_with_identifiers() {
         println!("⚠ No call identifier with 2+ occurrences found - skipping");
     }
 }
+
+// ============================================================================
+// Content Search Quality: Compound Identifiers & Cross-Line Matching
+// ============================================================================
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_content_single_identifier_snake_case() {
+    let handler = setup_handler_with_fixture().await;
+
+    // "files_by_language" exists in processor.rs as a local variable
+    // Previously returned zero results due to compound token stripping
+    let results = search_content(&handler, "files_by_language", 10)
+        .await
+        .expect("Search failed");
+
+    assert_min_results(&results, 1);
+    assert_contains_path(&results, "processor.rs");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_content_single_identifier_camel_case() {
+    let handler = setup_handler_with_fixture().await;
+
+    // Regression guard: camelCase identifiers should still work
+    let results = search_content(&handler, "LanguageParserPool", 10)
+        .await
+        .expect("Search failed");
+
+    assert_min_results(&results, 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_content_multiword_cross_line() {
+    let handler = setup_handler_with_fixture().await;
+
+    // "spawn_blocking" and "statistics" both exist in handler.rs/processor.rs
+    // but not necessarily on the same line
+    let results = search_content(&handler, "spawn_blocking statistics", 10)
+        .await
+        .expect("Search failed");
+
+    assert_min_results(&results, 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_content_multiword_same_line_regression() {
+    let handler = setup_handler_with_fixture().await;
+
+    // Regression guard: multi-word queries that DO appear on same lines
+    // should still work
+    let results = search_content(&handler, "incremental update atomic", 10)
+        .await
+        .expect("Search failed");
+
+    assert_min_results(&results, 1);
+}
