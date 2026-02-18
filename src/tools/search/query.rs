@@ -85,21 +85,35 @@ pub fn line_match_strategy(query: &str) -> LineMatchStrategy {
         return LineMatchStrategy::Substring(trimmed.to_lowercase());
     }
 
+    let words: Vec<&str> = trimmed.split_whitespace().collect();
+
+    // Single word (possibly compound like files_by_language) → substring match
+    if words.len() == 1 {
+        return LineMatchStrategy::Substring(trimmed.to_lowercase());
+    }
+
+    // Multi-word: check for exclusion tokens
     let mut required = Vec::new();
     let mut excluded = Vec::new();
 
-    for token in trimmed.split_whitespace() {
-        if token.starts_with('-') && token.len() > 1 {
-            excluded.push(token[1..].to_lowercase());
-        } else if !token.is_empty() {
-            required.push(token.to_lowercase());
+    for word in &words {
+        if word.starts_with('-') && word.len() > 1 {
+            excluded.push(word[1..].to_lowercase());
+        } else if !word.is_empty() {
+            required.push(word.to_lowercase());
         }
     }
 
-    if required.is_empty() && excluded.is_empty() {
+    // If there are exclusions, use Tokens strategy (same-line AND with exclusions)
+    if !excluded.is_empty() {
+        return LineMatchStrategy::Tokens { required, excluded };
+    }
+
+    // Multi-word without exclusions → FileLevel (cross-line OR, Tantivy guarantees file-level AND)
+    if required.is_empty() {
         LineMatchStrategy::Substring(trimmed.to_lowercase())
     } else {
-        LineMatchStrategy::Tokens { required, excluded }
+        LineMatchStrategy::FileLevel { terms: required }
     }
 }
 
@@ -116,6 +130,11 @@ pub fn line_matches(strategy: &LineMatchStrategy, line: &str) -> bool {
                 required.is_empty() || required.iter().all(|token| line_lower.contains(token));
             let excluded_ok = excluded.iter().all(|token| !line_lower.contains(token));
             required_ok && excluded_ok
+        }
+        LineMatchStrategy::FileLevel { terms } => {
+            // Match lines containing ANY term (OR logic)
+            // Tantivy already guarantees all terms exist in the file
+            terms.iter().any(|term| line_lower.contains(term))
         }
     }
 }

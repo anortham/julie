@@ -14,4 +14,5 @@ mod tantivy_affix_tests;
 mod tantivy_variants_tests;
 mod tantivy_scoring_tests;
 mod tantivy_integration_tests;
+mod line_match_strategy_tests;
 
