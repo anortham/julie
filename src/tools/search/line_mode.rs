@@ -71,7 +71,7 @@ pub async fn line_mode_search(
         // Fetch more candidates so matching files aren't missed by the limit cap.
         base_limit.saturating_mul(100).max(500).min(1000)
     } else {
-        base_limit.saturating_mul(5)
+        base_limit.saturating_mul(20)
     };
     let filter = SearchFilter {
         language: language.clone(),
@@ -248,12 +248,24 @@ pub async fn line_mode_search(
     }
 
     // Format results (single workspace search)
-    let mut lines = vec![format!(
-        "📄 Line-level search in [{}]: '{}' (found {} lines)",
-        target_workspace_id,
-        query,
-        filtered_matches.len()
-    )];
+    let header = match &match_strategy {
+        LineMatchStrategy::FileLevel { .. } => {
+            let file_count = filtered_matches
+                .iter()
+                .map(|m| &m.file_path)
+                .collect::<std::collections::HashSet<_>>()
+                .len();
+            format!(
+                "📄 File-level search in [{}]: '{}' (found {} lines across {} files)",
+                target_workspace_id, query, filtered_matches.len(), file_count
+            )
+        }
+        _ => format!(
+            "📄 Line-level search in [{}]: '{}' (found {} lines)",
+            target_workspace_id, query, filtered_matches.len()
+        ),
+    };
+    let mut lines = vec![header];
     lines.push(String::new());
 
     for entry in &filtered_matches {
