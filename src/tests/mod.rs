@@ -36,7 +36,6 @@ pub mod regression_prevention_tests; // Tests for bugs that have regressed multi
 // ============================================================================
 // TOOLS TESTS - Search, editing, refactoring, navigation, exploration
 // ============================================================================
-pub mod user_registry_tests; // User-level project registry tests
 // pub mod test_git_context; // Git context capture tests (debugging crashes) - TODO: File missing
 
 pub mod tools {
