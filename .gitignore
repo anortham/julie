@@ -50,3 +50,4 @@ cache/
 .test_watcher/
 
 poc_output.txt
+.worktrees/
