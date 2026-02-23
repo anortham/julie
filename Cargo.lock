@@ -1393,7 +1393,6 @@ dependencies = [
  "tracing-subscriber",
  "tree-sitter",
  "uuid",
- "walkdir",
 ]
 
 [[package]]

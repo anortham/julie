@@ -179,9 +179,6 @@ pub mod string_similarity;
 /// Path conversion utilities (absolute ↔ relative Unix-style)
 pub mod paths;
 
-/// File ignore pattern utilities (.julieignore support)
-pub mod ignore;
-
 /// Shared file walker builder (wraps `ignore` crate for .gitignore + .julieignore support)
 pub mod walk;
 
