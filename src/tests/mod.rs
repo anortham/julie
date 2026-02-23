@@ -88,6 +88,8 @@ pub mod utils {
     pub mod exact_match_boost; // Exact match boost tests
 
     pub mod path_relevance; // Path relevance scoring tests
+
+    pub mod walk; // Shared walker builder tests (ignore crate integration)
 }
 
 // ============================================================================

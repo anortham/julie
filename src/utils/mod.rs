@@ -182,6 +182,9 @@ pub mod paths;
 /// File ignore pattern utilities (.julieignore support)
 pub mod ignore;
 
+/// Shared file walker builder (wraps `ignore` crate for .gitignore + .julieignore support)
+pub mod walk;
+
 /// Language detection utilities
 pub mod language {
     use std::path::Path;
