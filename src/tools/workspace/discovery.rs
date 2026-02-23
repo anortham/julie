@@ -1,6 +1,6 @@
-use crate::tools::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS};
+use crate::tools::shared::BLACKLISTED_EXTENSIONS;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
-use crate::utils::ignore::is_ignored_by_pattern;
+use crate::utils::walk::{build_walker, WalkConfig};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -11,149 +11,65 @@ use tracing::{debug, info};
 
 impl ManageWorkspaceTool {
     pub(crate) fn discover_indexable_files(&self, workspace_path: &Path) -> Result<Vec<PathBuf>> {
-        let blacklisted_dirs: HashSet<&str> = BLACKLISTED_DIRECTORIES.iter().copied().collect();
         let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
         let max_file_size = 1024 * 1024; // 1MB limit for files
-
         let julieignore_path = workspace_path.join(".julieignore");
 
-        // Check if .julieignore exists, auto-generate if not
-        let custom_ignores = if julieignore_path.exists() {
-            self.load_julieignore(workspace_path)?
-        } else {
+        if !julieignore_path.exists() {
             info!("🤖 No .julieignore found - scanning for vendor patterns...");
 
-            // Step 1: Collect ALL files first (including minified for vendor pattern detection)
-            // 🔧 BUG FIX: Use empty dir blacklist so we can detect vendor patterns in
-            // directories like target/, vendor/, node_modules/ that are normally blacklisted
+            // Phase 1: Vendor scan — gitignore ON, blacklisted dirs OFF, no julieignore
+            // Collects broadly so analyze_vendor_patterns can detect vendor directories
             let mut all_files = Vec::new();
-            self.walk_directory_recursive(
-                workspace_path,
-                &HashSet::new(), // Empty blacklist - scan everything for vendor detection
-                &blacklisted_exts,
-                max_file_size,
-                &[], // No custom ignores yet
-                &mut all_files,
-                true, // Skip minified check - need all files for vendor detection
-            )?;
-
-            info!(
-                "📊 Discovered {} files total after hardcoded filters",
-                all_files.len()
-            );
-
-            // Step 2: Analyze for vendor patterns
-            let detected_patterns = self.analyze_vendor_patterns(&all_files, workspace_path)?;
-
-            // Step 3: Generate .julieignore file if patterns detected
-            if !detected_patterns.is_empty() {
-                self.generate_julieignore_file(workspace_path, &detected_patterns)?;
-                info!(
-                    "✅ Generated .julieignore with {} patterns",
-                    detected_patterns.len()
-                );
-                detected_patterns
-            } else {
-                info!("✨ No vendor patterns detected - project looks clean!");
-                Vec::new()
-            }
-        };
-
-        if !custom_ignores.is_empty() {
-            info!(
-                "🔍 Loaded {} custom ignore patterns for file discovery",
-                custom_ignores.len()
-            );
-        }
-
-        debug!(
-            "🔍 Starting recursive file discovery from: {}",
-            workspace_path.display()
-        );
-
-        // Now do final discovery with custom ignore patterns applied
-        let mut indexable_files = Vec::new();
-        self.walk_directory_recursive(
-            workspace_path,
-            &blacklisted_dirs,
-            &blacklisted_exts,
-            max_file_size,
-            &custom_ignores,
-            &mut indexable_files,
-            false, // Filter minified files for actual indexing
-        )?;
-
-        debug!("📊 File discovery summary:");
-        debug!("  - Total indexable files: {}", indexable_files.len());
-
-        Ok(indexable_files)
-    }
-
-    /// Recursively walk directory tree, excluding blacklisted paths
-    pub(crate) fn walk_directory_recursive(
-        &self,
-        dir_path: &Path,
-        blacklisted_dirs: &HashSet<&str>,
-        blacklisted_exts: &HashSet<&str>,
-        max_file_size: u64,
-        custom_ignores: &[String],
-        indexable_files: &mut Vec<PathBuf>,
-        skip_minified_check: bool,
-    ) -> Result<()> {
-        let entries = fs::read_dir(dir_path)
-            .map_err(|e| anyhow::anyhow!("Failed to read directory {:?}: {}", dir_path, e))?;
-
-        for entry in entries {
-            let entry =
-                entry.map_err(|e| anyhow::anyhow!("Failed to read directory entry: {}", e))?;
-            let path = entry.path();
-            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-
-            // Skip hidden files/directories that start with . (except known code files)
-            if file_name.starts_with('.') && !self.is_known_dotfile(&path) {
-                continue;
-            }
-
-            // Check against custom .julieignore patterns
-            if is_ignored_by_pattern(&path, custom_ignores) {
-                info!("⏭️  Skipping custom-ignored path: {}", path.display());
-                continue;
-            }
-
-            if path.is_dir() {
-                // Check if directory should be blacklisted
-                if blacklisted_dirs.contains(file_name) {
-                    debug!("⏭️  Skipping blacklisted directory: {}", path.display());
+            for result in build_walker(workspace_path, &WalkConfig::vendor_scan()) {
+                let entry = match result {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                if !entry.file_type().map_or(false, |ft| ft.is_file()) {
                     continue;
                 }
-
-                // Recursively process subdirectory
-                self.walk_directory_recursive(
-                    &path,
-                    blacklisted_dirs,
-                    blacklisted_exts,
-                    max_file_size,
-                    custom_ignores,
-                    indexable_files,
-                    skip_minified_check,
-                )?;
-            } else if path.is_file() {
-                // Check file extension and size
-                if self.should_index_file(
-                    &path,
-                    blacklisted_exts,
-                    max_file_size,
-                    skip_minified_check,
-                )? {
-                    // 🔥 CRITICAL: Canonicalize paths to resolve symlinks (macOS /var -> /private/var)
-                    // This ensures file reads work correctly downstream
-                    let canonical_path = path.canonicalize().unwrap_or(path);
-                    indexable_files.push(canonical_path);
+                let path = entry.into_path();
+                if self.should_index_file(&path, &blacklisted_exts, max_file_size, true)? {
+                    let canonical = path.canonicalize().unwrap_or(path);
+                    all_files.push(canonical);
                 }
+            }
+
+            info!("📊 Discovered {} files total after hardcoded filters", all_files.len());
+
+            let detected_patterns = self.analyze_vendor_patterns(&all_files, workspace_path)?;
+
+            if !detected_patterns.is_empty() {
+                self.generate_julieignore_file(workspace_path, &detected_patterns)?;
+                info!("✅ Generated .julieignore with {} patterns", detected_patterns.len());
+            } else {
+                info!("✨ No vendor patterns detected - project looks clean!");
             }
         }
 
-        Ok(())
+        debug!("🔍 Starting file discovery from: {}", workspace_path.display());
+
+        // Phase 2: Final indexing — gitignore + julieignore + blacklisted dirs all ON
+        let mut indexable_files = Vec::new();
+        for result in build_walker(workspace_path, &WalkConfig::full_index()) {
+            let entry = match result {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            if !entry.file_type().map_or(false, |ft| ft.is_file()) {
+                continue;
+            }
+            let path = entry.into_path();
+            if self.should_index_file(&path, &blacklisted_exts, max_file_size, false)? {
+                let canonical = path.canonicalize().unwrap_or(path);
+                indexable_files.push(canonical);
+            }
+        }
+
+        debug!("📊 File discovery: {} indexable files found", indexable_files.len());
+
+        Ok(indexable_files)
     }
 
     /// Check if a file should be indexed based on blacklist and size limits
@@ -205,26 +121,6 @@ impl ManageWorkspaceTool {
         Ok(true)
     }
 
-    /// Check if a dotfile is a known configuration file that should be indexed
-    pub(crate) fn is_known_dotfile(&self, path: &Path) -> bool {
-        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-
-        matches!(
-            file_name,
-            ".gitignore"
-                | ".gitattributes"
-                | ".editorconfig"
-                | ".eslintrc"
-                | ".prettierrc"
-                | ".babelrc"
-                | ".tsconfig"
-                | ".jsconfig"
-                | ".cargo"
-                | ".env"
-                | ".npmrc"
-        )
-    }
-
     /// Heuristic to determine if a file without extension is likely a text file
     pub(crate) fn is_likely_text_file(&self, file_path: &Path) -> Result<bool> {
         // Read first 512 bytes to check for binary content
@@ -265,37 +161,6 @@ impl ManageWorkspaceTool {
             || file_name.ends_with(".min.css")
             || file_name.ends_with(".bundle.js") // Bundle files are generated/minified
             || file_name.ends_with(".bundle.css")
-    }
-
-    /// Load custom ignore patterns from .julieignore file in workspace root
-    pub(crate) fn load_julieignore(&self, workspace_path: &Path) -> Result<Vec<String>> {
-        let ignore_file = workspace_path.join(".julieignore");
-
-        if !ignore_file.exists() {
-            return Ok(Vec::new());
-        }
-
-        let content = fs::read_to_string(&ignore_file)
-            .map_err(|e| anyhow::anyhow!("Failed to read .julieignore: {}", e))?;
-
-        let patterns: Vec<String> = content
-            .lines()
-            .map(|line| line.trim())
-            .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .map(|line| line.to_string())
-            .collect();
-
-        if !patterns.is_empty() {
-            info!(
-                "📋 Loaded {} custom ignore patterns from .julieignore",
-                patterns.len()
-            );
-            info!("   Patterns: {:?}", patterns);
-        } else {
-            info!("⚠️  No patterns found in .julieignore (file exists but all lines filtered out)");
-        }
-
-        Ok(patterns)
     }
 
     /// Analyze files for vendor patterns and return directory paths to exclude

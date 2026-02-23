@@ -589,40 +589,68 @@ fn test_discover_indexable_files_creates_julieignore_for_blacklisted_vendor_dirs
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Tests: Dotfile Discovery — .memories exclusion
+// Tests: Dotfile Discovery — .memories is indexable (project artifact)
 // ═══════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_memories_dir_excluded_from_discovery() {
+fn test_memories_dir_included_in_discovery() {
     let tool = create_tool();
     let (temp_dir, _) = create_workspace_with_files(vec![
         "src/main.rs",
         "src/lib.rs",
-        ".memories/checkpoint_abc123.json",
-        ".memories/checkpoint_def456.json",
+        ".memories/checkpoint_abc123.md",
+        ".memories/checkpoint_def456.md",
     ]);
 
     let indexable = tool
         .discover_indexable_files(temp_dir.path())
         .expect("Failed to discover files");
 
+    // .memories files should be discovered — they're project artifacts in source control
     let memory_files: Vec<_> = indexable
         .iter()
         .filter(|p| p.to_string_lossy().contains(".memories"))
         .collect();
 
     assert!(
-        memory_files.is_empty(),
-        "Expected .memories files to be excluded from discovery, but found: {:?}",
-        memory_files
+        !memory_files.is_empty(),
+        "Expected .memories files to be included in discovery (project artifacts)"
     );
 
-    // Verify actual source files ARE discovered
+    // Verify actual source files ARE also discovered
     let rs_files: Vec<_> = indexable
         .iter()
         .filter(|p| p.extension().map_or(false, |e| e == "rs"))
         .collect();
     assert_eq!(rs_files.len(), 2, "Should discover both .rs source files");
+}
+
+#[test]
+fn test_discover_indexable_files_respects_gitignore() {
+    let tool = create_tool();
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let root = temp_dir.path();
+    // Need .git dir for gitignore to be recognized
+    std::fs::create_dir_all(root.join(".git")).unwrap();
+    std::fs::write(root.join(".gitignore"), "generated/\n").unwrap();
+    std::fs::create_dir_all(root.join("generated")).unwrap();
+    std::fs::write(root.join("generated/api.rs"), "// generated").unwrap();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(root.join("src/main.rs"), "fn main() {}").unwrap();
+
+    let files = tool.discover_indexable_files(root).unwrap();
+    let paths: Vec<String> = files
+        .iter()
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .collect();
+    assert!(
+        paths.iter().any(|p| p.contains("main.rs")),
+        "should include src/main.rs"
+    );
+    assert!(
+        !paths.iter().any(|p| p.contains("generated")),
+        "should exclude gitignored generated/"
+    );
 }
 
 #[test]
@@ -634,23 +662,3 @@ fn test_claude_dir_in_blacklist() {
     );
 }
 
-#[test]
-fn test_is_known_dotfile_accepts_config_files_but_not_memories() {
-    let tool = create_tool();
-
-    // These should be recognized as known dotfiles
-    assert!(tool.is_known_dotfile(std::path::Path::new(".gitignore")));
-    assert!(tool.is_known_dotfile(std::path::Path::new(".editorconfig")));
-    assert!(tool.is_known_dotfile(std::path::Path::new(".eslintrc")));
-    assert!(tool.is_known_dotfile(std::path::Path::new(".npmrc")));
-
-    // .memories should NOT be a known dotfile (user data, not config)
-    assert!(
-        !tool.is_known_dotfile(std::path::Path::new(".memories")),
-        ".memories should not be whitelisted as a known dotfile"
-    );
-
-    // Random dotfiles should not be known
-    assert!(!tool.is_known_dotfile(std::path::Path::new(".random")));
-    assert!(!tool.is_known_dotfile(std::path::Path::new(".secret")));
-}
