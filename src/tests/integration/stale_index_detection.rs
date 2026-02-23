@@ -209,6 +209,31 @@ fn test_scan_workspace_files_respects_julieignore() -> Result<()> {
     Ok(())
 }
 
+/// Test: scan_workspace_files respects .gitignore
+/// Given: Workspace with .git dir and .gitignore
+/// When: scan_workspace_files() is called
+/// Expected: Files matching .gitignore are excluded
+#[test]
+fn test_scan_workspace_files_respects_gitignore() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let root = temp_dir.path();
+    fs::create_dir_all(root.join(".git"))?;
+    fs::write(root.join(".gitignore"), "generated/\n")?;
+    fs::create_dir_all(root.join("generated"))?;
+    fs::write(root.join("generated/api.rs"), "// auto-generated")?;
+    fs::create_dir_all(root.join("src"))?;
+    fs::write(root.join("src/main.rs"), "fn main() {}")?;
+
+    let files = crate::startup::scan_workspace_files(root)?;
+    assert!(files.contains("src/main.rs"), "should include src/main.rs");
+    assert!(
+        !files.iter().any(|f| f.contains("generated")),
+        "should exclude gitignored dir"
+    );
+
+    Ok(())
+}
+
 /// Test 7: scan_workspace_files returns Unix-style paths (Windows bug fix)
 /// Given: Files in nested directories
 /// When: scan_workspace_files() is called

@@ -148,39 +148,25 @@ fn get_database_mtime(workspace_root: &Path, workspace_id: &str) -> Result<Syste
 ///
 /// Scans all supported code files and returns the newest mtime found
 fn get_max_file_mtime_in_workspace(workspace_root: &Path) -> Result<SystemTime> {
+    use crate::utils::walk::{build_walker, WalkConfig};
+
     let mut max_mtime = SystemTime::UNIX_EPOCH;
 
-    // Walk the workspace directory
-    // IMPORTANT: Don't filter the workspace root itself, even if it's hidden
-    let workspace_root_canonical = workspace_root.canonicalize()?;
-    for entry in walkdir::WalkDir::new(workspace_root)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|e| {
-            let path_canonical = e.path().canonicalize().ok();
-            // Don't filter the workspace root
-            if path_canonical.as_ref() == Some(&workspace_root_canonical) {
-                return true;
-            }
-            // Otherwise apply normal filtering
-            !is_ignored_path(e.path())
-        })
-    {
-        let entry = entry?;
-        let path = entry.path();
+    for result in build_walker(workspace_root, &WalkConfig::stale_scan()) {
+        let entry = match result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
 
-        // Only check files (not directories)
-        if !path.is_file() {
+        if !entry.file_type().map_or(false, |ft| ft.is_file()) {
             continue;
         }
 
-        // Only check supported code files
-        if !is_code_file(path) {
+        if !is_code_file(entry.path()) {
             continue;
         }
 
-        // Get file mtime
-        if let Ok(metadata) = std::fs::metadata(path) {
+        if let Ok(metadata) = std::fs::metadata(entry.path()) {
             if let Ok(mtime) = metadata.modified() {
                 if mtime > max_mtime {
                     max_mtime = mtime;
@@ -196,41 +182,21 @@ fn get_max_file_mtime_in_workspace(workspace_root: &Path) -> Result<SystemTime> 
 ///
 /// This is used to detect new files that aren't in the database yet
 pub(crate) fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<String>> {
+    use crate::utils::walk::{build_walker, WalkConfig};
+
     let mut files = HashSet::new();
 
-    // Load custom ignore patterns from .julieignore if present
-    let custom_ignores = crate::utils::ignore::load_julieignore(workspace_root)?;
+    for result in build_walker(workspace_root, &WalkConfig::stale_scan()) {
+        let entry = match result {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
 
-    // IMPORTANT: Don't filter the workspace root itself, even if it's hidden
-    let workspace_root_canonical = workspace_root.canonicalize()?;
-    for entry in walkdir::WalkDir::new(workspace_root)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|e| {
-            let path_canonical = e.path().canonicalize().ok();
-            // Don't filter the workspace root
-            if path_canonical.as_ref() == Some(&workspace_root_canonical) {
-                return true;
-            }
-            // Otherwise apply normal filtering
-            !is_ignored_path(e.path())
-        })
-    {
-        let entry = entry?;
-        let path = entry.path();
-
-        // Only include files (not directories)
-        if !path.is_file() {
+        if !entry.file_type().map_or(false, |ft| ft.is_file()) {
             continue;
         }
 
-        // Check against custom .julieignore patterns
-        if crate::utils::ignore::is_ignored_by_pattern(path, &custom_ignores) {
-            continue;
-        }
-
-        // Only include supported code files
-        if !is_code_file(path) {
+        if !is_code_file(entry.path()) {
             continue;
         }
 
@@ -238,55 +204,14 @@ pub(crate) fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<Stri
         // CRITICAL: Use to_relative_unix_style() to ensure cross-platform compatibility
         // On Windows, strip_prefix() returns paths with backslashes (src\file.rs)
         // But database stores paths with forward slashes (src/file.rs)
-        // This mismatch breaks staleness detection on Windows
-        if let Ok(relative_path) = crate::utils::paths::to_relative_unix_style(path, workspace_root)
+        if let Ok(relative_path) =
+            crate::utils::paths::to_relative_unix_style(entry.path(), workspace_root)
         {
             files.insert(relative_path);
         }
     }
 
     Ok(files)
-}
-
-/// Check if a path should be ignored during scanning
-///
-/// Ignores common directories like node_modules, .git, target, etc.
-fn is_ignored_path(path: &Path) -> bool {
-    let path_str = path.to_string_lossy();
-
-    // Ignore hidden directories (starting with .)
-    if let Some(file_name) = path.file_name() {
-        let name = file_name.to_string_lossy();
-        if name.starts_with('.') && path.is_dir() {
-            return true;
-        }
-    }
-
-    // Ignore common build/dependency directories
-    let ignored_dirs = [
-        "node_modules",
-        "target",
-        "dist",
-        "build",
-        "out",
-        ".git",
-        ".svn",
-        ".hg",
-        "__pycache__",
-        ".pytest_cache",
-        ".mypy_cache",
-        "vendor",
-        "deps",
-        "_build",
-    ];
-
-    for ignored in &ignored_dirs {
-        if path_str.contains(&format!("/{}/", ignored)) || path_str.ends_with(ignored) {
-            return true;
-        }
-    }
-
-    false
 }
 
 /// Check if a file is a supported code file based on extension
