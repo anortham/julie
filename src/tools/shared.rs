@@ -133,6 +133,7 @@ pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
     ".julie",
     ".coa",
     ".codenav",
+    ".claude",
     // Other common exclusions
     ".sass-cache",
     ".nuxt",

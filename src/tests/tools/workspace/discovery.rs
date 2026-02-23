@@ -626,6 +626,15 @@ fn test_memories_dir_excluded_from_discovery() {
 }
 
 #[test]
+fn test_claude_dir_in_blacklist() {
+    use crate::tools::shared::BLACKLISTED_DIRECTORIES;
+    assert!(
+        BLACKLISTED_DIRECTORIES.contains(&".claude"),
+        ".claude should be blacklisted"
+    );
+}
+
+#[test]
 fn test_is_known_dotfile_accepts_config_files_but_not_memories() {
     let tool = create_tool();
 
