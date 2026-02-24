@@ -52,7 +52,8 @@ mod tests {
         // Search "user profile" should find both TS camelCase and Rust snake_case
         let results = index
             .search_symbols("user profile", &SearchFilter::default(), 10)
-            .unwrap();
+            .unwrap()
+            .results;
         assert_eq!(
             results.len(),
             2,
@@ -98,7 +99,7 @@ mod tests {
             language: Some("rust".into()),
             ..Default::default()
         };
-        let results = index.search_symbols("user", &filter, 10).unwrap();
+        let results = index.search_symbols("user", &filter, 10).unwrap().results;
         assert_eq!(results.len(), 1, "Language filter should narrow to Rust only");
         assert_eq!(results[0].language, "rust");
     }
@@ -140,7 +141,8 @@ mod tests {
 
         let results = index
             .search_symbols("user", &SearchFilter::default(), 10)
-            .unwrap();
+            .unwrap()
+            .results;
         assert!(results.len() >= 2, "Should find both results");
         assert_eq!(
             results[0].name, "getUser",
@@ -185,7 +187,8 @@ mod tests {
 
         let results = index
             .search_symbols("process_data", &SearchFilter::default(), 10)
-            .unwrap();
+            .unwrap()
+            .results;
         assert!(results.len() >= 2, "Should find both results");
         assert!(
             results[0].signature.contains("pub fn"),
@@ -220,7 +223,8 @@ mod tests {
         // Search just "empty" — should find is_empty via affix stripping
         let results = index
             .search_symbols("empty", &SearchFilter::default(), 10)
-            .unwrap();
+            .unwrap()
+            .results;
         assert!(
             !results.is_empty(),
             "Searching 'empty' should find 'is_empty' via affix stripping"
@@ -251,7 +255,8 @@ mod tests {
         // Search "PaymentService" without I prefix — should find IPaymentService
         let results = index
             .search_symbols("PaymentService", &SearchFilter::default(), 10)
-            .unwrap();
+            .unwrap()
+            .results;
         assert!(
             !results.is_empty(),
             "Searching 'PaymentService' should find 'IPaymentService' via prefix stripping"
@@ -316,7 +321,8 @@ mod tests {
         // Cross-convention matching still works after backfill
         let results = index
             .search_symbols("user profile", &SearchFilter::default(), 10)
-            .unwrap();
+            .unwrap()
+            .results;
         assert!(!results.is_empty(), "Should find getUserProfile after backfill");
 
         // Language filter works after backfill
@@ -324,14 +330,15 @@ mod tests {
             language: Some("rust".into()),
             ..Default::default()
         };
-        let results = index.search_symbols("payment", &filter, 10).unwrap();
+        let results = index.search_symbols("payment", &filter, 10).unwrap().results;
         assert_eq!(results.len(), 1, "Language filter should work after backfill");
         assert_eq!(results[0].name, "process_payment");
 
         // Variant stripping works after backfill
         let results = index
             .search_symbols("PaymentGateway", &SearchFilter::default(), 10)
-            .unwrap();
+            .unwrap()
+            .results;
         assert!(!results.is_empty(), "Should find IPaymentGateway via prefix stripping after backfill");
     }
 

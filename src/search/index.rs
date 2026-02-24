@@ -94,6 +94,13 @@ pub struct SymbolSearchResult {
     pub score: f32,
 }
 
+/// Result from search_symbols, includes metadata about the search.
+pub struct SymbolSearchResults {
+    pub results: Vec<SymbolSearchResult>,
+    /// True if AND-per-term returned zero results and OR fallback was used
+    pub relaxed: bool,
+}
+
 /// A file content search result with relevance score.
 pub struct ContentSearchResult {
     pub file_path: String,
@@ -248,7 +255,7 @@ impl SearchIndex {
         query_str: &str,
         filter: &SearchFilter,
         limit: usize,
-    ) -> Result<Vec<SymbolSearchResult>> {
+    ) -> Result<SymbolSearchResults> {
         let f = &self.schema_fields;
 
         // Tokenize the query using the same code tokenizer, then remove compound
@@ -257,7 +264,10 @@ impl SearchIndex {
         // produced when indexing longer names (e.g., "search_term_one").
         let terms = Self::filter_compound_tokens(self.tokenize_query(query_str));
         if terms.is_empty() {
-            return Ok(Vec::new());
+            return Ok(SymbolSearchResults {
+                results: Vec::new(),
+                relaxed: false,
+            });
         }
 
         let query = build_symbol_query(
@@ -278,7 +288,7 @@ impl SearchIndex {
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
 
         // Auto-fallback: if AND returned nothing and we have multiple terms, try OR
-        let top_docs = if top_docs.is_empty() && terms.len() > 1 {
+        let (top_docs, relaxed) = if top_docs.is_empty() && terms.len() > 1 {
             let or_query = build_symbol_query(
                 &terms,
                 f.name,
@@ -292,9 +302,9 @@ impl SearchIndex {
                 filter.kind.as_deref(),
                 false, // OR mode
             );
-            searcher.search(&or_query, &TopDocs::with_limit(limit))?
+            (searcher.search(&or_query, &TopDocs::with_limit(limit))?, true)
         } else {
-            top_docs
+            (top_docs, false)
         };
 
         let mut results = Vec::with_capacity(top_docs.len());
@@ -318,7 +328,7 @@ impl SearchIndex {
             apply_important_patterns_boost(&mut results, configs);
         }
 
-        Ok(results)
+        Ok(SymbolSearchResults { results, relaxed })
     }
 
     /// Search for symbols using OR-mode (relaxed) matching.
@@ -331,12 +341,15 @@ impl SearchIndex {
         query_str: &str,
         filter: &SearchFilter,
         limit: usize,
-    ) -> Result<Vec<SymbolSearchResult>> {
+    ) -> Result<SymbolSearchResults> {
         let f = &self.schema_fields;
 
         let terms = Self::filter_compound_tokens(self.tokenize_query(query_str));
         if terms.is_empty() {
-            return Ok(Vec::new());
+            return Ok(SymbolSearchResults {
+                results: Vec::new(),
+                relaxed: true,
+            });
         }
 
         let query = build_symbol_query(
@@ -377,7 +390,10 @@ impl SearchIndex {
             apply_important_patterns_boost(&mut results, configs);
         }
 
-        Ok(results)
+        Ok(SymbolSearchResults {
+            results,
+            relaxed: true,
+        })
     }
 
     /// Search for file content matching the query.

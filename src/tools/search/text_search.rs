@@ -25,6 +25,8 @@ use super::query::matches_glob_pattern;
 /// candidate file is verified against actual content from SQLite to eliminate
 /// false positives caused by CodeTokenizer over-splitting (e.g. "Blake3 hash"
 /// tokenizes to ["blake","3","hash"], matching files with unrelated "3" and "hash").
+/// Returns `(symbols, relaxed)` where `relaxed` is true when the symbol search
+/// fell back from AND to OR matching (partial matches only).
 pub async fn text_search_impl(
     query: &str,
     language: &Option<String>,
@@ -34,7 +36,7 @@ pub async fn text_search_impl(
     search_target: &str,
     _context_lines: Option<u32>,
     handler: &JulieServerHandler,
-) -> Result<Vec<Symbol>> {
+) -> Result<(Vec<Symbol>, bool)> {
     // Get the primary workspace (always needed for path resolution)
     let workspace = handler
         .get_workspace()
@@ -84,10 +86,10 @@ pub async fn text_search_impl(
         let tantivy_path = workspace.workspace_tantivy_path(&ref_id);
         let ref_db_path = workspace.workspace_db_path(&ref_id);
 
-        let results = tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
+        let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool)> {
             if !tantivy_path.join("meta.json").exists() {
                 debug!("No Tantivy index for reference workspace, returning empty");
-                return Ok(Vec::new());
+                return Ok((Vec::new(), false));
             }
 
             let index = SearchIndex::open(&tantivy_path)?;
@@ -99,18 +101,18 @@ pub async fn text_search_impl(
                 } else {
                     limit_usize
                 };
-                let search_results =
-                    index.search_symbols(&query_clone, &filter, tantivy_limit)?;
+                let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
+                let relaxed = search.relaxed;
 
                 // Apply file_pattern filter BEFORE symbol conversion + enrichment
                 let filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
-                    search_results
+                    search.results
                         .into_iter()
                         .filter(|r| matches_glob_pattern(&r.file_path, pattern))
                         .take(limit_usize)
                         .collect()
                 } else {
-                    search_results
+                    search.results
                 };
 
                 let mut symbols: Vec<Symbol> = filtered_results
@@ -125,7 +127,7 @@ pub async fn text_search_impl(
                     }
                 }
 
-                Ok(symbols)
+                Ok((symbols, relaxed))
             } else {
                 // Content search on reference workspace
                 let fetch_limit = if filter.file_pattern.is_some() {
@@ -180,10 +182,12 @@ pub async fn text_search_impl(
                     }
                 }
 
-                Ok(verified_symbols)
+                Ok((verified_symbols, false))
             }
         })
         .await??;
+
+        let (results, relaxed) = results;
 
         // Defense-in-depth: post-filter by file_pattern
         // (primary filtering now happens inside the collection loops above)
@@ -201,7 +205,7 @@ pub async fn text_search_impl(
             filtered_results.len()
         );
 
-        return Ok(filtered_results);
+        return Ok((filtered_results, relaxed));
     }
 
     // Primary workspace: use shared search index
@@ -220,7 +224,7 @@ pub async fn text_search_impl(
     let db_clone = workspace.db.clone();
 
     // Perform the search in a blocking task since Tantivy uses std::sync::Mutex
-    let results = tokio::task::spawn_blocking(move || -> Result<Vec<Symbol>> {
+    let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool)> {
         let index = search_index_clone.lock().unwrap();
 
         // Route based on search_target
@@ -234,17 +238,18 @@ pub async fn text_search_impl(
             } else {
                 limit_usize
             };
-            let search_results = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
+            let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
+            let relaxed = search.relaxed;
 
             // Apply file_pattern filter BEFORE symbol conversion + enrichment
             let filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
-                search_results
+                search.results
                     .into_iter()
                     .filter(|r| matches_glob_pattern(&r.file_path, pattern))
                     .take(limit_usize)
                     .collect()
             } else {
-                search_results
+                search.results
             };
 
             let mut symbols: Vec<Symbol> = filtered_results
@@ -264,7 +269,7 @@ pub async fn text_search_impl(
                 enrich_symbols_from_db(&mut symbols, &db_lock);
             }
 
-            Ok(symbols)
+            Ok((symbols, relaxed))
         } else {
             // "content" or any other value: search file content
             debug!("🔍 Searching content with Tantivy");
@@ -358,10 +363,12 @@ pub async fn text_search_impl(
                 }
             }
 
-            Ok(verified_symbols)
+            Ok((verified_symbols, false))
         }
     })
     .await??;
+
+    let (results, relaxed) = results;
 
     // Defense-in-depth: post-filter by file_pattern
     // (primary filtering now happens inside the collection loops above)
@@ -379,7 +386,7 @@ pub async fn text_search_impl(
         filtered_results.len()
     );
 
-    Ok(filtered_results)
+    Ok((filtered_results, relaxed))
 }
 
 /// Convert a Tantivy SymbolSearchResult into an extractors Symbol.

@@ -2,7 +2,7 @@
 
 use tempfile::TempDir;
 
-use crate::search::index::{FileDocument, SearchFilter, SearchIndex, SymbolDocument};
+use crate::search::index::{FileDocument, SearchFilter, SearchIndex, SymbolDocument, SymbolSearchResults};
 use crate::search::SearchError;
 
 #[test]
@@ -52,7 +52,8 @@ fn test_add_symbol_and_search() {
 
     let results = index
         .search_symbols("user", &SearchFilter::default(), 10)
-        .unwrap();
+        .unwrap()
+        .results;
     assert!(
         !results.is_empty(),
         "Should find UserService when searching 'user'"
@@ -120,7 +121,8 @@ fn test_name_match_ranks_higher_than_body() {
 
     let results = index
         .search_symbols("process", &SearchFilter::default(), 10)
-        .unwrap();
+        .unwrap()
+        .results;
     assert_eq!(results.len(), 2);
     assert_eq!(
         results[0].name, "process_data",
@@ -165,7 +167,7 @@ fn test_language_filter() {
         language: Some("rust".into()),
         ..Default::default()
     };
-    let results = index.search_symbols("process", &filter, 10).unwrap();
+    let results = index.search_symbols("process", &filter, 10).unwrap().results;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].language, "rust");
 }
@@ -244,7 +246,8 @@ fn test_camel_case_cross_convention_search() {
 
     let results = index
         .search_symbols("user", &SearchFilter::default(), 10)
-        .unwrap();
+        .unwrap()
+        .results;
     assert_eq!(
         results.len(),
         2,
@@ -370,7 +373,8 @@ fn test_multi_token_search_requires_all_tokens() {
     // Search for the compound name
     let results = index
         .search_symbols("select_best_candidate", &SearchFilter::default(), 10)
-        .unwrap();
+        .unwrap()
+        .results;
 
     // CRITICAL: Should only find the actual symbol, not false positives
     assert!(
@@ -583,14 +587,18 @@ fn test_or_fallback_returns_partial_matches() {
         .search_symbols("ranking score boost centrality", &SearchFilter::default(), 10)
         .unwrap();
     assert!(
-        !auto_results.is_empty(),
+        !auto_results.results.is_empty(),
         "search_symbols should auto-fallback to OR and return partial matches"
     );
     // Both 2-term matches should appear before the 1-term match
     assert!(
-        auto_results.len() >= 2,
+        auto_results.results.len() >= 2,
         "Should find at least the two 2-term matches, got {}",
-        auto_results.len()
+        auto_results.results.len()
+    );
+    assert!(
+        auto_results.relaxed,
+        "relaxed should be true when OR fallback was used"
     );
 
     // Explicit OR mode via search_symbols_relaxed should return the same results
@@ -602,13 +610,17 @@ fn test_or_fallback_returns_partial_matches() {
         )
         .unwrap();
     assert!(
-        !or_results.is_empty(),
+        !or_results.results.is_empty(),
         "OR mode should return partial matches"
     );
     assert_eq!(
-        auto_results.len(),
-        or_results.len(),
+        auto_results.results.len(),
+        or_results.results.len(),
         "Auto-fallback and explicit OR should return same number of results"
+    );
+    assert!(
+        or_results.relaxed,
+        "search_symbols_relaxed should always return relaxed = true"
     );
 }
 
@@ -668,10 +680,14 @@ fn test_search_symbols_auto_fallback_to_or() {
         .unwrap();
 
     assert!(
-        !results.is_empty(),
+        !results.results.is_empty(),
         "search_symbols should auto-fallback to OR when AND returns nothing"
     );
-    assert_eq!(results[0].name, "apply_ranking_score");
+    assert_eq!(results.results[0].name, "apply_ranking_score");
+    assert!(
+        results.relaxed,
+        "relaxed should be true when OR fallback was used"
+    );
 }
 
 #[test]
@@ -700,5 +716,106 @@ fn test_search_symbols_prefers_and_when_available() {
     let results = index
         .search_symbols("UserService", &SearchFilter::default(), 10)
         .unwrap();
-    assert_eq!(results[0].name, "UserService");
+    assert_eq!(results.results[0].name, "UserService");
+}
+
+#[test]
+fn test_search_symbols_relaxed_flag_false_when_and_matches() {
+    // When AND mode finds results, relaxed should be false
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    index
+        .add_symbol(&SymbolDocument {
+            id: "1".into(),
+            name: "UserService".into(),
+            signature: "pub struct UserService".into(),
+            doc_comment: "".into(),
+            code_body: "pub struct UserService {}".into(),
+            file_path: "src/user.rs".into(),
+            kind: "class".into(),
+            language: "rust".into(),
+            start_line: 1,
+        })
+        .unwrap();
+    index.commit().unwrap();
+
+    let result: SymbolSearchResults = index
+        .search_symbols("UserService", &SearchFilter::default(), 10)
+        .unwrap();
+
+    assert!(!result.results.is_empty(), "Should find UserService");
+    assert!(
+        !result.relaxed,
+        "relaxed should be false when AND mode found results"
+    );
+}
+
+#[test]
+fn test_search_symbols_relaxed_flag_true_on_or_fallback() {
+    // When AND mode returns nothing and OR fallback kicks in, relaxed should be true
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    index
+        .add_symbol(&SymbolDocument {
+            id: "1".into(),
+            name: "apply_ranking_score".into(),
+            signature: "pub fn apply_ranking_score()".into(),
+            doc_comment: "Ranking scores".into(),
+            code_body: "fn apply_ranking_score() {}".into(),
+            file_path: "src/scoring.rs".into(),
+            kind: "function".into(),
+            language: "rust".into(),
+            start_line: 10,
+        })
+        .unwrap();
+    index.commit().unwrap();
+
+    // "ranking boost centrality" — symbol only matches "ranking", not all three terms.
+    // AND fails, OR fallback kicks in → relaxed should be true
+    let result: SymbolSearchResults = index
+        .search_symbols("ranking boost centrality", &SearchFilter::default(), 10)
+        .unwrap();
+
+    assert!(
+        !result.results.is_empty(),
+        "Should find partial matches via OR fallback"
+    );
+    assert!(
+        result.relaxed,
+        "relaxed should be true when OR fallback was used"
+    );
+}
+
+#[test]
+fn test_search_symbols_relaxed_always_true() {
+    // search_symbols_relaxed should always return relaxed = true
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    index
+        .add_symbol(&SymbolDocument {
+            id: "1".into(),
+            name: "UserService".into(),
+            signature: "pub struct UserService".into(),
+            doc_comment: "".into(),
+            code_body: "pub struct UserService {}".into(),
+            file_path: "src/user.rs".into(),
+            kind: "class".into(),
+            language: "rust".into(),
+            start_line: 1,
+        })
+        .unwrap();
+    index.commit().unwrap();
+
+    let result: SymbolSearchResults = index
+        .search_symbols_relaxed("UserService", &SearchFilter::default(), 10)
+        .unwrap();
+
+    assert!(!result.results.is_empty(), "Should find UserService");
+    assert!(
+        result.relaxed,
+        "search_symbols_relaxed should always return relaxed = true"
+    );
 }

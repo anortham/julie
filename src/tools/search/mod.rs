@@ -129,7 +129,7 @@ impl FastSearchTool {
 
         // Definition search → Tantivy symbol mode
         let workspace_ids = self.resolve_workspace_filter(handler).await?;
-        let symbols = text_search::text_search_impl(
+        let (symbols, relaxed) = text_search::text_search_impl(
             &self.query,
             &self.language,
             &self.file_pattern,
@@ -166,10 +166,22 @@ impl FastSearchTool {
 
         // Definition search: use promoted formatting (exact matches get "Definition found:" header)
         let lean_output = formatting::format_definition_search_results(&self.query, &optimized);
+
+        // Prepend relaxed-match indicator when OR fallback was used
+        let lean_output = if relaxed {
+            format!(
+                "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
+                lean_output
+            )
+        } else {
+            lean_output
+        };
+
             debug!(
-                "✅ Returning lean search results ({} chars, {} results)",
+                "✅ Returning lean search results ({} chars, {} results, relaxed: {})",
                 lean_output.len(),
-                optimized.results.len()
+                optimized.results.len(),
+                relaxed,
             );
             Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
     }

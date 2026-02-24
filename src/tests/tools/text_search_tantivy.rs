@@ -49,7 +49,7 @@ pub fn get_user(id: u32) -> User {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Now call text_search_impl directly
-    let results = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
         "get_user",
         &None,
         &None,
@@ -116,7 +116,7 @@ export function process_data(data: string): string {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Search for Rust only
-    let results = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
         "process_data",
         &Some("rust".to_string()),
         &None,
@@ -187,7 +187,7 @@ pub fn helper() {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Search for files matching "src/**" pattern
-    let results = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
         "helper",
         &None,
         &Some("src/**".to_string()),
@@ -245,7 +245,7 @@ pub fn get_user(id: u32) -> User {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Search for something that doesn't exist
-    let results = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
         "nonexistent_function_xyz_abc_def",
         &None,
         &None,
@@ -303,7 +303,7 @@ pub fn search_term_six() { }
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Search with limit of 2
-    let results = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
         "search_term",
         &None,
         &None,
@@ -365,7 +365,7 @@ pub fn example() {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Search for content
-    let results = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
         "unique content",
         &None,
         &None,

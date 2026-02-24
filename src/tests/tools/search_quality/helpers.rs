@@ -14,7 +14,7 @@ pub async fn search_content(
     query: &str,
     limit: u32,
 ) -> Result<Vec<Symbol>> {
-    crate::tools::search::text_search::text_search_impl(
+    let (symbols, _relaxed) = crate::tools::search::text_search::text_search_impl(
         query,
         &None,
         &None,
@@ -24,7 +24,8 @@ pub async fn search_content(
         None,
         handler,
     )
-    .await
+    .await?;
+    Ok(symbols)
 }
 
 /// Search Julie's codebase (symbol definitions search)
@@ -33,7 +34,7 @@ pub async fn search_definitions(
     query: &str,
     limit: u32,
 ) -> Result<Vec<Symbol>> {
-    crate::tools::search::text_search::text_search_impl(
+    let (symbols, _relaxed) = crate::tools::search::text_search::text_search_impl(
         query,
         &None,
         &None,
@@ -43,7 +44,8 @@ pub async fn search_definitions(
         None,
         handler,
     )
-    .await
+    .await?;
+    Ok(symbols)
 }
 
 /// Assert that results contain a file path matching the pattern
