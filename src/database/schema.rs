@@ -124,7 +124,10 @@ impl SymbolDatabase {
 
                 -- Content type to distinguish documentation from code
                 -- NULL = code (default), 'documentation' = markdown docs
-                content_type TEXT DEFAULT NULL
+                content_type TEXT DEFAULT NULL,
+
+                -- Graph centrality: weighted incoming reference count
+                reference_score REAL NOT NULL DEFAULT 0.0
             )",
             [],
         )?;

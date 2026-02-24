@@ -1440,3 +1440,291 @@ fn test_get_symbols_by_ids_preserves_order() {
     println!("✅ get_symbols_by_ids() preserves input order correctly");
 }
 
+// ============================================================
+// MIGRATION 009 & REFERENCE SCORE TESTS
+// ============================================================
+
+/// Task 1: Verify migration 009 adds reference_score column with DEFAULT 0.0
+#[test]
+fn test_migration_009_reference_score_column_exists() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Verify reference_score column exists in symbols table
+    let has_col = db.has_column("symbols", "reference_score").unwrap();
+    assert!(
+        has_col,
+        "symbols table should have reference_score column after migration 009"
+    );
+}
+
+/// Task 1: Verify reference_score defaults to 0.0 for newly inserted symbols
+#[test]
+fn test_reference_score_defaults_to_zero() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Insert a file (foreign key requirement)
+    db.store_file_info(&FileInfo {
+        path: "test.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "abc123".to_string(),
+        size: 100,
+        last_modified: 1234567890,
+        last_indexed: 0,
+        symbol_count: 1,
+        content: None,
+    })
+    .unwrap();
+
+    // Insert a symbol via raw SQL (to avoid any future default-setting logic)
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('sym1', 'test_fn', 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100)",
+            [],
+        )
+        .unwrap();
+
+    // Verify reference_score defaults to 0.0
+    let score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'sym1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert!(
+        (score - 0.0).abs() < f64::EPSILON,
+        "reference_score should default to 0.0, got {}",
+        score
+    );
+}
+
+/// Task 2: Verify compute_reference_scores applies correct weights
+#[test]
+fn test_compute_reference_scores_weighted() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Insert a file
+    db.store_file_info(&FileInfo {
+        path: "test.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "abc123".to_string(),
+        size: 100,
+        last_modified: 1234567890,
+        last_indexed: 0,
+        symbol_count: 4,
+        content: None,
+    })
+    .unwrap();
+
+    // Insert symbols: target + 3 sources
+    for (id, name) in [
+        ("target", "TargetFn"),
+        ("caller1", "Caller1"),
+        ("caller2", "Caller2"),
+        ("caller3", "Caller3"),
+    ] {
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+                 VALUES (?1, ?2, 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100)",
+                rusqlite::params![id, name],
+            )
+            .unwrap();
+    }
+
+    // Insert relationships TO target with different kinds:
+    // caller1 --calls--> target (weight 3)
+    // caller2 --imports--> target (weight 2)
+    // caller3 --uses--> target (weight 1)
+    for (rel_id, from_id, kind) in [
+        ("r1", "caller1", "calls"),
+        ("r2", "caller2", "imports"),
+        ("r3", "caller3", "uses"),
+    ] {
+        db.conn
+            .execute(
+                "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+                 VALUES (?1, ?2, 'target', ?3)",
+                rusqlite::params![rel_id, from_id, kind],
+            )
+            .unwrap();
+    }
+
+    // Compute scores
+    db.compute_reference_scores().unwrap();
+
+    // Verify target score = 3 + 2 + 1 = 6.0
+    let target_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'target'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        (target_score - 6.0).abs() < f64::EPSILON,
+        "target reference_score should be 6.0 (calls=3 + imports=2 + uses=1), got {}",
+        target_score
+    );
+
+    // Verify callers have score 0.0 (no incoming refs)
+    for caller_id in ["caller1", "caller2", "caller3"] {
+        let score: f64 = db
+            .conn
+            .query_row(
+                "SELECT reference_score FROM symbols WHERE id = ?1",
+                rusqlite::params![caller_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            (score - 0.0).abs() < f64::EPSILON,
+            "{} should have reference_score 0.0 (no incoming refs), got {}",
+            caller_id,
+            score
+        );
+    }
+}
+
+/// Task 2: Verify self-references (recursion) are excluded from scoring
+#[test]
+fn test_compute_reference_scores_excludes_self_refs() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Insert a file
+    db.store_file_info(&FileInfo {
+        path: "test.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "abc123".to_string(),
+        size: 100,
+        last_modified: 1234567890,
+        last_indexed: 0,
+        symbol_count: 1,
+        content: None,
+    })
+    .unwrap();
+
+    // Insert a single symbol
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('recursive_fn', 'factorial', 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100)",
+            [],
+        )
+        .unwrap();
+
+    // Insert self-referencing relationship (recursion)
+    db.conn
+        .execute(
+            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+             VALUES ('r_self', 'recursive_fn', 'recursive_fn', 'calls')",
+            [],
+        )
+        .unwrap();
+
+    // Compute scores
+    db.compute_reference_scores().unwrap();
+
+    // Self-reference should be excluded, score should be 0.0
+    let score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'recursive_fn'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        (score - 0.0).abs() < f64::EPSILON,
+        "Self-referencing symbol should have reference_score 0.0, got {}",
+        score
+    );
+}
+
+/// Task 2: Verify symbols with only outgoing refs have score 0.0
+#[test]
+fn test_compute_reference_scores_zero_for_no_incoming() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Insert a file
+    db.store_file_info(&FileInfo {
+        path: "test.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "abc123".to_string(),
+        size: 100,
+        last_modified: 1234567890,
+        last_indexed: 0,
+        symbol_count: 2,
+        content: None,
+    })
+    .unwrap();
+
+    // Insert two symbols
+    for (id, name) in [("sender", "send_data"), ("receiver", "receive_data")] {
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+                 VALUES (?1, ?2, 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100)",
+                rusqlite::params![id, name],
+            )
+            .unwrap();
+    }
+
+    // sender --calls--> receiver (sender has outgoing, no incoming)
+    db.conn
+        .execute(
+            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+             VALUES ('r1', 'sender', 'receiver', 'calls')",
+            [],
+        )
+        .unwrap();
+
+    // Compute scores
+    db.compute_reference_scores().unwrap();
+
+    // sender has outgoing only, no incoming => score 0.0
+    let sender_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'sender'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        (sender_score - 0.0).abs() < f64::EPSILON,
+        "Symbol with only outgoing refs should have reference_score 0.0, got {}",
+        sender_score
+    );
+
+    // receiver has incoming calls => score 3.0
+    let receiver_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'receiver'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        (receiver_score - 3.0).abs() < f64::EPSILON,
+        "receiver should have reference_score 3.0 (one call), got {}",
+        receiver_score
+    );
+}
+

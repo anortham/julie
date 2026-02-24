@@ -6,7 +6,7 @@ use rusqlite::params;
 use tracing::{debug, info, warn};
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 8;
+pub const LATEST_SCHEMA_VERSION: i32 = 9;
 
 impl SymbolDatabase {
     // ============================================================
@@ -97,6 +97,7 @@ impl SymbolDatabase {
             6 => self.migration_006_add_types_table()?,
             7 => self.migration_007_drop_fts5()?,
             8 => self.migration_008_drop_embedding_tables()?,
+            9 => self.migration_009_add_reference_score()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -113,6 +114,7 @@ impl SymbolDatabase {
             6 => "Add types table for type intelligence",
             7 => "Drop FTS5 tables and triggers (replaced by Tantivy)",
             8 => "Drop embedding tables (embedding engine removed)",
+            9 => "Add reference_score for graph centrality ranking",
             _ => "Unknown migration",
         };
 
@@ -547,6 +549,39 @@ impl SymbolDatabase {
         self.conn.execute("DROP TABLE IF EXISTS embeddings", [])?;
         debug!("Dropped embedding_vectors and embeddings tables");
         info!("✅ Embedding tables removed (embedding engine removed)");
+        Ok(())
+    }
+
+    /// Migration 009: Add reference_score column for graph centrality ranking.
+    ///
+    /// Stores pre-computed weighted incoming reference count per symbol.
+    /// Used by search scoring to boost well-connected symbols.
+    fn migration_009_add_reference_score(&self) -> Result<()> {
+        info!("Running migration 009: Add reference_score column");
+
+        // Check if symbols table exists
+        let table_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='symbols'",
+            [],
+            |row| row.get::<_, i32>(0).map(|c| c > 0),
+        )?;
+
+        if !table_exists {
+            debug!("Symbols table doesn't exist yet (fresh database), skipping migration");
+            return Ok(());
+        }
+
+        // Check if column already exists (idempotency)
+        if self.has_column("symbols", "reference_score")? {
+            warn!("reference_score column already exists in symbols table, skipping migration");
+            return Ok(());
+        }
+
+        self.conn.execute(
+            "ALTER TABLE symbols ADD COLUMN reference_score REAL NOT NULL DEFAULT 0.0",
+            [],
+        )?;
+        info!("✅ Added reference_score column to symbols table");
         Ok(())
     }
 }

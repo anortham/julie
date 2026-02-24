@@ -202,6 +202,45 @@ impl SymbolDatabase {
         Ok(by_file)
     }
 
+    /// Compute reference_score for all symbols based on weighted incoming relationships.
+    /// Self-references (recursion) are excluded.
+    ///
+    /// Weights by relationship kind:
+    ///   Calls=3, Implements/Imports/Extends/Instantiates=2,
+    ///   Uses/References/Returns/Parameter/Defines/Overrides/Joins/Composition=1,
+    ///   Contains=0 (structural, not a usage signal)
+    pub fn compute_reference_scores(&self) -> Result<()> {
+        self.conn.execute(
+            "UPDATE symbols SET reference_score = COALESCE(
+                (SELECT SUM(
+                    CASE r.kind
+                        WHEN 'calls' THEN 3.0
+                        WHEN 'implements' THEN 2.0
+                        WHEN 'imports' THEN 2.0
+                        WHEN 'extends' THEN 2.0
+                        WHEN 'instantiates' THEN 2.0
+                        WHEN 'uses' THEN 1.0
+                        WHEN 'references' THEN 1.0
+                        WHEN 'returns' THEN 1.0
+                        WHEN 'parameter' THEN 1.0
+                        WHEN 'defines' THEN 1.0
+                        WHEN 'overrides' THEN 1.0
+                        WHEN 'joins' THEN 1.0
+                        WHEN 'composition' THEN 1.0
+                        WHEN 'contains' THEN 0.0
+                        ELSE 1.0
+                    END
+                )
+                FROM relationships r
+                WHERE r.to_symbol_id = symbols.id
+                  AND r.from_symbol_id != symbols.id),
+                0.0
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
     /// Get relationship type statistics using SQL aggregation (avoids loading all relationships into memory)
     /// Returns HashMap<relationship_kind, count> grouped by relationship type
     /// Used by FastExploreTool's intelligent_dependencies mode
