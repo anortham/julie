@@ -74,6 +74,7 @@ pub mod tools {
     pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
 
     pub mod get_context_tests; // get_context tool pipeline tests (pivot selection, scoring)
+    pub mod get_context_formatting_tests; // get_context output formatting tests
 }
 
 // ============================================================================
