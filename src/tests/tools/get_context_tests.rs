@@ -1,4 +1,4 @@
-//! Tests for the get_context tool pipeline — pivot selection and graph expansion.
+//! Tests for the get_context tool — pivot selection, graph expansion, and token allocation.
 
 #[cfg(test)]
 mod tests {
@@ -423,5 +423,176 @@ mod graph_expansion_tests {
         let (_tmp, db) = setup_db();
         let expansion = expand_graph(&[], &db).unwrap();
         assert!(expansion.neighbors.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod allocation_tests {
+    use crate::tools::get_context::allocation::{
+        NeighborMode, PivotMode, TokenBudget,
+    };
+
+    // === Test 1: Single pivot goes deep ===
+
+    #[test]
+    fn test_single_pivot_full_body_mode() {
+        let budget = TokenBudget::new(2000);
+        let alloc = budget.allocate(1, 3);
+
+        assert!(
+            matches!(alloc.pivot_mode, PivotMode::FullBody),
+            "1 pivot should use FullBody mode"
+        );
+        assert!(
+            matches!(alloc.neighbor_mode, NeighborMode::SignatureAndDoc),
+            "1 pivot should give neighbors SignatureAndDoc mode"
+        );
+        // Pivots get 60% of budget
+        assert_eq!(alloc.pivot_tokens, 1200, "60% of 2000 = 1200");
+    }
+
+    // === Test 2: Many pivots goes broad ===
+
+    #[test]
+    fn test_many_pivots_signature_only_mode() {
+        let budget = TokenBudget::new(4000);
+        let alloc = budget.allocate(8, 20);
+
+        assert!(
+            matches!(alloc.pivot_mode, PivotMode::SignatureOnly),
+            "8 pivots should use SignatureOnly mode"
+        );
+        assert!(
+            matches!(alloc.neighbor_mode, NeighborMode::NameAndLocation),
+            "8 pivots should give neighbors NameAndLocation mode"
+        );
+    }
+
+    // === Test 3: Budget respect — total never exceeds max_tokens ===
+
+    #[test]
+    fn test_budget_respect() {
+        for max in [500, 1000, 2000, 3000, 4000, 5000, 9999] {
+            let budget = TokenBudget::new(max);
+            for pivots in [0, 1, 3, 5, 7, 10] {
+                let alloc = budget.allocate(pivots, pivots * 3);
+                let total = alloc.pivot_tokens + alloc.neighbor_tokens + alloc.summary_tokens;
+                assert!(
+                    total <= max,
+                    "total allocation {} exceeds max_tokens {} (pivots={}, neighbors={})",
+                    total,
+                    max,
+                    pivots,
+                    pivots * 3,
+                );
+            }
+        }
+    }
+
+    // === Test 4: Adaptive defaults based on pivot count ===
+
+    #[test]
+    fn test_adaptive_defaults() {
+        // 0-2 pivots → 2000 tokens (deep exploration)
+        assert_eq!(TokenBudget::adaptive(0).max_tokens, 2000);
+        assert_eq!(TokenBudget::adaptive(1).max_tokens, 2000);
+        assert_eq!(TokenBudget::adaptive(2).max_tokens, 2000);
+
+        // 3-5 pivots → 3000 tokens (balanced)
+        assert_eq!(TokenBudget::adaptive(3).max_tokens, 3000);
+        assert_eq!(TokenBudget::adaptive(4).max_tokens, 3000);
+        assert_eq!(TokenBudget::adaptive(5).max_tokens, 3000);
+
+        // 6+ pivots → 4000 tokens (broad survey)
+        assert_eq!(TokenBudget::adaptive(6).max_tokens, 4000);
+        assert_eq!(TokenBudget::adaptive(8).max_tokens, 4000);
+        assert_eq!(TokenBudget::adaptive(100).max_tokens, 4000);
+    }
+
+    // === Test 5: Mid-range pivots (4-6) ===
+
+    #[test]
+    fn test_mid_range_pivots() {
+        let budget = TokenBudget::new(3000);
+
+        for pivot_count in [4, 5, 6] {
+            let alloc = budget.allocate(pivot_count, 10);
+            assert!(
+                matches!(alloc.pivot_mode, PivotMode::SignatureAndKey),
+                "pivot_count={} should use SignatureAndKey, got {:?}",
+                pivot_count,
+                alloc.pivot_mode,
+            );
+            assert!(
+                matches!(alloc.neighbor_mode, NeighborMode::SignatureOnly),
+                "pivot_count={} should use SignatureOnly neighbor mode, got {:?}",
+                pivot_count,
+                alloc.neighbor_mode,
+            );
+        }
+    }
+
+    // === Test 6: 60/30/10 split is correct ===
+
+    #[test]
+    fn test_60_30_10_split() {
+        let budget = TokenBudget::new(1000);
+        let alloc = budget.allocate(2, 5);
+
+        assert_eq!(alloc.pivot_tokens, 600, "pivots should get 60%");
+        assert_eq!(alloc.neighbor_tokens, 300, "neighbors should get 30%");
+        assert_eq!(alloc.summary_tokens, 100, "summary should get 10%");
+
+        // Verify it sums to exactly max_tokens for clean numbers
+        assert_eq!(
+            alloc.pivot_tokens + alloc.neighbor_tokens + alloc.summary_tokens,
+            1000,
+            "60+30+10 should sum to 100% for clean multiples"
+        );
+    }
+
+    // === Test 7: Boundary — 0 pivots still works ===
+
+    #[test]
+    fn test_zero_pivots() {
+        let budget = TokenBudget::new(2000);
+        let alloc = budget.allocate(0, 0);
+
+        // 0 is in the 0..=3 range → FullBody / SignatureAndDoc
+        assert!(matches!(alloc.pivot_mode, PivotMode::FullBody));
+        assert!(matches!(alloc.neighbor_mode, NeighborMode::SignatureAndDoc));
+
+        // Budget should still be allocated (pipeline handles the empty case)
+        assert_eq!(alloc.pivot_tokens + alloc.neighbor_tokens + alloc.summary_tokens, 2000);
+    }
+
+    // === Test 8: Boundary — exactly 3 pivots is FullBody (not SignatureAndKey) ===
+
+    #[test]
+    fn test_boundary_three_pivots_is_full_body() {
+        let budget = TokenBudget::new(2000);
+        let alloc = budget.allocate(3, 5);
+
+        assert!(
+            matches!(alloc.pivot_mode, PivotMode::FullBody),
+            "3 pivots should still be FullBody (0..=3 range)"
+        );
+    }
+
+    // === Test 9: Boundary — exactly 7 pivots is SignatureOnly ===
+
+    #[test]
+    fn test_boundary_seven_pivots_is_signature_only() {
+        let budget = TokenBudget::new(4000);
+        let alloc = budget.allocate(7, 15);
+
+        assert!(
+            matches!(alloc.pivot_mode, PivotMode::SignatureOnly),
+            "7 pivots should be SignatureOnly (7+ range)"
+        );
+        assert!(
+            matches!(alloc.neighbor_mode, NeighborMode::NameAndLocation),
+            "7 pivots should give neighbors NameAndLocation mode"
+        );
     }
 }
