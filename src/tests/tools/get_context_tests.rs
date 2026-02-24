@@ -597,3 +597,385 @@ mod allocation_tests {
     }
 }
 
+#[cfg(test)]
+mod pipeline_integration_tests {
+    use tempfile::TempDir;
+
+    use crate::database::{FileInfo, SymbolDatabase};
+    use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
+    use crate::search::index::{SearchIndex, SymbolDocument};
+    use crate::tools::get_context::pipeline::run_pipeline;
+
+    /// Set up a complete test environment with DB, SearchIndex, and test data.
+    ///
+    /// Creates:
+    /// - `process_request` (function) — the main pivot target, calls `validate_input` and `build_response`
+    /// - `validate_input` (function) — outgoing callee from pivot
+    /// - `build_response` (function) — outgoing callee from pivot
+    /// - `handle_error` (function) — calls `process_request` (incoming caller)
+    /// - `main` (function) — calls `process_request` (incoming caller)
+    fn setup_test_env() -> (TempDir, TempDir, SymbolDatabase, SearchIndex) {
+        let db_dir = TempDir::new().unwrap();
+        let index_dir = TempDir::new().unwrap();
+
+        let db_path = db_dir.path().join("test.db");
+        let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+        let index = SearchIndex::create(index_dir.path()).unwrap();
+
+        // Register files
+        for file in &[
+            "src/handler.rs",
+            "src/validation.rs",
+            "src/response.rs",
+            "src/error.rs",
+            "src/main.rs",
+        ] {
+            db.store_file_info(&FileInfo {
+                path: file.to_string(),
+                language: "rust".to_string(),
+                hash: format!("hash_{}", file),
+                size: 500,
+                last_modified: 1000000,
+                last_indexed: 0,
+                symbol_count: 1,
+                content: None,
+            })
+            .unwrap();
+        }
+
+        // Create symbols with code_context for full-body testing
+        let symbols = vec![
+            Symbol {
+                id: "sym_process".to_string(),
+                name: "process_request".to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: "src/handler.rs".to_string(),
+                start_line: 10,
+                end_line: 25,
+                start_column: 0,
+                end_column: 1,
+                start_byte: 0,
+                end_byte: 500,
+                parent_id: None,
+                signature: Some("fn process_request(req: &Request) -> Response".to_string()),
+                doc_comment: Some("Process an incoming request".to_string()),
+                visibility: Some(Visibility::Public),
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(0.95),
+                code_context: Some(
+                    "fn process_request(req: &Request) -> Response {\n    let valid = validate_input(req);\n    if !valid { return Response::bad_request(); }\n    build_response(req)\n}"
+                        .to_string(),
+                ),
+                content_type: None,
+            },
+            Symbol {
+                id: "sym_validate".to_string(),
+                name: "validate_input".to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: "src/validation.rs".to_string(),
+                start_line: 5,
+                end_line: 15,
+                start_column: 0,
+                end_column: 1,
+                start_byte: 0,
+                end_byte: 300,
+                parent_id: None,
+                signature: Some("fn validate_input(req: &Request) -> bool".to_string()),
+                doc_comment: Some("Validate request parameters".to_string()),
+                visibility: Some(Visibility::Public),
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(0.9),
+                code_context: Some(
+                    "fn validate_input(req: &Request) -> bool {\n    !req.body.is_empty()\n}"
+                        .to_string(),
+                ),
+                content_type: None,
+            },
+            Symbol {
+                id: "sym_build".to_string(),
+                name: "build_response".to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: "src/response.rs".to_string(),
+                start_line: 1,
+                end_line: 10,
+                start_column: 0,
+                end_column: 1,
+                start_byte: 0,
+                end_byte: 200,
+                parent_id: None,
+                signature: Some("fn build_response(req: &Request) -> Response".to_string()),
+                doc_comment: None,
+                visibility: Some(Visibility::Public),
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(0.9),
+                code_context: Some(
+                    "fn build_response(req: &Request) -> Response {\n    Response::ok(req.body.clone())\n}"
+                        .to_string(),
+                ),
+                content_type: None,
+            },
+            Symbol {
+                id: "sym_error".to_string(),
+                name: "handle_error".to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: "src/error.rs".to_string(),
+                start_line: 1,
+                end_line: 8,
+                start_column: 0,
+                end_column: 1,
+                start_byte: 0,
+                end_byte: 150,
+                parent_id: None,
+                signature: Some("fn handle_error(err: Error) -> Response".to_string()),
+                doc_comment: None,
+                visibility: Some(Visibility::Public),
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(0.9),
+                code_context: None,
+                content_type: None,
+            },
+            Symbol {
+                id: "sym_main".to_string(),
+                name: "main".to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: "src/main.rs".to_string(),
+                start_line: 1,
+                end_line: 5,
+                start_column: 0,
+                end_column: 1,
+                start_byte: 0,
+                end_byte: 100,
+                parent_id: None,
+                signature: Some("fn main()".to_string()),
+                doc_comment: None,
+                visibility: Some(Visibility::Public),
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(0.9),
+                code_context: None,
+                content_type: None,
+            },
+        ];
+
+        db.store_symbols(&symbols).unwrap();
+
+        // Index symbols in Tantivy
+        for sym in &symbols {
+            index.add_symbol(&SymbolDocument::from_symbol(sym)).unwrap();
+        }
+        index.commit().unwrap();
+
+        // Create relationships
+        let rels = vec![
+            // process_request -> validate_input (outgoing)
+            Relationship {
+                id: "r1".to_string(),
+                from_symbol_id: "sym_process".to_string(),
+                to_symbol_id: "sym_validate".to_string(),
+                kind: RelationshipKind::Calls,
+                file_path: "src/handler.rs".to_string(),
+                line_number: 11,
+                confidence: 0.9,
+                metadata: None,
+            },
+            // process_request -> build_response (outgoing)
+            Relationship {
+                id: "r2".to_string(),
+                from_symbol_id: "sym_process".to_string(),
+                to_symbol_id: "sym_build".to_string(),
+                kind: RelationshipKind::Calls,
+                file_path: "src/handler.rs".to_string(),
+                line_number: 13,
+                confidence: 0.9,
+                metadata: None,
+            },
+            // handle_error -> process_request (incoming to pivot)
+            Relationship {
+                id: "r3".to_string(),
+                from_symbol_id: "sym_error".to_string(),
+                to_symbol_id: "sym_process".to_string(),
+                kind: RelationshipKind::Calls,
+                file_path: "src/error.rs".to_string(),
+                line_number: 3,
+                confidence: 0.9,
+                metadata: None,
+            },
+            // main -> process_request (incoming to pivot)
+            Relationship {
+                id: "r4".to_string(),
+                from_symbol_id: "sym_main".to_string(),
+                to_symbol_id: "sym_process".to_string(),
+                kind: RelationshipKind::Calls,
+                file_path: "src/main.rs".to_string(),
+                line_number: 2,
+                confidence: 0.9,
+                metadata: None,
+            },
+        ];
+        db.store_relationships(&rels).unwrap();
+        db.compute_reference_scores().unwrap();
+
+        (db_dir, index_dir, db, index)
+    }
+
+    // === Integration Test 1: Full pipeline end-to-end ===
+
+    #[test]
+    fn test_full_pipeline_end_to_end() {
+        let (_db_dir, _idx_dir, db, index) = setup_test_env();
+
+        let result = run_pipeline(
+            "process_request",
+            None,  // auto token budget
+            None,  // no language filter
+            None,  // no file pattern
+            &db,
+            &index,
+        )
+        .unwrap();
+
+        // Should contain pivot section for process_request
+        assert!(
+            result.contains("process_request"),
+            "output should mention the pivot symbol: got:\n{}",
+            result,
+        );
+
+        // Should contain the Pivot header marker
+        assert!(
+            result.contains("Pivot:"),
+            "output should have a Pivot section header",
+        );
+
+        // Should contain code body (FullBody mode for 1-2 pivots)
+        assert!(
+            result.contains("validate_input"),
+            "output should mention validate_input (callee or neighbor): got:\n{}",
+            result,
+        );
+
+        // Should contain file map
+        assert!(
+            result.contains("src/handler.rs"),
+            "output should include the pivot's file path",
+        );
+
+        // Should have context header
+        assert!(
+            result.contains("Context:"),
+            "output should have Context header",
+        );
+    }
+
+    // === Integration Test 2: Empty results ===
+
+    #[test]
+    fn test_pipeline_no_results() {
+        let (_db_dir, _idx_dir, db, index) = setup_test_env();
+
+        let result = run_pipeline(
+            "zzz_nonexistent_symbol_xyz",
+            None,
+            None,
+            None,
+            &db,
+            &index,
+        )
+        .unwrap();
+
+        assert!(
+            result.contains("No relevant symbols found"),
+            "should return no-results message for unknown query, got:\n{}",
+            result,
+        );
+    }
+
+    // === Integration Test 3: Explicit token budget ===
+
+    #[test]
+    fn test_pipeline_with_explicit_budget() {
+        let (_db_dir, _idx_dir, db, index) = setup_test_env();
+
+        let result = run_pipeline(
+            "process_request",
+            Some(1000),
+            None,
+            None,
+            &db,
+            &index,
+        )
+        .unwrap();
+
+        // With explicit budget of 1000, should still produce output
+        assert!(
+            result.contains("process_request"),
+            "explicit budget should still produce pivot output",
+        );
+    }
+
+    // === Integration Test 4: Language filter ===
+
+    #[test]
+    fn test_pipeline_with_language_filter() {
+        let (_db_dir, _idx_dir, db, index) = setup_test_env();
+
+        // Filter to a language that doesn't exist → should get no results
+        let result = run_pipeline(
+            "process_request",
+            None,
+            Some("python".to_string()),
+            None,
+            &db,
+            &index,
+        )
+        .unwrap();
+
+        assert!(
+            result.contains("No relevant symbols found"),
+            "python filter should yield no results for rust symbols, got:\n{}",
+            result,
+        );
+    }
+
+    // === Integration Test 5: Neighbors appear in output ===
+
+    #[test]
+    fn test_pipeline_includes_neighbors() {
+        let (_db_dir, _idx_dir, db, index) = setup_test_env();
+
+        let result = run_pipeline(
+            "process_request",
+            None,
+            None,
+            None,
+            &db,
+            &index,
+        )
+        .unwrap();
+
+        // Graph expansion should find neighbors: validate_input, build_response,
+        // handle_error, main — at least some should appear in Neighbors section
+        let has_neighbor_section = result.contains("Neighbors");
+        let has_any_neighbor = result.contains("validate_input")
+            || result.contains("build_response")
+            || result.contains("handle_error")
+            || result.contains("main");
+
+        assert!(
+            has_neighbor_section || has_any_neighbor,
+            "output should include neighbor symbols from graph expansion, got:\n{}",
+            result,
+        );
+    }
+}
+

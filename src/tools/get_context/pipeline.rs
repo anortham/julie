@@ -181,10 +181,283 @@ pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpans
     Ok(GraphExpansion { neighbors })
 }
 
-pub async fn run(tool: &GetContextTool, _handler: &JulieServerHandler) -> Result<String> {
-    // Will be implemented in subsequent tasks
-    Ok(format!(
-        "get_context not yet implemented for query: {}",
-        tool.query
-    ))
+/// Run the full get_context pipeline: search → rank → expand → allocate → format.
+///
+/// This is the testable core — takes raw DB and SearchIndex references,
+/// independent of the MCP handler. Called by `run()` inside `spawn_blocking`.
+pub fn run_pipeline(
+    query: &str,
+    max_tokens: Option<u32>,
+    language: Option<String>,
+    file_pattern: Option<String>,
+    db: &SymbolDatabase,
+    search_index: &crate::search::SearchIndex,
+) -> Result<String> {
+    use super::allocation::TokenBudget;
+    use super::formatting::{format_context, ContextData};
+    use crate::search::index::SearchFilter;
+
+    // 1. Search for relevant symbols
+    let filter = SearchFilter {
+        language,
+        kind: None,
+        file_pattern,
+    };
+    let search_results = search_index.search_symbols(query, &filter, 30)?;
+
+    if search_results.results.is_empty() {
+        return Ok(format!(
+            "\u{2550}\u{2550}\u{2550} Context: \"{}\" \u{2550}\u{2550}\u{2550}\nNo relevant symbols found.",
+            query
+        ));
+    }
+
+    // 2. Get reference scores for centrality-weighted ranking
+    let result_ids: Vec<&str> = search_results.results.iter().map(|r| r.id.as_str()).collect();
+    let ref_scores = db.get_reference_scores(&result_ids)?;
+
+    // 3. Select pivots using centrality-weighted scoring
+    let pivots = select_pivots(search_results.results, &ref_scores);
+
+    // 4. Expand graph from pivots
+    let expansion = expand_graph(&pivots, db)?;
+
+    // 5. Allocate token budget
+    let budget = match max_tokens {
+        Some(tokens) => TokenBudget::new(tokens),
+        None => TokenBudget::adaptive(pivots.len()),
+    };
+    let allocation = budget.allocate(pivots.len(), expansion.neighbors.len());
+
+    // 6. Get reference scores for pivots (reuse batch query, not per-pivot)
+    let pivot_ids: Vec<&str> = pivots.iter().map(|p| p.result.id.as_str()).collect();
+    let pivot_ref_scores = db.get_reference_scores(&pivot_ids)?;
+
+    // 7. Build PivotEntries
+    let pivot_entries = build_pivot_entries(&pivots, &expansion, db, &allocation, &pivot_ref_scores)?;
+
+    // 8. Build NeighborEntries
+    let neighbor_entries = build_neighbor_entries(&expansion);
+
+    // 9. Format and return
+    let context_data = ContextData {
+        query: query.to_string(),
+        pivots: pivot_entries,
+        neighbors: neighbor_entries,
+        allocation,
+    };
+
+    Ok(format_context(&context_data))
+}
+
+/// Build PivotEntry structs from pivots, selecting content based on PivotMode.
+fn build_pivot_entries(
+    pivots: &[Pivot],
+    expansion: &GraphExpansion,
+    db: &SymbolDatabase,
+    allocation: &super::allocation::Allocation,
+    reference_scores: &HashMap<String, f64>,
+) -> Result<Vec<super::formatting::PivotEntry>> {
+    use super::allocation::PivotMode;
+    use super::formatting::PivotEntry;
+
+    let mut entries = Vec::with_capacity(pivots.len());
+
+    for pivot in pivots {
+        // Determine content based on PivotMode
+        let content = match allocation.pivot_mode {
+            PivotMode::FullBody => {
+                // Get full symbol from DB for code_context
+                if let Ok(Some(full_symbol)) = db.get_symbol_by_id(&pivot.result.id) {
+                    full_symbol
+                        .code_context
+                        .unwrap_or_else(|| pivot.result.signature.clone())
+                } else {
+                    pivot.result.signature.clone()
+                }
+            }
+            PivotMode::SignatureAndKey => {
+                // Get code_context, take first 5 + last 5 lines
+                if let Ok(Some(full_symbol)) = db.get_symbol_by_id(&pivot.result.id) {
+                    if let Some(code) = full_symbol.code_context {
+                        abbreviate_code(&code)
+                    } else {
+                        pivot.result.signature.clone()
+                    }
+                } else {
+                    pivot.result.signature.clone()
+                }
+            }
+            PivotMode::SignatureOnly => pivot.result.signature.clone(),
+        };
+
+        // Get incoming/outgoing relationship names for this pivot
+        let (incoming_names, outgoing_names) = get_pivot_relationship_names(pivot, expansion, db);
+
+        // Use pre-fetched reference scores (no redundant DB query)
+        let ref_score = reference_scores
+            .get(&pivot.result.id)
+            .copied()
+            .unwrap_or(0.0);
+
+        entries.push(PivotEntry {
+            name: pivot.result.name.clone(),
+            file_path: pivot.result.file_path.clone(),
+            start_line: pivot.result.start_line,
+            kind: pivot.result.kind.clone(),
+            reference_score: ref_score,
+            content,
+            incoming_names,
+            outgoing_names,
+        });
+    }
+
+    Ok(entries)
+}
+
+/// Abbreviate a code body: first 5 lines + "..." + last 5 lines.
+/// Returns the full code if it has 12 or fewer lines (not worth abbreviating).
+fn abbreviate_code(code: &str) -> String {
+    let lines: Vec<&str> = code.lines().collect();
+    if lines.len() <= 12 {
+        return code.to_string();
+    }
+    let mut out = String::new();
+    for line in &lines[..5] {
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push_str("    // ... (abbreviated)\n");
+    for (i, line) in lines[lines.len() - 5..].iter().enumerate() {
+        out.push_str(line);
+        if i < 4 {
+            out.push('\n');
+        }
+    }
+    out
+}
+
+/// Get incoming and outgoing relationship names for a pivot symbol.
+///
+/// Uses the neighbor list from graph expansion where possible,
+/// and falls back to direct DB queries for callers/callees of this pivot.
+fn get_pivot_relationship_names(
+    pivot: &Pivot,
+    expansion: &GraphExpansion,
+    db: &SymbolDatabase,
+) -> (Vec<String>, Vec<String>) {
+    let pivot_id = &pivot.result.id;
+
+    // Collect names from expansion neighbors that relate to this pivot
+    // For incoming: neighbors with Incoming direction whose relationship targets this pivot
+    // For outgoing: neighbors with Outgoing direction whose relationship sources from this pivot
+    //
+    // Since expand_graph deduplicates across pivots and doesn't track per-pivot associations,
+    // we query the DB directly for accuracy.
+    let mut incoming_names = Vec::new();
+    let mut outgoing_names = Vec::new();
+
+    // Incoming callers
+    if let Ok(incoming_rels) = db.get_relationships_to_symbol(pivot_id) {
+        let caller_ids: Vec<String> = incoming_rels
+            .iter()
+            .map(|r| r.from_symbol_id.clone())
+            .collect();
+        if !caller_ids.is_empty() {
+            // Try to get names from neighbor list first (cheaper)
+            for id in &caller_ids {
+                if let Some(n) = expansion.neighbors.iter().find(|n| n.symbol.id == *id) {
+                    incoming_names.push(n.symbol.name.clone());
+                } else if let Ok(Some(sym)) = db.get_symbol_by_id(id) {
+                    incoming_names.push(sym.name);
+                }
+            }
+        }
+    }
+
+    // Outgoing callees
+    if let Ok(outgoing_rels) = db.get_outgoing_relationships(pivot_id) {
+        let callee_ids: Vec<String> = outgoing_rels
+            .iter()
+            .map(|r| r.to_symbol_id.clone())
+            .collect();
+        if !callee_ids.is_empty() {
+            for id in &callee_ids {
+                if let Some(n) = expansion.neighbors.iter().find(|n| n.symbol.id == *id) {
+                    outgoing_names.push(n.symbol.name.clone());
+                } else if let Ok(Some(sym)) = db.get_symbol_by_id(id) {
+                    outgoing_names.push(sym.name);
+                }
+            }
+        }
+    }
+
+    (incoming_names, outgoing_names)
+}
+
+/// Build NeighborEntry structs from graph expansion results.
+fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::NeighborEntry> {
+    use super::formatting::NeighborEntry;
+
+    expansion
+        .neighbors
+        .iter()
+        .map(|neighbor| NeighborEntry {
+            name: neighbor.symbol.name.clone(),
+            file_path: neighbor.symbol.file_path.clone(),
+            start_line: neighbor.symbol.start_line,
+            kind: format!("{:?}", neighbor.symbol.kind).to_lowercase(),
+            signature: neighbor.symbol.signature.clone(),
+            doc_summary: neighbor.symbol.doc_comment.as_ref().map(|d| {
+                d.lines().next().unwrap_or("").to_string()
+            }),
+        })
+        .collect()
+}
+
+/// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
+///
+/// Currently only supports the primary workspace. Reference workspace support
+/// can be added later by opening separate DB/Tantivy files (same pattern as text_search_impl).
+pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<String> {
+    // Validate workspace parameter — only primary is supported for now
+    let workspace_param = tool.workspace.as_deref().unwrap_or("primary");
+    if workspace_param != "primary" {
+        anyhow::bail!(
+            "get_context currently only supports the primary workspace. \
+             Use workspace=\"primary\" (default) or omit the parameter."
+        );
+    }
+
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+    let search_index = workspace
+        .search_index
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Search index not initialized"))?
+        .clone();
+
+    let db = workspace
+        .db
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?
+        .clone();
+
+    let query = tool.query.clone();
+    let max_tokens = tool.max_tokens;
+    let language = tool.language.clone();
+    let file_pattern = tool.file_pattern.clone();
+
+    // Use spawn_blocking since Tantivy and SQLite use std::sync::Mutex
+    let result = tokio::task::spawn_blocking(move || -> Result<String> {
+        let index = search_index.lock().unwrap();
+        let db_guard = db.lock().unwrap();
+        run_pipeline(&query, max_tokens, language, file_pattern, &db_guard, &index)
+    })
+    .await??;
+
+    Ok(result)
 }
