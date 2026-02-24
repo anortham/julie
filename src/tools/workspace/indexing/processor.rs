@@ -459,6 +459,12 @@ impl ManageWorkspaceTool {
                 }
 
                 stats.log_summary();
+
+                // Compute graph centrality reference scores
+                if let Err(e) = db_lock.compute_reference_scores() {
+                    warn!("Failed to compute reference scores: {}", e);
+                }
+
                 drop(db_lock);
             }
 
