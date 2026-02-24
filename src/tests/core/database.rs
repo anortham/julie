@@ -1654,6 +1654,65 @@ fn test_compute_reference_scores_excludes_self_refs() {
     );
 }
 
+/// Task 4: Batch query for reference scores
+#[test]
+fn test_get_reference_scores_batch() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Insert a file (foreign key requirement)
+    db.store_file_info(&FileInfo {
+        path: "test.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "abc123".to_string(),
+        size: 100,
+        last_modified: 1234567890,
+        last_indexed: 0,
+        symbol_count: 4,
+        content: None,
+    })
+    .unwrap();
+
+    // Insert symbols with known reference_scores via raw SQL
+    for (id, name, score) in [
+        ("s1", "fn_a", 5.0),
+        ("s2", "fn_b", 0.0),
+        ("s3", "fn_c", 12.5),
+        ("s4", "fn_d", 3.0),
+    ] {
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte, reference_score)
+                 VALUES (?1, ?2, 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100, ?3)",
+                rusqlite::params![id, name, score],
+            )
+            .unwrap();
+    }
+
+    // Case 1: All IDs found — correct scores returned
+    let ids = vec!["s1", "s2", "s3", "s4"];
+    let scores = db.get_reference_scores(&ids).unwrap();
+    assert_eq!(scores.len(), 4);
+    assert!((scores["s1"] - 5.0).abs() < f64::EPSILON);
+    assert!((scores["s2"] - 0.0).abs() < f64::EPSILON);
+    assert!((scores["s3"] - 12.5).abs() < f64::EPSILON);
+    assert!((scores["s4"] - 3.0).abs() < f64::EPSILON);
+
+    // Case 2: Some IDs not found — only found ones in HashMap
+    let partial_ids = vec!["s1", "s999", "s3"];
+    let partial_scores = db.get_reference_scores(&partial_ids).unwrap();
+    assert_eq!(partial_scores.len(), 2);
+    assert!((partial_scores["s1"] - 5.0).abs() < f64::EPSILON);
+    assert!((partial_scores["s3"] - 12.5).abs() < f64::EPSILON);
+    assert!(!partial_scores.contains_key("s999"));
+
+    // Case 3: Empty input — empty HashMap
+    let empty_ids: Vec<&str> = vec![];
+    let empty_scores = db.get_reference_scores(&empty_ids).unwrap();
+    assert!(empty_scores.is_empty());
+}
+
 /// Task 2: Verify symbols with only outgoing refs have score 0.0
 #[test]
 fn test_compute_reference_scores_zero_for_no_incoming() {
