@@ -1,4 +1,4 @@
-//! Tests for the get_context tool pipeline — pivot selection with centrality-weighted scoring.
+//! Tests for the get_context tool pipeline — pivot selection and graph expansion.
 
 #[cfg(test)]
 mod tests {
@@ -112,5 +112,316 @@ mod tests {
             pivots[0].combined_score,
             pivots[1].combined_score,
         );
+    }
+}
+
+#[cfg(test)]
+mod graph_expansion_tests {
+    use std::collections::HashMap;
+
+    use tempfile::TempDir;
+
+    use crate::database::{FileInfo, SymbolDatabase};
+    use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
+    use crate::search::index::SymbolSearchResult;
+    use crate::tools::get_context::pipeline::{
+        expand_graph, NeighborDirection, Pivot,
+    };
+
+    /// Create a test database with file info pre-registered (FK constraint).
+    fn setup_db() -> (TempDir, SymbolDatabase) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        // Register files to satisfy FK constraints
+        for file in &["src/main.rs", "src/engine.rs", "src/handler.rs", "src/utils.rs"] {
+            db.store_file_info(&FileInfo {
+                path: file.to_string(),
+                language: "rust".to_string(),
+                hash: format!("hash_{}", file),
+                size: 500,
+                last_modified: 1000000,
+                last_indexed: 0,
+                symbol_count: 2,
+                content: None,
+            })
+            .unwrap();
+        }
+
+        (temp_dir, db)
+    }
+
+    fn make_symbol(id: &str, name: &str, kind: SymbolKind, file: &str, line: u32) -> Symbol {
+        Symbol {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind,
+            language: "rust".to_string(),
+            file_path: file.to_string(),
+            start_line: line,
+            end_line: line + 10,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 100,
+            parent_id: None,
+            signature: Some(format!("fn {}()", name)),
+            doc_comment: None,
+            visibility: Some(Visibility::Public),
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(0.9),
+            code_context: None,
+            content_type: None,
+        }
+    }
+
+    fn make_rel(
+        id: &str,
+        from: &str,
+        to: &str,
+        kind: RelationshipKind,
+        file: &str,
+        line: u32,
+    ) -> Relationship {
+        Relationship {
+            id: id.to_string(),
+            from_symbol_id: from.to_string(),
+            to_symbol_id: to.to_string(),
+            kind,
+            file_path: file.to_string(),
+            line_number: line,
+            confidence: 0.9,
+            metadata: None,
+        }
+    }
+
+    fn make_pivot(id: &str, name: &str, score: f32) -> Pivot {
+        Pivot {
+            result: SymbolSearchResult {
+                id: id.to_string(),
+                name: name.to_string(),
+                signature: format!("fn {}()", name),
+                doc_comment: String::new(),
+                file_path: format!("src/{}.rs", name),
+                kind: "function".to_string(),
+                language: "rust".to_string(),
+                start_line: 1,
+                score,
+            },
+            combined_score: score,
+        }
+    }
+
+    // === Test 1: Basic expansion with incoming + outgoing ===
+
+    #[test]
+    fn test_expand_graph_basic_incoming_and_outgoing() {
+        let (_tmp, mut db) = setup_db();
+
+        // Symbols: pivot "engine", caller "main", callee "utils"
+        let symbols = vec![
+            make_symbol("sym_engine", "engine_run", SymbolKind::Function, "src/engine.rs", 10),
+            make_symbol("sym_main", "main", SymbolKind::Function, "src/main.rs", 1),
+            make_symbol("sym_utils", "helper", SymbolKind::Function, "src/utils.rs", 5),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        // main -> engine (incoming to pivot)
+        // engine -> utils (outgoing from pivot)
+        let rels = vec![
+            make_rel("r1", "sym_main", "sym_engine", RelationshipKind::Calls, "src/main.rs", 5),
+            make_rel("r2", "sym_engine", "sym_utils", RelationshipKind::Calls, "src/engine.rs", 15),
+        ];
+        db.store_relationships(&rels).unwrap();
+
+        let pivots = vec![make_pivot("sym_engine", "engine_run", 10.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert_eq!(expansion.neighbors.len(), 2, "should find 1 incoming + 1 outgoing neighbor");
+
+        let names: Vec<&str> = expansion.neighbors.iter().map(|n| n.symbol.name.as_str()).collect();
+        assert!(names.contains(&"main"), "should include incoming caller 'main'");
+        assert!(names.contains(&"helper"), "should include outgoing callee 'helper'");
+
+        // Verify directions
+        let main_neighbor = expansion.neighbors.iter().find(|n| n.symbol.name == "main").unwrap();
+        assert_eq!(main_neighbor.direction, NeighborDirection::Incoming);
+        assert_eq!(main_neighbor.relationship_kind, RelationshipKind::Calls);
+
+        let helper_neighbor = expansion.neighbors.iter().find(|n| n.symbol.name == "helper").unwrap();
+        assert_eq!(helper_neighbor.direction, NeighborDirection::Outgoing);
+        assert_eq!(helper_neighbor.relationship_kind, RelationshipKind::Calls);
+    }
+
+    // === Test 2: Deduplication across pivots ===
+
+    #[test]
+    fn test_expand_graph_deduplicates_shared_neighbors() {
+        let (_tmp, mut db) = setup_db();
+
+        // Symbols: two pivots "engine" and "handler", shared neighbor "utils"
+        let symbols = vec![
+            make_symbol("sym_engine", "engine_run", SymbolKind::Function, "src/engine.rs", 10),
+            make_symbol("sym_handler", "handle", SymbolKind::Function, "src/handler.rs", 1),
+            make_symbol("sym_utils", "helper", SymbolKind::Function, "src/utils.rs", 5),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        // Both pivots call the same utility function
+        let rels = vec![
+            make_rel("r1", "sym_engine", "sym_utils", RelationshipKind::Calls, "src/engine.rs", 15),
+            make_rel("r2", "sym_handler", "sym_utils", RelationshipKind::Calls, "src/handler.rs", 10),
+        ];
+        db.store_relationships(&rels).unwrap();
+
+        let pivots = vec![
+            make_pivot("sym_engine", "engine_run", 10.0),
+            make_pivot("sym_handler", "handle", 8.0),
+        ];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert_eq!(
+            expansion.neighbors.len(),
+            1,
+            "shared neighbor 'helper' should appear only once"
+        );
+        assert_eq!(expansion.neighbors[0].symbol.name, "helper");
+    }
+
+    // === Test 3: Ranking by reference_score ===
+
+    #[test]
+    fn test_expand_graph_ranks_by_reference_score() {
+        let (_tmp, mut db) = setup_db();
+
+        // Symbols: pivot "engine", neighbors "main" (high ref_score) and "utils" (low ref_score)
+        let symbols = vec![
+            make_symbol("sym_engine", "engine_run", SymbolKind::Function, "src/engine.rs", 10),
+            make_symbol("sym_main", "main", SymbolKind::Function, "src/main.rs", 1),
+            make_symbol("sym_utils", "helper", SymbolKind::Function, "src/utils.rs", 5),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        // Both call the pivot (incoming relationships)
+        // Plus some extra rels to give "main" a higher reference_score
+        let rels = vec![
+            make_rel("r1", "sym_main", "sym_engine", RelationshipKind::Calls, "src/main.rs", 5),
+            make_rel("r2", "sym_utils", "sym_engine", RelationshipKind::Calls, "src/utils.rs", 8),
+            // Extra incoming rels TO main (to boost main's ref_score)
+            make_rel("r3", "sym_utils", "sym_main", RelationshipKind::Calls, "src/utils.rs", 9),
+            make_rel("r4", "sym_engine", "sym_main", RelationshipKind::Calls, "src/engine.rs", 20),
+        ];
+        db.store_relationships(&rels).unwrap();
+
+        // Compute reference_scores so the DB has them
+        db.compute_reference_scores().unwrap();
+
+        let pivots = vec![make_pivot("sym_engine", "engine_run", 10.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert_eq!(expansion.neighbors.len(), 2);
+
+        // "main" should be ranked first because it has more incoming refs
+        assert_eq!(
+            expansion.neighbors[0].symbol.name, "main",
+            "neighbor with higher reference_score should rank first"
+        );
+        assert!(
+            expansion.neighbors[0].reference_score > expansion.neighbors[1].reference_score,
+            "first neighbor ({}: {:.1}) should have higher score than second ({}: {:.1})",
+            expansion.neighbors[0].symbol.name,
+            expansion.neighbors[0].reference_score,
+            expansion.neighbors[1].symbol.name,
+            expansion.neighbors[1].reference_score,
+        );
+    }
+
+    // === Test 4: Empty relationships ===
+
+    #[test]
+    fn test_expand_graph_no_relationships() {
+        let (_tmp, mut db) = setup_db();
+
+        // Pivot symbol exists but has no relationships
+        let symbols = vec![make_symbol(
+            "sym_lonely",
+            "lonely_fn",
+            SymbolKind::Function,
+            "src/main.rs",
+            1,
+        )];
+        db.store_symbols(&symbols).unwrap();
+
+        let pivots = vec![make_pivot("sym_lonely", "lonely_fn", 5.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert!(
+            expansion.neighbors.is_empty(),
+            "pivot with no relationships should have no neighbors"
+        );
+    }
+
+    // === Test 5: Excludes pivots from neighbors ===
+
+    #[test]
+    fn test_expand_graph_excludes_pivots_from_neighbors() {
+        let (_tmp, mut db) = setup_db();
+
+        // Two pivots that call each other, plus an external neighbor
+        let symbols = vec![
+            make_symbol("sym_engine", "engine_run", SymbolKind::Function, "src/engine.rs", 10),
+            make_symbol("sym_handler", "handle", SymbolKind::Function, "src/handler.rs", 1),
+            make_symbol("sym_utils", "helper", SymbolKind::Function, "src/utils.rs", 5),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        let rels = vec![
+            // Pivot A calls Pivot B (should NOT appear as neighbor)
+            make_rel("r1", "sym_engine", "sym_handler", RelationshipKind::Calls, "src/engine.rs", 15),
+            // Pivot B calls Pivot A (should NOT appear as neighbor)
+            make_rel("r2", "sym_handler", "sym_engine", RelationshipKind::Calls, "src/handler.rs", 5),
+            // Pivot A calls external symbol (SHOULD appear)
+            make_rel("r3", "sym_engine", "sym_utils", RelationshipKind::Calls, "src/engine.rs", 20),
+        ];
+        db.store_relationships(&rels).unwrap();
+
+        let pivots = vec![
+            make_pivot("sym_engine", "engine_run", 10.0),
+            make_pivot("sym_handler", "handle", 8.0),
+        ];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert_eq!(
+            expansion.neighbors.len(),
+            1,
+            "only non-pivot neighbor should appear"
+        );
+        assert_eq!(expansion.neighbors[0].symbol.name, "helper");
+
+        // Verify neither pivot appears as a neighbor
+        let neighbor_ids: Vec<&str> = expansion
+            .neighbors
+            .iter()
+            .map(|n| n.symbol.id.as_str())
+            .collect();
+        assert!(
+            !neighbor_ids.contains(&"sym_engine"),
+            "pivot 'engine' should not appear as a neighbor"
+        );
+        assert!(
+            !neighbor_ids.contains(&"sym_handler"),
+            "pivot 'handler' should not appear as a neighbor"
+        );
+    }
+
+    // === Test 6: Empty pivots ===
+
+    #[test]
+    fn test_expand_graph_empty_pivots() {
+        let (_tmp, db) = setup_db();
+        let expansion = expand_graph(&[], &db).unwrap();
+        assert!(expansion.neighbors.is_empty());
     }
 }
