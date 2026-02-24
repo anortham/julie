@@ -135,8 +135,10 @@ pub async fn text_search_impl(
                 } else {
                     limit_usize.saturating_mul(5).max(50)
                 };
-                let search_results =
+                let content_search =
                     index.search_content(&query_clone, &filter, fetch_limit)?;
+                let content_relaxed = content_search.relaxed;
+                let search_results = content_search.results;
 
                 let query_words: Vec<String> = query_clone
                     .split(|c: char| !c.is_alphanumeric())
@@ -182,7 +184,7 @@ pub async fn text_search_impl(
                     }
                 }
 
-                Ok((verified_symbols, false))
+                Ok((verified_symbols, content_relaxed))
             }
         })
         .await??;
@@ -284,7 +286,9 @@ pub async fn text_search_impl(
             } else {
                 limit_usize.saturating_mul(5).max(50)
             };
-            let search_results = index.search_content(&query_clone, &filter, fetch_limit)?;
+            let content_search = index.search_content(&query_clone, &filter, fetch_limit)?;
+            let content_relaxed = content_search.relaxed;
+            let search_results = content_search.results;
 
             // Post-verify: check that all query words appear in each file's content.
             // This eliminates false positives from CodeTokenizer over-splitting
@@ -363,7 +367,7 @@ pub async fn text_search_impl(
                 }
             }
 
-            Ok((verified_symbols, false))
+            Ok((verified_symbols, content_relaxed))
         }
     })
     .await??;

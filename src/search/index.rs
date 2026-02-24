@@ -108,6 +108,13 @@ pub struct ContentSearchResult {
     pub score: f32,
 }
 
+/// Result from search_content, includes metadata about the search.
+pub struct ContentSearchResults {
+    pub results: Vec<ContentSearchResult>,
+    /// True if AND-per-term returned zero results and OR fallback was used
+    pub relaxed: bool,
+}
+
 /// Tantivy-backed search index for code intelligence.
 ///
 /// Supports indexing code symbols and file content, with code-aware
@@ -397,19 +404,27 @@ impl SearchIndex {
     }
 
     /// Search for file content matching the query.
+    ///
+    /// Uses AND mode first (all terms must match), then auto-falls back to OR
+    /// mode if AND returns zero results and there are multiple terms. The
+    /// `relaxed` flag in the returned `ContentSearchResults` indicates whether
+    /// OR fallback was used.
     pub fn search_content(
         &self,
         query_str: &str,
         filter: &SearchFilter,
         limit: usize,
-    ) -> Result<Vec<ContentSearchResult>> {
+    ) -> Result<ContentSearchResults> {
         let f = &self.schema_fields;
 
         // Note: no filter_compound_tokens here — compound tokens (e.g. "search_term")
         // are boosted via SHOULD+BoostQuery in build_content_query instead of stripped.
         let terms = self.tokenize_query(query_str);
         if terms.is_empty() {
-            return Ok(Vec::new());
+            return Ok(ContentSearchResults {
+                results: Vec::new(),
+                relaxed: false,
+            });
         }
 
         let query = build_content_query(
@@ -424,6 +439,21 @@ impl SearchIndex {
         let searcher = self.reader.searcher();
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
 
+        // Auto-fallback: if AND returned nothing and we have multiple terms, try OR
+        let (top_docs, relaxed) = if top_docs.is_empty() && terms.len() > 1 {
+            let or_query = build_content_query(
+                &terms,
+                f.content,
+                f.doc_type,
+                f.language,
+                filter.language.as_deref(),
+                false, // require_all_terms: OR mode (relaxed matching)
+            );
+            (searcher.search(&or_query, &TopDocs::with_limit(limit))?, true)
+        } else {
+            (top_docs, false)
+        };
+
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
             let doc: TantivyDocument = searcher.doc(doc_address)?;
@@ -434,7 +464,7 @@ impl SearchIndex {
             });
         }
 
-        Ok(results)
+        Ok(ContentSearchResults { results, relaxed })
     }
 
     // --- Private helpers ---

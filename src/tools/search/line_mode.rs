@@ -108,7 +108,7 @@ pub async fn line_mode_search(
                     poisoned.into_inner()
                 }
             };
-            let file_results = index.search_content(&query, &filter, fetch_limit)?;
+            let file_results = index.search_content(&query, &filter, fetch_limit)?.results;
             drop(index);
 
             let db_lock = match db.lock() {
@@ -175,7 +175,7 @@ pub async fn line_mode_search(
                 file_pattern: ref_file_pattern.clone(),
             };
             let file_results =
-                ref_index.search_content(&query_clone, &ref_filter, fetch_limit)?;
+                ref_index.search_content(&query_clone, &ref_filter, fetch_limit)?.results;
 
             if file_results.is_empty() || !ref_db_path.exists() {
                 return Ok(Vec::new());

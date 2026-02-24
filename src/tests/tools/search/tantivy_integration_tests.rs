@@ -362,7 +362,8 @@ mod tests {
         // Search for content
         let results = index
             .search_content("hello world", &SearchFilter::default(), 10)
-            .unwrap();
+            .unwrap()
+            .results;
         assert!(!results.is_empty(), "Should find file content after backfill");
         assert_eq!(results[0].file_path, "src/main.rs");
     }

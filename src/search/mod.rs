@@ -13,8 +13,8 @@ pub mod tokenizer;
 
 pub use error::{Result, SearchError};
 pub use index::{
-    ContentSearchResult, FileDocument, SearchFilter, SearchIndex, SymbolDocument,
-    SymbolSearchResult, SymbolSearchResults,
+    ContentSearchResult, ContentSearchResults, FileDocument, SearchFilter, SearchIndex,
+    SymbolDocument, SymbolSearchResult, SymbolSearchResults,
 };
 pub use language_config::LanguageConfigs;
 pub use schema::{create_schema, SchemaFields};

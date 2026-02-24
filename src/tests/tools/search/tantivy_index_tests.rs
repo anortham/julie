@@ -77,7 +77,8 @@ fn test_add_file_content_and_search() {
 
     let results = index
         .search_content("println", &SearchFilter::default(), 10)
-        .unwrap();
+        .unwrap()
+        .results;
     assert!(
         !results.is_empty(),
         "Should find file containing 'println'"
@@ -292,7 +293,8 @@ fn test_content_search_over_tokenization_produces_false_positives() {
 
     let results = index
         .search_content("Blake3 hash", &SearchFilter::default(), 10)
-        .unwrap();
+        .unwrap()
+        .results;
 
     // The correct file should be found
     assert!(
@@ -438,7 +440,8 @@ fn test_compound_token_finds_exact_identifier() {
 
     let results = index
         .search_content("files_by_language", &filter, 10)
-        .unwrap();
+        .unwrap()
+        .results;
 
     // Must find at least the file with the exact identifier
     assert!(
@@ -644,7 +647,8 @@ fn test_search_works_after_shutdown() {
 
     let results = index
         .search_content("uniqueSearchableFunction", &SearchFilter::default(), 10)
-        .unwrap();
+        .unwrap()
+        .results;
     assert!(
         !results.is_empty(),
         "Search should still return results after shutdown (reader is independent)"
@@ -817,5 +821,113 @@ fn test_search_symbols_relaxed_always_true() {
     assert!(
         result.relaxed,
         "search_symbols_relaxed should always return relaxed = true"
+    );
+}
+
+#[test]
+fn test_content_search_or_fallback_when_and_returns_nothing() {
+    // When searching content for multiple terms where no single file contains ALL of them,
+    // OR fallback should kick in and return files matching SOME terms.
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    // File containing "tantivy" but NOT "postgresql"
+    index
+        .add_file_content(&FileDocument {
+            file_path: "src/search/engine.rs".into(),
+            content: "use tantivy::collector::TopDocs;\nlet searcher = index.reader();".into(),
+            language: "rust".into(),
+        })
+        .unwrap();
+
+    // File containing "postgresql" but NOT "tantivy"
+    index
+        .add_file_content(&FileDocument {
+            file_path: "src/database/pg.rs".into(),
+            content: "let conn = postgresql::connect(\"localhost\");\nlet rows = conn.query();".into(),
+            language: "rust".into(),
+        })
+        .unwrap();
+
+    index.commit().unwrap();
+
+    // "tantivy postgresql" — no file has BOTH terms, so AND returns nothing
+    let result = index
+        .search_content("tantivy postgresql", &SearchFilter::default(), 10)
+        .unwrap();
+
+    assert!(
+        !result.results.is_empty(),
+        "OR fallback should return partial matches when AND finds nothing"
+    );
+    assert!(
+        result.relaxed,
+        "relaxed should be true when OR fallback was used"
+    );
+    // Both files should be returned since each matches one term
+    assert!(
+        result.results.len() >= 2,
+        "Should find both files via OR fallback, got {}",
+        result.results.len()
+    );
+}
+
+#[test]
+fn test_content_search_relaxed_false_when_and_matches() {
+    // When AND mode finds results, relaxed should be false
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    // File containing BOTH "tantivy" and "search"
+    index
+        .add_file_content(&FileDocument {
+            file_path: "src/search/engine.rs".into(),
+            content: "use tantivy::collector::TopDocs;\nfn search() { /* impl */ }".into(),
+            language: "rust".into(),
+        })
+        .unwrap();
+
+    index.commit().unwrap();
+
+    // "tantivy search" — the file has BOTH terms, so AND succeeds
+    let result = index
+        .search_content("tantivy search", &SearchFilter::default(), 10)
+        .unwrap();
+
+    assert!(
+        !result.results.is_empty(),
+        "AND mode should find the file with both terms"
+    );
+    assert!(
+        !result.relaxed,
+        "relaxed should be false when AND mode succeeded"
+    );
+}
+
+#[test]
+fn test_content_search_single_term_no_fallback() {
+    // Single-term queries should never trigger OR fallback (no point — AND and OR are identical)
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    index
+        .add_file_content(&FileDocument {
+            file_path: "src/main.rs".into(),
+            content: "fn main() { println!(\"hello\"); }".into(),
+            language: "rust".into(),
+        })
+        .unwrap();
+
+    index.commit().unwrap();
+
+    // Single term "nonexistent" — no match, but should NOT trigger fallback
+    let result = index
+        .search_content("nonexistent", &SearchFilter::default(), 10)
+        .unwrap();
+
+    assert!(result.results.is_empty(), "Should find nothing for nonexistent term");
+    assert!(
+        !result.relaxed,
+        "relaxed should be false for single-term queries even with no results"
     );
 }
