@@ -108,7 +108,6 @@ pub mod integration {
     pub mod watcher; // File watcher tests
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
     pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests // Tracing integration tests (dogfooding tests)
-    // pub mod intelligence_tools;      // Intelligence tools integration tests - DISABLED
 }
 
 #[cfg(test)]
