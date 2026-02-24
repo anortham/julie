@@ -18,7 +18,7 @@ use tokio::sync::RwLock;
 // Import tool parameter types
 use crate::tools::{
     FastSearchTool, FastRefsTool, GetSymbolsTool, DeepDiveTool,
-    RenameSymbolTool, ManageWorkspaceTool,
+    RenameSymbolTool, ManageWorkspaceTool, GetContextTool,
 };
 
 /// Tracks which indexes are ready for search operations
@@ -421,6 +421,27 @@ impl JulieServerHandler {
         let _guard = self.tool_execution_lock.lock().await;
         params.call_tool(self).await.map_err(|e| {
             McpError::internal_error(format!("deep_dive failed: {}", e), None)
+        })
+    }
+
+    // ========== Context Tools ==========
+
+    #[tool(
+        name = "get_context",
+        description = "Get token-budgeted context for a concept or task. Returns relevant code subgraph with pivots (full code) and neighbors (signatures). Use at the start of a task for orientation.",
+        annotations(
+            title = "Get Context",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn get_context(&self, Parameters(params): Parameters<GetContextTool>) -> Result<CallToolResult, McpError> {
+        debug!("📦 Get context: {:?}", params);
+        let _guard = self.tool_execution_lock.lock().await;
+        params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("get_context failed: {}", e), None)
         })
     }
 

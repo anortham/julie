@@ -5,6 +5,7 @@ pub mod shared;
 
 // Tool modules organized by functionality
 pub mod deep_dive; // Progressive-depth symbol investigation
+pub mod get_context; // Token-budgeted code context subgraph
 pub mod editing; // EditingTransaction infrastructure (shared by refactoring tools)
 pub mod navigation;
 pub mod refactoring;
@@ -14,6 +15,7 @@ pub mod workspace;
 
 // Re-export all tools for external use
 pub use deep_dive::DeepDiveTool;
+pub use get_context::GetContextTool;
 pub use navigation::FastRefsTool;
 pub use refactoring::RenameSymbolTool;
 pub use search::FastSearchTool;
