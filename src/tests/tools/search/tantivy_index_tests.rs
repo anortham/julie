@@ -521,6 +521,91 @@ fn test_shutdown_releases_lock_for_new_index() {
 }
 
 #[test]
+fn test_or_fallback_returns_partial_matches() {
+    // When searching for multiple terms where no single symbol contains ALL of them,
+    // OR mode should still return symbols that match SOME terms, ranked by match count.
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    // Symbol that matches "ranking" and "score" (2 of 4 terms)
+    index
+        .add_symbol(&SymbolDocument {
+            id: "1".into(),
+            name: "apply_ranking_score".into(),
+            signature: "pub fn apply_ranking_score(results: &mut Vec<SearchResult>)".into(),
+            doc_comment: "Apply ranking scores to search results".into(),
+            code_body: "fn apply_ranking_score(results: &mut Vec<SearchResult>) { /* impl */ }"
+                .into(),
+            file_path: "src/search/scoring.rs".into(),
+            kind: "function".into(),
+            language: "rust".into(),
+            start_line: 10,
+        })
+        .unwrap();
+
+    // Symbol that matches "centrality" and "boost" (2 of 4 terms)
+    index
+        .add_symbol(&SymbolDocument {
+            id: "2".into(),
+            name: "apply_centrality_boost".into(),
+            signature: "pub fn apply_centrality_boost(results: &mut Vec<SearchResult>)".into(),
+            doc_comment: "Boost results by graph centrality".into(),
+            code_body: "fn apply_centrality_boost(results: &mut Vec<SearchResult>) { /* impl */ }"
+                .into(),
+            file_path: "src/search/scoring.rs".into(),
+            kind: "function".into(),
+            language: "rust".into(),
+            start_line: 30,
+        })
+        .unwrap();
+
+    // Symbol that matches only "score" (1 of 4 terms)
+    index
+        .add_symbol(&SymbolDocument {
+            id: "3".into(),
+            name: "calculate_score".into(),
+            signature: "pub fn calculate_score(input: &str) -> f32".into(),
+            doc_comment: "Calculate a score".into(),
+            code_body: "fn calculate_score(input: &str) -> f32 { 0.0 }".into(),
+            file_path: "src/scoring.rs".into(),
+            kind: "function".into(),
+            language: "rust".into(),
+            start_line: 50,
+        })
+        .unwrap();
+
+    index.commit().unwrap();
+
+    // AND mode: "ranking score boost centrality" — no symbol has ALL four tokens
+    let and_results = index
+        .search_symbols("ranking score boost centrality", &SearchFilter::default(), 10)
+        .unwrap();
+    assert!(
+        and_results.is_empty(),
+        "AND mode should return nothing — no symbol contains all four terms"
+    );
+
+    // OR mode: should return partial matches, ranked by how many terms match
+    let or_results = index
+        .search_symbols_relaxed(
+            "ranking score boost centrality",
+            &SearchFilter::default(),
+            10,
+        )
+        .unwrap();
+    assert!(
+        !or_results.is_empty(),
+        "OR mode should return partial matches"
+    );
+    // Both 2-term matches should appear before the 1-term match
+    assert!(
+        or_results.len() >= 2,
+        "Should find at least the two 2-term matches, got {}",
+        or_results.len()
+    );
+}
+
+#[test]
 fn test_search_works_after_shutdown() {
     let temp = TempDir::new().unwrap();
     let index = SearchIndex::create(temp.path()).unwrap();

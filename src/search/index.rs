@@ -269,6 +269,66 @@ impl SearchIndex {
             f.kind,
             filter.language.as_deref(),
             filter.kind.as_deref(),
+            true, // require_all_terms: AND mode (strict matching)
+        );
+
+        let searcher = self.reader.searcher();
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
+
+        let mut results = Vec::with_capacity(top_docs.len());
+        for (score, doc_address) in top_docs {
+            let doc: TantivyDocument = searcher.doc(doc_address)?;
+            results.push(SymbolSearchResult {
+                id: Self::get_text_field(&doc, f.id),
+                name: Self::get_text_field(&doc, f.name),
+                signature: Self::get_text_field(&doc, f.signature),
+                doc_comment: Self::get_text_field(&doc, f.doc_comment),
+                file_path: Self::get_text_field(&doc, f.file_path),
+                kind: Self::get_text_field(&doc, f.kind),
+                language: Self::get_text_field(&doc, f.language),
+                start_line: Self::get_u64_field(&doc, f.start_line) as u32,
+                score,
+            });
+        }
+
+        // Apply important_patterns boost if language configs are available
+        if let Some(configs) = &self.language_configs {
+            apply_important_patterns_boost(&mut results, configs);
+        }
+
+        Ok(results)
+    }
+
+    /// Search for symbols using OR-mode (relaxed) matching.
+    ///
+    /// Unlike `search_symbols` which requires ALL query terms to be present (AND),
+    /// this method uses OR-per-term so that symbols matching SOME terms are returned.
+    /// BM25 naturally ranks symbols matching more terms higher.
+    pub fn search_symbols_relaxed(
+        &self,
+        query_str: &str,
+        filter: &SearchFilter,
+        limit: usize,
+    ) -> Result<Vec<SymbolSearchResult>> {
+        let f = &self.schema_fields;
+
+        let terms = Self::filter_compound_tokens(self.tokenize_query(query_str));
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let query = build_symbol_query(
+            &terms,
+            f.name,
+            f.signature,
+            f.doc_comment,
+            f.code_body,
+            f.doc_type,
+            f.language,
+            f.kind,
+            filter.language.as_deref(),
+            filter.kind.as_deref(),
+            false, // require_all_terms: OR mode (relaxed matching)
         );
 
         let searcher = self.reader.searcher();
@@ -320,6 +380,7 @@ impl SearchIndex {
             f.doc_type,
             f.language,
             filter.language.as_deref(),
+            true, // require_all_terms: AND mode (strict matching)
         );
 
         let searcher = self.reader.searcher();
