@@ -576,16 +576,24 @@ fn test_or_fallback_returns_partial_matches() {
 
     index.commit().unwrap();
 
-    // AND mode: "ranking score boost centrality" — no symbol has ALL four tokens
-    let and_results = index
+    // search_symbols auto-falls-back to OR when AND returns nothing.
+    // "ranking score boost centrality" — no symbol has ALL four tokens, so AND
+    // fails and OR kicks in, returning partial matches.
+    let auto_results = index
         .search_symbols("ranking score boost centrality", &SearchFilter::default(), 10)
         .unwrap();
     assert!(
-        and_results.is_empty(),
-        "AND mode should return nothing — no symbol contains all four terms"
+        !auto_results.is_empty(),
+        "search_symbols should auto-fallback to OR and return partial matches"
+    );
+    // Both 2-term matches should appear before the 1-term match
+    assert!(
+        auto_results.len() >= 2,
+        "Should find at least the two 2-term matches, got {}",
+        auto_results.len()
     );
 
-    // OR mode: should return partial matches, ranked by how many terms match
+    // Explicit OR mode via search_symbols_relaxed should return the same results
     let or_results = index
         .search_symbols_relaxed(
             "ranking score boost centrality",
@@ -597,11 +605,10 @@ fn test_or_fallback_returns_partial_matches() {
         !or_results.is_empty(),
         "OR mode should return partial matches"
     );
-    // Both 2-term matches should appear before the 1-term match
-    assert!(
-        or_results.len() >= 2,
-        "Should find at least the two 2-term matches, got {}",
-        or_results.len()
+    assert_eq!(
+        auto_results.len(),
+        or_results.len(),
+        "Auto-fallback and explicit OR should return same number of results"
     );
 }
 
@@ -631,4 +638,67 @@ fn test_search_works_after_shutdown() {
         "Search should still return results after shutdown (reader is independent)"
     );
     assert_eq!(results[0].file_path, "src/searchable.rs");
+}
+
+#[test]
+fn test_search_symbols_auto_fallback_to_or() {
+    // search_symbols should automatically fall back to OR when AND returns zero results
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    index
+        .add_symbol(&SymbolDocument {
+            id: "1".into(),
+            name: "apply_ranking_score".into(),
+            signature: "pub fn apply_ranking_score()".into(),
+            doc_comment: "Ranking scores".into(),
+            code_body: "fn apply_ranking_score() {}".into(),
+            file_path: "src/scoring.rs".into(),
+            kind: "function".into(),
+            language: "rust".into(),
+            start_line: 10,
+        })
+        .unwrap();
+
+    index.commit().unwrap();
+
+    // Query with terms that partially match — AND would fail, OR should succeed
+    let results = index
+        .search_symbols("ranking boost centrality", &SearchFilter::default(), 10)
+        .unwrap();
+
+    assert!(
+        !results.is_empty(),
+        "search_symbols should auto-fallback to OR when AND returns nothing"
+    );
+    assert_eq!(results[0].name, "apply_ranking_score");
+}
+
+#[test]
+fn test_search_symbols_prefers_and_when_available() {
+    // When AND produces results, OR fallback should NOT be used
+    let temp_dir = TempDir::new().unwrap();
+    let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+    index
+        .add_symbol(&SymbolDocument {
+            id: "1".into(),
+            name: "UserService".into(),
+            signature: "pub struct UserService".into(),
+            doc_comment: "".into(),
+            code_body: "pub struct UserService {}".into(),
+            file_path: "src/user.rs".into(),
+            kind: "class".into(),
+            language: "rust".into(),
+            start_line: 1,
+        })
+        .unwrap();
+
+    index.commit().unwrap();
+
+    // Single-term query — AND works fine, no fallback needed
+    let results = index
+        .search_symbols("UserService", &SearchFilter::default(), 10)
+        .unwrap();
+    assert_eq!(results[0].name, "UserService");
 }

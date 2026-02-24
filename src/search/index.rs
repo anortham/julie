@@ -241,6 +241,8 @@ impl SearchIndex {
     /// Search for symbols matching the query.
     ///
     /// Uses field boosting: name (5x) > signature (3x) > doc_comment (2x) > code_body (1x).
+    /// Automatically falls back to OR matching when AND returns zero results and the
+    /// query contains multiple terms.
     pub fn search_symbols(
         &self,
         query_str: &str,
@@ -274,6 +276,26 @@ impl SearchIndex {
 
         let searcher = self.reader.searcher();
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
+
+        // Auto-fallback: if AND returned nothing and we have multiple terms, try OR
+        let top_docs = if top_docs.is_empty() && terms.len() > 1 {
+            let or_query = build_symbol_query(
+                &terms,
+                f.name,
+                f.signature,
+                f.doc_comment,
+                f.code_body,
+                f.doc_type,
+                f.language,
+                f.kind,
+                filter.language.as_deref(),
+                filter.kind.as_deref(),
+                false, // OR mode
+            );
+            searcher.search(&or_query, &TopDocs::with_limit(limit))?
+        } else {
+            top_docs
+        };
 
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {

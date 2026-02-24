@@ -56,18 +56,11 @@ pub fn build_symbol_query(
         ));
     }
 
-    // Per-term occurrence: Must (AND) requires ALL terms present; Should (OR)
-    // returns partial matches ranked by BM25 (more matching terms = higher score).
-    let term_occur = if require_all_terms {
-        Occur::Must
-    } else {
-        Occur::Should
-    };
-
-    // For each search term, build a per-field boolean sub-query.
+    // Build per-term field sub-queries.
     // Within each term, the field variants are OR'd (Should) so "select" can match
-    // in name OR signature OR doc OR body. Across terms, the occurrence is controlled
-    // by `term_occur`: Must (AND) or Should (OR).
+    // in name OR signature OR doc OR body.
+    let mut term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+
     for term in terms {
         let term_lower = term.to_lowercase();
 
@@ -106,7 +99,26 @@ pub fn build_symbol_query(
             Box::new(TermQuery::new(body_term, IndexRecordOption::Basic)),
         ));
 
-        subqueries.push((term_occur, Box::new(BooleanQuery::new(field_clauses))));
+        // In AND mode, each term is Must (all terms required).
+        // In OR mode, each term is Should (any term can match).
+        let term_occur = if require_all_terms {
+            Occur::Must
+        } else {
+            Occur::Should
+        };
+        term_clauses.push((term_occur, Box::new(BooleanQuery::new(field_clauses))));
+    }
+
+    if require_all_terms {
+        // AND mode: add term clauses directly — each is Must so all are required
+        subqueries.extend(term_clauses);
+    } else {
+        // OR mode: wrap all Should term clauses in their own BooleanQuery, then
+        // add that wrapper as Must. This ensures at least one term must match
+        // (Tantivy treats Should clauses as optional when Must clauses exist,
+        // so without wrapping, every symbol document would match).
+        let terms_query = BooleanQuery::new(term_clauses);
+        subqueries.push((Occur::Must, Box::new(terms_query)));
     }
 
     BooleanQuery::new(subqueries)
@@ -141,6 +153,8 @@ pub fn build_content_query(
         ));
     }
 
+    let mut term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+
     for term in terms {
         let term_lower = term.to_lowercase();
         let content_term = Term::from_field_text(content_field, &term_lower);
@@ -150,17 +164,29 @@ pub fn build_content_query(
         // CamelCase compounds are lowercased without underscores, so they pass through as atomic.
         if term.contains('_') {
             // Compound token → SHOULD with boost (promotes exact identifier matches)
-            subqueries.push((
+            term_clauses.push((
                 Occur::Should,
                 Box::new(BoostQuery::new(Box::new(term_query), 5.0)),
             ));
         } else if require_all_terms {
             // AND mode: atomic sub-part → MUST (ensures file contains the word)
-            subqueries.push((Occur::Must, Box::new(term_query)));
+            term_clauses.push((Occur::Must, Box::new(term_query)));
         } else {
             // OR mode: atomic sub-part → SHOULD (partial matches allowed)
-            subqueries.push((Occur::Should, Box::new(term_query)));
+            term_clauses.push((Occur::Should, Box::new(term_query)));
         }
+    }
+
+    if require_all_terms {
+        // AND mode: add term clauses directly — Must clauses ensure all terms required
+        subqueries.extend(term_clauses);
+    } else {
+        // OR mode: wrap all Should term clauses in their own BooleanQuery, then
+        // add that wrapper as Must. This ensures at least one term must match
+        // (Tantivy treats Should clauses as optional when Must clauses exist,
+        // so without wrapping, every file document would match).
+        let terms_query = BooleanQuery::new(term_clauses);
+        subqueries.push((Occur::Must, Box::new(terms_query)));
     }
 
     BooleanQuery::new(subqueries)
