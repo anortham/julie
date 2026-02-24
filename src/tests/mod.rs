@@ -72,6 +72,8 @@ pub mod tools {
     pub mod phase4_token_savings; // Phase 4: Data structure optimization token savings tests (skip_serializing_if)
 
     pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
+
+    pub mod get_context_tests; // get_context tool pipeline tests (pivot selection, scoring)
 }
 
 // ============================================================================
