@@ -1,14 +1,11 @@
-//! Text-based search implementations
-//!
-//! Provides text search using Tantivy with code-aware tokenization.
-//! Replaces previous SQLite FTS5 implementation with improved handling
-//! of CamelCase/snake_case splitting at index time.
+//! Text-based search using Tantivy with code-aware tokenization.
 
 use anyhow::Result;
 use tracing::{debug, warn};
 
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
+use crate::search::scoring::apply_centrality_boost;
 use crate::search::{SearchFilter, SearchIndex};
 use super::query::matches_glob_pattern;
 
@@ -105,7 +102,7 @@ pub async fn text_search_impl(
                 let relaxed = search.relaxed;
 
                 // Apply file_pattern filter BEFORE symbol conversion + enrichment
-                let filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
+                let mut filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
                     search.results
                         .into_iter()
                         .filter(|r| matches_glob_pattern(&r.file_path, pattern))
@@ -115,16 +112,29 @@ pub async fn text_search_impl(
                     search.results
                 };
 
+                // Open reference workspace DB once for both centrality boost and enrichment
+                let ref_db_opt = if ref_db_path.exists() {
+                    crate::database::SymbolDatabase::new(&ref_db_path).ok()
+                } else {
+                    None
+                };
+
+                // Apply centrality boost for reference workspace
+                if let Some(ref ref_db) = ref_db_opt {
+                    let symbol_ids: Vec<&str> = filtered_results.iter().map(|r| r.id.as_str()).collect();
+                    if let Ok(ref_scores) = ref_db.get_reference_scores(&symbol_ids) {
+                        apply_centrality_boost(&mut filtered_results, &ref_scores);
+                    }
+                }
+
                 let mut symbols: Vec<Symbol> = filtered_results
                     .into_iter()
                     .map(|result| tantivy_symbol_to_symbol(result))
                     .collect();
 
                 // Enrich with code_context from reference workspace's SQLite
-                if ref_db_path.exists() {
-                    if let Ok(ref_db) = crate::database::SymbolDatabase::new(&ref_db_path) {
-                        enrich_symbols_from_db(&mut symbols, &ref_db);
-                    }
+                if let Some(ref ref_db) = ref_db_opt {
+                    enrich_symbols_from_db(&mut symbols, &ref_db);
                 }
 
                 Ok((symbols, relaxed))
@@ -244,7 +254,7 @@ pub async fn text_search_impl(
             let relaxed = search.relaxed;
 
             // Apply file_pattern filter BEFORE symbol conversion + enrichment
-            let filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
+            let mut filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
                 search.results
                     .into_iter()
                     .filter(|r| matches_glob_pattern(&r.file_path, pattern))
@@ -253,6 +263,22 @@ pub async fn text_search_impl(
             } else {
                 search.results
             };
+
+            // Apply centrality boost from graph reference scores
+            if let Some(db_arc) = &db_clone {
+                let db_lock = match db_arc.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during centrality boost, recovering");
+                        poisoned.into_inner()
+                    }
+                };
+                let symbol_ids: Vec<&str> = filtered_results.iter().map(|r| r.id.as_str()).collect();
+                if let Ok(ref_scores) = db_lock.get_reference_scores(&symbol_ids) {
+                    apply_centrality_boost(&mut filtered_results, &ref_scores);
+                }
+                drop(db_lock);
+            }
 
             let mut symbols: Vec<Symbol> = filtered_results
                 .into_iter()
