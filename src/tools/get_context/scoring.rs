@@ -1,7 +1,8 @@
 //! Pivot selection and scoring for get_context.
 //!
 //! Combines text relevance, centrality boost, and context penalties (test file de-boost,
-//! import filtering) to select the best pivot symbols from search results.
+//! non-code file de-boost, structural kind de-boost, import filtering) to select the
+//! best pivot symbols from search results.
 
 use std::collections::HashMap;
 
@@ -22,6 +23,11 @@ const TEST_FILE_PENALTY: f32 = 0.3;
 /// Score penalty for non-code files (docs, memories, markdown).
 /// get_context is for code orientation — documentation is useful but secondary.
 const NON_CODE_PENALTY: f32 = 0.15;
+
+/// Score penalty for structural declarations (namespace, module, export).
+/// These are 1-line boilerplate (`pub mod foo;`, `namespace Bar {}`) that match
+/// on keywords but carry no useful code context.
+const STRUCTURAL_KIND_PENALTY: f32 = 0.2;
 
 /// Select pivot symbols from search results using centrality-weighted scoring.
 ///
@@ -59,14 +65,21 @@ pub fn select_pivots(
                 1.0
             };
 
-            // De-boost non-code and test files — get_context is for code orientation
-            let context_factor = if is_non_code_path(&r.file_path) {
+            // De-boost non-code, test files, and structural declarations.
+            // Factors are multiplicative so a namespace in a test file gets both penalties.
+            let path_factor = if is_non_code_path(&r.file_path) {
                 NON_CODE_PENALTY
             } else if is_test_path(&r.file_path) {
                 TEST_FILE_PENALTY
             } else {
                 1.0
             };
+            let kind_factor = if is_structural_kind(&r.kind) {
+                STRUCTURAL_KIND_PENALTY
+            } else {
+                1.0
+            };
+            let context_factor = path_factor * kind_factor;
 
             let combined = r.score * boost * context_factor;
             Pivot {
@@ -106,6 +119,12 @@ pub(crate) fn is_test_path(path: &str) -> bool {
         || path.contains("_tests.")
         || path.contains(".test.")
         || path.contains(".spec.")
+}
+
+/// Check if a symbol kind is a structural declaration (namespace, module, export).
+/// These are boilerplate lines that match on keywords but carry no useful code body.
+fn is_structural_kind(kind: &str) -> bool {
+    matches!(kind, "namespace" | "module" | "export")
 }
 
 /// Check if a file path is a non-code file (docs, memories, markdown, config).
