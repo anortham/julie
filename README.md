@@ -158,15 +158,21 @@ cargo build --release
 # Binary will be at: target/release/julie-server[.exe]
 ```
 
-## Tools (6)
+## Tools (7)
 
 ### Search & Navigation
 
 - `fast_search` - Full-text code search with code-aware tokenization
   - Content search (grep-style line matches) or definition search (symbol names with signatures)
   - Definition search promotes exact symbol matches with kind, visibility, and signature
-  - <5ms search latency with CamelCase/snake_case splitting
+  - <5ms search latency with CamelCase/snake_case splitting, English stemming
+  - Automatic OR-fallback when strict AND returns zero results
   - Language and file pattern filtering
+- `get_context` - Token-budgeted context for a concept or task
+  - Returns relevant code subgraph with pivots (full code) and neighbors (signatures)
+  - Pipeline: search → centrality ranking → graph expansion → adaptive token allocation → formatted output
+  - Adaptive budget: few results → deep context, many results → broad overview
+  - Use at the start of a task for area-level orientation
 - `deep_dive` - Progressive-depth symbol investigation
   - Overview (~200 tokens), context (~600 tokens), or full (~1500 tokens) detail levels
   - Kind-aware: functions show callers/callees/types, traits show implementations, structs show fields/methods
@@ -213,8 +219,9 @@ Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patter
 ## Architecture
 
 - **Tree-sitter parsers** for accurate symbol extraction across all languages
-- **Tantivy full-text search** with code-aware tokenization (CamelCase/snake_case splitting)
-- **SQLite storage** for symbols, identifiers, relationships, and file metadata
+- **Tantivy full-text search** with code-aware tokenization (CamelCase/snake_case splitting, English stemming)
+- **Graph centrality ranking** using pre-computed reference scores from the relationship graph
+- **SQLite storage** for symbols, identifiers, relationships, types, and file metadata
 - **Per-workspace isolation** with separate databases and indexes
 - **MCP protocol** for AI agent integration
 

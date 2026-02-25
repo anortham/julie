@@ -83,12 +83,12 @@ src/database/
 - **Origin**: Native Rust implementation for true cross-platform compatibility
 - **Crown Jewels**: 30 tree-sitter extractors with comprehensive test suites
 
-### 🏆 Current Language Support (30/30 - Complete)
+### 🏆 Current Language Support (31 - Complete)
 
-**Core Languages:** Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin  
-**Systems Languages:** C, C++, Go, Lua  
-**Specialized:** GDScript, Vue, Razor, QML, R, SQL, HTML, CSS, Regex, Bash, PowerShell, Zig, Dart  
-**Documentation:** Markdown, JSON, TOML
+**Core Languages:** Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin
+**Systems Languages:** C, C++, Go, Lua, Zig
+**Specialized:** GDScript, Vue, Razor, QML, R, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart
+**Documentation:** Markdown, JSON, JSONL, TOML, YAML
 
 ---
 
@@ -264,14 +264,15 @@ ls -lh .julie/logs/
 ## 🏗️ Architecture Principles (Brief)
 
 ### Core Design Decisions
-1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization
-2. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`
-3. **Native Rust**: No FFI, no CGO, no external dependencies
-4. **Tree-sitter Native**: Direct Rust bindings for all language parsers
-5. **SQLite Storage**: Symbols, identifiers, relationships, types, files
-6. **Single Binary**: Deploy anywhere, no runtime required
-7. **Instant Search**: Tantivy index available immediately after indexing
-8. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
+1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization + English stemming
+2. **Graph Centrality Ranking**: Pre-computed reference scores boost well-connected symbols in search results
+3. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`
+4. **Native Rust**: No FFI, no CGO, no external dependencies
+5. **Tree-sitter Native**: Direct Rust bindings for all language parsers
+6. **SQLite Storage**: Symbols, identifiers, relationships, types, files
+7. **Single Binary**: Deploy anywhere, no runtime required
+8. **Instant Search**: Tantivy index available immediately after indexing
+9. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
 
 For detailed architecture info, see: **docs/SEARCH_FLOW.md** and **docs/ARCHITECTURE.md**
 
@@ -279,10 +280,17 @@ For detailed architecture info, see: **docs/SEARCH_FLOW.md** and **docs/ARCHITEC
 ```
 src/
 ├── main.rs              # MCP server entry point
-├── extractors/          # Language-specific symbol extraction (30 languages)
-├── search/              # Tantivy search engine and tokenizer
+├── extractors/          # Language-specific symbol extraction (31 languages)
+├── search/              # Tantivy search engine, tokenizer, centrality scoring
 ├── database/            # SQLite structured storage
 ├── tools/               # MCP tool implementations
+│   ├── get_context/     # Token-budgeted context retrieval (search → rank → expand → allocate → format)
+│   ├── deep_dive/       # Progressive-depth symbol investigation
+│   ├── search/          # fast_search (definitions + content)
+│   ├── navigation/      # fast_refs
+│   ├── refactoring/     # rename_symbol
+│   ├── symbols/         # get_symbols
+│   └── workspace/       # manage_workspace
 ├── workspace/           # Multi-workspace registry
 └── tests/               # Comprehensive test infrastructure
 ```
@@ -318,11 +326,9 @@ fast_search(
 - **docs/DEVELOPMENT.md** - Daily commands, debugging, release process
 - **docs/PERFORMANCE.md** - Performance targets and benchmarking
 - **docs/DEPENDENCIES.md** - Tree-sitter versions, dependency management
-- **docs/SEARCH_FLOW.md** - Tantivy search architecture
-- **docs/RAG_TRANSFORMATION.md** - RAG POC results and token reduction
-- **docs/RAG_POC_PROGRESS.md** - POC progress tracker (100% complete)
+- **docs/SEARCH_FLOW.md** - Tantivy search architecture (OR-fallback, centrality, stemming)
 - **docs/ARCHITECTURE.md** - Token optimization strategies
-- **docs/INTELLIGENCE_LAYER.md** - Cross-language intelligence
+- **docs/INTELLIGENCE_LAYER.md** - Cross-language intelligence and graph centrality
 
 ### Query Examples
 
@@ -338,9 +344,8 @@ fast_search(
 
 ---
 
-**Last Updated:** 2025-11-07
-**Status:** Production Ready (v1.1.0)
-**Project Status:** See **docs/RAG_POC_PROGRESS.md** for current milestone achievements
+**Last Updated:** 2026-02-25
+**Status:** Production Ready (v3.3.0)
 
 ---
 

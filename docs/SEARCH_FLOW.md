@@ -1,8 +1,8 @@
 # Julie Search Architecture
 
 **Purpose**: Technical reference for Julie's Tantivy-based search engine
-**Last Updated**: 2026-02-06
-**Status**: Production (Tantivy full-text search)
+**Last Updated**: 2026-02-25
+**Status**: Production (Tantivy full-text search + graph centrality + stemming)
 
 ---
 
@@ -39,7 +39,7 @@ Both document types share one Tantivy index per workspace, distinguished by a
 | `src/search/tokenizer.rs` | `CodeTokenizer` (CamelCase/snake_case splitting) |
 | `src/search/schema.rs` | Tantivy schema definition and `SchemaFields` |
 | `src/search/query.rs` | BooleanQuery construction with field boosting |
-| `src/search/scoring.rs` | Post-search `important_patterns` boost |
+| `src/search/scoring.rs` | Post-search `important_patterns` boost + centrality boost |
 | `src/search/language_config.rs` | Per-language TOML config loader |
 | `src/tools/search/text_search.rs` | MCP tool entry point (`text_search_impl`) |
 
@@ -65,21 +65,27 @@ text_search_impl()                       [src/tools/search/text_search.rs]
   |     |
   |     +-- SearchIndex methods:          [src/search/index.rs]
   |           |
-  |           +-- tokenize_query()        CodeTokenizer splits query
+  |           +-- tokenize_query()        CodeTokenizer splits query (with stemming)
   |           +-- filter_compound_tokens() remove redundant compounds
   |           +-- build_symbol_query()    [src/search/query.rs]
   |           |   or build_content_query()
-  |           +-- searcher.search()       Tantivy BooleanQuery execution
+  |           +-- searcher.search()       Tantivy BooleanQuery execution (AND mode)
+  |           +-- IF zero results AND multiple terms:
+  |           |     retry with OR mode (Occur::Should)  ← OR-fallback
+  |           |     set relaxed=true
   |           +-- apply_important_patterns_boost()  [src/search/scoring.rs]
   |
   +-- post-processing:
-        "definitions" --> enrich code_context from SQLite
-        "content"     --> post-verify candidates against SQLite file content
-  |
-  +-- apply file_pattern glob filter
+  |     "definitions":
+  |       +-- apply file_pattern glob filter
+  |       +-- apply_centrality_boost()    [src/search/scoring.rs]
+  |       +-- enrich code_context from SQLite
+  |     "content":
+  |       +-- post-verify candidates against SQLite file content
+  |       +-- apply file_pattern glob filter
   |
   v
-Results (Vec<Symbol>)
+Results (Vec<Symbol>, relaxed: bool)
 ```
 
 ### Two Search Targets
@@ -256,6 +262,79 @@ re-sorted by score after boosting.
 This causes public API symbols to rank higher than private implementation
 details. For example, in Rust, `pub fn process()` gets a 1.5x boost over
 a private `fn helper()`, because `"pub fn"` is in the important_patterns list.
+
+---
+
+## OR-Fallback Search
+
+When a multi-term AND query returns zero results, `search_symbols` and
+`search_content` automatically retry with OR semantics (`Occur::Should`).
+
+**Flow:**
+1. Build query with `require_all_terms=true` (AND mode)
+2. Execute search
+3. If results empty AND `terms.len() > 1`:
+   - Rebuild query with `require_all_terms=false` (OR mode)
+   - BM25 naturally ranks documents matching more terms higher
+   - Set `relaxed=true` on the result
+4. Tool output prepends: `NOTE: Relaxed search (showing partial matches...)`
+
+This recovers from zero-result queries without degrading precision when AND
+succeeds. Single-term queries are never relaxed.
+
+**Key files:** `src/search/index.rs` (fallback logic), `src/search/query.rs`
+(`require_all_terms` parameter), `src/tools/search/mod.rs` (relaxed indicator).
+
+---
+
+## Graph Centrality Boost
+
+After Tantivy returns results, `apply_centrality_boost()` re-ranks them using
+pre-computed `reference_score` values from the `symbols` table.
+
+**Formula:**
+```
+boosted_score = score * (1.0 + ln(1 + reference_score) * CENTRALITY_WEIGHT)
+```
+
+`CENTRALITY_WEIGHT = 0.3`. Effect at different reference counts:
+
+| reference_score | Boost factor |
+|-----------------|-------------|
+| 0 (no refs) | 1.0x (no change) |
+| 5 | ~1.54x |
+| 50 | ~2.18x |
+| 100 | ~2.38x |
+
+**Noise filtering:** Ubiquitous trait methods (`to_string`, `clone`, `fmt`,
+`eq`, `new`, `default`, `from`, `into`, etc.) are skipped — their high ref
+counts reflect language mechanics, not actual importance.
+`CENTRALITY_NOISE_NAMES` in `src/search/scoring.rs` defines the blocklist.
+
+**Score computation:** `compute_reference_scores()` runs after indexing
+completes. Uses weighted aggregation: `calls=3x`, `implements/imports/extends=2x`,
+`uses/references=1x`. Self-references excluded. Stored in `reference_score`
+column (migration 009).
+
+**Key files:** `src/search/scoring.rs` (`apply_centrality_boost`,
+`CENTRALITY_NOISE_NAMES`), `src/database/relationships.rs`
+(`compute_reference_scores`).
+
+---
+
+## English Stemming
+
+The `CodeTokenizer` emits Snowball English stems as additional tokens alongside
+exact tokens. This enables morphological matching: "estimation" and "estimator"
+both produce stem "estim".
+
+**Rules:**
+- Stems are emitted per-segment after all other variants (CamelCase, snake_case, affixes)
+- Minimum 4 characters (avoids noise from short identifiers)
+- Stems that equal the original token are skipped (deduplication)
+- Uses `rust-stemmers` crate with `LazyLock` singleton for zero-cost after first access
+
+**Key file:** `src/search/tokenizer.rs` (stemming logic in `tokenize_code`).
 
 ---
 

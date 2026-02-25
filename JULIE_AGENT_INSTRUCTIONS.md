@@ -117,6 +117,7 @@ get_context(query="payment processing")
 - `max_tokens`: Override adaptive budget (default: auto-scaled 2000-4000 based on result count)
 - `language`: Filter to specific language
 - `file_pattern`: Filter by file glob pattern
+- `workspace`: Search a reference workspace instead of primary (use workspace ID from `manage_workspace list`)
 
 ### manage_workspace — Workspace Setup
 **First action in new workspace:** `manage_workspace(operation="index")`

@@ -1,6 +1,6 @@
 # Julie Intelligence Layer - The Secret Sauce
 
-**Last Updated**: 2025-09-30
+**Last Updated**: 2026-02-25
 **Status**: Production Ready ✅
 **Value**: Core Differentiator - What Makes Julie Worth Building
 
@@ -11,9 +11,11 @@
 **Question**: *"Why spend months and hundreds of thousands of dollars building Julie when Codesearch already exists?"*
 
 **Answer**: **THIS.** The Julie Intelligence Layer is what makes Julie more than just another code search tool. It's the convergence of everything we built:
-- 26 tree-sitter extractors → **Structural Understanding**
+- 31 tree-sitter extractors → **Structural Understanding**
 - Tantivy full-text search → **Fast Intelligence**
 - Code-aware tokenization → **Cross-language Discovery**
+- Graph centrality ranking → **Importance-Aware Results**
+- English stemming → **Morphological Matching**
 
 Traditional code search tools search for TEXT. Julie searches for MEANING.
 
@@ -44,11 +46,11 @@ Traditional tools fail miserably here:
 
 ---
 
-## The Three Pillars of Intelligence
+## The Five Pillars of Intelligence
 
 ### 1. Structural Intelligence (Tree-sitter)
 
-**What it is**: Understanding code structure across 26 languages, not just text.
+**What it is**: Understanding code structure across 31 languages, not just text.
 
 **How it works**:
 - Tree-sitter parsers extract semantic meaning
@@ -103,6 +105,41 @@ variants = [
 Traditional semantic search uses embeddings to find conceptually similar code. Julie achieves cross-language discovery through naming convention variants instead — converting between camelCase, snake_case, PascalCase, kebab-case, and SCREAMING_SNAKE_CASE to find the same concept across languages.
 
 This approach is simpler, faster (<5ms vs 50ms+), requires no model downloads, and covers the most common cross-language scenario: the same concept with different naming conventions.
+
+---
+
+### 4. Graph Centrality Ranking
+
+**What it is**: Using the relationship graph to rank search results by structural importance.
+
+**How it works**:
+1. During indexing, `compute_reference_scores()` aggregates weighted incoming relationships for each symbol
+2. Weights: `calls=3x`, `implements/imports/extends=2x`, `uses/references=1x`
+3. After Tantivy returns search results, `apply_centrality_boost()` re-ranks using:
+   ```
+   boosted_score = score * (1.0 + ln(1 + reference_score) * 0.3)
+   ```
+4. Noise filtering: Ubiquitous symbols (`to_string`, `clone`, `fmt`, `eq`, etc.) are excluded from boosting
+
+**Why it matters**: A `process_files_optimized()` function called by 50 other functions should rank higher than a `helper()` called by 1. Graph centrality makes "important" code surface first.
+
+**Code**: `src/search/scoring.rs`, `src/database/relationships.rs`
+
+---
+
+### 5. English Stemming
+
+**What it is**: Morphological matching via Snowball English stemming in the `CodeTokenizer`.
+
+**How it works**:
+- Stems are emitted as additional tokens alongside exact tokens at both index and query time
+- "estimation" and "estimator" both produce stem "estim", enabling cross-variant matching
+- Minimum 4 characters to avoid noise from short identifiers
+- Uses `rust-stemmers` crate with `LazyLock` singleton
+
+**Why it matters**: Searching for "processing" finds `process_files`, `Processor`, and `preprocessor` — matching morphological variants without requiring exact text.
+
+**Code**: `src/search/tokenizer.rs`
 
 ---
 
@@ -361,10 +398,10 @@ cargo test navigation
 
 ## Related Documentation
 
-- **Implementation**: `src/utils/cross_language_intelligence.rs`
-- **Search Architecture**: `docs/SEARCH_FLOW.md`
-- **Navigation Tools**: `src/tools/navigation.rs`
-- **Project Status**: `STATUS.md`
+- **Cross-Language Intelligence**: `src/utils/cross_language_intelligence.rs`
+- **Search Architecture**: `docs/SEARCH_FLOW.md` (OR-fallback, centrality, stemming)
+- **Graph Centrality**: `src/search/scoring.rs`, `src/database/relationships.rs`
+- **Tokenizer & Stemming**: `src/search/tokenizer.rs`
 - **Development Guide**: `CLAUDE.md`
 
 ---

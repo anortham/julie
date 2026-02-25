@@ -2,9 +2,9 @@
 
 ## Token Optimization Architecture
 
-**Last Updated:** 2025-10-14
+**Last Updated:** 2026-02-25
 **Status:** Production-Ready
-**Coverage:** All core MCP tools optimized
+**Coverage:** All 7 MCP tools optimized
 
 ### Overview
 
@@ -299,8 +299,8 @@ Different tools have different token budgets based on their purpose:
 | **FastRefsTool** | 20,000 | Reference lists can be long; need to see usage patterns |
 | **GetSymbolsTool** | 15,000 | File structure overviews; moderate size sufficient |
 | **TraceCallPathTool** | 15,000 (data), 20,000 (final) | Call graphs can explode; dual-layer protection |
+| **GetContextTool** | 2,000-4,000 (adaptive) | Area-level orientation; adaptive budget scales with pivot count |
 | **ManageWorkspaceTool** | 10,000 (list), 12,000 (recent) | Administrative commands; compact summaries preferred |
-| **FindLogicTool** | 12,000 | Business logic summaries; focused results |
 
 **General principle:** Navigation tools (search, goto, refs) get higher budgets than administrative tools (manage, list)
 
@@ -466,9 +466,9 @@ Document token limits in the tool's MCP description:
 
 Potential improvements for future releases:
 
-1. **Adaptive token budgets** - Adjust targets based on remaining context window
-2. **Semantic ranking** - Prioritize most relevant items during reduction
-3. **User-configurable limits** - Allow power users to set custom token budgets
+1. ~~**Adaptive token budgets**~~ - ✅ Implemented in `get_context` (adaptive budget scales with pivot count)
+2. ~~**Semantic ranking**~~ - ✅ Implemented via graph centrality boost in search scoring
+3. **User-configurable limits** - Allow power users to set custom token budgets per tool
 4. **Progressive loading** - Return partial results with "load more" capability
 5. **Compression techniques** - Smarter encoding for repetitive structures
 
@@ -476,8 +476,8 @@ Potential improvements for future releases:
 
 ## 📚 Related Documentation
 
-- **SEARCH_FLOW.md** - Tantivy search architecture
-- **SMART_READ_DEMO.md** - GetSymbolsTool token savings demonstration
+- **SEARCH_FLOW.md** - Tantivy search architecture (OR-fallback, centrality, stemming)
+- **INTELLIGENCE_LAYER.md** - Cross-language intelligence and graph centrality
 - **CLAUDE.md** - Project guidelines and TDD methodology
 - **Testing:** `src/tests/*_token_tests.rs` - Integration test suites
 
