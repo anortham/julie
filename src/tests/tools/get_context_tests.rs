@@ -1328,13 +1328,13 @@ mod pipeline_integration_tests {
         let token_est = crate::utils::token_estimation::TokenEstimator::new();
         let estimated = token_est.estimate_string(&result);
 
-        // The overall output includes formatting overhead (headers, separators),
-        // so we can't expect it to be exactly within max_tokens.
-        // But the pivot content should be constrained.
-        // Just verify it doesn't wildly exceed the budget
-        // (without enforcement, a 100-token budget could produce 500+ tokens of pivot content)
-        println!(
-            "Token budget: 100, estimated output tokens: {}",
+        // Without enforcement, pivot content alone would be 200+ tokens.
+        // With enforcement on a 100-token budget, total output should stay reasonable.
+        // The overall output includes formatting overhead (headers, separators,
+        // neighbor section), so we can't expect estimated <= 100, but it must be bounded.
+        assert!(
+            estimated < 400,
+            "With 100-token budget, output should be constrained. Got: {} tokens",
             estimated
         );
     }
@@ -1370,6 +1370,15 @@ mod token_budget_tests {
         assert!(
             result.contains("lines omitted to fit token budget"),
             "Should have omission marker"
+        );
+
+        // Verify the result actually fits near the token budget
+        let estimator = crate::utils::token_estimation::TokenEstimator::new();
+        let result_tokens = estimator.estimate_string(&result);
+        assert!(
+            result_tokens <= 60, // small margin for the omission comment line
+            "Truncated content should be near the budget of 50 tokens. Got: {} tokens",
+            result_tokens
         );
     }
 
