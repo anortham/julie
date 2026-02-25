@@ -7,6 +7,7 @@
 pub mod allocation;
 pub mod formatting;
 pub mod pipeline;
+pub mod scoring;
 
 use anyhow::Result;
 use schemars::JsonSchema;

@@ -113,6 +113,88 @@ mod tests {
             pivots[1].combined_score,
         );
     }
+
+    /// Test that results from test files are de-boosted so production code wins.
+    ///
+    /// Scenario: A test function matches with higher text score than the production
+    /// implementation, but should rank lower after de-boost.
+    #[test]
+    fn test_select_pivots_deboosts_test_files() {
+        let results = vec![
+            // Test file has higher raw text score
+            SymbolSearchResult {
+                id: "test_search_ranking".to_string(),
+                name: "test_search_ranking".to_string(),
+                signature: "fn test_search_ranking()".to_string(),
+                doc_comment: String::new(),
+                file_path: "src/tests/search_tests.rs".to_string(),
+                kind: "function".to_string(),
+                language: "rust".to_string(),
+                start_line: 10,
+                score: 8.0,
+            },
+            // Production file has lower raw text score
+            SymbolSearchResult {
+                id: "search_ranking_impl".to_string(),
+                name: "apply_ranking".to_string(),
+                signature: "fn apply_ranking()".to_string(),
+                doc_comment: String::new(),
+                file_path: "src/search/ranking.rs".to_string(),
+                kind: "function".to_string(),
+                language: "rust".to_string(),
+                start_line: 42,
+                score: 5.0,
+            },
+        ];
+
+        let ref_scores = HashMap::new();
+        let pivots = select_pivots(results, &ref_scores);
+
+        // Production code should rank first despite lower raw text score
+        assert_eq!(
+            pivots[0].result.id, "search_ranking_impl",
+            "Production code should rank above test code, but test code '{}' ranked first",
+            pivots[0].result.id
+        );
+    }
+
+    /// Test that import nodes are filtered out before pivot selection.
+    #[test]
+    fn test_select_pivots_filters_imports() {
+        let results = vec![
+            // Import node — should be excluded
+            SymbolSearchResult {
+                id: "import_symbol_db".to_string(),
+                name: "SymbolDatabase".to_string(),
+                signature: "use crate::database::SymbolDatabase".to_string(),
+                doc_comment: String::new(),
+                file_path: "src/handler.rs".to_string(),
+                kind: "import".to_string(),
+                language: "rust".to_string(),
+                start_line: 5,
+                score: 10.0,
+            },
+            // Actual struct definition — should be selected
+            SymbolSearchResult {
+                id: "struct_symbol_db".to_string(),
+                name: "SymbolDatabase".to_string(),
+                signature: "pub struct SymbolDatabase".to_string(),
+                doc_comment: String::new(),
+                file_path: "src/database/mod.rs".to_string(),
+                kind: "struct".to_string(),
+                language: "rust".to_string(),
+                start_line: 33,
+                score: 7.0,
+            },
+        ];
+
+        let ref_scores = HashMap::new();
+        let pivots = select_pivots(results, &ref_scores);
+
+        // Import should be filtered — only the struct should remain
+        assert_eq!(pivots.len(), 1, "Import should be filtered out, leaving 1 pivot");
+        assert_eq!(pivots[0].result.id, "struct_symbol_db");
+    }
 }
 
 #[cfg(test)]
@@ -974,6 +1056,119 @@ mod pipeline_integration_tests {
         assert!(
             has_neighbor_section || has_any_neighbor,
             "output should include neighbor symbols from graph expansion, got:\n{}",
+            result,
+        );
+    }
+
+    /// Test that common trait method neighbors (clone, to_string, fmt, etc.)
+    /// are filtered from output as noise.
+    #[test]
+    fn test_pipeline_filters_noise_neighbors() {
+        let (_db_dir, _index_dir, mut db, index) = setup_test_env();
+
+        // Helper to make a noise symbol with all required fields
+        fn make_noise(id: &str, name: &str, file: &str, line: u32) -> Symbol {
+            Symbol {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind: SymbolKind::Method,
+                language: "rust".to_string(),
+                file_path: file.to_string(),
+                start_line: line,
+                end_line: line + 5,
+                start_column: 0,
+                end_column: 0,
+                start_byte: 0,
+                end_byte: 100,
+                parent_id: None,
+                signature: Some(format!("fn {}()", name)),
+                doc_comment: None,
+                visibility: Some(Visibility::Public),
+                metadata: None,
+                semantic_group: None,
+                confidence: Some(0.9),
+                code_context: Some(format!("fn {}() {{ }}", name)),
+                content_type: None,
+            }
+        }
+
+        // Add noise symbols that are common trait methods
+        let noise_symbols = vec![
+            make_noise("clone_impl", "clone", "src/handler.rs", 200),
+            make_noise("to_string_impl", "to_string", "src/handler.rs", 210),
+            make_noise("fmt_impl", "fmt", "src/handler.rs", 220),
+        ];
+
+        db.store_symbols(&noise_symbols).unwrap();
+
+        // Add relationships: sym_process calls clone, to_string, fmt
+        // (sym_process is the ID for process_request in setup_test_env)
+        let noise_rels = vec![
+            Relationship {
+                id: "rel_clone".to_string(),
+                from_symbol_id: "sym_process".to_string(),
+                to_symbol_id: "clone_impl".to_string(),
+                kind: RelationshipKind::Calls,
+                file_path: "src/handler.rs".to_string(),
+                line_number: 55,
+                confidence: 0.9,
+                metadata: None,
+            },
+            Relationship {
+                id: "rel_to_string".to_string(),
+                from_symbol_id: "sym_process".to_string(),
+                to_symbol_id: "to_string_impl".to_string(),
+                kind: RelationshipKind::Calls,
+                file_path: "src/handler.rs".to_string(),
+                line_number: 56,
+                confidence: 0.9,
+                metadata: None,
+            },
+            Relationship {
+                id: "rel_fmt".to_string(),
+                from_symbol_id: "sym_process".to_string(),
+                to_symbol_id: "fmt_impl".to_string(),
+                kind: RelationshipKind::Calls,
+                file_path: "src/handler.rs".to_string(),
+                line_number: 57,
+                confidence: 0.9,
+                metadata: None,
+            },
+        ];
+
+        db.store_relationships(&noise_rels).unwrap();
+
+        let result = run_pipeline(
+            "process_request",
+            None,
+            None,
+            None,
+            &db,
+            &index,
+        )
+        .unwrap();
+
+        // clone, to_string, fmt should NOT appear as neighbors
+        assert!(
+            !result.contains("clone_impl") && !result.contains("  clone "),
+            "clone should be filtered from neighbors, got:\n{}",
+            result,
+        );
+        assert!(
+            !result.contains("to_string_impl") && !result.contains("  to_string "),
+            "to_string should be filtered from neighbors, got:\n{}",
+            result,
+        );
+        assert!(
+            !result.contains("fmt_impl") && !result.contains("  fmt "),
+            "fmt should be filtered from neighbors, got:\n{}",
+            result,
+        );
+
+        // Real neighbors should still be present
+        assert!(
+            result.contains("validate_input") || result.contains("build_response"),
+            "Real neighbors should still appear in output, got:\n{}",
             result,
         );
     }

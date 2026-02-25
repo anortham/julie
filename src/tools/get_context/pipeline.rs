@@ -5,72 +5,10 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Result;
 
 use super::GetContextTool;
+pub use super::scoring::{select_pivots, Pivot};
 use crate::database::SymbolDatabase;
 use crate::extractors::base::{RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
-use crate::search::index::SymbolSearchResult;
-use crate::search::scoring::CENTRALITY_WEIGHT;
-
-/// A pivot symbol selected from search results, with its combined score.
-pub struct Pivot {
-    pub result: SymbolSearchResult,
-    pub combined_score: f32,
-}
-
-/// Select pivot symbols from search results using centrality-weighted scoring.
-///
-/// Applies centrality boost to each result's text relevance score, then selects
-/// an adaptive number of pivots based on score distribution:
-/// - Top result 2x+ above second -> 1 pivot (clear winner)
-/// - Top 3 within 30% of each other -> 3 pivots (cluster)
-/// - Otherwise -> 2 pivots (default)
-pub fn select_pivots(
-    results: Vec<SymbolSearchResult>,
-    reference_scores: &HashMap<String, f64>,
-) -> Vec<Pivot> {
-    if results.is_empty() {
-        return Vec::new();
-    }
-
-    // Compute combined scores: text_relevance * centrality_boost
-    let mut scored: Vec<Pivot> = results
-        .into_iter()
-        .map(|r| {
-            let ref_score = reference_scores.get(&r.id).copied().unwrap_or(0.0);
-            let boost = if ref_score > 0.0 {
-                1.0 + (1.0 + ref_score as f32).ln() * CENTRALITY_WEIGHT
-            } else {
-                1.0
-            };
-            let combined = r.score * boost;
-            Pivot {
-                result: r,
-                combined_score: combined,
-            }
-        })
-        .collect();
-
-    // Sort by combined score descending
-    scored.sort_by(|a, b| {
-        b.combined_score
-            .partial_cmp(&a.combined_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    // Determine pivot count from score distribution
-    let top_score = scored[0].combined_score;
-    let pivot_count = if scored.len() == 1 {
-        1
-    } else if top_score > scored[1].combined_score * 2.0 {
-        1 // Clear winner — top result dominates
-    } else if scored.len() >= 3 && scored[2].combined_score >= top_score * 0.7 {
-        3 // Cluster — top 3 are close
-    } else {
-        2 // Default — top 2
-    };
-
-    scored.into_iter().take(pivot_count).collect()
-}
 
 /// Direction of a neighbor relative to the pivot symbol.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -357,25 +295,32 @@ fn get_pivot_relationship_names(
     let mut incoming_names = Vec::new();
     let mut outgoing_names = Vec::new();
 
-    // Incoming callers
+    // Incoming callers (excluding noise trait methods)
     if let Ok(incoming_rels) = db.get_relationships_to_symbol(pivot_id) {
         let caller_ids: Vec<String> = incoming_rels
             .iter()
             .map(|r| r.from_symbol_id.clone())
             .collect();
         if !caller_ids.is_empty() {
-            // Try to get names from neighbor list first (cheaper)
             for id in &caller_ids {
-                if let Some(n) = expansion.neighbors.iter().find(|n| n.symbol.id == *id) {
-                    incoming_names.push(n.symbol.name.clone());
+                let name = if let Some(n) = expansion.neighbors.iter().find(|n| n.symbol.id == *id)
+                {
+                    Some(n.symbol.name.clone())
                 } else if let Ok(Some(sym)) = db.get_symbol_by_id(id) {
-                    incoming_names.push(sym.name);
+                    Some(sym.name)
+                } else {
+                    None
+                };
+                if let Some(name) = name {
+                    if !NOISE_NEIGHBOR_NAMES.contains(&name.as_str()) {
+                        incoming_names.push(name);
+                    }
                 }
             }
         }
     }
 
-    // Outgoing callees
+    // Outgoing callees (excluding noise trait methods)
     if let Ok(outgoing_rels) = db.get_outgoing_relationships(pivot_id) {
         let callee_ids: Vec<String> = outgoing_rels
             .iter()
@@ -383,10 +328,18 @@ fn get_pivot_relationship_names(
             .collect();
         if !callee_ids.is_empty() {
             for id in &callee_ids {
-                if let Some(n) = expansion.neighbors.iter().find(|n| n.symbol.id == *id) {
-                    outgoing_names.push(n.symbol.name.clone());
+                let name = if let Some(n) = expansion.neighbors.iter().find(|n| n.symbol.id == *id)
+                {
+                    Some(n.symbol.name.clone())
                 } else if let Ok(Some(sym)) = db.get_symbol_by_id(id) {
-                    outgoing_names.push(sym.name);
+                    Some(sym.name)
+                } else {
+                    None
+                };
+                if let Some(name) = name {
+                    if !NOISE_NEIGHBOR_NAMES.contains(&name.as_str()) {
+                        outgoing_names.push(name);
+                    }
                 }
             }
         }
@@ -395,13 +348,22 @@ fn get_pivot_relationship_names(
     (incoming_names, outgoing_names)
 }
 
-/// Build NeighborEntry structs from graph expansion results.
+/// Common trait method names that provide no useful context as neighbors.
+/// These are boilerplate implementations that appear everywhere but tell you nothing
+/// about the actual code architecture.
+const NOISE_NEIGHBOR_NAMES: &[&str] = &[
+    "clone", "to_string", "fmt", "eq", "ne", "cmp", "partial_cmp",
+    "hash", "drop", "deref", "deref_mut",
+];
+
+/// Build NeighborEntry structs from graph expansion results, filtering noise.
 fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::NeighborEntry> {
     use super::formatting::NeighborEntry;
 
     expansion
         .neighbors
         .iter()
+        .filter(|neighbor| !NOISE_NEIGHBOR_NAMES.contains(&neighbor.symbol.name.as_str()))
         .map(|neighbor| NeighborEntry {
             name: neighbor.symbol.name.clone(),
             file_path: neighbor.symbol.file_path.clone(),
