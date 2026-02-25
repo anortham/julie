@@ -95,6 +95,29 @@ Use `reference_kind` to narrow results when you only care about calls, type usag
 **ALWAYS use fast_refs BEFORE renaming** to understand impact.
 **ALWAYS preview first** with `dry_run=true`. Review the changes, then apply with `dry_run=false`.
 
+### get_context — Area-Level Orientation (Start of Task)
+**Always use BEFORE:** Starting a new task, investigating an unfamiliar area, or needing broad orientation.
+
+Combines search + graph traversal + token budgeting in one call. Returns pivots (full code bodies), neighbors (signatures), and a file map — all within a token budget.
+
+```javascript
+get_context(query="payment processing")
+// → Pivots with code, neighbors with signatures, file map — token-budgeted
+```
+
+**When to use each tool:**
+| Tool | Purpose | When to Use |
+|---|---|---|
+| `get_context` | Understand an area | "I need to work on payment processing" (start of task) |
+| `deep_dive` | Understand one symbol | "Tell me about process_payment before I modify it" (during task) |
+| `fast_search` | Find symbols by text | "Where is UserService defined?" (quick lookup) |
+| `fast_refs` | Impact analysis | "Who uses PaymentMethod?" (before changes) |
+
+**Optional parameters:**
+- `max_tokens`: Override adaptive budget (default: auto-scaled 2000-4000 based on result count)
+- `language`: Filter to specific language
+- `file_pattern`: Filter by file glob pattern
+
 ### manage_workspace — Workspace Setup
 **First action in new workspace:** `manage_workspace(operation="index")`
 If search returns zero results unexpectedly, run `health` to diagnose.
@@ -104,7 +127,7 @@ If search returns zero results unexpectedly, run `health` to diagnose.
 ## Workflow Patterns
 
 ### Starting New Work
-1. `fast_search` - Check for existing implementations
+1. `get_context` - Get oriented on the area you'll be working in (pivots + neighbors + file map)
 2. `deep_dive` - Understand key symbols you'll modify (callers, callees, children)
 3. `fast_refs` - Check impact on symbols you'll change
 4. Implement
@@ -124,6 +147,9 @@ If search returns zero results unexpectedly, run `health` to diagnose.
 ---
 
 ## Quick Reference
+
+**Getting Oriented:**
+- `get_context(query="...")` - Understand an area (pivots + neighbors + file map — start of task)
 
 **Finding Code:**
 - `fast_search(query="...")` - Find code (definition search promotes exact matches)
