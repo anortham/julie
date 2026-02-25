@@ -195,6 +195,60 @@ mod tests {
         assert_eq!(pivots.len(), 1, "Import should be filtered out, leaving 1 pivot");
         assert_eq!(pivots[0].result.id, "struct_symbol_db");
     }
+
+    /// Test that non-code files (.memories/, docs/, markdown) are de-boosted
+    /// below real source code. get_context is for code orientation, not docs.
+    #[test]
+    fn test_select_pivots_deboosts_non_code_files() {
+        let results = vec![
+            // Goldfish memory file matches on text
+            SymbolSearchResult {
+                id: "memory_checkpoint".to_string(),
+                name: "Phase 2 Complete: Search Ranking".to_string(),
+                signature: String::new(),
+                doc_comment: String::new(),
+                file_path: ".memories/2026-02-24/checkpoint.md".to_string(),
+                kind: "module".to_string(),
+                language: "markdown".to_string(),
+                start_line: 1,
+                score: 9.0,
+            },
+            // Design doc also matches
+            SymbolSearchResult {
+                id: "design_doc".to_string(),
+                name: "Phase 2: Graph Centrality Ranking".to_string(),
+                signature: String::new(),
+                doc_comment: String::new(),
+                file_path: "docs/plans/search-ranking.md".to_string(),
+                kind: "module".to_string(),
+                language: "markdown".to_string(),
+                start_line: 1,
+                score: 8.0,
+            },
+            // Actual source code with lower text score
+            SymbolSearchResult {
+                id: "ranking_impl".to_string(),
+                name: "apply_ranking".to_string(),
+                signature: "fn apply_ranking()".to_string(),
+                doc_comment: String::new(),
+                file_path: "src/search/scoring.rs".to_string(),
+                kind: "function".to_string(),
+                language: "rust".to_string(),
+                start_line: 42,
+                score: 5.0,
+            },
+        ];
+
+        let ref_scores = HashMap::new();
+        let pivots = select_pivots(results, &ref_scores);
+
+        // Source code should rank first despite lower raw text score
+        assert_eq!(
+            pivots[0].result.id, "ranking_impl",
+            "Source code should rank above docs/memories, but '{}' ranked first",
+            pivots[0].result.id
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1169,6 +1223,89 @@ mod pipeline_integration_tests {
         assert!(
             result.contains("validate_input") || result.contains("build_response"),
             "Real neighbors should still appear in output, got:\n{}",
+            result,
+        );
+    }
+
+    /// Test that neighbors from test files are filtered from output.
+    /// Test functions appearing as callers add noise to the context.
+    #[test]
+    fn test_pipeline_filters_test_file_neighbors() {
+        let (_db_dir, _index_dir, mut db, index) = setup_test_env();
+
+        // Register a test file
+        db.store_file_info(&FileInfo {
+            path: "src/tests/handler_tests.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "hash_test".to_string(),
+            size: 500,
+            last_modified: 1000000,
+            last_indexed: 0,
+            symbol_count: 1,
+            content: None,
+        })
+        .unwrap();
+
+        // Add a test function that calls process_request
+        let test_sym = Symbol {
+            id: "test_caller".to_string(),
+            name: "test_process_request_works".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/tests/handler_tests.rs".to_string(),
+            start_line: 10,
+            end_line: 20,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 100,
+            parent_id: None,
+            signature: Some("fn test_process_request_works()".to_string()),
+            doc_comment: None,
+            visibility: Some(Visibility::Public),
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(0.9),
+            code_context: Some("fn test_process_request_works() { process_request(&req); }".to_string()),
+            content_type: None,
+        };
+        db.store_symbols(&[test_sym]).unwrap();
+
+        // Test calls process_request (incoming relationship to pivot)
+        let test_rel = Relationship {
+            id: "rel_test_caller".to_string(),
+            from_symbol_id: "test_caller".to_string(),
+            to_symbol_id: "sym_process".to_string(),
+            kind: RelationshipKind::Calls,
+            file_path: "src/tests/handler_tests.rs".to_string(),
+            line_number: 15,
+            confidence: 0.9,
+            metadata: None,
+        };
+        db.store_relationships(&[test_rel]).unwrap();
+
+        let result = run_pipeline(
+            "process_request",
+            None,
+            None,
+            None,
+            &db,
+            &index,
+        )
+        .unwrap();
+
+        // Test function should NOT appear as a neighbor
+        assert!(
+            !result.contains("test_process_request_works"),
+            "Test function neighbors should be filtered, got:\n{}",
+            result,
+        );
+
+        // Real production neighbors should still appear
+        assert!(
+            result.contains("validate_input") || result.contains("build_response")
+                || result.contains("handle_error"),
+            "Real neighbors should still appear, got:\n{}",
             result,
         );
     }

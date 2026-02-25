@@ -19,6 +19,10 @@ pub struct Pivot {
 /// provide the context users actually want.
 const TEST_FILE_PENALTY: f32 = 0.3;
 
+/// Score penalty for non-code files (docs, memories, markdown).
+/// get_context is for code orientation — documentation is useful but secondary.
+const NON_CODE_PENALTY: f32 = 0.15;
+
 /// Select pivot symbols from search results using centrality-weighted scoring.
 ///
 /// Applies centrality boost to each result's text relevance score, then selects
@@ -55,14 +59,16 @@ pub fn select_pivots(
                 1.0
             };
 
-            // De-boost test files — test code rarely provides useful orientation context
-            let test_factor = if is_test_path(&r.file_path) {
+            // De-boost non-code and test files — get_context is for code orientation
+            let context_factor = if is_non_code_path(&r.file_path) {
+                NON_CODE_PENALTY
+            } else if is_test_path(&r.file_path) {
                 TEST_FILE_PENALTY
             } else {
                 1.0
             };
 
-            let combined = r.score * boost * test_factor;
+            let combined = r.score * boost * context_factor;
             Pivot {
                 result: r,
                 combined_score: combined,
@@ -93,11 +99,23 @@ pub fn select_pivots(
 }
 
 /// Check if a file path is a test file (test code rarely provides useful context).
-fn is_test_path(path: &str) -> bool {
+pub(crate) fn is_test_path(path: &str) -> bool {
     path.contains("/tests/")
         || path.contains("/test/")
         || path.contains("_test.")
         || path.contains("_tests.")
         || path.contains(".test.")
         || path.contains(".spec.")
+}
+
+/// Check if a file path is a non-code file (docs, memories, markdown, config).
+/// These files match on keywords but don't provide code orientation context.
+fn is_non_code_path(path: &str) -> bool {
+    path.starts_with(".memories/")
+        || path.starts_with("docs/")
+        || path.ends_with(".md")
+        || path.ends_with(".toml")
+        || path.ends_with(".json")
+        || path.ends_with(".yaml")
+        || path.ends_with(".yml")
 }

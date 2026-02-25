@@ -6,6 +6,7 @@ use anyhow::Result;
 
 use super::GetContextTool;
 pub use super::scoring::{select_pivots, Pivot};
+use super::scoring::is_test_path;
 use crate::database::SymbolDatabase;
 use crate::extractors::base::{RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
@@ -295,51 +296,40 @@ fn get_pivot_relationship_names(
     let mut incoming_names = Vec::new();
     let mut outgoing_names = Vec::new();
 
-    // Incoming callers (excluding noise trait methods)
+    // Helper: resolve symbol name and file path from neighbor list or DB
+    let resolve_symbol = |id: &str| -> Option<(String, String)> {
+        if let Some(n) = expansion.neighbors.iter().find(|n| n.symbol.id == id) {
+            Some((n.symbol.name.clone(), n.symbol.file_path.clone()))
+        } else if let Ok(Some(sym)) = db.get_symbol_by_id(id) {
+            let path = sym.file_path.clone();
+            Some((sym.name, path))
+        } else {
+            None
+        }
+    };
+
+    // Filter: skip noise trait methods and test file symbols
+    let should_include = |name: &str, path: &str| -> bool {
+        !NOISE_NEIGHBOR_NAMES.contains(&name) && !is_test_path(path)
+    };
+
+    // Incoming callers
     if let Ok(incoming_rels) = db.get_relationships_to_symbol(pivot_id) {
-        let caller_ids: Vec<String> = incoming_rels
-            .iter()
-            .map(|r| r.from_symbol_id.clone())
-            .collect();
-        if !caller_ids.is_empty() {
-            for id in &caller_ids {
-                let name = if let Some(n) = expansion.neighbors.iter().find(|n| n.symbol.id == *id)
-                {
-                    Some(n.symbol.name.clone())
-                } else if let Ok(Some(sym)) = db.get_symbol_by_id(id) {
-                    Some(sym.name)
-                } else {
-                    None
-                };
-                if let Some(name) = name {
-                    if !NOISE_NEIGHBOR_NAMES.contains(&name.as_str()) {
-                        incoming_names.push(name);
-                    }
+        for rel in &incoming_rels {
+            if let Some((name, path)) = resolve_symbol(&rel.from_symbol_id) {
+                if should_include(&name, &path) {
+                    incoming_names.push(name);
                 }
             }
         }
     }
 
-    // Outgoing callees (excluding noise trait methods)
+    // Outgoing callees
     if let Ok(outgoing_rels) = db.get_outgoing_relationships(pivot_id) {
-        let callee_ids: Vec<String> = outgoing_rels
-            .iter()
-            .map(|r| r.to_symbol_id.clone())
-            .collect();
-        if !callee_ids.is_empty() {
-            for id in &callee_ids {
-                let name = if let Some(n) = expansion.neighbors.iter().find(|n| n.symbol.id == *id)
-                {
-                    Some(n.symbol.name.clone())
-                } else if let Ok(Some(sym)) = db.get_symbol_by_id(id) {
-                    Some(sym.name)
-                } else {
-                    None
-                };
-                if let Some(name) = name {
-                    if !NOISE_NEIGHBOR_NAMES.contains(&name.as_str()) {
-                        outgoing_names.push(name);
-                    }
+        for rel in &outgoing_rels {
+            if let Some((name, path)) = resolve_symbol(&rel.to_symbol_id) {
+                if should_include(&name, &path) {
+                    outgoing_names.push(name);
                 }
             }
         }
@@ -353,10 +343,11 @@ fn get_pivot_relationship_names(
 /// about the actual code architecture.
 const NOISE_NEIGHBOR_NAMES: &[&str] = &[
     "clone", "to_string", "fmt", "eq", "ne", "cmp", "partial_cmp",
-    "hash", "drop", "deref", "deref_mut",
+    "hash", "drop", "deref", "deref_mut", "is_empty", "len",
 ];
 
 /// Build NeighborEntry structs from graph expansion results, filtering noise.
+/// Filters out: common trait methods (clone, fmt, etc.) and test file symbols.
 fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::NeighborEntry> {
     use super::formatting::NeighborEntry;
 
@@ -364,6 +355,7 @@ fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::
         .neighbors
         .iter()
         .filter(|neighbor| !NOISE_NEIGHBOR_NAMES.contains(&neighbor.symbol.name.as_str()))
+        .filter(|neighbor| !is_test_path(&neighbor.symbol.file_path))
         .map(|neighbor| NeighborEntry {
             name: neighbor.symbol.name.clone(),
             file_path: neighbor.symbol.file_path.clone(),
