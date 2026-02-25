@@ -6,15 +6,17 @@
 //! - Splits snake_case into component words
 //! - Keeps original tokens for exact matching
 
+use std::sync::LazyLock;
+
+use rust_stemmers::{Algorithm, Stemmer};
 use tantivy::tokenizer::{Token, TokenStream, Tokenizer};
 
 use crate::search::language_config::LanguageConfigs;
 
-/// A tokenizer designed for code that:
-/// - Preserves special character sequences (::, ->, ?., etc.)
-/// - Splits CamelCase into component words
-/// - Splits snake_case into component words
-/// - Keeps original tokens for exact matching
+static ENGLISH_STEMMER: LazyLock<Stemmer> = LazyLock::new(|| Stemmer::create(Algorithm::English));
+
+/// Code-aware Tantivy tokenizer with CamelCase/snake_case splitting,
+/// special-character preservation, affix stripping, and English stemming.
 #[derive(Clone)]
 pub struct CodeTokenizer {
     /// Patterns to preserve as single tokens (e.g., "::", "->")
@@ -40,20 +42,14 @@ impl CodeTokenizer {
         }
     }
 
-    /// Set meaningful affixes to strip for additional search tokens.
-    ///
-    /// For each identifier, if it starts with a prefix affix (e.g., "is_") or
-    /// ends with a suffix affix (e.g., "_mut"), the stripped form is emitted
-    /// as an additional token.
+    /// Set meaningful affixes to strip for additional search tokens
+    /// (e.g., "is_" prefix means "is_valid" also emits "valid").
     pub fn set_meaningful_affixes(&mut self, affixes: Vec<String>) {
         self.meaningful_affixes = affixes;
     }
 
-    /// Set prefix/suffix stripping rules for variant generation.
-    ///
-    /// For each identifier, if it starts with a strip_prefix (e.g., "I" for interfaces)
-    /// or ends with a strip_suffix (e.g., "Service"), the stripped form is emitted
-    /// as an additional token.
+    /// Set prefix/suffix stripping rules for variant generation
+    /// (e.g., "I" prefix for C# interfaces, "Service" suffix).
     pub fn set_strip_rules(&mut self, prefixes: Vec<String>, suffixes: Vec<String>) {
         self.strip_prefixes = prefixes;
         self.strip_suffixes = suffixes;
@@ -261,6 +257,34 @@ fn tokenize_code(
                 &mut tokens,
                 &mut emitted,
             );
+
+            // Stem emitted tokens for morphological matching
+            // (e.g., "estimation" → "estim", "processor" → "process")
+            let stems: Vec<String> = emitted
+                .iter()
+                .filter(|t| t.len() >= 4)
+                .filter_map(|t| {
+                    let stem = ENGLISH_STEMMER.stem(t).to_string();
+                    if stem != *t && !emitted.contains(&stem) {
+                        Some(stem)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let mut stems = stems;
+            stems.sort(); // Deterministic ordering (HashSet iteration is non-deterministic)
+            for stem in stems {
+                tokens.push(Token {
+                    offset_from: offset,
+                    offset_to: offset + segment.len(),
+                    position,
+                    text: stem.clone(),
+                    position_length: 1,
+                });
+                position += 1;
+                emitted.insert(stem);
+            }
         }
     }
 

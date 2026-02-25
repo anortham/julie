@@ -1355,7 +1355,7 @@ dependencies = [
 
 [[package]]
 name = "julie"
-version = "3.0.0"
+version = "3.1.0"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -1376,6 +1376,7 @@ dependencies = [
  "regex",
  "rmcp",
  "rusqlite",
+ "rust-stemmers",
  "schemars",
  "serde",
  "serde_json",
