@@ -24,3 +24,4 @@
 
 mod dogfood_tests;
 mod helpers;
+mod stemming_dogfood_tests;
