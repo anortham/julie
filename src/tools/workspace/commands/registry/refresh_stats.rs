@@ -40,11 +40,12 @@ impl ManageWorkspaceTool {
                     workspace_entry.display_name
                 );
 
+                let force = self.force.unwrap_or(false);
                 match self
-                    .index_workspace_files(handler, &workspace_path, false)
+                    .index_workspace_files(handler, &workspace_path, force)
                     .await
                 {
-                    Ok((symbol_count, file_count, relationship_count)) => {
+                    Ok(result) => {
                         // Update workspace statistics in registry
                         if let Ok(Some(workspace)) = handler.get_workspace().await {
                             // Use per-workspace index path
@@ -81,8 +82,8 @@ impl ManageWorkspaceTool {
                             if let Err(e) = registry_service
                                 .update_workspace_statistics(
                                     workspace_id,
-                                    symbol_count,
-                                    file_count,
+                                    result.symbols_total,
+                                    result.files_total,
                                     index_size,
                                 )
                                 .await
@@ -91,25 +92,30 @@ impl ManageWorkspaceTool {
                             } else {
                                 info!(
                                     "Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
-                                    workspace_id, file_count, symbol_count, index_size
+                                    workspace_id, result.files_total, result.symbols_total, index_size
                                 );
                             }
                         }
 
+                        let status = if result.files_processed == 0 {
+                            "Already up-to-date.".to_string()
+                        } else if force {
+                            format!("Full re-index: {} files processed.", result.files_processed)
+                        } else {
+                            format!("{} changed files re-indexed.", result.files_processed)
+                        };
+
                         let message = format!(
-                            "Workspace Refresh Complete!\n\
-                            Workspace: {}\n\
+                            "Workspace Refresh: {}\n\
+                            {}\n\
                             Path: {}\n\
-                            Results:\n\
-                            • {} files indexed\n\
-                            • {} symbols extracted\n\
-                            • {} relationships found\n\
-                            Content is now up-to-date and searchable!",
+                            Totals: {} files, {} symbols, {} relationships",
                             workspace_entry.display_name,
+                            status,
                             workspace_entry.original_path,
-                            file_count,
-                            symbol_count,
-                            relationship_count
+                            result.files_total,
+                            result.symbols_total,
+                            result.relationships_total
                         );
                         Ok(CallToolResult::text_content(vec![Content::text(
                             message,

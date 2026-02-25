@@ -137,7 +137,7 @@ impl ManageWorkspaceTool {
                     return Ok(all_files);
                 }
 
-                match db_lock.get_file_hashes_for_workspace() {
+                let hashes = match db_lock.get_file_hashes_for_workspace() {
                     Ok(hashes) => hashes,
                     Err(e) => {
                         warn!(
@@ -146,7 +146,9 @@ impl ManageWorkspaceTool {
                         );
                         return Ok(all_files);
                     }
-                }
+                };
+                drop(db_lock);
+                hashes
             } else {
                 return Ok(all_files);
             }
@@ -182,8 +184,6 @@ impl ManageWorkspaceTool {
                     }
                 };
 
-            let language = self.detect_language(file_path);
-
             // Calculate current file hash
             let current_hash = match crate::database::calculate_file_hash(file_path) {
                 Ok(hash) => hash,
@@ -200,58 +200,6 @@ impl ManageWorkspaceTool {
             // Check if file exists in database and if hash matches
             if let Some(stored_hash) = existing_file_hashes.get(&file_path_relative) {
                 if stored_hash == &current_hash {
-                    // File unchanged by hash, but check if it needs FILE_CONTENT symbols
-                    // For files without parsers (text, json, etc.), we need to ensure they have
-                    // FILE_CONTENT symbols in the database. This is a migration for existing workspaces.
-
-                    // Check if this is a language without a parser
-                    let needs_file_content = matches!(
-                        language.as_str(),
-                        "text"
-                            | "json"
-                            | "toml"
-                            | "yaml"
-                            | "yml"
-                            | "xml"
-                            | "markdown"
-                            | "md"
-                            | "txt"
-                            | "config"
-                    );
-
-                    if needs_file_content {
-                        // Check if it has symbols (should be 0 for files without parsers)
-                        if let Some(workspace) = handler.get_workspace().await? {
-                            if let Some(db) = &workspace.db {
-                                let db_lock = match db.lock() {
-                                    Ok(guard) => guard,
-                                    Err(poisoned) => {
-                                        warn!(
-                                            "Database mutex poisoned during symbol count check, recovering: {}",
-                                            poisoned
-                                        );
-                                        poisoned.into_inner()
-                                    }
-                                };
-                                let symbol_count = db_lock
-                                    .get_file_symbol_count(&file_path_relative)
-                                    .unwrap_or(0);
-                                drop(db_lock);
-
-                                if symbol_count == 0 {
-                                    // File has no symbols - needs FILE_CONTENT symbol created
-                                    debug!(
-                                        "File {} has no symbols, re-indexing to create FILE_CONTENT symbol",
-                                        file_path_relative
-                                    );
-                                    modified_count += 1;
-                                    files_to_process.push(file_path.clone());
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-
                     // File truly unchanged - skip
                     unchanged_count += 1;
                 } else {

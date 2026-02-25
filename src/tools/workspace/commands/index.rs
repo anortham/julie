@@ -233,7 +233,11 @@ impl ManageWorkspaceTool {
             .index_workspace_files(handler, &canonical_path, force_reindex)
             .await
         {
-            Ok((symbol_count, file_count, relationship_count)) => {
+            Ok(result) => {
+                let files_total = result.files_total;
+                let symbols_total = result.symbols_total;
+                let relationships_total = result.relationships_total;
+
                 // Mark as indexed
                 *handler.is_indexed.write().await = true;
 
@@ -302,8 +306,8 @@ impl ManageWorkspaceTool {
                         if let Err(e) = registry_service_clone
                             .update_workspace_statistics(
                                 &workspace_id_for_stats,
-                                symbol_count,
-                                file_count,
+                                symbols_total,
+                                files_total,
                                 index_size,
                             )
                             .await
@@ -312,7 +316,7 @@ impl ManageWorkspaceTool {
                         } else {
                             info!(
                                 "✅ Updated workspace statistics: {} files, {} symbols, {} bytes index",
-                                file_count, symbol_count, index_size
+                                files_total, symbols_total, index_size
                             );
                         }
                     });
@@ -320,7 +324,7 @@ impl ManageWorkspaceTool {
 
                 let message = format!(
                     "Workspace indexing complete: {} files, {} symbols, {} relationships\nReady for search and navigation",
-                    file_count, symbol_count, relationship_count
+                    files_total, symbols_total, relationships_total
                 );
                 Ok(CallToolResult::text_content(vec![Content::text(
                     message,

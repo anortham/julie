@@ -52,7 +52,7 @@ impl ManageWorkspaceTool {
                     .index_workspace_files(handler, &workspace_path, false)
                     .await
                 {
-                    Ok((symbol_count, file_count, relationship_count)) => {
+                    Ok(result) => {
                         debug!("index_workspace_files completed successfully");
 
                         // Update workspace statistics in registry
@@ -90,8 +90,8 @@ impl ManageWorkspaceTool {
                         if let Err(e) = registry_service
                             .update_workspace_statistics(
                                 &entry.id,
-                                symbol_count,
-                                file_count,
+                                result.symbols_total,
+                                result.files_total,
                                 index_size,
                             )
                             .await
@@ -100,7 +100,7 @@ impl ManageWorkspaceTool {
                         } else {
                             info!(
                                 "Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
-                                entry.id, file_count, symbol_count, index_size
+                                entry.id, result.files_total, result.symbols_total, index_size
                             );
                         }
 
@@ -113,9 +113,9 @@ impl ManageWorkspaceTool {
                             entry.id,
                             display_name,
                             entry.original_path,
-                            file_count,
-                            symbol_count,
-                            relationship_count
+                            result.files_total,
+                            result.symbols_total,
+                            result.relationships_total
                         );
                         Ok(CallToolResult::text_content(vec![Content::text(
                             message,

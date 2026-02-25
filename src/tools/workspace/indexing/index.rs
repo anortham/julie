@@ -9,6 +9,18 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 
+/// Result of workspace indexing — distinguishes files processed from DB totals.
+pub(crate) struct IndexResult {
+    /// Files actually processed in this indexing run (may be 0 if nothing changed)
+    pub files_processed: usize,
+    /// Total files in the workspace DB after indexing
+    pub files_total: usize,
+    /// Total symbols in the workspace DB after indexing
+    pub symbols_total: usize,
+    /// Total relationships in the workspace DB after indexing
+    pub relationships_total: usize,
+}
+
 impl ManageWorkspaceTool {
     /// Index a workspace by discovering, parsing, and storing file symbols
     ///
@@ -17,14 +29,12 @@ impl ManageWorkspaceTool {
     /// 2. Symbol extraction with optimized parser reuse
     /// 3. Bulk database storage
     /// 4. Search index updates (Tantivy full-text search)
-    ///
-    /// Returns: (total_symbols, total_files, total_relationships)
     pub(crate) async fn index_workspace_files(
         &self,
         handler: &JulieServerHandler,
         workspace_path: &Path,
         force_reindex: bool,
-    ) -> Result<(usize, usize, usize)> {
+    ) -> Result<IndexResult> {
         info!("🔍 Scanning workspace: {}", workspace_path.display());
 
         // 🔥 CRITICAL DEADLOCK FIX: Call get_workspace() ONCE and reuse throughout function
@@ -173,6 +183,27 @@ impl ManageWorkspaceTool {
                 // Normal startup: backfill Tantivy from SQLite if empty (v1→v2 upgrade)
                 self.backfill_tantivy_if_needed(&workspace).await?;
             }
+        } else {
+            // Reference workspace Tantivy handling
+            let tantivy_path = workspace.workspace_tantivy_path(&workspace_id);
+
+            if force_reindex {
+                // Clear reference Tantivy directory so process_files_optimized rebuilds it
+                if tantivy_path.exists() {
+                    if let Err(e) = std::fs::remove_dir_all(&tantivy_path) {
+                        tracing::warn!("Failed to clear reference Tantivy index: {}", e);
+                    } else {
+                        info!("🗑️  Cleared reference Tantivy index for force re-index");
+                    }
+                }
+            } else if !tantivy_path.join("meta.json").exists() {
+                // Tantivy index missing or empty — backfill from reference DB
+                let ref_db_path = workspace.workspace_db_path(&workspace_id);
+                if ref_db_path.exists() {
+                    self.backfill_reference_tantivy(&ref_db_path, &tantivy_path)
+                        .await?;
+                }
+            }
         }
 
         // Proceeding with indexing (parser pool groups files by language for 10-50x speedup)
@@ -191,7 +222,7 @@ impl ManageWorkspaceTool {
         // 🚀 NEW ARCHITECTURE: Get final counts from DATABASE, not memory!
         // 🔴 CRITICAL FIX: Query the CORRECT database for reference vs primary workspaces!
         // Reference workspaces have their own separate databases at indexes/{workspace_id}/db/symbols.db
-        let (total_symbols, total_relationships) = {
+        let (total_symbols, total_files_in_db, total_relationships) = {
             // Determine which database to query based on workspace type
             let db_to_query = if is_primary_workspace {
                 // Primary workspace - use handler's database connection
@@ -238,20 +269,24 @@ impl ManageWorkspaceTool {
                         poisoned.into_inner()
                     }
                 };
-                let symbols_count = db.get_symbol_count_for_workspace().unwrap_or(0);
                 let stats = db.get_stats().unwrap_or_default();
-                (symbols_count as usize, stats.total_relationships as usize)
+                (stats.total_symbols as usize, stats.total_files as usize, stats.total_relationships as usize)
             } else {
-                (0, 0)
+                (0, 0, 0)
             }
         };
 
         info!(
-            "✅ Indexing complete: {} symbols, {} relationships stored in SQLite",
-            total_symbols, total_relationships
+            "✅ Indexing complete: {} symbols, {} files, {} relationships stored in SQLite",
+            total_symbols, total_files_in_db, total_relationships
         );
 
-        Ok((total_symbols, total_files, total_relationships))
+        Ok(IndexResult {
+            files_processed: total_files,
+            files_total: total_files_in_db,
+            symbols_total: total_symbols,
+            relationships_total: total_relationships,
+        })
     }
 
     /// Backfill Tantivy search index from SQLite data when Tantivy is empty.
@@ -375,6 +410,76 @@ impl ManageWorkspaceTool {
             "✅ Tantivy backfill complete: {} symbols, {} files indexed from SQLite",
             symbol_count, file_count
         );
+
+        Ok(())
+    }
+
+    /// Backfill a reference workspace's Tantivy index from its SQLite database.
+    /// Called when the Tantivy index is missing/empty but the DB has data.
+    async fn backfill_reference_tantivy(
+        &self,
+        ref_db_path: &std::path::Path,
+        tantivy_path: &std::path::Path,
+    ) -> Result<()> {
+        let db_path = ref_db_path.to_path_buf();
+        let tantivy_dir = tantivy_path.to_path_buf();
+
+        let result = tokio::task::spawn_blocking(move || -> Result<(usize, usize)> {
+            let db = crate::database::SymbolDatabase::new(db_path)?;
+
+            let symbols = db.get_all_symbols().unwrap_or_default();
+            let file_contents = db.get_all_file_contents_with_language().unwrap_or_default();
+            let symbol_count = symbols.len();
+            let file_count = file_contents.len();
+
+            if symbol_count == 0 {
+                debug!("Reference workspace DB has no symbols, skipping Tantivy backfill");
+                return Ok((0, 0));
+            }
+
+            info!(
+                "🔄 Reference Tantivy backfill: populating from {} symbols, {} files",
+                symbol_count, file_count
+            );
+
+            std::fs::create_dir_all(&tantivy_dir)?;
+            let configs = crate::search::LanguageConfigs::load_embedded();
+            let idx = crate::search::SearchIndex::open_or_create_with_language_configs(
+                &tantivy_dir,
+                &configs,
+            )?;
+
+            for symbol in &symbols {
+                let doc = crate::search::SymbolDocument::from_symbol(symbol);
+                if let Err(e) = idx.add_symbol(&doc) {
+                    warn!("Reference backfill: failed to add symbol {}: {}", symbol.name, e);
+                }
+            }
+
+            for (path, language, content) in &file_contents {
+                let doc = crate::search::FileDocument {
+                    file_path: path.clone(),
+                    content: content.clone(),
+                    language: language.clone(),
+                };
+                if let Err(e) = idx.add_file_content(&doc) {
+                    warn!("Reference backfill: failed to add file {}: {}", path, e);
+                }
+            }
+
+            idx.commit()?;
+            Ok((symbol_count, file_count))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Reference Tantivy backfill task panicked: {}", e))??;
+
+        let (symbol_count, file_count) = result;
+        if symbol_count > 0 {
+            info!(
+                "✅ Reference Tantivy backfill complete: {} symbols, {} files",
+                symbol_count, file_count
+            );
+        }
 
         Ok(())
     }
