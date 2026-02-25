@@ -138,4 +138,44 @@ mod tests {
             "function (score 1.0) should beat namespace-in-test-file (8.0 * 0.06 = 0.48)"
         );
     }
+
+    /// Noise names (e.g. `fmt`) should NOT receive centrality boost in select_pivots.
+    /// `format_output` (non-noise) with same text score and ref_score should rank above `fmt`.
+    #[test]
+    fn test_select_pivots_centrality_skips_noise_names() {
+        let results = vec![
+            make_result_with_kind("sym_fmt", "fmt", "function", 5.0),
+            make_result_with_kind("sym_format", "format_output", "function", 5.0),
+        ];
+
+        let mut ref_scores = HashMap::new();
+        // Both have high reference counts
+        ref_scores.insert("sym_fmt".to_string(), 500.0);
+        ref_scores.insert("sym_format".to_string(), 500.0);
+
+        let pivots = select_pivots(results, &ref_scores);
+
+        assert!(
+            !pivots.is_empty(),
+            "should return at least one pivot"
+        );
+
+        // fmt is noise — should not get centrality boost
+        // format_output is not noise — should get centrality boost
+        // With same base score, format_output should rank above fmt
+        assert_eq!(
+            pivots[0].result.name, "format_output",
+            "non-noise name should rank above noise name when both have high ref_scores"
+        );
+
+        // Verify the scores are actually different (format_output boosted, fmt not)
+        if pivots.len() >= 2 {
+            assert!(
+                pivots[0].combined_score > pivots[1].combined_score,
+                "format_output ({:.4}) should have higher score than fmt ({:.4})",
+                pivots[0].combined_score,
+                pivots[1].combined_score
+            );
+        }
+    }
 }

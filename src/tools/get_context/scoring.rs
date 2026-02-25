@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use crate::search::index::SymbolSearchResult;
-use crate::search::scoring::CENTRALITY_WEIGHT;
+use crate::search::scoring::{CENTRALITY_WEIGHT, CENTRALITY_NOISE_NAMES};
 
 /// A pivot symbol selected from search results, with its combined score.
 pub struct Pivot {
@@ -59,7 +59,7 @@ pub fn select_pivots(
         .into_iter()
         .map(|r| {
             let ref_score = reference_scores.get(&r.id).copied().unwrap_or(0.0);
-            let boost = if ref_score > 0.0 {
+            let boost = if ref_score > 0.0 && !CENTRALITY_NOISE_NAMES.contains(&r.name.as_str()) {
                 1.0 + (1.0 + ref_score as f32).ln() * CENTRALITY_WEIGHT
             } else {
                 1.0

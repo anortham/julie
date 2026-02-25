@@ -266,4 +266,51 @@ mod tests {
         assert_eq!(results[0].id, "sym1");
         assert_eq!(results[1].id, "sym2");
     }
+
+    // ============================================================
+    // Centrality noise filtering tests
+    // ============================================================
+
+    #[test]
+    fn test_centrality_boost_skips_noise_names() {
+        // to_string has 3702 references — but it's a ubiquitous trait impl.
+        // It should NOT receive any centrality boost.
+        let mut results = vec![
+            make_symbol_result("sym1", "to_string", 1.0),
+        ];
+
+        let mut ref_scores = HashMap::new();
+        ref_scores.insert("sym1".to_string(), 3702.0);
+
+        let score_before = results[0].score;
+        apply_centrality_boost(&mut results, &ref_scores);
+
+        assert!(
+            (results[0].score - score_before).abs() < f32::EPSILON,
+            "to_string should NOT be boosted by centrality, got {} (was {})",
+            results[0].score,
+            score_before
+        );
+    }
+
+    #[test]
+    fn test_centrality_boost_skips_clone() {
+        // clone has 1665 references — ubiquitous trait impl, should not be boosted.
+        let mut results = vec![
+            make_symbol_result("sym1", "clone", 1.0),
+        ];
+
+        let mut ref_scores = HashMap::new();
+        ref_scores.insert("sym1".to_string(), 1665.0);
+
+        let score_before = results[0].score;
+        apply_centrality_boost(&mut results, &ref_scores);
+
+        assert!(
+            (results[0].score - score_before).abs() < f32::EPSILON,
+            "clone should NOT be boosted by centrality, got {} (was {})",
+            results[0].score,
+            score_before
+        );
+    }
 }
