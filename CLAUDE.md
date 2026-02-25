@@ -130,6 +130,71 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 
 ---
 
+## 🚨 RUNNING TESTS (STOP RUNNING THE FULL SUITE!)
+
+**The full test suite takes ~265s (4.5 min).** DO NOT run it after every small change. That is a waste of the user's time.
+
+### Test Tiers
+
+| Tier | Command | Time | When to use |
+|------|---------|------|-------------|
+| **Fast** | `cargo test --lib --exclude-from=none -- --skip search_quality` | ~15s | After EVERY change |
+| **Dogfood** | `cargo test --lib search_quality` | ~250s | Only before merging or after search/scoring changes |
+| **Full** | `cargo test --lib 2>&1 \| tail -5` | ~265s | Only before merging a branch |
+
+### Why Dogfood Tests Are Slow
+
+The 43 `search_quality` tests load a **100MB SQLite fixture**, backfill a Tantivy index from it, and run real searches. They are integration-level regression guards, not unit tests.
+
+### The Rules
+
+1. **After changing non-search code** (extractors, tools, database, workspace): Run fast tier only
+   ```bash
+   cargo test --lib -- --skip search_quality 2>&1 | tail -5
+   ```
+
+2. **After changing search/scoring/tokenizer code**: Run fast tier + the specific search test module
+   ```bash
+   cargo test --lib -- --skip search_quality 2>&1 | tail -5
+   cargo test --lib tantivy_stemming 2>&1 | tail -5   # if you changed tokenizer
+   cargo test --lib tantivy_scoring 2>&1 | tail -5     # if you changed scoring
+   ```
+
+3. **Before merging a branch**: Run full suite ONCE
+   ```bash
+   cargo test --lib 2>&1 | tail -5
+   ```
+
+4. **After merging**: Do NOT re-run the full suite. You just ran it.
+
+### Targeted Test Filters
+
+Use `cargo test --lib <filter>` to run only relevant tests:
+
+```bash
+# By module area
+cargo test --lib tests::core              # database, workspace init (~30s)
+cargo test --lib tests::tools::search     # search engine tests (~20s)
+cargo test --lib tests::tools::get_context # get_context tests (~15s)
+cargo test --lib tests::tools::deep_dive  # deep_dive tests (~10s)
+cargo test --lib tests::integration       # integration tests (~15s)
+cargo test --lib tests::tools::editing    # editing tools (~5s)
+
+# By specific test name
+cargo test --lib test_stemming            # all stemming tests
+cargo test --lib test_centrality          # all centrality tests
+cargo test --lib test_namespace           # namespace de-boost tests
+```
+
+### Rebuilding Fixture Database
+
+Only needed when the test fixture schema changes or after adding new source to the fixture:
+```bash
+cargo test --lib build_julie_fixture -- --ignored --nocapture
+```
+
+---
+
 ## 🐕 Dogfooding Strategy
 
 **MANDATORY**: We use Julie to develop Julie (eating our own dog food).
