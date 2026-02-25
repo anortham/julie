@@ -294,8 +294,11 @@ impl SearchIndex {
         let searcher = self.reader.searcher();
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
 
-        // Auto-fallback: if AND returned nothing and we have multiple terms, try OR
-        let (top_docs, relaxed) = if top_docs.is_empty() && terms.len() > 1 {
+        // Auto-fallback: if AND returned nothing and the user typed multiple words, try OR.
+        // Use word count from query_str (not terms.len()) because the tokenizer can inflate
+        // a single word into multiple tokens via CamelCase splitting, stemming, etc.
+        let user_word_count = query_str.split_whitespace().count();
+        let (top_docs, relaxed) = if top_docs.is_empty() && user_word_count > 1 {
             let or_query = build_symbol_query(
                 &terms,
                 f.name,
@@ -439,8 +442,11 @@ impl SearchIndex {
         let searcher = self.reader.searcher();
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
 
-        // Auto-fallback: if AND returned nothing and we have multiple terms, try OR
-        let (top_docs, relaxed) = if top_docs.is_empty() && terms.len() > 1 {
+        // Auto-fallback: if AND returned nothing and the user typed multiple words, try OR.
+        // Use word count from query_str (not terms.len()) because the tokenizer can inflate
+        // a single word into multiple tokens via CamelCase splitting, stemming, etc.
+        let user_word_count = query_str.split_whitespace().count();
+        let (top_docs, relaxed) = if top_docs.is_empty() && user_word_count > 1 {
             let or_query = build_content_query(
                 &terms,
                 f.content,
