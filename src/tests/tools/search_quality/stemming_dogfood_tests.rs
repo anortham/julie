@@ -3,15 +3,12 @@
 //! These tests validate that stemming improves search recall and that
 //! namespace/module symbols don't dominate search results.
 //!
-//! **ALL TESTS ARE `#[ignore]`** because the fixture database must be rebuilt
-//! with stemmed Tantivy indexes before they can pass. Once the fixture is
-//! rebuilt, remove `#[ignore]` and they become regression guards.
+//! Fixture was rebuilt with stemmed tokenizer — these tests are active regression guards.
 //!
 //! Run them with:
 //!
 //! ```bash
-//! cargo test --lib stemming_dogfood -- --ignored   # Run ignored tests
-//! cargo test --lib stemming_dogfood --no-run       # Just compile-check
+//! cargo test --lib stemming_dogfood   # Run all stemming dogfood tests
 //! ```
 
 use super::helpers::*;
@@ -25,7 +22,6 @@ use super::helpers::*;
 ///
 /// Without stemming, "estimation" won't match "estimator" because they share
 /// no exact token. Stemming collapses both to the same root.
-#[ignore] // Requires fixture rebuild with stemmed index
 #[tokio::test(flavor = "multi_thread")]
 async fn test_stemming_estimation_finds_estimator() {
     let handler = setup_handler_with_fixture().await;
@@ -48,16 +44,15 @@ async fn test_stemming_estimation_finds_estimator() {
     );
 }
 
-/// Search "formatting output" should find format/formatter symbols
-/// thanks to stemming: "formatting" -> "format", "formatter" -> "format".
+/// Definition search for "formatting" should find format-related symbols
+/// thanks to stemming: "formatting" -> "format" matches "format_output", etc.
 ///
-/// This tests that verb forms and agent nouns converge to the same stem.
-#[ignore] // Requires fixture rebuild with stemmed index
+/// Uses definition search to avoid matching free-text in .memories/ files.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_stemming_formatting_finds_formatter() {
     let handler = setup_handler_with_fixture().await;
 
-    let results = search_content(&handler, "formatting output", 10)
+    let results = search_definitions(&handler, "formatting", 10)
         .await
         .expect("Search failed");
 
@@ -68,8 +63,8 @@ async fn test_stemming_formatting_finds_formatter() {
         .any(|r| r.name.to_lowercase().contains("format") || r.file_path.contains("format"));
     assert!(
         has_format,
-        "Should find formatter-related results via stemming. \
-         'formatting' and 'formatter' should both stem to 'format':\n{}",
+        "Should find formatter-related symbols via stemming. \
+         'formatting' stems to 'format', matching format_* definitions:\n{}",
         format_result_list(&results)
     );
 }
@@ -84,7 +79,6 @@ async fn test_stemming_formatting_finds_formatter() {
 /// For example, searching "token_estimation" should find the structs,
 /// methods, and functions inside that module -- not just the `mod token_estimation`
 /// declaration as the only/top result.
-#[ignore] // Requires fixture rebuild with stemmed index
 #[tokio::test(flavor = "multi_thread")]
 async fn test_namespace_not_dominant_in_results() {
     let handler = setup_handler_with_fixture().await;
