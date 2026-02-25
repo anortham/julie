@@ -16,9 +16,11 @@ use schemars::JsonSchema;
 use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 use crate::handler::JulieServerHandler;
 use crate::tools::editing::EditingTransaction;
+use crate::workspace::registry_service::WorkspaceRegistryService;
 
 fn default_dry_run() -> bool {
     true
@@ -66,6 +68,35 @@ pub struct SmartRefactorTool {
 
 fn default_empty_json() -> String {
     "{}".to_string()
+}
+
+/// Resolve the filesystem root path for a workspace.
+/// Returns primary workspace root for "primary"/None, or the reference workspace's original_path.
+pub(crate) async fn resolve_workspace_root(
+    workspace_param: Option<&str>,
+    handler: &JulieServerHandler,
+) -> Result<PathBuf> {
+    let workspace_param = workspace_param.unwrap_or("primary");
+
+    let primary_workspace = handler
+        .get_workspace()
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
+
+    if workspace_param == "primary" {
+        return Ok(primary_workspace.root.clone());
+    }
+
+    // Reference workspace — look up original_path from registry
+    let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
+    let entry: crate::workspace::registry::WorkspaceEntry = registry_service
+        .get_workspace(workspace_param)
+        .await?
+        .ok_or_else(|| {
+            anyhow::anyhow!("Reference workspace not found: {}", workspace_param)
+        })?;
+
+    Ok(PathBuf::from(&entry.original_path))
 }
 
 // ===== RENAME SYMBOL TOOL IMPLEMENTATION =====
@@ -132,21 +163,16 @@ impl SmartRefactorTool {
     /// Rename symbol occurrences in a single file using tree-sitter AST-aware replacement
     async fn rename_in_file(
         &self,
-        handler: &JulieServerHandler,
+        workspace_root: &Path,
         file_path: &str,
         old_name: &str,
         new_name: &str,
     ) -> Result<usize> {
         // Resolve file path relative to workspace root
-        let workspace_guard = handler.workspace.read().await;
-        let workspace = workspace_guard
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
-
-        let absolute_path = if std::path::Path::new(file_path).is_absolute() {
+        let absolute_path = if Path::new(file_path).is_absolute() {
             file_path.to_string()
         } else {
-            workspace.root.join(file_path).to_string_lossy().to_string()
+            workspace_root.join(file_path).to_string_lossy().to_string()
         };
 
         // Read file content

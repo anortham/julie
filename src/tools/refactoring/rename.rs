@@ -120,12 +120,18 @@ impl SmartRefactorTool {
         );
 
         // Step 2: Apply renames file by file
+        // Resolve workspace root lazily — only needed if there are files to process
+        let workspace_root = if !file_locations.is_empty() {
+            super::resolve_workspace_root(workspace.as_deref(), handler).await?
+        } else {
+            std::path::PathBuf::new() // unused — no files to process
+        };
         let mut renamed_files = Vec::new();
         let mut errors = Vec::new();
 
         for file_path in file_locations.keys() {
             match self
-                .rename_in_file(handler, file_path, old_name, new_name)
+                .rename_in_file(&workspace_root, file_path, old_name, new_name)
                 .await
             {
                 Ok(changes_applied) => {
@@ -144,7 +150,7 @@ impl SmartRefactorTool {
             debug!("🔄 Updating import statements for renamed symbol");
             let file_paths: Vec<String> = file_locations.keys().cloned().collect();
             match self
-                .update_import_statements_in_files(handler, &file_paths, old_name, new_name)
+                .update_import_statements_in_files(&workspace_root, &file_paths, old_name, new_name)
                 .await
             {
                 Ok(updated_files) => {
@@ -225,7 +231,7 @@ impl SmartRefactorTool {
     /// This works for both indexed files and temp test files
     async fn update_import_statements_in_files(
         &self,
-        handler: &JulieServerHandler,
+        workspace_root: &std::path::Path,
         file_paths: &[String],
         old_name: &str,
         new_name: &str,
@@ -234,7 +240,7 @@ impl SmartRefactorTool {
 
         for file_path in file_paths {
             match self
-                .update_imports_in_file(handler, file_path, old_name, new_name)
+                .update_imports_in_file(workspace_root, file_path, old_name, new_name)
                 .await
             {
                 Ok(changes) if changes > 0 => {
@@ -256,7 +262,7 @@ impl SmartRefactorTool {
     /// Update imports in a single file
     async fn update_imports_in_file(
         &self,
-        handler: &JulieServerHandler,
+        workspace_root: &std::path::Path,
         file_path: &str,
         old_name: &str,
         new_name: &str,
@@ -264,15 +270,10 @@ impl SmartRefactorTool {
         use regex::Regex;
 
         // Resolve file path relative to workspace root
-        let workspace_guard = handler.workspace.read().await;
-        let workspace = workspace_guard
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
-
         let absolute_path = if std::path::Path::new(file_path).is_absolute() {
             file_path.to_string()
         } else {
-            workspace.root.join(file_path).to_string_lossy().to_string()
+            workspace_root.join(file_path).to_string_lossy().to_string()
         };
 
         let content = std::fs::read_to_string(&absolute_path)?;

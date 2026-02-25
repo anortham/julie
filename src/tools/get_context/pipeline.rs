@@ -7,9 +7,12 @@ use anyhow::Result;
 use super::GetContextTool;
 pub use super::scoring::{select_pivots, Pivot};
 use super::scoring::is_test_path;
+use tracing::debug;
+
 use crate::database::SymbolDatabase;
 use crate::extractors::base::{RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
+use crate::tools::navigation::resolution::resolve_workspace_filter;
 
 /// Direction of a neighbor relative to the pivot symbol.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -370,19 +373,42 @@ fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::
 }
 
 /// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
-///
-/// Currently only supports the primary workspace. Reference workspace support
-/// can be added later by opening separate DB/Tantivy files (same pattern as text_search_impl).
+/// Supports both primary and reference workspaces.
 pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<String> {
-    // Validate workspace parameter — only primary is supported for now
-    let workspace_param = tool.workspace.as_deref().unwrap_or("primary");
-    if workspace_param != "primary" {
-        anyhow::bail!(
-            "get_context currently only supports the primary workspace. \
-             Use workspace=\"primary\" (default) or omit the parameter."
-        );
+    let workspace_filter = resolve_workspace_filter(tool.workspace.as_deref(), handler).await?;
+
+    let query = tool.query.clone();
+    let max_tokens = tool.max_tokens;
+    let language = tool.language.clone();
+    let file_pattern = tool.file_pattern.clone();
+
+    if let Some(ref_workspace_id) = workspace_filter {
+        // Reference workspace: open separate DB and SearchIndex
+        debug!("get_context: using reference workspace {}", ref_workspace_id);
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+        let ref_db_path = workspace.workspace_db_path(&ref_workspace_id);
+        let tantivy_path = workspace.workspace_tantivy_path(&ref_workspace_id);
+
+        let result = tokio::task::spawn_blocking(move || -> Result<String> {
+            if !tantivy_path.join("meta.json").exists() {
+                anyhow::bail!("No search index for reference workspace. Run manage_workspace(operation=\"refresh\") first.");
+            }
+            let db = SymbolDatabase::new(ref_db_path)?;
+            let configs = crate::search::LanguageConfigs::load_embedded();
+            let index = crate::search::SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+            run_pipeline(&query, max_tokens, language, file_pattern, &db, &index)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
+
+        return Ok(result);
     }
 
+    // Primary workspace: use shared DB and SearchIndex via Arc<Mutex>
     let workspace = handler
         .get_workspace()
         .await?
@@ -400,12 +426,6 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
         .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?
         .clone();
 
-    let query = tool.query.clone();
-    let max_tokens = tool.max_tokens;
-    let language = tool.language.clone();
-    let file_pattern = tool.file_pattern.clone();
-
-    // Use spawn_blocking since Tantivy and SQLite use std::sync::Mutex
     let result = tokio::task::spawn_blocking(move || -> Result<String> {
         let index = search_index.lock().unwrap();
         let db_guard = db.lock().unwrap();

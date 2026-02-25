@@ -89,7 +89,8 @@ pub async fn text_search_impl(
                 return Ok((Vec::new(), false));
             }
 
-            let index = SearchIndex::open(&tantivy_path)?;
+            let configs = crate::search::LanguageConfigs::load_embedded();
+            let index = SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
 
             if search_target_clone == "definitions" {
                 // When file_pattern is active, fetch more candidates to find matches

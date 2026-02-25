@@ -168,7 +168,8 @@ pub async fn line_mode_search(
                 return Ok(Vec::new());
             }
 
-            let ref_index = SearchIndex::open(&tantivy_path)?;
+            let configs = crate::search::LanguageConfigs::load_embedded();
+            let ref_index = SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
             let ref_filter = SearchFilter {
                 language: ref_language.clone(),
                 kind: None,
