@@ -277,7 +277,7 @@ pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, 
         return;
     }
 
-    let query_lower = query.to_lowercase();
+    let query_lower = query.trim().to_lowercase();
 
     // Stable partition: exact matches first, then non-matches, each group in original order.
     // We do this by collecting into two groups and recombining.

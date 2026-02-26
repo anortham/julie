@@ -128,7 +128,10 @@ mod tests {
     }
 
     #[test]
-    fn test_exact_match_case_sensitive() {
+    fn test_exact_match_case_insensitive() {
+        // Both "searchindex" and "SearchIndex" should match query "SearchIndex"
+        // because the formatting layer uses case-insensitive comparison,
+        // consistent with the scoring layer's promote_exact_name_matches.
         let symbols = vec![
             make_symbol(
                 "searchindex",
@@ -153,9 +156,12 @@ mod tests {
         let response = OptimizedResponse::new("fast_search", symbols, 0.9);
         let output = format_definition_search_results("SearchIndex", &response);
 
-        // Case-sensitive: "SearchIndex" matches but "searchindex" does not
-        assert!(output.contains("Definition found: SearchIndex"));
-        assert!(output.contains("Other matches:"));
+        // Case-insensitive: both "SearchIndex" and "searchindex" are exact matches
+        assert!(output.contains("Definition found:"));
+        assert!(output.contains("src/search.rs"));
+        assert!(output.contains("src/utils.rs"));
+        // All symbols are exact matches, so no "Other matches:" section
+        assert!(!output.contains("Other matches:"));
     }
 
     #[test]

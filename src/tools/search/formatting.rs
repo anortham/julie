@@ -103,7 +103,7 @@ pub fn format_definition_search_results(
     let (exact, others): (Vec<&Symbol>, Vec<&Symbol>) = response
         .results
         .iter()
-        .partition(|s| s.name == query);
+        .partition(|s| s.name.eq_ignore_ascii_case(query));
 
     // No exact match → standard format
     if exact.is_empty() {
