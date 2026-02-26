@@ -132,18 +132,21 @@ pub fn run_pipeline(
     format: Option<String>,
     db: &SymbolDatabase,
     search_index: &crate::search::SearchIndex,
+    embedding_provider: Option<&dyn crate::embeddings::EmbeddingProvider>,
 ) -> Result<String> {
     use super::allocation::TokenBudget;
     use super::formatting::{format_context_with_mode, ContextData};
     use crate::search::index::SearchFilter;
 
-    // 1. Search for relevant symbols
+    // 1. Search for relevant symbols (hybrid: keyword + optional semantic)
     let filter = SearchFilter {
         language,
         kind: None,
         file_pattern,
     };
-    let search_results = search_index.search_symbols(query, &filter, 30)?;
+    let search_results = crate::search::hybrid::hybrid_search(
+        query, &filter, 30, search_index, db, embedding_provider,
+    )?;
 
     if search_results.results.is_empty() {
         return Ok(format!(
@@ -459,7 +462,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             let db = SymbolDatabase::new(ref_db_path)?;
             let configs = crate::search::LanguageConfigs::load_embedded();
             let index = crate::search::SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
-            run_pipeline(&query, max_tokens, language, file_pattern, format, &db, &index)
+            run_pipeline(&query, max_tokens, language, file_pattern, format, &db, &index, None)
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
@@ -485,10 +488,12 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
         .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?
         .clone();
 
+    let embedding_provider = workspace.embedding_provider.clone();
+
     let result = tokio::task::spawn_blocking(move || -> Result<String> {
         let index = search_index.lock().unwrap();
         let db_guard = db.lock().unwrap();
-        run_pipeline(&query, max_tokens, language, file_pattern, format, &db_guard, &index)
+        run_pipeline(&query, max_tokens, language, file_pattern, format, &db_guard, &index, embedding_provider.as_deref())
     })
     .await??;
 

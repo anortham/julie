@@ -219,7 +219,7 @@ mod pipeline_integration_tests {
     fn test_full_pipeline_end_to_end() {
         let (_db_dir, _idx_dir, db, index) = setup_test_env();
 
-        let result = run_pipeline("process_request", None, None, None, None, &db, &index).unwrap();
+        let result = run_pipeline("process_request", None, None, None, None, &db, &index, None).unwrap();
         assert!(result.contains("process_request"));
         assert!(result.contains("Pivot:"));
         assert!(result.contains("validate_input"));
@@ -238,6 +238,7 @@ mod pipeline_integration_tests {
             None,
             &db,
             &index,
+            None,
         )
         .unwrap();
         assert!(result.contains("No relevant symbols found"));
@@ -247,7 +248,7 @@ mod pipeline_integration_tests {
     fn test_pipeline_with_explicit_budget() {
         let (_db_dir, _idx_dir, db, index) = setup_test_env();
         let result =
-            run_pipeline("process_request", Some(1000), None, None, None, &db, &index).unwrap();
+            run_pipeline("process_request", Some(1000), None, None, None, &db, &index, None).unwrap();
         assert!(result.contains("process_request"));
     }
 
@@ -262,6 +263,7 @@ mod pipeline_integration_tests {
             Some("compact".to_string()),
             &db,
             &index,
+            None,
         )
         .unwrap();
 
@@ -280,6 +282,7 @@ mod pipeline_integration_tests {
             None,
             &db,
             &index,
+            None,
         )
         .unwrap();
 
@@ -289,7 +292,7 @@ mod pipeline_integration_tests {
     #[test]
     fn test_pipeline_includes_neighbors() {
         let (_db_dir, _idx_dir, db, index) = setup_test_env();
-        let result = run_pipeline("process_request", None, None, None, None, &db, &index).unwrap();
+        let result = run_pipeline("process_request", None, None, None, None, &db, &index, None).unwrap();
 
         let has_neighbor_section = result.contains("Neighbors");
         let has_any_neighbor = result.contains("validate_input")
@@ -371,7 +374,7 @@ mod pipeline_integration_tests {
 
         db.store_relationships(&noise_rels).unwrap();
 
-        let result = run_pipeline("process_request", None, None, None, None, &db, &index).unwrap();
+        let result = run_pipeline("process_request", None, None, None, None, &db, &index, None).unwrap();
 
         assert!(!result.contains("clone_impl") && !result.contains("  clone "));
         assert!(!result.contains("to_string_impl") && !result.contains("  to_string "));
@@ -433,7 +436,7 @@ mod pipeline_integration_tests {
         };
         db.store_relationships(&[test_rel]).unwrap();
 
-        let result = run_pipeline("process_request", None, None, None, None, &db, &index).unwrap();
+        let result = run_pipeline("process_request", None, None, None, None, &db, &index, None).unwrap();
 
         assert!(!result.contains("test_process_request_works"));
         assert!(
@@ -446,7 +449,7 @@ mod pipeline_integration_tests {
     #[test]
     fn test_pipeline_respects_token_budget() {
         let (_db_dir, _index_dir, db, index) = setup_test_env();
-        let result = run_pipeline("process", Some(100), None, None, None, &db, &index).unwrap();
+        let result = run_pipeline("process", Some(100), None, None, None, &db, &index, None).unwrap();
 
         assert!(!result.is_empty());
         let token_est = crate::utils::token_estimation::TokenEstimator::new();

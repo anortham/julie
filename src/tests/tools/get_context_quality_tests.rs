@@ -210,6 +210,7 @@ mod quality_tests {
                 Some("compact".to_string()),
                 &db,
                 &index,
+                None,
             )
             .unwrap();
 
@@ -256,6 +257,7 @@ mod quality_tests {
                     Some("compact".to_string()),
                     &db,
                     &index,
+                    None,
                 )
                 .unwrap();
             }

@@ -162,6 +162,7 @@ mod tests {
             None,
             &db,
             &index,
+            None,
         )
         .unwrap();
 
