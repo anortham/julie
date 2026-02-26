@@ -1,6 +1,9 @@
-//! Hybrid search: RRF merge and KNN conversion.
+//! Hybrid search: combines Tantivy keyword search with KNN semantic search.
 //!
-//! Two key functions for hybrid search:
+//! Three key functions:
+//! - `hybrid_search`: Orchestrator that runs both search backends and merges results.
+//!   Gracefully degrades to keyword-only when no embedding provider is available or
+//!   when semantic search fails.
 //! - `rrf_merge`: Merges keyword (Tantivy) and semantic (KNN) ranked lists using
 //!   Reciprocal Rank Fusion. Formula: `RRF(d) = Σ 1/(k + rank)`.
 //! - `knn_to_search_results`: Converts sqlite-vec KNN output `(symbol_id, distance)`
@@ -9,9 +12,12 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
+use tracing::debug;
 
+use super::index::{SearchFilter, SearchIndex, SymbolSearchResults};
 use super::SymbolSearchResult;
 use crate::database::SymbolDatabase;
+use crate::embeddings::EmbeddingProvider;
 
 /// Merge two ranked lists of search results using Reciprocal Rank Fusion.
 ///
@@ -124,4 +130,70 @@ pub fn knn_to_search_results(
         .collect();
 
     Ok(results)
+}
+
+/// Run hybrid search: Tantivy keyword + KNN semantic, merged via RRF.
+///
+/// Graceful degradation:
+/// - If `embedding_provider` is `None`, returns Tantivy results directly (keyword-only).
+/// - If embedding or KNN search fails, logs the error and falls back to keyword-only.
+/// - The search NEVER fails due to embedding/KNN errors.
+///
+/// Over-fetches 2x from both sources when semantic search is active, giving RRF
+/// a larger merge pool for better result quality.
+pub fn hybrid_search(
+    query: &str,
+    filter: &SearchFilter,
+    limit: usize,
+    search_index: &SearchIndex,
+    db: &SymbolDatabase,
+    embedding_provider: Option<&dyn EmbeddingProvider>,
+) -> Result<SymbolSearchResults> {
+    // Over-fetch when we'll merge; exact limit when keyword-only
+    let tantivy_limit = if embedding_provider.is_some() {
+        limit * 2
+    } else {
+        limit
+    };
+
+    // Step 1: Tantivy keyword search (always runs)
+    let tantivy_results = search_index.search_symbols(query, filter, tantivy_limit)?;
+
+    // Step 2: If no embedding provider, return keyword results directly
+    let provider = match embedding_provider {
+        Some(p) => p,
+        None => return Ok(tantivy_results),
+    };
+
+    // Step 3: Try semantic search — any failure degrades gracefully
+    let semantic_results = match run_semantic_search(query, limit * 2, db, provider) {
+        Ok(results) => results,
+        Err(e) => {
+            debug!("Semantic search failed, falling back to keyword-only: {e}");
+            Vec::new()
+        }
+    };
+
+    // Step 4: Merge via RRF (k=60)
+    let merged = rrf_merge(tantivy_results.results, semantic_results, 60, limit);
+
+    Ok(SymbolSearchResults {
+        results: merged,
+        relaxed: tantivy_results.relaxed,
+    })
+}
+
+/// Internal: run the semantic search pipeline (embed → KNN → convert).
+///
+/// Separated from `hybrid_search` so the orchestrator can catch errors from
+/// any step in a single `match`.
+fn run_semantic_search(
+    query: &str,
+    limit: usize,
+    db: &SymbolDatabase,
+    provider: &dyn EmbeddingProvider,
+) -> Result<Vec<SymbolSearchResult>> {
+    let query_vector = provider.embed_query(query)?;
+    let knn_hits = db.knn_search(&query_vector, limit)?;
+    knn_to_search_results(&knn_hits, db)
 }
