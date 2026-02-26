@@ -263,6 +263,39 @@ fn looks_like_identifier_token(term: &str) -> bool {
     has_lower && has_upper
 }
 
+/// Promote exact name matches to the top of results using a stable partition.
+///
+/// When `search_target="definitions"`, the actual definition of a symbol may rank
+/// low in Tantivy (mentioned once in its definition vs. many times in references).
+/// This function moves results whose `name` exactly matches the query (case-insensitive)
+/// to the front, preserving the relative order within both the "exact" and "non-exact" groups.
+///
+/// This is a stable partition, not a sort — it doesn't re-rank by score, just moves
+/// exact matches ahead of non-matches.
+pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, query: &str) {
+    if results.is_empty() {
+        return;
+    }
+
+    let query_lower = query.to_lowercase();
+
+    // Stable partition: exact matches first, then non-matches, each group in original order.
+    // We do this by collecting into two groups and recombining.
+    let mut exact = Vec::new();
+    let mut rest = Vec::new();
+
+    for result in results.drain(..) {
+        if result.name.to_lowercase() == query_lower {
+            exact.push(result);
+        } else {
+            rest.push(result);
+        }
+    }
+
+    results.extend(exact);
+    results.extend(rest);
+}
+
 fn sort_results_by_score_desc(results: &mut [SymbolSearchResult]) {
     results.sort_by(|a, b| {
         b.score
