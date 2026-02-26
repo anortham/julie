@@ -23,6 +23,22 @@ pub struct ContextData {
     pub allocation: Allocation,
 }
 
+/// Output rendering style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputFormat {
+    Readable,
+    Compact,
+}
+
+impl OutputFormat {
+    pub fn from_option(value: Option<&str>) -> Self {
+        match value {
+            Some(v) if v.eq_ignore_ascii_case("compact") => Self::Compact,
+            _ => Self::Readable,
+        }
+    }
+}
+
 /// Pre-processed pivot for formatting.
 ///
 /// Contains everything needed to render a pivot section — no database
@@ -81,6 +97,17 @@ fn centrality_label(reference_score: f64) -> &'static str {
 /// 3. Neighbors section (format varies by NeighborMode)
 /// 4. Files section showing which symbols appear in each file
 pub fn format_context(data: &ContextData) -> String {
+    format_context_with_mode(data, OutputFormat::Readable)
+}
+
+pub fn format_context_with_mode(data: &ContextData, output_format: OutputFormat) -> String {
+    match output_format {
+        OutputFormat::Readable => format_context_readable(data),
+        OutputFormat::Compact => format_context_compact(data),
+    }
+}
+
+fn format_context_readable(data: &ContextData) -> String {
     if data.pivots.is_empty() {
         return format!(
             "\u{2550}\u{2550}\u{2550} Context: \"{}\" \u{2550}\u{2550}\u{2550}\nNo relevant symbols found.",
@@ -120,8 +147,7 @@ pub fn format_context(data: &ContextData) -> String {
         let label = centrality_label(pivot.reference_score);
         out.push_str(&format!(
             "  Centrality: {} (ref_score: {})\n",
-            label,
-            pivot.reference_score as u32
+            label, pivot.reference_score as u32
         ));
 
         // Code content
@@ -133,21 +159,20 @@ pub fn format_context(data: &ContextData) -> String {
         }
 
         // Callers (incoming)
-        if !pivot.incoming_names.is_empty() {
+        let incoming_names = dedup_names(&pivot.incoming_names);
+        if !incoming_names.is_empty() {
             out.push('\n');
             out.push_str(&format!(
                 "  Callers ({}): {}\n",
-                pivot.incoming_names.len(),
-                pivot.incoming_names.join(", ")
+                incoming_names.len(),
+                incoming_names.join(", ")
             ));
         }
 
         // Calls (outgoing)
-        if !pivot.outgoing_names.is_empty() {
-            out.push_str(&format!(
-                "  Calls: {}\n",
-                pivot.outgoing_names.join(", ")
-            ));
+        let outgoing_names = dedup_names(&pivot.outgoing_names);
+        if !outgoing_names.is_empty() {
+            out.push_str(&format!("  Calls: {}\n", outgoing_names.join(", ")));
         }
     }
 
@@ -175,14 +200,104 @@ pub fn format_context(data: &ContextData) -> String {
     out
 }
 
+fn format_context_compact(data: &ContextData) -> String {
+    if data.pivots.is_empty() {
+        return format!("Context \"{}\" | no relevant symbols", data.query);
+    }
+
+    let mut out = String::with_capacity(1536);
+    let file_count = count_unique_files(data);
+    out.push_str(&format!(
+        "Context \"{}\" | pivots={} neighbors={} files={}\n",
+        data.query,
+        data.pivots.len(),
+        data.neighbors.len(),
+        file_count
+    ));
+
+    for pivot in &data.pivots {
+        let label = centrality_label(pivot.reference_score);
+        out.push_str(&format!(
+            "PIVOT {} {}:{} kind={} centrality={} ref={}\n",
+            pivot.name,
+            pivot.file_path,
+            pivot.start_line,
+            pivot.kind,
+            label,
+            pivot.reference_score as u32
+        ));
+        for line in pivot.content.lines() {
+            out.push_str("  ");
+            out.push_str(line);
+            out.push('\n');
+        }
+        let incoming_names = dedup_names(&pivot.incoming_names);
+        if !incoming_names.is_empty() {
+            out.push_str(&format!("  callers={}\n", incoming_names.join(",")));
+        }
+        let outgoing_names = dedup_names(&pivot.outgoing_names);
+        if !outgoing_names.is_empty() {
+            out.push_str(&format!("  calls={}\n", outgoing_names.join(",")));
+        }
+    }
+
+    for neighbor in &data.neighbors {
+        format_neighbor_compact(&mut out, neighbor, &data.allocation.neighbor_mode);
+    }
+
+    let file_map = build_file_map(data);
+    for (file_path, annotations) in &file_map {
+        out.push_str(&format!(
+            "FILE {} | {}\n",
+            file_path,
+            annotations.join(", ")
+        ));
+    }
+
+    out
+}
+
+fn dedup_names(names: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = names.to_vec();
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn format_neighbor_compact(out: &mut String, neighbor: &NeighborEntry, mode: &NeighborMode) {
+    match mode {
+        NeighborMode::SignatureAndDoc => {
+            let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
+            out.push_str(&format!(
+                "NEIGHBOR {} {}:{} kind={} sig={}",
+                neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind, sig
+            ));
+            if let Some(doc) = &neighbor.doc_summary {
+                out.push_str(&format!(" doc=\"{}\"", doc));
+            }
+            out.push('\n');
+        }
+        NeighborMode::SignatureOnly => {
+            let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
+            out.push_str(&format!(
+                "NEIGHBOR {} {}:{} kind={} sig={}\n",
+                neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind, sig
+            ));
+        }
+        NeighborMode::NameAndLocation => {
+            out.push_str(&format!(
+                "NEIGHBOR {} {}:{} kind={}\n",
+                neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind
+            ));
+        }
+    }
+}
+
 /// Format a single neighbor entry based on the active NeighborMode.
 fn format_neighbor(out: &mut String, neighbor: &NeighborEntry, mode: &NeighborMode) {
     match mode {
         NeighborMode::SignatureAndDoc => {
-            let sig = neighbor
-                .signature
-                .as_deref()
-                .unwrap_or(&neighbor.name);
+            let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
             out.push_str(&format!(
                 "  {:<20} {}:{}   {}\n",
                 neighbor.name, neighbor.file_path, neighbor.start_line, sig
@@ -192,10 +307,7 @@ fn format_neighbor(out: &mut String, neighbor: &NeighborEntry, mode: &NeighborMo
             }
         }
         NeighborMode::SignatureOnly => {
-            let sig = neighbor
-                .signature
-                .as_deref()
-                .unwrap_or(&neighbor.name);
+            let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
             out.push_str(&format!(
                 "  {:<20} {}:{}   {}\n",
                 neighbor.name, neighbor.file_path, neighbor.start_line, sig

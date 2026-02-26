@@ -121,6 +121,41 @@ impl SymbolDatabase {
         Ok(relationships)
     }
 
+    /// Get relationships FROM multiple symbols in a single batch query.
+    ///
+    /// PERFORMANCE: Replaces per-symbol outgoing relationship lookups with one SQL query.
+    pub fn get_outgoing_relationships_for_symbols(
+        &self,
+        symbol_ids: &[String],
+    ) -> Result<Vec<Relationship>> {
+        if symbol_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let placeholders: Vec<String> = (1..=symbol_ids.len()).map(|i| format!("?{}", i)).collect();
+        let query = format!(
+            "SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
+             FROM relationships
+             WHERE from_symbol_id IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+        let params: Vec<&dyn rusqlite::ToSql> = symbol_ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
+
+        let relationship_iter = stmt.query_map(&params[..], |row| self.row_to_relationship(row))?;
+
+        let mut relationships = Vec::new();
+        for relationship_result in relationship_iter {
+            relationships.push(relationship_result?);
+        }
+
+        Ok(relationships)
+    }
+
     /// Get relationships pointing TO these symbols, filtered by identifier kind
     /// This joins with the identifiers table to filter by how symbols are used
     /// (e.g., as types, in function calls, in imports, etc.)
@@ -165,7 +200,8 @@ impl SymbolDatabase {
             .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
             .collect();
 
-        let relationship_iter = stmt.query_map(&param_refs[..], |row| self.row_to_relationship(row))?;
+        let relationship_iter =
+            stmt.query_map(&param_refs[..], |row| self.row_to_relationship(row))?;
 
         let mut relationships = Vec::new();
         for relationship_result in relationship_iter {
@@ -256,10 +292,8 @@ impl SymbolDatabase {
 
         let mut stmt = self.conn.prepare(&sql)?;
 
-        let params: Vec<&dyn rusqlite::ToSql> = ids
-            .iter()
-            .map(|id| id as &dyn rusqlite::ToSql)
-            .collect();
+        let params: Vec<&dyn rusqlite::ToSql> =
+            ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
 
         let rows = stmt.query_map(&params[..], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))

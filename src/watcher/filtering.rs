@@ -44,7 +44,8 @@ pub fn build_ignore_patterns() -> Result<Vec<glob::Pattern>> {
         // Version control
         "**/.git/**",
         // Julie's own data
-        "**/.julie/**", // Don't watch our own data directory
+        "**/.julie/**",    // Don't watch our own data directory
+        "**/.memories/**", // Goldfish memory files (not code)
         // Minified/bundled files
         "**/*.min.js",
         "**/*.bundle.js",

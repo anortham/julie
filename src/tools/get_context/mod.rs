@@ -5,6 +5,7 @@
 //! task for orientation.
 
 pub mod allocation;
+pub mod content;
 pub mod formatting;
 pub mod pipeline;
 pub mod scoring;
@@ -43,6 +44,10 @@ pub struct GetContextTool {
     /// File pattern filter (glob syntax)
     #[serde(default)]
     pub file_pattern: Option<String>,
+
+    /// Output format: "readable" (default) or "compact"
+    #[serde(default)]
+    pub format: Option<String>,
 }
 
 impl GetContextTool {

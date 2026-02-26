@@ -5,8 +5,10 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Result;
 
 use super::GetContextTool;
+use super::content::abbreviate_code;
 pub use super::scoring::{select_pivots, Pivot};
 use super::scoring::is_test_path;
+pub(crate) use super::content::truncate_to_token_budget;
 use tracing::debug;
 
 use crate::database::SymbolDatabase;
@@ -52,35 +54,30 @@ pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpans
         });
     }
 
-    // Collect pivot IDs for exclusion
-    let pivot_ids: HashSet<&str> = pivots.iter().map(|p| p.result.id.as_str()).collect();
+    // Collect pivot IDs for exclusion and batched relationship queries
+    let pivot_ids_vec: Vec<String> = pivots.iter().map(|p| p.result.id.clone()).collect();
+    let pivot_ids: HashSet<String> = pivot_ids_vec.iter().cloned().collect();
 
     // For each neighbor, track: (relationship_kind, direction) — first seen wins
     let mut neighbor_map: HashMap<String, (RelationshipKind, NeighborDirection)> = HashMap::new();
 
-    for pivot in pivots {
-        let symbol_id = &pivot.result.id;
-
-        // Incoming: other symbols that reference this pivot
-        let incoming = db.get_relationships_to_symbol(symbol_id)?;
-        for rel in incoming {
-            let neighbor_id = &rel.from_symbol_id;
-            if !pivot_ids.contains(neighbor_id.as_str()) {
-                neighbor_map
-                    .entry(neighbor_id.clone())
-                    .or_insert_with(|| (rel.kind, NeighborDirection::Incoming));
-            }
+    let incoming = db.get_relationships_to_symbols(&pivot_ids_vec)?;
+    for rel in incoming {
+        let neighbor_id = &rel.from_symbol_id;
+        if !pivot_ids.contains(neighbor_id) {
+            neighbor_map
+                .entry(neighbor_id.clone())
+                .or_insert_with(|| (rel.kind, NeighborDirection::Incoming));
         }
+    }
 
-        // Outgoing: symbols that this pivot references
-        let outgoing = db.get_outgoing_relationships(symbol_id)?;
-        for rel in outgoing {
-            let neighbor_id = &rel.to_symbol_id;
-            if !pivot_ids.contains(neighbor_id.as_str()) {
-                neighbor_map
-                    .entry(neighbor_id.clone())
-                    .or_insert_with(|| (rel.kind, NeighborDirection::Outgoing));
-            }
+    let outgoing = db.get_outgoing_relationships_for_symbols(&pivot_ids_vec)?;
+    for rel in outgoing {
+        let neighbor_id = &rel.to_symbol_id;
+        if !pivot_ids.contains(neighbor_id) {
+            neighbor_map
+                .entry(neighbor_id.clone())
+                .or_insert_with(|| (rel.kind, NeighborDirection::Outgoing));
         }
     }
 
@@ -132,11 +129,12 @@ pub fn run_pipeline(
     max_tokens: Option<u32>,
     language: Option<String>,
     file_pattern: Option<String>,
+    format: Option<String>,
     db: &SymbolDatabase,
     search_index: &crate::search::SearchIndex,
 ) -> Result<String> {
     use super::allocation::TokenBudget;
-    use super::formatting::{format_context, ContextData};
+    use super::formatting::{format_context_with_mode, ContextData};
     use crate::search::index::SearchFilter;
 
     // 1. Search for relevant symbols
@@ -159,7 +157,7 @@ pub fn run_pipeline(
     let ref_scores = db.get_reference_scores(&result_ids)?;
 
     // 3. Select pivots using centrality-weighted scoring
-    let pivots = select_pivots(search_results.results, &ref_scores);
+    let pivots = super::scoring::select_pivots_with_code_fallback(search_results.results, &ref_scores);
 
     // 4. Expand graph from pivots
     let expansion = expand_graph(&pivots, db)?;
@@ -189,7 +187,102 @@ pub fn run_pipeline(
         allocation,
     };
 
-    Ok(format_context(&context_data))
+    Ok(format_context_with_mode(
+        &context_data,
+        super::formatting::OutputFormat::from_option(format.as_deref()),
+    ))
+}
+
+/// Pre-fetched data for building pivot entries without N+1 DB queries.
+///
+/// All data is loaded in batch before the per-pivot loop runs.
+struct PivotBatchData {
+    /// Full symbol bodies, keyed by symbol ID (empty if SignatureOnly mode).
+    full_symbols: HashMap<String, Symbol>,
+    /// Related symbol names/paths, keyed by symbol ID.
+    related_symbols: HashMap<String, (String, String)>,
+    /// Incoming relationship source IDs, grouped by target pivot ID.
+    incoming_by_pivot: HashMap<String, Vec<String>>,
+    /// Outgoing relationship target IDs, grouped by source pivot ID.
+    outgoing_by_pivot: HashMap<String, Vec<String>>,
+}
+
+/// Batch-fetch all data needed to build pivot entries.
+///
+/// Replaces per-pivot N+1 queries with 3-4 batched DB calls.
+fn fetch_pivot_batch_data(
+    pivot_ids: &[String],
+    expansion: &GraphExpansion,
+    db: &SymbolDatabase,
+    pivot_mode: &super::allocation::PivotMode,
+) -> Result<PivotBatchData> {
+    use super::allocation::PivotMode;
+
+    // 1. Full symbol bodies (skip if we only need signatures)
+    let full_symbols: HashMap<String, Symbol> = if matches!(pivot_mode, PivotMode::SignatureOnly) {
+        HashMap::new()
+    } else {
+        db.get_symbols_by_ids(pivot_ids)?
+            .into_iter()
+            .map(|s| (s.id.clone(), s))
+            .collect()
+    };
+
+    // 2. Relationships (batched)
+    let incoming_rels = db.get_relationships_to_symbols(pivot_ids)?;
+    let outgoing_rels = db.get_outgoing_relationships_for_symbols(pivot_ids)?;
+
+    // 3. Resolve related symbol names — seed from expansion neighbors, fill gaps from DB
+    let mut related_ids: Vec<String> = incoming_rels
+        .iter()
+        .map(|r| r.from_symbol_id.clone())
+        .collect();
+    related_ids.extend(outgoing_rels.iter().map(|r| r.to_symbol_id.clone()));
+    related_ids.sort();
+    related_ids.dedup();
+
+    let mut related_symbols: HashMap<String, (String, String)> = expansion
+        .neighbors
+        .iter()
+        .map(|n| {
+            (
+                n.symbol.id.clone(),
+                (n.symbol.name.clone(), n.symbol.file_path.clone()),
+            )
+        })
+        .collect();
+
+    if !related_ids.is_empty() {
+        for sym in db.get_symbols_by_ids(&related_ids)? {
+            related_symbols
+                .entry(sym.id.clone())
+                .or_insert((sym.name, sym.file_path));
+        }
+    }
+
+    // 4. Group relationships by pivot
+    let mut incoming_by_pivot: HashMap<String, Vec<String>> = HashMap::new();
+    for rel in &incoming_rels {
+        incoming_by_pivot
+            .entry(rel.to_symbol_id.clone())
+            .or_default()
+            .push(rel.from_symbol_id.clone());
+    }
+
+    let mut outgoing_by_pivot: HashMap<String, Vec<String>> = HashMap::new();
+    for rel in &outgoing_rels {
+        outgoing_by_pivot
+            .entry(rel.from_symbol_id.clone())
+            .or_default()
+            .push(rel.to_symbol_id.clone());
+    }
+
+    Ok(PivotBatchData {
+        full_symbols,
+        related_symbols,
+        incoming_by_pivot,
+        outgoing_by_pivot,
+    })
 }
 
 /// Build PivotEntry structs from pivots, selecting content based on PivotMode.
@@ -203,26 +296,29 @@ fn build_pivot_entries(
     use super::allocation::PivotMode;
     use super::formatting::PivotEntry;
 
+    let pivot_ids: Vec<String> = pivots.iter().map(|p| p.result.id.clone()).collect();
+    let per_pivot_tokens = allocation.pivot_tokens as usize / pivots.len().max(1);
+    let batch = fetch_pivot_batch_data(&pivot_ids, expansion, db, &allocation.pivot_mode)?;
+
     let mut entries = Vec::with_capacity(pivots.len());
 
     for pivot in pivots {
-        // Determine content based on PivotMode
         let content = match allocation.pivot_mode {
             PivotMode::FullBody => {
-                // Get full symbol from DB for code_context
-                if let Ok(Some(full_symbol)) = db.get_symbol_by_id(&pivot.result.id) {
+                if let Some(full_symbol) = batch.full_symbols.get(&pivot.result.id) {
                     full_symbol
                         .code_context
+                        .as_deref()
+                        .map(str::to_string)
                         .unwrap_or_else(|| pivot.result.signature.clone())
                 } else {
                     pivot.result.signature.clone()
                 }
             }
             PivotMode::SignatureAndKey => {
-                // Get code_context, take first 5 + last 5 lines
-                if let Ok(Some(full_symbol)) = db.get_symbol_by_id(&pivot.result.id) {
-                    if let Some(code) = full_symbol.code_context {
-                        abbreviate_code(&code)
+                if let Some(full_symbol) = batch.full_symbols.get(&pivot.result.id) {
+                    if let Some(code) = full_symbol.code_context.as_deref() {
+                        abbreviate_code(code)
                     } else {
                         pivot.result.signature.clone()
                     }
@@ -233,14 +329,15 @@ fn build_pivot_entries(
             PivotMode::SignatureOnly => pivot.result.signature.clone(),
         };
 
-        // Enforce per-pivot token budget
-        let per_pivot_tokens = allocation.pivot_tokens as usize / pivots.len().max(1);
         let content = truncate_to_token_budget(&content, per_pivot_tokens);
 
-        // Get incoming/outgoing relationship names for this pivot
-        let (incoming_names, outgoing_names) = get_pivot_relationship_names(pivot, expansion, db);
+        let (incoming_names, outgoing_names) = get_pivot_relationship_names_batched(
+            &pivot.result.id,
+            &batch.incoming_by_pivot,
+            &batch.outgoing_by_pivot,
+            &batch.related_symbols,
+        );
 
-        // Use pre-fetched reference scores (no redundant DB query)
         let ref_score = reference_scores
             .get(&pivot.result.id)
             .copied()
@@ -261,130 +358,39 @@ fn build_pivot_entries(
     Ok(entries)
 }
 
-/// Abbreviate a code body: first 5 lines + "..." + last 5 lines.
-/// Returns the full code if it has 12 or fewer lines (not worth abbreviating).
-fn abbreviate_code(code: &str) -> String {
-    let lines: Vec<&str> = code.lines().collect();
-    if lines.len() <= 12 {
-        return code.to_string();
-    }
-    let mut out = String::new();
-    for line in &lines[..5] {
-        out.push_str(line);
-        out.push('\n');
-    }
-    out.push_str("    // ... (abbreviated)\n");
-    for (i, line) in lines[lines.len() - 5..].iter().enumerate() {
-        out.push_str(line);
-        if i < 4 {
-            out.push('\n');
-        }
-    }
-    out
-}
-
-/// Truncate code content to fit within a token budget.
-/// Returns content unchanged if within budget.
-/// Uses head-biased truncation (2/3 top, 1/3 bottom) to preserve
-/// function signature + initial logic while keeping closing context.
-pub(crate) fn truncate_to_token_budget(code: &str, max_tokens: usize) -> String {
-    use crate::utils::token_estimation::TokenEstimator;
-
-    let estimator = TokenEstimator::new();
-    let estimated = estimator.estimate_string(code);
-
-    if estimated <= max_tokens {
-        return code.to_string();
-    }
-
-    let lines: Vec<&str> = code.lines().collect();
-    if lines.len() <= 5 {
-        return code.to_string(); // Too short to truncate meaningfully
-    }
-
-    // Scale line count proportionally to fit budget
-    let target_lines = (lines.len() * max_tokens / estimated).max(5);
-
-    if lines.len() <= target_lines {
-        return code.to_string();
-    }
-
-    // Head-biased: 2/3 from top, 1/3 from bottom
-    let head = (target_lines * 2 / 3).max(3);
-    let tail = (target_lines - head).max(2);
-
-    let mut out = String::new();
-    for line in &lines[..head] {
-        out.push_str(line);
-        out.push('\n');
-    }
-    out.push_str(&format!(
-        "    // ... ({} lines omitted to fit token budget)\n",
-        lines.len() - head - tail
-    ));
-    for (i, line) in lines[lines.len() - tail..].iter().enumerate() {
-        out.push_str(line);
-        if i < tail - 1 {
-            out.push('\n');
-        }
-    }
-    out
-}
-
 /// Get incoming and outgoing relationship names for a pivot symbol.
 ///
 /// Uses the neighbor list from graph expansion where possible,
 /// and falls back to direct DB queries for callers/callees of this pivot.
-fn get_pivot_relationship_names(
-    pivot: &Pivot,
-    expansion: &GraphExpansion,
-    db: &SymbolDatabase,
+fn get_pivot_relationship_names_batched(
+    pivot_id: &str,
+    incoming_by_pivot: &HashMap<String, Vec<String>>,
+    outgoing_by_pivot: &HashMap<String, Vec<String>>,
+    symbols_by_id: &HashMap<String, (String, String)>,
 ) -> (Vec<String>, Vec<String>) {
-    let pivot_id = &pivot.result.id;
-
-    // Collect names from expansion neighbors that relate to this pivot
-    // For incoming: neighbors with Incoming direction whose relationship targets this pivot
-    // For outgoing: neighbors with Outgoing direction whose relationship sources from this pivot
-    //
-    // Since expand_graph deduplicates across pivots and doesn't track per-pivot associations,
-    // we query the DB directly for accuracy.
     let mut incoming_names = Vec::new();
     let mut outgoing_names = Vec::new();
-
-    // Helper: resolve symbol name and file path from neighbor list or DB
-    let resolve_symbol = |id: &str| -> Option<(String, String)> {
-        if let Some(n) = expansion.neighbors.iter().find(|n| n.symbol.id == id) {
-            Some((n.symbol.name.clone(), n.symbol.file_path.clone()))
-        } else if let Ok(Some(sym)) = db.get_symbol_by_id(id) {
-            let path = sym.file_path.clone();
-            Some((sym.name, path))
-        } else {
-            None
-        }
-    };
 
     // Filter: skip noise trait methods and test file symbols
     let should_include = |name: &str, path: &str| -> bool {
         !NOISE_NEIGHBOR_NAMES.contains(&name) && !is_test_path(path)
     };
 
-    // Incoming callers
-    if let Ok(incoming_rels) = db.get_relationships_to_symbol(pivot_id) {
-        for rel in &incoming_rels {
-            if let Some((name, path)) = resolve_symbol(&rel.from_symbol_id) {
+    if let Some(incoming_ids) = incoming_by_pivot.get(pivot_id) {
+        for related_id in incoming_ids {
+            if let Some((name, path)) = symbols_by_id.get(related_id) {
                 if should_include(&name, &path) {
-                    incoming_names.push(name);
+                    incoming_names.push(name.clone());
                 }
             }
         }
     }
 
-    // Outgoing callees
-    if let Ok(outgoing_rels) = db.get_outgoing_relationships(pivot_id) {
-        for rel in &outgoing_rels {
-            if let Some((name, path)) = resolve_symbol(&rel.to_symbol_id) {
+    if let Some(outgoing_ids) = outgoing_by_pivot.get(pivot_id) {
+        for related_id in outgoing_ids {
+            if let Some((name, path)) = symbols_by_id.get(related_id) {
                 if should_include(&name, &path) {
-                    outgoing_names.push(name);
+                    outgoing_names.push(name.clone());
                 }
             }
         }
@@ -433,6 +439,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
     let max_tokens = tool.max_tokens;
     let language = tool.language.clone();
     let file_pattern = tool.file_pattern.clone();
+    let format = tool.format.clone();
 
     if let Some(ref_workspace_id) = workspace_filter {
         // Reference workspace: open separate DB and SearchIndex
@@ -452,7 +459,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             let db = SymbolDatabase::new(ref_db_path)?;
             let configs = crate::search::LanguageConfigs::load_embedded();
             let index = crate::search::SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
-            run_pipeline(&query, max_tokens, language, file_pattern, &db, &index)
+            run_pipeline(&query, max_tokens, language, file_pattern, format, &db, &index)
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
@@ -481,7 +488,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
     let result = tokio::task::spawn_blocking(move || -> Result<String> {
         let index = search_index.lock().unwrap();
         let db_guard = db.lock().unwrap();
-        run_pipeline(&query, max_tokens, language, file_pattern, &db_guard, &index)
+        run_pipeline(&query, max_tokens, language, file_pattern, format, &db_guard, &index)
     })
     .await??;
 

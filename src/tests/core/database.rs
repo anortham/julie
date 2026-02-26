@@ -521,6 +521,93 @@ async fn test_cross_language_semantic_grouping() {
 }
 
 #[tokio::test]
+async fn test_get_outgoing_relationships_for_symbols_batch() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let file_info = FileInfo {
+        path: "main.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "hash-main".to_string(),
+        size: 100,
+        last_modified: 12345,
+        last_indexed: 0,
+        symbol_count: 4,
+        content: None,
+    };
+    db.store_file_info(&file_info).unwrap();
+
+    let mk_symbol = |id: &str, name: &str| Symbol {
+        id: id.to_string(),
+        name: name.to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "main.rs".to_string(),
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: 1,
+        start_byte: 0,
+        end_byte: 0,
+        signature: Some(format!("fn {}()", name)),
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    db.store_symbols_transactional(&[
+        mk_symbol("caller_a", "caller_a"),
+        mk_symbol("caller_b", "caller_b"),
+        mk_symbol("callee_x", "callee_x"),
+        mk_symbol("callee_y", "callee_y"),
+    ])
+    .unwrap();
+
+    let relationships = vec![
+        crate::extractors::Relationship {
+            id: "rel_a_x".to_string(),
+            from_symbol_id: "caller_a".to_string(),
+            to_symbol_id: "callee_x".to_string(),
+            kind: crate::extractors::RelationshipKind::Calls,
+            file_path: "main.rs".to_string(),
+            line_number: 10,
+            confidence: 1.0,
+            metadata: None,
+        },
+        crate::extractors::Relationship {
+            id: "rel_b_y".to_string(),
+            from_symbol_id: "caller_b".to_string(),
+            to_symbol_id: "callee_y".to_string(),
+            kind: crate::extractors::RelationshipKind::Calls,
+            file_path: "main.rs".to_string(),
+            line_number: 20,
+            confidence: 1.0,
+            metadata: None,
+        },
+    ];
+    db.store_relationships(&relationships).unwrap();
+
+    let caller_ids = vec!["caller_a".to_string(), "caller_b".to_string()];
+    let outgoing = db.get_outgoing_relationships_for_symbols(&caller_ids).unwrap();
+
+    assert_eq!(outgoing.len(), 2, "batch outgoing lookup should return both relationships");
+    assert!(
+        outgoing.iter().any(|r| r.id == "rel_a_x"),
+        "expected relationship from caller_a"
+    );
+    assert!(
+        outgoing.iter().any(|r| r.id == "rel_b_y"),
+        "expected relationship from caller_b"
+    );
+}
+
+#[tokio::test]
 async fn test_extractor_database_integration() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
@@ -1786,4 +1873,3 @@ fn test_compute_reference_scores_zero_for_no_incoming() {
         receiver_score
     );
 }
-

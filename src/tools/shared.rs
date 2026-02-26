@@ -134,6 +134,7 @@ pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
     ".coa",
     ".codenav",
     ".claude",
+    ".memories", // Goldfish memory files (not code)
     // Other common exclusions
     ".sass-cache",
     ".nuxt",

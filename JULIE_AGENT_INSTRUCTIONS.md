@@ -118,6 +118,7 @@ get_context(query="payment processing")
 - `language`: Filter to specific language
 - `file_pattern`: Filter by file glob pattern
 - `workspace`: Search a reference workspace instead of primary (use workspace ID from `manage_workspace list`)
+- `format`: `"readable"` (default) or `"compact"` for token-lean structured output
 
 ### manage_workspace — Workspace Setup
 **First action in new workspace:** `manage_workspace(operation="index")`

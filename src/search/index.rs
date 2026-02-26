@@ -82,6 +82,7 @@ pub struct SearchFilter {
 }
 
 /// A symbol search result with relevance score.
+#[derive(Clone)]
 pub struct SymbolSearchResult {
     pub id: String,
     pub name: String,
@@ -312,7 +313,10 @@ impl SearchIndex {
                 filter.kind.as_deref(),
                 false, // OR mode
             );
-            (searcher.search(&or_query, &TopDocs::with_limit(limit))?, true)
+            (
+                searcher.search(&or_query, &TopDocs::with_limit(limit))?,
+                true,
+            )
         } else {
             (top_docs, false)
         };
@@ -455,7 +459,10 @@ impl SearchIndex {
                 filter.language.as_deref(),
                 false, // require_all_terms: OR mode (relaxed matching)
             );
-            (searcher.search(&or_query, &TopDocs::with_limit(limit))?, true)
+            (
+                searcher.search(&or_query, &TopDocs::with_limit(limit))?,
+                true,
+            )
         } else {
             (top_docs, false)
         };
@@ -551,9 +558,7 @@ impl SearchIndex {
             .register("code", TextAnalyzer::builder(tokenizer).build());
     }
 
-    fn get_or_create_writer(
-        &self,
-    ) -> Result<std::sync::MutexGuard<'_, Option<IndexWriter>>> {
+    fn get_or_create_writer(&self) -> Result<std::sync::MutexGuard<'_, Option<IndexWriter>>> {
         if self.shutdown.load(Ordering::Acquire) {
             return Err(SearchError::Shutdown);
         }

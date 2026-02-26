@@ -74,8 +74,15 @@ pub mod tools {
     pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
 
     pub mod get_context_tests; // get_context tool pipeline tests (pivot selection, scoring)
+    pub mod get_context_pipeline_tests; // get_context pipeline integration tests
+    pub mod get_context_quality_tests; // get_context fixed-query quality regression tests
+    pub mod get_context_graph_expansion_tests; // get_context graph expansion tests
+    pub mod get_context_allocation_tests; // get_context token allocation tests
+    pub mod get_context_token_budget_tests; // get_context token truncation tests
     pub mod get_context_formatting_tests; // get_context output formatting tests
     pub mod get_context_scoring_tests; // get_context namespace/module de-boost scoring tests
+    pub mod get_context_relevance_tests; // get_context fallback relevance guardrail tests
+    pub mod get_context_pipeline_relevance_tests; // get_context run_pipeline fallback relevance tests
 }
 
 // ============================================================================

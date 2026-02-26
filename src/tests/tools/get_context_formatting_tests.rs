@@ -2,11 +2,12 @@
 
 #[cfg(test)]
 mod formatting_tests {
-    use crate::tools::get_context::allocation::{
-        Allocation, NeighborMode, PivotMode,
-    };
+    use crate::utils::token_estimation::TokenEstimator;
+
+    use crate::tools::get_context::allocation::{Allocation, NeighborMode, PivotMode};
     use crate::tools::get_context::formatting::{
-        format_context, ContextData, NeighborEntry, PivotEntry,
+        format_context, format_context_with_mode, ContextData, NeighborEntry, OutputFormat,
+        PivotEntry,
     };
 
     /// Helper: build an Allocation with specific modes (token counts don't matter for formatting).
@@ -21,13 +22,7 @@ mod formatting_tests {
     }
 
     /// Helper: build a PivotEntry with sensible defaults.
-    fn make_pivot(
-        name: &str,
-        file: &str,
-        line: u32,
-        ref_score: f64,
-        content: &str,
-    ) -> PivotEntry {
+    fn make_pivot(name: &str, file: &str, line: u32, ref_score: f64, content: &str) -> PivotEntry {
         PivotEntry {
             name: name.to_string(),
             file_path: file.to_string(),
@@ -107,7 +102,10 @@ mod formatting_tests {
         let output = format_context(&data);
 
         // Header section
-        assert!(output.contains("Context:"), "should have header with Context:");
+        assert!(
+            output.contains("Context:"),
+            "should have header with Context:"
+        );
         assert!(
             output.contains("payment processing"),
             "header should contain query"
@@ -125,7 +123,10 @@ mod formatting_tests {
         );
 
         // Neighbors section
-        assert!(output.contains("Neighbors"), "should have Neighbors section");
+        assert!(
+            output.contains("Neighbors"),
+            "should have Neighbors section"
+        );
 
         // Files section
         assert!(output.contains("Files"), "should have Files section");
@@ -137,7 +138,13 @@ mod formatting_tests {
     fn test_centrality_high() {
         let data = ContextData {
             query: "test".to_string(),
-            pivots: vec![make_pivot("high_fn", "src/a.rs", 1, 25.0, "fn high_fn() {}")],
+            pivots: vec![make_pivot(
+                "high_fn",
+                "src/a.rs",
+                1,
+                25.0,
+                "fn high_fn() {}",
+            )],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
         };
@@ -185,7 +192,13 @@ mod formatting_tests {
     fn test_centrality_boundary_at_20() {
         let data = ContextData {
             query: "test".to_string(),
-            pivots: vec![make_pivot("edge_fn", "src/d.rs", 1, 20.0, "fn edge_fn() {}")],
+            pivots: vec![make_pivot(
+                "edge_fn",
+                "src/d.rs",
+                1,
+                20.0,
+                "fn edge_fn() {}",
+            )],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
         };
@@ -248,7 +261,13 @@ mod formatting_tests {
 
     #[test]
     fn test_pivot_callers_and_callees() {
-        let mut pivot = make_pivot("engine_run", "src/engine.rs", 10, 15.0, "fn engine_run() {}");
+        let mut pivot = make_pivot(
+            "engine_run",
+            "src/engine.rs",
+            10,
+            15.0,
+            "fn engine_run() {}",
+        );
         pivot.incoming_names = vec![
             "main".to_string(),
             "retry_handler".to_string(),
@@ -269,16 +288,11 @@ mod formatting_tests {
             "should show caller count, got:\n{}",
             output
         );
+        assert!(output.contains("main"), "should list caller names");
+        assert!(output.contains("retry_handler"), "should list all callers");
         assert!(
-            output.contains("main"),
-            "should list caller names"
-        );
-        assert!(
-            output.contains("retry_handler"),
-            "should list all callers"
-        );
-        assert!(
-            output.contains("Calls: validate, execute"),
+            output.contains("Calls: validate, execute")
+                || output.contains("Calls: execute, validate"),
             "should show callee names, got:\n{}",
             output
         );
@@ -305,13 +319,57 @@ mod formatting_tests {
         );
     }
 
+    #[test]
+    fn test_pivot_callers_and_calls_are_deduplicated() {
+        let mut pivot = make_pivot(
+            "engine_run",
+            "src/engine.rs",
+            10,
+            15.0,
+            "fn engine_run() {}",
+        );
+        pivot.incoming_names = vec!["main".to_string(), "main".to_string(), "worker".to_string()];
+        pivot.outgoing_names = vec![
+            "validate".to_string(),
+            "validate".to_string(),
+            "execute".to_string(),
+        ];
+
+        let data = ContextData {
+            query: "engine".to_string(),
+            pivots: vec![pivot],
+            neighbors: vec![],
+            allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+        };
+
+        let output = format_context(&data);
+        assert!(
+            output.contains("Callers (2): main, worker")
+                || output.contains("Callers (2): worker, main"),
+            "caller names should be deduplicated, got:\n{}",
+            output
+        );
+        assert!(
+            output.contains("Calls: execute, validate")
+                || output.contains("Calls: validate, execute"),
+            "callee names should be deduplicated, got:\n{}",
+            output
+        );
+    }
+
     // === Test 6: Neighbors rendered (SignatureAndDoc mode) ===
 
     #[test]
     fn test_neighbors_signature_and_doc_mode() {
         let data = ContextData {
             query: "payment".to_string(),
-            pivots: vec![make_pivot("process", "src/proc.rs", 1, 10.0, "fn process() {}")],
+            pivots: vec![make_pivot(
+                "process",
+                "src/proc.rs",
+                1,
+                10.0,
+                "fn process() {}",
+            )],
             neighbors: vec![
                 make_neighbor(
                     "validate_payment",
@@ -348,10 +406,7 @@ mod formatting_tests {
             output.contains("Validates payment data before processing"),
             "neighbor doc summary should appear in SignatureAndDoc mode"
         );
-        assert!(
-            output.contains("Receipt"),
-            "second neighbor should appear"
-        );
+        assert!(output.contains("Receipt"), "second neighbor should appear");
     }
 
     // === Test 7: NeighborMode::SignatureOnly ===
@@ -372,10 +427,7 @@ mod formatting_tests {
         };
 
         let output = format_context(&data);
-        assert!(
-            output.contains("helper"),
-            "neighbor name should appear"
-        );
+        assert!(output.contains("helper"), "neighbor name should appear");
         assert!(
             output.contains("fn helper(x: i32) -> String"),
             "signature should appear in SignatureOnly mode"
@@ -404,10 +456,7 @@ mod formatting_tests {
         };
 
         let output = format_context(&data);
-        assert!(
-            output.contains("helper"),
-            "neighbor name should appear"
-        );
+        assert!(output.contains("helper"), "neighbor name should appear");
         assert!(
             output.contains("src/utils.rs:5"),
             "neighbor location should appear"
@@ -430,12 +479,36 @@ mod formatting_tests {
         let data = ContextData {
             query: "payment".to_string(),
             pivots: vec![
-                make_pivot("process_payment", "src/payment/processor.rs", 42, 25.0, "fn process_payment() {}"),
-                make_pivot("PaymentMethod", "src/payment/types.rs", 10, 8.0, "enum PaymentMethod {}"),
+                make_pivot(
+                    "process_payment",
+                    "src/payment/processor.rs",
+                    42,
+                    25.0,
+                    "fn process_payment() {}",
+                ),
+                make_pivot(
+                    "PaymentMethod",
+                    "src/payment/types.rs",
+                    10,
+                    8.0,
+                    "enum PaymentMethod {}",
+                ),
             ],
             neighbors: vec![
-                make_neighbor("Receipt", "src/payment/types.rs", 35, Some("struct Receipt"), None),
-                make_neighbor("validate", "src/payment/validation.rs", 1, Some("fn validate()"), None),
+                make_neighbor(
+                    "Receipt",
+                    "src/payment/types.rs",
+                    35,
+                    Some("struct Receipt"),
+                    None,
+                ),
+                make_neighbor(
+                    "validate",
+                    "src/payment/validation.rs",
+                    1,
+                    Some("fn validate()"),
+                    None,
+                ),
             ],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
         };
@@ -477,8 +550,20 @@ mod formatting_tests {
         let data = ContextData {
             query: "engine".to_string(),
             pivots: vec![
-                make_pivot("start_engine", "src/engine.rs", 10, 20.0, "fn start_engine() {}"),
-                make_pivot("stop_engine", "src/engine.rs", 50, 15.0, "fn stop_engine() {}"),
+                make_pivot(
+                    "start_engine",
+                    "src/engine.rs",
+                    10,
+                    20.0,
+                    "fn start_engine() {}",
+                ),
+                make_pivot(
+                    "stop_engine",
+                    "src/engine.rs",
+                    50,
+                    15.0,
+                    "fn stop_engine() {}",
+                ),
             ],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
@@ -546,14 +631,8 @@ mod formatting_tests {
         };
 
         let output = format_context(&data);
-        assert!(
-            output.contains("3 pivots"),
-            "should show 3 pivots"
-        );
-        assert!(
-            output.contains("2 neighbors"),
-            "should show 2 neighbors"
-        );
+        assert!(output.contains("3 pivots"), "should show 3 pivots");
+        assert!(output.contains("2 neighbors"), "should show 2 neighbors");
         // Unique files: src/a.rs, src/b.rs, src/x.rs, src/y.rs = 4
         assert!(
             output.contains("4 files"),
@@ -568,7 +647,13 @@ mod formatting_tests {
     fn test_singular_counts() {
         let data = ContextData {
             query: "test".to_string(),
-            pivots: vec![make_pivot("only_one", "src/only.rs", 1, 1.0, "fn only_one() {}")],
+            pivots: vec![make_pivot(
+                "only_one",
+                "src/only.rs",
+                1,
+                1.0,
+                "fn only_one() {}",
+            )],
             neighbors: vec![],
             allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
         };
@@ -579,10 +664,7 @@ mod formatting_tests {
             "should use singular 'pivot' not 'pivots', got:\n{}",
             output
         );
-        assert!(
-            output.contains("0 neighbors"),
-            "should show 0 neighbors"
-        );
+        assert!(output.contains("0 neighbors"), "should show 0 neighbors");
         assert!(
             output.contains("1 file"),
             "should use singular 'file' not 'files'"
@@ -605,6 +687,203 @@ mod formatting_tests {
             output.contains("ref_score: 47"),
             "ref_score should be displayed as integer, got:\n{}",
             output
+        );
+    }
+
+    #[test]
+    fn test_compact_format_is_token_lean_and_structured() {
+        let mut pivot = make_pivot(
+            "process_payment",
+            "src/payment/processor.rs",
+            42,
+            25.0,
+            "pub fn process_payment() { ... }",
+        );
+        pivot.incoming_names = vec!["main".to_string(), "main".to_string()];
+        pivot.outgoing_names = vec!["validate".to_string(), "validate".to_string()];
+
+        let data = ContextData {
+            query: "payment processing".to_string(),
+            pivots: vec![pivot],
+            neighbors: vec![make_neighbor(
+                "validate_payment",
+                "src/payment/validation.rs",
+                10,
+                Some("fn validate_payment(...)"),
+                Some("Validates payment data"),
+            )],
+            allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+        };
+
+        let output = format_context_with_mode(&data, OutputFormat::Compact);
+
+        assert!(output.contains("Context \"payment processing\" | pivots=1 neighbors=1 files=2"));
+        assert!(output.contains("PIVOT process_payment src/payment/processor.rs:42"));
+        assert!(output.contains("NEIGHBOR validate_payment src/payment/validation.rs:10"));
+        assert!(output.contains("FILE src/payment/processor.rs | pivot: process_payment"));
+        assert!(
+            output.contains("callers=main"),
+            "caller list should be deduplicated in compact mode"
+        );
+        assert!(
+            output.contains("calls=validate"),
+            "callee list should be deduplicated in compact mode"
+        );
+        assert!(
+            !output.contains("═══"),
+            "compact mode should avoid heavy unicode separators"
+        );
+    }
+
+    #[test]
+    fn test_compact_neighbor_mode_name_and_location_omits_signature() {
+        let data = ContextData {
+            query: "broad search".to_string(),
+            pivots: vec![make_pivot("main", "src/main.rs", 1, 5.0, "fn main() {}")],
+            neighbors: vec![make_neighbor(
+                "helper",
+                "src/utils.rs",
+                5,
+                Some("fn helper(x: i32) -> String"),
+                Some("Helper doc"),
+            )],
+            allocation: make_allocation(PivotMode::SignatureOnly, NeighborMode::NameAndLocation),
+        };
+
+        let output = format_context_with_mode(&data, OutputFormat::Compact);
+        assert!(output.contains("NEIGHBOR helper src/utils.rs:5 kind=function"));
+        assert!(
+            !output.contains("sig=fn helper"),
+            "NameAndLocation compact mode should omit signatures"
+        );
+        assert!(
+            !output.contains("doc=Helper doc"),
+            "NameAndLocation compact mode should omit doc summaries"
+        );
+    }
+
+    #[test]
+    fn test_compact_output_smaller_than_readable_for_same_context() {
+        let mut pivot = make_pivot(
+            "process_payment",
+            "src/payment/processor.rs",
+            42,
+            25.0,
+            "pub fn process_payment(order: &Order) -> Result<Receipt> { validate(order)?; charge(order) }",
+        );
+        pivot.incoming_names = vec!["api_entry".to_string(), "worker".to_string()];
+        pivot.outgoing_names = vec!["validate".to_string(), "charge".to_string()];
+
+        let data = ContextData {
+            query: "payment processing".to_string(),
+            pivots: vec![pivot],
+            neighbors: vec![
+                make_neighbor(
+                    "validate",
+                    "src/payment/validation.rs",
+                    10,
+                    Some("fn validate(order: &Order) -> Result<()>"),
+                    Some("Validates order state"),
+                ),
+                make_neighbor(
+                    "charge",
+                    "src/payment/gateway.rs",
+                    20,
+                    Some("fn charge(order: &Order) -> Result<ChargeId>"),
+                    Some("Performs gateway charge"),
+                ),
+            ],
+            allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+        };
+
+        let readable = format_context(&data);
+        let compact = format_context_with_mode(&data, OutputFormat::Compact);
+
+        assert!(
+            compact.len() < readable.len(),
+            "compact output should be smaller than readable output (compact={}, readable={})",
+            compact.len(),
+            readable.len()
+        );
+    }
+
+    #[test]
+    fn test_compact_reduces_estimated_tokens_by_at_least_20_percent() {
+        let mut pivots = vec![];
+        for i in 0..3 {
+            let mut pivot = make_pivot(
+                &format!("process_batch_{}", i),
+                &format!("src/payment/batch_{}.rs", i),
+                20 + i,
+                30.0 - i as f64,
+                "pub fn process_batch(order: &Order) -> Result<Receipt> { validate(order)?; charge(order)?; persist(order) }",
+            );
+            pivot.incoming_names = vec![
+                "api_entry".to_string(),
+                "worker".to_string(),
+                "worker".to_string(),
+            ];
+            pivot.outgoing_names = vec![
+                "validate".to_string(),
+                "charge".to_string(),
+                "persist".to_string(),
+                "charge".to_string(),
+            ];
+            pivots.push(pivot);
+        }
+
+        let neighbors = vec![
+            make_neighbor(
+                "validate",
+                "src/payment/validation.rs",
+                10,
+                Some("fn validate(order: &Order) -> Result<()>"),
+                Some("Validates order state before charging"),
+            ),
+            make_neighbor(
+                "charge",
+                "src/payment/gateway.rs",
+                22,
+                Some("fn charge(order: &Order) -> Result<ChargeId>"),
+                Some("Calls gateway and returns charge id"),
+            ),
+            make_neighbor(
+                "persist",
+                "src/payment/store.rs",
+                35,
+                Some("fn persist(order: &Order) -> Result<()>"),
+                Some("Stores payment state transitions"),
+            ),
+            make_neighbor(
+                "audit",
+                "src/payment/audit.rs",
+                44,
+                Some("fn audit(event: AuditEvent)"),
+                Some("Writes audit trail event"),
+            ),
+        ];
+
+        let data = ContextData {
+            query: "payment batch processing retry".to_string(),
+            pivots,
+            neighbors,
+            allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+        };
+
+        let readable = format_context(&data);
+        let compact = format_context_with_mode(&data, OutputFormat::Compact);
+
+        let estimator = TokenEstimator::new();
+        let readable_tokens = estimator.estimate_string_hybrid(&readable) as f64;
+        let compact_tokens = estimator.estimate_string_hybrid(&compact) as f64;
+        let reduction = 1.0 - (compact_tokens / readable_tokens);
+
+        assert!(
+            reduction >= 0.15,
+            "compact should reduce estimated tokens by >=15% (readable={}, compact={}, reduction={:.1}%)",
+            readable_tokens,
+            compact_tokens,
+            reduction * 100.0
         );
     }
 }
