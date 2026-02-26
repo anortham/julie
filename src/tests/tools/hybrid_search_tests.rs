@@ -280,6 +280,33 @@ mod orchestrator_tests {
     }
 }
 
+/// Semantic fallback gate tests for fast_search.
+///
+/// Verifies that `should_use_semantic_fallback` correctly gates on:
+/// - Natural language queries (multi-word, no identifiers)
+/// - Sparse keyword results (< 3)
+#[cfg(test)]
+mod fast_search_fallback_tests {
+    use crate::search::hybrid::should_use_semantic_fallback;
+
+    #[test]
+    fn test_fallback_triggers_for_nl_with_sparse_results() {
+        assert!(should_use_semantic_fallback("how does payment work", 2));
+        assert!(should_use_semantic_fallback("what handles authentication", 0));
+    }
+
+    #[test]
+    fn test_fallback_does_not_trigger_for_identifiers() {
+        assert!(!should_use_semantic_fallback("UserService", 5));
+        assert!(!should_use_semantic_fallback("process_payment", 10));
+    }
+
+    #[test]
+    fn test_fallback_does_not_trigger_with_enough_results() {
+        assert!(!should_use_semantic_fallback("how does payment work", 5));
+    }
+}
+
 /// KNN-to-SymbolSearchResult conversion tests.
 ///
 /// Verifies that `knn_to_search_results` correctly converts (symbol_id, distance)

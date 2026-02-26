@@ -234,6 +234,9 @@ pub async fn text_search_impl(
     // content search (post-verification filtering)
     let db_clone = workspace.db.clone();
 
+    // Clone embedding provider for semantic fallback (cheap Arc clone)
+    let embedding_provider = workspace.embedding_provider.clone();
+
     // Perform the search in a blocking task since Tantivy uses std::sync::Mutex
     let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool)> {
         let index = search_index_clone.lock().unwrap();
@@ -299,6 +302,41 @@ pub async fn text_search_impl(
                     }
                 };
                 enrich_symbols_from_db(&mut symbols, &db_lock);
+            }
+
+            // Semantic fallback: when query is NL-like and keyword results are sparse,
+            // augment with KNN embedding search results.
+            if crate::search::hybrid::should_use_semantic_fallback(&query_clone, symbols.len()) {
+                if let Some(ref provider) = embedding_provider {
+                    if let Ok(query_vector) = provider.embed_query(&query_clone) {
+                        if let Some(db_arc) = &db_clone {
+                            let db_lock = match db_arc.lock() {
+                                Ok(guard) => guard,
+                                Err(poisoned) => {
+                                    warn!("Database mutex poisoned during semantic fallback, recovering");
+                                    poisoned.into_inner()
+                                }
+                            };
+                            if let Ok(knn_hits) = db_lock.knn_search(&query_vector, limit_usize) {
+                                let knn_ids: Vec<String> = knn_hits.iter().map(|(id, _)| id.clone()).collect();
+                                if let Ok(semantic_symbols) = db_lock.get_symbols_by_ids(&knn_ids) {
+                                    let existing_ids: std::collections::HashSet<String> =
+                                        symbols.iter().map(|s| s.id.clone()).collect();
+                                    for sym in semantic_symbols {
+                                        if !existing_ids.contains(&sym.id) {
+                                            symbols.push(sym);
+                                        }
+                                    }
+                                    symbols.truncate(limit_usize);
+                                    debug!(
+                                        "Semantic fallback added symbols (total: {})",
+                                        symbols.len()
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             Ok((symbols, relaxed))
