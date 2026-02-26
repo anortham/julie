@@ -87,6 +87,8 @@ pub mod tools {
     pub mod get_context_scoring_tests; // get_context namespace/module de-boost scoring tests
     pub mod get_context_relevance_tests; // get_context fallback relevance guardrail tests
     pub mod get_context_pipeline_relevance_tests; // get_context run_pipeline fallback relevance tests
+
+    pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
 }
 
 // ============================================================================

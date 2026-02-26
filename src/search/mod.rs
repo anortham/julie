@@ -9,6 +9,7 @@ pub mod index;
 pub mod language_config;
 pub mod query;
 pub mod schema;
+pub mod hybrid;
 pub mod scoring;
 pub mod tokenizer;
 
