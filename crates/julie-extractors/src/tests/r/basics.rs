@@ -17,7 +17,7 @@ y = 100
 200 -> z
 global_var <<- 500
 "#;
-        let tree = crate::tests::test_utils::init_parser(r_code, "r");
+        let tree = crate::tests::helpers::init_parser(r_code, "r");
         let root = tree.root_node();
 
         fn print_ast(node: &tree_sitter::Node, depth: usize, code: &str) {

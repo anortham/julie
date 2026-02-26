@@ -4,7 +4,7 @@
 
 use crate::base::{Identifier, Relationship, Symbol};
 use crate::r::RExtractor;
-use crate::tests::test_utils::init_parser;
+use crate::tests::helpers::init_parser;
 use std::path::PathBuf;
 
 /// Helper function to extract symbols from R code

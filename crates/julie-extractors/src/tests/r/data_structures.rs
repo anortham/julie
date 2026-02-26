@@ -29,7 +29,7 @@ df <- data.frame(
 # Matrices
 m <- matrix(1:9, nrow = 3, ncol = 3)
 "#;
-        let tree = crate::tests::test_utils::init_parser(r_code, "r");
+        let tree = crate::tests::helpers::init_parser(r_code, "r");
         let root = tree.root_node();
 
         fn print_ast(node: &tree_sitter::Node, depth: usize, code: &str) {

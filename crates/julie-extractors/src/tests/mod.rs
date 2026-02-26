@@ -2,7 +2,7 @@
 //!
 //! All extractor tests organized by language.
 
-pub mod test_utils;
+pub mod helpers;
 pub mod base;
 pub mod bash;
 pub mod c;

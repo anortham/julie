@@ -17,7 +17,7 @@
 
 use crate::base::SymbolKind;
 use crate::go::GoExtractor;
-use crate::tests::test_utils::init_parser;
+use crate::tests::helpers::init_parser;
 use std::path::PathBuf;
 
 #[test]

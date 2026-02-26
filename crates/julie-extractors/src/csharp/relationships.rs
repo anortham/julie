@@ -25,6 +25,11 @@ fn visit_relationships(
         "class_declaration" | "interface_declaration" | "struct_declaration" => {
             extract_inheritance_relationships(extractor, node, symbols, relationships);
         }
+        // TODO: C# 12 primary constructors (e.g. `class Foo(IBar bar) {}`) put params
+        // on class_declaration, not constructor_declaration. Known gap for future work.
+        "constructor_declaration" => {
+            extract_constructor_parameter_relationships(extractor, node, symbols, relationships);
+        }
         "invocation_expression" => {
             extract_call_relationships(extractor, node, symbols, relationships);
         }
@@ -102,6 +107,235 @@ fn extract_inheritance_relationships(
             relationships.push(relationship);
         }
     }
+}
+
+/// Extract constructor parameter type relationships (DI injection pattern)
+///
+/// In C#/.NET, dependency injection via constructor parameters is THE primary
+/// wiring mechanism. This function creates `Uses` relationships from the
+/// containing class to each parameter type, enabling centrality scoring.
+///
+/// Handles:
+/// - Simple types: `ILogger` -> identifier
+/// - Generic types: `ILogger<MyService>` -> generic_name (extracts base name `ILogger`)
+/// - Nullable types: `ILogger?` -> nullable_type (unwraps to inner type)
+/// - Skips predefined types: `string`, `int`, `bool`, etc. (not interesting relationships)
+fn extract_constructor_parameter_relationships(
+    extractor: &mut CSharpExtractor,
+    node: tree_sitter::Node,
+    symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
+    // Phase 1: Collect all data using immutable borrow of extractor
+    // (we need base for get_node_text, but also need &mut extractor for pending_relationships)
+    let (class_symbol_id, param_types) = {
+        let base = extractor.get_base();
+
+        // Find the containing class by walking up the tree
+        let class_symbol = {
+            let mut parent = node.parent();
+            let mut class_sym = None;
+            while let Some(p) = parent {
+                if p.kind() == "class_declaration"
+                    || p.kind() == "struct_declaration"
+                    || p.kind() == "record_declaration"
+                {
+                    let mut p_cursor = p.walk();
+                    if let Some(name_node) =
+                        p.children(&mut p_cursor).find(|c| c.kind() == "identifier")
+                    {
+                        let class_name = base.get_node_text(&name_node);
+                        class_sym = symbols.iter().find(|s| {
+                            s.name == class_name
+                                && (s.kind == SymbolKind::Class
+                                    || s.kind == SymbolKind::Struct
+                                    || s.kind == SymbolKind::Type)
+                        });
+                    }
+                    break;
+                }
+                parent = p.parent();
+            }
+            class_sym
+        };
+
+        let Some(class_symbol) = class_symbol else {
+            return;
+        };
+
+        // Find the parameter_list child of the constructor
+        let mut cursor = node.walk();
+        let param_list = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "parameter_list");
+        let Some(param_list) = param_list else { return };
+
+        // Collect all parameter type names with their line numbers
+        let mut types = Vec::new();
+        let mut param_cursor = param_list.walk();
+        for param in param_list
+            .children(&mut param_cursor)
+            .filter(|c| c.kind() == "parameter")
+        {
+            if let Some(type_name) = extract_parameter_type_name(base, param) {
+                if !type_name.is_empty() {
+                    let line_number = param.start_position().row as u32 + 1;
+                    let row = param.start_position().row;
+                    types.push((type_name, line_number, row));
+                }
+            }
+        }
+
+        (class_symbol.id.clone(), types)
+    };
+    // Phase 1 done — immutable borrow of extractor is dropped
+
+    // Phase 2: Create relationships, deduplicating across constructor overloads.
+    // A class only needs one Uses edge per type, regardless of how many constructors use it.
+    let file_path = extractor.get_base().file_path.clone();
+    let symbol_map: std::collections::HashMap<String, &Symbol> =
+        symbols.iter().map(|s| (s.name.clone(), s)).collect();
+
+    // Collect already-existing Uses targets for this class (from earlier constructors)
+    let mut seen: std::collections::HashSet<String> = relationships
+        .iter()
+        .filter(|r| r.from_symbol_id == class_symbol_id && r.kind == RelationshipKind::Uses)
+        .map(|r| r.to_symbol_id.clone())
+        .collect();
+
+    for (type_name, line_number, row) in param_types {
+        if seen.contains(&type_name) {
+            continue; // Already emitted (pending dedup by name)
+        }
+        match symbol_map.get(&type_name) {
+            Some(type_symbol) if !seen.contains(&type_symbol.id) => {
+                seen.insert(type_symbol.id.clone());
+                relationships.push(Relationship {
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        class_symbol_id, type_symbol.id, RelationshipKind::Uses, row
+                    ),
+                    from_symbol_id: class_symbol_id.clone(),
+                    to_symbol_id: type_symbol.id.clone(),
+                    kind: RelationshipKind::Uses,
+                    file_path: file_path.clone(),
+                    line_number,
+                    confidence: 0.9,
+                    metadata: None,
+                });
+            }
+            Some(_) => {} // Already seen this resolved type
+            None => {
+                seen.insert(type_name.clone());
+                extractor.add_pending_relationship(PendingRelationship {
+                    from_symbol_id: class_symbol_id.clone(),
+                    callee_name: type_name,
+                    kind: RelationshipKind::Uses,
+                    file_path: file_path.clone(),
+                    line_number,
+                    confidence: 0.8,
+                });
+            }
+        }
+    }
+}
+
+/// Extract the type name from a constructor parameter node.
+/// Returns `None` for predefined/tuple types (not interesting relationships).
+fn extract_parameter_type_name(
+    base: &crate::base::BaseExtractor,
+    param: tree_sitter::Node,
+) -> Option<String> {
+    // Parameter structure: [modifier*] type identifier [= default]
+    let mut cursor = param.walk();
+    for child in param.children(&mut cursor) {
+        match child.kind() {
+            "modifier" | "parameter_modifier" | "params" | "this" => continue,
+
+            // Skip predefined (string, int, etc.) and tuple types ((string, int))
+            "predefined_type" | "tuple_type" => return None,
+
+            // Simple type: ILogger, MyClass
+            "identifier" => return Some(base.get_node_text(&child)),
+
+            // Generic: ILogger<MyService> -> "ILogger"
+            "generic_name" => {
+                let mut gc = child.walk();
+                if let Some(name_node) =
+                    child.children(&mut gc).find(|c| c.kind() == "identifier")
+                {
+                    return Some(base.get_node_text(&name_node));
+                }
+                return None;
+            }
+
+            // Nullable: ILogger? -> unwrap inner type
+            "nullable_type" => {
+                let mut nc = child.walk();
+                for inner in child.children(&mut nc) {
+                    match inner.kind() {
+                        "predefined_type" => return None,
+                        "identifier" => return Some(base.get_node_text(&inner)),
+                        "generic_name" => {
+                            let mut gc = inner.walk();
+                            if let Some(name_node) =
+                                inner.children(&mut gc).find(|c| c.kind() == "identifier")
+                            {
+                                return Some(base.get_node_text(&name_node));
+                            }
+                            return None;
+                        }
+                        _ => {}
+                    }
+                }
+                return None;
+            }
+
+            // Qualified: Namespace.IType -> last identifier
+            "qualified_name" => {
+                let mut qc = child.walk();
+                let last_ident = child
+                    .children(&mut qc)
+                    .filter(|c| c.kind() == "identifier")
+                    .last();
+                if let Some(ident) = last_ident {
+                    return Some(base.get_node_text(&ident));
+                }
+                return None;
+            }
+
+            // Array: ILogger[] -> extract base type
+            "array_type" => {
+                let mut ac = child.walk();
+                for inner in child.children(&mut ac) {
+                    match inner.kind() {
+                        "predefined_type" => return None,
+                        "identifier" => return Some(base.get_node_text(&inner)),
+                        "generic_name" => {
+                            let mut gc = inner.walk();
+                            if let Some(name_node) =
+                                inner.children(&mut gc).find(|c| c.kind() == "identifier")
+                            {
+                                return Some(base.get_node_text(&name_node));
+                            }
+                            return None;
+                        }
+                        _ => {}
+                    }
+                }
+                return None;
+            }
+
+            // Fallback: if node kind contains "type" or "name", treat as type
+            _ => {
+                if child.kind().contains("type") || child.kind().contains("name") {
+                    return Some(base.get_node_text(&child));
+                }
+                continue;
+            }
+        }
+    }
+    None
 }
 
 /// Extract method call relationships

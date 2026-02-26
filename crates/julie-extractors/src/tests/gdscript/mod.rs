@@ -1,6 +1,6 @@
 use crate::base::{Relationship, Symbol};
 use crate::gdscript::GDScriptExtractor;
-use crate::tests::test_utils::init_parser;
+use crate::tests::helpers::init_parser;
 use std::path::PathBuf;
 
 pub fn extract_symbols(code: &str) -> Vec<Symbol> {
