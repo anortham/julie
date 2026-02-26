@@ -589,11 +589,11 @@ fn test_discover_indexable_files_creates_julieignore_for_blacklisted_vendor_dirs
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Tests: Dotfile Discovery — .memories is indexable (project artifact)
+// Tests: Dotfile Discovery — .memories is excluded (non-code artifacts)
 // ═══════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_memories_dir_included_in_discovery() {
+fn test_memories_dir_excluded_from_discovery() {
     let tool = create_tool();
     let (temp_dir, _) = create_workspace_with_files(vec![
         "src/main.rs",
@@ -606,15 +606,15 @@ fn test_memories_dir_included_in_discovery() {
         .discover_indexable_files(temp_dir.path())
         .expect("Failed to discover files");
 
-    // .memories files should be discovered — they're project artifacts in source control
+    // .memories files should not be discovered — they are non-code memory artifacts
     let memory_files: Vec<_> = indexable
         .iter()
         .filter(|p| p.to_string_lossy().contains(".memories"))
         .collect();
 
     assert!(
-        !memory_files.is_empty(),
-        "Expected .memories files to be included in discovery (project artifacts)"
+        memory_files.is_empty(),
+        "Expected .memories files to be excluded from discovery"
     );
 
     // Verify actual source files ARE also discovered
@@ -661,4 +661,3 @@ fn test_claude_dir_in_blacklist() {
         ".claude should be blacklisted"
     );
 }
-

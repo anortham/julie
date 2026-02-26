@@ -287,7 +287,7 @@ mod search_quality_tests {
         // Combined scoring should provide better results than either system alone
         let exact_match_prod_score = scores[0].0;
         let exact_match_test_score_in_src = scores[1].0; // This is getUserData in user.test.ts
-        // Find the exact match in the dedicated test directory (tests/)
+                                                         // Find the exact match in the dedicated test directory (tests/)
         let exact_match_test_dir_score = scores
             .iter()
             .find(|(_, name, path, _)| name == "getUserData" && path.starts_with("tests/"))
@@ -525,3 +525,103 @@ mod search_integration_tests {
     }
 }
 
+#[cfg(test)]
+mod identifier_stability_regression_tests {
+    use crate::search::index::{SearchFilter, SearchIndex, SymbolDocument};
+    use crate::search::language_config::LanguageConfigs;
+    use tempfile::TempDir;
+
+    fn create_test_index() -> (TempDir, SearchIndex) {
+        let temp_dir = TempDir::new().unwrap();
+        let configs = LanguageConfigs::load_embedded();
+        let index = SearchIndex::create_with_language_configs(temp_dir.path(), &configs).unwrap();
+        (temp_dir, index)
+    }
+
+    #[test]
+    fn test_exact_identifier_query_stays_near_top_after_nl_changes() {
+        let (_dir, index) = create_test_index();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "1".into(),
+                name: "get_reference_scores".into(),
+                signature: "pub fn get_reference_scores() -> Vec<f32>".into(),
+                doc_comment: "Compute centrality-derived reference scores".into(),
+                code_body: "let scores = get_reference_scores();".into(),
+                file_path: "src/search/scoring.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 120,
+            })
+            .unwrap();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "2".into(),
+                name: "reference_scores_overview".into(),
+                signature: "fn reference_scores_overview()".into(),
+                doc_comment: "Guide for get_reference_scores usage and concepts".into(),
+                code_body: "This document explains reference scores.".into(),
+                file_path: "docs/search/reference_scores.md".into(),
+                kind: "function".into(),
+                language: "markdown".into(),
+                start_line: 1,
+            })
+            .unwrap();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "3".into(),
+                name: "get_reference_score".into(),
+                signature: "pub fn get_reference_score() -> f32".into(),
+                doc_comment: "Singular helper for reference score".into(),
+                code_body: "get_reference_score()".into(),
+                file_path: "src/search/helpers.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 40,
+            })
+            .unwrap();
+
+        index.commit().unwrap();
+
+        let results = index
+            .search_symbols("get_reference_scores", &SearchFilter::default(), 5)
+            .unwrap()
+            .results;
+
+        assert!(
+            !results.is_empty(),
+            "Identifier query should return at least one result"
+        );
+
+        let distractor_rank = results.iter().position(|r| {
+            r.name == "reference_scores_overview"
+                && r.file_path == "docs/search/reference_scores.md"
+        });
+
+        assert!(
+            distractor_rank.is_some(),
+            "Docs distractor should be present so this regression scenario is meaningful. Got: {:?}",
+            results
+                .iter()
+                .map(|r| (&r.name, &r.file_path, r.score))
+                .collect::<Vec<_>>()
+        );
+
+        let exact_rank = results.iter().position(|r| {
+            r.name == "get_reference_scores" && r.file_path == "src/search/scoring.rs"
+        });
+
+        assert_eq!(
+            exact_rank,
+            Some(0),
+            "Exact identifier result should be rank 0 in this controlled corpus. Got: {:?}",
+            results
+                .iter()
+                .map(|r| (&r.name, &r.file_path, r.score))
+                .collect::<Vec<_>>()
+        );
+    }
+}

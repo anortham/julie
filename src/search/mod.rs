@@ -4,6 +4,7 @@
 //! CamelCase, snake_case, and language-specific operators.
 
 mod error;
+pub mod expansion;
 pub mod index;
 pub mod language_config;
 pub mod query;

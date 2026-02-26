@@ -11,6 +11,15 @@ use tantivy::query::{BooleanQuery, BoostQuery, Occur, TermQuery};
 use tantivy::schema::{Field, IndexRecordOption};
 use tantivy::Term;
 
+const ORIGINAL_GROUP_WEIGHT: f32 = 5.0;
+const ALIAS_GROUP_WEIGHT: f32 = 3.5;
+const NORMALIZED_GROUP_WEIGHT: f32 = 2.5;
+
+const NAME_FIELD_BOOST: f32 = 5.0;
+const SIGNATURE_FIELD_BOOST: f32 = 3.0;
+const DOC_FIELD_BOOST: f32 = 2.0;
+const BODY_FIELD_BOOST: f32 = 1.0;
+
 /// Build a boosted symbol search query with optional filters.
 ///
 /// Requires `doc_type = "symbol"` (Must) and boosts term matches across fields:
@@ -22,6 +31,44 @@ use tantivy::Term;
 /// Optional `language` and `kind` filters are applied as Must clauses.
 pub fn build_symbol_query(
     terms: &[String],
+    name_field: Field,
+    sig_field: Field,
+    doc_field: Field,
+    body_field: Field,
+    doc_type_field: Field,
+    language_field: Field,
+    kind_field: Field,
+    language_filter: Option<&str>,
+    kind_filter: Option<&str>,
+    require_all_terms: bool,
+) -> BooleanQuery {
+    build_symbol_query_weighted(
+        terms,
+        &[],
+        &[],
+        name_field,
+        sig_field,
+        doc_field,
+        body_field,
+        doc_type_field,
+        language_field,
+        kind_field,
+        language_filter,
+        kind_filter,
+        require_all_terms,
+    )
+}
+
+/// Build a boosted symbol search query with weighted term groups.
+///
+/// Group weights default to:
+/// - original terms: 5.0
+/// - alias terms: 3.5
+/// - normalized terms: 2.5
+pub fn build_symbol_query_weighted(
+    original_terms: &[String],
+    alias_terms: &[String],
+    normalized_terms: &[String],
     name_field: Field,
     sig_field: Field,
     doc_field: Field,
@@ -60,53 +107,73 @@ pub fn build_symbol_query(
     // Within each term, the field variants are OR'd (Should) so "select" can match
     // in name OR signature OR doc OR body.
     let mut term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+    let grouped_terms = [
+        (original_terms, ORIGINAL_GROUP_WEIGHT, true),
+        (alias_terms, ALIAS_GROUP_WEIGHT, false),
+        (normalized_terms, NORMALIZED_GROUP_WEIGHT, false),
+    ];
 
-    for term in terms {
-        let term_lower = term.to_lowercase();
+    for (terms, group_weight, is_original_group) in grouped_terms {
+        let group_factor = group_weight / ORIGINAL_GROUP_WEIGHT;
+        let mut group_term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
 
-        let mut field_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+        for term in terms {
+            let term_lower = term.to_lowercase();
 
-        let name_term = Term::from_field_text(name_field, &term_lower);
-        field_clauses.push((
-            Occur::Should,
-            Box::new(BoostQuery::new(
-                Box::new(TermQuery::new(name_term, IndexRecordOption::Basic)),
-                5.0,
-            )),
-        ));
+            let mut field_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
 
-        let sig_term = Term::from_field_text(sig_field, &term_lower);
-        field_clauses.push((
-            Occur::Should,
-            Box::new(BoostQuery::new(
-                Box::new(TermQuery::new(sig_term, IndexRecordOption::Basic)),
-                3.0,
-            )),
-        ));
+            let name_term = Term::from_field_text(name_field, &term_lower);
+            field_clauses.push((
+                Occur::Should,
+                Box::new(BoostQuery::new(
+                    Box::new(TermQuery::new(name_term, IndexRecordOption::Basic)),
+                    NAME_FIELD_BOOST * group_factor,
+                )),
+            ));
 
-        let doc_term = Term::from_field_text(doc_field, &term_lower);
-        field_clauses.push((
-            Occur::Should,
-            Box::new(BoostQuery::new(
-                Box::new(TermQuery::new(doc_term, IndexRecordOption::Basic)),
-                2.0,
-            )),
-        ));
+            let sig_term = Term::from_field_text(sig_field, &term_lower);
+            field_clauses.push((
+                Occur::Should,
+                Box::new(BoostQuery::new(
+                    Box::new(TermQuery::new(sig_term, IndexRecordOption::Basic)),
+                    SIGNATURE_FIELD_BOOST * group_factor,
+                )),
+            ));
 
-        let body_term = Term::from_field_text(body_field, &term_lower);
-        field_clauses.push((
-            Occur::Should,
-            Box::new(TermQuery::new(body_term, IndexRecordOption::Basic)),
-        ));
+            let doc_term = Term::from_field_text(doc_field, &term_lower);
+            field_clauses.push((
+                Occur::Should,
+                Box::new(BoostQuery::new(
+                    Box::new(TermQuery::new(doc_term, IndexRecordOption::Basic)),
+                    DOC_FIELD_BOOST * group_factor,
+                )),
+            ));
 
-        // In AND mode, each term is Must (all terms required).
-        // In OR mode, each term is Should (any term can match).
-        let term_occur = if require_all_terms {
-            Occur::Must
-        } else {
-            Occur::Should
-        };
-        term_clauses.push((term_occur, Box::new(BooleanQuery::new(field_clauses))));
+            let body_term = Term::from_field_text(body_field, &term_lower);
+            let body_query = BoostQuery::new(
+                Box::new(TermQuery::new(body_term, IndexRecordOption::Basic)),
+                BODY_FIELD_BOOST * group_factor,
+            );
+            field_clauses.push((Occur::Should, Box::new(body_query)));
+
+            // In AND mode, each term is Must (all terms required).
+            // In OR mode, each term is Should (any term can match).
+            let term_occur = if require_all_terms && is_original_group {
+                Occur::Must
+            } else {
+                Occur::Should
+            };
+            group_term_clauses.push((term_occur, Box::new(BooleanQuery::new(field_clauses))));
+        }
+
+        if !group_term_clauses.is_empty() {
+            let group_occur = if require_all_terms && is_original_group {
+                Occur::Must
+            } else {
+                Occur::Should
+            };
+            term_clauses.push((group_occur, Box::new(BooleanQuery::new(group_term_clauses))));
+        }
     }
 
     if require_all_terms {
@@ -137,6 +204,34 @@ pub fn build_content_query(
     language_filter: Option<&str>,
     require_all_terms: bool,
 ) -> BooleanQuery {
+    build_content_query_weighted(
+        terms,
+        &[],
+        &[],
+        content_field,
+        doc_type_field,
+        language_field,
+        language_filter,
+        require_all_terms,
+    )
+}
+
+/// Build a file content search query with weighted term groups.
+///
+/// Group weights default to:
+/// - original terms: 5.0
+/// - alias terms: 3.5
+/// - normalized terms: 2.5
+pub fn build_content_query_weighted(
+    original_terms: &[String],
+    alias_terms: &[String],
+    normalized_terms: &[String],
+    content_field: Field,
+    doc_type_field: Field,
+    language_field: Field,
+    language_filter: Option<&str>,
+    require_all_terms: bool,
+) -> BooleanQuery {
     let mut subqueries: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
 
     // Must match doc_type = "file" — always required regardless of mode
@@ -154,26 +249,41 @@ pub fn build_content_query(
     }
 
     let mut term_clauses: Vec<(Occur, Box<dyn tantivy::query::Query>)> = Vec::new();
+    let grouped_terms = [
+        (original_terms, ORIGINAL_GROUP_WEIGHT, true),
+        (alias_terms, ALIAS_GROUP_WEIGHT, false),
+        (normalized_terms, NORMALIZED_GROUP_WEIGHT, false),
+    ];
 
-    for term in terms {
-        let term_lower = term.to_lowercase();
-        let content_term = Term::from_field_text(content_field, &term_lower);
-        let term_query = TermQuery::new(content_term, IndexRecordOption::Basic);
+    for (terms, group_weight, is_original_group) in grouped_terms {
+        let group_factor = group_weight / ORIGINAL_GROUP_WEIGHT;
 
-        // Heuristic: underscores indicate snake_case compound tokens from CodeTokenizer.
-        // CamelCase compounds are lowercased without underscores, so they pass through as atomic.
-        if term.contains('_') {
-            // Compound token → SHOULD with boost (promotes exact identifier matches)
-            term_clauses.push((
-                Occur::Should,
-                Box::new(BoostQuery::new(Box::new(term_query), 5.0)),
-            ));
-        } else if require_all_terms {
-            // AND mode: atomic sub-part → MUST (ensures file contains the word)
-            term_clauses.push((Occur::Must, Box::new(term_query)));
-        } else {
-            // OR mode: atomic sub-part → SHOULD (partial matches allowed)
-            term_clauses.push((Occur::Should, Box::new(term_query)));
+        for term in terms {
+            let term_lower = term.to_lowercase();
+            let content_term = Term::from_field_text(content_field, &term_lower);
+            let term_query = TermQuery::new(content_term, IndexRecordOption::Basic);
+
+            // Heuristic: underscores indicate snake_case compound tokens from CodeTokenizer.
+            // CamelCase compounds are lowercased without underscores, so they pass through as atomic.
+            if term.contains('_') {
+                // Compound token → SHOULD with boost (promotes exact identifier matches)
+                term_clauses.push((
+                    Occur::Should,
+                    Box::new(BoostQuery::new(Box::new(term_query), 5.0 * group_factor)),
+                ));
+            } else if require_all_terms && is_original_group {
+                // AND mode: atomic sub-part → MUST (ensures file contains the word)
+                term_clauses.push((
+                    Occur::Must,
+                    Box::new(BoostQuery::new(Box::new(term_query), group_factor)),
+                ));
+            } else {
+                // OR mode: atomic sub-part → SHOULD (partial matches allowed)
+                term_clauses.push((
+                    Occur::Should,
+                    Box::new(BoostQuery::new(Box::new(term_query), group_factor)),
+                ));
+            }
         }
     }
 

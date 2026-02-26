@@ -40,7 +40,9 @@ mod tests {
                 name: "get_user_profile".into(),
                 signature: "pub async fn get_user_profile(id: &str) -> Result<User>".into(),
                 doc_comment: "Fetches user profile from database".into(),
-                code_body: "let user = db.query_one(\"SELECT * FROM users WHERE id = $1\", &[id]).await?;".into(),
+                code_body:
+                    "let user = db.query_one(\"SELECT * FROM users WHERE id = $1\", &[id]).await?;"
+                        .into(),
                 file_path: "src/services/user.rs".into(),
                 kind: "function".into(),
                 language: "rust".into(),
@@ -100,7 +102,11 @@ mod tests {
             ..Default::default()
         };
         let results = index.search_symbols("user", &filter, 10).unwrap().results;
-        assert_eq!(results.len(), 1, "Language filter should narrow to Rust only");
+        assert_eq!(
+            results.len(),
+            1,
+            "Language filter should narrow to Rust only"
+        );
         assert_eq!(results[0].language, "rust");
     }
 
@@ -147,6 +153,167 @@ mod tests {
         assert_eq!(
             results[0].name, "getUser",
             "Name match should rank higher than doc_comment match"
+        );
+    }
+
+    #[test]
+    fn test_nl_query_prefers_code_over_docs() {
+        let (_dir, index) = create_test_index();
+
+        // Docs symbol intentionally inserted first so equal-score ties prefer docs
+        // before reranking.
+        index
+            .add_symbol(&SymbolDocument {
+                id: "1".into(),
+                name: "workspace_routing_handler".into(),
+                signature: "fn workspace_routing_handler()".into(),
+                doc_comment: "Handles workspace routing for requests.".into(),
+                code_body: "workspace routing handler".into(),
+                file_path: "docs/workspace/routing.md".into(),
+                kind: "function".into(),
+                language: "markdown".into(),
+                start_line: 1,
+            })
+            .unwrap();
+
+        // Test symbol with identical textual relevance.
+        index
+            .add_symbol(&SymbolDocument {
+                id: "2".into(),
+                name: "workspace_routing_handler".into(),
+                signature: "fn workspace_routing_handler()".into(),
+                doc_comment: "Handles workspace routing for requests.".into(),
+                code_body: "workspace routing handler".into(),
+                file_path: "src/tests/search/workspace_routing.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 5,
+            })
+            .unwrap();
+
+        // Production symbol with identical textual relevance should win after NL path prior.
+        index
+            .add_symbol(&SymbolDocument {
+                id: "3".into(),
+                name: "workspace_routing_handler".into(),
+                signature: "fn workspace_routing_handler()".into(),
+                doc_comment: "Handles workspace routing for requests.".into(),
+                code_body: "workspace routing handler".into(),
+                file_path: "src/workspace/router.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 32,
+            })
+            .unwrap();
+
+        index.commit().unwrap();
+
+        let results = index
+            .search_symbols("workspace routing", &SearchFilter::default(), 2)
+            .unwrap()
+            .results;
+
+        assert_eq!(
+            results[0].file_path,
+            "src/workspace/router.rs",
+            "Production code should be preferred over docs/tests for NL query: {:?}",
+            results
+                .iter()
+                .map(|r| (&r.file_path, r.score))
+                .collect::<Vec<_>>()
+        );
+        let docs_rank = results
+            .iter()
+            .position(|r| r.file_path == "docs/workspace/routing.md");
+        assert_ne!(
+            docs_rank,
+            Some(0),
+            "Docs result must not outrank production code for NL query: {:?}",
+            results
+                .iter()
+                .map(|r| (&r.file_path, r.score))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_nl_path_prior_can_change_top1_with_small_limit() {
+        let (_dir, index) = create_test_index();
+
+        // Insert docs first so pre-rerank TopDocs(limit=1) would otherwise return docs.
+        index
+            .add_symbol(&SymbolDocument {
+                id: "1".into(),
+                name: "workspace_routing_handler".into(),
+                signature: "fn workspace_routing_handler()".into(),
+                doc_comment: "Handles workspace routing for requests.".into(),
+                code_body: "workspace routing handler".into(),
+                file_path: "docs/workspace/routing.md".into(),
+                kind: "function".into(),
+                language: "markdown".into(),
+                start_line: 1,
+            })
+            .unwrap();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "2".into(),
+                name: "workspace_routing_handler".into(),
+                signature: "fn workspace_routing_handler()".into(),
+                doc_comment: "Handles workspace routing for requests.".into(),
+                code_body: "workspace routing handler".into(),
+                file_path: "src/workspace/router.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 1,
+            })
+            .unwrap();
+        index.commit().unwrap();
+
+        let results = index
+            .search_symbols("workspace routing", &SearchFilter::default(), 1)
+            .unwrap()
+            .results;
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].file_path, "src/workspace/router.rs",
+            "With over-fetch + rerank, NL path prior should be able to influence final top-1"
+        );
+    }
+
+    #[test]
+    fn test_non_adjacent_duplicate_terms_do_not_change_relaxed_scores() {
+        let (_dir, index) = create_test_index();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "1".into(),
+                name: "workspace_router_registry".into(),
+                signature: "fn workspace_router_registry()".into(),
+                doc_comment: "router registry for workspace routing".into(),
+                code_body: "workspace router registry".into(),
+                file_path: "src/workspace/router.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 1,
+            })
+            .unwrap();
+        index.commit().unwrap();
+
+        let deduped = index
+            .search_symbols("workspace missing", &SearchFilter::default(), 5)
+            .unwrap();
+        let with_non_adj_dup = index
+            .search_symbols("workspace missing workspace", &SearchFilter::default(), 5)
+            .unwrap();
+
+        assert!(deduped.relaxed && with_non_adj_dup.relaxed);
+        assert_eq!(deduped.results.len(), with_non_adj_dup.results.len());
+        assert_eq!(deduped.results[0].id, with_non_adj_dup.results[0].id);
+        assert!(
+            (deduped.results[0].score - with_non_adj_dup.results[0].score).abs() < 1e-6,
+            "Non-adjacent duplicate terms should be removed deterministically before query build"
         );
     }
 
@@ -316,22 +483,35 @@ mod tests {
         index.commit().unwrap();
 
         // Verify all symbols are now searchable
-        assert!(index.num_docs() >= 3, "Should have at least 3 docs after backfill");
+        assert!(
+            index.num_docs() >= 3,
+            "Should have at least 3 docs after backfill"
+        );
 
         // Cross-convention matching still works after backfill
         let results = index
             .search_symbols("user profile", &SearchFilter::default(), 10)
             .unwrap()
             .results;
-        assert!(!results.is_empty(), "Should find getUserProfile after backfill");
+        assert!(
+            !results.is_empty(),
+            "Should find getUserProfile after backfill"
+        );
 
         // Language filter works after backfill
         let filter = SearchFilter {
             language: Some("rust".into()),
             ..Default::default()
         };
-        let results = index.search_symbols("payment", &filter, 10).unwrap().results;
-        assert_eq!(results.len(), 1, "Language filter should work after backfill");
+        let results = index
+            .search_symbols("payment", &filter, 10)
+            .unwrap()
+            .results;
+        assert_eq!(
+            results.len(),
+            1,
+            "Language filter should work after backfill"
+        );
         assert_eq!(results[0].name, "process_payment");
 
         // Variant stripping works after backfill
@@ -339,7 +519,10 @@ mod tests {
             .search_symbols("PaymentGateway", &SearchFilter::default(), 10)
             .unwrap()
             .results;
-        assert!(!results.is_empty(), "Should find IPaymentGateway via prefix stripping after backfill");
+        assert!(
+            !results.is_empty(),
+            "Should find IPaymentGateway via prefix stripping after backfill"
+        );
     }
 
     #[test]
@@ -364,7 +547,10 @@ mod tests {
             .search_content("hello world", &SearchFilter::default(), 10)
             .unwrap()
             .results;
-        assert!(!results.is_empty(), "Should find file content after backfill");
+        assert!(
+            !results.is_empty(),
+            "Should find file content after backfill"
+        );
         assert_eq!(results[0].file_path, "src/main.rs");
     }
 }

@@ -10,8 +10,5 @@
   - `fast_search` — content mode returns matching lines; probably fine as-is (already line-limited)
   - General question: should `TokenEstimator`-based budgets be a shared utility pattern rather than per-tool implementations?
 
-- [ ] **Search-layer relevance for natural-language queries**: `get_context` scoring/fallback works well when the search index returns a mix of code and non-code, but can't help when the index returns *only* docs/tests. Natural-language queries like "workspace routing" or "symbol extraction" match markdown headings and test function names better than production code identifiers. Potential approaches:
-  - Query expansion / synonym mapping (e.g., "workspace routing" → also search `workspace`, `route`, `router`)
-  - Index-time boost for `src/` paths vs docs/tests
-  - Semantic search layer (embeddings) for concept-level matching
-  - Observed during live testing of v3.3.2 get_context improvements
+- [x] **Search-layer relevance for natural-language queries**: shipped deterministic NL query expansion (original/alias/normalized groups), weighted query builders, and conservative NL-only `src/` path prior with regression coverage for identifier-query stability.
+  - Remaining gap: phrase alias coverage is intentionally small/curated and may need expansion as we collect more real dogfooding queries.

@@ -195,8 +195,7 @@ fn tokenize_code(
             position += 1;
 
             // Track what tokens we've already emitted to avoid duplicates
-            let mut emitted: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
+            let mut emitted: std::collections::HashSet<String> = std::collections::HashSet::new();
             emitted.insert(segment_lower.clone());
 
             // Split CamelCase/PascalCase identifiers

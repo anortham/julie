@@ -13,7 +13,9 @@ mod tantivy_tokenizer_tests;
 mod tantivy_affix_tests;
 mod tantivy_variants_tests;
 mod tantivy_scoring_tests;
+mod tantivy_path_prior_tests;
 mod tantivy_integration_tests;
 mod line_match_strategy_tests;
+mod tantivy_query_expansion_tests;
+mod tantivy_query_weighting_tests;
 mod tantivy_stemming_tests;
-

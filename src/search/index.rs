@@ -17,13 +17,19 @@ use tantivy::tokenizer::TextAnalyzer;
 use tantivy::{Index, IndexReader, IndexWriter, Term};
 
 use crate::search::error::{Result, SearchError};
+use crate::search::expansion::expand_query_terms;
 use crate::search::language_config::LanguageConfigs;
-use crate::search::query::{build_content_query, build_symbol_query};
+use crate::search::query::{
+    build_content_query_weighted, build_symbol_query, build_symbol_query_weighted,
+};
 use crate::search::schema::{create_schema, SchemaFields};
-use crate::search::scoring::apply_important_patterns_boost;
+use crate::search::scoring::{
+    apply_important_patterns_boost, apply_nl_path_prior, is_nl_like_query,
+};
 use crate::search::tokenizer::CodeTokenizer;
 
 const WRITER_HEAP_SIZE: usize = 50_000_000; // 50MB
+const NL_RERANK_OVERFETCH_FACTOR: usize = 4;
 
 /// A code symbol to be indexed.
 pub struct SymbolDocument {
@@ -266,20 +272,24 @@ impl SearchIndex {
     ) -> Result<SymbolSearchResults> {
         let f = &self.schema_fields;
 
-        // Tokenize the query using the same code tokenizer, then remove compound
-        // tokens whose sub-parts are all present. This prevents AND-per-term logic
-        // from requiring partial compounds (e.g., "search_term") that are never
-        // produced when indexing longer names (e.g., "search_term_one").
-        let terms = Self::filter_compound_tokens(self.tokenize_query(query_str));
-        if terms.is_empty() {
+        let expanded = expand_query_terms(query_str);
+        let original_terms =
+            Self::filter_compound_tokens(self.tokenize_terms(&expanded.original_terms));
+        let alias_terms = Self::filter_compound_tokens(self.tokenize_terms(&expanded.alias_terms));
+        let normalized_terms =
+            Self::filter_compound_tokens(self.tokenize_terms(&expanded.normalized_terms));
+
+        if original_terms.is_empty() {
             return Ok(SymbolSearchResults {
                 results: Vec::new(),
                 relaxed: false,
             });
         }
 
-        let query = build_symbol_query(
-            &terms,
+        let query = build_symbol_query_weighted(
+            &original_terms,
+            &alias_terms,
+            &normalized_terms,
             f.name,
             f.signature,
             f.doc_comment,
@@ -293,15 +303,18 @@ impl SearchIndex {
         );
 
         let searcher = self.reader.searcher();
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
+        let candidate_limit = Self::rerank_candidate_limit(query_str, limit);
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(candidate_limit))?;
 
         // Auto-fallback: if AND returned nothing and the user typed multiple words, try OR.
         // Use word count from query_str (not terms.len()) because the tokenizer can inflate
         // a single word into multiple tokens via CamelCase splitting, stemming, etc.
         let user_word_count = query_str.split_whitespace().count();
         let (top_docs, relaxed) = if top_docs.is_empty() && user_word_count > 1 {
-            let or_query = build_symbol_query(
-                &terms,
+            let or_query = build_symbol_query_weighted(
+                &original_terms,
+                &alias_terms,
+                &normalized_terms,
                 f.name,
                 f.signature,
                 f.doc_comment,
@@ -314,7 +327,7 @@ impl SearchIndex {
                 false, // OR mode
             );
             (
-                searcher.search(&or_query, &TopDocs::with_limit(limit))?,
+                searcher.search(&or_query, &TopDocs::with_limit(candidate_limit))?,
                 true,
             )
         } else {
@@ -340,6 +353,10 @@ impl SearchIndex {
         // Apply important_patterns boost if language configs are available
         if let Some(configs) = &self.language_configs {
             apply_important_patterns_boost(&mut results, configs);
+        }
+        apply_nl_path_prior(&mut results, query_str);
+        if results.len() > limit {
+            results.truncate(limit);
         }
 
         Ok(SymbolSearchResults { results, relaxed })
@@ -424,18 +441,22 @@ impl SearchIndex {
     ) -> Result<ContentSearchResults> {
         let f = &self.schema_fields;
 
-        // Note: no filter_compound_tokens here — compound tokens (e.g. "search_term")
-        // are boosted via SHOULD+BoostQuery in build_content_query instead of stripped.
-        let terms = self.tokenize_query(query_str);
-        if terms.is_empty() {
+        let expanded = expand_query_terms(query_str);
+        let original_terms = self.tokenize_terms(&expanded.original_terms);
+        let alias_terms = self.tokenize_terms(&expanded.alias_terms);
+        let normalized_terms = self.tokenize_terms(&expanded.normalized_terms);
+
+        if original_terms.is_empty() {
             return Ok(ContentSearchResults {
                 results: Vec::new(),
                 relaxed: false,
             });
         }
 
-        let query = build_content_query(
-            &terms,
+        let query = build_content_query_weighted(
+            &original_terms,
+            &alias_terms,
+            &normalized_terms,
             f.content,
             f.doc_type,
             f.language,
@@ -451,8 +472,10 @@ impl SearchIndex {
         // a single word into multiple tokens via CamelCase splitting, stemming, etc.
         let user_word_count = query_str.split_whitespace().count();
         let (top_docs, relaxed) = if top_docs.is_empty() && user_word_count > 1 {
-            let or_query = build_content_query(
-                &terms,
+            let or_query = build_content_query_weighted(
+                &original_terms,
+                &alias_terms,
+                &normalized_terms,
                 f.content,
                 f.doc_type,
                 f.language,
@@ -593,6 +616,8 @@ impl SearchIndex {
 
     /// Tokenize a query string using the registered code tokenizer.
     fn tokenize_query(&self, query_str: &str) -> Vec<String> {
+        use std::collections::HashSet;
+
         let mut tokenizer = self
             .index
             .tokenizers()
@@ -601,11 +626,37 @@ impl SearchIndex {
 
         let mut stream = tokenizer.token_stream(query_str);
         let mut terms = Vec::new();
+        let mut seen = HashSet::new();
         while stream.advance() {
-            terms.push(stream.token().text.clone());
+            let token = stream.token().text.clone();
+            if seen.insert(token.clone()) {
+                terms.push(token);
+            }
         }
-        terms.dedup();
         terms
+    }
+
+    fn tokenize_terms(&self, terms: &[String]) -> Vec<String> {
+        use std::collections::HashSet;
+
+        let mut tokenized_terms = Vec::new();
+        let mut seen = HashSet::new();
+        for term in terms {
+            for token in self.tokenize_query(term) {
+                if seen.insert(token.clone()) {
+                    tokenized_terms.push(token);
+                }
+            }
+        }
+        tokenized_terms
+    }
+
+    fn rerank_candidate_limit(query_str: &str, limit: usize) -> usize {
+        if limit == 0 || !is_nl_like_query(query_str) {
+            return limit;
+        }
+
+        limit.saturating_mul(NL_RERANK_OVERFETCH_FACTOR)
     }
 
     /// Remove compound tokens whose snake_case sub-parts are all present in the list.

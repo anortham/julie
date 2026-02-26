@@ -15,6 +15,15 @@ const IMPORTANT_PATTERN_BOOST: f32 = 1.5;
 /// Weight for graph centrality boost (logarithmic scaling).
 pub const CENTRALITY_WEIGHT: f32 = 0.3;
 
+/// Conservative path prior multipliers for natural-language queries only.
+///
+/// The intent is to gently prefer production code over docs/tests/fixtures when
+/// the query looks like natural language, without overwhelming text relevance.
+const NL_PATH_BOOST_SRC: f32 = 1.08;
+const NL_PATH_PENALTY_DOCS: f32 = 0.95;
+const NL_PATH_PENALTY_TESTS: f32 = 0.95;
+const NL_PATH_PENALTY_FIXTURES: f32 = 0.95;
+
 /// Symbol names that are too ubiquitous to benefit from centrality scoring.
 ///
 /// These are standard trait impls and common short names that accumulate
@@ -27,9 +36,27 @@ pub const CENTRALITY_WEIGHT: f32 = 0.3;
 /// which serves a different purpose (neighbor expansion filtering) and has a different
 /// membership set.
 pub(crate) const CENTRALITY_NOISE_NAMES: &[&str] = &[
-    "clone", "to_string", "fmt", "eq", "ne", "cmp", "partial_cmp",
-    "hash", "drop", "deref", "deref_mut", "new", "default", "from", "into",
-    "is_empty", "len", "as_ref", "as_mut", "borrow", "borrow_mut",
+    "clone",
+    "to_string",
+    "fmt",
+    "eq",
+    "ne",
+    "cmp",
+    "partial_cmp",
+    "hash",
+    "drop",
+    "deref",
+    "deref_mut",
+    "new",
+    "default",
+    "from",
+    "into",
+    "is_empty",
+    "len",
+    "as_ref",
+    "as_mut",
+    "borrow",
+    "borrow_mut",
 ];
 
 /// Apply important_patterns boost to search results, then re-sort by score.
@@ -53,7 +80,11 @@ pub fn apply_important_patterns_boost(
             }
         }
     }
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 }
 
 /// Apply graph centrality boost to search results, then re-sort.
@@ -81,5 +112,71 @@ pub fn apply_centrality_boost(
             }
         }
     }
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+}
+
+/// Apply a conservative path prior for natural-language-like queries.
+///
+/// For NL-like queries, this mildly boosts `src/**` results and mildly penalizes
+/// `docs/**`, `src/tests/**`, and `fixtures/**` results. Identifier-like queries
+/// are explicitly excluded so exact symbol searches are not perturbed.
+pub fn apply_nl_path_prior(results: &mut [SymbolSearchResult], query: &str) {
+    if !is_nl_like_query(query) {
+        return;
+    }
+
+    for result in results.iter_mut() {
+        let path = result.file_path.as_str();
+
+        if path.starts_with("src/tests/") {
+            result.score *= NL_PATH_PENALTY_TESTS;
+        } else if path.starts_with("src/") {
+            result.score *= NL_PATH_BOOST_SRC;
+        } else if path.starts_with("docs/") {
+            result.score *= NL_PATH_PENALTY_DOCS;
+        } else if path.starts_with("fixtures/") {
+            result.score *= NL_PATH_PENALTY_FIXTURES;
+        }
+    }
+
+    sort_results_by_score_desc(results);
+}
+
+pub(crate) fn is_nl_like_query(query: &str) -> bool {
+    let terms: Vec<&str> = query.split_whitespace().collect();
+    if terms.len() < 2 {
+        return false;
+    }
+
+    if terms.iter().any(|term| looks_like_identifier_token(term)) {
+        return false;
+    }
+
+    terms
+        .iter()
+        .any(|term| term.chars().any(|c| c.is_ascii_alphabetic()))
+}
+
+fn looks_like_identifier_token(term: &str) -> bool {
+    if term.contains('_') {
+        return true;
+    }
+
+    let has_lower = term.chars().any(|c| c.is_ascii_lowercase());
+    let has_upper = term.chars().any(|c| c.is_ascii_uppercase());
+
+    has_lower && has_upper
+}
+
+fn sort_results_by_score_desc(results: &mut [SymbolSearchResult]) {
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.id.cmp(&b.id))
+    });
 }
