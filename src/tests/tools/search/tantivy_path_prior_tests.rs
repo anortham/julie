@@ -472,6 +472,47 @@ fn test_is_fixture_path_detects_various_layouts() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Title-case / case-sensitivity tests
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_swift_project_layout() {
+    let mut results = vec![
+        make_result("src", "Sources/Auth/AuthService.swift", 1.0),
+        make_result("test", "Tests/AuthTests/AuthServiceTests.swift", 1.0),
+    ];
+
+    crate::search::scoring::apply_nl_path_prior(&mut results, "authentication service");
+
+    let src = results.iter().find(|r| r.id == "src").unwrap();
+    let test = results.iter().find(|r| r.id == "test").unwrap();
+
+    assert!(src.score > 1.0, "Swift source should be boosted, got {}", src.score);
+    assert!(test.score < 1.0, "Swift Tests/ should be penalized, got {}", test.score);
+    assert!(src.score > test.score, "Swift source should outrank Swift test");
+}
+
+#[test]
+fn test_title_case_path_segments_detected() {
+    use crate::search::scoring::{is_test_path, is_docs_path, is_fixture_path};
+
+    // Title-case test directories (Swift, some C# projects)
+    assert!(is_test_path("Tests/AuthTests/AuthServiceTests.swift"), "Swift Tests/");
+    assert!(is_test_path("Test/SomeTest.cs"), "Title-case Test/");
+    assert!(is_test_path("Spec/models/user_spec.rb"), "Title-case Spec/");
+
+    // Title-case docs directories
+    assert!(is_docs_path("Docs/architecture.md"), "Title-case Docs/");
+    assert!(is_docs_path("Doc/api.md"), "Title-case Doc/");
+    assert!(is_docs_path("Documentation/guide.md"), "Title-case Documentation/");
+
+    // Title-case fixture directories
+    assert!(is_fixture_path("Fixtures/sample.json"), "Title-case Fixtures/");
+    assert!(is_fixture_path("Fixture/data.json"), "Title-case Fixture/");
+    assert!(is_fixture_path("Snapshots/App.snap"), "Title-case Snapshots/");
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Original tests
 // ──────────────────────────────────────────────────────────────────────────────
 

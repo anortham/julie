@@ -164,7 +164,7 @@ pub(crate) fn is_test_path(path: &str) -> bool {
     for segment in path.split('/') {
         // Exact segment matches
         match segment {
-            "test" | "tests" | "spec" | "__tests__" => return true,
+            "test" | "tests" | "Test" | "Tests" | "spec" | "Spec" | "__tests__" => return true,
             _ => {}
         }
         // C# convention: MyProject.Tests
@@ -212,7 +212,7 @@ pub(crate) fn is_test_path(path: &str) -> bool {
 pub(crate) fn is_docs_path(path: &str) -> bool {
     for segment in path.split('/') {
         match segment {
-            "docs" | "doc" | "documentation" => return true,
+            "docs" | "doc" | "documentation" | "Docs" | "Doc" | "Documentation" => return true,
             _ => {}
         }
     }
@@ -222,12 +222,15 @@ pub(crate) fn is_docs_path(path: &str) -> bool {
 /// Detect whether a file path indicates test fixtures or data.
 ///
 /// Matches path segments: `fixtures`, `fixture`, `testdata`, `test_data`,
-/// `__fixtures__`, `snapshots`, `__snapshots__`.
+/// `test-data`, `__fixtures__`, `snapshots`, `__snapshots__`.
+/// Also matches title-case variants (`Fixtures`, `Fixture`, `Snapshots`).
 pub(crate) fn is_fixture_path(path: &str) -> bool {
     for segment in path.split('/') {
         match segment {
-            "fixtures" | "fixture" | "testdata" | "test_data" | "__fixtures__" | "snapshots"
-            | "__snapshots__" => return true,
+            "fixtures" | "fixture" | "Fixtures" | "Fixture" | "testdata" | "test_data"
+            | "test-data" | "__fixtures__" | "snapshots" | "Snapshots" | "__snapshots__" => {
+                return true
+            }
             _ => {}
         }
     }
