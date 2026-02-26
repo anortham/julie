@@ -10,7 +10,7 @@ pub mod signatures;
 
 use crate::base::{SymbolKind, Visibility};
 use crate::regex::RegexExtractor;
-use crate::tests::test_utils::init_parser;
+use crate::tests::helpers::init_parser;
 use std::path::PathBuf;
 
 fn extract_symbols(code: &str) -> Vec<crate::base::Symbol> {

@@ -8,7 +8,7 @@
 
 use crate::base::SymbolKind;
 use crate::regex::RegexExtractor;
-use crate::tests::test_utils::init_parser;
+use crate::tests::helpers::init_parser;
 use std::path::PathBuf;
 
 #[cfg(test)]

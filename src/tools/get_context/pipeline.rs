@@ -7,7 +7,7 @@ use anyhow::Result;
 use super::GetContextTool;
 use super::content::abbreviate_code;
 pub use super::scoring::{select_pivots, Pivot};
-use super::scoring::is_test_path;
+use crate::search::scoring::is_test_path;
 pub(crate) use super::content::truncate_to_token_budget;
 use tracing::debug;
 

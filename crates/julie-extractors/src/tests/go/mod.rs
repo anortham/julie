@@ -12,7 +12,7 @@ mod type_assertions;
 mod go_extractor_tests {
     use crate::base::{SymbolKind, Visibility};
     use crate::go::GoExtractor;
-    use crate::tests::test_utils::init_parser;
+    use crate::tests::helpers::init_parser;
     use std::path::PathBuf;
 
     #[test]
@@ -1856,7 +1856,7 @@ var (
     mod identifier_extraction {
         use crate::base::{IdentifierKind, SymbolKind};
         use crate::go::GoExtractor;
-        use crate::tests::test_utils::init_parser;
+        use crate::tests::helpers::init_parser;
         use std::path::PathBuf;
 
         #[test]

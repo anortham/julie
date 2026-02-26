@@ -5,25 +5,17 @@ use tracing::{debug, warn};
 
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::search::scoring::apply_centrality_boost;
+use crate::search::scoring::{apply_centrality_boost, promote_exact_name_matches};
 use crate::search::{SearchFilter, SearchIndex};
 use super::query::matches_glob_pattern;
 
-/// Text search with workspace filtering and search target selection
+/// Text search with workspace filtering and search target selection.
 ///
-/// search_target determines what to search:
-/// - "definitions": Search symbol definitions (functions, classes) using Tantivy
-/// - "content": Search full file content (grep-like) using Tantivy with post-verification
+/// - `"definitions"`: Symbol search via Tantivy with 5x over-fetch + exact-name promotion.
+/// - `"content"`: File content search with post-verification against SQLite to eliminate
+///   false positives from CodeTokenizer over-splitting.
 ///
-/// Query expansion and preprocessing are now handled by Tantivy's CodeTokenizer
-/// at index time, so CamelCase/snake_case splitting happens automatically.
-///
-/// For content search, Tantivy is used as a candidate retrieval stage, then each
-/// candidate file is verified against actual content from SQLite to eliminate
-/// false positives caused by CodeTokenizer over-splitting (e.g. "Blake3 hash"
-/// tokenizes to ["blake","3","hash"], matching files with unrelated "3" and "hash").
-/// Returns `(symbols, relaxed)` where `relaxed` is true when the symbol search
-/// fell back from AND to OR matching (partial matches only).
+/// Returns `(symbols, relaxed)` where `relaxed` = true on AND→OR fallback.
 pub async fn text_search_impl(
     query: &str,
     language: &Option<String>,
@@ -93,11 +85,11 @@ pub async fn text_search_impl(
             let index = SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
 
             if search_target_clone == "definitions" {
-                // When file_pattern is active, fetch more candidates to find matches
+                // Over-fetch so exact-name definitions aren't lost to higher-scoring references
                 let tantivy_limit = if filter.file_pattern.is_some() {
                     limit_usize.saturating_mul(50).max(500).min(5000)
                 } else {
-                    limit_usize
+                    limit_usize.saturating_mul(5).max(50)
                 };
                 let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
                 let relaxed = search.relaxed;
@@ -127,6 +119,12 @@ pub async fn text_search_impl(
                         apply_centrality_boost(&mut filtered_results, &ref_scores);
                     }
                 }
+
+                // Promote exact name matches to the top (stable partition)
+                promote_exact_name_matches(&mut filtered_results, &query_clone);
+
+                // Trim back to the user's requested limit after over-fetch + promotion
+                filtered_results.truncate(limit_usize);
 
                 let mut symbols: Vec<Symbol> = filtered_results
                     .into_iter()
@@ -244,12 +242,11 @@ pub async fn text_search_impl(
         if search_target_clone == "definitions" {
             debug!("🔍 Searching symbols with Tantivy");
 
-            // When file_pattern is active, fetch more candidates to find matches
-            // in target files that may be ranked low globally
+            // Over-fetch so exact-name definitions aren't lost to higher-scoring references
             let tantivy_limit = if filter.file_pattern.is_some() {
                 limit_usize.saturating_mul(50).max(500).min(5000)
             } else {
-                limit_usize
+                limit_usize.saturating_mul(5).max(50)
             };
             let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
             let relaxed = search.relaxed;
@@ -281,6 +278,12 @@ pub async fn text_search_impl(
                 drop(db_lock);
             }
 
+            // Promote exact name matches to the top (stable partition)
+            promote_exact_name_matches(&mut filtered_results, &query_clone);
+
+            // Trim back to the user's requested limit after over-fetch + promotion
+            filtered_results.truncate(limit_usize);
+
             let mut symbols: Vec<Symbol> = filtered_results
                 .into_iter()
                 .map(|result| tantivy_symbol_to_symbol(result))
@@ -303,11 +306,7 @@ pub async fn text_search_impl(
             // "content" or any other value: search file content
             debug!("🔍 Searching content with Tantivy");
 
-            // Fetch more candidates than the limit for post-verification.
-            // CodeTokenizer may over-split queries (e.g. "Blake3 hash" → ["blake","3","hash"]),
-            // producing Tantivy matches that don't actually contain the query substring.
-            // When file_pattern is active, fetch significantly more to find matches
-            // in target files that may be ranked low globally.
+            // Over-fetch for post-verification (CodeTokenizer may over-split queries)
             let fetch_limit = if filter.file_pattern.is_some() {
                 limit_usize.saturating_mul(100).max(500).min(1000)
             } else {
@@ -317,16 +316,8 @@ pub async fn text_search_impl(
             let content_relaxed = content_search.relaxed;
             let search_results = content_search.results;
 
-            // Post-verify: check that all query words appear in each file's content.
-            // This eliminates false positives from CodeTokenizer over-splitting
-            // (e.g. "Blake3 hash" splits to ["blake","3","hash"] in Tantivy, but
-            // verification requires "blake3" and "hash" as user-typed words).
-            //
-            // We split the query on non-alphanumeric boundaries — each resulting
-            // word must appear as a case-insensitive substring in the file content.
-            // Using non-alphanumeric splitting handles code delimiters like `::`
-            // (Rust paths), `-` (hyphenated terms), `.` (dotted paths) naturally,
-            // while preserving alphanumeric sequences like "Blake3" intact.
+            // Post-verify: all query words must appear in file content (eliminates
+            // false positives from CodeTokenizer over-splitting)
             let query_words: Vec<String> = query_clone
                 .split(|c: char| !c.is_alphanumeric())
                 .filter(|w| !w.is_empty())

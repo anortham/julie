@@ -46,6 +46,7 @@ pub(crate) fn get_csharp_visibility(symbol: &Symbol) -> String {
         .map_or("private".to_string(), |v| VisibilityExt::to_string(v))
 }
 
+pub mod constructor_relationships;
 pub mod core;
 pub mod cross_file_relationships;
 pub mod identifier_extraction;

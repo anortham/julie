@@ -1,6 +1,6 @@
 use crate::base::{Relationship, Symbol, SymbolKind};
 use crate::razor::RazorExtractor;
-use crate::tests::test_utils::init_parser;
+use crate::tests::helpers::init_parser;
 use std::path::PathBuf;
 
 fn extract_symbols(code: &str) -> Vec<Symbol> {

@@ -5,7 +5,7 @@ pub mod extractor;
 mod zig_extractor_tests {
     use crate::base::SymbolKind;
     use crate::zig::ZigExtractor;
-    use crate::tests::test_utils::init_parser;
+    use crate::tests::helpers::init_parser;
     use std::path::PathBuf;
 
     pub(crate) fn extract_symbols(code: &str) -> Vec<crate::base::Symbol> {
@@ -1246,7 +1246,7 @@ const testing = @import("testing");
 mod zig_identifier_extraction_tests {
     use crate::base::IdentifierKind;
     use crate::zig::ZigExtractor;
-    use crate::tests::test_utils::init_parser;
+    use crate::tests::helpers::init_parser;
     use std::path::PathBuf;
 
     #[test]

@@ -11,7 +11,7 @@
 
 use crate::base::{IdentifierKind, SymbolKind};
 use crate::gdscript::GDScriptExtractor;
-use crate::tests::test_utils::init_parser;
+use crate::tests::helpers::init_parser;
 use std::path::PathBuf;
 
 #[cfg(test)]

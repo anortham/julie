@@ -8,7 +8,9 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::search::index::SymbolSearchResult;
-use crate::search::scoring::{CENTRALITY_NOISE_NAMES, CENTRALITY_WEIGHT};
+use crate::search::scoring::{
+    is_docs_path, is_fixture_path, is_test_path, CENTRALITY_NOISE_NAMES, CENTRALITY_WEIGHT,
+};
 
 /// A pivot symbol selected from search results, with its combined score.
 pub struct Pivot {
@@ -166,15 +168,7 @@ pub fn select_pivots_with_code_fallback(
     }
 }
 
-/// Check if a file path is a test file (test code rarely provides useful context).
-pub(crate) fn is_test_path(path: &str) -> bool {
-    path.contains("/tests/")
-        || path.contains("/test/")
-        || path.contains("_test.")
-        || path.contains("_tests.")
-        || path.contains(".test.")
-        || path.contains(".spec.")
-}
+// is_test_path: imported from crate::search::scoring
 
 /// Check if a symbol kind is a structural declaration (namespace, module, export).
 /// These are boilerplate lines that match on keywords but carry no useful code body.
@@ -184,9 +178,12 @@ pub(crate) fn is_structural_kind(kind: &str) -> bool {
 
 /// Check if a file path is a non-code file (docs, memories, markdown, config).
 /// These files match on keywords but don't provide code orientation context.
+///
+/// Uses the canonical `is_docs_path` for directory detection plus
+/// file-extension checks for non-code formats regardless of directory.
 pub(crate) fn is_non_code_path(path: &str) -> bool {
     path.starts_with(".memories/")
-        || path.starts_with("docs/")
+        || is_docs_path(path)
         || path.ends_with(".md")
         || path.ends_with(".toml")
         || path.ends_with(".json")
@@ -194,17 +191,18 @@ pub(crate) fn is_non_code_path(path: &str) -> bool {
         || path.ends_with(".yml")
 }
 
+/// Check if a file is in an auxiliary code path (examples, benchmarks, scripts,
+/// or test fixtures/data).
+///
+/// Uses the canonical `is_fixture_path` for fixture detection plus
+/// checks for example/benchmark/script directories.
 fn is_auxiliary_path(path: &str) -> bool {
-    path.starts_with("examples/")
+    is_fixture_path(path)
+        || path.starts_with("examples/")
         || path.starts_with("example/")
         || path.starts_with("benches/")
         || path.starts_with("bench/")
         || path.starts_with("scripts/")
-        || path.starts_with("fixtures/")
-        || path.starts_with("fixture/")
-        || path.starts_with("testdata/")
-        || path.starts_with("test-data/")
-        || path.starts_with("test_data/")
 }
 
 fn is_code_candidate(result: &SymbolSearchResult) -> bool {
