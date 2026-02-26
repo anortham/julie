@@ -1,7 +1,8 @@
-/// Hybrid Search Tests — RRF Merge Algorithm
+/// Hybrid Search Tests — RRF Merge Algorithm and KNN Conversion
 ///
-/// Tests for the Reciprocal Rank Fusion merge function that combines
-/// keyword (Tantivy) and semantic (KNN) search results.
+/// Tests for:
+/// - Reciprocal Rank Fusion merge function (keyword + semantic)
+/// - KNN-to-SymbolSearchResult conversion (embedding distances → search results)
 ///
 /// Formula: RRF(d) = Σ 1/(k + rank) where rank is 1-based position.
 #[cfg(test)]
@@ -131,5 +132,137 @@ mod tests {
             expected_score,
             actual_score,
         );
+    }
+}
+
+/// KNN-to-SymbolSearchResult conversion tests.
+///
+/// Verifies that `knn_to_search_results` correctly converts (symbol_id, distance)
+/// pairs from sqlite-vec into SymbolSearchResult objects by looking up metadata
+/// from the database.
+#[cfg(test)]
+mod conversion_tests {
+    use crate::database::SymbolDatabase;
+    use crate::search::hybrid::knn_to_search_results;
+    use tempfile::TempDir;
+
+    /// Helper: create a fresh SymbolDatabase in a temp directory.
+    fn create_test_db() -> (SymbolDatabase, TempDir) {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let db_path = dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).expect("Failed to create database");
+        (db, dir)
+    }
+
+    /// Helper: insert a symbol with optional signature/doc_comment for testing.
+    fn insert_test_symbol(
+        db: &mut SymbolDatabase,
+        id: &str,
+        name: &str,
+        kind: &str,
+        language: &str,
+        file_path: &str,
+        start_line: u32,
+        signature: Option<&str>,
+        doc_comment: Option<&str>,
+    ) {
+        // File record must exist first (foreign key constraint)
+        db.conn
+            .execute(
+                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
+                 VALUES (?, ?, 'deadbeef', 100, 0, 0)",
+                rusqlite::params![file_path, language],
+            )
+            .expect("Failed to insert test file");
+
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, file_path, language,
+                 start_line, start_col, end_line, end_col, start_byte, end_byte,
+                 reference_score, signature, doc_comment)
+                 VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 0, 100, 0.0, ?, ?)",
+                rusqlite::params![
+                    id, name, kind, file_path, language,
+                    start_line, start_line + 10,
+                    signature, doc_comment
+                ],
+            )
+            .expect("Failed to insert test symbol");
+    }
+
+    #[test]
+    fn test_knn_to_search_results_converts_correctly() {
+        let (mut db, _dir) = create_test_db();
+
+        insert_test_symbol(
+            &mut db, "sym1", "process_data", "function", "rust",
+            "src/lib.rs", 10, Some("fn process_data(input: &str) -> Result<()>"),
+            Some("Processes input data."),
+        );
+        insert_test_symbol(
+            &mut db, "sym2", "UserService", "struct", "rust",
+            "src/service.rs", 25, None, None,
+        );
+
+        // distance=0.1 → score=0.9, distance=0.3 → score=0.7
+        let knn_results = vec![
+            ("sym1".to_string(), 0.1_f64),
+            ("sym2".to_string(), 0.3_f64),
+        ];
+
+        let results = knn_to_search_results(&knn_results, &db).unwrap();
+
+        assert_eq!(results.len(), 2, "should convert both symbols");
+
+        // First result: process_data
+        assert_eq!(results[0].id, "sym1");
+        assert_eq!(results[0].name, "process_data");
+        assert_eq!(results[0].kind, "function");
+        assert_eq!(results[0].language, "rust");
+        assert_eq!(results[0].file_path, "src/lib.rs");
+        assert_eq!(results[0].start_line, 10);
+        assert_eq!(results[0].signature, "fn process_data(input: &str) -> Result<()>");
+        assert_eq!(results[0].doc_comment, "Processes input data.");
+        assert!((results[0].score - 0.9).abs() < 1e-5, "score should be 1.0 - 0.1 = 0.9, got {}", results[0].score);
+
+        // Second result: UserService (no signature/doc_comment → empty strings)
+        assert_eq!(results[1].id, "sym2");
+        assert_eq!(results[1].name, "UserService");
+        assert_eq!(results[1].kind, "struct");
+        assert_eq!(results[1].signature, "");
+        assert_eq!(results[1].doc_comment, "");
+        assert!((results[1].score - 0.7).abs() < 1e-5, "score should be 1.0 - 0.3 = 0.7, got {}", results[1].score);
+    }
+
+    #[test]
+    fn test_knn_to_search_results_skips_missing_symbols() {
+        let (mut db, _dir) = create_test_db();
+
+        insert_test_symbol(
+            &mut db, "sym1", "real_function", "function", "python",
+            "src/main.py", 1, None, None,
+        );
+
+        // Include a nonexistent ID between two real ones
+        let knn_results = vec![
+            ("sym1".to_string(), 0.2_f64),
+            ("nonexistent_id".to_string(), 0.4_f64),
+        ];
+
+        let results = knn_to_search_results(&knn_results, &db).unwrap();
+
+        assert_eq!(results.len(), 1, "should skip the missing symbol");
+        assert_eq!(results[0].id, "sym1");
+        assert_eq!(results[0].name, "real_function");
+    }
+
+    #[test]
+    fn test_knn_to_search_results_empty_input() {
+        let (db, _dir) = create_test_db();
+
+        let knn_results: Vec<(String, f64)> = vec![];
+        let results = knn_to_search_results(&knn_results, &db).unwrap();
+
+        assert!(results.is_empty(), "empty input should produce empty output");
     }
 }

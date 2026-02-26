@@ -1,14 +1,17 @@
-//! Hybrid search: Reciprocal Rank Fusion (RRF) merge.
+//! Hybrid search: RRF merge and KNN conversion.
 //!
-//! Merges keyword (Tantivy) and semantic (KNN) ranked lists into a single
-//! unified ranking using RRF. Documents appearing in both lists naturally
-//! rank highest because they accumulate scores from both sources.
-//!
-//! Formula: `RRF(d) = Σ 1/(k + rank)` where rank is 1-based position.
+//! Two key functions for hybrid search:
+//! - `rrf_merge`: Merges keyword (Tantivy) and semantic (KNN) ranked lists using
+//!   Reciprocal Rank Fusion. Formula: `RRF(d) = Σ 1/(k + rank)`.
+//! - `knn_to_search_results`: Converts sqlite-vec KNN output `(symbol_id, distance)`
+//!   into `SymbolSearchResult` objects by looking up symbol metadata from the database.
 
 use std::collections::HashMap;
 
+use anyhow::Result;
+
 use super::SymbolSearchResult;
+use crate::database::SymbolDatabase;
 
 /// Merge two ranked lists of search results using Reciprocal Rank Fusion.
 ///
@@ -76,4 +79,49 @@ pub fn rrf_merge(
     merged.truncate(limit);
 
     merged
+}
+
+/// Convert KNN search results (symbol_id, distance) into `SymbolSearchResult` objects.
+///
+/// Batch-fetches symbol metadata from the database and maps each KNN result to a
+/// `SymbolSearchResult`. Missing symbols (e.g., deleted during incremental updates)
+/// are silently skipped. Results preserve KNN order (most similar first).
+///
+/// # Score conversion
+/// `score = (1.0 - distance) as f32` — higher values indicate greater similarity.
+pub fn knn_to_search_results(
+    knn_results: &[(String, f64)],
+    db: &SymbolDatabase,
+) -> Result<Vec<SymbolSearchResult>> {
+    if knn_results.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Batch-fetch all symbols by ID
+    let ids: Vec<String> = knn_results.iter().map(|(id, _)| id.clone()).collect();
+    let symbols = db.get_symbols_by_ids(&ids)?;
+
+    // Build lookup map: symbol ID → Symbol
+    let symbol_map: HashMap<&str, _> = symbols.iter().map(|s| (s.id.as_str(), s)).collect();
+
+    // Convert in KNN order, skipping missing symbols
+    let results = knn_results
+        .iter()
+        .filter_map(|(id, distance)| {
+            let sym = symbol_map.get(id.as_str())?;
+            Some(SymbolSearchResult {
+                id: sym.id.clone(),
+                name: sym.name.clone(),
+                kind: sym.kind.to_string(),
+                language: sym.language.clone(),
+                file_path: sym.file_path.clone(),
+                start_line: sym.start_line,
+                signature: sym.signature.clone().unwrap_or_default(),
+                doc_comment: sym.doc_comment.clone().unwrap_or_default(),
+                score: (1.0 - distance) as f32,
+            })
+        })
+        .collect();
+
+    Ok(results)
 }
