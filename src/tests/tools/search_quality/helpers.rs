@@ -395,6 +395,7 @@ incremental_updates = true
         db: Some(Arc::new(Mutex::new(db_struct))),
         search_index: Some(Arc::new(Mutex::new(search_index))),
         watcher: None,
+        embedding_provider: None,
         config: crate::workspace::WorkspaceConfig::default(),
     };
 

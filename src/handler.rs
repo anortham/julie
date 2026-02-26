@@ -26,6 +26,8 @@ use crate::tools::{
 pub struct IndexingStatus {
     /// Search system (Tantivy) is ready
     pub search_ready: AtomicBool,
+    /// Semantic embeddings are ready
+    pub embeddings_ready: AtomicBool,
 }
 
 impl IndexingStatus {
@@ -33,6 +35,7 @@ impl IndexingStatus {
     pub fn new() -> Self {
         Self {
             search_ready: AtomicBool::new(false),
+            embeddings_ready: AtomicBool::new(false),
         }
     }
 }
@@ -317,6 +320,9 @@ impl JulieServerHandler {
                     );
                 } else {
                     info!("✅ Background auto-indexing completed successfully");
+
+                    // Spawn background embedding pipeline (non-blocking)
+                    self.spawn_background_embedding().await;
                 }
             }
             Ok(false) => {
@@ -326,6 +332,60 @@ impl JulieServerHandler {
                 warn!("⚠️ Failed to check indexing status: {}", e);
             }
         }
+    }
+
+    /// Spawn background embedding pipeline after indexing completes.
+    ///
+    /// Runs in a fire-and-forget tokio task. If the embedding provider is unavailable,
+    /// this is a no-op. Failures are logged but never block keyword search.
+    async fn spawn_background_embedding(&self) {
+        let workspace = match self.get_workspace().await {
+            Ok(Some(ws)) => ws,
+            _ => return,
+        };
+
+        let provider = match &workspace.embedding_provider {
+            Some(p) => p.clone(),
+            None => {
+                debug!("No embedding provider available, skipping background embedding");
+                return;
+            }
+        };
+
+        let db = match &workspace.db {
+            Some(db) => db.clone(),
+            None => return,
+        };
+
+        let indexing_status = self.indexing_status.clone();
+
+        tokio::spawn(async move {
+            info!("🧠 Starting background embedding pipeline...");
+
+            let db_clone = db.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                crate::embeddings::pipeline::run_embedding_pipeline(&db_clone, provider.as_ref())
+            })
+            .await;
+
+            match result {
+                Ok(Ok(stats)) => {
+                    indexing_status
+                        .embeddings_ready
+                        .store(true, std::sync::atomic::Ordering::Release);
+                    info!(
+                        "✅ Background embedding complete: {}/{} symbols embedded",
+                        stats.symbols_embedded, stats.symbols_scanned
+                    );
+                }
+                Ok(Err(e)) => {
+                    warn!("⚠️ Background embedding failed (keyword search unaffected): {e}");
+                }
+                Err(e) => {
+                    warn!("⚠️ Background embedding task panicked: {e}");
+                }
+            }
+        });
     }
 }
 

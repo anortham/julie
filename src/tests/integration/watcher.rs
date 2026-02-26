@@ -113,6 +113,7 @@ async fn test_real_time_file_watcher_indexing() {
         db.clone(),
         extractor_manager.clone(),
         None,
+        None, // No embedding provider in test
     )
     .unwrap();
 

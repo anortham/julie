@@ -6,6 +6,7 @@ use anyhow::{Result, anyhow};
 use rusqlite::{Connection, Row};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Once;
 use tracing::{debug, info, warn};
 
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
@@ -21,7 +22,22 @@ mod schema;
 mod symbols;
 pub mod types;
 mod type_queries;
+pub mod vectors;
 mod workspace;
+
+/// Register sqlite-vec extension as a global auto-extension (once per process).
+static SQLITE_VEC_INIT: Once = Once::new();
+
+fn register_sqlite_vec() {
+    SQLITE_VEC_INIT.call_once(|| {
+        unsafe {
+            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
+        debug!("sqlite-vec registered as auto-extension");
+    });
+}
 
 // Re-export public types
 pub use files::{calculate_file_hash, create_file_info};
@@ -38,6 +54,9 @@ pub struct SymbolDatabase {
 impl SymbolDatabase {
     /// Create a new database connection and initialize schema
     pub fn new<P: AsRef<Path>>(db_path: P) -> Result<Self> {
+        // Register sqlite-vec before opening any connection
+        register_sqlite_vec();
+
         let file_path = db_path.as_ref().to_path_buf();
 
         info!("Initializing SQLite database at: {}", file_path.display());

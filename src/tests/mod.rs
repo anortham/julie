@@ -22,9 +22,13 @@ pub mod main_error_handling; // MCP server initialization and runtime error hand
 pub mod core {
     pub mod database; // Database operations and SQLite tests
     pub mod database_lightweight_query; // Lightweight query optimization tests
+    pub mod embedding_deps; // Embedding dependency smoke tests (fastembed + sqlite-vec)
+    pub mod embedding_metadata; // Symbol metadata formatting for embeddings
+    pub mod embedding_provider; // EmbeddingProvider trait + OrtEmbeddingProvider tests
     pub mod handler; // MCP handler tests
     pub mod language; // Language detection and support tests
     pub mod tracing; // Tracing and logging tests
+    pub mod vector_storage; // sqlite-vec vector storage CRUD tests
     pub mod workspace_init; // Workspace root detection and initialization tests
 }
 
@@ -108,6 +112,8 @@ pub mod utils {
 // ============================================================================
 pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
+    pub mod embedding_incremental; // Incremental embedding via file watcher tests
+    pub mod embedding_pipeline; // Background embedding pipeline integration tests
     pub mod documentation_indexing; // Documentation indexing E2E tests (RAG POC)
     pub mod lock_contention; // Lock contention regression tests
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)

@@ -6,7 +6,7 @@ use rusqlite::params;
 use tracing::{debug, info, warn};
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 9;
+pub const LATEST_SCHEMA_VERSION: i32 = 10;
 
 impl SymbolDatabase {
     // ============================================================
@@ -98,6 +98,7 @@ impl SymbolDatabase {
             7 => self.migration_007_drop_fts5()?,
             8 => self.migration_008_drop_embedding_tables()?,
             9 => self.migration_009_add_reference_score()?,
+            10 => self.migration_010_add_symbol_vectors()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -115,6 +116,7 @@ impl SymbolDatabase {
             7 => "Drop FTS5 tables and triggers (replaced by Tantivy)",
             8 => "Drop embedding tables (embedding engine removed)",
             9 => "Add reference_score for graph centrality ranking",
+            10 => "Add symbol_vectors virtual table for semantic embeddings",
             _ => "Unknown migration",
         };
 
@@ -582,6 +584,38 @@ impl SymbolDatabase {
             [],
         )?;
         info!("✅ Added reference_score column to symbols table");
+        Ok(())
+    }
+
+    /// Migration 010: Add symbol_vectors virtual table for semantic embeddings.
+    ///
+    /// Uses sqlite-vec's `vec0` module for KNN vector search.
+    /// Stores 384-dimensional float embeddings keyed by symbol_id.
+    /// Requires sqlite-vec to be registered via `register_sqlite_vec()`.
+    fn migration_010_add_symbol_vectors(&self) -> Result<()> {
+        info!("Running migration 010: Add symbol_vectors virtual table");
+
+        // Check if table already exists (idempotency)
+        let table_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='symbol_vectors'",
+            [],
+            |row| row.get::<_, i32>(0).map(|c| c > 0),
+        )?;
+
+        if table_exists {
+            debug!("symbol_vectors table already exists, skipping migration 010");
+            return Ok(());
+        }
+
+        self.conn.execute(
+            "CREATE VIRTUAL TABLE symbol_vectors USING vec0(
+                symbol_id TEXT PRIMARY KEY,
+                embedding float[384]
+            )",
+            [],
+        )?;
+
+        info!("✅ symbol_vectors virtual table created (384-dim float vectors)");
         Ok(())
     }
 }

@@ -4,6 +4,7 @@
 //! Tantivy search with code-aware tokenization (CamelCase/snake_case splitting).
 
 pub mod database;
+pub mod embeddings;
 pub mod extractors;
 pub mod search;
 pub mod handler;

@@ -45,6 +45,9 @@ pub struct JulieWorkspace {
     /// File watcher for incremental updates
     pub watcher: Option<IncrementalIndexer>,
 
+    /// Embedding provider for semantic vector generation (None if unavailable)
+    pub embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+
     /// Workspace configuration
     pub config: WorkspaceConfig,
 }
@@ -76,6 +79,7 @@ impl Clone for JulieWorkspace {
             db: self.db.clone(),
             search_index: self.search_index.clone(),
             watcher: None, // Don't clone file watcher - create new if needed
+            embedding_provider: self.embedding_provider.clone(),
             config: self.config.clone(),
         }
     }
@@ -132,6 +136,7 @@ impl JulieWorkspace {
             db: None,
             search_index: None,
             watcher: None,
+            embedding_provider: None,
             config,
         };
 
@@ -178,6 +183,7 @@ impl JulieWorkspace {
                     db: None,
                     search_index: None,
                     watcher: None,
+                    embedding_provider: None,
                     config,
                 };
 
@@ -508,6 +514,7 @@ impl JulieWorkspace {
             self.db.as_ref().unwrap().clone(),
             extractor_manager,
             self.search_index.clone(),
+            self.embedding_provider.clone(),
         )?;
 
         self.watcher = Some(file_watcher);
@@ -516,10 +523,13 @@ impl JulieWorkspace {
         Ok(())
     }
 
-    /// Initialize all persistent components (database, search index, file watcher)
+    /// Initialize all persistent components (database, search index, file watcher, embeddings)
     pub async fn initialize_all_components(&mut self) -> Result<()> {
         self.initialize_database()?;
         self.initialize_search_index()?;
+
+        // Initialize embedding provider (best-effort, non-fatal)
+        self.initialize_embedding_provider();
 
         // Initialize file watcher last (requires database)
         if self.config.incremental_updates {
@@ -528,6 +538,32 @@ impl JulieWorkspace {
 
         info!("All workspace components initialized successfully");
         Ok(())
+    }
+
+    /// Initialize the embedding provider (best-effort).
+    ///
+    /// If model download fails or ONNX runtime can't initialize, this sets
+    /// `embedding_provider` to `None` and logs a warning. Keyword search
+    /// continues to work without embeddings.
+    fn initialize_embedding_provider(&mut self) {
+        use crate::embeddings::EmbeddingProvider;
+        match crate::embeddings::OrtEmbeddingProvider::try_new(None) {
+            Ok(provider) => {
+                let info = provider.device_info();
+                info!(
+                    "Embedding provider initialized: {} ({}, {}d)",
+                    info.model_name, info.device, info.dimensions
+                );
+                self.embedding_provider = Some(Arc::new(provider));
+            }
+            Err(e) => {
+                warn!(
+                    "Embedding provider unavailable (keyword search unaffected): {}",
+                    e
+                );
+                self.embedding_provider = None;
+            }
+        }
     }
 
     /// Start file watching if initialized

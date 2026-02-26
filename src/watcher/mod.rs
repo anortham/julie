@@ -38,6 +38,9 @@ pub struct IncrementalIndexer {
     extractor_manager: Arc<ExtractorManager>,
     search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
 
+    /// Embedding provider for incremental semantic updates (None if unavailable)
+    embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+
     // Processing queues
     pub(crate) index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
 
@@ -63,6 +66,7 @@ impl IncrementalIndexer {
         db: Arc<StdMutex<SymbolDatabase>>,
         extractor_manager: Arc<ExtractorManager>,
         search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
+        embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
     ) -> Result<Self> {
         let supported_extensions = filtering::build_supported_extensions();
         let ignore_patterns = filtering::build_ignore_patterns()?;
@@ -72,6 +76,7 @@ impl IncrementalIndexer {
             db,
             extractor_manager,
             search_index,
+            embedding_provider,
             index_queue: Arc::new(TokioMutex::new(VecDeque::new())),
             last_processed: Arc::new(TokioMutex::new(HashMap::new())),
             supported_extensions,
@@ -144,6 +149,7 @@ impl IncrementalIndexer {
         let db = self.db.clone();
         let extractor_manager = self.extractor_manager.clone();
         let search_index = self.search_index.clone();
+        let embedding_provider = self.embedding_provider.clone();
         let queue_for_processing = self.index_queue.clone();
         let last_processed = self.last_processed.clone();
         let workspace_root = self.workspace_root.clone();
@@ -210,9 +216,16 @@ impl IncrementalIndexer {
                     }
 
                     info!("Background task processing: {:?}", event.path);
-                    if let Err(e) = match event.change_type {
+
+                    // Compute relative path for embedding operations
+                    let relative_for_embed = crate::utils::paths::to_relative_unix_style(
+                        &event.path, &workspace_root,
+                    ).ok();
+
+                    match event.change_type {
                         FileChangeType::Created | FileChangeType::Modified => {
-                            handlers::handle_file_created_or_modified_static(
+                            let rel_path = relative_for_embed.clone();
+                            if let Err(e) = handlers::handle_file_created_or_modified_static(
                                 event.path,
                                 &db,
                                 &extractor_manager,
@@ -220,28 +233,58 @@ impl IncrementalIndexer {
                                 search_index.as_ref(),
                             )
                             .await
+                            {
+                                error!("Failed to handle file change: {}", e);
+                            } else if let (Some(provider), Some(rel)) = (&embedding_provider, &rel_path) {
+                                // Embed new/changed symbols (non-fatal)
+                                if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(&db, provider.as_ref(), rel) {
+                                    warn!("Incremental embedding failed for {}: {}", rel, e);
+                                }
+                            }
                         }
                         FileChangeType::Deleted => {
-                            handlers::handle_file_deleted_static(
+                            // Delete embeddings BEFORE deleting symbols (join requires symbols to exist)
+                            if let Some(ref rel) = relative_for_embed {
+                                if let Ok(mut db_guard) = db.lock() {
+                                    if let Err(e) = db_guard.delete_embeddings_for_file(rel) {
+                                        warn!("Failed to delete embeddings for {}: {}", rel, e);
+                                    }
+                                }
+                            }
+                            if let Err(e) = handlers::handle_file_deleted_static(
                                 event.path,
                                 &db,
                                 &workspace_root,
                             )
                             .await
+                            {
+                                error!("Failed to handle file deletion: {}", e);
+                            }
                         }
                         FileChangeType::Renamed { from, to } => {
-                            handlers::handle_file_renamed_static(
+                            // Delete embeddings for old path before rename
+                            if let Ok(ref rel_from) = crate::utils::paths::to_relative_unix_style(&from, &workspace_root) {
+                                if let Ok(mut db_guard) = db.lock() {
+                                    let _ = db_guard.delete_embeddings_for_file(rel_from);
+                                }
+                            }
+                            if let Err(e) = handlers::handle_file_renamed_static(
                                 from,
-                                to,
+                                to.clone(),
                                 &db,
                                 &extractor_manager,
                                 &workspace_root,
                                 search_index.as_ref(),
                             )
                             .await
+                            {
+                                error!("Failed to handle file rename: {}", e);
+                            } else if let (Some(provider), Ok(rel_to)) = (&embedding_provider, crate::utils::paths::to_relative_unix_style(&to, &workspace_root)) {
+                                if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(&db, provider.as_ref(), &rel_to) {
+                                    warn!("Incremental embedding failed for {}: {}", rel_to, e);
+                                }
+                            }
                         }
-                    } {
-                        error!("Failed to handle file change: {}", e);
                     }
                 }
             }
@@ -258,9 +301,14 @@ impl IncrementalIndexer {
             let mut queue = self.index_queue.lock().await;
             queue.pop_front()
         } {
-            if let Err(e) = match event.change_type {
+            let relative_for_embed = crate::utils::paths::to_relative_unix_style(
+                &event.path, &self.workspace_root,
+            ).ok();
+
+            match event.change_type {
                 FileChangeType::Created | FileChangeType::Modified => {
-                    handlers::handle_file_created_or_modified_static(
+                    let rel_path = relative_for_embed.clone();
+                    if let Err(e) = handlers::handle_file_created_or_modified_static(
                         event.path,
                         &self.db,
                         &self.extractor_manager,
@@ -268,28 +316,53 @@ impl IncrementalIndexer {
                         self.search_index.as_ref(),
                     )
                     .await
+                    {
+                        error!("Failed to handle file change: {}", e);
+                    } else if let (Some(provider), Some(rel)) = (&self.embedding_provider, &rel_path) {
+                        if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(&self.db, provider.as_ref(), rel) {
+                            warn!("Incremental embedding failed for {}: {}", rel, e);
+                        }
+                    }
                 }
                 FileChangeType::Deleted => {
-                    handlers::handle_file_deleted_static(
+                    if let Some(ref rel) = relative_for_embed {
+                        if let Ok(mut db_guard) = self.db.lock() {
+                            let _ = db_guard.delete_embeddings_for_file(rel);
+                        }
+                    }
+                    if let Err(e) = handlers::handle_file_deleted_static(
                         event.path,
                         &self.db,
                         &self.workspace_root,
                     )
                     .await
+                    {
+                        error!("Failed to handle file deletion: {}", e);
+                    }
                 }
                 FileChangeType::Renamed { from, to } => {
-                    handlers::handle_file_renamed_static(
+                    if let Ok(rel_from) = crate::utils::paths::to_relative_unix_style(&from, &self.workspace_root) {
+                        if let Ok(mut db_guard) = self.db.lock() {
+                            let _ = db_guard.delete_embeddings_for_file(&rel_from);
+                        }
+                    }
+                    if let Err(e) = handlers::handle_file_renamed_static(
                         from,
-                        to,
+                        to.clone(),
                         &self.db,
                         &self.extractor_manager,
                         &self.workspace_root,
                         self.search_index.as_ref(),
                     )
                     .await
+                    {
+                        error!("Failed to handle file rename: {}", e);
+                    } else if let (Some(provider), Ok(rel_to)) = (&self.embedding_provider, crate::utils::paths::to_relative_unix_style(&to, &self.workspace_root)) {
+                        if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(&self.db, provider.as_ref(), &rel_to) {
+                            warn!("Incremental embedding failed for {}: {}", rel_to, e);
+                        }
+                    }
                 }
-            } {
-                error!("Failed to handle file change: {}", e);
             }
         }
         Ok(())
