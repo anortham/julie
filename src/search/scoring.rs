@@ -121,9 +121,12 @@ pub fn apply_centrality_boost(
 
 /// Apply a conservative path prior for natural-language-like queries.
 ///
-/// For NL-like queries, this mildly boosts `src/**` results and mildly penalizes
-/// `docs/**`, `src/tests/**`, and `fixtures/**` results. Identifier-like queries
-/// are explicitly excluded so exact symbol searches are not perturbed.
+/// For NL-like queries, this mildly boosts production source results and mildly
+/// penalizes test, docs, and fixture paths. Uses language-agnostic heuristics
+/// that work across Rust, C#, Python, Java, Go, JS/TS, Ruby, Swift, and more.
+///
+/// Identifier-like queries are explicitly excluded so exact symbol searches
+/// are not perturbed.
 pub fn apply_nl_path_prior(results: &mut [SymbolSearchResult], query: &str) {
     if !is_nl_like_query(query) {
         return;
@@ -132,18 +135,103 @@ pub fn apply_nl_path_prior(results: &mut [SymbolSearchResult], query: &str) {
     for result in results.iter_mut() {
         let path = result.file_path.as_str();
 
-        if path.starts_with("src/tests/") {
+        // Order matters: check test before source, since test paths may live
+        // inside source directories (e.g. src/tests/, src/test/java/).
+        if is_test_path(path) {
             result.score *= NL_PATH_PENALTY_TESTS;
-        } else if path.starts_with("src/") {
-            result.score *= NL_PATH_BOOST_SRC;
-        } else if path.starts_with("docs/") {
+        } else if is_docs_path(path) {
             result.score *= NL_PATH_PENALTY_DOCS;
-        } else if path.starts_with("fixtures/") {
+        } else if is_fixture_path(path) {
             result.score *= NL_PATH_PENALTY_FIXTURES;
+        } else {
+            // Everything that isn't test/docs/fixtures is presumed source code.
+            result.score *= NL_PATH_BOOST_SRC;
         }
     }
 
     sort_results_by_score_desc(results);
+}
+
+/// Detect whether a file path indicates test code, using language-agnostic heuristics.
+///
+/// Matches on both path segments (directories) and file-name conventions:
+/// - Directories: `test`, `tests`, `spec`, `__tests__`, and `.Tests` (C#)
+/// - Go files: `*_test.go`
+/// - JS/TS files: `*.test.{js,ts,tsx,jsx}`, `*.spec.{js,ts,tsx,jsx}`
+/// - Python files: `test_*.py`
+pub(crate) fn is_test_path(path: &str) -> bool {
+    // Check path segments (directory names)
+    for segment in path.split('/') {
+        // Exact segment matches
+        match segment {
+            "test" | "tests" | "spec" | "__tests__" => return true,
+            _ => {}
+        }
+        // C# convention: MyProject.Tests
+        if segment.ends_with(".Tests") || segment.ends_with(".Test") {
+            return true;
+        }
+    }
+
+    // Check file-name patterns for languages that co-locate tests with source
+    let file_name = path.rsplit('/').next().unwrap_or(path);
+
+    // Go: auth_test.go
+    if file_name.ends_with("_test.go") {
+        return true;
+    }
+
+    // JS/TS: Auth.test.tsx, Auth.spec.ts, etc.
+    let test_spec_extensions = [
+        ".test.ts",
+        ".test.tsx",
+        ".test.js",
+        ".test.jsx",
+        ".spec.ts",
+        ".spec.tsx",
+        ".spec.js",
+        ".spec.jsx",
+    ];
+    for ext in &test_spec_extensions {
+        if file_name.ends_with(ext) {
+            return true;
+        }
+    }
+
+    // Python: test_auth.py (file starts with test_)
+    if file_name.starts_with("test_") && file_name.ends_with(".py") {
+        return true;
+    }
+
+    false
+}
+
+/// Detect whether a file path indicates documentation.
+///
+/// Matches path segments: `docs`, `doc`, `documentation`.
+pub(crate) fn is_docs_path(path: &str) -> bool {
+    for segment in path.split('/') {
+        match segment {
+            "docs" | "doc" | "documentation" => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Detect whether a file path indicates test fixtures or data.
+///
+/// Matches path segments: `fixtures`, `fixture`, `testdata`, `test_data`,
+/// `__fixtures__`, `snapshots`, `__snapshots__`.
+pub(crate) fn is_fixture_path(path: &str) -> bool {
+    for segment in path.split('/') {
+        match segment {
+            "fixtures" | "fixture" | "testdata" | "test_data" | "__fixtures__" | "snapshots"
+            | "__snapshots__" => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 pub(crate) fn is_nl_like_query(query: &str) -> bool {
