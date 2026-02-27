@@ -712,8 +712,13 @@ impl WorkspaceRegistryService {
                 let entry = entry?;
                 let dir_name = entry.file_name().to_string_lossy().to_string();
 
-                // Skip if this directory has a registry entry
-                if registry_clone.reference_workspaces.contains_key(&dir_name) {
+                // Skip if this directory has a registry entry (primary or reference)
+                let is_primary_workspace = registry_clone
+                    .primary_workspace
+                    .as_ref()
+                    .map(|ws| ws.id.as_str())
+                    == Some(dir_name.as_str());
+                if is_primary_workspace || registry_clone.reference_workspaces.contains_key(&dir_name) {
                     continue;
                 }
 

@@ -74,10 +74,7 @@ mod tests {
             make_result("2", "b", 8.0),
             make_result("3", "c", 6.0),
         ];
-        let semantic = vec![
-            make_result("4", "d", 0.9),
-            make_result("5", "e", 0.7),
-        ];
+        let semantic = vec![make_result("4", "d", 0.9), make_result("5", "e", 0.7)];
 
         let merged = rrf_merge(tantivy, semantic, 60, 3);
 
@@ -94,7 +91,11 @@ mod tests {
 
         let merged = rrf_merge(tantivy, semantic, 60, 10);
 
-        assert_eq!(merged.len(), 2, "graceful degradation: tantivy results unchanged");
+        assert_eq!(
+            merged.len(),
+            2,
+            "graceful degradation: tantivy results unchanged"
+        );
         assert_eq!(merged[0].id, "1");
         assert_eq!(merged[1].id, "2");
     }
@@ -109,7 +110,11 @@ mod tests {
 
         let merged = rrf_merge(tantivy, semantic, 60, 10);
 
-        assert_eq!(merged.len(), 2, "semantic results returned when tantivy empty");
+        assert_eq!(
+            merged.len(),
+            2,
+            "semantic results returned when tantivy empty"
+        );
         assert_eq!(merged[0].id, "3");
         assert_eq!(merged[1].id, "4");
     }
@@ -169,6 +174,32 @@ mod orchestrator_tests {
                 runtime: "test".into(),
                 device: "cpu".into(),
                 model_name: "failing-mock".into(),
+                dimensions: 384,
+            }
+        }
+    }
+
+    /// Mock embedding provider that returns a deterministic vector.
+    struct StaticProvider;
+
+    impl EmbeddingProvider for StaticProvider {
+        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+            Ok(vec![1.0_f32; 384])
+        }
+
+        fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| vec![1.0_f32; 384]).collect())
+        }
+
+        fn dimensions(&self) -> usize {
+            384
+        }
+
+        fn device_info(&self) -> DeviceInfo {
+            DeviceInfo {
+                runtime: "test".into(),
+                device: "cpu".into(),
+                model_name: "static-mock".into(),
                 dimensions: 384,
             }
         }
@@ -257,7 +288,10 @@ mod orchestrator_tests {
         )
         .unwrap(); // Must NOT fail despite provider error
 
-        assert!(!results.results.is_empty(), "should still return keyword results");
+        assert!(
+            !results.results.is_empty(),
+            "should still return keyword results"
+        );
         assert_eq!(results.results[0].name, "process_data");
     }
 
@@ -276,7 +310,67 @@ mod orchestrator_tests {
         .unwrap();
 
         // relaxed should be false for a simple single-term query that matches
-        assert!(!results.relaxed, "relaxed flag should be preserved from tantivy");
+        assert!(
+            !results.relaxed,
+            "relaxed flag should be preserved from tantivy"
+        );
+    }
+
+    #[test]
+    fn test_hybrid_search_filters_semantic_results_by_language_and_file_pattern() {
+        let (index, mut db, _idx_dir, _db_dir) = setup_index_and_db();
+
+        // Add a symbol that should be excluded by both language + file_pattern filters.
+        db.conn
+            .execute(
+                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
+                 VALUES ('scripts/tool.py', 'python', 'def456', 120, 0, 0)",
+                [],
+            )
+            .unwrap();
+
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, file_path, language,
+                 start_line, start_col, end_line, end_col, start_byte, end_byte,
+                 reference_score, signature, doc_comment)
+                 VALUES ('sym2', 'python_helper', 'function', 'scripts/tool.py', 'python',
+                 5, 0, 15, 0, 0, 120, 0.0,
+                 'def python_helper(data):',
+                 'Python helper function.')",
+                [],
+            )
+            .unwrap();
+
+        // Seed embeddings so KNN returns both symbols.
+        db.store_embeddings(&[
+            ("sym1".to_string(), vec![0.95_f32; 384]),
+            ("sym2".to_string(), vec![1.0_f32; 384]),
+        ])
+        .unwrap();
+
+        let filter = SearchFilter {
+            language: Some("rust".to_string()),
+            kind: None,
+            file_pattern: Some("src/**/*.rs".to_string()),
+        };
+
+        let provider = StaticProvider;
+        let results =
+            hybrid_search("process_data", &filter, 10, &index, &db, Some(&provider)).unwrap();
+
+        assert!(!results.results.is_empty(), "expected at least one result");
+        assert!(
+            results.results.iter().all(|r| r.language == "rust"),
+            "all results should respect language filter"
+        );
+        assert!(
+            results
+                .results
+                .iter()
+                .all(|r| r.file_path.starts_with("src/") && r.file_path.ends_with(".rs")),
+            "all results should respect file_pattern filter"
+        );
     }
 }
 
@@ -347,9 +441,15 @@ mod conversion_tests {
                  reference_score, signature, doc_comment)
                  VALUES (?, ?, ?, ?, ?, ?, 0, ?, 0, 0, 100, 0.0, ?, ?)",
                 rusqlite::params![
-                    id, name, kind, file_path, language,
-                    start_line, start_line + 10,
-                    signature, doc_comment
+                    id,
+                    name,
+                    kind,
+                    file_path,
+                    language,
+                    start_line,
+                    start_line + 10,
+                    signature,
+                    doc_comment
                 ],
             )
             .expect("Failed to insert test symbol");
@@ -360,20 +460,30 @@ mod conversion_tests {
         let (mut db, _dir) = create_test_db();
 
         insert_test_symbol(
-            &mut db, "sym1", "process_data", "function", "rust",
-            "src/lib.rs", 10, Some("fn process_data(input: &str) -> Result<()>"),
+            &mut db,
+            "sym1",
+            "process_data",
+            "function",
+            "rust",
+            "src/lib.rs",
+            10,
+            Some("fn process_data(input: &str) -> Result<()>"),
             Some("Processes input data."),
         );
         insert_test_symbol(
-            &mut db, "sym2", "UserService", "struct", "rust",
-            "src/service.rs", 25, None, None,
+            &mut db,
+            "sym2",
+            "UserService",
+            "struct",
+            "rust",
+            "src/service.rs",
+            25,
+            None,
+            None,
         );
 
         // distance=0.1 → score=0.9, distance=0.3 → score=0.7
-        let knn_results = vec![
-            ("sym1".to_string(), 0.1_f64),
-            ("sym2".to_string(), 0.3_f64),
-        ];
+        let knn_results = vec![("sym1".to_string(), 0.1_f64), ("sym2".to_string(), 0.3_f64)];
 
         let results = knn_to_search_results(&knn_results, &db).unwrap();
 
@@ -386,9 +496,16 @@ mod conversion_tests {
         assert_eq!(results[0].language, "rust");
         assert_eq!(results[0].file_path, "src/lib.rs");
         assert_eq!(results[0].start_line, 10);
-        assert_eq!(results[0].signature, "fn process_data(input: &str) -> Result<()>");
+        assert_eq!(
+            results[0].signature,
+            "fn process_data(input: &str) -> Result<()>"
+        );
         assert_eq!(results[0].doc_comment, "Processes input data.");
-        assert!((results[0].score - 0.9).abs() < 1e-5, "score should be 1.0 - 0.1 = 0.9, got {}", results[0].score);
+        assert!(
+            (results[0].score - 0.9).abs() < 1e-5,
+            "score should be 1.0 - 0.1 = 0.9, got {}",
+            results[0].score
+        );
 
         // Second result: UserService (no signature/doc_comment → empty strings)
         assert_eq!(results[1].id, "sym2");
@@ -396,7 +513,11 @@ mod conversion_tests {
         assert_eq!(results[1].kind, "struct");
         assert_eq!(results[1].signature, "");
         assert_eq!(results[1].doc_comment, "");
-        assert!((results[1].score - 0.7).abs() < 1e-5, "score should be 1.0 - 0.3 = 0.7, got {}", results[1].score);
+        assert!(
+            (results[1].score - 0.7).abs() < 1e-5,
+            "score should be 1.0 - 0.3 = 0.7, got {}",
+            results[1].score
+        );
     }
 
     #[test]
@@ -404,8 +525,15 @@ mod conversion_tests {
         let (mut db, _dir) = create_test_db();
 
         insert_test_symbol(
-            &mut db, "sym1", "real_function", "function", "python",
-            "src/main.py", 1, None, None,
+            &mut db,
+            "sym1",
+            "real_function",
+            "function",
+            "python",
+            "src/main.py",
+            1,
+            None,
+            None,
         );
 
         // Include a nonexistent ID between two real ones
@@ -428,6 +556,9 @@ mod conversion_tests {
         let knn_results: Vec<(String, f64)> = vec![];
         let results = knn_to_search_results(&knn_results, &db).unwrap();
 
-        assert!(results.is_empty(), "empty input should produce empty output");
+        assert!(
+            results.is_empty(),
+            "empty input should produce empty output"
+        );
     }
 }

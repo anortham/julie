@@ -18,6 +18,7 @@ use super::index::{SearchFilter, SearchIndex, SymbolSearchResults};
 use super::SymbolSearchResult;
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingProvider;
+use crate::tools::search::query::matches_glob_pattern;
 
 /// Merge two ranked lists of search results using Reciprocal Rank Fusion.
 ///
@@ -81,7 +82,11 @@ pub fn rrf_merge(
         })
         .collect();
 
-    merged.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    merged.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     merged.truncate(limit);
 
     merged
@@ -174,6 +179,12 @@ pub fn hybrid_search(
         }
     };
 
+    // Enforce caller filter constraints on semantic candidates before merge.
+    let semantic_results: Vec<SymbolSearchResult> = semantic_results
+        .into_iter()
+        .filter(|result| matches_filter(result, filter))
+        .collect();
+
     // Step 4: Merge via RRF (k=60)
     let merged = rrf_merge(tantivy_results.results, semantic_results, 60, limit);
 
@@ -181,6 +192,28 @@ pub fn hybrid_search(
         results: merged,
         relaxed: tantivy_results.relaxed,
     })
+}
+
+fn matches_filter(result: &SymbolSearchResult, filter: &SearchFilter) -> bool {
+    if let Some(language) = &filter.language {
+        if result.language != *language {
+            return false;
+        }
+    }
+
+    if let Some(kind) = &filter.kind {
+        if result.kind != *kind {
+            return false;
+        }
+    }
+
+    if let Some(file_pattern) = &filter.file_pattern {
+        if !matches_glob_pattern(&result.file_path, file_pattern) {
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Internal: run the semantic search pipeline (embed → KNN → convert).

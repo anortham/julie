@@ -9,7 +9,7 @@ license = "MIT"
 
 [package]
 name = "julie"
-version = "3.4.2"
+version = "3.4.3"
 edition.workspace = true
 authors.workspace = true
 description = "Julie - Cross-Platform Code Intelligence Server"
@@ -22,6 +22,11 @@ path = "src/lib.rs"
 [[bin]]
 name = "julie-server"
 path = "src/main.rs"
+
+[features]
+default = ["embeddings-ort"]
+embeddings-ort = ["dep:fastembed"]
+embeddings-candle = []
 
 
 [dependencies]
@@ -87,7 +92,7 @@ chrono = { version = "0.4.42", features = ["serde"] }
 ignore = "0.4"
 
 # Semantic embeddings
-fastembed = "5"
+fastembed = { version = "5", optional = true }
 sqlite-vec = "0.1"
 zerocopy = { version = "0.7", features = ["derive"] }
 
@@ -108,4 +113,3 @@ panic = "abort"
 [profile.dev]
 opt-level = 0
 debug = true
-

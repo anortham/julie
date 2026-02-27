@@ -29,11 +29,9 @@ impl SymbolDatabase {
         let mut count = 0;
 
         {
-            let mut del_stmt =
-                tx.prepare("DELETE FROM symbol_vectors WHERE symbol_id = ?")?;
-            let mut ins_stmt = tx.prepare(
-                "INSERT INTO symbol_vectors(symbol_id, embedding) VALUES (?, ?)",
-            )?;
+            let mut del_stmt = tx.prepare("DELETE FROM symbol_vectors WHERE symbol_id = ?")?;
+            let mut ins_stmt =
+                tx.prepare("INSERT INTO symbol_vectors(symbol_id, embedding) VALUES (?, ?)")?;
 
             for (symbol_id, vector) in embeddings {
                 del_stmt.execute([symbol_id])?;
@@ -63,6 +61,19 @@ impl SymbolDatabase {
         )?;
         if deleted > 0 {
             debug!("Deleted {deleted} embeddings for file: {file_path}");
+        }
+        Ok(deleted)
+    }
+
+    /// Delete embedding rows that no longer have a matching symbol.
+    pub fn delete_orphan_embeddings(&mut self) -> Result<usize> {
+        let deleted = self.conn.execute(
+            "DELETE FROM symbol_vectors
+             WHERE symbol_id NOT IN (SELECT id FROM symbols)",
+            [],
+        )?;
+        if deleted > 0 {
+            debug!("Deleted {deleted} orphan embeddings");
         }
         Ok(deleted)
     }
@@ -119,9 +130,17 @@ impl SymbolDatabase {
         match blob {
             None => Ok(None),
             Some(bytes) => {
+                if bytes.len() % 4 != 0 {
+                    anyhow::bail!(
+                        "Malformed embedding blob length for symbol {}: {} bytes (expected multiple of 4)",
+                        symbol_id,
+                        bytes.len()
+                    );
+                }
+
                 let floats: Vec<f32> = bytes
                     .chunks_exact(4)
-                    .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+                    .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
                     .collect();
                 Ok(Some(floats))
             }

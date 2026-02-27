@@ -280,9 +280,7 @@ impl ManageWorkspaceTool {
                     };
 
                     // Save workspace_id for embedding check after stats update
-                    if is_reference_workspace {
-                        indexed_workspace_id = Some(workspace_id.clone());
-                    }
+                    indexed_workspace_id = Some(workspace_id.clone());
 
                     // ALWAYS update statistics after indexing (regardless of registration status)
                     // Move blocking dir size calculation into background task
@@ -333,7 +331,7 @@ impl ManageWorkspaceTool {
                     files_total, symbols_total, relationships_total
                 );
                 if let Some(ws_id) = indexed_workspace_id {
-                    let embed_count = crate::tools::workspace::indexing::embeddings::spawn_reference_embedding(
+                    let embed_count = crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
                         handler,
                         ws_id,
                     ).await;

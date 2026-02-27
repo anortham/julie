@@ -389,3 +389,36 @@ async fn test_get_all_workspaces_multiple() {
     assert_eq!(primary_count, 1);
     assert_eq!(reference_count, 3);
 }
+
+#[tokio::test]
+async fn test_detect_orphaned_indexes_excludes_primary_workspace_index() {
+    let temp_dir = TempDir::new().unwrap();
+    let service = WorkspaceRegistryService::new(temp_dir.path().to_path_buf());
+
+    let primary_path = temp_dir.path().join("primary");
+    std::fs::create_dir_all(&primary_path).unwrap();
+
+    let primary = service
+        .register_workspace(
+            primary_path.to_string_lossy().to_string(),
+            WorkspaceType::Primary,
+        )
+        .await
+        .unwrap();
+
+    // Simulate on-disk index directories.
+    let indexes_dir = temp_dir.path().join(".julie").join("indexes");
+    std::fs::create_dir_all(indexes_dir.join(&primary.id)).unwrap();
+    std::fs::create_dir_all(indexes_dir.join("orphan_index_dir")).unwrap();
+
+    let orphans = service.detect_orphaned_indexes().await.unwrap();
+
+    assert!(
+        orphans.iter().all(|o| o.directory_name != primary.id),
+        "Primary workspace index must never be treated as orphan"
+    );
+    assert!(
+        orphans.iter().any(|o| o.directory_name == "orphan_index_dir"),
+        "Unregistered index directory should still be detected as orphan"
+    );
+}

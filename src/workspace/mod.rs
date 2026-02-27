@@ -546,15 +546,27 @@ impl JulieWorkspace {
     /// `embedding_provider` to `None` and logs a warning. Keyword search
     /// continues to work without embeddings.
     fn initialize_embedding_provider(&mut self) {
-        use crate::embeddings::EmbeddingProvider;
-        match crate::embeddings::OrtEmbeddingProvider::try_new(None) {
+        use crate::embeddings::{EmbeddingConfig, EmbeddingProviderFactory};
+
+        let provider = std::env::var("JULIE_EMBEDDING_PROVIDER")
+            .unwrap_or_else(|_| "ort".to_string());
+        let cache_dir = std::env::var("JULIE_EMBEDDING_CACHE_DIR")
+            .ok()
+            .map(std::path::PathBuf::from);
+
+        let config = EmbeddingConfig {
+            provider,
+            cache_dir,
+        };
+
+        match EmbeddingProviderFactory::create(&config) {
             Ok(provider) => {
                 let info = provider.device_info();
                 info!(
                     "Embedding provider initialized: {} ({}, {}d)",
                     info.model_name, info.device, info.dimensions
                 );
-                self.embedding_provider = Some(Arc::new(provider));
+                self.embedding_provider = Some(provider);
             }
             Err(e) => {
                 warn!(

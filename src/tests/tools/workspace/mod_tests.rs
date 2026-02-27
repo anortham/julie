@@ -1,11 +1,38 @@
 //! Tests for `workspace::JulieWorkspace` extracted from the implementation module.
 
 use crate::handler::JulieServerHandler;
+use crate::embeddings::{DeviceInfo, EmbeddingProvider};
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::JulieWorkspace;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt};
 use std::fs;
+use std::sync::Arc;
 use tempfile::TempDir;
+
+struct NoopEmbeddingProvider;
+
+impl EmbeddingProvider for NoopEmbeddingProvider {
+    fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+        Ok(vec![0.1_f32; 384])
+    }
+
+    fn embed_batch(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+        Ok(texts.iter().map(|_| vec![0.1_f32; 384]).collect())
+    }
+
+    fn dimensions(&self) -> usize {
+        384
+    }
+
+    fn device_info(&self) -> DeviceInfo {
+        DeviceInfo {
+            runtime: "test".to_string(),
+            device: "cpu".to_string(),
+            model_name: "noop".to_string(),
+            dimensions: 384,
+        }
+    }
+}
 
 fn extract_text_from_result(result: &CallToolResult) -> String {
     result
@@ -282,6 +309,100 @@ fn goodbye_world() {
         reference_ws.file_count, 1,
         "Expected 1 file (test.rs), got {}",
         reference_ws.file_count
+    );
+}
+
+#[tokio::test]
+async fn test_primary_index_schedules_embedding_when_provider_available() {
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn alpha() {}\nfn beta() {}\n").unwrap();
+
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    // Inject deterministic provider so embedding scheduling is enabled in test.
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+    }
+
+    let tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let result = tool.call_tool(&handler).await.unwrap();
+    let message = extract_text_from_result(&result);
+
+    assert!(
+        message.contains("Embedding") && message.contains("background"),
+        "Primary index should schedule embeddings when provider is available. Message: {message}"
+    );
+}
+
+#[tokio::test]
+async fn test_primary_refresh_schedules_embedding_when_provider_available() {
+    use crate::workspace::registry_service::WorkspaceRegistryService;
+
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("lib.rs");
+    fs::write(&test_file, "fn gamma() {}\nfn delta() {}\n").unwrap();
+
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+    }
+
+    // Ensure workspace is indexed and registered first.
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(temp_dir.path().to_string_lossy().to_string()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await.unwrap();
+
+    let workspace = handler.get_workspace().await.unwrap().unwrap();
+    let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
+    let primary_id = registry_service
+        .get_primary_workspace_id()
+        .await
+        .unwrap()
+        .expect("primary workspace id should exist");
+
+    let refresh_tool = ManageWorkspaceTool {
+        operation: "refresh".to_string(),
+        path: None,
+        force: Some(true),
+        name: None,
+        workspace_id: Some(primary_id),
+        detailed: None,
+    };
+
+    let result = refresh_tool.call_tool(&handler).await.unwrap();
+    let message = extract_text_from_result(&result);
+
+    assert!(
+        message.contains("Embedding") && message.contains("background"),
+        "Primary refresh should schedule embeddings when provider is available. Message: {message}"
     );
 }
 

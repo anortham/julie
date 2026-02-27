@@ -199,7 +199,10 @@ mod tests {
             .unwrap();
 
         let retrieved = db.get_embedding("sym1").unwrap();
-        assert!(retrieved.is_some(), "Should return Some for stored embedding");
+        assert!(
+            retrieved.is_some(),
+            "Should return Some for stored embedding"
+        );
 
         let retrieved = retrieved.unwrap();
         assert_eq!(retrieved.len(), 384, "Should return 384-dimensional vector");
@@ -226,6 +229,37 @@ mod tests {
     }
 
     #[test]
+    fn test_get_embedding_rejects_malformed_blob_length() {
+        let (db, _dir) = create_test_db();
+
+        // Recreate symbol_vectors as a plain table so we can simulate a corrupted blob.
+        db.conn.execute("DROP TABLE symbol_vectors", []).unwrap();
+        db.conn
+            .execute(
+                "CREATE TABLE symbol_vectors (
+                    symbol_id TEXT PRIMARY KEY,
+                    embedding BLOB NOT NULL
+                )",
+                [],
+            )
+            .unwrap();
+
+        // Insert malformed bytes (len=3, not divisible by 4).
+        db.conn
+            .execute(
+                "INSERT INTO symbol_vectors(symbol_id, embedding) VALUES (?, ?)",
+                rusqlite::params!["sym_bad", vec![0x01_u8, 0x02, 0x03]],
+            )
+            .unwrap();
+
+        let err = db.get_embedding("sym_bad").unwrap_err();
+        assert!(
+            err.to_string().contains("Malformed embedding blob length"),
+            "Expected malformed blob error, got: {err}"
+        );
+    }
+
+    #[test]
     fn test_migration_010_is_idempotent() {
         let (db, _dir) = create_test_db();
 
@@ -239,7 +273,10 @@ mod tests {
             )
             .unwrap();
 
-        assert!(table_exists, "symbol_vectors table should exist after migration");
+        assert!(
+            table_exists,
+            "symbol_vectors table should exist after migration"
+        );
 
         // Verify schema version was bumped
         let version = db.get_schema_version().unwrap();

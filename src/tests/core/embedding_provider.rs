@@ -4,15 +4,16 @@
 mod tests {
     use serial_test::serial;
 
-    use crate::embeddings::{EmbeddingProvider, OrtEmbeddingProvider};
+    use crate::embeddings::{
+        EmbeddingConfig, EmbeddingProvider, EmbeddingProviderFactory, OrtEmbeddingProvider,
+    };
 
     /// Helper: create an OrtEmbeddingProvider with a stable cache path.
     fn create_test_provider() -> OrtEmbeddingProvider {
-        let cache_dir = std::path::PathBuf::from(
-            std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()),
-        )
-        .join(".cache")
-        .join("fastembed");
+        let cache_dir =
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+                .join(".cache")
+                .join("fastembed");
 
         OrtEmbeddingProvider::try_new(Some(cache_dir))
             .expect("OrtEmbeddingProvider should initialize")
@@ -119,6 +120,40 @@ mod tests {
         assert!(
             sim_related > sim_unrelated,
             "Related texts should be more similar: related={sim_related:.4} vs unrelated={sim_unrelated:.4}"
+        );
+    }
+
+    #[test]
+    #[serial(fastembed)]
+    fn test_provider_factory_creates_ort_provider() {
+        let cache_dir =
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+                .join(".cache")
+                .join("fastembed");
+
+        let config = EmbeddingConfig {
+            provider: "ort".to_string(),
+            cache_dir: Some(cache_dir),
+        };
+
+        let provider = EmbeddingProviderFactory::create(&config).unwrap();
+        assert_eq!(provider.dimensions(), 384);
+    }
+
+    #[test]
+    fn test_provider_factory_rejects_unknown_provider() {
+        let config = EmbeddingConfig {
+            provider: "not-a-real-provider".to_string(),
+            cache_dir: None,
+        };
+
+        let err = match EmbeddingProviderFactory::create(&config) {
+            Ok(_) => panic!("Factory should reject unknown provider"),
+            Err(err) => err,
+        };
+        assert!(
+            err.to_string().contains("Unknown embedding provider"),
+            "Expected unknown provider error, got: {err}"
         );
     }
 }

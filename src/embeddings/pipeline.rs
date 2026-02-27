@@ -6,7 +6,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use tracing::{debug, info, warn};
 
 use crate::database::SymbolDatabase;
@@ -52,10 +52,7 @@ pub fn run_embedding_pipeline(
     };
 
     stats.symbols_scanned = symbols.len();
-    info!(
-        "Embedding pipeline: {} total symbols loaded",
-        symbols.len()
-    );
+    info!("Embedding pipeline: {} total symbols loaded", symbols.len());
 
     // Filter to embeddable kinds and format metadata
     let prepared = prepare_batch_for_embedding(&symbols);
@@ -153,6 +150,15 @@ pub fn embed_symbols_for_file(
         .embed_batch(&texts)
         .context("Failed to embed file symbols")?;
 
+    if vectors.len() != prepared.len() {
+        bail!(
+            "Embedding count mismatch for file {}: expected {}, got {}",
+            file_path,
+            prepared.len(),
+            vectors.len()
+        );
+    }
+
     // Pair and store
     let pairs: Vec<(String, Vec<f32>)> = prepared
         .iter()
@@ -166,4 +172,28 @@ pub fn embed_symbols_for_file(
     db_guard
         .store_embeddings(&pairs)
         .context("Failed to store file embeddings")
+}
+
+/// Re-embed all symbols for a file, replacing any stale vectors for that file.
+///
+/// Use this after incremental re-indexing on create/modify events where symbol IDs
+/// may have changed and old vectors must be removed first.
+pub fn reembed_symbols_for_file(
+    db: &Arc<Mutex<SymbolDatabase>>,
+    provider: &dyn EmbeddingProvider,
+    file_path: &str,
+) -> Result<usize> {
+    {
+        let mut db_guard = db
+            .lock()
+            .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
+        db_guard
+            .delete_embeddings_for_file(file_path)
+            .context("Failed to delete stale file embeddings before re-embed")?;
+        db_guard
+            .delete_orphan_embeddings()
+            .context("Failed to delete orphan embeddings before re-embed")?;
+    }
+
+    embed_symbols_for_file(db, provider, file_path)
 }

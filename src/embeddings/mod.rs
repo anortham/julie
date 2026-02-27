@@ -10,7 +10,9 @@
 //! - [`OrtEmbeddingProvider`] — production implementation using fastembed (ONNX Runtime)
 //! - Vector storage lives in `database::vectors` (sqlite-vec)
 
+pub mod factory;
 pub mod metadata;
+#[cfg(feature = "embeddings-ort")]
 pub mod ort_provider;
 pub mod pipeline;
 
@@ -45,4 +47,6 @@ pub trait EmbeddingProvider: Send + Sync {
 }
 
 // Re-exports
+pub use factory::{EmbeddingConfig, EmbeddingProviderFactory};
+#[cfg(feature = "embeddings-ort")]
 pub use ort_provider::OrtEmbeddingProvider;

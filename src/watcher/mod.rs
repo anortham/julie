@@ -236,8 +236,8 @@ impl IncrementalIndexer {
                             {
                                 error!("Failed to handle file change: {}", e);
                             } else if let (Some(provider), Some(rel)) = (&embedding_provider, &rel_path) {
-                                // Embed new/changed symbols (non-fatal)
-                                if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(&db, provider.as_ref(), rel) {
+                                // Re-embed symbols after change (non-fatal), replacing stale vectors.
+                                if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(&db, provider.as_ref(), rel) {
                                     warn!("Incremental embedding failed for {}: {}", rel, e);
                                 }
                             }

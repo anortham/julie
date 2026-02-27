@@ -9,6 +9,14 @@ mod tests {
     use serial_test::serial;
     use zerocopy::AsBytes;
 
+    #[test]
+    fn test_default_build_enables_ort_backend_feature() {
+        assert!(
+            cfg!(feature = "embeddings-ort"),
+            "Default build should enable embeddings-ort feature"
+        );
+    }
+
     /// Verify sqlite-vec loads and vec_version() returns a version string.
     #[test]
     fn test_sqlite_vec_registration_and_version() {
@@ -68,11 +76,10 @@ mod tests {
 
         // Use a stable absolute cache path — fastembed defaults to relative
         // `.fastembed_cache/` which breaks when cargo test changes CWD.
-        let cache_dir = std::path::PathBuf::from(
-            std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()),
-        )
-        .join(".cache")
-        .join("fastembed");
+        let cache_dir =
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+                .join(".cache")
+                .join("fastembed");
 
         let mut model = TextEmbedding::try_new(
             InitOptions::new(EmbeddingModel::BGESmallENV15)
@@ -126,9 +133,8 @@ mod tests {
         assert_eq!(bytes.len(), 12, "3 f32s should be 12 bytes");
 
         // Verify roundtrip: bytes back to f32s
-        let floats: &[f32] = unsafe {
-            std::slice::from_raw_parts(bytes.as_ptr() as *const f32, bytes.len() / 4)
-        };
+        let floats: &[f32] =
+            unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const f32, bytes.len() / 4) };
         assert_eq!(floats, &[1.0, 2.0, 3.0]);
     }
 }

@@ -1,7 +1,8 @@
-//! Embedding helpers for reference workspace indexing.
+//! Embedding helpers for workspace indexing.
 //!
-//! Spawns the embedding pipeline for reference workspaces using the primary
-//! workspace's embedding provider and a fresh database connection.
+//! Spawns the embedding pipeline for any registered workspace (primary or
+//! reference) using the active embedding provider and a fresh database
+//! connection.
 
 use std::sync::{Arc, Mutex};
 
@@ -11,11 +12,11 @@ use crate::database::SymbolDatabase;
 use crate::embeddings::pipeline::run_embedding_pipeline;
 use crate::handler::JulieServerHandler;
 
-/// Spawn the embedding pipeline for a reference workspace (fire-and-forget).
+/// Spawn the embedding pipeline for a workspace (fire-and-forget).
 ///
 /// Returns the symbol count so the caller can include it in response messages.
 /// Returns 0 if embedding is skipped (no provider, no workspace, etc.).
-pub(crate) async fn spawn_reference_embedding(
+pub(crate) async fn spawn_workspace_embedding(
     handler: &JulieServerHandler,
     workspace_id: String,
 ) -> usize {
@@ -27,7 +28,7 @@ pub(crate) async fn spawn_reference_embedding(
     let provider = match &workspace.embedding_provider {
         Some(p) => p.clone(),
         None => {
-            debug!("No embedding provider, skipping reference workspace embedding");
+            debug!("No embedding provider, skipping workspace embedding");
             return 0;
         }
     };
@@ -47,11 +48,11 @@ pub(crate) async fn spawn_reference_embedding(
     {
         Ok(Ok(db)) => db,
         Ok(Err(e)) => {
-            warn!("Failed to open reference workspace DB for embedding: {e}");
+            warn!("Failed to open workspace DB for embedding: {e}");
             return 0;
         }
         Err(e) => {
-            warn!("Reference workspace DB open task panicked: {e}");
+            warn!("Workspace DB open task panicked: {e}");
             return 0;
         }
     };
@@ -67,7 +68,7 @@ pub(crate) async fn spawn_reference_embedding(
     // Fire-and-forget: spawn the pipeline in the background
     tokio::spawn(async move {
         info!(
-            "Starting reference workspace embedding for {workspace_id} ({total_symbols} symbols)..."
+            "Starting workspace embedding for {workspace_id} ({total_symbols} symbols)..."
         );
         let db_clone = db_arc.clone();
         let result = tokio::task::spawn_blocking(move || {
@@ -78,18 +79,26 @@ pub(crate) async fn spawn_reference_embedding(
         match result {
             Ok(Ok(stats)) => {
                 info!(
-                    "Reference workspace {workspace_id} embedding complete: {}/{} symbols embedded",
+                    "Workspace {workspace_id} embedding complete: {}/{} symbols embedded",
                     stats.symbols_embedded, stats.symbols_scanned
                 );
             }
             Ok(Err(e)) => {
-                warn!("Reference workspace {workspace_id} embedding failed: {e}");
+                warn!("Workspace {workspace_id} embedding failed: {e}");
             }
             Err(e) => {
-                warn!("Reference workspace {workspace_id} embedding task panicked: {e}");
+                warn!("Workspace {workspace_id} embedding task panicked: {e}");
             }
         }
     });
 
     total_symbols
+}
+
+/// Backward-compatible wrapper kept for call sites that are reference-specific.
+pub(crate) async fn spawn_reference_embedding(
+    handler: &JulieServerHandler,
+    workspace_id: String,
+) -> usize {
+    spawn_workspace_embedding(handler, workspace_id).await
 }
