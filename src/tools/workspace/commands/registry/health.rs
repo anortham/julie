@@ -111,11 +111,9 @@ impl ManageWorkspaceTool {
                         ));
 
                         if stats.embedding_count > 0 {
-                            let embed_pct =
-                                (stats.embedding_count * 100) / stats.total_symbols.max(1);
                             status.push_str(&format!(
-                                "Embeddings: {}/{} ({}%)\n",
-                                stats.embedding_count, stats.total_symbols, embed_pct
+                                "Embeddings: {} vectors\n",
+                                stats.embedding_count
                             ));
                         } else {
                             status.push_str("Embeddings: None\n");

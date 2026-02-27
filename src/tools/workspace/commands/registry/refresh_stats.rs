@@ -214,7 +214,7 @@ impl ManageWorkspaceTool {
                             Path: {}\n\
                             Type: {:?}\n\
                             Files: {} | Symbols: {}\n\
-                            Embeddings: {}/{}\n\
+                            Embeddings: {}\n\
                             Index Size: {:.2} MB\n\
                             Created: {} (unix)\n\
                             Last Accessed: {} (unix)\n\
@@ -226,8 +226,7 @@ impl ManageWorkspaceTool {
                             workspace.workspace_type,
                             workspace.file_count,
                             workspace.symbol_count,
-                            embed_count,
-                            workspace.symbol_count,
+                            if embed_count > 0 { format!("{embed_count} vectors") } else { "None".to_string() },
                             workspace.index_size_bytes as f64 / (1024.0 * 1024.0),
                             workspace.created_at,
                             workspace.last_accessed,
