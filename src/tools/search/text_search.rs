@@ -243,103 +243,106 @@ pub async fn text_search_impl(
 
         // Route based on search_target
         if search_target_clone == "definitions" {
-            debug!("🔍 Searching symbols with Tantivy");
+            // Check if this is an NL query and we have embeddings available
+            let use_hybrid = crate::search::scoring::is_nl_like_query(&query_clone)
+                && embedding_provider.is_some();
 
-            // Over-fetch so exact-name definitions aren't lost to higher-scoring references
-            let tantivy_limit = if filter.file_pattern.is_some() {
-                limit_usize.saturating_mul(50).max(500).min(5000)
-            } else {
-                limit_usize.saturating_mul(5).max(50)
-            };
-            let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
-            let relaxed = search.relaxed;
+            if use_hybrid {
+                debug!("🔍 NL query detected, using hybrid search (keyword + semantic)");
 
-            // Apply file_pattern filter BEFORE symbol conversion + enrichment
-            let mut filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
-                search.results
+                let db_guard = db_clone.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?;
+                let db_lock = match db_guard.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during hybrid search, recovering");
+                        poisoned.into_inner()
+                    }
+                };
+
+                let hybrid_results = crate::search::hybrid::hybrid_search(
+                    &query_clone,
+                    &filter,
+                    limit_usize,
+                    &index,
+                    &db_lock,
+                    embedding_provider.as_deref(),
+                )?;
+                let relaxed = hybrid_results.relaxed;
+
+                let mut symbols: Vec<Symbol> = hybrid_results.results
                     .into_iter()
-                    .filter(|r| matches_glob_pattern(&r.file_path, pattern))
-                    .take(limit_usize)
-                    .collect()
-            } else {
-                search.results
-            };
+                    .map(|result| tantivy_symbol_to_symbol(result))
+                    .collect();
 
-            // Apply centrality boost from graph reference scores
-            if let Some(db_arc) = &db_clone {
-                let db_lock = match db_arc.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!("Database mutex poisoned during centrality boost, recovering");
-                        poisoned.into_inner()
-                    }
-                };
-                let symbol_ids: Vec<&str> = filtered_results.iter().map(|r| r.id.as_str()).collect();
-                if let Ok(ref_scores) = db_lock.get_reference_scores(&symbol_ids) {
-                    apply_centrality_boost(&mut filtered_results, &ref_scores);
-                }
-                drop(db_lock);
-            }
-
-            // Promote exact name matches to the top (stable partition)
-            promote_exact_name_matches(&mut filtered_results, &query_clone);
-
-            // Trim back to the user's requested limit after over-fetch + promotion
-            filtered_results.truncate(limit_usize);
-
-            let mut symbols: Vec<Symbol> = filtered_results
-                .into_iter()
-                .map(|result| tantivy_symbol_to_symbol(result))
-                .collect();
-
-            // Enrich with code_context from SQLite (Tantivy doesn't store code_body)
-            if let Some(db_arc) = &db_clone {
-                let db_lock = match db_arc.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!("Database mutex poisoned during code_context enrichment, recovering");
-                        poisoned.into_inner()
-                    }
-                };
+                // Enrich with code_context from SQLite
                 enrich_symbols_from_db(&mut symbols, &db_lock);
-            }
 
-            // Semantic fallback: when query is NL-like and keyword results are sparse,
-            // augment with KNN embedding search results.
-            if crate::search::hybrid::should_use_semantic_fallback(&query_clone, symbols.len()) {
-                if let Some(ref provider) = embedding_provider {
-                    if let Ok(query_vector) = provider.embed_query(&query_clone) {
-                        if let Some(db_arc) = &db_clone {
-                            let db_lock = match db_arc.lock() {
-                                Ok(guard) => guard,
-                                Err(poisoned) => {
-                                    warn!("Database mutex poisoned during semantic fallback, recovering");
-                                    poisoned.into_inner()
-                                }
-                            };
-                            if let Ok(knn_hits) = db_lock.knn_search(&query_vector, limit_usize) {
-                                let knn_ids: Vec<String> = knn_hits.iter().map(|(id, _)| id.clone()).collect();
-                                if let Ok(semantic_symbols) = db_lock.get_symbols_by_ids(&knn_ids) {
-                                    let existing_ids: std::collections::HashSet<String> =
-                                        symbols.iter().map(|s| s.id.clone()).collect();
-                                    for sym in semantic_symbols {
-                                        if !existing_ids.contains(&sym.id) {
-                                            symbols.push(sym);
-                                        }
-                                    }
-                                    symbols.truncate(limit_usize);
-                                    debug!(
-                                        "Semantic fallback added symbols (total: {})",
-                                        symbols.len()
-                                    );
-                                }
-                            }
+                Ok((symbols, relaxed))
+            } else {
+                debug!("🔍 Searching symbols with Tantivy");
+
+                // Over-fetch so exact-name definitions aren't lost to higher-scoring references
+                let tantivy_limit = if filter.file_pattern.is_some() {
+                    limit_usize.saturating_mul(50).max(500).min(5000)
+                } else {
+                    limit_usize.saturating_mul(5).max(50)
+                };
+                let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
+                let relaxed = search.relaxed;
+
+                // Apply file_pattern filter BEFORE symbol conversion + enrichment
+                let mut filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
+                    search.results
+                        .into_iter()
+                        .filter(|r| matches_glob_pattern(&r.file_path, pattern))
+                        .take(limit_usize)
+                        .collect()
+                } else {
+                    search.results
+                };
+
+                // Apply centrality boost from graph reference scores
+                if let Some(db_arc) = &db_clone {
+                    let db_lock = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            warn!("Database mutex poisoned during centrality boost, recovering");
+                            poisoned.into_inner()
                         }
+                    };
+                    let symbol_ids: Vec<&str> = filtered_results.iter().map(|r| r.id.as_str()).collect();
+                    if let Ok(ref_scores) = db_lock.get_reference_scores(&symbol_ids) {
+                        apply_centrality_boost(&mut filtered_results, &ref_scores);
                     }
+                    drop(db_lock);
                 }
-            }
 
-            Ok((symbols, relaxed))
+                // Promote exact name matches to the top (stable partition)
+                promote_exact_name_matches(&mut filtered_results, &query_clone);
+
+                // Trim back to the user's requested limit after over-fetch + promotion
+                filtered_results.truncate(limit_usize);
+
+                let mut symbols: Vec<Symbol> = filtered_results
+                    .into_iter()
+                    .map(|result| tantivy_symbol_to_symbol(result))
+                    .collect();
+
+                // Enrich with code_context from SQLite (Tantivy doesn't store code_body)
+                if let Some(db_arc) = &db_clone {
+                    let db_lock = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            warn!("Database mutex poisoned during code_context enrichment, recovering");
+                            poisoned.into_inner()
+                        }
+                    };
+                    enrich_symbols_from_db(&mut symbols, &db_lock);
+                }
+
+                Ok((symbols, relaxed))
+            }
         } else {
             // "content" or any other value: search file content
             debug!("🔍 Searching content with Tantivy");

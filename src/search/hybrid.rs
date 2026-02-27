@@ -18,16 +18,6 @@ use super::index::{SearchFilter, SearchIndex, SymbolSearchResults};
 use super::SymbolSearchResult;
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingProvider;
-use crate::search::scoring::is_nl_like_query;
-
-/// Determine whether to invoke semantic fallback for fast_search.
-///
-/// Returns true when the query looks like natural language AND keyword
-/// results are sparse (< 3). This avoids embedding overhead for identifier
-/// queries that keyword search handles well.
-pub fn should_use_semantic_fallback(query: &str, keyword_result_count: usize) -> bool {
-    is_nl_like_query(query) && keyword_result_count < 3
-}
 
 /// Merge two ranked lists of search results using Reciprocal Rank Fusion.
 ///
