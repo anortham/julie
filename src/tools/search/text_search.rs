@@ -74,6 +74,7 @@ pub async fn text_search_impl(
     if let Some(ref_id) = ref_workspace_id {
         let tantivy_path = workspace.workspace_tantivy_path(&ref_id);
         let ref_db_path = workspace.workspace_db_path(&ref_id);
+        let ref_embedding_provider = workspace.embedding_provider.clone();
 
         let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool)> {
             if !tantivy_path.join("meta.json").exists() {
@@ -85,58 +86,94 @@ pub async fn text_search_impl(
             let index = SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
 
             if search_target_clone == "definitions" {
-                // Over-fetch so exact-name definitions aren't lost to higher-scoring references
-                let tantivy_limit = if filter.file_pattern.is_some() {
-                    limit_usize.saturating_mul(50).max(500).min(5000)
-                } else {
-                    limit_usize.saturating_mul(5).max(50)
-                };
-                let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
-                let relaxed = search.relaxed;
+                // Check if this is an NL query and we have embeddings available
+                let use_hybrid = crate::search::scoring::is_nl_like_query(&query_clone)
+                    && ref_embedding_provider.is_some();
 
-                // Apply file_pattern filter BEFORE symbol conversion + enrichment
-                let mut filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
-                    search.results
-                        .into_iter()
-                        .filter(|r| matches_glob_pattern(&r.file_path, pattern))
-                        .take(limit_usize)
-                        .collect()
-                } else {
-                    search.results
-                };
+                if use_hybrid {
+                    debug!("🔍 NL query on reference workspace, using hybrid search");
 
-                // Open reference workspace DB once for both centrality boost and enrichment
-                let ref_db_opt = if ref_db_path.exists() {
-                    crate::database::SymbolDatabase::new(&ref_db_path).ok()
-                } else {
-                    None
-                };
+                    let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
+                    let mut hybrid_results = crate::search::hybrid::hybrid_search(
+                        &query_clone,
+                        &filter,
+                        limit_usize,
+                        &index,
+                        &ref_db,
+                        ref_embedding_provider.as_deref(),
+                    )?;
+                    let relaxed = hybrid_results.relaxed;
 
-                // Apply centrality boost for reference workspace
-                if let Some(ref ref_db) = ref_db_opt {
-                    let symbol_ids: Vec<&str> = filtered_results.iter().map(|r| r.id.as_str()).collect();
+                    // Apply centrality boost + exact-name promotion + truncate
+                    let symbol_ids: Vec<&str> = hybrid_results.results.iter().map(|r| r.id.as_str()).collect();
                     if let Ok(ref_scores) = ref_db.get_reference_scores(&symbol_ids) {
-                        apply_centrality_boost(&mut filtered_results, &ref_scores);
+                        apply_centrality_boost(&mut hybrid_results.results, &ref_scores);
                     }
-                }
+                    promote_exact_name_matches(&mut hybrid_results.results, &query_clone);
+                    hybrid_results.results.truncate(limit_usize);
 
-                // Promote exact name matches to the top (stable partition)
-                promote_exact_name_matches(&mut filtered_results, &query_clone);
+                    let mut symbols: Vec<Symbol> = hybrid_results.results
+                        .into_iter()
+                        .map(|result| tantivy_symbol_to_symbol(result))
+                        .collect();
 
-                // Trim back to the user's requested limit after over-fetch + promotion
-                filtered_results.truncate(limit_usize);
-
-                let mut symbols: Vec<Symbol> = filtered_results
-                    .into_iter()
-                    .map(|result| tantivy_symbol_to_symbol(result))
-                    .collect();
-
-                // Enrich with code_context from reference workspace's SQLite
-                if let Some(ref ref_db) = ref_db_opt {
                     enrich_symbols_from_db(&mut symbols, &ref_db);
-                }
 
-                Ok((symbols, relaxed))
+                    Ok((symbols, relaxed))
+                } else {
+                    // Keyword search: over-fetch so exact-name definitions aren't lost
+                    let tantivy_limit = if filter.file_pattern.is_some() {
+                        limit_usize.saturating_mul(50).max(500).min(5000)
+                    } else {
+                        limit_usize.saturating_mul(5).max(50)
+                    };
+                    let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
+                    let relaxed = search.relaxed;
+
+                    // Apply file_pattern filter BEFORE symbol conversion + enrichment
+                    let mut filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
+                        search.results
+                            .into_iter()
+                            .filter(|r| matches_glob_pattern(&r.file_path, pattern))
+                            .take(limit_usize)
+                            .collect()
+                    } else {
+                        search.results
+                    };
+
+                    // Open reference workspace DB once for both centrality boost and enrichment
+                    let ref_db_opt = if ref_db_path.exists() {
+                        crate::database::SymbolDatabase::new(&ref_db_path).ok()
+                    } else {
+                        None
+                    };
+
+                    // Apply centrality boost for reference workspace
+                    if let Some(ref ref_db) = ref_db_opt {
+                        let symbol_ids: Vec<&str> = filtered_results.iter().map(|r| r.id.as_str()).collect();
+                        if let Ok(ref_scores) = ref_db.get_reference_scores(&symbol_ids) {
+                            apply_centrality_boost(&mut filtered_results, &ref_scores);
+                        }
+                    }
+
+                    // Promote exact name matches to the top (stable partition)
+                    promote_exact_name_matches(&mut filtered_results, &query_clone);
+
+                    // Trim back to the user's requested limit after over-fetch + promotion
+                    filtered_results.truncate(limit_usize);
+
+                    let mut symbols: Vec<Symbol> = filtered_results
+                        .into_iter()
+                        .map(|result| tantivy_symbol_to_symbol(result))
+                        .collect();
+
+                    // Enrich with code_context from reference workspace's SQLite
+                    if let Some(ref ref_db) = ref_db_opt {
+                        enrich_symbols_from_db(&mut symbols, &ref_db);
+                    }
+
+                    Ok((symbols, relaxed))
+                }
             } else {
                 // Content search on reference workspace
                 let fetch_limit = if filter.file_pattern.is_some() {
@@ -260,7 +297,7 @@ pub async fn text_search_impl(
                     }
                 };
 
-                let hybrid_results = crate::search::hybrid::hybrid_search(
+                let mut hybrid_results = crate::search::hybrid::hybrid_search(
                     &query_clone,
                     &filter,
                     limit_usize,
@@ -269,6 +306,15 @@ pub async fn text_search_impl(
                     embedding_provider.as_deref(),
                 )?;
                 let relaxed = hybrid_results.relaxed;
+
+                // Apply same post-processing as keyword path:
+                // centrality boost → exact-name promotion → truncate
+                let symbol_ids: Vec<&str> = hybrid_results.results.iter().map(|r| r.id.as_str()).collect();
+                if let Ok(ref_scores) = db_lock.get_reference_scores(&symbol_ids) {
+                    apply_centrality_boost(&mut hybrid_results.results, &ref_scores);
+                }
+                promote_exact_name_matches(&mut hybrid_results.results, &query_clone);
+                hybrid_results.results.truncate(limit_usize);
 
                 let mut symbols: Vec<Symbol> = hybrid_results.results
                     .into_iter()

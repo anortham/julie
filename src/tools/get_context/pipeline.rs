@@ -454,6 +454,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
 
         let ref_db_path = workspace.workspace_db_path(&ref_workspace_id);
         let tantivy_path = workspace.workspace_tantivy_path(&ref_workspace_id);
+        let embedding_provider = workspace.embedding_provider.clone();
 
         let result = tokio::task::spawn_blocking(move || -> Result<String> {
             if !tantivy_path.join("meta.json").exists() {
@@ -462,7 +463,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             let db = SymbolDatabase::new(ref_db_path)?;
             let configs = crate::search::LanguageConfigs::load_embedded();
             let index = crate::search::SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
-            run_pipeline(&query, max_tokens, language, file_pattern, format, &db, &index, None)
+            run_pipeline(&query, max_tokens, language, file_pattern, format, &db, &index, embedding_provider.as_deref())
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
