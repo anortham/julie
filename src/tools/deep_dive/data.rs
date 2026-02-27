@@ -29,6 +29,16 @@ pub struct SymbolContext {
     pub implementations: Vec<Symbol>,
     /// Test file references (populated at full depth only)
     pub test_refs: Vec<RefEntry>,
+    /// Semantically similar symbols (populated at "full" depth only)
+    pub similar: Vec<SimilarEntry>,
+}
+
+/// Entry for a semantically similar symbol
+#[derive(Debug)]
+pub struct SimilarEntry {
+    pub symbol: Symbol,
+    /// Similarity score: 0.0..1.0, higher = more similar (1.0 - cosine_distance)
+    pub score: f32,
 }
 
 /// A reference entry with optional enriched symbol data
@@ -170,6 +180,13 @@ pub fn build_symbol_context(
         vec![]
     };
 
+    // === Semantically similar symbols (full depth only) ===
+    let similar = if depth == "full" {
+        build_similar(db, &symbol)?
+    } else {
+        vec![]
+    };
+
     Ok(SymbolContext {
         symbol,
         incoming,
@@ -179,6 +196,7 @@ pub fn build_symbol_context(
         children,
         implementations,
         test_refs,
+        similar,
     })
 }
 
@@ -355,4 +373,52 @@ fn enrich_refs(
     }
 
     Ok(())
+}
+
+/// Find semantically similar symbols via KNN on stored embeddings.
+/// Returns empty Vec if the symbol has no embedding (graceful degradation).
+fn build_similar(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<SimilarEntry>> {
+    const SIMILAR_LIMIT: usize = 5;
+
+    // Step 1: Get the symbol's own embedding
+    let embedding = match db.get_embedding(&symbol.id)? {
+        Some(vec) => vec,
+        None => return Ok(vec![]),
+    };
+
+    // Step 2: KNN search (fetch limit+1 to account for self)
+    let knn_results = db.knn_search(&embedding, SIMILAR_LIMIT + 1)?;
+
+    // Step 3: Filter out self and convert
+    let symbol_ids: Vec<String> = knn_results
+        .iter()
+        .filter(|(id, _)| id != &symbol.id)
+        .take(SIMILAR_LIMIT)
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    let distances: HashMap<String, f64> = knn_results
+        .into_iter()
+        .collect();
+
+    if symbol_ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Step 4: Fetch full symbols
+    let symbols = db.get_symbols_by_ids(&symbol_ids)?;
+
+    // Step 5: Build entries in KNN order
+    let mut entries: Vec<SimilarEntry> = Vec::new();
+    for id in &symbol_ids {
+        if let Some(sym) = symbols.iter().find(|s| &s.id == id) {
+            let distance = distances.get(id).copied().unwrap_or(1.0);
+            entries.push(SimilarEntry {
+                symbol: sym.clone(),
+                score: (1.0 - distance) as f32,
+            });
+        }
+    }
+
+    Ok(entries)
 }

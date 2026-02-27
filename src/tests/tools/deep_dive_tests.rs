@@ -62,6 +62,7 @@ mod formatting_tests {
             children: vec![],
             implementations: vec![],
             test_refs: vec![],
+            similar: vec![],
         }
     }
 
@@ -848,7 +849,7 @@ mod data_tests {
     use crate::extractors::base::{
         Relationship, RelationshipKind, Symbol, SymbolKind, Visibility,
     };
-    use crate::tools::deep_dive::data::{build_symbol_context, find_symbol};
+    use crate::tools::deep_dive::data::{build_symbol_context, find_symbol, SimilarEntry};
     use crate::tools::deep_dive::deep_dive_query;
     use tempfile::TempDir;
 
@@ -1586,5 +1587,107 @@ mod data_tests {
             result.contains("pub fn process()"),
             "Should include full context with signature at threshold of 5"
         );
+    }
+
+    // === Semantic similarity tests ===
+
+    #[test]
+    fn test_similar_symbols_at_full_depth() {
+        let (_tmp, mut db) = setup_db();
+
+        // Create two symbols with close embeddings
+        let sym_a = make_symbol(
+            "sym-a", "process_data", SymbolKind::Function, "src/engine.rs", 10,
+            None, Some("fn process_data()"), Some(Visibility::Public), None,
+        );
+        let sym_b = make_symbol(
+            "sym-b", "handle_data", SymbolKind::Function, "src/handler.rs", 20,
+            None, Some("fn handle_data()"), Some(Visibility::Public), None,
+        );
+        db.store_symbols(&[sym_a.clone(), sym_b.clone()]).unwrap();
+
+        // Store close embeddings (small distance = high similarity)
+        let emb_a: Vec<f32> = (0..384).map(|i| (i as f32) * 0.01).collect();
+        let mut emb_b = emb_a.clone();
+        // Nudge slightly so they're close but not identical
+        emb_b[0] += 0.001;
+        emb_b[1] += 0.001;
+        db.store_embeddings(&[
+            ("sym-a".to_string(), emb_a),
+            ("sym-b".to_string(), emb_b),
+        ]).unwrap();
+
+        let ctx = build_symbol_context(&db, &sym_a, "full", 10, 10).unwrap();
+        assert_eq!(ctx.similar.len(), 1, "Should find 1 similar symbol");
+        assert_eq!(ctx.similar[0].symbol.name, "handle_data");
+        assert!(ctx.similar[0].score > 0.0, "Score should be positive");
+        assert!(ctx.similar[0].score <= 1.0, "Score should be <= 1.0");
+    }
+
+    #[test]
+    fn test_similar_symbols_skipped_when_no_embeddings() {
+        let (_tmp, mut db) = setup_db();
+
+        let sym = make_symbol(
+            "sym-no-emb", "lonely_func", SymbolKind::Function, "src/engine.rs", 10,
+            None, Some("fn lonely_func()"), Some(Visibility::Public), None,
+        );
+        db.store_symbols(&[sym.clone()]).unwrap();
+        // No embeddings stored at all
+
+        let ctx = build_symbol_context(&db, &sym, "full", 10, 10).unwrap();
+        assert!(ctx.similar.is_empty(), "Should be empty when no embeddings exist");
+    }
+
+    #[test]
+    fn test_similar_symbols_excludes_self() {
+        let (_tmp, mut db) = setup_db();
+
+        let sym = make_symbol(
+            "sym-self", "self_func", SymbolKind::Function, "src/engine.rs", 10,
+            None, Some("fn self_func()"), Some(Visibility::Public), None,
+        );
+        db.store_symbols(&[sym.clone()]).unwrap();
+
+        // Store embedding for this symbol only
+        let emb: Vec<f32> = (0..384).map(|i| (i as f32) * 0.01).collect();
+        db.store_embeddings(&[("sym-self".to_string(), emb)]).unwrap();
+
+        let ctx = build_symbol_context(&db, &sym, "full", 10, 10).unwrap();
+        // The symbol should NOT appear in its own similar results
+        assert!(
+            ctx.similar.is_empty(),
+            "Should not include self in similar results"
+        );
+    }
+
+    #[test]
+    fn test_similar_symbols_not_at_context_depth() {
+        let (_tmp, mut db) = setup_db();
+
+        let sym_a = make_symbol(
+            "sym-c", "func_alpha", SymbolKind::Function, "src/engine.rs", 10,
+            None, Some("fn func_alpha()"), Some(Visibility::Public), None,
+        );
+        let sym_b = make_symbol(
+            "sym-d", "func_beta", SymbolKind::Function, "src/handler.rs", 20,
+            None, Some("fn func_beta()"), Some(Visibility::Public), None,
+        );
+        db.store_symbols(&[sym_a.clone(), sym_b.clone()]).unwrap();
+
+        let emb_a: Vec<f32> = (0..384).map(|i| (i as f32) * 0.01).collect();
+        let emb_b = emb_a.clone();
+        db.store_embeddings(&[
+            ("sym-c".to_string(), emb_a),
+            ("sym-d".to_string(), emb_b),
+        ]).unwrap();
+
+        // At "context" depth, similar should NOT be populated
+        let ctx_context = build_symbol_context(&db, &sym_a, "context", 10, 10).unwrap();
+        assert!(ctx_context.similar.is_empty(), "similar should be empty at context depth");
+
+        // At "overview" depth, similar should NOT be populated
+        let ctx_overview = build_symbol_context(&db, &sym_a, "overview", 10, 10).unwrap();
+        assert!(ctx_overview.similar.is_empty(), "similar should be empty at overview depth");
     }
 }
