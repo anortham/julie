@@ -307,6 +307,26 @@ mod fast_search_fallback_tests {
     }
 }
 
+/// Characterization tests for `is_nl_like_query` — verifies the NL detection
+/// heuristic that gates hybrid search activation in `fast_search`.
+#[cfg(test)]
+mod nl_query_detection_tests {
+    use crate::search::scoring::is_nl_like_query;
+
+    #[test]
+    fn test_is_nl_like_query_examples() {
+        // NL queries that SHOULD trigger hybrid search
+        assert!(is_nl_like_query("how does the server start up"));
+        assert!(is_nl_like_query("find symbols similar to each other"));
+        assert!(is_nl_like_query("what happens when a file is modified"));
+
+        // Code queries that should NOT trigger hybrid search
+        assert!(!is_nl_like_query("UserService"));
+        assert!(!is_nl_like_query("extract_identifiers"));
+        assert!(!is_nl_like_query("rrf_merge"));
+    }
+}
+
 /// KNN-to-SymbolSearchResult conversion tests.
 ///
 /// Verifies that `knn_to_search_results` correctly converts (symbol_id, distance)
