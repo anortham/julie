@@ -57,7 +57,6 @@ pub(crate) async fn spawn_reference_embedding(
     };
 
     // Get symbol count before wrapping in Arc<Mutex> and spawning
-    let symbol_count = db.embedding_count().unwrap_or(0) as usize;
     let total_symbols = db
         .get_stats()
         .map(|s| s.total_symbols as usize)
