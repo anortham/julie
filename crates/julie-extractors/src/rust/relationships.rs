@@ -212,6 +212,21 @@ fn extract_call_relationships(
                 relationships,
             );
         }
+        // Handle qualified/scoped calls: crate::module::function()
+        else if func_node.kind() == "scoped_identifier" {
+            let function_name = if let Some(name_node) = func_node.child_by_field_name("name") {
+                extractor.get_base_mut().get_node_text(&name_node)
+            } else {
+                extractor.get_base_mut().get_node_text(&func_node)
+            };
+            handle_call_target(
+                extractor,
+                node,
+                &function_name,
+                symbol_map,
+                relationships,
+            );
+        }
     }
 }
 
