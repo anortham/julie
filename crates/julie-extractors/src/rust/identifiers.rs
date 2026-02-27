@@ -66,8 +66,15 @@ fn extract_identifier_from_node(
                         } else {
                             base.get_node_text(&func_node)
                         }
+                    } else if func_node.kind() == "scoped_identifier" {
+                        // Qualified call: crate::module::function() → extract "function"
+                        if let Some(name_node) = func_node.child_by_field_name("name") {
+                            base.get_node_text(&name_node)
+                        } else {
+                            base.get_node_text(&func_node)
+                        }
                     } else {
-                        // Regular function call
+                        // Regular function call (bare identifier)
                         base.get_node_text(&func_node)
                     }
                 };
@@ -75,6 +82,12 @@ fn extract_identifier_from_node(
                 let identifier_node = if func_node.kind() == "field_expression" {
                     if let Some(field_node) = func_node.child_by_field_name("field") {
                         field_node
+                    } else {
+                        func_node
+                    }
+                } else if func_node.kind() == "scoped_identifier" {
+                    if let Some(name_node) = func_node.child_by_field_name("name") {
+                        name_node
                     } else {
                         func_node
                     }
