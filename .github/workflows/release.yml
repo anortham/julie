@@ -24,11 +24,6 @@ jobs:
             target: x86_64-pc-windows-msvc
             binary_name: julie-server.exe
 
-          # macOS Intel
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            binary_name: julie-server
-
           # macOS Apple Silicon
           - os: macos-latest
             target: aarch64-apple-darwin
@@ -121,7 +116,6 @@ jobs:
 
           ### Platform Support
           - **Windows** (x86_64)
-          - **macOS Intel** (x86_64)
           - **macOS Apple Silicon** (aarch64)
           - **Linux** (x86_64)
 
@@ -172,7 +166,6 @@ jobs:
           echo ""
           echo "Platforms built:"
           echo "  - Windows (x86_64-pc-windows-msvc)"
-          echo "  - macOS Intel (x86_64-apple-darwin)"
           echo "  - macOS Apple Silicon (aarch64-apple-darwin)"
           echo "  - Linux (x86_64-unknown-linux-gnu)"
           echo ""
