@@ -273,6 +273,34 @@ ls -lh .julie/logs/
 7. **Single Binary**: Deploy anywhere, no runtime required
 8. **Instant Search**: Tantivy index available immediately after indexing
 9. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
+10. **Language-Agnostic Everything**: See below — this is critical
+
+### 🔴 CRITICAL: Language-Agnostic Design (Non-Negotiable)
+
+**Julie supports 31 languages and indexes ANY codebase.** All scoring, ranking, filtering, path analysis, and heuristics MUST work across all project layouts — not just Rust or Julie's own directory structure.
+
+**The rule is simple: if you're writing code that checks a file path, symbol kind, project structure, or naming convention, it MUST work for ALL of these:**
+
+| Layout | Source Code | Tests | Docs |
+|--------|-------------|-------|------|
+| Rust | `src/` | `src/tests/`, `tests/` | `docs/` |
+| C# / .NET | `MyProject/` | `MyProject.Tests/` | `docs/` |
+| Python | `mypackage/` | `tests/`, `test_*.py` | `docs/` |
+| Java/Kotlin | `src/main/java/` | `src/test/java/` | `docs/` |
+| Go | `pkg/`, `internal/`, `cmd/` | `*_test.go` | `docs/` |
+| JavaScript/TS | `src/`, `lib/` | `__tests__/`, `*.test.ts`, `*.spec.ts` | `docs/` |
+| Ruby | `lib/` | `test/`, `spec/` | `docs/` |
+| Swift | `Sources/` | `Tests/` | `docs/` |
+
+**Common violations to watch for:**
+- ❌ `path.starts_with("src/tests/")` — only matches Rust layout
+- ❌ `path.starts_with("src/")` — doesn't match Python, C#, Java, Go, etc.
+- ❌ Checking for `mod.rs` or `Cargo.toml` to detect project root
+- ✅ Use generic heuristics: path contains `test`, `tests`, `.Tests`, `_test`, `spec`, `__tests__`
+- ✅ Use generic heuristics: path contains `docs/`, `doc/`, `documentation/`
+- ✅ Use file metadata (symbol kind, centrality score) over path assumptions
+
+**Before writing ANY path-based heuristic, ask: "Does this work for a C# project? A Python monorepo? A Java Gradle project?"** If the answer is no, make it generic.
 
 For detailed architecture info, see: **docs/SEARCH_FLOW.md** and **docs/ARCHITECTURE.md**
 
@@ -344,8 +372,8 @@ fast_search(
 
 ---
 
-**Last Updated:** 2026-02-25
-**Status:** Production Ready (v3.3.0)
+**Last Updated:** 2026-02-27
+**Status:** Production Ready (v3.4.0)
 
 ---
 
