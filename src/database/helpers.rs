@@ -78,6 +78,7 @@ impl SymbolDatabase {
             total_files,
             languages,
             db_size_mb,
+            embedding_count: self.embedding_count().unwrap_or(0),
         })
     }
 

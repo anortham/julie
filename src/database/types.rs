@@ -24,6 +24,7 @@ pub struct DatabaseStats {
     pub total_files: i64,
     pub languages: Vec<String>,
     pub db_size_mb: f64,
+    pub embedding_count: i64,
 }
 
 /// Statistics returned after workspace cleanup

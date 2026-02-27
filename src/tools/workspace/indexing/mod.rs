@@ -10,6 +10,7 @@
 //! - **extractor**: Symbol extraction from ASTs - all 26 language extractors
 //! - **incremental**: Incremental updates - detects changed files and orphan cleanup
 
+pub(crate) mod embeddings;
 pub(crate) mod extractor;
 pub(crate) mod incremental;
 pub(crate) mod index;
