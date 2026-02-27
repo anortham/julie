@@ -184,6 +184,48 @@ mod tests {
     }
 
     #[test]
+    fn test_get_embedding_returns_stored_vector() {
+        let (mut db, _dir) = create_test_db();
+        insert_test_symbol(&mut db, "sym1", "process_data", "src/lib.rs");
+
+        let embedding = vec![0.1_f32, 0.2, 0.3, 0.4, 0.5];
+        // Pad to 384 dimensions (sqlite-vec schema requirement)
+        let mut full_embedding = vec![0.0_f32; 384];
+        for (i, &v) in embedding.iter().enumerate() {
+            full_embedding[i] = v;
+        }
+
+        db.store_embeddings(&[("sym1".to_string(), full_embedding.clone())])
+            .unwrap();
+
+        let retrieved = db.get_embedding("sym1").unwrap();
+        assert!(retrieved.is_some(), "Should return Some for stored embedding");
+
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.len(), 384, "Should return 384-dimensional vector");
+
+        // Verify first 5 values match what we stored
+        for i in 0..5 {
+            assert!(
+                (retrieved[i] - full_embedding[i]).abs() < 1e-6,
+                "Element {i} mismatch: got {}, expected {}",
+                retrieved[i],
+                full_embedding[i]
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_embedding_returns_none_for_missing() {
+        let (db, _dir) = create_test_db();
+        let retrieved = db.get_embedding("nonexistent_symbol").unwrap();
+        assert!(
+            retrieved.is_none(),
+            "Should return None for non-existent symbol"
+        );
+    }
+
+    #[test]
     fn test_migration_010_is_idempotent() {
         let (db, _dir) = create_test_db();
 

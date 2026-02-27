@@ -98,6 +98,36 @@ impl SymbolDatabase {
         Ok(results)
     }
 
+    /// Retrieve the stored embedding for a single symbol.
+    ///
+    /// Returns `Ok(None)` if the symbol has no embedding stored.
+    /// The raw bytes from sqlite-vec are deserialized back to `Vec<f32>` using
+    /// `f32::from_le_bytes` on 4-byte chunks.
+    pub fn get_embedding(&self, symbol_id: &str) -> Result<Option<Vec<f32>>> {
+        use rusqlite::OptionalExtension;
+
+        let blob: Option<Vec<u8>> = self
+            .conn
+            .query_row(
+                "SELECT embedding FROM symbol_vectors WHERE symbol_id = ?",
+                [symbol_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .context("Failed to query embedding for symbol")?;
+
+        match blob {
+            None => Ok(None),
+            Some(bytes) => {
+                let floats: Vec<f32> = bytes
+                    .chunks_exact(4)
+                    .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+                    .collect();
+                Ok(Some(floats))
+            }
+        }
+    }
+
     /// Count the total number of stored embeddings.
     pub fn embedding_count(&self) -> Result<i64> {
         let count: i64 = self
