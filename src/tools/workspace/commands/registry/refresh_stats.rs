@@ -1,4 +1,5 @@
 use super::ManageWorkspaceTool;
+use crate::database::SymbolDatabase;
 use crate::handler::JulieServerHandler;
 use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
@@ -190,12 +191,30 @@ impl ManageWorkspaceTool {
                 // Show stats for specific workspace
                 match registry_service.get_workspace(&id).await? {
                     Some(workspace) => {
+                        // Get embedding count from the workspace's DB
+                        let db_path = primary_workspace.workspace_db_path(&id);
+                        let embed_count = if db_path.exists() {
+                            match tokio::task::spawn_blocking(move || {
+                                SymbolDatabase::new(&db_path)
+                                    .and_then(|db| db.embedding_count())
+                                    .unwrap_or(0)
+                            })
+                            .await
+                            {
+                                Ok(count) => count,
+                                Err(_) => 0,
+                            }
+                        } else {
+                            0
+                        };
+
                         let message = format!(
                             "Workspace Statistics: {}\n\n\
                             {} ({})\n\
                             Path: {}\n\
                             Type: {:?}\n\
                             Files: {} | Symbols: {}\n\
+                            Embeddings: {}/{}\n\
                             Index Size: {:.2} MB\n\
                             Created: {} (unix)\n\
                             Last Accessed: {} (unix)\n\
@@ -206,6 +225,8 @@ impl ManageWorkspaceTool {
                             workspace.original_path,
                             workspace.workspace_type,
                             workspace.file_count,
+                            workspace.symbol_count,
+                            embed_count,
                             workspace.symbol_count,
                             workspace.index_size_bytes as f64 / (1024.0 * 1024.0),
                             workspace.created_at,

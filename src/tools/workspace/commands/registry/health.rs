@@ -110,6 +110,17 @@ impl ManageWorkspaceTool {
                             stats.db_size_mb
                         ));
 
+                        if stats.embedding_count > 0 {
+                            let embed_pct =
+                                (stats.embedding_count * 100) / stats.total_symbols.max(1);
+                            status.push_str(&format!(
+                                "Embeddings: {}/{} ({}%)\n",
+                                stats.embedding_count, stats.total_symbols, embed_pct
+                            ));
+                        } else {
+                            status.push_str("Embeddings: None\n");
+                        }
+
                         if detailed {
                             status.push_str(&format!(
                                 "Detailed Metrics:\n\
