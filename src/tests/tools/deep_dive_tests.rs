@@ -7,7 +7,7 @@
 #[cfg(test)]
 mod formatting_tests {
     use crate::extractors::base::{RelationshipKind, Symbol, SymbolKind, Visibility};
-    use crate::tools::deep_dive::data::{RefEntry, SymbolContext};
+    use crate::tools::deep_dive::data::{RefEntry, SimilarEntry, SymbolContext};
     use crate::tools::deep_dive::formatting::format_symbol_context;
 
     fn make_symbol(
@@ -838,6 +838,78 @@ mod formatting_tests {
         assert!(
             output.contains("let result = process()"),
             "full depth should show ref body, got: {}",
+            output
+        );
+    }
+
+    // === Semantic similarity section ===
+
+    #[test]
+    fn test_format_similar_section() {
+        let sym = make_symbol(
+            "process",
+            SymbolKind::Function,
+            "src/engine.rs",
+            42,
+            Some("pub fn process(data: &[u8]) -> Result<()>"),
+            Some(Visibility::Public),
+            None,
+        );
+        let similar_sym = make_symbol(
+            "handle_request",
+            SymbolKind::Function,
+            "src/handler.rs",
+            100,
+            Some("fn handle_request(req: Request) -> Response"),
+            None,
+            None,
+        );
+        let mut ctx = empty_context(sym);
+        ctx.similar = vec![SimilarEntry {
+            symbol: similar_sym,
+            score: 0.85,
+        }];
+
+        let output = format_symbol_context(&ctx, "full");
+        assert!(
+            output.contains("Semantically Similar"),
+            "should have Semantically Similar header, got: {}",
+            output
+        );
+        assert!(
+            output.contains("handle_request"),
+            "should show similar symbol name, got: {}",
+            output
+        );
+        assert!(
+            output.contains("0.85"),
+            "should show similarity score, got: {}",
+            output
+        );
+        assert!(
+            output.contains("src/handler.rs:100"),
+            "should show file:line location, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_format_no_similar_section_when_empty() {
+        let sym = make_symbol(
+            "process",
+            SymbolKind::Function,
+            "src/engine.rs",
+            42,
+            None,
+            None,
+            None,
+        );
+        let ctx = empty_context(sym);
+
+        let output = format_symbol_context(&ctx, "full");
+        assert!(
+            !output.contains("Semantically Similar"),
+            "should NOT have Semantically Similar header when empty, got: {}",
             output
         );
     }

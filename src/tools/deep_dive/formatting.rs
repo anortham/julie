@@ -8,7 +8,7 @@
 
 use crate::extractors::base::{RelationshipKind, SymbolKind};
 
-use super::data::{RefEntry, SymbolContext};
+use super::data::{RefEntry, SimilarEntry, SymbolContext};
 
 /// Format a SymbolContext for the given depth level.
 pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
@@ -39,6 +39,9 @@ pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
             format_generic(&mut out, ctx, depth);
         }
     }
+
+    // === Semantic similarity (full depth only) ===
+    format_similar_section(&mut out, &ctx.similar);
 
     out.trim_end().to_string()
 }
@@ -430,5 +433,33 @@ fn format_ref_section(
                 }
             }
         }
+    }
+}
+
+fn format_similar_section(out: &mut String, similar: &[SimilarEntry]) {
+    if similar.is_empty() {
+        return;
+    }
+
+    out.push_str(&format!("\nSemantically Similar ({}):\n", similar.len()));
+
+    for entry in similar {
+        let kind = entry.symbol.kind.to_string();
+        let vis = entry
+            .symbol
+            .visibility
+            .as_ref()
+            .map(|v| v.to_string().to_lowercase())
+            .unwrap_or_default();
+        let kind_vis = if vis.is_empty() {
+            kind
+        } else {
+            format!("{}, {}", kind, vis)
+        };
+
+        out.push_str(&format!(
+            "  {:<25} {:.2}  {}:{} ({})\n",
+            entry.symbol.name, entry.score, entry.symbol.file_path, entry.symbol.start_line, kind_vis,
+        ));
     }
 }
