@@ -467,7 +467,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "deep_dive",
-        description = "Understand a symbol before modifying it. Returns definition, callers, callees, children, and type info in one call — replaces chaining fast_search → get_symbols → fast_refs → Read.",
+        description = "Investigate a symbol with progressive depth. Returns definition, references, children, and type info in a single call — tailored to the symbol's kind.\n\n**Always use BEFORE modifying or extending a symbol.** Replaces the common chain of fast_search → get_symbols → fast_refs → Read with a single call.",
         annotations(
             title = "Deep Dive Symbol Investigation",
             read_only_hint = true,
