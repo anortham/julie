@@ -1,5 +1,6 @@
 use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
+use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
@@ -105,7 +106,7 @@ impl ManageWorkspaceTool {
                             format!("{} changed files re-indexed.", result.files_processed)
                         };
 
-                        let message = format!(
+                        let mut message = format!(
                             "Workspace Refresh: {}\n\
                             {}\n\
                             Path: {}\n\
@@ -117,6 +118,15 @@ impl ManageWorkspaceTool {
                             result.symbols_total,
                             result.relationships_total
                         );
+                        if workspace_entry.workspace_type == WorkspaceType::Reference {
+                            let embed_count = crate::tools::workspace::indexing::embeddings::spawn_reference_embedding(
+                                handler,
+                                workspace_id.to_string(),
+                            ).await;
+                            if embed_count > 0 {
+                                message.push_str(&format!("\nEmbedding {} symbols in background...", embed_count));
+                            }
+                        }
                         Ok(CallToolResult::text_content(vec![Content::text(
                             message,
                         )]))

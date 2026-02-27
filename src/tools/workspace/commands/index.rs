@@ -242,6 +242,7 @@ impl ManageWorkspaceTool {
                 *handler.is_indexed.write().await = true;
 
                 // Register as primary workspace and update statistics
+                let mut indexed_workspace_id: Option<String> = None;
                 if let Some(workspace) = handler.get_workspace().await? {
                     let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
 
@@ -277,6 +278,11 @@ impl ManageWorkspaceTool {
                             },
                         }
                     };
+
+                    // Save workspace_id for embedding check after stats update
+                    if is_reference_workspace {
+                        indexed_workspace_id = Some(workspace_id.clone());
+                    }
 
                     // ALWAYS update statistics after indexing (regardless of registration status)
                     // Move blocking dir size calculation into background task
@@ -322,10 +328,19 @@ impl ManageWorkspaceTool {
                     });
                 }
 
-                let message = format!(
+                let mut message = format!(
                     "Workspace indexing complete: {} files, {} symbols, {} relationships\nReady for search and navigation",
                     files_total, symbols_total, relationships_total
                 );
+                if let Some(ws_id) = indexed_workspace_id {
+                    let embed_count = crate::tools::workspace::indexing::embeddings::spawn_reference_embedding(
+                        handler,
+                        ws_id,
+                    ).await;
+                    if embed_count > 0 {
+                        message.push_str(&format!("\nEmbedding {} symbols in background...", embed_count));
+                    }
+                }
                 Ok(CallToolResult::text_content(vec![Content::text(
                     message,
                 )]))

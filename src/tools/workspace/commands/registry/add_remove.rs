@@ -104,7 +104,12 @@ impl ManageWorkspaceTool {
                             );
                         }
 
-                        let message = format!(
+                        let embed_count = crate::tools::workspace::indexing::embeddings::spawn_reference_embedding(
+                            handler,
+                            entry.id.clone(),
+                        ).await;
+
+                        let mut message = format!(
                             "Reference workspace added and indexed!\n\
                              Workspace ID: {}\n\
                              Display Name: {}\n\
@@ -117,6 +122,9 @@ impl ManageWorkspaceTool {
                             result.symbols_total,
                             result.relationships_total
                         );
+                        if embed_count > 0 {
+                            message.push_str(&format!("\nEmbedding {} symbols in background...", embed_count));
+                        }
                         Ok(CallToolResult::text_content(vec![Content::text(
                             message,
                         )]))
