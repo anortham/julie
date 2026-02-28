@@ -9,7 +9,9 @@
 //! 2. **Same language** — strongly preferred (cross-language calls within a project are rare)
 //! 3. **Path proximity** — prefer symbols closer to the caller's directory
 
-use julie_extractors::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use julie_extractors::base::{
+    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
+};
 use julie_extractors::language::detect_language_from_extension;
 use tracing::info;
 
@@ -101,10 +103,7 @@ pub fn select_best_candidate<'a>(
 }
 
 /// Build a resolved `Relationship` from a pending relationship and its resolved target.
-pub fn build_resolved_relationship(
-    pending: &PendingRelationship,
-    target: &Symbol,
-) -> Relationship {
+pub fn build_resolved_relationship(pending: &PendingRelationship, target: &Symbol) -> Relationship {
     Relationship {
         id: format!(
             "{}_{}_{:?}_resolved",
@@ -138,7 +137,12 @@ impl ResolutionStats {
         let pct = (self.resolved as f64 / self.total as f64 * 100.0) as u32;
         info!(
             "Resolution: {}/{} resolved ({}%), {} no candidates, {} no valid candidates, {} errors",
-            self.resolved, self.total, pct, self.no_candidates, self.no_valid_candidates, self.lookup_errors
+            self.resolved,
+            self.total,
+            pct,
+            self.no_candidates,
+            self.no_valid_candidates,
+            self.lookup_errors
         );
     }
 }

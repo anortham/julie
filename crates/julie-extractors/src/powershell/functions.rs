@@ -170,8 +170,7 @@ pub(super) fn extract_function_parameters(
 
 /// Extract function signature
 fn extract_function_signature(base: &BaseExtractor, node: Node) -> Option<String> {
-    let name = find_function_name_node(node)
-        .map(|n| base.get_node_text(&n))?;
+    let name = find_function_name_node(node).map(|n| base.get_node_text(&n))?;
 
     let has_attributes = has_attribute(base, node, "CmdletBinding");
     let prefix = if has_attributes {
@@ -206,8 +205,7 @@ fn extract_advanced_function_signature(
 
 /// Extract parameter signature
 fn extract_parameter_signature(base: &BaseExtractor, node: Node) -> Option<String> {
-    let name = find_parameter_name_node(node)
-        .map(|n| base.get_node_text(&n))?;
+    let name = find_parameter_name_node(node).map(|n| base.get_node_text(&n))?;
 
     let attributes = extract_parameter_attributes(base, node);
     if !attributes.is_empty() {

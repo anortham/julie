@@ -23,7 +23,10 @@ mod interfaces;
 pub(crate) mod relationships;
 mod symbols;
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, RelationshipKind, Symbol,
+    SymbolKind,
+};
 use std::collections::HashMap;
 use tree_sitter::Tree;
 
@@ -74,7 +77,11 @@ impl TypeScriptExtractor {
     }
 
     /// Walk the tree looking for function calls that reference imported symbols
-    fn walk_for_pending_calls(&mut self, node: tree_sitter::Node, symbol_map: &std::collections::HashMap<String, &Symbol>) {
+    fn walk_for_pending_calls(
+        &mut self,
+        node: tree_sitter::Node,
+        symbol_map: &std::collections::HashMap<String, &Symbol>,
+    ) {
         // Look for call expressions
         if node.kind() == "call_expression" {
             if let Some(function_node) = node.child_by_field_name("function") {
@@ -95,7 +102,9 @@ impl TypeScriptExtractor {
                     Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
                         // This is a call to an imported function - create pending relationship
                         // Find the containing function
-                        if let Some(caller_symbol) = self.find_containing_function_in_symbols(node, symbol_map) {
+                        if let Some(caller_symbol) =
+                            self.find_containing_function_in_symbols(node, symbol_map)
+                        {
                             let line_number = node.start_position().row as u32 + 1;
                             self.add_pending_relationship(PendingRelationship {
                                 from_symbol_id: caller_symbol.id.clone(),
@@ -110,7 +119,9 @@ impl TypeScriptExtractor {
                     None => {
                         // Unknown function - could be from another file
                         // Check if it's being called from within a function
-                        if let Some(caller_symbol) = self.find_containing_function_in_symbols(node, symbol_map) {
+                        if let Some(caller_symbol) =
+                            self.find_containing_function_in_symbols(node, symbol_map)
+                        {
                             let line_number = node.start_position().row as u32 + 1;
                             self.add_pending_relationship(PendingRelationship {
                                 from_symbol_id: caller_symbol.id.clone(),

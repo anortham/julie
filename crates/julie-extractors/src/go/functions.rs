@@ -3,7 +3,11 @@ use tree_sitter::Node;
 
 /// Function and method extraction for Go
 impl super::GoExtractor {
-    pub(super) fn extract_function(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_function(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let mut cursor = node.walk();
         let mut func_name = None;
         let mut type_parameters = None;

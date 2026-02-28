@@ -130,9 +130,9 @@ mod tests {
         // This is a stable partition, not a sort.
         let mut results = vec![
             make_result("ref1", "src/a.rs", 10.0),
-            make_result("Foo", "src/foo1.rs", 5.0),   // exact match #1
+            make_result("Foo", "src/foo1.rs", 5.0), // exact match #1
             make_result("ref2", "src/b.rs", 8.0),
-            make_result("Foo", "src/foo2.rs", 3.0),   // exact match #2
+            make_result("Foo", "src/foo2.rs", 3.0), // exact match #2
             make_result("ref3", "src/c.rs", 6.0),
         ];
 

@@ -125,7 +125,9 @@ func main() {
         );
 
         // Verify the pending relationship has the correct callee name
-        let process_pending = pending_calls.iter().find(|p| p.callee_name == "processData");
+        let process_pending = pending_calls
+            .iter()
+            .find(|p| p.callee_name == "processData");
 
         assert!(
             process_pending.is_some(),

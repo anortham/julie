@@ -112,7 +112,12 @@ pub fn build_symbol_context(
     {
         let id_map: HashMap<String, String> = raw_incoming
             .iter()
-            .map(|r| (format!("{}:{}", r.file_path, r.line_number), r.from_symbol_id.clone()))
+            .map(|r| {
+                (
+                    format!("{}:{}", r.file_path, r.line_number),
+                    r.from_symbol_id.clone(),
+                )
+            })
             .collect();
         enrich_refs(db, &mut incoming, &id_map)?;
     }
@@ -135,19 +140,26 @@ pub fn build_symbol_context(
     {
         let id_map: HashMap<String, String> = raw_outgoing
             .iter()
-            .map(|r| (format!("{}:{}", r.file_path, r.line_number), r.to_symbol_id.clone()))
+            .map(|r| {
+                (
+                    format!("{}:{}", r.file_path, r.line_number),
+                    r.to_symbol_id.clone(),
+                )
+            })
             .collect();
         enrich_refs(db, &mut outgoing, &id_map)?;
     }
 
     // === Identifier fallback: catch refs that relationships miss ===
-    let (incoming, incoming_total) = merge_identifier_refs(
-        db, symbol, incoming, incoming_total, incoming_cap,
-    )?;
+    let (incoming, incoming_total) =
+        merge_identifier_refs(db, symbol, incoming, incoming_total, incoming_cap)?;
 
     debug!(
         "deep_dive: {} incoming (of {}), {} outgoing (of {})",
-        incoming.len(), incoming_total, outgoing.len(), outgoing_total
+        incoming.len(),
+        incoming_total,
+        outgoing.len(),
+        outgoing_total
     );
 
     // === Children (methods, fields for struct/class/trait/enum/module) ===
@@ -397,9 +409,7 @@ fn build_similar(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<SimilarEntr
         .map(|(id, _)| id.clone())
         .collect();
 
-    let distances: HashMap<String, f64> = knn_results
-        .into_iter()
-        .collect();
+    let distances: HashMap<String, f64> = knn_results.into_iter().collect();
 
     if symbol_ids.is_empty() {
         return Ok(vec![]);

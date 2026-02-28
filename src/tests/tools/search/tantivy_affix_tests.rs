@@ -91,10 +91,7 @@ mod tests {
         let tokens = collect_tokens(tokenizer, "is_a");
 
         // "a" alone is not useful — should not be emitted as affix-stripped
-        let affix_stripped: Vec<_> = tokens
-            .iter()
-            .filter(|t| t.as_str() == "a")
-            .collect();
+        let affix_stripped: Vec<_> = tokens.iter().filter(|t| t.as_str() == "a").collect();
         // This is debatable, but single-char tokens from affix stripping add noise
         // The snake_case split will already emit "a" though, so we won't fight it
     }

@@ -119,7 +119,10 @@ Item {
         assert!(
             enum_sym.is_some(),
             "Should extract enum Status. Got: {:?}",
-            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
         );
 
         // Enum members should be extracted
@@ -128,9 +131,18 @@ Item {
             .filter(|s| s.kind == SymbolKind::EnumMember)
             .collect();
         let member_names: Vec<&str> = members.iter().map(|s| s.name.as_str()).collect();
-        assert!(member_names.contains(&"Ready"), "Should extract Ready member");
-        assert!(member_names.contains(&"Loading"), "Should extract Loading member");
-        assert!(member_names.contains(&"Error"), "Should extract Error member");
+        assert!(
+            member_names.contains(&"Ready"),
+            "Should extract Ready member"
+        );
+        assert!(
+            member_names.contains(&"Loading"),
+            "Should extract Loading member"
+        );
+        assert!(
+            member_names.contains(&"Error"),
+            "Should extract Error member"
+        );
     }
 
     #[test]
@@ -151,7 +163,10 @@ Item {
         assert!(
             enum_sym.is_some(),
             "Should extract enum Direction. Got: {:?}",
-            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
         );
 
         let members: Vec<&Symbol> = symbols

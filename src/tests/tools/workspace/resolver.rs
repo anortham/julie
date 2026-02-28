@@ -5,11 +5,11 @@
 
 #[cfg(test)]
 mod resolver_tests {
+    use crate::tools::workspace::indexing::resolver::{
+        ResolutionStats, build_resolved_relationship, select_best_candidate,
+    };
     use julie_extractors::base::{
         PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind, Visibility,
-    };
-    use crate::tools::workspace::indexing::resolver::{
-        select_best_candidate, build_resolved_relationship, ResolutionStats,
     };
 
     /// Helper to create a minimal Symbol for testing
@@ -39,11 +39,7 @@ mod resolver_tests {
     }
 
     /// Helper to create a PendingRelationship
-    fn make_pending(
-        from_id: &str,
-        callee_name: &str,
-        file_path: &str,
-    ) -> PendingRelationship {
+    fn make_pending(from_id: &str, callee_name: &str, file_path: &str) -> PendingRelationship {
         PendingRelationship {
             from_symbol_id: from_id.to_string(),
             callee_name: callee_name.to_string(),
@@ -61,24 +57,36 @@ mod resolver_tests {
     #[test]
     fn test_excludes_import_symbols() {
         // An Import symbol should never be selected as a resolution target
-        let candidates = vec![
-            make_symbol("process", SymbolKind::Import, "rust", "src/lib.rs"),
-        ];
+        let candidates = vec![make_symbol(
+            "process",
+            SymbolKind::Import,
+            "rust",
+            "src/lib.rs",
+        )];
         let pending = make_pending("caller_1", "process", "src/main.rs");
 
         let result = select_best_candidate(&candidates, &pending);
-        assert!(result.is_none(), "Import symbols should not be valid resolution targets");
+        assert!(
+            result.is_none(),
+            "Import symbols should not be valid resolution targets"
+        );
     }
 
     #[test]
     fn test_excludes_export_symbols() {
-        let candidates = vec![
-            make_symbol("process", SymbolKind::Export, "typescript", "src/index.ts"),
-        ];
+        let candidates = vec![make_symbol(
+            "process",
+            SymbolKind::Export,
+            "typescript",
+            "src/index.ts",
+        )];
         let pending = make_pending("caller_1", "process", "src/main.ts");
 
         let result = select_best_candidate(&candidates, &pending);
-        assert!(result.is_none(), "Export symbols should not be valid resolution targets");
+        assert!(
+            result.is_none(),
+            "Export symbols should not be valid resolution targets"
+        );
     }
 
     #[test]
@@ -97,9 +105,12 @@ mod resolver_tests {
     #[test]
     fn test_resolves_class_targets() {
         // When callee is a class (e.g., Instantiates relationship), should resolve
-        let candidates = vec![
-            make_symbol("UserService", SymbolKind::Class, "typescript", "src/services/user.ts"),
-        ];
+        let candidates = vec![make_symbol(
+            "UserService",
+            SymbolKind::Class,
+            "typescript",
+            "src/services/user.ts",
+        )];
         let pending = PendingRelationship {
             from_symbol_id: "caller_1".to_string(),
             callee_name: "UserService".to_string(),
@@ -110,14 +121,20 @@ mod resolver_tests {
         };
 
         let result = select_best_candidate(&candidates, &pending);
-        assert!(result.is_some(), "Class symbols should be valid resolution targets");
+        assert!(
+            result.is_some(),
+            "Class symbols should be valid resolution targets"
+        );
     }
 
     #[test]
     fn test_resolves_trait_targets() {
-        let candidates = vec![
-            make_symbol("Serialize", SymbolKind::Trait, "rust", "src/traits.rs"),
-        ];
+        let candidates = vec![make_symbol(
+            "Serialize",
+            SymbolKind::Trait,
+            "rust",
+            "src/traits.rs",
+        )];
         let pending = PendingRelationship {
             from_symbol_id: "caller_1".to_string(),
             callee_name: "Serialize".to_string(),
@@ -128,7 +145,10 @@ mod resolver_tests {
         };
 
         let result = select_best_candidate(&candidates, &pending);
-        assert!(result.is_some(), "Trait symbols should be valid resolution targets");
+        assert!(
+            result.is_some(),
+            "Trait symbols should be valid resolution targets"
+        );
     }
 
     // =========================================================================
@@ -153,13 +173,19 @@ mod resolver_tests {
     #[test]
     fn test_falls_back_to_different_language_when_no_same_lang() {
         // Caller is Rust but only Python candidate exists — should still resolve
-        let candidates = vec![
-            make_symbol("analyze", SymbolKind::Function, "python", "scripts/analyze.py"),
-        ];
+        let candidates = vec![make_symbol(
+            "analyze",
+            SymbolKind::Function,
+            "python",
+            "scripts/analyze.py",
+        )];
         let pending = make_pending("caller_1", "analyze", "src/main.rs");
 
         let result = select_best_candidate(&candidates, &pending);
-        assert!(result.is_some(), "Should fall back to different-language candidate when same-language unavailable");
+        assert!(
+            result.is_some(),
+            "Should fall back to different-language candidate when same-language unavailable"
+        );
     }
 
     // =========================================================================
@@ -170,8 +196,18 @@ mod resolver_tests {
     fn test_prefers_same_directory() {
         // Two candidates in same language, one in same dir, one far away
         let candidates = vec![
-            make_symbol("helper", SymbolKind::Function, "rust", "src/utils/helper.rs"),
-            make_symbol("helper", SymbolKind::Function, "rust", "src/services/helper.rs"),
+            make_symbol(
+                "helper",
+                SymbolKind::Function,
+                "rust",
+                "src/utils/helper.rs",
+            ),
+            make_symbol(
+                "helper",
+                SymbolKind::Function,
+                "rust",
+                "src/services/helper.rs",
+            ),
         ];
         let pending = make_pending("caller_1", "helper", "src/utils/main.rs");
 

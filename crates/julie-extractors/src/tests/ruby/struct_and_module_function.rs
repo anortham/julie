@@ -152,11 +152,7 @@ Color = Struct.new(:r, :g, :b)
             let sym = symbols
                 .iter()
                 .find(|s| s.name == *name && s.kind == SymbolKind::Class);
-            assert!(
-                sym.is_some(),
-                "Struct.new should create Class for {}",
-                name
-            );
+            assert!(sym.is_some(), "Struct.new should create Class for {}", name);
         }
     }
 

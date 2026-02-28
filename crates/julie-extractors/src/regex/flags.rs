@@ -117,8 +117,7 @@ pub(crate) fn extract_condition(conditional_text: &str) -> Option<String> {
     let cond_start = start + 3;
     let cond_end = start + 3 + end;
     // SAFETY: Check char boundary before slicing to prevent UTF-8 panic
-    if conditional_text.is_char_boundary(cond_start)
-        && conditional_text.is_char_boundary(cond_end)
+    if conditional_text.is_char_boundary(cond_start) && conditional_text.is_char_boundary(cond_end)
     {
         Some(conditional_text[cond_start..cond_end].to_string())
     } else {

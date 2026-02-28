@@ -6,9 +6,9 @@
 //! 3. Relationships table for caller→callee connections
 //! 4. Identifiers table for usage sites (calls, type usages, member access, imports)
 
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
 use schemars::JsonSchema;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -59,7 +59,9 @@ impl FastRefsTool {
         references: Vec<Relationship>,
     ) -> Result<CallToolResult> {
         let lean_output = format_lean_refs_results(&self.symbol, &definitions, &references);
-        Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
+        Ok(CallToolResult::text_content(vec![Content::text(
+            lean_output,
+        )]))
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -215,7 +217,8 @@ impl FastRefsTool {
                     let db_lock = super::lock_db(&db_arc, "fast_refs relationships");
                     // Single batch query, optionally filtered by identifier kind
                     if let Some(kind) = reference_kind_filter {
-                        db_lock.get_relationships_to_symbols_filtered_by_kind(&definition_ids, &kind)
+                        db_lock
+                            .get_relationships_to_symbols_filtered_by_kind(&definition_ids, &kind)
                     } else {
                         db_lock.get_relationships_to_symbols(&definition_ids)
                     }
@@ -249,7 +252,10 @@ impl FastRefsTool {
                 }
 
                 // First definition ID for to_symbol_id in converted Relationships
-                let first_def_id = definitions.first().map(|d| d.id.clone()).unwrap_or_default();
+                let first_def_id = definitions
+                    .first()
+                    .map(|d| d.id.clone())
+                    .unwrap_or_default();
 
                 let identifier_refs = tokio::task::spawn_blocking(move || {
                     let db_lock = super::lock_db(&db_arc, "fast_refs identifiers");

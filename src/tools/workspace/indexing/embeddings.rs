@@ -67,9 +67,7 @@ pub(crate) async fn spawn_workspace_embedding(
 
     // Fire-and-forget: spawn the pipeline in the background
     tokio::spawn(async move {
-        info!(
-            "Starting workspace embedding for {workspace_id} ({total_symbols} symbols)..."
-        );
+        info!("Starting workspace embedding for {workspace_id} ({total_symbols} symbols)...");
         let db_clone = db_arc.clone();
         let result = tokio::task::spawn_blocking(move || {
             run_embedding_pipeline(&db_clone, provider.as_ref())
@@ -79,8 +77,8 @@ pub(crate) async fn spawn_workspace_embedding(
         match result {
             Ok(Ok(stats)) => {
                 info!(
-                    "Workspace {workspace_id} embedding complete: {}/{} symbols embedded",
-                    stats.symbols_embedded, stats.symbols_scanned
+                    "Workspace {workspace_id} embedding complete: {}/{} symbols embedded ({} skipped)",
+                    stats.symbols_embedded, stats.symbols_scanned, stats.symbols_skipped
                 );
             }
             Ok(Err(e)) => {

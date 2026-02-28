@@ -19,8 +19,13 @@ use helpers::{determine_visibility, extract_modifiers, find_child, find_child_te
 use identifiers::extract_identifier_from_node;
 use members::{extract_constant, extract_property};
 use namespaces::{extract_namespace, extract_use, extract_variable_assignment};
-use relationships::{extract_call_relationships, extract_class_relationships, extract_interface_relationships};
-use types::{extract_anonymous_class, extract_class, extract_enum, extract_enum_case, extract_interface, extract_trait};
+use relationships::{
+    extract_call_relationships, extract_class_relationships, extract_interface_relationships,
+};
+use types::{
+    extract_anonymous_class, extract_class, extract_enum, extract_enum_case, extract_interface,
+    extract_trait,
+};
 
 pub struct PhpExtractor {
     base: BaseExtractor,

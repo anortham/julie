@@ -8,8 +8,7 @@ use tree_sitter::Node;
 /// Extract class signature with modifiers, generics, inheritance, and interfaces
 pub(super) fn extract_class_signature(node: &Node) -> Option<String> {
     let name_node = find_child_by_type(node, "identifier");
-    let name = name_node
-        .map(|n| get_node_text(&n))?;
+    let name = name_node.map(|n| get_node_text(&n))?;
 
     let is_abstract = is_abstract_class(node);
     let abstract_prefix = if is_abstract { "abstract " } else { "" };
@@ -64,8 +63,7 @@ pub(super) fn extract_class_signature(node: &Node) -> Option<String> {
 /// Extract function signature with return type, parameters, and async modifier
 pub(super) fn extract_function_signature(node: &Node, content: &str) -> Option<String> {
     let name_node = find_child_by_type(node, "identifier");
-    let name = name_node
-        .map(|n| get_node_text(&n))?;
+    let name = name_node.map(|n| get_node_text(&n))?;
 
     // Get return type (can be type_identifier or void_type)
     let return_type_node = find_child_by_type(node, "type_identifier")
@@ -107,7 +105,10 @@ pub(super) fn extract_function_signature(node: &Node, content: &str) -> Option<S
             return_type, name, type_params, params, async_modifier
         ))
     } else {
-        Some(format!("{}{}{}{}", name, type_params, params, async_modifier))
+        Some(format!(
+            "{}{}{}{}",
+            name, type_params, params, async_modifier
+        ))
     }
 }
 
@@ -120,8 +121,7 @@ pub(super) fn extract_constructor_signature(node: &Node) -> Option<String> {
     let constructor_name = match node.kind() {
         "constant_constructor_signature" => {
             // For const constructors, just get the first identifier
-            find_child_by_type(node, "identifier")
-                .map(|n| get_node_text(&n))?
+            find_child_by_type(node, "identifier").map(|n| get_node_text(&n))?
         }
         "factory_constructor_signature" => {
             // For factory constructors, may need class.name pattern
@@ -138,8 +138,7 @@ pub(super) fn extract_constructor_signature(node: &Node) -> Option<String> {
         }
         _ => {
             // Regular constructor
-            find_child_by_type(node, "identifier")
-                .map(|n| get_node_text(&n))?
+            find_child_by_type(node, "identifier").map(|n| get_node_text(&n))?
         }
     };
 
@@ -147,12 +146,14 @@ pub(super) fn extract_constructor_signature(node: &Node) -> Option<String> {
     let factory_prefix = if is_factory { "factory " } else { "" };
     let const_prefix = if is_const { "const " } else { "" };
 
-    Some(format!("{}{}{}()", factory_prefix, const_prefix, constructor_name))
+    Some(format!(
+        "{}{}{}()",
+        factory_prefix, const_prefix, constructor_name
+    ))
 }
 
 /// Extract variable signature (just the name)
 pub(super) fn extract_variable_signature(node: &Node) -> Option<String> {
     let name_node = find_child_by_type(node, "identifier");
-    name_node
-        .map(|n| get_node_text(&n))
+    name_node.map(|n| get_node_text(&n))
 }

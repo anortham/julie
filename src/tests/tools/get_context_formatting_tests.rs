@@ -6,8 +6,8 @@ mod formatting_tests {
 
     use crate::tools::get_context::allocation::{Allocation, NeighborMode, PivotMode};
     use crate::tools::get_context::formatting::{
-        format_context, format_context_with_mode, ContextData, NeighborEntry, OutputFormat,
-        PivotEntry,
+        ContextData, NeighborEntry, OutputFormat, PivotEntry, format_context,
+        format_context_with_mode,
     };
 
     /// Helper: build an Allocation with specific modes (token counts don't matter for formatting).

@@ -154,7 +154,10 @@ fn extract_typedef_name_from_type_definition(
 }
 
 /// Extract typedef name from a declaration
-fn extract_typedef_name_from_declaration(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
+fn extract_typedef_name_from_declaration(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Option<String> {
     // Special handling for function pointer typedefs
     if let Some(name) = extract_function_pointer_typedef_name(base, node) {
         return Some(name);

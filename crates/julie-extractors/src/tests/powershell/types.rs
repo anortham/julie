@@ -49,9 +49,15 @@ function Get-AllUsers {
             "PowerShell type extraction returned EMPTY types HashMap!"
         );
 
-        println!("Extracted {} types from PowerShell code", results.types.len());
+        println!(
+            "Extracted {} types from PowerShell code",
+            results.types.len()
+        );
         for (symbol_id, type_info) in &results.types {
-            println!("  {} -> {} (inferred: {})", symbol_id, type_info.resolved_type, type_info.is_inferred);
+            println!(
+                "  {} -> {} (inferred: {})",
+                symbol_id, type_info.resolved_type, type_info.is_inferred
+            );
         }
 
         assert!(results.types.len() >= 1);

@@ -52,17 +52,35 @@ async function processData() {
     let types = extractor.infer_types(&symbols);
 
     // Should extract return types from JSDoc for all 3 functions
-    assert!(!types.is_empty(), "Should extract at least one type from JSDoc");
+    assert!(
+        !types.is_empty(),
+        "Should extract at least one type from JSDoc"
+    );
 
     // Find function symbols
-    let get_name_symbol = symbols.iter().find(|s| s.name == "getName").expect("Should find getName");
-    let calculate_age_symbol = symbols.iter().find(|s| s.name == "calculateAge").expect("Should find calculateAge");
-    let process_data_symbol = symbols.iter().find(|s| s.name == "processData").expect("Should find processData");
+    let get_name_symbol = symbols
+        .iter()
+        .find(|s| s.name == "getName")
+        .expect("Should find getName");
+    let calculate_age_symbol = symbols
+        .iter()
+        .find(|s| s.name == "calculateAge")
+        .expect("Should find calculateAge");
+    let process_data_symbol = symbols
+        .iter()
+        .find(|s| s.name == "processData")
+        .expect("Should find processData");
 
     // Verify types were extracted from JSDoc
     assert_eq!(types.get(&get_name_symbol.id), Some(&"string".to_string()));
-    assert_eq!(types.get(&calculate_age_symbol.id), Some(&"number".to_string()));
-    assert_eq!(types.get(&process_data_symbol.id), Some(&"Promise<Array<number>>".to_string()));
+    assert_eq!(
+        types.get(&calculate_age_symbol.id),
+        Some(&"number".to_string())
+    );
+    assert_eq!(
+        types.get(&process_data_symbol.id),
+        Some(&"Promise<Array<number>>".to_string())
+    );
 }
 
 #[test]
@@ -112,6 +130,9 @@ var users = [];
     }
 
     if let Some(users_symbol) = symbols.iter().find(|s| s.name == "users") {
-        assert_eq!(types.get(&users_symbol.id), Some(&"Array<User>".to_string()));
+        assert_eq!(
+            types.get(&users_symbol.id),
+            Some(&"Array<User>".to_string())
+        );
     }
 }

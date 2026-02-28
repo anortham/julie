@@ -1,6 +1,6 @@
 //! Tests for C struct/union field extraction as SymbolKind::Field children
 
-use super::{extract_symbols, SymbolKind};
+use super::{SymbolKind, extract_symbols};
 
 #[cfg(test)]
 mod tests {
@@ -28,13 +28,26 @@ struct Point {
             .filter(|s| s.kind == SymbolKind::Field && s.parent_id.as_deref() == Some(&struct_id))
             .collect();
 
-        assert_eq!(fields.len(), 3, "Point should have 3 fields, got: {:?}",
-            fields.iter().map(|f| &f.name).collect::<Vec<_>>());
+        assert_eq!(
+            fields.len(),
+            3,
+            "Point should have 3 fields, got: {:?}",
+            fields.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
 
         // Verify field names exist
-        assert!(fields.iter().any(|f| f.name == "x"), "Should have field 'x'");
-        assert!(fields.iter().any(|f| f.name == "y"), "Should have field 'y'");
-        assert!(fields.iter().any(|f| f.name == "label"), "Should have field 'label'");
+        assert!(
+            fields.iter().any(|f| f.name == "x"),
+            "Should have field 'x'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "y"),
+            "Should have field 'y'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "label"),
+            "Should have field 'label'"
+        );
 
         // Verify type info in signatures
         let x_field = fields.iter().find(|f| f.name == "x").unwrap();
@@ -76,13 +89,29 @@ union DataValue {
             .filter(|s| s.kind == SymbolKind::Field && s.parent_id.as_deref() == Some(&union_id))
             .collect();
 
-        assert_eq!(fields.len(), 4, "DataValue should have 4 fields, got: {:?}",
-            fields.iter().map(|f| &f.name).collect::<Vec<_>>());
+        assert_eq!(
+            fields.len(),
+            4,
+            "DataValue should have 4 fields, got: {:?}",
+            fields.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
 
-        assert!(fields.iter().any(|f| f.name == "i_val"), "Should have field 'i_val'");
-        assert!(fields.iter().any(|f| f.name == "f_val"), "Should have field 'f_val'");
-        assert!(fields.iter().any(|f| f.name == "s_val"), "Should have field 's_val'");
-        assert!(fields.iter().any(|f| f.name == "d_val"), "Should have field 'd_val'");
+        assert!(
+            fields.iter().any(|f| f.name == "i_val"),
+            "Should have field 'i_val'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "f_val"),
+            "Should have field 'f_val'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "s_val"),
+            "Should have field 's_val'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "d_val"),
+            "Should have field 'd_val'"
+        );
 
         // Verify type in signature
         let i_field = fields.iter().find(|f| f.name == "i_val").unwrap();
@@ -115,13 +144,29 @@ struct Vector {
             .filter(|s| s.kind == SymbolKind::Field && s.parent_id.as_deref() == Some(&struct_id))
             .collect();
 
-        assert_eq!(fields.len(), 4, "Vector should have 4 fields (x, y, z, magnitude), got: {:?}",
-            fields.iter().map(|f| &f.name).collect::<Vec<_>>());
+        assert_eq!(
+            fields.len(),
+            4,
+            "Vector should have 4 fields (x, y, z, magnitude), got: {:?}",
+            fields.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
 
-        assert!(fields.iter().any(|f| f.name == "x"), "Should have field 'x'");
-        assert!(fields.iter().any(|f| f.name == "y"), "Should have field 'y'");
-        assert!(fields.iter().any(|f| f.name == "z"), "Should have field 'z'");
-        assert!(fields.iter().any(|f| f.name == "magnitude"), "Should have field 'magnitude'");
+        assert!(
+            fields.iter().any(|f| f.name == "x"),
+            "Should have field 'x'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "y"),
+            "Should have field 'y'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "z"),
+            "Should have field 'z'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "magnitude"),
+            "Should have field 'magnitude'"
+        );
     }
 
     #[test]
@@ -149,12 +194,24 @@ struct Buffer {
 
         // data, length, flags should be extracted; function pointer callback may or may not
         // depending on how extract_variable_name handles function declarators
-        assert!(fields.len() >= 3, "Buffer should have at least 3 fields, got: {:?}",
-            fields.iter().map(|f| &f.name).collect::<Vec<_>>());
+        assert!(
+            fields.len() >= 3,
+            "Buffer should have at least 3 fields, got: {:?}",
+            fields.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
 
-        assert!(fields.iter().any(|f| f.name == "data"), "Should have field 'data'");
-        assert!(fields.iter().any(|f| f.name == "length"), "Should have field 'length'");
-        assert!(fields.iter().any(|f| f.name == "flags"), "Should have field 'flags'");
+        assert!(
+            fields.iter().any(|f| f.name == "data"),
+            "Should have field 'data'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "length"),
+            "Should have field 'length'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "flags"),
+            "Should have field 'flags'"
+        );
     }
 
     #[test]
@@ -179,7 +236,10 @@ typedef struct {
         assert!(
             dim_fields.iter().any(|f| f.name == "width"),
             "Should have field 'width' from typedef struct. All symbols: {:?}",
-            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
         );
         assert!(
             dim_fields.iter().any(|f| f.name == "height"),
@@ -215,8 +275,14 @@ typedef struct Point {
                 .collect::<Vec<_>>()
         );
 
-        assert!(fields.iter().any(|f| f.name == "x"), "Should have field 'x'");
-        assert!(fields.iter().any(|f| f.name == "y"), "Should have field 'y'");
+        assert!(
+            fields.iter().any(|f| f.name == "x"),
+            "Should have field 'x'"
+        );
+        assert!(
+            fields.iter().any(|f| f.name == "y"),
+            "Should have field 'y'"
+        );
     }
 
     #[test]

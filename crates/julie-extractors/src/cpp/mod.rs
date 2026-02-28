@@ -122,8 +122,11 @@ impl CppExtractor {
 
         // Handle multi-variable declarations (int x = 1, y = 2; extracts y too)
         if node.kind() == "declaration" {
-            let extra =
-                declarations::extract_multi_declarations(&mut self.base, node, parent_id.as_deref());
+            let extra = declarations::extract_multi_declarations(
+                &mut self.base,
+                node,
+                parent_id.as_deref(),
+            );
             if !extra.is_empty() {
                 symbols.extend(extra);
             }
@@ -204,12 +207,9 @@ impl CppExtractor {
             "friend_declaration" => {
                 declarations::extract_friend_declaration(&mut self.base, node, parent_id)
             }
-            "type_definition" => {
-                typedefs::extract_typedef(&mut self.base, node, parent_id)
-            }
+            "type_definition" => typedefs::extract_typedef(&mut self.base, node, parent_id),
             "template_declaration" => {
-                let result =
-                    declarations::extract_template(&mut self.base, node, parent_id);
+                let result = declarations::extract_template(&mut self.base, node, parent_id);
                 // When extract_template returns a symbol (template variable case),
                 // mark the inner declaration as processed to prevent walk_children
                 // from extracting it again via extract_declaration.

@@ -196,7 +196,6 @@ async fn test_documentation_indexing_basic() -> Result<()> {
     Ok(())
 }
 
-
 /// Test 3: File hash deduplication
 /// Given: Documentation indexed, then re-indexed without changes
 /// When: Second indexing occurs

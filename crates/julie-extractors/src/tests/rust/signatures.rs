@@ -3,7 +3,6 @@
 ///
 /// Covers grouped/glob imports, aliased imports, simple imports,
 /// macro invocation name handling, and static/const kind correctness.
-
 use crate::base::{SymbolKind, Visibility};
 use crate::rust::RustExtractor;
 use std::path::PathBuf;
@@ -57,13 +56,7 @@ fn test_grouped_use_declaration() {
     // The combined name+signature text should mention all imported names
     let all_text: String = imports
         .iter()
-        .map(|i| {
-            format!(
-                "{} {}",
-                i.name,
-                i.signature.as_deref().unwrap_or("")
-            )
-        })
+        .map(|i| format!("{} {}", i.name, i.signature.as_deref().unwrap_or("")))
         .collect();
     assert!(
         all_text.contains("HashMap"),
@@ -145,13 +138,7 @@ fn test_pub_grouped_import() {
 
     let all_text: String = imports
         .iter()
-        .map(|i| {
-            format!(
-                "{} {}",
-                i.name,
-                i.signature.as_deref().unwrap_or("")
-            )
-        })
+        .map(|i| format!("{} {}", i.name, i.signature.as_deref().unwrap_or("")))
         .collect();
     assert!(
         all_text.contains("User"),
@@ -194,13 +181,7 @@ fn test_nested_grouped_import() {
 
     let all_text: String = imports
         .iter()
-        .map(|i| {
-            format!(
-                "{} {}",
-                i.name,
-                i.signature.as_deref().unwrap_or("")
-            )
-        })
+        .map(|i| format!("{} {}", i.name, i.signature.as_deref().unwrap_or("")))
         .collect();
     assert!(
         all_text.contains("HashMap"),
@@ -295,10 +276,7 @@ fn test_pub_static_is_constant() {
         SymbolKind::Constant,
         "pub static (non-mut) should be Constant"
     );
-    assert_eq!(
-        config.visibility.as_ref().unwrap(),
-        &Visibility::Public,
-    );
+    assert_eq!(config.visibility.as_ref().unwrap(), &Visibility::Public,);
 }
 
 // ========================================================================
@@ -371,10 +349,7 @@ fn main() {
 
     let symbols = extractor.extract_symbols(&tree);
 
-    let empty_names: Vec<_> = symbols
-        .iter()
-        .filter(|s| s.name.is_empty())
-        .collect();
+    let empty_names: Vec<_> = symbols.iter().filter(|s| s.name.is_empty()).collect();
     assert!(
         empty_names.is_empty(),
         "No symbols should have empty names, but found {} with empty names",

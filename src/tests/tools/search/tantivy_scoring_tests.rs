@@ -90,9 +90,12 @@ mod tests {
         let configs = LanguageConfigs::load_embedded();
 
         // A signature that matches multiple patterns should only be boosted once
-        let mut results = vec![
-            make_result("process", "pub async fn process()", "rust", 1.0),
-        ];
+        let mut results = vec![make_result(
+            "process",
+            "pub async fn process()",
+            "rust",
+            1.0,
+        )];
 
         apply_important_patterns_boost(&mut results, &configs);
 
@@ -108,9 +111,7 @@ mod tests {
     fn test_important_patterns_boost_unknown_language() {
         let configs = LanguageConfigs::load_embedded();
 
-        let mut results = vec![
-            make_result("foo", "some signature", "unknown_lang", 1.0),
-        ];
+        let mut results = vec![make_result("foo", "some signature", "unknown_lang", 1.0)];
 
         let score_before = results[0].score;
         apply_important_patterns_boost(&mut results, &configs);
@@ -174,8 +175,8 @@ mod tests {
     fn test_centrality_boost_re_sorts_results() {
         // Initially bar has higher Tantivy score, but foo has more references
         let mut results = vec![
-            make_symbol_result("sym1", "foo", 0.5),  // low Tantivy score, high references
-            make_symbol_result("sym2", "bar", 1.0),  // high Tantivy score, no references
+            make_symbol_result("sym1", "foo", 0.5), // low Tantivy score, high references
+            make_symbol_result("sym2", "bar", 1.0), // high Tantivy score, no references
         ];
 
         let mut ref_scores = HashMap::new();
@@ -191,15 +192,14 @@ mod tests {
         assert!(
             results[0].score > results[1].score,
             "First result ({}) should have higher score than second ({})",
-            results[0].score, results[1].score
+            results[0].score,
+            results[1].score
         );
     }
 
     #[test]
     fn test_centrality_boost_zero_ref_score_no_effect() {
-        let mut results = vec![
-            make_symbol_result("sym1", "foo", 1.0),
-        ];
+        let mut results = vec![make_symbol_result("sym1", "foo", 1.0)];
 
         let mut ref_scores = HashMap::new();
         ref_scores.insert("sym1".to_string(), 0.0); // zero reference score
@@ -221,9 +221,7 @@ mod tests {
         let base_score: f32 = 2.0;
         let ref_score: f64 = 20.0;
 
-        let mut results = vec![
-            make_symbol_result("sym1", "foo", base_score),
-        ];
+        let mut results = vec![make_symbol_result("sym1", "foo", base_score)];
 
         let mut ref_scores = HashMap::new();
         ref_scores.insert("sym1".to_string(), ref_score);
@@ -236,7 +234,9 @@ mod tests {
         assert!(
             (results[0].score - expected_score).abs() < 0.001,
             "Expected score ~{:.4}, got {:.4} (boost factor: {:.4})",
-            expected_score, results[0].score, expected_boost
+            expected_score,
+            results[0].score,
+            expected_boost
         );
     }
 
@@ -275,9 +275,7 @@ mod tests {
     fn test_centrality_boost_skips_noise_names() {
         // to_string has 3702 references — but it's a ubiquitous trait impl.
         // It should NOT receive any centrality boost.
-        let mut results = vec![
-            make_symbol_result("sym1", "to_string", 1.0),
-        ];
+        let mut results = vec![make_symbol_result("sym1", "to_string", 1.0)];
 
         let mut ref_scores = HashMap::new();
         ref_scores.insert("sym1".to_string(), 3702.0);
@@ -296,9 +294,7 @@ mod tests {
     #[test]
     fn test_centrality_boost_skips_clone() {
         // clone has 1665 references — ubiquitous trait impl, should not be boosted.
-        let mut results = vec![
-            make_symbol_result("sym1", "clone", 1.0),
-        ];
+        let mut results = vec![make_symbol_result("sym1", "clone", 1.0)];
 
         let mut ref_scores = HashMap::new();
         ref_scores.insert("sym1".to_string(), 1665.0);

@@ -48,6 +48,9 @@ pub struct JulieWorkspace {
     /// Embedding provider for semantic vector generation (None if unavailable)
     pub embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
 
+    /// Runtime status for embedding backend initialization.
+    pub embedding_runtime_status: Option<crate::embeddings::EmbeddingRuntimeStatus>,
+
     /// Workspace configuration
     pub config: WorkspaceConfig,
 }
@@ -71,6 +74,65 @@ pub struct WorkspaceConfig {
     pub incremental_updates: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EmbeddingRuntimeLogFields {
+    pub requested_backend: String,
+    pub resolved_backend: String,
+    pub runtime: String,
+    pub device: String,
+    pub accelerated: bool,
+    pub degraded_reason: String,
+    pub telemetry_confidence: String,
+    pub strict_mode: bool,
+    pub fallback_used: bool,
+}
+
+fn embedding_telemetry_confidence(provider_info: Option<&crate::embeddings::DeviceInfo>) -> &'static str {
+    let Some(info) = provider_info else {
+        return "low";
+    };
+
+    let runtime = info.runtime.trim().to_ascii_lowercase();
+    let device = info.device.trim().to_ascii_lowercase();
+    if runtime.is_empty()
+        || device.is_empty()
+        || runtime.contains("unknown")
+        || runtime.contains("unavailable")
+        || device.contains("unknown")
+        || device.contains("unavailable")
+    {
+        "low"
+    } else {
+        "high"
+    }
+}
+
+pub(crate) fn build_embedding_runtime_log_fields(
+    status: &crate::embeddings::EmbeddingRuntimeStatus,
+    provider_info: Option<&crate::embeddings::DeviceInfo>,
+    strict_mode: bool,
+    fallback_used: bool,
+) -> EmbeddingRuntimeLogFields {
+    EmbeddingRuntimeLogFields {
+        requested_backend: status.requested_backend.as_str().to_string(),
+        resolved_backend: status.resolved_backend.as_str().to_string(),
+        runtime: provider_info
+            .map(|info| info.runtime.clone())
+            .unwrap_or_else(|| "unavailable".to_string()),
+        device: provider_info
+            .map(|info| info.device.clone())
+            .unwrap_or_else(|| "unavailable".to_string()),
+        accelerated: status.accelerated,
+        degraded_reason: status
+            .degraded_reason
+            .clone()
+            .unwrap_or_else(|| "none".to_string()),
+        telemetry_confidence: embedding_telemetry_confidence(provider_info).to_string(),
+        strict_mode,
+        fallback_used,
+    }
+}
+
 impl Clone for JulieWorkspace {
     fn clone(&self) -> Self {
         Self {
@@ -80,6 +142,7 @@ impl Clone for JulieWorkspace {
             search_index: self.search_index.clone(),
             watcher: None, // Don't clone file watcher - create new if needed
             embedding_provider: self.embedding_provider.clone(),
+            embedding_runtime_status: self.embedding_runtime_status.clone(),
             config: self.config.clone(),
         }
     }
@@ -137,6 +200,7 @@ impl JulieWorkspace {
             search_index: None,
             watcher: None,
             embedding_provider: None,
+            embedding_runtime_status: None,
             config,
         };
 
@@ -159,10 +223,7 @@ impl JulieWorkspace {
 
         match julie_dir {
             Some(julie_path) => {
-                debug!(
-                    "find_workspace_root returned: {}",
-                    julie_path.display()
-                );
+                debug!("find_workspace_root returned: {}", julie_path.display());
                 let root = julie_path
                     .parent()
                     .ok_or_else(|| anyhow!("Invalid workspace structure"))?
@@ -184,6 +245,7 @@ impl JulieWorkspace {
                     search_index: None,
                     watcher: None,
                     embedding_provider: None,
+                    embedding_runtime_status: None,
                     config,
                 };
 
@@ -415,9 +477,7 @@ impl JulieWorkspace {
     /// Returns a list of all cache subdirectories managed by the workspace.
     /// Useful for cleanup operations, size monitoring, or validation.
     pub fn get_all_cache_dirs(&self) -> Vec<PathBuf> {
-        vec![
-            self.julie_dir.join("cache").join("parse_cache"),
-        ]
+        vec![self.julie_dir.join("cache").join("parse_cache")]
     }
 
     /// Initialize persistent database connection
@@ -546,18 +606,109 @@ impl JulieWorkspace {
     /// `embedding_provider` to `None` and logs a warning. Keyword search
     /// continues to work without embeddings.
     fn initialize_embedding_provider(&mut self) {
-        use crate::embeddings::{EmbeddingConfig, EmbeddingProviderFactory};
+        use crate::embeddings::{
+            BackendResolverCapabilities, EmbeddingBackend, EmbeddingConfig,
+            EmbeddingProviderFactory, EmbeddingRuntimeStatus, fallback_backend_after_init_failure,
+            parse_provider_preference, resolve_backend_preference,
+            should_disable_for_strict_acceleration, strict_acceleration_enabled_from_env_value,
+        };
 
-        let provider = std::env::var("JULIE_EMBEDDING_PROVIDER")
-            .unwrap_or_else(|_| "ort".to_string());
-        let cache_dir = std::env::var("JULIE_EMBEDDING_CACHE_DIR")
+        let strict_accel = std::env::var("JULIE_EMBEDDING_STRICT_ACCEL")
+            .ok()
+            .is_some_and(|value| strict_acceleration_enabled_from_env_value(&value));
+
+        let strict_reason = |base_reason: &str| {
+            format!(
+                "Embedding disabled by strict acceleration mode (JULIE_EMBEDDING_STRICT_ACCEL): {base_reason}"
+            )
+        };
+
+        let log_runtime_status = |workspace: &JulieWorkspace, fallback_used: bool| {
+            let Some(status) = workspace.embedding_runtime_status.as_ref() else {
+                info!(
+                    strict_mode = strict_accel,
+                    fallback_used = fallback_used,
+                    "Embedding runtime status unavailable"
+                );
+                return;
+            };
+
+            let provider_info = workspace
+                .embedding_provider
+                .as_ref()
+                .map(|provider| provider.device_info());
+            let fields = build_embedding_runtime_log_fields(
+                status,
+                provider_info.as_ref(),
+                strict_accel,
+                fallback_used,
+            );
+
+            info!(
+                requested_backend = %fields.requested_backend,
+                resolved_backend = %fields.resolved_backend,
+                runtime = %fields.runtime,
+                device = %fields.device,
+                accelerated = fields.accelerated,
+                degraded_reason = %fields.degraded_reason,
+                telemetry_confidence = %fields.telemetry_confidence,
+                strict_mode = fields.strict_mode,
+                fallback_used = fields.fallback_used,
+                "Embedding runtime status"
+            );
+        };
+
+        let mut config = EmbeddingConfig::default();
+        if let Ok(provider) = std::env::var("JULIE_EMBEDDING_PROVIDER") {
+            config.provider = provider;
+        }
+        config.cache_dir = std::env::var("JULIE_EMBEDDING_CACHE_DIR")
             .ok()
             .map(std::path::PathBuf::from);
 
-        let config = EmbeddingConfig {
-            provider,
-            cache_dir,
+        let requested_backend = match parse_provider_preference(&config.provider) {
+            Ok(backend) => backend,
+            Err(err) => {
+                self.embedding_provider = None;
+                self.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+                    requested_backend: EmbeddingBackend::Invalid(config.provider.clone()),
+                    resolved_backend: EmbeddingBackend::Unresolved,
+                    accelerated: false,
+                    degraded_reason: Some(err.to_string()),
+                });
+                log_runtime_status(self, false);
+                warn!(
+                    "Embedding provider unavailable (keyword search unaffected): {}",
+                    err
+                );
+                return;
+            }
         };
+        let capabilities = BackendResolverCapabilities::current();
+        let resolved_backend =
+            match resolve_backend_preference(requested_backend.clone(), &capabilities) {
+                Ok(backend) => backend,
+                Err(err) => {
+                    let reason = if strict_accel {
+                        strict_reason(&err.to_string())
+                    } else {
+                        err.to_string()
+                    };
+                    self.embedding_provider = None;
+                    self.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+                        requested_backend,
+                        resolved_backend: EmbeddingBackend::Unresolved,
+                        accelerated: false,
+                        degraded_reason: Some(reason.clone()),
+                    });
+                    log_runtime_status(self, false);
+                    warn!(
+                        "Embedding provider unavailable (keyword search unaffected): {}",
+                        reason
+                    );
+                    return;
+                }
+            };
 
         match EmbeddingProviderFactory::create(&config) {
             Ok(provider) => {
@@ -566,14 +717,110 @@ impl JulieWorkspace {
                     "Embedding provider initialized: {} ({}, {}d)",
                     info.model_name, info.device, info.dimensions
                 );
+
+                let degraded_reason = provider.degraded_reason();
+                let accelerated = provider
+                    .accelerated()
+                    .unwrap_or_else(|| info.is_accelerated());
+
+                if should_disable_for_strict_acceleration(
+                    strict_accel,
+                    &resolved_backend,
+                    accelerated,
+                    degraded_reason.as_deref(),
+                ) {
+                    let strict_degraded_reason =
+                        strict_reason(degraded_reason.as_deref().unwrap_or("degraded runtime"));
+                    warn!(
+                        "Embedding provider unavailable (keyword search unaffected): {}",
+                        strict_degraded_reason
+                    );
+                    self.embedding_provider = None;
+                    self.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+                        requested_backend,
+                        resolved_backend,
+                        accelerated: false,
+                        degraded_reason: Some(strict_degraded_reason),
+                    });
+                    log_runtime_status(self, false);
+                    return;
+                }
+
                 self.embedding_provider = Some(provider);
+                self.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+                    requested_backend,
+                    resolved_backend,
+                    accelerated,
+                    degraded_reason,
+                });
+                log_runtime_status(self, false);
             }
             Err(e) => {
+                if let Some(fallback_backend) = fallback_backend_after_init_failure(
+                    requested_backend.clone(),
+                    resolved_backend.clone(),
+                    strict_accel,
+                    capabilities,
+                ) {
+                    let mut fallback_config = config.clone();
+                    fallback_config.provider = fallback_backend.as_str().to_string();
+
+                    match EmbeddingProviderFactory::create(&fallback_config) {
+                        Ok(provider) => {
+                            let info = provider.device_info();
+                            info!(
+                                "Embedding provider initialized via fallback: {} ({}, {}d)",
+                                info.model_name, info.device, info.dimensions
+                            );
+
+                            let provider_degraded_reason = provider.degraded_reason();
+                            let accelerated = provider
+                                .accelerated()
+                                .unwrap_or_else(|| info.is_accelerated());
+                            let fallback_reason = format!(
+                                "Auto backend '{}' failed to initialize, fell back to '{}': {}",
+                                resolved_backend.as_str(),
+                                fallback_backend.as_str(),
+                                e
+                            );
+                            let degraded_reason = provider_degraded_reason
+                                .map(|reason| {
+                                    format!("{fallback_reason}; fallback runtime detail: {reason}")
+                                })
+                                .or(Some(fallback_reason));
+
+                            self.embedding_provider = Some(provider);
+                            self.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+                                requested_backend,
+                                resolved_backend: fallback_backend,
+                                accelerated,
+                                degraded_reason,
+                            });
+                            log_runtime_status(self, true);
+                            return;
+                        }
+                        Err(fallback_error) => {
+                            warn!(
+                                "Embedding fallback to '{}' failed (keyword search unaffected): {}",
+                                fallback_backend.as_str(),
+                                fallback_error
+                            );
+                        }
+                    }
+                }
+
                 warn!(
                     "Embedding provider unavailable (keyword search unaffected): {}",
                     e
                 );
                 self.embedding_provider = None;
+                self.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+                    requested_backend,
+                    resolved_backend,
+                    accelerated: false,
+                    degraded_reason: Some(e.to_string()),
+                });
+                log_runtime_status(self, false);
             }
         }
     }

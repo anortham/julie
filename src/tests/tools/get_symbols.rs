@@ -7,8 +7,8 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
 use crate::mcp_compat::CallToolResult;
+use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
 
 /// Extract text from CallToolResult content blocks
 fn extract_text_from_result(result: &CallToolResult) -> String {
@@ -112,7 +112,6 @@ pub const MAX_USERS: usize = 100;
         limit: None,
         mode: None,
         workspace: None,
-
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -187,7 +186,6 @@ pub fn process_data(input: &str) -> String {
         limit: None,
         mode: None,
         workspace: None,
-
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -316,7 +314,6 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: None,
         mode: None, // Default → "structure" → lean overview
         workspace: None,
-
     };
 
     let result_no_limit = tool_no_limit.call_tool(&handler).await?;
@@ -344,7 +341,6 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
         limit: Some(5),
         mode: None,
         workspace: None,
-
     };
 
     let result_with_limit = tool_with_limit.call_tool(&handler).await?;
@@ -406,7 +402,6 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
-
     };
 
     let result_not_found = tool_not_found.call_tool(&handler).await?;
@@ -431,7 +426,6 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
-
     };
 
     let result_exists = tool_exists.call_tool(&handler).await?;
@@ -465,7 +459,6 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
         limit: None,
         mode: None,
         workspace: None,
-
     };
 
     let result_empty = tool_empty.call_tool(&handler).await?;

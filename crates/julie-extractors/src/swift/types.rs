@@ -101,8 +101,7 @@ impl SwiftExtractor {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))?;
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         let modifiers = self.extract_modifiers(node);
         let generic_params = self.extract_generic_parameters(node);
@@ -151,12 +150,15 @@ impl SwiftExtractor {
     }
 
     /// Implementation of extractProtocol method
-    pub(super) fn extract_protocol(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_protocol(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))?;
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         let modifiers = self.extract_modifiers(node);
         let inheritance = self.extract_inheritance(node);
@@ -204,8 +206,7 @@ impl SwiftExtractor {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))?;
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         let modifiers = self.extract_modifiers(node);
         let generic_params = self.extract_generic_parameters(node);

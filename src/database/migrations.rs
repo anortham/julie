@@ -520,13 +520,15 @@ impl SymbolDatabase {
     fn migration_007_drop_fts5(&self) -> Result<()> {
         // Drop FTS5 sync triggers
         for trigger in &[
-            "symbols_ai", "symbols_ad", "symbols_au",
-            "files_ai", "files_ad", "files_au",
+            "symbols_ai",
+            "symbols_ad",
+            "symbols_au",
+            "files_ai",
+            "files_ad",
+            "files_au",
         ] {
-            self.conn.execute(
-                &format!("DROP TRIGGER IF EXISTS {trigger}"),
-                [],
-            )?;
+            self.conn
+                .execute(&format!("DROP TRIGGER IF EXISTS {trigger}"), [])?;
         }
         debug!("Dropped FTS5 sync triggers");
 

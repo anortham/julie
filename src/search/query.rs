@@ -7,9 +7,9 @@
 //! - doc_comment: 2.0x
 //! - code_body: 1.0x
 
+use tantivy::Term;
 use tantivy::query::{BooleanQuery, BoostQuery, Occur, TermQuery};
 use tantivy::schema::{Field, IndexRecordOption};
-use tantivy::Term;
 
 const ORIGINAL_GROUP_WEIGHT: f32 = 5.0;
 const ALIAS_GROUP_WEIGHT: f32 = 3.5;

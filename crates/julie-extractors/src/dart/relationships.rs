@@ -22,7 +22,13 @@ pub(super) fn extract_relationships(
             extract_class_relationships(base, &current_node, symbols, &mut relationships);
         }
         "member_access" | "assignable_expression" => {
-            extract_method_call_relationships(base, &current_node, symbols, &symbol_map, &mut relationships);
+            extract_method_call_relationships(
+                base,
+                &current_node,
+                symbols,
+                &symbol_map,
+                &mut relationships,
+            );
         }
         _ => {}
     });

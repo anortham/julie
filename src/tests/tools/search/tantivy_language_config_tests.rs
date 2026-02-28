@@ -54,16 +54,7 @@ fn test_all_preserve_patterns_collected() {
     let configs = LanguageConfigs::load_embedded();
     let all_patterns = configs.all_preserve_patterns();
     // Should include patterns from multiple languages
-    assert!(
-        all_patterns.contains(&"::".to_string()),
-        "Missing Rust ::"
-    );
-    assert!(
-        all_patterns.contains(&"?.".to_string()),
-        "Missing TS ?."
-    );
-    assert!(
-        all_patterns.contains(&":=".to_string()),
-        "Missing Go :="
-    );
+    assert!(all_patterns.contains(&"::".to_string()), "Missing Rust ::");
+    assert!(all_patterns.contains(&"?.".to_string()), "Missing TS ?.");
+    assert!(all_patterns.contains(&":=".to_string()), "Missing Go :=");
 }

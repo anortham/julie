@@ -10,9 +10,7 @@
 // - Original test module size: 26 lines
 
 use crate::base::SymbolKind;
-use crate::regex::helpers::{
-    calculate_complexity, determine_pattern_kind, is_valid_regex_pattern,
-};
+use crate::regex::helpers::{calculate_complexity, determine_pattern_kind, is_valid_regex_pattern};
 
 #[test]
 fn test_is_valid_regex_pattern() {

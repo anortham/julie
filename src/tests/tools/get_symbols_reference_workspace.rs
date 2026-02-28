@@ -9,8 +9,8 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
 use crate::mcp_compat::{CallToolResult, CallToolResultExt};
+use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
 
 fn extract_text_from_result(result: &CallToolResult) -> String {
     result
@@ -125,7 +125,6 @@ pub fn reference_function() {
         limit: None,
         mode: None,
         workspace: Some(workspace_id.clone()), // ✅ NOW IT EXISTS!
-
     };
 
     let result = get_symbols_tool.call_tool(&handler).await?;
@@ -265,7 +264,6 @@ pub struct Another {
         limit: None,
         mode: None,
         workspace: Some(workspace_id.clone()),
-
     };
 
     let result_all = get_all.call_tool(&handler).await?;
@@ -296,7 +294,6 @@ pub struct Another {
         limit: None,
         mode: None,
         workspace: Some(workspace_id.clone()),
-
     };
 
     let result_depth_0 = get_depth_0.call_tool(&handler).await?;
@@ -317,7 +314,6 @@ pub struct Another {
         limit: None,
         mode: None,
         workspace: Some(workspace_id.clone()),
-
     };
 
     let result_target = get_target.call_tool(&handler).await?;
@@ -345,17 +341,13 @@ pub struct Another {
         limit: Some(2),
         mode: None,
         workspace: Some(workspace_id.clone()),
-
     };
 
     let result_limit = get_limit.call_tool(&handler).await?;
     let text_limit = extract_text_from_result(&result_limit);
 
     // limit=2 should constrain the number of top-level symbols returned
-    assert!(
-        !text_limit.is_empty(),
-        "limit=2 should return some symbols"
-    );
+    assert!(!text_limit.is_empty(), "limit=2 should return some symbols");
     {
         // Verify that the output is reasonably constrained
         // (exact assertion depends on text format, but should be smaller than unlimited)

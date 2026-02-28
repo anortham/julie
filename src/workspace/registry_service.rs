@@ -480,7 +480,6 @@ impl WorkspaceRegistryService {
         Ok(())
     }
 
-
     /// Get workspaces that have expired
     pub async fn get_expired_workspaces(&self) -> Result<Vec<WorkspaceEntry>> {
         let registry = self.load_registry().await?;
@@ -718,7 +717,9 @@ impl WorkspaceRegistryService {
                     .as_ref()
                     .map(|ws| ws.id.as_str())
                     == Some(dir_name.as_str());
-                if is_primary_workspace || registry_clone.reference_workspaces.contains_key(&dir_name) {
+                if is_primary_workspace
+                    || registry_clone.reference_workspaces.contains_key(&dir_name)
+                {
                     continue;
                 }
 

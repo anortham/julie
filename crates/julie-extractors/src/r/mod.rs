@@ -15,47 +15,129 @@ use tree_sitter::{Node, Tree};
 /// Only includes dot-containing names (non-dot names are already excluded by classify_s3).
 const NON_S3_DOT_FUNCTIONS: &[&str] = &[
     // Data structures
-    "data.frame", "data.table",
+    "data.frame",
+    "data.table",
     // I/O
-    "read.csv", "read.table", "read.delim", "read.fwf",
-    "write.csv", "write.table",
+    "read.csv",
+    "read.table",
+    "read.delim",
+    "read.fwf",
+    "write.csv",
+    "write.table",
     // Type checking (is.*)
-    "is.na", "is.null", "is.numeric", "is.character", "is.logical",
-    "is.integer", "is.double", "is.complex", "is.list", "is.vector",
-    "is.matrix", "is.array", "is.factor", "is.ordered", "is.data.frame",
-    "is.function", "is.environment", "is.recursive", "is.atomic",
-    "is.finite", "is.infinite", "is.nan", "is.element", "is.loaded",
-    "is.pairlist", "is.primitive", "is.R",
+    "is.na",
+    "is.null",
+    "is.numeric",
+    "is.character",
+    "is.logical",
+    "is.integer",
+    "is.double",
+    "is.complex",
+    "is.list",
+    "is.vector",
+    "is.matrix",
+    "is.array",
+    "is.factor",
+    "is.ordered",
+    "is.data.frame",
+    "is.function",
+    "is.environment",
+    "is.recursive",
+    "is.atomic",
+    "is.finite",
+    "is.infinite",
+    "is.nan",
+    "is.element",
+    "is.loaded",
+    "is.pairlist",
+    "is.primitive",
+    "is.R",
     // Type coercion (as.*)
-    "as.character", "as.numeric", "as.integer", "as.double", "as.logical",
-    "as.complex", "as.factor", "as.data.frame", "as.matrix", "as.list",
-    "as.vector", "as.Date", "as.POSIXct", "as.POSIXlt",
+    "as.character",
+    "as.numeric",
+    "as.integer",
+    "as.double",
+    "as.logical",
+    "as.complex",
+    "as.factor",
+    "as.data.frame",
+    "as.matrix",
+    "as.list",
+    "as.vector",
+    "as.Date",
+    "as.POSIXct",
+    "as.POSIXlt",
     // System/control
-    "on.exit", "do.call", "set.seed",
+    "on.exit",
+    "do.call",
+    "set.seed",
     // System info (sys.*, Sys.*)
-    "sys.call", "sys.function", "sys.frame", "sys.nframe",
-    "sys.on.exit", "sys.parents", "sys.status",
-    "Sys.time", "Sys.Date", "Sys.sleep", "Sys.getenv",
-    "Sys.setenv", "Sys.timezone", "Sys.glob",
+    "sys.call",
+    "sys.function",
+    "sys.frame",
+    "sys.nframe",
+    "sys.on.exit",
+    "sys.parents",
+    "sys.status",
+    "Sys.time",
+    "Sys.Date",
+    "Sys.sleep",
+    "Sys.getenv",
+    "Sys.setenv",
+    "Sys.timezone",
+    "Sys.glob",
     // File system
-    "file.path", "file.exists", "file.create", "file.remove",
-    "file.rename", "file.copy", "file.info", "file.size",
-    "file.access", "file.choose", "file.show",
-    "dir.create", "dir.exists", "list.files", "list.dirs",
+    "file.path",
+    "file.exists",
+    "file.create",
+    "file.remove",
+    "file.rename",
+    "file.copy",
+    "file.info",
+    "file.size",
+    "file.access",
+    "file.choose",
+    "file.show",
+    "dir.create",
+    "dir.exists",
+    "list.files",
+    "list.dirs",
     // Timing
-    "proc.time", "system.time", "system.file",
+    "proc.time",
+    "system.time",
+    "system.file",
     // Environment/scope
-    "parent.frame", "parent.env", "new.env",
+    "parent.frame",
+    "parent.env",
+    "new.env",
     // Utility
-    "all.equal", "all.names", "all.vars", "which.min", "which.max",
-    "seq.int", "seq.along", "make.names", "make.unique",
-    "attr.all.equal", "match.arg", "match.call", "match.fun",
+    "all.equal",
+    "all.names",
+    "all.vars",
+    "which.min",
+    "which.max",
+    "seq.int",
+    "seq.along",
+    "make.names",
+    "make.unique",
+    "attr.all.equal",
+    "match.arg",
+    "match.call",
+    "match.fun",
     // Modeling
-    "model.frame", "model.matrix", "model.response", "drop.terms",
+    "model.frame",
+    "model.matrix",
+    "model.response",
+    "drop.terms",
     // Misc
-    "base.url", "try.catch", "with.default",
-    "within.data.frame", "within.list", "body.function",
-    "close.connection", "open.connection",
+    "base.url",
+    "try.catch",
+    "with.default",
+    "within.data.frame",
+    "within.list",
+    "body.function",
+    "close.connection",
+    "open.connection",
 ];
 
 pub struct RExtractor {
@@ -158,9 +240,9 @@ impl RExtractor {
                     parent_id: parent_id.clone(),
                     ..Default::default()
                 };
-                let symbol =
-                    self.base
-                        .create_symbol(&node, name, SymbolKind::Variable, options);
+                let symbol = self
+                    .base
+                    .create_symbol(&node, name, SymbolKind::Variable, options);
                 self.symbols.push(symbol.clone());
                 Some(symbol)
             }
@@ -200,10 +282,7 @@ impl RExtractor {
 
         // Check for UseMethod() in body -> mark as S3 generic
         if self.body_contains_usemethod(func_def) {
-            metadata.insert(
-                "s3_generic".to_string(),
-                serde_json::Value::Bool(true),
-            );
+            metadata.insert("s3_generic".to_string(), serde_json::Value::Bool(true));
         }
 
         let options = SymbolOptions {
@@ -328,11 +407,7 @@ impl RExtractor {
     }
 
     /// Extract library(pkg) and require(pkg) as Import symbols
-    fn extract_call_as_import(
-        &mut self,
-        node: Node,
-        parent_id: &Option<String>,
-    ) -> Option<Symbol> {
+    fn extract_call_as_import(&mut self, node: Node, parent_id: &Option<String>) -> Option<Symbol> {
         let func_node = node.child(0)?;
         if func_node.kind() != "identifier" {
             return None;
@@ -358,9 +433,9 @@ impl RExtractor {
             signature: Some(signature),
             ..Default::default()
         };
-        let symbol =
-            self.base
-                .create_symbol(&node, pkg_name, SymbolKind::Import, options);
+        let symbol = self
+            .base
+            .create_symbol(&node, pkg_name, SymbolKind::Import, options);
         self.symbols.push(symbol.clone());
         Some(symbol)
     }

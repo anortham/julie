@@ -78,7 +78,9 @@ fn walk_for_symbols(
     for child in node.children(&mut cursor) {
         match child.kind() {
             // Don't recurse into things we handle at the top level
-            "function_declaration" | "lexical_declaration" | "import_statement"
+            "function_declaration"
+            | "lexical_declaration"
+            | "import_statement"
             | "expression_statement" => {
                 // Only recurse at top level (program node)
                 if node.kind() == "program" {
@@ -257,15 +259,11 @@ fn extract_import_statement(
                         "identifier" => {
                             // Default import: `import MyComponent from './MyComponent.vue'`
                             let name = get_node_text(&clause_child, &section.content);
-                            let start_line =
-                                section.start_line + clause_child.start_position().row;
+                            let start_line = section.start_line + clause_child.start_position().row;
                             let start_col = clause_child.start_position().column + 1;
 
                             let mut metadata = HashMap::new();
-                            metadata.insert(
-                                "source".to_string(),
-                                Value::String(source.clone()),
-                            );
+                            metadata.insert("source".to_string(), Value::String(source.clone()));
                             metadata.insert(
                                 "importKind".to_string(),
                                 Value::String("default".to_string()),
@@ -285,13 +283,7 @@ fn extract_import_statement(
                             ));
                         }
                         "named_imports" => {
-                            extract_named_imports(
-                                base,
-                                clause_child,
-                                section,
-                                &source,
-                                symbols,
-                            );
+                            extract_named_imports(base, clause_child, section, &source, symbols);
                         }
                         _ => {}
                     }
@@ -325,10 +317,7 @@ fn extract_named_imports(
 
                 let mut metadata = HashMap::new();
                 metadata.insert("source".to_string(), Value::String(source.to_string()));
-                metadata.insert(
-                    "importKind".to_string(),
-                    Value::String("named".to_string()),
-                );
+                metadata.insert("importKind".to_string(), Value::String("named".to_string()));
 
                 symbols.push(create_symbol_manual(
                     base,
@@ -370,10 +359,7 @@ fn extract_standalone_call(
                     let end_col = child.end_position().column + 1;
 
                     let mut metadata = HashMap::new();
-                    metadata.insert(
-                        "type".to_string(),
-                        Value::String("vue-macro".to_string()),
-                    );
+                    metadata.insert("type".to_string(), Value::String("vue-macro".to_string()));
 
                     symbols.push(create_symbol_manual(
                         base,

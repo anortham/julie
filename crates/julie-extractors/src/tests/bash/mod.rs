@@ -101,10 +101,7 @@ declare -r CONFIG_PATH="/etc/app/config"
             deploy_app.signature,
             Some("function deploy_app()".to_string())
         );
-        assert_eq!(
-            deploy_app.visibility,
-            Some(crate::base::Visibility::Public)
-        );
+        assert_eq!(deploy_app.visibility, Some(crate::base::Visibility::Public));
 
         let build_app = functions.iter().find(|f| f.name == "build_app");
         assert!(build_app.is_some(), "build_app function not found");
@@ -126,10 +123,7 @@ declare -r CONFIG_PATH="/etc/app/config"
         let node_env = variables.iter().find(|v| v.name == "NODE_ENV");
         assert!(node_env.is_some(), "NODE_ENV variable not found");
         let node_env = node_env.unwrap();
-        assert_eq!(
-            node_env.visibility,
-            Some(crate::base::Visibility::Public)
-        ); // exported
+        assert_eq!(node_env.visibility, Some(crate::base::Visibility::Public)); // exported
 
         let api_key = variables.iter().find(|v| v.name == "API_KEY");
         assert!(api_key.is_some(), "API_KEY variable not found");
@@ -648,7 +642,12 @@ helper_function() {
             "Empty bash should produce no symbols"
         );
         // Minimal bash with shebang should produce exactly the shebang symbol
-        let shebang = minimal_symbols.iter().find(|s| s.name == "bash" && s.signature.as_ref().map_or(false, |sig| sig.contains("#!/bin/bash")));
+        let shebang = minimal_symbols.iter().find(|s| {
+            s.name == "bash"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("#!/bin/bash"))
+        });
         assert!(
             shebang.is_some(),
             "Minimal bash with shebang should produce the shebang symbol"
@@ -658,7 +657,10 @@ helper_function() {
             minimal_symbols.len(),
             1,
             "Minimal bash should only have the shebang symbol, got: {:?}",
-            minimal_symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            minimal_symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
         );
     }
 
@@ -666,10 +668,26 @@ helper_function() {
     fn test_extract_shebang() {
         let code = "#!/bin/bash\nset -euo pipefail\n\nfunction main() {\n    echo \"Hello\"\n}\n";
         let symbols = extract_symbols(code);
-        let shebang = symbols.iter().find(|s| s.name == "bash" && s.signature.as_ref().map_or(false, |sig| sig.contains("#!/bin/bash")));
-        assert!(shebang.is_some(), "Shebang line should be extracted as a symbol. Found symbols: {:?}", symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>());
+        let shebang = symbols.iter().find(|s| {
+            s.name == "bash"
+                && s.signature
+                    .as_ref()
+                    .map_or(false, |sig| sig.contains("#!/bin/bash"))
+        });
+        assert!(
+            shebang.is_some(),
+            "Shebang line should be extracted as a symbol. Found symbols: {:?}",
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
+        );
         let shebang = shebang.unwrap();
-        assert_eq!(shebang.kind, SymbolKind::Variable, "Shebang should be SymbolKind::Variable");
+        assert_eq!(
+            shebang.kind,
+            SymbolKind::Variable,
+            "Shebang should be SymbolKind::Variable"
+        );
     }
 
     #[test]
@@ -677,9 +695,19 @@ helper_function() {
         let code = "#!/usr/bin/env python3\n\necho 'hello'\n";
         let symbols = extract_symbols(code);
         let shebang = symbols.iter().find(|s| s.name == "python3");
-        assert!(shebang.is_some(), "Shebang with env should extract the interpreter name. Found symbols: {:?}", symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>());
+        assert!(
+            shebang.is_some(),
+            "Shebang with env should extract the interpreter name. Found symbols: {:?}",
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
+        );
         let shebang = shebang.unwrap();
-        assert_eq!(shebang.signature, Some("#!/usr/bin/env python3".to_string()));
+        assert_eq!(
+            shebang.signature,
+            Some("#!/usr/bin/env python3".to_string())
+        );
     }
 }
 

@@ -456,8 +456,18 @@ async function* fetchPages(baseUrl) {
     let react_import = symbols
         .iter()
         .find(|s| s.name == "h" && s.kind == SymbolKind::Import);
-    assert!(react_import.is_some(), "Aliased import `createElement as h` should produce symbol named 'h'");
-    assert!(react_import.unwrap().signature.as_ref().unwrap().contains("as h"));
+    assert!(
+        react_import.is_some(),
+        "Aliased import `createElement as h` should produce symbol named 'h'"
+    );
+    assert!(
+        react_import
+            .unwrap()
+            .signature
+            .as_ref()
+            .unwrap()
+            .contains("as h")
+    );
 
     // Dynamic import function
     let load_module = symbols.iter().find(|s| s.name == "loadModule");

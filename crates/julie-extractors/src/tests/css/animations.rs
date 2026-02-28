@@ -28,7 +28,10 @@ mod tests {
             1,
             "Expected exactly 1 symbol for @keyframes slideIn, got {}: {:?}",
             keyframes_symbols.len(),
-            keyframes_symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+            keyframes_symbols
+                .iter()
+                .map(|s| &s.name)
+                .collect::<Vec<_>>()
         );
         assert_eq!(keyframes_symbols[0].name, "@keyframes slideIn");
         assert_eq!(keyframes_symbols[0].kind, SymbolKind::Function);

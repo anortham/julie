@@ -15,9 +15,9 @@ mod formatting;
 mod primary;
 mod reference;
 
+use crate::mcp_compat::CallToolResult;
 use anyhow::Result;
 use schemars::JsonSchema;
-use crate::mcp_compat::CallToolResult;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 

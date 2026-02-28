@@ -1,7 +1,5 @@
 /// Inheritance, implementation, and call relationship extraction
-use crate::base::{
-    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
-};
+use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::java::JavaExtractor;
 use serde_json;
 use std::collections::HashMap;

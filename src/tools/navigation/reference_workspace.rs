@@ -28,10 +28,7 @@ pub async fn find_references_in_reference_workspace(
     // Get path to reference workspace's separate database file
     let ref_db_path = primary_workspace.workspace_db_path(&ref_workspace_id);
 
-    debug!(
-        "Opening reference workspace DB: {}",
-        ref_db_path.display()
-    );
+    debug!("Opening reference workspace DB: {}", ref_db_path.display());
 
     // CRITICAL FIX: Wrap blocking file I/O in spawn_blocking
     // Opening SQLite database involves blocking filesystem operations

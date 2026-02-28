@@ -9,8 +9,7 @@ use std::sync::LazyLock;
 use tree_sitter::Node;
 
 /// Matches ALL_CAPS environment variable names
-static ENV_VAR_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Z_][A-Z0-9_]*$").unwrap());
+static ENV_VAR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Z_][A-Z0-9_]*$").unwrap());
 
 impl super::BashExtractor {
     /// Extract a variable assignment (VAR=value)

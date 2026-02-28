@@ -111,9 +111,7 @@ process_data <- function(data) {
         // No resolved relationships should exist since nothing is defined locally.
         let pipe_relationships: Vec<&Relationship> = relationships
             .iter()
-            .filter(|r| {
-                r.kind == RelationshipKind::Calls || r.kind == RelationshipKind::Uses
-            })
+            .filter(|r| r.kind == RelationshipKind::Calls || r.kind == RelationshipKind::Uses)
             .collect();
 
         assert!(
@@ -193,7 +191,10 @@ summarize_item <- function(item) { mean(item) }
         assert!(
             call_relationships.is_empty(),
             "Only direct calls to locally-defined functions create resolved relationships. Found: {:?}",
-            call_relationships.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+            call_relationships
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -250,7 +251,10 @@ analyze <- function(data) {
         assert!(
             synthetic_rels.is_empty(),
             "No relationships should have synthetic 'builtin_' IDs. Found: {:?}",
-            synthetic_rels.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+            synthetic_rels
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -276,7 +280,10 @@ process <- function(data) {
         assert!(
             synthetic_rels.is_empty(),
             "No relationships should have synthetic 'piped_' IDs. Found: {:?}",
-            synthetic_rels.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+            synthetic_rels
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -300,7 +307,10 @@ get_info <- function(record) {
         assert!(
             synthetic_rels.is_empty(),
             "No relationships should have synthetic 'member_' IDs. Found: {:?}",
-            synthetic_rels.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+            synthetic_rels
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
         );
     }
 

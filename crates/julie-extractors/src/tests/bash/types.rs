@@ -34,14 +34,9 @@ double_value() {
         let tree = parser.parse(code, None).expect("Error parsing code");
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.sh",
-            code,
-            "bash",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.sh", code, "bash", &workspace_root)
+                .expect("Extraction failed");
 
         assert!(
             !results.types.is_empty(),
@@ -50,7 +45,10 @@ double_value() {
 
         println!("Extracted {} types from Bash code", results.types.len());
         for (symbol_id, type_info) in &results.types {
-            println!("  {} -> {} (inferred: {})", symbol_id, type_info.resolved_type, type_info.is_inferred);
+            println!(
+                "  {} -> {} (inferred: {})",
+                symbol_id, type_info.resolved_type, type_info.is_inferred
+            );
         }
 
         assert!(results.types.len() >= 1);

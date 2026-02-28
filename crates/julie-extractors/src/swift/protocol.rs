@@ -16,8 +16,7 @@ impl SwiftExtractor {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "simple_identifier");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))?;
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         let parameters = self.extract_parameters(node);
         let return_type = self.extract_return_type(node);

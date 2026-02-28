@@ -396,4 +396,3 @@ pub fn current_timestamp() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
-

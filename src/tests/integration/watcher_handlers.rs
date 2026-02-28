@@ -59,10 +59,15 @@ fn caller() -> i32 {
     // Verify symbols are stored (this already works)
     let db_lock = db.lock().unwrap();
     let symbols = db_lock.get_symbols_for_file("test.rs").unwrap();
-    assert!(symbols.len() >= 2, "Should have at least 2 symbols (helper + caller), got {}", symbols.len());
+    assert!(
+        symbols.len() >= 2,
+        "Should have at least 2 symbols (helper + caller), got {}",
+        symbols.len()
+    );
 
     // CRITICAL: Verify identifiers are stored (this is the bug)
-    let identifier_count: i64 = db_lock.conn
+    let identifier_count: i64 = db_lock
+        .conn
         .query_row(
             "SELECT COUNT(*) FROM identifiers WHERE file_path = ?1",
             rusqlite::params!["test.rs"],
@@ -78,7 +83,8 @@ fn caller() -> i32 {
     );
 
     // Verify relationships are stored (caller -> helper)
-    let relationship_count: i64 = db_lock.conn
+    let relationship_count: i64 = db_lock
+        .conn
         .query_row(
             "SELECT COUNT(*) FROM relationships WHERE file_path = ?1",
             rusqlite::params!["test.rs"],
@@ -598,7 +604,10 @@ async fn test_transaction_leak_on_error() {
                 );
             } else {
                 // Some other error - not the bug we're testing
-                println!("DEBUG: Different error (not transaction leak): {}", error_msg);
+                println!(
+                    "DEBUG: Different error (not transaction leak): {}",
+                    error_msg
+                );
             }
         }
     }
@@ -632,7 +641,10 @@ async fn test_transaction_leak_on_error() {
                     error_msg
                 );
             } else {
-                println!("DEBUG: Second file failed with different error: {}", error_msg);
+                println!(
+                    "DEBUG: Second file failed with different error: {}",
+                    error_msg
+                );
             }
         }
     }

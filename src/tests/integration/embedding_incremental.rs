@@ -1,3 +1,5 @@
+#![cfg(feature = "embeddings-ort")]
+
 //! Integration tests for incremental embedding via the file watcher pipeline.
 
 #[cfg(test)]

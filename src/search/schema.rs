@@ -5,8 +5,8 @@
 //! - `"file"`: Full file content for line-level search
 
 use tantivy::schema::{
-    Field, IndexRecordOption, NumericOptions, Schema, TextFieldIndexing, TextOptions, STORED,
-    STRING,
+    Field, IndexRecordOption, NumericOptions, STORED, STRING, Schema, TextFieldIndexing,
+    TextOptions,
 };
 
 /// Field name constants for the search schema.

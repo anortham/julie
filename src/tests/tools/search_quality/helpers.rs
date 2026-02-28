@@ -15,14 +15,7 @@ pub async fn search_content(
     limit: u32,
 ) -> Result<Vec<Symbol>> {
     let (symbols, _relaxed) = crate::tools::search::text_search::text_search_impl(
-        query,
-        &None,
-        &None,
-        limit,
-        None,
-        "content",
-        None,
-        handler,
+        query, &None, &None, limit, None, "content", None, handler,
     )
     .await?;
     Ok(symbols)
@@ -347,11 +340,9 @@ incremental_updates = true
     fs::create_dir_all(&tantivy_dir).expect("Failed to create tantivy dir");
 
     let configs = crate::search::LanguageConfigs::load_embedded();
-    let search_index = crate::search::SearchIndex::open_or_create_with_language_configs(
-        &tantivy_dir,
-        &configs,
-    )
-    .expect("Failed to create Tantivy search index");
+    let search_index =
+        crate::search::SearchIndex::open_or_create_with_language_configs(&tantivy_dir, &configs)
+            .expect("Failed to create Tantivy search index");
 
     // Backfill symbols from SQLite fixture
     let symbols = db_struct
@@ -396,6 +387,7 @@ incremental_updates = true
         search_index: Some(Arc::new(Mutex::new(search_index))),
         watcher: None,
         embedding_provider: None,
+        embedding_runtime_status: None,
         config: crate::workspace::WorkspaceConfig::default(),
     };
 

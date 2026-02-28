@@ -32,8 +32,7 @@ pub(super) fn extract_property(
             .children(&mut node.walk())
             .find(|n| n.kind() == "identifier");
     }
-    let name = name_node
-        .map(|n| base.get_node_text(&n))?;
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let modifiers = helpers::extract_modifiers(base, node);
     let property_type = helpers::extract_property_type(base, node);
@@ -207,10 +206,8 @@ pub(super) fn extract_constructor_parameters(
                         {
                             if equal_index + 1 < children.len() {
                                 let value_node = &children[equal_index + 1];
-                                signature.push_str(&format!(
-                                    " = {}",
-                                    base.get_node_text(value_node)
-                                ));
+                                signature
+                                    .push_str(&format!(" = {}", base.get_node_text(value_node)));
                             }
                         }
                     }

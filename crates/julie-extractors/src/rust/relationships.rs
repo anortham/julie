@@ -3,9 +3,7 @@ use super::helpers::find_containing_function;
 /// - Trait implementations
 /// - Type references in fields
 /// - Function calls
-use crate::base::{
-    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
-};
+use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::rust::RustExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -192,25 +190,13 @@ fn extract_call_relationships(
             let method_node = func_node.child_by_field_name("field");
             if let Some(method_node) = method_node {
                 let method_name = extractor.get_base_mut().get_node_text(&method_node);
-                handle_call_target(
-                    extractor,
-                    node,
-                    &method_name,
-                    symbol_map,
-                    relationships,
-                );
+                handle_call_target(extractor, node, &method_name, symbol_map, relationships);
             }
         }
         // Handle direct function calls
         else if func_node.kind() == "identifier" {
             let function_name = extractor.get_base_mut().get_node_text(&func_node);
-            handle_call_target(
-                extractor,
-                node,
-                &function_name,
-                symbol_map,
-                relationships,
-            );
+            handle_call_target(extractor, node, &function_name, symbol_map, relationships);
         }
         // Handle qualified/scoped calls: crate::module::function()
         else if func_node.kind() == "scoped_identifier" {
@@ -219,13 +205,7 @@ fn extract_call_relationships(
             } else {
                 extractor.get_base_mut().get_node_text(&func_node)
             };
-            handle_call_target(
-                extractor,
-                node,
-                &function_name,
-                symbol_map,
-                relationships,
-            );
+            handle_call_target(extractor, node, &function_name, symbol_map, relationships);
         }
     }
 }

@@ -1,10 +1,10 @@
 //! Tests for `workspace::JulieWorkspace` extracted from the implementation module.
 
+use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRuntimeStatus};
 use crate::handler::JulieServerHandler;
-use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+use crate::mcp_compat::{CallToolResult, CallToolResultExt};
 use crate::tools::workspace::ManageWorkspaceTool;
 use crate::workspace::JulieWorkspace;
-use crate::mcp_compat::{CallToolResult, CallToolResultExt};
 use std::fs;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -139,6 +139,127 @@ async fn test_health_check() {
     assert!(health.is_healthy());
     assert!(health.structure_valid);
     assert!(health.has_write_permissions);
+}
+
+#[tokio::test]
+async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+        ws.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+            requested_backend: EmbeddingBackend::Auto,
+            resolved_backend: EmbeddingBackend::Ort,
+            accelerated: false,
+            degraded_reason: Some("ORT fallback to CPU after DirectML init failure".to_string()),
+        });
+    }
+
+    let tool = ManageWorkspaceTool {
+        operation: "health".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: Some(false),
+    };
+
+    let result = tool.call_tool(&handler).await.unwrap();
+    let health = extract_text_from_result(&result);
+    let health_lower = health.to_ascii_lowercase();
+
+    assert!(
+        health.contains("Embedding Runtime"),
+        "health output should include embedding runtime section: {health}"
+    );
+    assert!(
+        health.contains("Embedding Status: DEGRADED"),
+        "health output should mark degraded runtime as DEGRADED: {health}"
+    );
+    assert!(
+        health.contains("backend: ort") || health.contains("Backend: ort"),
+        "health output should include resolved backend: {health}"
+    );
+    assert!(
+        health.contains("device: cpu") || health.contains("Device: cpu"),
+        "health output should include runtime device: {health}"
+    );
+    assert!(
+        health.contains("accelerated: false") || health.contains("Accelerated: false"),
+        "health output should include acceleration flag: {health}"
+    );
+    assert!(
+        health_lower.contains("degraded") && health.contains("DirectML"),
+        "health output should include degraded reason: {health}"
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_health_reports_unavailable_when_provider_missing() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = None;
+        ws.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+            requested_backend: EmbeddingBackend::Auto,
+            resolved_backend: EmbeddingBackend::Ort,
+            accelerated: false,
+            degraded_reason: Some("provider init failed".to_string()),
+        });
+    }
+
+    let tool = ManageWorkspaceTool {
+        operation: "health".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: Some(false),
+    };
+
+    let result = tool.call_tool(&handler).await.unwrap();
+    let health = extract_text_from_result(&result);
+
+    assert!(
+        health.contains("Embedding Status: UNAVAILABLE"),
+        "health output should report missing provider as UNAVAILABLE: {health}"
+    );
+    assert!(
+        health.contains("Degraded: provider init failed"),
+        "health output should include standardized degraded field when provider is missing: {health}"
+    );
+    assert!(
+        health.contains("provider") || health.contains("Provider"),
+        "health output should explain provider is missing: {health}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -44,11 +44,23 @@ fn caller() {
         .filter(|id| id.kind == IdentifierKind::Call)
         .collect();
 
-    assert!(!calls.is_empty(), "Should find at least one call identifier");
-    let call = calls.iter().find(|id| id.name == "should_use_semantic_fallback");
-    assert!(call.is_some(), "Should find should_use_semantic_fallback call, got: {:?}", calls.iter().map(|c| &c.name).collect::<Vec<_>>());
-    assert_eq!(call.unwrap().name, "should_use_semantic_fallback",
-        "Should extract bare name, not qualified path");
+    assert!(
+        !calls.is_empty(),
+        "Should find at least one call identifier"
+    );
+    let call = calls
+        .iter()
+        .find(|id| id.name == "should_use_semantic_fallback");
+    assert!(
+        call.is_some(),
+        "Should find should_use_semantic_fallback call, got: {:?}",
+        calls.iter().map(|c| &c.name).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        call.unwrap().name,
+        "should_use_semantic_fallback",
+        "Should extract bare name, not qualified path"
+    );
 }
 
 #[test]
@@ -65,8 +77,11 @@ fn do_something() {}
         .filter(|id| id.kind == IdentifierKind::Call)
         .collect();
 
-    assert!(calls.iter().any(|c| c.name == "do_something"),
-        "Simple calls should still work, got: {:?}", calls.iter().map(|c| &c.name).collect::<Vec<_>>());
+    assert!(
+        calls.iter().any(|c| c.name == "do_something"),
+        "Simple calls should still work, got: {:?}",
+        calls.iter().map(|c| &c.name).collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -83,6 +98,9 @@ fn example() {
         .collect();
 
     // Should extract "new" as the call name, not the full qualified path
-    assert!(calls.iter().any(|c| c.name == "new"),
-        "Should extract 'new' from HashMap::new(), got: {:?}", calls.iter().map(|c| &c.name).collect::<Vec<_>>());
+    assert!(
+        calls.iter().any(|c| c.name == "new"),
+        "Should extract 'new' from HashMap::new(), got: {:?}",
+        calls.iter().map(|c| &c.name).collect::<Vec<_>>()
+    );
 }

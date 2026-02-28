@@ -213,7 +213,10 @@ fn extract_constructor_parameter_relationships(
                 relationships.push(Relationship {
                     id: format!(
                         "{}_{}_{:?}_{}",
-                        class_symbol_id, type_symbol.id, RelationshipKind::Uses, row
+                        class_symbol_id,
+                        type_symbol.id,
+                        RelationshipKind::Uses,
+                        row
                     ),
                     from_symbol_id: class_symbol_id.clone(),
                     to_symbol_id: type_symbol.id.clone(),
@@ -261,8 +264,7 @@ fn extract_parameter_type_name(
             // Generic: ILogger<MyService> -> "ILogger"
             "generic_name" => {
                 let mut gc = child.walk();
-                if let Some(name_node) =
-                    child.children(&mut gc).find(|c| c.kind() == "identifier")
+                if let Some(name_node) = child.children(&mut gc).find(|c| c.kind() == "identifier")
                 {
                     return Some(base.get_node_text(&name_node));
                 }
@@ -379,7 +381,8 @@ fn extract_call_relationships(
                         "identifier" => base.get_node_text(first_child),
                         "member_access_expression" => {
                             let mut method_cursor = first_child.walk();
-                            let children: Vec<_> = first_child.children(&mut method_cursor).collect();
+                            let children: Vec<_> =
+                                first_child.children(&mut method_cursor).collect();
                             children
                                 .iter()
                                 .rev()

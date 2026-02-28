@@ -72,19 +72,27 @@ done
 
         // Control flow should NOT produce Method symbols with synthetic names
         assert!(
-            !symbols.iter().any(|s| s.name.contains("for") && s.kind == SymbolKind::Method),
+            !symbols
+                .iter()
+                .any(|s| s.name.contains("for") && s.kind == SymbolKind::Method),
             "for loops should not be Method symbols"
         );
         assert!(
-            !symbols.iter().any(|s| s.name.contains("while") && s.kind == SymbolKind::Method),
+            !symbols
+                .iter()
+                .any(|s| s.name.contains("while") && s.kind == SymbolKind::Method),
             "while loops should not be Method symbols"
         );
         assert!(
-            !symbols.iter().any(|s| s.name.contains("if") && s.kind == SymbolKind::Method),
+            !symbols
+                .iter()
+                .any(|s| s.name.contains("if") && s.kind == SymbolKind::Method),
             "if statements should not be Method symbols"
         );
         assert!(
-            !symbols.iter().any(|s| s.name.contains("case") && s.kind == SymbolKind::Method),
+            !symbols
+                .iter()
+                .any(|s| s.name.contains("case") && s.kind == SymbolKind::Method),
             "case statements should not be Method symbols"
         );
 
@@ -103,7 +111,9 @@ done
         // All function symbols should be actual commands, not control flow
         for sym in function_symbols.iter() {
             assert!(
-                !["for", "while", "if", "case", "block"].iter().any(|keyword| sym.name.contains(keyword)),
+                !["for", "while", "if", "case", "block"]
+                    .iter()
+                    .any(|keyword| sym.name.contains(keyword)),
                 "Symbol '{}' should not be a control flow keyword",
                 sym.name
             );
@@ -146,7 +156,11 @@ deploy_app() {
             .iter()
             .filter(|s| s.kind == SymbolKind::Function && s.name == "deploy_app")
             .collect();
-        assert_eq!(functions.len(), 1, "Should extract exactly one deploy_app function");
+        assert_eq!(
+            functions.len(),
+            1,
+            "Should extract exactly one deploy_app function"
+        );
 
         // Should not extract control flow as symbols
         let control_flow_symbols: Vec<_> = symbols

@@ -72,7 +72,10 @@ main_function
         let results_b = extract_full("main.sh", file_b_code);
 
         // Verify we extracted the symbols
-        let helper_fn = results_a.symbols.iter().find(|s| s.name == "helper_function");
+        let helper_fn = results_a
+            .symbols
+            .iter()
+            .find(|s| s.name == "helper_function");
         assert!(
             helper_fn.is_some(),
             "Should extract helper_function from helper.sh"
@@ -140,7 +143,10 @@ main_function
             helper_pending.is_some(),
             "PendingRelationship should have callee_name='helper_function'.\n\
              Found: {:?}",
-            pending_calls.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            pending_calls
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
 
         // Verify the pending relationship has the correct caller
@@ -200,14 +206,12 @@ main
         );
 
         // Verify the relationship is from main to helper
-        let main_calls_helper = call_relationships
-            .iter()
-            .any(|r| {
-                let from_sym = symbols.iter().find(|s| s.id == r.from_symbol_id);
-                let to_sym = symbols.iter().find(|s| s.id == r.to_symbol_id);
-                from_sym.map(|s| &s.name) == Some(&"main".to_string())
-                    && to_sym.map(|s| &s.name) == Some(&"helper".to_string())
-            });
+        let main_calls_helper = call_relationships.iter().any(|r| {
+            let from_sym = symbols.iter().find(|s| s.id == r.from_symbol_id);
+            let to_sym = symbols.iter().find(|s| s.id == r.to_symbol_id);
+            from_sym.map(|s| &s.name) == Some(&"main".to_string())
+                && to_sym.map(|s| &s.name) == Some(&"helper".to_string())
+        });
 
         assert!(
             main_calls_helper,

@@ -74,9 +74,14 @@ async fn test_multiword_and_cascade_architecture() {
     // Should find docs with CASCADE SQL patterns
     assert_min_results(&results, 1);
     let has_docs_or_sql = results.iter().any(|r| {
-        r.file_path.contains("docs/") || r.file_path.contains(".sql") || r.file_path.contains("database")
+        r.file_path.contains("docs/")
+            || r.file_path.contains(".sql")
+            || r.file_path.contains("database")
     });
-    assert!(has_docs_or_sql, "Should find CASCADE SQL references in docs or database code");
+    assert!(
+        has_docs_or_sql,
+        "Should find CASCADE SQL references in docs or database code"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -611,8 +616,14 @@ async fn test_definition_search_includes_code_context() {
     assert!(
         has_context,
         "Definition search should return code_context from SQLite enrichment, but all results had None:\n{}",
-        results.iter()
-            .map(|r| format!("  {} ({}) - code_context: {:?}", r.name, r.file_path, r.code_context.as_ref().map(|c| c.len())))
+        results
+            .iter()
+            .map(|r| format!(
+                "  {} ({}) - code_context: {:?}",
+                r.name,
+                r.file_path,
+                r.code_context.as_ref().map(|c| c.len())
+            ))
             .collect::<Vec<_>>()
             .join("\n")
     );
@@ -729,15 +740,13 @@ async fn test_fast_refs_finds_identifier_based_references() {
         let result = tool.call_tool(&handler).await.expect("fast_refs failed");
 
         // Extract text content to check results
-        let text = result.content.iter()
+        let text = result
+            .content
+            .iter()
             .filter_map(|c| c.as_text().map(|t| t.text.clone()))
             .collect::<Vec<_>>()
             .join("\n");
-        println!(
-            "fast_refs('{}') result: {} chars",
-            symbol_name,
-            text.len()
-        );
+        println!("fast_refs('{}') result: {} chars", symbol_name, text.len());
 
         // Should find at least some references (either from relationships or identifiers)
         assert!(
@@ -813,7 +822,9 @@ async fn test_fast_refs_reference_kind_filter_with_identifiers() {
         };
 
         let result = tool.call_tool(&handler).await.expect("fast_refs failed");
-        let text = result.content.iter()
+        let text = result
+            .content
+            .iter()
             .filter_map(|c| c.as_text().map(|t| t.text.clone()))
             .collect::<Vec<_>>()
             .join("\n");
@@ -851,9 +862,9 @@ async fn test_content_single_identifier_snake_case() {
         .expect("Search failed");
 
     assert_min_results(&results, 1);
-    let has_source = results.iter().any(|r| {
-        r.file_path.contains("processor.rs") || r.file_path.contains("query.rs")
-    });
+    let has_source = results
+        .iter()
+        .any(|r| r.file_path.contains("processor.rs") || r.file_path.contains("query.rs"));
     assert!(
         has_source,
         "Should find files_by_language in source code:\n{}",

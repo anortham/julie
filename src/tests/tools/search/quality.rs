@@ -287,7 +287,7 @@ mod search_quality_tests {
         // Combined scoring should provide better results than either system alone
         let exact_match_prod_score = scores[0].0;
         let exact_match_test_score_in_src = scores[1].0; // This is getUserData in user.test.ts
-                                                         // Find the exact match in the dedicated test directory (tests/)
+        // Find the exact match in the dedicated test directory (tests/)
         let exact_match_test_dir_score = scores
             .iter()
             .find(|(_, name, path, _)| name == "getUserData" && path.starts_with("tests/"))

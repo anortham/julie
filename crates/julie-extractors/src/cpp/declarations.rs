@@ -121,14 +121,17 @@ pub(super) fn extract_template(
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
     let mut cursor = node.walk();
-    let inner = node.children(&mut cursor).find(|c| {
-        c.kind() != "template_parameter_list" && c.kind() != "template"
-    })?;
+    let inner = node
+        .children(&mut cursor)
+        .find(|c| c.kind() != "template_parameter_list" && c.kind() != "template")?;
 
     // Classes/structs/functions already call extract_template_parameters() via walk_children
     match inner.kind() {
-        "class_specifier" | "struct_specifier" | "union_specifier"
-        | "function_definition" | "template_declaration" => return None,
+        "class_specifier"
+        | "struct_specifier"
+        | "union_specifier"
+        | "function_definition"
+        | "template_declaration" => return None,
         "declaration" => {
             // Function declarations also handled via walk_children
             let has_func = inner

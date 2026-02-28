@@ -145,8 +145,14 @@ mod formatting_tests {
 
         let output = format_symbol_context(&ctx, "overview");
         assert!(output.contains("Callers"), "should have Callers section");
-        assert!(output.contains("src/main.rs:15"), "should show caller location");
-        assert!(output.contains("main"), "should show caller name at overview depth");
+        assert!(
+            output.contains("src/main.rs:15"),
+            "should show caller location"
+        );
+        assert!(
+            output.contains("main"),
+            "should show caller name at overview depth"
+        );
     }
 
     #[test]
@@ -260,7 +266,10 @@ mod formatting_tests {
 
         assert!(output.contains("Body:"), "context depth should show body");
         assert!(output.contains("line_1"), "should show first lines");
-        assert!(!output.contains("line_40"), "should NOT show last lines (truncated)");
+        assert!(
+            !output.contains("line_40"),
+            "should NOT show last lines (truncated)"
+        );
         assert!(
             output.contains("more lines"),
             "should indicate remaining lines, got:\n{}",
@@ -440,8 +449,14 @@ mod formatting_tests {
 
         let output = format_symbol_context(&ctx, "overview");
         assert!(output.contains("Fields (1)"), "should have Fields section");
-        assert!(output.contains("users: Vec<User>"), "should show field signature");
-        assert!(output.contains("Methods (1)"), "should have Methods section");
+        assert!(
+            output.contains("users: Vec<User>"),
+            "should show field signature"
+        );
+        assert!(
+            output.contains("Methods (1)"),
+            "should have Methods section"
+        );
         assert!(output.contains("pub fn get_user"));
     }
 
@@ -458,9 +473,33 @@ mod formatting_tests {
             Some(Visibility::Public),
             None,
         );
-        let red = make_symbol("Red", SymbolKind::EnumMember, "src/types.rs", 2, None, None, None);
-        let green = make_symbol("Green", SymbolKind::EnumMember, "src/types.rs", 3, None, None, None);
-        let blue = make_symbol("Blue", SymbolKind::EnumMember, "src/types.rs", 4, None, None, None);
+        let red = make_symbol(
+            "Red",
+            SymbolKind::EnumMember,
+            "src/types.rs",
+            2,
+            None,
+            None,
+            None,
+        );
+        let green = make_symbol(
+            "Green",
+            SymbolKind::EnumMember,
+            "src/types.rs",
+            3,
+            None,
+            None,
+            None,
+        );
+        let blue = make_symbol(
+            "Blue",
+            SymbolKind::EnumMember,
+            "src/types.rs",
+            4,
+            None,
+            None,
+            None,
+        );
         let mut ctx = empty_context(sym);
         ctx.children = vec![red, green, blue];
 
@@ -547,7 +586,10 @@ mod formatting_tests {
         ctx.incoming_total = 1;
 
         let output = format_symbol_context(&ctx, "overview");
-        assert!(output.contains("Referenced by"), "should show 'Referenced by'");
+        assert!(
+            output.contains("Referenced by"),
+            "should show 'Referenced by'"
+        );
         assert!(output.contains("src/retry.rs:15"));
     }
 
@@ -621,12 +663,38 @@ mod formatting_tests {
             None,
         );
         // Same type used as both parameter and return
-        let order1 = make_symbol("Order", SymbolKind::Class, "src/models/order.rs", 12, None, None, None);
-        let order2 = make_symbol("Order", SymbolKind::Class, "src/models/order.rs", 12, None, None, None);
+        let order1 = make_symbol(
+            "Order",
+            SymbolKind::Class,
+            "src/models/order.rs",
+            12,
+            None,
+            None,
+            None,
+        );
+        let order2 = make_symbol(
+            "Order",
+            SymbolKind::Class,
+            "src/models/order.rs",
+            12,
+            None,
+            None,
+            None,
+        );
         let mut ctx = empty_context(sym);
         ctx.outgoing = vec![
-            make_ref(RelationshipKind::Parameter, "src/models/order.rs", 12, Some(order1)),
-            make_ref(RelationshipKind::Returns, "src/models/order.rs", 12, Some(order2)),
+            make_ref(
+                RelationshipKind::Parameter,
+                "src/models/order.rs",
+                12,
+                Some(order1),
+            ),
+            make_ref(
+                RelationshipKind::Returns,
+                "src/models/order.rs",
+                12,
+                Some(order2),
+            ),
         ];
         ctx.outgoing_total = 2;
 
@@ -672,8 +740,18 @@ mod formatting_tests {
         );
         let mut ctx = empty_context(sym);
         ctx.outgoing = vec![
-            make_ref(RelationshipKind::Implements, "src/service.rs", 20, Some(display_trait)),
-            make_ref(RelationshipKind::Implements, "src/service.rs", 30, Some(serialize_trait)),
+            make_ref(
+                RelationshipKind::Implements,
+                "src/service.rs",
+                20,
+                Some(display_trait),
+            ),
+            make_ref(
+                RelationshipKind::Implements,
+                "src/service.rs",
+                30,
+                Some(serialize_trait),
+            ),
         ];
         ctx.outgoing_total = 2;
 
@@ -700,15 +778,54 @@ mod formatting_tests {
             Some(Visibility::Public),
             None,
         );
-        let order_sym = make_symbol("Order", SymbolKind::Class, "src/models/order.rs", 12, None, None, None);
-        let line_item_sym = make_symbol("LineItem", SymbolKind::Class, "src/models/order.rs", 50, None, None, None);
-        let money_sym = make_symbol("Money", SymbolKind::Class, "src/models/money.rs", 5, None, None, None);
+        let order_sym = make_symbol(
+            "Order",
+            SymbolKind::Class,
+            "src/models/order.rs",
+            12,
+            None,
+            None,
+            None,
+        );
+        let line_item_sym = make_symbol(
+            "LineItem",
+            SymbolKind::Class,
+            "src/models/order.rs",
+            50,
+            None,
+            None,
+            None,
+        );
+        let money_sym = make_symbol(
+            "Money",
+            SymbolKind::Class,
+            "src/models/money.rs",
+            5,
+            None,
+            None,
+            None,
+        );
 
         let mut ctx = empty_context(sym);
         ctx.outgoing = vec![
-            make_ref(RelationshipKind::Imports, "src/models/order.rs", 12, Some(order_sym)),
-            make_ref(RelationshipKind::Imports, "src/models/order.rs", 50, Some(line_item_sym)),
-            make_ref(RelationshipKind::Imports, "src/models/money.rs", 5, Some(money_sym)),
+            make_ref(
+                RelationshipKind::Imports,
+                "src/models/order.rs",
+                12,
+                Some(order_sym),
+            ),
+            make_ref(
+                RelationshipKind::Imports,
+                "src/models/order.rs",
+                50,
+                Some(line_item_sym),
+            ),
+            make_ref(
+                RelationshipKind::Imports,
+                "src/models/money.rs",
+                5,
+                Some(money_sym),
+            ),
         ];
         ctx.outgoing_total = 3;
 
@@ -720,7 +837,9 @@ mod formatting_tests {
         );
         // Grouped by file: order.rs should show both Order and LineItem
         assert!(
-            output.contains("src/models/order.rs") && output.contains("Order") && output.contains("LineItem"),
+            output.contains("src/models/order.rs")
+                && output.contains("Order")
+                && output.contains("LineItem"),
             "should group imports by file"
         );
         assert!(output.contains("src/models/money.rs"));
@@ -918,10 +1037,8 @@ mod formatting_tests {
 #[cfg(test)]
 mod data_tests {
     use crate::database::{FileInfo, SymbolDatabase};
-    use crate::extractors::base::{
-        Relationship, RelationshipKind, Symbol, SymbolKind, Visibility,
-    };
-    use crate::tools::deep_dive::data::{build_symbol_context, find_symbol, SimilarEntry};
+    use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
+    use crate::tools::deep_dive::data::{SimilarEntry, build_symbol_context, find_symbol};
     use crate::tools::deep_dive::deep_dive_query;
     use tempfile::TempDir;
 
@@ -931,7 +1048,12 @@ mod data_tests {
         let db = SymbolDatabase::new(&db_path).unwrap();
 
         // Store file info (FK constraint requires this)
-        for file in &["src/engine.rs", "src/main.rs", "src/handler.rs", "src/tests/search_tests.rs"] {
+        for file in &[
+            "src/engine.rs",
+            "src/main.rs",
+            "src/handler.rs",
+            "src/tests/search_tests.rs",
+        ] {
             db.store_file_info(&FileInfo {
                 path: file.to_string(),
                 language: "rust".to_string(),
@@ -1148,8 +1270,7 @@ mod data_tests {
         )];
         db.store_relationships(&rels).unwrap();
 
-        let ctx =
-            build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
+        let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
 
         assert_eq!(ctx.incoming.len(), 1);
         assert_eq!(ctx.incoming_total, 1);
@@ -1203,8 +1324,7 @@ mod data_tests {
         )];
         db.store_relationships(&rels).unwrap();
 
-        let ctx =
-            build_symbol_context(&db, &symbols[0], "context", 15, 15).unwrap();
+        let ctx = build_symbol_context(&db, &symbols[0], "context", 15, 15).unwrap();
 
         assert_eq!(ctx.incoming.len(), 1);
         // Context depth: should enrich with symbol data
@@ -1214,10 +1334,7 @@ mod data_tests {
         );
         let enriched = ctx.incoming[0].symbol.as_ref().unwrap();
         assert_eq!(enriched.name, "main");
-        assert_eq!(
-            enriched.signature.as_deref(),
-            Some("fn main()")
-        );
+        assert_eq!(enriched.signature.as_deref(), Some("fn main()"));
     }
 
     #[test]
@@ -1260,8 +1377,7 @@ mod data_tests {
         )];
         db.store_relationships(&rels).unwrap();
 
-        let ctx =
-            build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
+        let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
 
         assert_eq!(ctx.outgoing.len(), 1);
         assert_eq!(ctx.outgoing_total, 1);
@@ -1309,8 +1425,7 @@ mod data_tests {
         ];
         db.store_symbols(&symbols).unwrap();
 
-        let ctx =
-            build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
+        let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
 
         assert_eq!(ctx.children.len(), 2, "should have 2 children");
         // Children ordered by start_line
@@ -1335,8 +1450,7 @@ mod data_tests {
         )];
         db.store_symbols(&symbols).unwrap();
 
-        let ctx =
-            build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
+        let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
 
         assert!(
             ctx.children.is_empty(),
@@ -1373,9 +1487,17 @@ mod data_tests {
     fn test_identifier_fallback_adds_refs() {
         let (_tmp, mut db) = setup_db();
 
-        let symbols = vec![
-            make_symbol("sym-target", "process", SymbolKind::Function, "src/engine.rs", 10, None, None, None, None),
-        ];
+        let symbols = vec![make_symbol(
+            "sym-target",
+            "process",
+            SymbolKind::Function,
+            "src/engine.rs",
+            10,
+            None,
+            None,
+            None,
+            None,
+        )];
         db.store_symbols(&symbols).unwrap();
 
         // No relationships — only an identifier ref (no containing symbol)
@@ -1394,13 +1516,40 @@ mod data_tests {
         let (_tmp, mut db) = setup_db();
 
         let symbols = vec![
-            make_symbol("sym-target", "process", SymbolKind::Function, "src/engine.rs", 10, None, None, None, None),
-            make_symbol("sym-caller", "main", SymbolKind::Function, "src/main.rs", 5, None, None, None, None),
+            make_symbol(
+                "sym-target",
+                "process",
+                SymbolKind::Function,
+                "src/engine.rs",
+                10,
+                None,
+                None,
+                None,
+                None,
+            ),
+            make_symbol(
+                "sym-caller",
+                "main",
+                SymbolKind::Function,
+                "src/main.rs",
+                5,
+                None,
+                None,
+                None,
+                None,
+            ),
         ];
         db.store_symbols(&symbols).unwrap();
 
         // Relationship at src/main.rs:8
-        let rels = vec![make_rel("rel-1", "sym-caller", "sym-target", RelationshipKind::Calls, "src/main.rs", 8)];
+        let rels = vec![make_rel(
+            "rel-1",
+            "sym-caller",
+            "sym-target",
+            RelationshipKind::Calls,
+            "src/main.rs",
+            8,
+        )];
         db.store_relationships(&rels).unwrap();
 
         // Identifier at the SAME location — should be deduped
@@ -1412,7 +1561,12 @@ mod data_tests {
         let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
 
         // 1 from relationship + 1 from identifier (the duplicate is deduped)
-        assert_eq!(ctx.incoming.len(), 2, "should have 1 relationship + 1 identifier ref, got {}", ctx.incoming.len());
+        assert_eq!(
+            ctx.incoming.len(),
+            2,
+            "should have 1 relationship + 1 identifier ref, got {}",
+            ctx.incoming.len()
+        );
         assert_eq!(ctx.incoming_total, 2);
     }
 
@@ -1420,9 +1574,17 @@ mod data_tests {
     fn test_identifier_fallback_filters_own_file_definition_line() {
         let (_tmp, mut db) = setup_db();
 
-        let symbols = vec![
-            make_symbol("sym-target", "process", SymbolKind::Function, "src/engine.rs", 10, None, None, None, None),
-        ];
+        let symbols = vec![make_symbol(
+            "sym-target",
+            "process",
+            SymbolKind::Function,
+            "src/engine.rs",
+            10,
+            None,
+            None,
+            None,
+            None,
+        )];
         db.store_symbols(&symbols).unwrap();
 
         // Identifier at the definition site itself — should be skipped
@@ -1432,7 +1594,11 @@ mod data_tests {
 
         let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
 
-        assert_eq!(ctx.incoming.len(), 1, "should skip definition-site identifiers");
+        assert_eq!(
+            ctx.incoming.len(),
+            1,
+            "should skip definition-site identifiers"
+        );
         assert_eq!(ctx.incoming[0].file_path, "src/main.rs");
     }
 
@@ -1442,13 +1608,28 @@ mod data_tests {
     fn test_build_context_populates_test_refs_at_full_depth() {
         let (_tmp, mut db) = setup_db();
 
-        let symbols = vec![
-            make_symbol("sym-target", "process", SymbolKind::Function, "src/engine.rs", 10, None, None, None, None),
-        ];
+        let symbols = vec![make_symbol(
+            "sym-target",
+            "process",
+            SymbolKind::Function,
+            "src/engine.rs",
+            10,
+            None,
+            None,
+            None,
+            None,
+        )];
         db.store_symbols(&symbols).unwrap();
 
         // Identifier in a test file
-        insert_identifier(&db, "process", "call", "src/tests/search_tests.rs", 42, None);
+        insert_identifier(
+            &db,
+            "process",
+            "call",
+            "src/tests/search_tests.rs",
+            42,
+            None,
+        );
         // Identifier in a non-test file (should NOT be in test_refs)
         insert_identifier(&db, "process", "call", "src/main.rs", 25, None);
 
@@ -1462,17 +1643,35 @@ mod data_tests {
     fn test_build_context_no_test_refs_at_overview() {
         let (_tmp, mut db) = setup_db();
 
-        let symbols = vec![
-            make_symbol("sym-target", "process", SymbolKind::Function, "src/engine.rs", 10, None, None, None, None),
-        ];
+        let symbols = vec![make_symbol(
+            "sym-target",
+            "process",
+            SymbolKind::Function,
+            "src/engine.rs",
+            10,
+            None,
+            None,
+            None,
+            None,
+        )];
         db.store_symbols(&symbols).unwrap();
 
         // Identifier in a test file
-        insert_identifier(&db, "process", "call", "src/tests/search_tests.rs", 42, None);
+        insert_identifier(
+            &db,
+            "process",
+            "call",
+            "src/tests/search_tests.rs",
+            42,
+            None,
+        );
 
         let ctx = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
 
-        assert!(ctx.test_refs.is_empty(), "overview should not populate test_refs");
+        assert!(
+            ctx.test_refs.is_empty(),
+            "overview should not populate test_refs"
+        );
     }
 
     #[test]
@@ -1519,8 +1718,7 @@ mod data_tests {
         db.store_relationships(&rels).unwrap();
 
         // Cap at 2 incoming
-        let ctx =
-            build_symbol_context(&db, &symbols[0], "overview", 2, 10).unwrap();
+        let ctx = build_symbol_context(&db, &symbols[0], "overview", 2, 10).unwrap();
 
         assert_eq!(ctx.incoming.len(), 2, "should cap at 2");
         assert_eq!(ctx.incoming_total, 5, "total should reflect all 5");
@@ -1534,8 +1732,7 @@ mod data_tests {
 
         // Register extra files beyond what setup_db provides
         let extra_files = [
-            "src/a.rs", "src/b.rs", "src/c.rs",
-            "src/d.rs", "src/e.rs", "src/f.rs",
+            "src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs", "src/e.rs", "src/f.rs",
         ];
         for file in &extra_files {
             db.store_file_info(&FileInfo {
@@ -1669,12 +1866,26 @@ mod data_tests {
 
         // Create two symbols with close embeddings
         let sym_a = make_symbol(
-            "sym-a", "process_data", SymbolKind::Function, "src/engine.rs", 10,
-            None, Some("fn process_data()"), Some(Visibility::Public), None,
+            "sym-a",
+            "process_data",
+            SymbolKind::Function,
+            "src/engine.rs",
+            10,
+            None,
+            Some("fn process_data()"),
+            Some(Visibility::Public),
+            None,
         );
         let sym_b = make_symbol(
-            "sym-b", "handle_data", SymbolKind::Function, "src/handler.rs", 20,
-            None, Some("fn handle_data()"), Some(Visibility::Public), None,
+            "sym-b",
+            "handle_data",
+            SymbolKind::Function,
+            "src/handler.rs",
+            20,
+            None,
+            Some("fn handle_data()"),
+            Some(Visibility::Public),
+            None,
         );
         db.store_symbols(&[sym_a.clone(), sym_b.clone()]).unwrap();
 
@@ -1684,10 +1895,8 @@ mod data_tests {
         // Nudge slightly so they're close but not identical
         emb_b[0] += 0.001;
         emb_b[1] += 0.001;
-        db.store_embeddings(&[
-            ("sym-a".to_string(), emb_a),
-            ("sym-b".to_string(), emb_b),
-        ]).unwrap();
+        db.store_embeddings(&[("sym-a".to_string(), emb_a), ("sym-b".to_string(), emb_b)])
+            .unwrap();
 
         let ctx = build_symbol_context(&db, &sym_a, "full", 10, 10).unwrap();
         assert_eq!(ctx.similar.len(), 1, "Should find 1 similar symbol");
@@ -1701,14 +1910,24 @@ mod data_tests {
         let (_tmp, mut db) = setup_db();
 
         let sym = make_symbol(
-            "sym-no-emb", "lonely_func", SymbolKind::Function, "src/engine.rs", 10,
-            None, Some("fn lonely_func()"), Some(Visibility::Public), None,
+            "sym-no-emb",
+            "lonely_func",
+            SymbolKind::Function,
+            "src/engine.rs",
+            10,
+            None,
+            Some("fn lonely_func()"),
+            Some(Visibility::Public),
+            None,
         );
         db.store_symbols(&[sym.clone()]).unwrap();
         // No embeddings stored at all
 
         let ctx = build_symbol_context(&db, &sym, "full", 10, 10).unwrap();
-        assert!(ctx.similar.is_empty(), "Should be empty when no embeddings exist");
+        assert!(
+            ctx.similar.is_empty(),
+            "Should be empty when no embeddings exist"
+        );
     }
 
     #[test]
@@ -1716,14 +1935,22 @@ mod data_tests {
         let (_tmp, mut db) = setup_db();
 
         let sym = make_symbol(
-            "sym-self", "self_func", SymbolKind::Function, "src/engine.rs", 10,
-            None, Some("fn self_func()"), Some(Visibility::Public), None,
+            "sym-self",
+            "self_func",
+            SymbolKind::Function,
+            "src/engine.rs",
+            10,
+            None,
+            Some("fn self_func()"),
+            Some(Visibility::Public),
+            None,
         );
         db.store_symbols(&[sym.clone()]).unwrap();
 
         // Store embedding for this symbol only
         let emb: Vec<f32> = (0..384).map(|i| (i as f32) * 0.01).collect();
-        db.store_embeddings(&[("sym-self".to_string(), emb)]).unwrap();
+        db.store_embeddings(&[("sym-self".to_string(), emb)])
+            .unwrap();
 
         let ctx = build_symbol_context(&db, &sym, "full", 10, 10).unwrap();
         // The symbol should NOT appear in its own similar results
@@ -1738,28 +1965,46 @@ mod data_tests {
         let (_tmp, mut db) = setup_db();
 
         let sym_a = make_symbol(
-            "sym-c", "func_alpha", SymbolKind::Function, "src/engine.rs", 10,
-            None, Some("fn func_alpha()"), Some(Visibility::Public), None,
+            "sym-c",
+            "func_alpha",
+            SymbolKind::Function,
+            "src/engine.rs",
+            10,
+            None,
+            Some("fn func_alpha()"),
+            Some(Visibility::Public),
+            None,
         );
         let sym_b = make_symbol(
-            "sym-d", "func_beta", SymbolKind::Function, "src/handler.rs", 20,
-            None, Some("fn func_beta()"), Some(Visibility::Public), None,
+            "sym-d",
+            "func_beta",
+            SymbolKind::Function,
+            "src/handler.rs",
+            20,
+            None,
+            Some("fn func_beta()"),
+            Some(Visibility::Public),
+            None,
         );
         db.store_symbols(&[sym_a.clone(), sym_b.clone()]).unwrap();
 
         let emb_a: Vec<f32> = (0..384).map(|i| (i as f32) * 0.01).collect();
         let emb_b = emb_a.clone();
-        db.store_embeddings(&[
-            ("sym-c".to_string(), emb_a),
-            ("sym-d".to_string(), emb_b),
-        ]).unwrap();
+        db.store_embeddings(&[("sym-c".to_string(), emb_a), ("sym-d".to_string(), emb_b)])
+            .unwrap();
 
         // At "context" depth, similar should NOT be populated
         let ctx_context = build_symbol_context(&db, &sym_a, "context", 10, 10).unwrap();
-        assert!(ctx_context.similar.is_empty(), "similar should be empty at context depth");
+        assert!(
+            ctx_context.similar.is_empty(),
+            "similar should be empty at context depth"
+        );
 
         // At "overview" depth, similar should NOT be populated
         let ctx_overview = build_symbol_context(&db, &sym_a, "overview", 10, 10).unwrap();
-        assert!(ctx_overview.similar.is_empty(), "similar should be empty at overview depth");
+        assert!(
+            ctx_overview.similar.is_empty(),
+            "similar should be empty at overview depth"
+        );
     }
 }

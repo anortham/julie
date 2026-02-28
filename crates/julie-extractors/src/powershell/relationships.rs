@@ -1,7 +1,9 @@
 //! PowerShell relationship extraction
 //! Handles inheritance, method calls, and other symbol relationships
 
-use crate::base::{BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
+};
 use tree_sitter::Node;
 
 use super::helpers::{extract_inheritance, find_class_name_node, find_command_name_node};

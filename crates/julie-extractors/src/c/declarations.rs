@@ -101,7 +101,9 @@ pub(super) fn extract_declaration(
 
     // Check if this is a typedef declaration
     if helpers::is_typedef_declaration(&extractor.base, node) {
-        if let Some(typedef_symbol) = typedefs::extract_typedef_from_declaration(extractor, node, parent_id) {
+        if let Some(typedef_symbol) =
+            typedefs::extract_typedef_from_declaration(extractor, node, parent_id)
+        {
             symbols.push(typedef_symbol);
             return symbols;
         }

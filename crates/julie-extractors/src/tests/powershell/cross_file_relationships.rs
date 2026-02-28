@@ -129,15 +129,16 @@ function Process-Data {
         );
 
         // Verify the pending relationship has the correct callee name
-        let get_data_pending = pending_calls
-            .iter()
-            .find(|p| p.callee_name == "Get-Data");
+        let get_data_pending = pending_calls.iter().find(|p| p.callee_name == "Get-Data");
 
         assert!(
             get_data_pending.is_some(),
             "PendingRelationship should have callee_name='Get-Data'.\n\
              Found: {:?}",
-            pending_calls.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            pending_calls
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
 
         // Verify the pending relationship has the correct caller
@@ -231,7 +232,10 @@ function Main {
 
         // Verify Export-CustomObject was extracted
         assert!(
-            results_a.symbols.iter().any(|s| s.name == "Export-CustomObject"),
+            results_a
+                .symbols
+                .iter()
+                .any(|s| s.name == "Export-CustomObject"),
             "Should extract Export-CustomObject"
         );
 

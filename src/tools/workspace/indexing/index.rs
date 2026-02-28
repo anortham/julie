@@ -8,7 +8,6 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
-
 /// Result of workspace indexing — distinguishes files processed from DB totals.
 pub(crate) struct IndexResult {
     /// Files actually processed in this indexing run (may be 0 if nothing changed)
@@ -48,8 +47,13 @@ impl ManageWorkspaceTool {
         // Previously compared against std::env::current_dir() which is WRONG — in tests and any
         // scenario where CWD != workspace root, this incorrectly treated the primary workspace
         // as a reference workspace, creating a disconnected SearchIndex whose commits silently failed.
-        let workspace_canonical = workspace_path.canonicalize().unwrap_or_else(|_| workspace_path.to_path_buf());
-        let root_canonical = workspace.root.canonicalize().unwrap_or_else(|_| workspace.root.clone());
+        let workspace_canonical = workspace_path
+            .canonicalize()
+            .unwrap_or_else(|_| workspace_path.to_path_buf());
+        let root_canonical = workspace
+            .root
+            .canonicalize()
+            .unwrap_or_else(|_| workspace.root.clone());
         let is_primary_workspace = workspace_canonical == root_canonical;
         debug!(
             "Workspace comparison: path={:?}, root={:?}, is_primary={}",
@@ -270,7 +274,11 @@ impl ManageWorkspaceTool {
                     }
                 };
                 let stats = db.get_stats().unwrap_or_default();
-                (stats.total_symbols as usize, stats.total_files as usize, stats.total_relationships as usize)
+                (
+                    stats.total_symbols as usize,
+                    stats.total_files as usize,
+                    stats.total_relationships as usize,
+                )
             } else {
                 (0, 0, 0)
             }
@@ -366,7 +374,10 @@ impl ManageWorkspaceTool {
                 if let Err(e) = idx.add_symbol(&doc) {
                     symbol_errors += 1;
                     if symbol_errors <= 3 {
-                        warn!("Tantivy backfill: failed to add symbol {}: {}", symbol.name, e);
+                        warn!(
+                            "Tantivy backfill: failed to add symbol {}: {}",
+                            symbol.name, e
+                        );
                     }
                 }
             }
@@ -452,7 +463,10 @@ impl ManageWorkspaceTool {
             for symbol in &symbols {
                 let doc = crate::search::SymbolDocument::from_symbol(symbol);
                 if let Err(e) = idx.add_symbol(&doc) {
-                    warn!("Reference backfill: failed to add symbol {}: {}", symbol.name, e);
+                    warn!(
+                        "Reference backfill: failed to add symbol {}: {}",
+                        symbol.name, e
+                    );
                 }
             }
 

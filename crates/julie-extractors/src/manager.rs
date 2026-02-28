@@ -4,8 +4,8 @@
 //! the routing layer. This module provides the main public interface for clients
 //! to extract symbols, identifiers, and relationships from source files.
 
-use crate::base::{Identifier, Relationship, Symbol};
 use crate::ExtractionResults;
+use crate::base::{Identifier, Relationship, Symbol};
 use std::path::Path;
 use tree_sitter::Parser;
 

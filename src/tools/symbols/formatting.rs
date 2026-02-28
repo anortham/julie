@@ -2,7 +2,7 @@
 //!
 //! Handles formatting symbol data into structured responses for MCP clients.
 
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use tracing::debug;
 
 use crate::extractors::base::Symbol;
@@ -12,7 +12,6 @@ use crate::extractors::base::Symbol;
 /// This format is optimal for AI agents that can read code directly.
 /// Returns code bodies separated by blank lines with a minimal file header.
 fn format_code_output(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
-
     let mut output = String::new();
 
     // Minimal file header
@@ -52,7 +51,11 @@ fn format_lean_symbols(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
     output.push_str(&format!("{} — {} symbols\n", file_path, symbols.len()));
 
     for symbol in symbols {
-        let indent = if symbol.parent_id.is_some() { "    " } else { "  " };
+        let indent = if symbol.parent_id.is_some() {
+            "    "
+        } else {
+            "  "
+        };
         let kind = symbol.kind.to_string();
 
         // Use signature if available, otherwise just name
@@ -77,12 +80,7 @@ fn format_lean_symbols(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
 
         output.push_str(&format!(
             "{}{} {} ({}-{}{})\n",
-            indent,
-            kind,
-            name_display,
-            symbol.start_line,
-            symbol.end_line,
-            vis_str,
+            indent, kind, name_display, symbol.start_line, symbol.end_line, vis_str,
         ));
     }
 

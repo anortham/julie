@@ -69,7 +69,10 @@ export function mainFunction() {
         let results_b = extract_full("src/main.js", file_b_code);
 
         // Verify we extracted the symbols
-        let helper_fn = results_a.symbols.iter().find(|s| s.name == "helperFunction");
+        let helper_fn = results_a
+            .symbols
+            .iter()
+            .find(|s| s.name == "helperFunction");
         assert!(
             helper_fn.is_some(),
             "Should extract helperFunction from utils.js"
@@ -137,11 +140,16 @@ export function mainFunction() {
             helper_pending.is_some(),
             "PendingRelationship should have callee_name='helperFunction'.\n\
              Found: {:?}",
-            pending_calls.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            pending_calls
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
 
         // Verify the pending relationship has the correct caller
-        let main_fn_ids: Vec<_> = results_b.symbols.iter()
+        let main_fn_ids: Vec<_> = results_b
+            .symbols
+            .iter()
             .filter(|s| s.name == "mainFunction")
             .map(|s| s.id.clone())
             .collect();
@@ -288,6 +296,9 @@ function caller() {
             .iter()
             .any(|r| r.from_symbol_id == caller.id && r.to_symbol_id == helper.id);
 
-        assert!(has_correct_rel, "Should have relationship from caller to helper");
+        assert!(
+            has_correct_rel,
+            "Should have relationship from caller to helper"
+        );
     }
 }

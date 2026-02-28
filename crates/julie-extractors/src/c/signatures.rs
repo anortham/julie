@@ -35,7 +35,8 @@ pub(super) fn build_function_declaration_signature(
     node: tree_sitter::Node,
 ) -> String {
     let return_type = types::extract_return_type(base, node);
-    let function_name = helpers::extract_function_name_from_declaration(base, node).unwrap_or_default();
+    let function_name =
+        helpers::extract_function_name_from_declaration(base, node).unwrap_or_default();
     let parameters = extract_function_parameters_from_declaration(base, node);
 
     format!(
@@ -55,8 +56,7 @@ pub(super) fn build_variable_signature(
     let storage_class = types::extract_storage_class(base, node);
     let type_qualifiers = types::extract_type_qualifiers(base, node);
     let data_type = types::extract_variable_type(base, node);
-    let variable_name = helpers::extract_variable_name(base, declarator)
-        .unwrap_or_default();
+    let variable_name = helpers::extract_variable_name(base, declarator).unwrap_or_default();
     let array_spec = types::extract_array_specifier(base, declarator);
     let initializer = types::extract_initializer(base, declarator);
 

@@ -18,8 +18,7 @@ pub(super) fn extract_function(
     let name_node = node
         .children(&mut node.walk())
         .find(|n| n.kind() == "identifier");
-    let name = name_node
-        .map(|n| base.get_node_text(&n))?;
+    let name = name_node.map(|n| base.get_node_text(&n))?;
 
     let modifiers = helpers::extract_modifiers(base, node);
     let type_params = helpers::extract_type_parameters(base, node);

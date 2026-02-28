@@ -36,4 +36,3 @@ impl CallToolResultExt for CallToolResult {
         CallToolResult::success(contents)
     }
 }
-

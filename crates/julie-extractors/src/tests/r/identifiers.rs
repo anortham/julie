@@ -6,8 +6,8 @@ use crate::base::{IdentifierKind, SymbolKind};
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::extract_all;
+    use super::*;
 
     #[test]
     fn test_extract_function_call_identifiers() {
@@ -141,14 +141,8 @@ process <- function(data) {
         );
 
         let call_names: Vec<&str> = call_identifiers.iter().map(|id| id.name.as_str()).collect();
-        assert!(
-            call_names.contains(&"filter"),
-            "Should extract filter call"
-        );
-        assert!(
-            call_names.contains(&"select"),
-            "Should extract select call"
-        );
+        assert!(call_names.contains(&"filter"), "Should extract filter call");
+        assert!(call_names.contains(&"select"), "Should extract select call");
         assert!(
             call_names.contains(&"arrange"),
             "Should extract arrange call"
@@ -416,10 +410,7 @@ calculate <- function(a, b) {
             .filter(|i| i.name == "a" && i.kind == IdentifierKind::VariableRef)
             .collect();
 
-        assert!(
-            !a_refs.is_empty(),
-            "Should find variable reference to 'a'"
-        );
+        assert!(!a_refs.is_empty(), "Should find variable reference to 'a'");
         for a_ref in &a_refs {
             assert_eq!(
                 a_ref.containing_symbol_id.as_deref(),

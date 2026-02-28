@@ -95,7 +95,6 @@ namespace Main
             "Should extract Main method from Main.cs"
         );
 
-
         // KEY TEST: Cross-file call should NOT create a resolved Relationship
         // (because pointing to Import symbol is useless for trace_call_path)
         let call_relationships: Vec<_> = results_b
@@ -133,7 +132,10 @@ namespace Main
             process_pending.is_some(),
             "PendingRelationship should have callee_name='Process'.\n\
              Found: {:?}",
-            pending_calls.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            pending_calls
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
 
         // Verify the pending relationship exists

@@ -12,8 +12,7 @@ pub(super) fn extract_namespace(
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
     let base = extractor.get_base();
-    let name = find_child(extractor, &node, "namespace_name")
-        .map(|n| base.get_node_text(&n))?;
+    let name = find_child(extractor, &node, "namespace_name").map(|n| base.get_node_text(&n))?;
 
     let mut metadata = HashMap::new();
     metadata.insert(

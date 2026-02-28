@@ -96,14 +96,12 @@ fn extract_library_export(
 ///   configurable_uri -> uri -> string_literal
 /// The string_literal text includes quotes (e.g., `'dart:async'`), so we strip them.
 fn extract_uri_from_subtree(node: &Node) -> Option<String> {
-    let configurable_uri = find_child_by_type(node, "configurable_uri")
-        .or_else(|| {
-            // For import_specification, look one level deeper
-            let mut cursor = node.walk();
-            node.children(&mut cursor).find_map(|child| {
-                find_child_by_type(&child, "configurable_uri")
-            })
-        })?;
+    let configurable_uri = find_child_by_type(node, "configurable_uri").or_else(|| {
+        // For import_specification, look one level deeper
+        let mut cursor = node.walk();
+        node.children(&mut cursor)
+            .find_map(|child| find_child_by_type(&child, "configurable_uri"))
+    })?;
 
     let uri_node = find_child_by_type(&configurable_uri, "uri")?;
     let string_literal = find_child_by_type(&uri_node, "string_literal")?;

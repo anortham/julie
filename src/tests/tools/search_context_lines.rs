@@ -8,8 +8,8 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::{FastSearchTool, ManageWorkspaceTool};
 use crate::mcp_compat::CallToolResult;
+use crate::tools::{FastSearchTool, ManageWorkspaceTool};
 
 /// Extract text from CallToolResult content blocks
 fn extract_text_from_result(result: &CallToolResult) -> String {

@@ -79,11 +79,7 @@ fn find_typedef_name(base: &BaseExtractor, node: Node) -> Option<String> {
 
     // Strategy 4: Last primitive_type child as fallback
     // tree-sitter parses known types like size_t as primitive_type
-    if let Some(prim) = children
-        .iter()
-        .rev()
-        .find(|c| c.kind() == "primitive_type")
-    {
+    if let Some(prim) = children.iter().rev().find(|c| c.kind() == "primitive_type") {
         // Only use primitive_type if it's the last named child before ';'
         // (to distinguish the alias name from the base type)
         let last_named = children

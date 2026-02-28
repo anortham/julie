@@ -21,9 +21,7 @@ mod methods;
 mod relationships;
 mod types;
 
-use crate::base::{
-    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol,
-};
+use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 

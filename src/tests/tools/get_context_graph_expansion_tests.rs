@@ -9,7 +9,7 @@ mod graph_expansion_tests {
     use crate::database::{FileInfo, SymbolDatabase};
     use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
     use crate::search::index::SymbolSearchResult;
-    use crate::tools::get_context::pipeline::{expand_graph, NeighborDirection, Pivot};
+    use crate::tools::get_context::pipeline::{NeighborDirection, Pivot, expand_graph};
 
     fn setup_db() -> (TempDir, SymbolDatabase) {
         let temp_dir = TempDir::new().unwrap();

@@ -327,7 +327,9 @@ impl SwiftExtractor {
         for child in node.children(&mut cursor) {
             if child.kind() == "simple_identifier" {
                 result = Some(self.base.get_node_text(&child));
-            } else if child.kind() == "postfix_expression" || child.kind() == "member_access_expression" {
+            } else if child.kind() == "postfix_expression"
+                || child.kind() == "member_access_expression"
+            {
                 // Recursively look in nested expressions
                 if let Some(inner) = self.extract_rightmost_call_identifier(child) {
                     result = Some(inner);
@@ -339,11 +341,7 @@ impl SwiftExtractor {
     }
 
     /// Find the function/method that contains this node
-    fn find_containing_function(
-        &self,
-        node: Node,
-        symbols: &[Symbol],
-    ) -> Option<String> {
+    fn find_containing_function(&self, node: Node, symbols: &[Symbol]) -> Option<String> {
         let file_path = &self.base.file_path;
 
         // Walk up the tree to find a function_declaration or init_declaration
@@ -366,7 +364,9 @@ impl SwiftExtractor {
 
                     if let Some(name) = func_name {
                         // Verify this symbol exists in our symbol list
-                        if symbols.iter().any(|s| s.name == name && &s.file_path == file_path)
+                        if symbols
+                            .iter()
+                            .any(|s| s.name == name && &s.file_path == file_path)
                         {
                             return Some(name);
                         }

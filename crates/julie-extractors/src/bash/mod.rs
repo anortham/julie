@@ -20,7 +20,9 @@ mod signatures;
 mod types;
 mod variables;
 
-use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind, PendingRelationship};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
+};
 use tree_sitter::Tree;
 
 pub struct BashExtractor {

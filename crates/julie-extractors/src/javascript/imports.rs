@@ -87,9 +87,7 @@ impl super::JavaScriptExtractor {
                         // When aliased, use only the alias (local binding name).
                         for named_child in child.children(&mut child.walk()) {
                             if named_child.kind() == "import_specifier" {
-                                if let Some(alias_node) =
-                                    named_child.child_by_field_name("alias")
-                                {
+                                if let Some(alias_node) = named_child.child_by_field_name("alias") {
                                     specifiers.push(self.base.get_node_text(&alias_node));
                                 } else if let Some(name_node) =
                                     named_child.child_by_field_name("name")

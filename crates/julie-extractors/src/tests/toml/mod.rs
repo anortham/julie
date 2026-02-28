@@ -95,7 +95,12 @@ ratio = 3.14
 
         // All should be Property kind
         for sym in &symbols {
-            assert_eq!(sym.kind, SymbolKind::Property, "Pair {} should be Property", sym.name);
+            assert_eq!(
+                sym.kind,
+                SymbolKind::Property,
+                "Pair {} should be Property",
+                sym.name
+            );
         }
 
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
@@ -874,17 +879,18 @@ edition = "2021"
 
         let name_sym = symbols.iter().find(|s| s.name == "name").unwrap();
         assert_eq!(name_sym.kind, SymbolKind::Property);
-        assert!(
-            name_sym.parent_id.is_some(),
-            "name should have a parent_id"
-        );
+        assert!(name_sym.parent_id.is_some(), "name should have a parent_id");
         assert_eq!(
             name_sym.parent_id.as_ref().unwrap(),
             &package.id,
             "name's parent should be the package table"
         );
         assert!(
-            name_sym.signature.as_ref().unwrap().contains("name = \"julie\""),
+            name_sym
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("name = \"julie\""),
             "Signature should show key = value, got: {:?}",
             name_sym.signature
         );
@@ -911,7 +917,11 @@ count = 42
 
         let symbols = extract_symbols(toml);
 
-        assert_eq!(symbols.len(), 3, "Should extract 3 top-level key-value pairs");
+        assert_eq!(
+            symbols.len(),
+            3,
+            "Should extract 3 top-level key-value pairs"
+        );
 
         let title = symbols.iter().find(|s| s.name == "title").unwrap();
         assert_eq!(title.kind, SymbolKind::Property);
@@ -961,7 +971,10 @@ inline_table_val = { a = 1, b = 2 }
         let array_val = symbols.iter().find(|s| s.name == "array_val").unwrap();
         assert_eq!(array_val.kind, SymbolKind::Property);
 
-        let inline_table_val = symbols.iter().find(|s| s.name == "inline_table_val").unwrap();
+        let inline_table_val = symbols
+            .iter()
+            .find(|s| s.name == "inline_table_val")
+            .unwrap();
         assert_eq!(inline_table_val.kind, SymbolKind::Property);
     }
 
@@ -1005,10 +1018,7 @@ server.ssl.enabled = true
         assert_eq!(port.unwrap().kind, SymbolKind::Property);
 
         let ssl_enabled = symbols.iter().find(|s| s.name == "server.ssl.enabled");
-        assert!(
-            ssl_enabled.is_some(),
-            "Should extract deeply dotted key"
-        );
+        assert!(ssl_enabled.is_some(), "Should extract deeply dotted key");
     }
 
     #[test]
@@ -1066,7 +1076,10 @@ proptest = "1.0"
 
         let symbols = extract_symbols(toml);
 
-        let tables: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Module).collect();
+        let tables: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Module)
+            .collect();
         assert_eq!(
             tables.len(),
             3,
@@ -1074,7 +1087,10 @@ proptest = "1.0"
             tables.iter().map(|s| &s.name).collect::<Vec<_>>()
         );
 
-        let pairs: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Property).collect();
+        let pairs: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Property)
+            .collect();
         assert_eq!(
             pairs.len(),
             3,

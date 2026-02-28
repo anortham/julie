@@ -283,7 +283,11 @@ impl SymbolDatabase {
                 .prepare("PRAGMA wal_checkpoint(TRUNCATE)")
                 .and_then(|mut stmt| {
                     stmt.query_row([], |row| {
-                        Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                        Ok((
+                            row.get::<_, i32>(0)?,
+                            row.get::<_, i32>(1)?,
+                            row.get::<_, i32>(2)?,
+                        ))
                     })
                 }) {
                 Ok((busy, log, checkpointed)) => debug!(

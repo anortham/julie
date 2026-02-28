@@ -8,10 +8,7 @@ use crate::typescript::TypeScriptExtractor;
 use tree_sitter::Node;
 
 /// Extract an interface declaration and its members (properties and methods)
-pub(super) fn extract_interface(
-    extractor: &mut TypeScriptExtractor,
-    node: Node,
-) -> Vec<Symbol> {
+pub(super) fn extract_interface(extractor: &mut TypeScriptExtractor, node: Node) -> Vec<Symbol> {
     let mut symbols = Vec::new();
 
     let name_node = node.child_by_field_name("name");
@@ -110,10 +107,7 @@ pub(super) fn extract_type_alias(
 }
 
 /// Extract an enum declaration and its members
-pub(super) fn extract_enum(
-    extractor: &mut TypeScriptExtractor,
-    node: Node,
-) -> Vec<Symbol> {
+pub(super) fn extract_enum(extractor: &mut TypeScriptExtractor, node: Node) -> Vec<Symbol> {
     let mut symbols = Vec::new();
 
     let name_node = node.child_by_field_name("name");
@@ -143,18 +137,16 @@ pub(super) fn extract_enum(
         let mut cursor = body.walk();
         for child in body.children(&mut cursor) {
             if child.kind() == "enum_member" || child.kind() == "property_identifier" {
-                let member_name_node = child
-                    .child_by_field_name("name")
-                    .or_else(|| {
-                        // Some grammars put the identifier directly
-                        if child.kind() == "property_identifier" {
-                            Some(child)
-                        } else {
-                            child
-                                .children(&mut child.walk())
-                                .find(|c| c.kind() == "property_identifier" || c.kind() == "identifier")
-                        }
-                    });
+                let member_name_node = child.child_by_field_name("name").or_else(|| {
+                    // Some grammars put the identifier directly
+                    if child.kind() == "property_identifier" {
+                        Some(child)
+                    } else {
+                        child
+                            .children(&mut child.walk())
+                            .find(|c| c.kind() == "property_identifier" || c.kind() == "identifier")
+                    }
+                });
 
                 if let Some(member_name_node) = member_name_node {
                     let member_name = extractor.base().get_node_text(&member_name_node);
@@ -179,10 +171,7 @@ pub(super) fn extract_enum(
 }
 
 /// Extract a namespace declaration
-pub(super) fn extract_namespace(
-    extractor: &mut TypeScriptExtractor,
-    node: Node,
-) -> Option<Symbol> {
+pub(super) fn extract_namespace(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
@@ -201,10 +190,7 @@ pub(super) fn extract_namespace(
 }
 
 /// Extract a property (class property or interface property)
-pub(super) fn extract_property(
-    extractor: &mut TypeScriptExtractor,
-    node: Node,
-) -> Option<Symbol> {
+pub(super) fn extract_property(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
     use super::helpers;
 
     let name_node = node

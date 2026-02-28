@@ -69,7 +69,10 @@ export function mainFunction(): number {
         let results_b = extract_full("src/main.ts", file_b_code);
 
         // Verify we extracted the symbols
-        let helper_fn = results_a.symbols.iter().find(|s| s.name == "helperFunction");
+        let helper_fn = results_a
+            .symbols
+            .iter()
+            .find(|s| s.name == "helperFunction");
         assert!(
             helper_fn.is_some(),
             "Should extract helperFunction from utils.ts"
@@ -137,12 +140,17 @@ export function mainFunction(): number {
             helper_pending.is_some(),
             "PendingRelationship should have callee_name='helperFunction'.\n\
              Found: {:?}",
-            pending_calls.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            pending_calls
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
 
         // Verify the pending relationship has the correct caller
         // Note: TypeScript can have duplicate symbols (Export + Function), so check if caller matches ANY mainFunction
-        let main_fn_ids: Vec<_> = results_b.symbols.iter()
+        let main_fn_ids: Vec<_> = results_b
+            .symbols
+            .iter()
             .filter(|s| s.name == "mainFunction")
             .map(|s| s.id.clone())
             .collect();
@@ -289,6 +297,9 @@ function caller(): number {
             .iter()
             .any(|r| r.from_symbol_id == caller.id && r.to_symbol_id == helper.id);
 
-        assert!(has_correct_rel, "Should have relationship from caller to helper");
+        assert!(
+            has_correct_rel,
+            "Should have relationship from caller to helper"
+        );
     }
 }

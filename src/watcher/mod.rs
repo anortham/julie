@@ -218,9 +218,9 @@ impl IncrementalIndexer {
                     info!("Background task processing: {:?}", event.path);
 
                     // Compute relative path for embedding operations
-                    let relative_for_embed = crate::utils::paths::to_relative_unix_style(
-                        &event.path, &workspace_root,
-                    ).ok();
+                    let relative_for_embed =
+                        crate::utils::paths::to_relative_unix_style(&event.path, &workspace_root)
+                            .ok();
 
                     match event.change_type {
                         FileChangeType::Created | FileChangeType::Modified => {
@@ -235,9 +235,17 @@ impl IncrementalIndexer {
                             .await
                             {
                                 error!("Failed to handle file change: {}", e);
-                            } else if let (Some(provider), Some(rel)) = (&embedding_provider, &rel_path) {
+                            } else if let (Some(provider), Some(rel)) =
+                                (&embedding_provider, &rel_path)
+                            {
                                 // Re-embed symbols after change (non-fatal), replacing stale vectors.
-                                if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(&db, provider.as_ref(), rel) {
+                                if let Err(e) =
+                                    crate::embeddings::pipeline::reembed_symbols_for_file(
+                                        &db,
+                                        provider.as_ref(),
+                                        rel,
+                                    )
+                                {
                                     warn!("Incremental embedding failed for {}: {}", rel, e);
                                 }
                             }
@@ -263,7 +271,9 @@ impl IncrementalIndexer {
                         }
                         FileChangeType::Renamed { from, to } => {
                             // Delete embeddings for old path before rename
-                            if let Ok(ref rel_from) = crate::utils::paths::to_relative_unix_style(&from, &workspace_root) {
+                            if let Ok(ref rel_from) =
+                                crate::utils::paths::to_relative_unix_style(&from, &workspace_root)
+                            {
                                 if let Ok(mut db_guard) = db.lock() {
                                     let _ = db_guard.delete_embeddings_for_file(rel_from);
                                 }
@@ -279,8 +289,15 @@ impl IncrementalIndexer {
                             .await
                             {
                                 error!("Failed to handle file rename: {}", e);
-                            } else if let (Some(provider), Ok(rel_to)) = (&embedding_provider, crate::utils::paths::to_relative_unix_style(&to, &workspace_root)) {
-                                if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(&db, provider.as_ref(), &rel_to) {
+                            } else if let (Some(provider), Ok(rel_to)) = (
+                                &embedding_provider,
+                                crate::utils::paths::to_relative_unix_style(&to, &workspace_root),
+                            ) {
+                                if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(
+                                    &db,
+                                    provider.as_ref(),
+                                    &rel_to,
+                                ) {
                                     warn!("Incremental embedding failed for {}: {}", rel_to, e);
                                 }
                             }
@@ -301,9 +318,8 @@ impl IncrementalIndexer {
             let mut queue = self.index_queue.lock().await;
             queue.pop_front()
         } {
-            let relative_for_embed = crate::utils::paths::to_relative_unix_style(
-                &event.path, &self.workspace_root,
-            ).ok();
+            let relative_for_embed =
+                crate::utils::paths::to_relative_unix_style(&event.path, &self.workspace_root).ok();
 
             match event.change_type {
                 FileChangeType::Created | FileChangeType::Modified => {
@@ -318,8 +334,14 @@ impl IncrementalIndexer {
                     .await
                     {
                         error!("Failed to handle file change: {}", e);
-                    } else if let (Some(provider), Some(rel)) = (&self.embedding_provider, &rel_path) {
-                        if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(&self.db, provider.as_ref(), rel) {
+                    } else if let (Some(provider), Some(rel)) =
+                        (&self.embedding_provider, &rel_path)
+                    {
+                        if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(
+                            &self.db,
+                            provider.as_ref(),
+                            rel,
+                        ) {
                             warn!("Incremental embedding failed for {}: {}", rel, e);
                         }
                     }
@@ -341,7 +363,9 @@ impl IncrementalIndexer {
                     }
                 }
                 FileChangeType::Renamed { from, to } => {
-                    if let Ok(rel_from) = crate::utils::paths::to_relative_unix_style(&from, &self.workspace_root) {
+                    if let Ok(rel_from) =
+                        crate::utils::paths::to_relative_unix_style(&from, &self.workspace_root)
+                    {
                         if let Ok(mut db_guard) = self.db.lock() {
                             let _ = db_guard.delete_embeddings_for_file(&rel_from);
                         }
@@ -357,8 +381,15 @@ impl IncrementalIndexer {
                     .await
                     {
                         error!("Failed to handle file rename: {}", e);
-                    } else if let (Some(provider), Ok(rel_to)) = (&self.embedding_provider, crate::utils::paths::to_relative_unix_style(&to, &self.workspace_root)) {
-                        if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(&self.db, provider.as_ref(), &rel_to) {
+                    } else if let (Some(provider), Ok(rel_to)) = (
+                        &self.embedding_provider,
+                        crate::utils::paths::to_relative_unix_style(&to, &self.workspace_root),
+                    ) {
+                        if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(
+                            &self.db,
+                            provider.as_ref(),
+                            &rel_to,
+                        ) {
                             warn!("Incremental embedding failed for {}: {}", rel_to, e);
                         }
                     }

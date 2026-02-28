@@ -334,7 +334,6 @@ async fn test_update_last_accessed() {
     );
 }
 
-
 #[tokio::test]
 async fn test_get_all_workspaces_empty() {
     let temp_dir = TempDir::new().unwrap();
@@ -418,7 +417,9 @@ async fn test_detect_orphaned_indexes_excludes_primary_workspace_index() {
         "Primary workspace index must never be treated as orphan"
     );
     assert!(
-        orphans.iter().any(|o| o.directory_name == "orphan_index_dir"),
+        orphans
+            .iter()
+            .any(|o| o.directory_name == "orphan_index_dir"),
         "Unregistered index directory should still be detected as orphan"
     );
 }

@@ -1,3 +1,5 @@
+#![cfg(feature = "embeddings-ort")]
+
 //! Integration tests for the background embedding pipeline.
 
 #[cfg(test)]
@@ -47,11 +49,10 @@ mod tests {
 
     /// Helper: create the test embedding provider.
     fn create_test_provider() -> OrtEmbeddingProvider {
-        let cache_dir = std::path::PathBuf::from(
-            std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()),
-        )
-        .join(".cache")
-        .join("fastembed");
+        let cache_dir =
+            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+                .join(".cache")
+                .join("fastembed");
 
         OrtEmbeddingProvider::try_new(Some(cache_dir)).expect("provider should init")
     }
@@ -62,16 +63,19 @@ mod tests {
         let db = setup_db_with_symbols(&[
             ("s1", "process_data", SymbolKind::Function),
             ("s2", "UserService", SymbolKind::Class),
-            ("s3", "my_var", SymbolKind::Variable),     // not embeddable
+            ("s3", "my_var", SymbolKind::Variable), // not embeddable
             ("s4", "handle_error", SymbolKind::Method),
-            ("s5", "os", SymbolKind::Import),            // not embeddable
+            ("s5", "os", SymbolKind::Import), // not embeddable
         ]);
 
         let provider = create_test_provider();
         let stats = run_embedding_pipeline(&db, &provider).unwrap();
 
         assert_eq!(stats.symbols_scanned, 5, "Should scan all 5 symbols");
-        assert_eq!(stats.symbols_embedded, 3, "Should embed 3 embeddable symbols");
+        assert_eq!(
+            stats.symbols_embedded, 3,
+            "Should embed 3 embeddable symbols"
+        );
         assert!(stats.batches_processed >= 1);
 
         // Verify embeddings are stored
@@ -92,9 +96,7 @@ mod tests {
         run_embedding_pipeline(&db, &provider).unwrap();
 
         // Search for something semantically related to authentication
-        let query_vec = provider
-            .embed_query("login and user verification")
-            .unwrap();
+        let query_vec = provider.embed_query("login and user verification").unwrap();
 
         let db_guard = db.lock().unwrap();
         let results = db_guard.knn_search(&query_vec, 3).unwrap();
@@ -120,6 +122,42 @@ mod tests {
 
         assert_eq!(stats.symbols_scanned, 0);
         assert_eq!(stats.symbols_embedded, 0);
+    }
+
+    #[test]
+    #[serial(fastembed)]
+    fn test_pipeline_skips_already_embedded() {
+        let db = setup_db_with_symbols(&[
+            ("s1", "process_data", SymbolKind::Function),
+            ("s2", "UserService", SymbolKind::Class),
+            ("s3", "handle_error", SymbolKind::Method),
+        ]);
+
+        // Pre-store dummy embeddings for s1 and s2
+        {
+            let mut db_guard = db.lock().unwrap();
+            db_guard
+                .store_embeddings(&[
+                    ("s1".to_string(), vec![0.1_f32; 384]),
+                    ("s2".to_string(), vec![0.2_f32; 384]),
+                ])
+                .unwrap();
+            assert_eq!(db_guard.embedding_count().unwrap(), 2);
+        }
+
+        // Run pipeline — should only embed s3 (the one without a vector)
+        let provider = create_test_provider();
+        let stats = run_embedding_pipeline(&db, &provider).unwrap();
+
+        assert_eq!(stats.symbols_skipped, 2, "Should skip s1 and s2");
+        assert_eq!(stats.symbols_embedded, 1, "Should embed only s3");
+
+        let db_guard = db.lock().unwrap();
+        assert_eq!(
+            db_guard.embedding_count().unwrap(),
+            3,
+            "Total should be 3 (2 pre-existing + 1 new)"
+        );
     }
 
     #[test]

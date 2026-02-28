@@ -29,14 +29,9 @@ end
         let tree = parser.parse(code, None).expect("Error parsing code");
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.rb",
-            code,
-            "ruby",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.rb", code, "ruby", &workspace_root)
+                .expect("Extraction failed");
 
         assert!(
             !results.types.is_empty(),
@@ -85,16 +80,14 @@ end
         let tree = parser.parse(code, None).expect("Error parsing code");
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.rb",
-            code,
-            "ruby",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.rb", code, "ruby", &workspace_root)
+                .expect("Extraction failed");
 
         // Methods in Ruby have no type annotations, so types should be empty or minimal
-        println!("Ruby method types (expected minimal): {}", results.types.len());
+        println!(
+            "Ruby method types (expected minimal): {}",
+            results.types.len()
+        );
     }
 }

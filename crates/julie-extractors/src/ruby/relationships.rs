@@ -2,8 +2,8 @@ use super::helpers::{extract_method_name_from_call, extract_name_from_node};
 /// Relationship extraction for Ruby symbols
 /// Handles inheritance, module inclusion, and other symbol relationships
 use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol};
-use tree_sitter::Node;
 use std::collections::HashMap;
+use tree_sitter::Node;
 
 /// Extract all relationships from a tree
 pub(super) fn extract_relationships(
@@ -17,7 +17,13 @@ pub(super) fn extract_relationships(
     let symbol_map: HashMap<String, &Symbol> =
         symbols.iter().map(|s| (s.name.clone(), s)).collect();
 
-    extract_relationships_from_node(extractor, tree.root_node(), symbols, &symbol_map, &mut relationships);
+    extract_relationships_from_node(
+        extractor,
+        tree.root_node(),
+        symbols,
+        &symbol_map,
+        &mut relationships,
+    );
     relationships
 }
 
@@ -134,7 +140,13 @@ fn extract_module_inclusion_relationships(
     for child in node.children(&mut cursor) {
         if child.kind() == "call" {
             // Direct call node
-            process_include_extend_call(extractor, child, &class_or_module_name, symbols, relationships);
+            process_include_extend_call(
+                extractor,
+                child,
+                &class_or_module_name,
+                symbols,
+                relationships,
+            );
         } else if child.kind() == "body_statement" {
             // Call might be inside a body_statement
             let mut body_cursor = child.walk();

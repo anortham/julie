@@ -53,7 +53,8 @@ impl BaseExtractor {
         let canonical_path = path_to_canonicalize.canonicalize().unwrap_or_else(|e| {
             warn!(
                 "⚠️  Failed to canonicalize path '{}': {} - using joined path",
-                path_to_canonicalize.display(), e
+                path_to_canonicalize.display(),
+                e
             );
             path_to_canonicalize.clone()
         });

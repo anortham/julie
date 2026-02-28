@@ -109,5 +109,4 @@ impl super::BashExtractor {
             self.collect_parameter_nodes(child, param_nodes);
         }
     }
-
 }

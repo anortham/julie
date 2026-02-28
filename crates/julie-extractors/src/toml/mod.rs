@@ -100,11 +100,7 @@ impl TomlExtractor {
     }
 
     /// Extract a key-value pair as a Property symbol
-    fn extract_pair(
-        &mut self,
-        node: tree_sitter::Node,
-        parent_id: Option<&str>,
-    ) -> Option<Symbol> {
+    fn extract_pair(&mut self, node: tree_sitter::Node, parent_id: Option<&str>) -> Option<Symbol> {
         use crate::base::SymbolOptions;
 
         let mut cursor = node.walk();

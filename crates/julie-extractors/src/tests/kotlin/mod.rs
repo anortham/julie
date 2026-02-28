@@ -1829,7 +1829,11 @@ class MyClass {
         let factory = factory.unwrap();
         assert_eq!(factory.kind, SymbolKind::Class);
         assert!(
-            factory.signature.as_ref().unwrap().contains("companion object Factory"),
+            factory
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("companion object Factory"),
             "Signature should contain 'companion object Factory', got: {}",
             factory.signature.as_ref().unwrap()
         );
@@ -1874,12 +1878,7 @@ class MyClass {
             "Unnamed companion object should have name 'Companion'"
         );
         assert!(
-            companion
-                .unwrap()
-                .signature
-                .as_ref()
-                .unwrap()
-                == "companion object",
+            companion.unwrap().signature.as_ref().unwrap() == "companion object",
             "Signature should be exactly 'companion object', got: {}",
             companion.unwrap().signature.as_ref().unwrap()
         );
@@ -1916,14 +1915,14 @@ class Person(val name: String) {
         assert!(
             !constructors.is_empty(),
             "Secondary constructor should be extracted, got symbols: {:?}",
-            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
         );
-        let secondary = constructors.iter().find(|c| {
-            c.signature
-                .as_deref()
-                .unwrap_or("")
-                .contains("age")
-        });
+        let secondary = constructors
+            .iter()
+            .find(|c| c.signature.as_deref().unwrap_or("").contains("age"));
         assert!(
             secondary.is_some(),
             "Secondary constructor should have parameters in signature"
@@ -1968,7 +1967,10 @@ class Color(val hex: String) {
             constructors.len() >= 2,
             "Both secondary constructors should be extracted, got {} constructors: {:?}",
             constructors.len(),
-            constructors.iter().map(|c| &c.signature).collect::<Vec<_>>()
+            constructors
+                .iter()
+                .map(|c| &c.signature)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -2071,17 +2073,19 @@ class Config(val name: String, val count: Int) {
                 assert!(
                     !sig.ends_with(": "),
                     "Signature for '{}' should not end with trailing ': ', got: '{}'",
-                    s.name, sig
+                    s.name,
+                    sig
                 );
                 // Also check for ": )" pattern which would indicate empty type before closing paren
                 assert!(
                     !sig.contains(": )"),
                     "Signature for '{}' should not contain ': )', got: '{}'",
-                    s.name, sig
+                    s.name,
+                    sig
                 );
             }
         }
     }
 }
-mod types; // Phase 4: Type extraction verification tests
-mod cross_file_relationships; // Cross-file relationship resolution tests
+mod cross_file_relationships;
+mod types; // Phase 4: Type extraction verification tests // Cross-file relationship resolution tests

@@ -2,9 +2,11 @@
 
 use tempfile::TempDir;
 
-use crate::search::index::{FileDocument, SearchFilter, SearchIndex, SymbolDocument, SymbolSearchResults};
-use crate::search::language_config::LanguageConfigs;
 use crate::search::SearchError;
+use crate::search::index::{
+    FileDocument, SearchFilter, SearchIndex, SymbolDocument, SymbolSearchResults,
+};
+use crate::search::language_config::LanguageConfigs;
 
 #[test]
 fn test_create_index() {
@@ -80,10 +82,7 @@ fn test_add_file_content_and_search() {
         .search_content("println", &SearchFilter::default(), 10)
         .unwrap()
         .results;
-    assert!(
-        !results.is_empty(),
-        "Should find file containing 'println'"
-    );
+    assert!(!results.is_empty(), "Should find file containing 'println'");
     assert_eq!(results[0].file_path, "src/main.rs");
 }
 
@@ -169,7 +168,10 @@ fn test_language_filter() {
         language: Some("rust".into()),
         ..Default::default()
     };
-    let results = index.search_symbols("process", &filter, 10).unwrap().results;
+    let results = index
+        .search_symbols("process", &filter, 10)
+        .unwrap()
+        .results;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].language, "rust");
 }
@@ -276,7 +278,9 @@ fn test_content_search_over_tokenization_produces_false_positives() {
     index
         .add_file_content(&FileDocument {
             file_path: "src/watcher.rs".into(),
-            content: "// Check if file changed using Blake3 hash\nlet hash = blake3::hash(&content);".into(),
+            content:
+                "// Check if file changed using Blake3 hash\nlet hash = blake3::hash(&content);"
+                    .into(),
             language: "rust".into(),
         })
         .unwrap();
@@ -380,10 +384,7 @@ fn test_multi_token_search_requires_all_tokens() {
         .results;
 
     // CRITICAL: Should only find the actual symbol, not false positives
-    assert!(
-        !results.is_empty(),
-        "Should find select_best_candidate"
-    );
+    assert!(!results.is_empty(), "Should find select_best_candidate");
     assert_eq!(
         results[0].name, "select_best_candidate",
         "First result should be the exact match"
@@ -452,12 +453,10 @@ fn test_compound_token_finds_exact_identifier() {
 
     // The file with the exact identifier should rank first
     assert_eq!(
-        results[0].file_path, "src/processor.rs",
+        results[0].file_path,
+        "src/processor.rs",
         "File with exact identifier should rank higher. Got: {:?}",
-        results
-            .iter()
-            .map(|r| &r.file_path)
-            .collect::<Vec<_>>()
+        results.iter().map(|r| &r.file_path).collect::<Vec<_>>()
     );
 }
 
@@ -588,7 +587,11 @@ fn test_or_fallback_returns_partial_matches() {
     // "ranking score boost centrality" — no symbol has ALL four tokens, so AND
     // fails and OR kicks in, returning partial matches.
     let auto_results = index
-        .search_symbols("ranking score boost centrality", &SearchFilter::default(), 10)
+        .search_symbols(
+            "ranking score boost centrality",
+            &SearchFilter::default(),
+            10,
+        )
         .unwrap();
     assert!(
         !auto_results.results.is_empty(),
@@ -845,7 +848,8 @@ fn test_content_search_or_fallback_when_and_returns_nothing() {
     index
         .add_file_content(&FileDocument {
             file_path: "src/database/pg.rs".into(),
-            content: "let conn = postgresql::connect(\"localhost\");\nlet rows = conn.query();".into(),
+            content: "let conn = postgresql::connect(\"localhost\");\nlet rows = conn.query();"
+                .into(),
             language: "rust".into(),
         })
         .unwrap();
@@ -926,7 +930,10 @@ fn test_content_search_single_term_no_fallback() {
         .search_content("nonexistent", &SearchFilter::default(), 10)
         .unwrap();
 
-    assert!(result.results.is_empty(), "Should find nothing for nonexistent term");
+    assert!(
+        result.results.is_empty(),
+        "Should find nothing for nonexistent term"
+    );
     assert!(
         !result.relaxed,
         "relaxed should be false for single-term queries even with no results"
@@ -944,8 +951,7 @@ fn test_tokenizer_mismatch_reproduces_ref_workspace_bug() {
 
     {
         let configs = LanguageConfigs::load_embedded();
-        let index =
-            SearchIndex::create_with_language_configs(temp_dir.path(), &configs).unwrap();
+        let index = SearchIndex::create_with_language_configs(temp_dir.path(), &configs).unwrap();
 
         index
             .add_symbol(&SymbolDocument {
@@ -985,8 +991,7 @@ fn test_ref_workspace_search_with_matching_tokenizer() {
     // Step 1: Create and populate index (simulates reference workspace indexing)
     {
         let configs = LanguageConfigs::load_embedded();
-        let index =
-            SearchIndex::create_with_language_configs(temp_dir.path(), &configs).unwrap();
+        let index = SearchIndex::create_with_language_configs(temp_dir.path(), &configs).unwrap();
 
         index
             .add_symbol(&SymbolDocument {
@@ -1021,8 +1026,7 @@ fn test_ref_workspace_search_with_matching_tokenizer() {
 
     // Step 2: Reopen with language_configs tokenizer (simulates fixed search path)
     let configs = LanguageConfigs::load_embedded();
-    let index =
-        SearchIndex::open_with_language_configs(temp_dir.path(), &configs).unwrap();
+    let index = SearchIndex::open_with_language_configs(temp_dir.path(), &configs).unwrap();
 
     // CamelCase multi-part name
     let results = index
@@ -1064,8 +1068,7 @@ fn test_same_tokenizer_search_works() {
     // Create and populate with language_configs tokenizer
     {
         let configs = LanguageConfigs::load_embedded();
-        let index =
-            SearchIndex::create_with_language_configs(temp_dir.path(), &configs).unwrap();
+        let index = SearchIndex::create_with_language_configs(temp_dir.path(), &configs).unwrap();
 
         index
             .add_symbol(&SymbolDocument {
@@ -1085,8 +1088,7 @@ fn test_same_tokenizer_search_works() {
 
     // Open with SAME tokenizer
     let configs = LanguageConfigs::load_embedded();
-    let index =
-        SearchIndex::open_with_language_configs(temp_dir.path(), &configs).unwrap();
+    let index = SearchIndex::open_with_language_configs(temp_dir.path(), &configs).unwrap();
 
     let results = index
         .search_symbols("SmartQueryPreprocessor", &SearchFilter::default(), 10)
@@ -1107,4 +1109,3 @@ fn test_same_tokenizer_search_works() {
         "'preprocessor' should be found when using same tokenizer"
     );
 }
-

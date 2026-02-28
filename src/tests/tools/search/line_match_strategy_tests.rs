@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod line_match_strategy_tests {
-    use crate::tools::search::query::{line_match_strategy, line_matches};
     use crate::tools::search::LineMatchStrategy;
+    use crate::tools::search::query::{line_match_strategy, line_matches};
 
     #[test]
     fn test_single_identifier_produces_substring() {
@@ -55,10 +55,7 @@ mod line_match_strategy_tests {
                 assert!(required.contains(&"spawn_blocking".to_string()));
                 assert!(excluded.contains(&"test".to_string()));
             }
-            other => panic!(
-                "Expected Tokens, got {:?}",
-                std::mem::discriminant(other)
-            ),
+            other => panic!("Expected Tokens, got {:?}", std::mem::discriminant(other)),
         }
     }
 
@@ -68,11 +65,20 @@ mod line_match_strategy_tests {
             terms: vec!["spawn_blocking".to_string(), "statistics".to_string()],
         };
         // Matches line with first term
-        assert!(line_matches(&strategy, "let handle = spawn_blocking(move || {"));
+        assert!(line_matches(
+            &strategy,
+            "let handle = spawn_blocking(move || {"
+        ));
         // Matches line with second term
-        assert!(line_matches(&strategy, "// compute statistics for the batch"));
+        assert!(line_matches(
+            &strategy,
+            "// compute statistics for the batch"
+        ));
         // Does NOT match line with neither term
-        assert!(!line_matches(&strategy, "fn process_data(input: &[u8]) -> Result<()> {"));
+        assert!(!line_matches(
+            &strategy,
+            "fn process_data(input: &[u8]) -> Result<()> {"
+        ));
         // Case-insensitive
         assert!(line_matches(&strategy, "SPAWN_BLOCKING is loud"));
     }

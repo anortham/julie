@@ -49,10 +49,9 @@ class Calculator {
         let pending = extractor.get_pending_relationships();
 
         // Should create a pending relationship for externalHelper call
-        let pending_call = pending.iter().find(|p| {
-            p.callee_name == "externalHelper"
-                && p.kind == RelationshipKind::Calls
-        });
+        let pending_call = pending
+            .iter()
+            .find(|p| p.callee_name == "externalHelper" && p.kind == RelationshipKind::Calls);
 
         assert!(
             pending_call.is_some(),
@@ -63,7 +62,10 @@ class Calculator {
         assert_eq!(pending_call.callee_name, "externalHelper");
         assert_eq!(pending_call.kind, RelationshipKind::Calls);
         assert_eq!(pending_call.line_number, 4);
-        assert!(pending_call.confidence < 0.9, "Pending calls should have lower confidence");
+        assert!(
+            pending_call.confidence < 0.9,
+            "Pending calls should have lower confidence"
+        );
     }
 
     #[test]
@@ -111,9 +113,7 @@ class Calculator {
         );
 
         // Should NOT create a pending relationship for local calls
-        let pending_local = pending
-            .iter()
-            .find(|p| p.callee_name == "helper");
+        let pending_local = pending.iter().find(|p| p.callee_name == "helper");
         assert!(
             pending_local.is_none(),
             "Should not create pending relationship for local function calls"
@@ -147,9 +147,9 @@ class Service {
         let pending = extractor.get_pending_relationships();
 
         // Should create pending relationship for compute method call
-        let pending_method = pending.iter().find(|p| {
-            p.callee_name == "compute" && p.kind == RelationshipKind::Calls
-        });
+        let pending_method = pending
+            .iter()
+            .find(|p| p.callee_name == "compute" && p.kind == RelationshipKind::Calls);
 
         assert!(
             pending_method.is_some(),
@@ -231,7 +231,10 @@ class App {
         assert_eq!(pending_rel.file_path, "App.kt");
         assert_eq!(pending_rel.callee_name, "externalFunction");
         assert_eq!(pending_rel.kind, RelationshipKind::Calls);
-        assert!(pending_rel.from_symbol_id.len() > 0, "Should have from_symbol_id");
+        assert!(
+            pending_rel.from_symbol_id.len() > 0,
+            "Should have from_symbol_id"
+        );
     }
 
     #[test]
@@ -322,7 +325,9 @@ class Service {
         let pending_rel = pending_rel.unwrap();
 
         // from_symbol_id should point to the process method
-        let from_symbol = symbols.iter().find(|s| &s.id == &pending_rel.from_symbol_id);
+        let from_symbol = symbols
+            .iter()
+            .find(|s| &s.id == &pending_rel.from_symbol_id);
         assert!(from_symbol.is_some());
         assert_eq!(from_symbol.unwrap().name, "process");
     }

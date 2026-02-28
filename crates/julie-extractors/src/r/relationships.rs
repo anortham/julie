@@ -122,7 +122,8 @@ fn extract_pipe_relationships(
                             let function_name = extractor.base.get_node_text(&function_node);
 
                             // Find containing function
-                            if let Some(containing_symbol) = find_containing_function(extractor, node, symbols)
+                            if let Some(containing_symbol) =
+                                find_containing_function(extractor, node, symbols)
                             {
                                 // Check if the piped function is defined locally
                                 if let Some(called_symbol) = symbols.iter().find(|s| {

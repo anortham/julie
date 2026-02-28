@@ -53,7 +53,8 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Option<S
     );
 
     // Determine if it's a method or function based on context
-    let (symbol_kind, parent_id) = determine_function_kind(extractor, &node, &name, &decorators_list);
+    let (symbol_kind, parent_id) =
+        determine_function_kind(extractor, &node, &name, &decorators_list);
 
     // Extract docstring
     let doc_comment = super::types::extract_docstring(extractor, &node);

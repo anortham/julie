@@ -9,8 +9,8 @@
 // Public API re-exports
 pub use self::query::matches_glob_pattern;
 pub use self::query_preprocessor::{
-    PreprocessedQuery, QueryType, detect_query_type, preprocess_query,
-    sanitize_query, validate_query,
+    PreprocessedQuery, QueryType, detect_query_type, preprocess_query, sanitize_query,
+    validate_query,
 };
 pub use self::types::{LineMatch, LineMatchStrategy};
 
@@ -23,9 +23,9 @@ mod scoring;
 pub mod text_search;
 mod types;
 
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
 use schemars::JsonSchema;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -77,7 +77,10 @@ fn default_search_target() -> String {
 
 impl FastSearchTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("🔍 Fast search: {} (target: {})", self.query, self.search_target);
+        debug!(
+            "🔍 Fast search: {} (target: {})",
+            self.query, self.search_target
+        );
 
         // Determine target workspace for health check
         let target_workspace_id = if self.workspace.is_some() {
@@ -177,13 +180,15 @@ impl FastSearchTool {
             lean_output
         };
 
-            debug!(
-                "✅ Returning lean search results ({} chars, {} results, relaxed: {})",
-                lean_output.len(),
-                optimized.results.len(),
-                relaxed,
-            );
-            Ok(CallToolResult::text_content(vec![Content::text(lean_output)]))
+        debug!(
+            "✅ Returning lean search results ({} chars, {} results, relaxed: {})",
+            lean_output.len(),
+            optimized.results.len(),
+            relaxed,
+        );
+        Ok(CallToolResult::text_content(vec![Content::text(
+            lean_output,
+        )]))
     }
 
     /// Resolve workspace filtering parameter to a list of workspace IDs

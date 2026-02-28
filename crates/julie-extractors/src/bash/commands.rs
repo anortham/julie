@@ -66,5 +66,4 @@ impl super::BashExtractor {
             None
         }
     }
-
 }

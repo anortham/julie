@@ -87,8 +87,9 @@ impl SymbolDatabase {
             SYMBOL_COLUMNS_LIGHTWEIGHT
         );
         let mut stmt = self.conn.prepare(&query)?;
-        let symbol_iter =
-            stmt.query_map(params![parent_id], |row| self.row_to_symbol_lightweight(row))?;
+        let symbol_iter = stmt.query_map(params![parent_id], |row| {
+            self.row_to_symbol_lightweight(row)
+        })?;
 
         let mut symbols = Vec::new();
         for symbol_result in symbol_iter {
@@ -130,8 +131,9 @@ impl SymbolDatabase {
         );
         let mut stmt = self.conn.prepare(&query)?;
 
-        let symbol_iter =
-            stmt.query_map(params![file_path], |row| self.row_to_symbol_lightweight(row))?;
+        let symbol_iter = stmt.query_map(params![file_path], |row| {
+            self.row_to_symbol_lightweight(row)
+        })?;
 
         let mut symbols = Vec::new();
         for symbol_result in symbol_iter {

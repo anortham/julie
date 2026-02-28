@@ -10,16 +10,14 @@ impl super::BashExtractor {
     /// Build signature for a function definition
     pub(super) fn extract_function_signature(&self, node: Node) -> Option<String> {
         let name_node = self.find_name_node(node);
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))?;
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
         Some(format!("function {}()", name))
     }
 
     /// Build signature for a variable assignment
     pub(super) fn extract_variable_signature(&self, node: Node) -> Option<String> {
         let name_node = self.find_variable_name_node(node);
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))?;
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         // Get the full assignment text and extract value
         let full_text = self.base.get_node_text(&node);
@@ -41,6 +39,4 @@ impl super::BashExtractor {
         // Limit length for readability - safely handle UTF-8
         BaseExtractor::truncate_string(&command_text, 97)
     }
-
-
 }

@@ -6,11 +6,11 @@
 pub mod database;
 pub mod embeddings;
 pub mod extractors;
-pub mod search;
 pub mod handler;
-pub mod mcp_compat; // MCP compatibility layer for rmcp migration
 pub mod health;
 pub mod language; // Shared language support (tree-sitter configuration)
+pub mod mcp_compat; // MCP compatibility layer for rmcp migration
+pub mod search;
 pub mod startup; // Startup utilities (indexing checks, staleness detection)
 pub mod tools;
 pub mod tracing;

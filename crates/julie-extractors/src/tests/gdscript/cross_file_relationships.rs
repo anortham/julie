@@ -65,7 +65,10 @@ func main_function():
         let results_b = extract_full("lib/file_b.gd", file_b_code);
 
         // Verify we extracted the symbols
-        let helper_fn = results_a.symbols.iter().find(|s| s.name == "helper_function");
+        let helper_fn = results_a
+            .symbols
+            .iter()
+            .find(|s| s.name == "helper_function");
         assert!(
             helper_fn.is_some(),
             "Should extract helper_function from file_a"
@@ -132,7 +135,10 @@ func main_function():
             helper_pending.is_some(),
             "PendingRelationship should have callee_name='helper_function'.\n\
              Found: {:?}",
-            pending_calls.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            pending_calls
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
 
         // Verify the pending relationship has the correct caller
@@ -178,7 +184,10 @@ func process():
 
         // Verify symbols exist
         assert!(
-            results_a.symbols.iter().any(|s| s.name == "external_helper"),
+            results_a
+                .symbols
+                .iter()
+                .any(|s| s.name == "external_helper"),
             "Should extract external_helper function"
         );
         assert!(
@@ -262,8 +271,18 @@ func caller():
         );
 
         // Verify it's calling the right function
-        let helper_id = symbols.iter().find(|s| s.name == "helper").unwrap().id.clone();
-        let caller_id = symbols.iter().find(|s| s.name == "caller").unwrap().id.clone();
+        let helper_id = symbols
+            .iter()
+            .find(|s| s.name == "helper")
+            .unwrap()
+            .id
+            .clone();
+        let caller_id = symbols
+            .iter()
+            .find(|s| s.name == "caller")
+            .unwrap()
+            .id
+            .clone();
 
         let helper_call = call_relationships
             .iter()
@@ -350,7 +369,10 @@ func caller():
             .collect();
 
         // Should have at least one pending relationship
-        assert!(!pending_calls.is_empty(), "Should have pending relationships");
+        assert!(
+            !pending_calls.is_empty(),
+            "Should have pending relationships"
+        );
 
         // Confidence should be reasonable (between 0.5 and 0.9)
         for pending in &pending_calls {

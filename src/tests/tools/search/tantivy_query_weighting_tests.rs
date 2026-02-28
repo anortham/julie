@@ -1,8 +1,8 @@
 //! Tests for weighted query-builder term groups.
 
 use tantivy::collector::Count;
-use tantivy::schema::{Field, Schema, STRING, TEXT};
-use tantivy::{doc, Index};
+use tantivy::schema::{Field, STRING, Schema, TEXT};
+use tantivy::{Index, doc};
 
 #[derive(Debug, Clone, Copy)]
 struct TestFields {
@@ -68,11 +68,7 @@ fn positions(haystack: &str, needle: &str) -> Vec<usize> {
                     .next()
                     .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
 
-            if start_ok && end_ok {
-                Some(idx)
-            } else {
-                None
-            }
+            if start_ok && end_ok { Some(idx) } else { None }
         })
         .collect()
 }

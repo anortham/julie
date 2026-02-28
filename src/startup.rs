@@ -148,7 +148,7 @@ fn get_database_mtime(workspace_root: &Path, workspace_id: &str) -> Result<Syste
 ///
 /// Scans all supported code files and returns the newest mtime found
 fn get_max_file_mtime_in_workspace(workspace_root: &Path) -> Result<SystemTime> {
-    use crate::utils::walk::{build_walker, WalkConfig};
+    use crate::utils::walk::{WalkConfig, build_walker};
 
     let mut max_mtime = SystemTime::UNIX_EPOCH;
 
@@ -182,7 +182,7 @@ fn get_max_file_mtime_in_workspace(workspace_root: &Path) -> Result<SystemTime> 
 ///
 /// This is used to detect new files that aren't in the database yet
 pub(crate) fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<String>> {
-    use crate::utils::walk::{build_walker, WalkConfig};
+    use crate::utils::walk::{WalkConfig, build_walker};
 
     let mut files = HashSet::new();
 

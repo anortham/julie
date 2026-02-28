@@ -71,14 +71,14 @@ pub async fn handle_file_created_or_modified_static(
         .unwrap_or_else(|| "unknown".to_string());
     let content_str = String::from_utf8_lossy(&content);
 
-    let results =
-        match extractor_manager.extract_all(&relative_path, &content_str, workspace_root) {
-            Ok(results) => results,
-            Err(e) => {
-                error!("Extraction failed for {}: {}", relative_path, e);
-                return Ok(()); // Skip update to preserve existing data
-            }
-        };
+    let results = match extractor_manager.extract_all(&relative_path, &content_str, workspace_root)
+    {
+        Ok(results) => results,
+        Err(e) => {
+            error!("Extraction failed for {}: {}", relative_path, e);
+            return Ok(()); // Skip update to preserve existing data
+        }
+    };
 
     info!(
         "Extracted {} symbols, {} identifiers, {} relationships from {} ({})",

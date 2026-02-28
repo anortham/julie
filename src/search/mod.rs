@@ -5,11 +5,11 @@
 
 mod error;
 pub mod expansion;
+pub mod hybrid;
 pub mod index;
 pub mod language_config;
 pub mod query;
 pub mod schema;
-pub mod hybrid;
 pub mod scoring;
 pub mod tokenizer;
 
@@ -19,5 +19,5 @@ pub use index::{
     SymbolDocument, SymbolSearchResult, SymbolSearchResults,
 };
 pub use language_config::LanguageConfigs;
-pub use schema::{create_schema, SchemaFields};
+pub use schema::{SchemaFields, create_schema};
 pub use tokenizer::CodeTokenizer;

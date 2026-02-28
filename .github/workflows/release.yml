@@ -23,16 +23,19 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary_name: julie-server.exe
+            cargo_features: "--no-default-features --features embeddings-ort"
 
-          # macOS Apple Silicon
+          # macOS Apple Silicon (default features include candle for hardware acceleration)
           - os: macos-latest
             target: aarch64-apple-darwin
             binary_name: julie-server
+            cargo_features: ""
 
           # Linux
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_name: julie-server
+            cargo_features: "--no-default-features --features embeddings-ort"
 
     steps:
       - name: Checkout code
@@ -50,7 +53,7 @@ jobs:
 
       - name: Build release binary
         run: |
-          cargo build --release --target ${{ matrix.target }} --bin julie-server
+          cargo build --release --target ${{ matrix.target }} --bin julie-server ${{ matrix.cargo_features }}
 
       - name: Strip binary (Linux/macOS)
         if: matrix.os != 'windows-latest'

@@ -1103,7 +1103,11 @@ mod json_extractor_tests {
             "String value should be captured in doc_comment"
         );
         assert!(
-            desc_sym.doc_comment.as_ref().unwrap().contains("authentication bug"),
+            desc_sym
+                .doc_comment
+                .as_ref()
+                .unwrap()
+                .contains("authentication bug"),
             "doc_comment should contain the string value"
         );
 

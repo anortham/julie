@@ -65,11 +65,20 @@ impl MyService {
         );
 
         let symbols = extractor.extract_symbols(&tree);
-        let methods: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Method).collect();
+        let methods: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Method)
+            .collect();
 
         assert_eq!(methods.len(), 2, "Should extract 2 methods from impl block");
-        assert!(methods.iter().any(|m| m.name == "new"), "Should find 'new' method");
-        assert!(methods.iter().any(|m| m.name == "process"), "Should find 'process' method");
+        assert!(
+            methods.iter().any(|m| m.name == "new"),
+            "Should find 'new' method"
+        );
+        assert!(
+            methods.iter().any(|m| m.name == "process"),
+            "Should find 'process' method"
+        );
 
         // Methods should be parented to MyService
         let service = symbols.iter().find(|s| s.name == "MyService").unwrap();
@@ -110,13 +119,19 @@ impl super::BashExtractor {
         );
 
         let symbols = extractor.extract_symbols(&tree);
-        let methods: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Method).collect();
+        let methods: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Method)
+            .collect();
 
         assert_eq!(
             methods.len(),
             2,
             "Should extract 2 methods from impl super::BashExtractor block. Got symbols: {:?}",
-            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
         );
         assert!(
             methods.iter().any(|m| m.name == "extract_variable"),
@@ -149,13 +164,19 @@ impl crate::base::BaseExtractor {
         );
 
         let symbols = extractor.extract_symbols(&tree);
-        let methods: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Method).collect();
+        let methods: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Method)
+            .collect();
 
         assert_eq!(
             methods.len(),
             1,
             "Should extract method from impl crate::base::BaseExtractor. Got symbols: {:?}",
-            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
         );
         assert_eq!(methods[0].name, "helper");
     }

@@ -6,7 +6,9 @@ mod signatures;
 mod specs;
 mod types;
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
+};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 

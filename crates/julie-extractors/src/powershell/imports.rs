@@ -10,13 +10,11 @@ static IMPORT_MODULE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"Import-Module\s+(?:-Name\s+["']?([^"'\s]+)["']?|([A-Za-z0-9.-]+))"#).unwrap()
 });
 
-static USING_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)").unwrap()
-});
+static USING_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"using\s+(?:namespace|module)\s+([A-Za-z0-9.-_]+)").unwrap());
 
-static EXPORT_MODULE_MEMBER_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"Export-ModuleMember\s+-(\w+)").unwrap()
-});
+static EXPORT_MODULE_MEMBER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"Export-ModuleMember\s+-(\w+)").unwrap());
 
 /// Extract import statements (Import-Module, using, etc.)
 pub(super) fn extract_import(

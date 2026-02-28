@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use anyhow::Result;
 use tracing::debug;
 
-use super::index::{SearchFilter, SearchIndex, SymbolSearchResults};
 use super::SymbolSearchResult;
+use super::index::{SearchFilter, SearchIndex, SymbolSearchResults};
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingProvider;
 use crate::tools::search::query::matches_glob_pattern;

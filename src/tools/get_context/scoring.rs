@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use crate::search::index::SymbolSearchResult;
 use crate::search::scoring::{
-    is_docs_path, is_fixture_path, is_test_path, CENTRALITY_NOISE_NAMES, CENTRALITY_WEIGHT,
+    CENTRALITY_NOISE_NAMES, CENTRALITY_WEIGHT, is_docs_path, is_fixture_path, is_test_path,
 };
 
 /// A pivot symbol selected from search results, with its combined score.

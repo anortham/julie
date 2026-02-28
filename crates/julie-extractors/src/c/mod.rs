@@ -98,7 +98,9 @@ impl CExtractor {
 
         for symbol in symbols {
             if let Some(ref signature) = symbol.signature {
-                if let Some(inferred_type) = self.extract_type_from_signature(signature, &symbol.kind, &symbol.name) {
+                if let Some(inferred_type) =
+                    self.extract_type_from_signature(signature, &symbol.kind, &symbol.name)
+                {
                     type_map.insert(symbol.id.clone(), inferred_type);
                 }
             }
@@ -107,7 +109,12 @@ impl CExtractor {
         type_map
     }
 
-    fn extract_type_from_signature(&self, signature: &str, kind: &crate::base::SymbolKind, name: &str) -> Option<String> {
+    fn extract_type_from_signature(
+        &self,
+        signature: &str,
+        kind: &crate::base::SymbolKind,
+        name: &str,
+    ) -> Option<String> {
         use crate::base::SymbolKind;
 
         match kind {
@@ -153,18 +160,10 @@ impl CExtractor {
         // Port switch statement logic for C constructs
         match node.kind() {
             "preproc_include" => {
-                symbol = declarations::extract_include(
-                    self,
-                    node,
-                    parent_id.as_deref(),
-                );
+                symbol = declarations::extract_include(self, node, parent_id.as_deref());
             }
             "preproc_def" | "preproc_function_def" => {
-                symbol = declarations::extract_macro(
-                    self,
-                    node,
-                    parent_id.as_deref(),
-                );
+                symbol = declarations::extract_macro(self, node, parent_id.as_deref());
             }
             "declaration" => {
                 let declaration_symbols =
@@ -172,25 +171,18 @@ impl CExtractor {
                 symbols.extend(declaration_symbols);
             }
             "function_definition" => {
-                symbol = declarations::extract_function_definition(
-                    self,
-                    node,
-                    parent_id.as_deref(),
-                );
+                symbol =
+                    declarations::extract_function_definition(self, node, parent_id.as_deref());
             }
             "struct_specifier" => {
-                symbol = structs::extract_struct(
-                    self,
-                    node,
-                    parent_id.as_deref(),
-                );
+                symbol = structs::extract_struct(self, node, parent_id.as_deref());
                 // Extract struct fields as SymbolKind::Field children
                 // Skip if inside a type_definition — the type_definition handler already extracts fields
-                let inside_typedef = node.parent().map_or(false, |p| p.kind() == "type_definition");
+                let inside_typedef = node
+                    .parent()
+                    .map_or(false, |p| p.kind() == "type_definition");
                 if !inside_typedef {
-                    let parent_id_for_fields = symbol.as_ref()
-                        .map(|s| s.id.as_str())
-                        .unwrap_or("");
+                    let parent_id_for_fields = symbol.as_ref().map(|s| s.id.as_str()).unwrap_or("");
                     if !parent_id_for_fields.is_empty() {
                         let field_symbols =
                             structs::extract_struct_field_symbols(self, node, parent_id_for_fields);
@@ -199,18 +191,14 @@ impl CExtractor {
                 }
             }
             "union_specifier" => {
-                symbol = structs::extract_union(
-                    self,
-                    node,
-                    parent_id.as_deref(),
-                );
+                symbol = structs::extract_union(self, node, parent_id.as_deref());
                 // Extract union fields as SymbolKind::Field children
                 // Skip if inside a type_definition — the type_definition handler already extracts fields
-                let inside_typedef = node.parent().map_or(false, |p| p.kind() == "type_definition");
+                let inside_typedef = node
+                    .parent()
+                    .map_or(false, |p| p.kind() == "type_definition");
                 if !inside_typedef {
-                    let parent_id_for_fields = symbol.as_ref()
-                        .map(|s| s.id.as_str())
-                        .unwrap_or("");
+                    let parent_id_for_fields = symbol.as_ref().map(|s| s.id.as_str()).unwrap_or("");
                     if !parent_id_for_fields.is_empty() {
                         let field_symbols =
                             structs::extract_struct_field_symbols(self, node, parent_id_for_fields);
@@ -221,19 +209,13 @@ impl CExtractor {
             "enum_specifier" => {
                 symbol = structs::extract_enum(self, node, parent_id.as_deref());
                 // Extract enum values as separate constants (even for anonymous enums like `typedef enum { ... } Name;`)
-                let parent_id_for_values = symbol.as_ref()
-                    .map(|s| s.id.as_str())
-                    .unwrap_or("");
+                let parent_id_for_values = symbol.as_ref().map(|s| s.id.as_str()).unwrap_or("");
                 let enum_values =
                     structs::extract_enum_value_symbols(self, node, parent_id_for_values);
                 symbols.extend(enum_values);
             }
             "type_definition" => {
-                symbol = typedefs::extract_type_definition(
-                    self,
-                    node,
-                    parent_id.as_deref(),
-                );
+                symbol = typedefs::extract_type_definition(self, node, parent_id.as_deref());
                 // For typedef struct/union, extract fields from the inner specifier
                 // e.g., `typedef struct { int x; int y; } Point;`
                 if let Some(ref sym) = symbol {
@@ -244,11 +226,8 @@ impl CExtractor {
                             if td_child.kind() == "struct_specifier"
                                 || td_child.kind() == "union_specifier"
                             {
-                                let field_symbols = structs::extract_struct_field_symbols(
-                                    self,
-                                    td_child,
-                                    &sym.id,
-                                );
+                                let field_symbols =
+                                    structs::extract_struct_field_symbols(self, td_child, &sym.id);
                                 symbols.extend(field_symbols);
                                 break;
                             }
@@ -262,11 +241,8 @@ impl CExtractor {
             }
             "expression_statement" => {
                 // Handle cases like "} PACKED NetworkHeader;" where NetworkHeader is in expression_statement
-                symbol = typedefs::extract_from_expression_statement(
-                    self,
-                    node,
-                    parent_id.as_deref(),
-                );
+                symbol =
+                    typedefs::extract_from_expression_statement(self, node, parent_id.as_deref());
             }
             _ => {}
         }

@@ -229,7 +229,7 @@ pub(crate) fn is_fixture_path(path: &str) -> bool {
         match segment {
             "fixtures" | "fixture" | "Fixtures" | "Fixture" | "testdata" | "test_data"
             | "test-data" | "__fixtures__" | "snapshots" | "Snapshots" | "__snapshots__" => {
-                return true
+                return true;
             }
             _ => {}
         }

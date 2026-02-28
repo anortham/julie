@@ -1,9 +1,7 @@
 //! Relationship extraction for C++
 //! Handles inheritance and function call relationships
 
-use crate::base::{
-    PendingRelationship, Relationship, RelationshipKind, Symbol,
-};
+use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -182,7 +180,13 @@ fn extract_call_relationships(
         };
 
         if !callee_name.is_empty() {
-            handle_call_target(extractor, call_node, &callee_name, symbol_map, relationships);
+            handle_call_target(
+                extractor,
+                call_node,
+                &callee_name,
+                symbol_map,
+                relationships,
+            );
         }
     }
 }
@@ -244,7 +248,10 @@ fn handle_call_target(
 }
 
 /// Find the containing function for a given call node by traversing up the tree
-fn find_containing_function_name(extractor: &mut super::CppExtractor, mut node: Node) -> Option<String> {
+fn find_containing_function_name(
+    extractor: &mut super::CppExtractor,
+    mut node: Node,
+) -> Option<String> {
     let base = extractor.get_base_mut();
 
     while let Some(parent) = node.parent() {
@@ -255,7 +262,11 @@ fn find_containing_function_name(extractor: &mut super::CppExtractor, mut node: 
                 // For function_declarator, the name is the first identifier
                 let mut cursor = parent.walk();
                 for child in parent.children(&mut cursor) {
-                    if child.kind() == "declarator" || child.kind() == "pointer_declarator" || child.kind() == "reference_declarator" || child.kind() == "function_declarator" {
+                    if child.kind() == "declarator"
+                        || child.kind() == "pointer_declarator"
+                        || child.kind() == "reference_declarator"
+                        || child.kind() == "function_declarator"
+                    {
                         // Find the identifier in the declarator
                         let mut decl_cursor = child.walk();
                         for decl_child in child.children(&mut decl_cursor) {

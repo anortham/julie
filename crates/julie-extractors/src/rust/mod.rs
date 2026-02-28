@@ -14,12 +14,10 @@ use std::sync::LazyLock;
 use tree_sitter::{Node, Tree};
 
 /// Matches return type in function signatures: `-> ReturnType`
-static RETURN_TYPE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"->\s*([^{]+)").unwrap());
+static RETURN_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"->\s*([^{]+)").unwrap());
 
 /// Matches type annotations: `: Type`
-static VAR_TYPE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r":\s*([^=\s{]+)").unwrap());
+static VAR_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r":\s*([^=\s{]+)").unwrap());
 
 // Private modules
 mod functions;

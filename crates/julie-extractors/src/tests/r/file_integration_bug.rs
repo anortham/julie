@@ -5,8 +5,8 @@
 //!
 //! This test reads the actual ggplot2-geom-point.R file and attempts extraction.
 
-use crate::r::RExtractor;
 use crate::language::get_tree_sitter_language;
+use crate::r::RExtractor;
 use std::fs;
 use std::path::Path;
 use tree_sitter::Parser;

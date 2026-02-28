@@ -404,10 +404,7 @@ pub(super) fn extract_constraints_from_error(
                 "constraintType".to_string(),
                 Value::String(constraint_type.clone()),
             );
-            metadata.insert(
-                "extractedFromError".to_string(),
-                Value::Bool(true),
-            );
+            metadata.insert("extractedFromError".to_string(), Value::Bool(true));
 
             let options = SymbolOptions {
                 signature: Some(signature),

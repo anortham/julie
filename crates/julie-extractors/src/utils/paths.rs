@@ -1,7 +1,7 @@
 //! Path utilities for julie-extractors
 
 use anyhow::{Context, Result};
-use std::path::{Path, MAIN_SEPARATOR};
+use std::path::{MAIN_SEPARATOR, Path};
 
 /// Convert an absolute path to a relative Unix-style path
 ///

@@ -2,8 +2,8 @@
 //!
 //! Handles getting symbols from reference (non-primary) workspaces.
 
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use tracing::{debug, info, warn};
 
 use super::body_extraction::extract_code_bodies;
@@ -96,9 +96,7 @@ pub async fn get_symbols_from_reference(
             "❌ File not found: {}\n💡 Check the file path - use relative paths from workspace root",
             file_path
         );
-        return Ok(CallToolResult::text_content(vec![Content::text(
-            message,
-        )]));
+        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
     }
 
     // Query symbols using relative Unix-style path
@@ -116,9 +114,7 @@ pub async fn get_symbols_from_reference(
 
     if symbols.is_empty() {
         let message = format!("No symbols found in: {}", file_path);
-        return Ok(CallToolResult::text_content(vec![Content::text(
-            message,
-        )]));
+        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
     }
 
     // Apply all filters and get the final symbol list
@@ -127,21 +123,19 @@ pub async fn get_symbols_from_reference(
 
     if symbols_to_return.is_empty() {
         let message = format!("No symbols found after filtering in: {}", file_path);
-        return Ok(CallToolResult::text_content(vec![Content::text(
-            message,
-        )]));
+        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
     }
 
     // Extract code bodies based on mode
     // When target is set, upgrade "minimal" to "full" — the user explicitly asked for this
     // symbol, so always include its body even if it's a child (has parent_id).
-    let body_mode = if target.is_some() && mode == "minimal" { "full" } else { mode };
+    let body_mode = if target.is_some() && mode == "minimal" {
+        "full"
+    } else {
+        mode
+    };
     let symbols_to_return = extract_code_bodies(symbols_to_return, &absolute_path, body_mode)?;
 
     // Format and return the response
-    format_symbol_response(
-        file_path,
-        symbols_to_return,
-        target,
-    )
+    format_symbol_response(file_path, symbols_to_return, target)
 }

@@ -55,7 +55,10 @@ fn format_header(out: &mut String, ctx: &SymbolContext) {
         .map(|v| format!(", {}", v.to_string().to_lowercase()))
         .unwrap_or_default();
 
-    out.push_str(&format!("{}:{} ({}{})\n", s.file_path, s.start_line, kind, vis));
+    out.push_str(&format!(
+        "{}:{} ({}{})\n",
+        s.file_path, s.start_line, kind, vis
+    ));
 
     if let Some(sig) = &s.signature {
         out.push_str(&format!("  {}\n", sig));
@@ -95,7 +98,10 @@ fn format_test_locations(out: &mut String, ctx: &SymbolContext, depth: &str) {
     out.push_str(&format!("\nTest locations ({}):\n", ctx.test_refs.len()));
     for r in &ctx.test_refs {
         if let Some(sym) = &r.symbol {
-            out.push_str(&format!("  {}:{}  {}\n", r.file_path, r.line_number, sym.name));
+            out.push_str(&format!(
+                "  {}:{}  {}\n",
+                r.file_path, r.line_number, sym.name
+            ));
         } else {
             out.push_str(&format!("  {}:{}\n", r.file_path, r.line_number));
         }
@@ -136,7 +142,12 @@ fn format_callable(out: &mut String, ctx: &SymbolContext, depth: &str) {
     let type_refs: Vec<&RefEntry> = ctx
         .outgoing
         .iter()
-        .filter(|r| matches!(r.kind, RelationshipKind::Parameter | RelationshipKind::Returns))
+        .filter(|r| {
+            matches!(
+                r.kind,
+                RelationshipKind::Parameter | RelationshipKind::Returns
+            )
+        })
         .collect();
 
     if !type_refs.is_empty() {
@@ -153,7 +164,10 @@ fn format_callable(out: &mut String, ctx: &SymbolContext, depth: &str) {
         for r in &unique_types {
             if let Some(sym) = &r.symbol {
                 let kind = sym.kind.to_string();
-                out.push_str(&format!("  {}  {}:{}  {}\n", sym.name, r.file_path, r.line_number, kind));
+                out.push_str(&format!(
+                    "  {}  {}:{}  {}\n",
+                    sym.name, r.file_path, r.line_number, kind
+                ));
             } else {
                 out.push_str(&format!("  {}:{}\n", r.file_path, r.line_number));
             }
@@ -190,9 +204,15 @@ fn format_trait_or_interface(out: &mut String, ctx: &SymbolContext, depth: &str)
 
     // Implementations
     if !ctx.implementations.is_empty() {
-        out.push_str(&format!("\nImplementations ({}):\n", ctx.implementations.len()));
+        out.push_str(&format!(
+            "\nImplementations ({}):\n",
+            ctx.implementations.len()
+        ));
         for imp in &ctx.implementations {
-            out.push_str(&format!("  {}:{}  {}\n", imp.file_path, imp.start_line, imp.name));
+            out.push_str(&format!(
+                "  {}:{}  {}\n",
+                imp.file_path, imp.start_line, imp.name
+            ));
         }
     }
 
@@ -251,14 +271,22 @@ fn format_class_or_struct(out: &mut String, ctx: &SymbolContext, depth: &str) {
     let implements: Vec<&RefEntry> = ctx
         .outgoing
         .iter()
-        .filter(|r| matches!(r.kind, RelationshipKind::Implements | RelationshipKind::Extends))
+        .filter(|r| {
+            matches!(
+                r.kind,
+                RelationshipKind::Implements | RelationshipKind::Extends
+            )
+        })
         .collect();
 
     if !implements.is_empty() {
         out.push_str(&format!("\nImplements ({}):\n", implements.len()));
         for r in &implements {
             if let Some(sym) = &r.symbol {
-                out.push_str(&format!("  {}  {}:{}\n", sym.name, sym.file_path, sym.start_line));
+                out.push_str(&format!(
+                    "  {}  {}:{}\n",
+                    sym.name, sym.file_path, sym.start_line
+                ));
             } else {
                 out.push_str(&format!("  {}:{}\n", r.file_path, r.line_number));
             }
@@ -267,7 +295,13 @@ fn format_class_or_struct(out: &mut String, ctx: &SymbolContext, depth: &str) {
 
     // Used by
     if !ctx.incoming.is_empty() {
-        format_ref_section(out, "Used by", &ctx.incoming.iter().collect::<Vec<_>>(), ctx.incoming_total, depth);
+        format_ref_section(
+            out,
+            "Used by",
+            &ctx.incoming.iter().collect::<Vec<_>>(),
+            ctx.incoming_total,
+            depth,
+        );
     }
 
     format_test_locations(out, ctx, depth);
@@ -308,7 +342,13 @@ fn format_enum(out: &mut String, ctx: &SymbolContext, depth: &str) {
     }
 
     if !ctx.incoming.is_empty() {
-        format_ref_section(out, "Used by", &ctx.incoming.iter().collect::<Vec<_>>(), ctx.incoming_total, depth);
+        format_ref_section(
+            out,
+            "Used by",
+            &ctx.incoming.iter().collect::<Vec<_>>(),
+            ctx.incoming_total,
+            depth,
+        );
     }
 
     format_test_locations(out, ctx, depth);
@@ -328,8 +368,16 @@ fn format_module(out: &mut String, ctx: &SymbolContext, depth: &str) {
         })
         .collect();
 
-    let label = if public.is_empty() { "Exports" } else { "Public exports" };
-    let exports = if public.is_empty() { &ctx.children } else { &public.iter().map(|s| (*s).clone()).collect::<Vec<_>>() };
+    let label = if public.is_empty() {
+        "Exports"
+    } else {
+        "Public exports"
+    };
+    let exports = if public.is_empty() {
+        &ctx.children
+    } else {
+        &public.iter().map(|s| (*s).clone()).collect::<Vec<_>>()
+    };
 
     if !exports.is_empty() {
         out.push_str(&format!("\n{} ({}):\n", label, exports.len()));
@@ -352,9 +400,14 @@ fn format_module(out: &mut String, ctx: &SymbolContext, depth: &str) {
 
     if !imports.is_empty() {
         // Group by target file
-        let mut by_file: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+        let mut by_file: std::collections::BTreeMap<&str, Vec<&str>> =
+            std::collections::BTreeMap::new();
         for r in &imports {
-            let file = r.symbol.as_ref().map(|s| s.file_path.as_str()).unwrap_or(r.file_path.as_str());
+            let file = r
+                .symbol
+                .as_ref()
+                .map(|s| s.file_path.as_str())
+                .unwrap_or(r.file_path.as_str());
             let name = r.symbol.as_ref().map(|s| s.name.as_str()).unwrap_or("?");
             by_file.entry(file).or_default().push(name);
         }
@@ -371,10 +424,22 @@ fn format_module(out: &mut String, ctx: &SymbolContext, depth: &str) {
 
 fn format_generic(out: &mut String, ctx: &SymbolContext, depth: &str) {
     if !ctx.incoming.is_empty() {
-        format_ref_section(out, "Referenced by", &ctx.incoming.iter().collect::<Vec<_>>(), ctx.incoming_total, depth);
+        format_ref_section(
+            out,
+            "Referenced by",
+            &ctx.incoming.iter().collect::<Vec<_>>(),
+            ctx.incoming_total,
+            depth,
+        );
     }
     if !ctx.outgoing.is_empty() {
-        format_ref_section(out, "References", &ctx.outgoing.iter().collect::<Vec<_>>(), ctx.outgoing_total, depth);
+        format_ref_section(
+            out,
+            "References",
+            &ctx.outgoing.iter().collect::<Vec<_>>(),
+            ctx.outgoing_total,
+            depth,
+        );
     }
     format_test_locations(out, ctx, depth);
     format_body(out, ctx, depth);
@@ -427,7 +492,10 @@ fn format_ref_section(
             _ => {
                 // Overview: just location + name
                 if let Some(sym) = &r.symbol {
-                    out.push_str(&format!("  {}:{}  {}\n", r.file_path, r.line_number, sym.name));
+                    out.push_str(&format!(
+                        "  {}:{}  {}\n",
+                        r.file_path, r.line_number, sym.name
+                    ));
                 } else {
                     out.push_str(&format!("  {}:{}\n", r.file_path, r.line_number));
                 }
@@ -459,7 +527,11 @@ fn format_similar_section(out: &mut String, similar: &[SimilarEntry]) {
 
         out.push_str(&format!(
             "  {:<25} {:.2}  {}:{} ({})\n",
-            entry.symbol.name, entry.score, entry.symbol.file_path, entry.symbol.start_line, kind_vis,
+            entry.symbol.name,
+            entry.score,
+            entry.symbol.file_path,
+            entry.symbol.start_line,
+            kind_vis,
         ));
     }
 }

@@ -112,8 +112,8 @@ pub(super) fn extract_method(
     let is_flutter_lifecycle = is_flutter_lifecycle_method(&name);
 
     // Get the base function signature (return type + name + params)
-    let base_signature = signatures::extract_function_signature(&target_node, &base.content)
-        .unwrap_or_default();
+    let base_signature =
+        signatures::extract_function_signature(&target_node, &base.content).unwrap_or_default();
 
     // Build method signature with modifiers
     let mut modifiers = Vec::new();
@@ -195,8 +195,7 @@ pub(super) fn extract_constructor(
         }
         "constant_constructor_signature" => {
             // Const constructor: const ClassName(...) or const ClassName.namedConstructor(...)
-            find_child_by_type(node, "identifier")
-                .map(|n| get_node_text(&n))?
+            find_child_by_type(node, "identifier").map(|n| get_node_text(&n))?
         }
         _ => {
             // Regular constructor or named constructor

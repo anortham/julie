@@ -70,7 +70,10 @@ pub(super) fn extract_table_signature(base: &mut BaseExtractor, node: Node) -> O
         }
     });
 
-    Some(format!("CREATE TABLE {} ({} columns)", table_name, column_count))
+    Some(format!(
+        "CREATE TABLE {} ({} columns)",
+        table_name, column_count
+    ))
 }
 
 /// Extract view from CREATE VIEW statement

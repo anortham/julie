@@ -194,13 +194,7 @@ fn walk_tree_for_calls(
     relationships: &mut Vec<Relationship>,
 ) {
     if node.kind() == "call_expression" {
-        extract_function_call_relationship(
-            extractor,
-            node,
-            symbol_map,
-            all_symbols,
-            relationships,
-        );
+        extract_function_call_relationship(extractor, node, symbol_map, all_symbols, relationships);
     }
 
     // Recursively process children

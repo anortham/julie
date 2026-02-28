@@ -2181,7 +2181,10 @@ use App\Contracts\UserRepositoryInterface as UserRepo;
         let user_repo = imports
             .iter()
             .find(|s| s.name == "App\\Contracts\\UserRepositoryInterface");
-        assert!(user_repo.is_some(), "Expected UserRepositoryInterface import");
+        assert!(
+            user_repo.is_some(),
+            "Expected UserRepositoryInterface import"
+        );
     }
 
     #[test]
@@ -2209,10 +2212,26 @@ use Illuminate\Support\Collection;
         );
 
         assert!(imports.iter().any(|s| s.name == "App\\Models\\User"));
-        assert!(imports.iter().any(|s| s.name == "App\\Services\\AuthService"));
-        assert!(imports.iter().any(|s| s.name == "App\\Services\\UserService"));
-        assert!(imports.iter().any(|s| s.name == "App\\Services\\EmailService"));
-        assert!(imports.iter().any(|s| s.name == "Illuminate\\Support\\Collection"));
+        assert!(
+            imports
+                .iter()
+                .any(|s| s.name == "App\\Services\\AuthService")
+        );
+        assert!(
+            imports
+                .iter()
+                .any(|s| s.name == "App\\Services\\UserService")
+        );
+        assert!(
+            imports
+                .iter()
+                .any(|s| s.name == "App\\Services\\EmailService")
+        );
+        assert!(
+            imports
+                .iter()
+                .any(|s| s.name == "Illuminate\\Support\\Collection")
+        );
     }
 }
 
@@ -2228,10 +2247,16 @@ $double = fn($x) => $x * 2;
 
         let symbols = extract_symbols(php_code);
         let double = symbols.iter().find(|s| s.name == "double");
-        assert!(double.is_some(), "Expected variable 'double' symbol for arrow function assignment");
+        assert!(
+            double.is_some(),
+            "Expected variable 'double' symbol for arrow function assignment"
+        );
         let double = double.unwrap();
         assert_eq!(double.kind, SymbolKind::Variable);
-        let sig = double.signature.as_ref().expect("Expected signature on arrow function variable");
+        let sig = double
+            .signature
+            .as_ref()
+            .expect("Expected signature on arrow function variable");
         assert!(
             sig.contains("fn($x) => $x * 2"),
             "Signature should contain arrow function text, got: {sig}"
@@ -2247,7 +2272,11 @@ $multiply = fn(int $n): int => $n * 2;
         let symbols = extract_symbols(php_code);
         let multiply = symbols.iter().find(|s| s.name == "multiply");
         assert!(multiply.is_some(), "Expected variable 'multiply' symbol");
-        let sig = multiply.unwrap().signature.as_ref().expect("Expected signature");
+        let sig = multiply
+            .unwrap()
+            .signature
+            .as_ref()
+            .expect("Expected signature");
         assert!(
             sig.contains("fn(int $n): int => $n * 2"),
             "Signature should contain typed arrow function, got: {sig}"
@@ -2262,8 +2291,15 @@ $noop = fn() => null;
 
         let symbols = extract_symbols(php_code);
         let noop = symbols.iter().find(|s| s.name == "noop");
-        assert!(noop.is_some(), "Expected variable 'noop' symbol for no-param arrow function");
-        let sig = noop.unwrap().signature.as_ref().expect("Expected signature");
+        assert!(
+            noop.is_some(),
+            "Expected variable 'noop' symbol for no-param arrow function"
+        );
+        let sig = noop
+            .unwrap()
+            .signature
+            .as_ref()
+            .expect("Expected signature");
         assert!(
             sig.contains("fn() => null"),
             "Signature should contain no-param arrow function text, got: {sig}"
@@ -2304,7 +2340,10 @@ class Processor {
         assert!(
             arrow_fns.is_empty(),
             "Arrow function inside method body should NOT create a separate Function symbol, found: {:?}",
-            arrow_fns.iter().map(|s| (&s.name, &s.signature)).collect::<Vec<_>>()
+            arrow_fns
+                .iter()
+                .map(|s| (&s.name, &s.signature))
+                .collect::<Vec<_>>()
         );
     }
 }
@@ -2429,10 +2468,7 @@ $simple = new class {
         let anon_class = symbols
             .iter()
             .find(|s| s.kind == SymbolKind::Class && s.name.starts_with("anonymous_class"));
-        assert!(
-            anon_class.is_some(),
-            "Should extract bare anonymous class"
-        );
+        assert!(anon_class.is_some(), "Should extract bare anonymous class");
         assert!(
             anon_class
                 .unwrap()

@@ -10,8 +10,7 @@
 // CamelCase/snake_case splitting at index time.
 
 use crate::tools::search::{
-    QueryType, detect_query_type, preprocess_query,
-    sanitize_query, validate_query,
+    QueryType, detect_query_type, preprocess_query, sanitize_query, validate_query,
 };
 
 // ============================================================================
@@ -233,7 +232,9 @@ mod preprocessing_pipeline {
         let query = "string?";
         let result = preprocess_query(query).unwrap();
         // Could be Pattern or Standard depending on detection
-        assert!(result.query_type == QueryType::Pattern || result.query_type == QueryType::Standard);
+        assert!(
+            result.query_type == QueryType::Pattern || result.query_type == QueryType::Standard
+        );
         assert_eq!(result.original, query);
     }
 

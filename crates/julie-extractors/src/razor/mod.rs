@@ -24,7 +24,6 @@ pub struct RazorExtractor {
     base: BaseExtractor,
 }
 
-
 impl RazorExtractor {
     /// Create a new Razor extractor
     pub fn new(

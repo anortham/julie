@@ -17,9 +17,7 @@ fn init_parser() -> Parser {
     parser
 }
 
-fn extract_with_relationships(
-    code: &str,
-) -> (Vec<Symbol>, Vec<crate::base::Relationship>) {
+fn extract_with_relationships(code: &str) -> (Vec<Symbol>, Vec<crate::base::Relationship>) {
     let mut parser = init_parser();
     let tree = parser.parse(code, None).unwrap();
     let workspace_root = PathBuf::from("/tmp/test");

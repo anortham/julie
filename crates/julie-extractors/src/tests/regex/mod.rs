@@ -46,7 +46,10 @@ mod tests {
 
         // Character classes should be found
         let abc_class = symbols.iter().find(|s| s.name == "[abc]");
-        assert!(abc_class.is_some(), "Character class [abc] should be extracted");
+        assert!(
+            abc_class.is_some(),
+            "Character class [abc] should be extracted"
+        );
         if let Some(symbol) = abc_class {
             assert_eq!(symbol.kind, SymbolKind::Class);
         }
@@ -69,13 +72,22 @@ mod tests {
         let symbols = extract_symbols(regex_code);
 
         let digit_class = symbols.iter().find(|s| s.name == "\\d");
-        assert!(digit_class.is_none(), "\\d should NOT be extracted individually");
+        assert!(
+            digit_class.is_none(),
+            "\\d should NOT be extracted individually"
+        );
 
         let word_class = symbols.iter().find(|s| s.name == "\\w");
-        assert!(word_class.is_none(), "\\w should NOT be extracted individually");
+        assert!(
+            word_class.is_none(),
+            "\\w should NOT be extracted individually"
+        );
 
         let space_class = symbols.iter().find(|s| s.name == "\\s");
-        assert!(space_class.is_none(), "\\s should NOT be extracted individually");
+        assert!(
+            space_class.is_none(),
+            "\\s should NOT be extracted individually"
+        );
     }
 
     #[test]
@@ -92,16 +104,28 @@ a{3}
         let symbols = extract_symbols(regex_code);
 
         let optional = symbols.iter().find(|s| s.name == "a?");
-        assert!(optional.is_none(), "a? should NOT be extracted individually");
+        assert!(
+            optional.is_none(),
+            "a? should NOT be extracted individually"
+        );
 
         let zero_or_more = symbols.iter().find(|s| s.name == "a*");
-        assert!(zero_or_more.is_none(), "a* should NOT be extracted individually");
+        assert!(
+            zero_or_more.is_none(),
+            "a* should NOT be extracted individually"
+        );
 
         let one_or_more = symbols.iter().find(|s| s.name == "a+");
-        assert!(one_or_more.is_none(), "a+ should NOT be extracted individually");
+        assert!(
+            one_or_more.is_none(),
+            "a+ should NOT be extracted individually"
+        );
 
         let exact_count = symbols.iter().find(|s| s.name == "a{3}");
-        assert!(exact_count.is_none(), "a{{3}} should NOT be extracted individually");
+        assert!(
+            exact_count.is_none(),
+            "a{{3}} should NOT be extracted individually"
+        );
     }
 
     #[test]
@@ -120,7 +144,10 @@ a{3}
         assert!(capturing_group.is_none(), "(abc) should NOT be extracted");
 
         let non_capturing_group = symbols.iter().find(|s| s.name == "(?:def)");
-        assert!(non_capturing_group.is_none(), "(?:def) should NOT be extracted");
+        assert!(
+            non_capturing_group.is_none(),
+            "(?:def) should NOT be extracted"
+        );
     }
 
     #[test]
@@ -130,10 +157,16 @@ a{3}
         let symbols = extract_symbols(regex_code);
 
         let username_group = symbols.iter().find(|s| s.name.contains("username"));
-        assert!(username_group.is_some(), "Named group (?<username>...) should be extracted");
+        assert!(
+            username_group.is_some(),
+            "Named group (?<username>...) should be extracted"
+        );
 
         let domain_group = symbols.iter().find(|s| s.name.contains("domain"));
-        assert!(domain_group.is_some(), "Named group (?<domain>...) should be extracted");
+        assert!(
+            domain_group.is_some(),
+            "Named group (?<domain>...) should be extracted"
+        );
     }
 
     #[test]
@@ -147,9 +180,11 @@ red|blue|green
 
         let symbols = extract_symbols(regex_code);
 
-        let alternation_symbols: Vec<_> = symbols.iter()
+        let alternation_symbols: Vec<_> = symbols
+            .iter()
             .filter(|s| {
-                s.metadata.as_ref()
+                s.metadata
+                    .as_ref()
                     .and_then(|m| m.get("type"))
                     .and_then(|v| v.as_str())
                     == Some("alternation")
@@ -171,7 +206,10 @@ red|blue|green
 
         // Character class should have proper metadata
         let abc_symbol = symbols.iter().find(|s| s.name == "[abc]");
-        assert!(abc_symbol.is_some(), "Character class [abc] should be extracted");
+        assert!(
+            abc_symbol.is_some(),
+            "Character class [abc] should be extracted"
+        );
 
         if let Some(symbol) = abc_symbol {
             assert!(
@@ -201,7 +239,8 @@ mod noise_reduction_tests {
 
     /// Helper to get the metadata "type" field from a symbol
     fn get_type(s: &crate::base::Symbol) -> &str {
-        s.metadata.as_ref()
+        s.metadata
+            .as_ref()
             .and_then(|m| m.get("type"))
             .and_then(|v| v.as_str())
             .unwrap_or("unknown")
@@ -223,7 +262,10 @@ mod noise_reduction_tests {
             symbols.len() <= 4,
             "Email regex should produce <= 4 symbols, got {} symbols: {:?}",
             symbols.len(),
-            symbols.iter().map(|s| format!("{}({})", s.name, get_type(s))).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| format!("{}({})", s.name, get_type(s)))
+                .collect::<Vec<_>>()
         );
     }
 
@@ -232,7 +274,8 @@ mod noise_reduction_tests {
         let regex_code = r#"^[a-z]+$"#;
         let symbols = extract_symbols(regex_code);
 
-        let anchors: Vec<_> = symbols.iter()
+        let anchors: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "anchor" || s.name == "^" || s.name == "$")
             .collect();
         assert!(
@@ -248,7 +291,8 @@ mod noise_reduction_tests {
         let regex_code = "hello";
         let symbols = extract_symbols(regex_code);
 
-        let literals: Vec<_> = symbols.iter()
+        let literals: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "literal")
             .collect();
         assert!(
@@ -263,7 +307,8 @@ mod noise_reduction_tests {
         let regex_code = r#"a+b*c?d{3}"#;
         let symbols = extract_symbols(regex_code);
 
-        let quantifiers: Vec<_> = symbols.iter()
+        let quantifiers: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "quantifier")
             .collect();
         assert!(
@@ -278,7 +323,8 @@ mod noise_reduction_tests {
         let regex_code = r#"\d\w\s"#;
         let symbols = extract_symbols(regex_code);
 
-        let predefined: Vec<_> = symbols.iter()
+        let predefined: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "predefined-class")
             .collect();
         assert!(
@@ -293,7 +339,8 @@ mod noise_reduction_tests {
         let regex_code = r#"cat|dog|bird"#;
         let symbols = extract_symbols(regex_code);
 
-        let alternations: Vec<_> = symbols.iter()
+        let alternations: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "alternation")
             .collect();
         assert!(
@@ -308,7 +355,8 @@ mod noise_reduction_tests {
         let regex_code = r#"(?<word>\w+)\s+\k<word>"#;
         let symbols = extract_symbols(regex_code);
 
-        let backrefs: Vec<_> = symbols.iter()
+        let backrefs: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "backreference")
             .collect();
         assert!(
@@ -324,12 +372,10 @@ mod noise_reduction_tests {
         let regex_code = r#"(?:abc)(def)"#;
         let symbols = extract_symbols(regex_code);
 
-        let unnamed_groups: Vec<_> = symbols.iter()
+        let unnamed_groups: Vec<_> = symbols
+            .iter()
             .filter(|s| {
-                get_type(s) == "group"
-                    && s.metadata.as_ref()
-                        .and_then(|m| m.get("named"))
-                        .is_none()
+                get_type(s) == "group" && s.metadata.as_ref().and_then(|m| m.get("named")).is_none()
             })
             .collect();
         assert!(
@@ -345,7 +391,8 @@ mod noise_reduction_tests {
         let regex_code = r#"^[a-z]+@[a-z]+\.[a-z]{2,}$"#;
         let symbols = extract_symbols(regex_code);
 
-        let text_patterns: Vec<_> = symbols.iter()
+        let text_patterns: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "text-pattern")
             .collect();
         assert!(
@@ -362,16 +409,15 @@ mod noise_reduction_tests {
         let regex_code = r#"(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})"#;
         let symbols = extract_symbols(regex_code);
 
-        let named_groups: Vec<_> = symbols.iter()
+        let named_groups: Vec<_> = symbols
+            .iter()
             .filter(|s| {
-                get_type(s) == "group"
-                    && s.metadata.as_ref()
-                        .and_then(|m| m.get("named"))
-                        .is_some()
+                get_type(s) == "group" && s.metadata.as_ref().and_then(|m| m.get("named")).is_some()
             })
             .collect();
         assert_eq!(
-            named_groups.len(), 3,
+            named_groups.len(),
+            3,
             "Should extract all 3 named groups (year, month, day), found: {:?}",
             named_groups.iter().map(|s| &s.name).collect::<Vec<_>>()
         );
@@ -382,11 +428,13 @@ mod noise_reduction_tests {
         let regex_code = r#"[a-z]+@[A-Z0-9]"#;
         let symbols = extract_symbols(regex_code);
 
-        let char_classes: Vec<_> = symbols.iter()
+        let char_classes: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "character-class")
             .collect();
         assert_eq!(
-            char_classes.len(), 2,
+            char_classes.len(),
+            2,
             "Should extract both character classes, found: {:?}",
             char_classes.iter().map(|s| &s.name).collect::<Vec<_>>()
         );
@@ -397,7 +445,8 @@ mod noise_reduction_tests {
         let regex_code = r#"^[a-z]+$"#;
         let symbols = extract_symbols(regex_code);
 
-        let patterns: Vec<_> = symbols.iter()
+        let patterns: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "regex-pattern")
             .collect();
         assert!(
@@ -413,10 +462,12 @@ mod noise_reduction_tests {
 
         // Lookarounds are semantically meaningful and should be kept.
         // The regex has 2 lookarounds (positive + negative) plus the top-level pattern.
-        let lookarounds: Vec<_> = symbols.iter()
+        let lookarounds: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "lookaround")
             .collect();
-        let patterns: Vec<_> = symbols.iter()
+        let patterns: Vec<_> = symbols
+            .iter()
             .filter(|s| get_type(s) == "regex-pattern")
             .collect();
 
@@ -434,7 +485,10 @@ mod noise_reduction_tests {
             eprintln!(
                 "NOTE: tree-sitter regex grammar did not produce lookaround nodes. \
                  Extracted symbols: {:?}",
-                symbols.iter().map(|s| format!("{}({})", s.name, get_type(s))).collect::<Vec<_>>()
+                symbols
+                    .iter()
+                    .map(|s| format!("{}({})", s.name, get_type(s)))
+                    .collect::<Vec<_>>()
             );
         }
     }
@@ -452,7 +506,10 @@ mod noise_reduction_tests {
             symbols.len() <= 4,
             "Date regex should produce <= 4 symbols (1 pattern + 3 named groups), got {}: {:?}",
             symbols.len(),
-            symbols.iter().map(|s| format!("{}({})", s.name, get_type(s))).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| format!("{}({})", s.name, get_type(s)))
+                .collect::<Vec<_>>()
         );
     }
 
@@ -464,16 +521,19 @@ mod noise_reduction_tests {
         let symbols = extract_symbols(regex_code);
 
         // The child patterns \d{4} and \d{2} should NOT be separate symbols
-        let child_patterns: Vec<_> = symbols.iter()
+        let child_patterns: Vec<_> = symbols
+            .iter()
             .filter(|s| {
-                get_type(s) == "regex-pattern"
-                    && s.parent_id.is_some()  // has a parent, so it's a child
+                get_type(s) == "regex-pattern" && s.parent_id.is_some() // has a parent, so it's a child
             })
             .collect();
         assert!(
             child_patterns.is_empty(),
             "Child patterns inside groups should NOT be extracted, found: {:?}",
-            child_patterns.iter().map(|s| format!("{}(parent={:?})", s.name, s.parent_id)).collect::<Vec<_>>()
+            child_patterns
+                .iter()
+                .map(|s| format!("{}(parent={:?})", s.name, s.parent_id))
+                .collect::<Vec<_>>()
         );
     }
 
@@ -485,20 +545,28 @@ mod noise_reduction_tests {
         let email = r#"^[a-z]+@[a-z]+\.[a-z]{2,}$"#;
         let email_symbols = extract_symbols(email);
         assert_eq!(
-            email_symbols.len(), 4,
+            email_symbols.len(),
+            4,
             "Email regex: expected 4 symbols (1 pattern + 3 char classes), got {}: {:?}",
             email_symbols.len(),
-            email_symbols.iter().map(|s| format!("{}({})", s.name, get_type(s))).collect::<Vec<_>>()
+            email_symbols
+                .iter()
+                .map(|s| format!("{}({})", s.name, get_type(s)))
+                .collect::<Vec<_>>()
         );
 
         // Date regex: was 8 symbols, should now be 4 (1 pattern + 3 named groups)
         let date = r#"(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})"#;
         let date_symbols = extract_symbols(date);
         assert_eq!(
-            date_symbols.len(), 4,
+            date_symbols.len(),
+            4,
             "Date regex: expected 4 symbols (1 pattern + 3 named groups), got {}: {:?}",
             date_symbols.len(),
-            date_symbols.iter().map(|s| format!("{}({})", s.name, get_type(s))).collect::<Vec<_>>()
+            date_symbols
+                .iter()
+                .map(|s| format!("{}({})", s.name, get_type(s)))
+                .collect::<Vec<_>>()
         );
     }
 }
@@ -521,12 +589,7 @@ mod identifier_extraction_tests {
     use super::*;
     use crate::base::IdentifierKind;
 
-    fn extract_identifiers(
-        code: &str,
-    ) -> (
-        Vec<crate::base::Symbol>,
-        Vec<crate::base::Identifier>,
-    ) {
+    fn extract_identifiers(code: &str) -> (Vec<crate::base::Symbol>, Vec<crate::base::Identifier>) {
         let workspace_root = PathBuf::from("/tmp/test");
         let tree = init_parser(code, "regex");
         let mut extractor = RegexExtractor::new(

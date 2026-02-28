@@ -10,6 +10,8 @@
 //! - [`OrtEmbeddingProvider`] — production implementation using fastembed (ONNX Runtime)
 //! - Vector storage lives in `database::vectors` (sqlite-vec)
 
+#[cfg(feature = "embeddings-candle")]
+pub mod candle_provider;
 pub mod factory;
 pub mod metadata;
 #[cfg(feature = "embeddings-ort")]
@@ -18,6 +20,39 @@ pub mod pipeline;
 
 use anyhow::Result;
 
+pub const EXPECTED_EMBEDDING_DIMENSIONS: usize = 384;
+
+/// Supported embedding backends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EmbeddingBackend {
+    Auto,
+    Ort,
+    Candle,
+    Unresolved,
+    Invalid(String),
+}
+
+impl EmbeddingBackend {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Ort => "ort",
+            Self::Candle => "candle",
+            Self::Unresolved => "unresolved",
+            Self::Invalid(_) => "invalid",
+        }
+    }
+}
+
+/// Runtime status for embedding initialization.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmbeddingRuntimeStatus {
+    pub requested_backend: EmbeddingBackend,
+    pub resolved_backend: EmbeddingBackend,
+    pub accelerated: bool,
+    pub degraded_reason: Option<String>,
+}
+
 /// Information about the embedding device/runtime.
 #[derive(Debug, Clone)]
 pub struct DeviceInfo {
@@ -25,6 +60,27 @@ pub struct DeviceInfo {
     pub device: String,
     pub model_name: String,
     pub dimensions: usize,
+}
+
+impl DeviceInfo {
+    /// Best-effort hardware acceleration detection for diagnostics.
+    pub fn is_accelerated(&self) -> bool {
+        let combined = format!(
+            "{} {}",
+            self.runtime.to_ascii_lowercase(),
+            self.device.to_ascii_lowercase()
+        );
+
+        if combined.contains("cpu") {
+            return false;
+        }
+
+        [
+            "gpu", "cuda", "rocm", "mps", "metal", "directml", "dml", "vulkan", "coreml",
+        ]
+        .iter()
+        .any(|hint| combined.contains(hint))
+    }
 }
 
 /// Trait abstracting vector embedding generation.
@@ -44,9 +100,27 @@ pub trait EmbeddingProvider: Send + Sync {
 
     /// Runtime and device information for diagnostics.
     fn device_info(&self) -> DeviceInfo;
+
+    /// Provider-reported acceleration state, if known.
+    fn accelerated(&self) -> Option<bool> {
+        None
+    }
+
+    /// Provider-reported degraded runtime reason, if known.
+    fn degraded_reason(&self) -> Option<String> {
+        None
+    }
 }
 
 // Re-exports
-pub use factory::{EmbeddingConfig, EmbeddingProviderFactory};
+#[cfg(feature = "embeddings-candle")]
+pub use candle_provider::CandleEmbeddingProvider;
+pub use factory::{
+    BackendResolverCapabilities, EmbeddingConfig, EmbeddingProviderFactory,
+    fallback_backend_after_init_failure, parse_provider_preference, resolve_backend_preference,
+    should_disable_for_strict_acceleration, strict_acceleration_enabled_from_env_value,
+};
 #[cfg(feature = "embeddings-ort")]
-pub use ort_provider::OrtEmbeddingProvider;
+pub use ort_provider::{
+    OrtEmbeddingProvider, ort_execution_provider_policy_kinds, ort_runtime_signal,
+};

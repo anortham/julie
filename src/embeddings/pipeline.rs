@@ -6,12 +6,12 @@
 
 use std::sync::{Arc, Mutex};
 
-use anyhow::{bail, Context, Result};
-use tracing::{debug, info, warn};
+use anyhow::{Context, Result, bail};
+use tracing::{info, warn};
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::metadata::prepare_batch_for_embedding;
 use crate::embeddings::EmbeddingProvider;
+use crate::embeddings::metadata::prepare_batch_for_embedding;
 
 /// Batch size for embedding generation (symbols per batch).
 const EMBEDDING_BATCH_SIZE: usize = 500;
@@ -21,6 +21,7 @@ const EMBEDDING_BATCH_SIZE: usize = 500;
 pub struct EmbeddingStats {
     pub symbols_scanned: usize,
     pub symbols_embedded: usize,
+    pub symbols_skipped: usize,
     pub batches_processed: usize,
 }
 
@@ -38,32 +39,54 @@ pub fn run_embedding_pipeline(
     let mut stats = EmbeddingStats {
         symbols_scanned: 0,
         symbols_embedded: 0,
+        symbols_skipped: 0,
         batches_processed: 0,
     };
 
-    // Load all symbols from the database
-    let symbols = {
+    // Load all symbols and existing embedding IDs from the database
+    let (symbols, already_embedded) = {
         let db_guard = db
             .lock()
             .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
-        db_guard
+        let syms = db_guard
             .get_all_symbols()
-            .context("Failed to load symbols for embedding")?
+            .context("Failed to load symbols for embedding")?;
+        let embedded = db_guard
+            .get_embedded_symbol_ids()
+            .context("Failed to load existing embedding IDs")?;
+        (syms, embedded)
     };
 
     stats.symbols_scanned = symbols.len();
     info!("Embedding pipeline: {} total symbols loaded", symbols.len());
 
     // Filter to embeddable kinds and format metadata
-    let prepared = prepare_batch_for_embedding(&symbols);
-    if prepared.is_empty() {
+    let all_prepared = prepare_batch_for_embedding(&symbols);
+    if all_prepared.is_empty() {
         info!("Embedding pipeline: no embeddable symbols found, skipping");
         return Ok(stats);
     }
 
+    // Skip symbols that already have embeddings (incremental)
+    let prepared: Vec<_> = all_prepared
+        .into_iter()
+        .filter(|(id, _)| !already_embedded.contains(id))
+        .collect();
+
+    stats.symbols_skipped = already_embedded.len();
+
+    if prepared.is_empty() {
+        info!(
+            "Embedding pipeline: all {} embeddable symbols already embedded, nothing to do",
+            stats.symbols_skipped
+        );
+        return Ok(stats);
+    }
+
     info!(
-        "Embedding pipeline: {} embeddable symbols (of {} total)",
+        "Embedding pipeline: {} new symbols to embed ({} already embedded, {} total)",
         prepared.len(),
+        stats.symbols_skipped,
         symbols.len()
     );
 
@@ -105,9 +128,11 @@ pub fn run_embedding_pipeline(
         stats.symbols_embedded += stored;
         stats.batches_processed += 1;
 
-        debug!(
-            "Embedding batch {}: stored {stored} embeddings",
-            stats.batches_processed
+        info!(
+            "Embedding batch {}/{}: stored {stored} embeddings ({} total so far)",
+            stats.batches_processed,
+            (prepared.len() + EMBEDDING_BATCH_SIZE - 1) / EMBEDDING_BATCH_SIZE,
+            stats.symbols_embedded,
         );
     }
 

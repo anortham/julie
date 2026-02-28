@@ -25,7 +25,5 @@ pub enum LineMatchStrategy {
     },
     /// File-level matching: Tantivy guarantees all terms in file,
     /// line matching uses OR to show where each term appears
-    FileLevel {
-        terms: Vec<String>,
-    },
+    FileLevel { terms: Vec<String> },
 }

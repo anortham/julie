@@ -1,9 +1,10 @@
 use super::ManageWorkspaceTool;
 use crate::database::SymbolDatabase;
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use tracing::{info, warn};
 
 impl ManageWorkspaceTool {
@@ -19,9 +20,7 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![Content::text(
-                    message,
-                )]));
+                return Ok(CallToolResult::text_content(vec![Content::text(message)]));
             }
         };
 
@@ -93,7 +92,10 @@ impl ManageWorkspaceTool {
                             } else {
                                 info!(
                                     "Updated workspace statistics for {}: {} files, {} symbols, {} bytes index",
-                                    workspace_id, result.files_total, result.symbols_total, index_size
+                                    workspace_id,
+                                    result.files_total,
+                                    result.symbols_total,
+                                    index_size
                                 );
                             }
                         }
@@ -123,11 +125,12 @@ impl ManageWorkspaceTool {
                             workspace_id.to_string(),
                         ).await;
                         if embed_count > 0 {
-                            message.push_str(&format!("\nEmbedding {} symbols in background...", embed_count));
+                            message.push_str(&format!(
+                                "\nEmbedding {} symbols in background...",
+                                embed_count
+                            ));
                         }
-                        Ok(CallToolResult::text_content(vec![Content::text(
-                            message,
-                        )]))
+                        Ok(CallToolResult::text_content(vec![Content::text(message)]))
                     }
                     Err(e) => {
                         let message = format!(
@@ -138,17 +141,13 @@ impl ManageWorkspaceTool {
                             Check that the path exists and contains readable files",
                             workspace_entry.display_name, workspace_entry.original_path, e
                         );
-                        Ok(CallToolResult::text_content(vec![Content::text(
-                            message,
-                        )]))
+                        Ok(CallToolResult::text_content(vec![Content::text(message)]))
                     }
                 }
             }
             None => {
                 let message = format!("Workspace not found: {}", workspace_id);
-                Ok(CallToolResult::text_content(vec![Content::text(
-                    message,
-                )]))
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
             }
         }
     }
@@ -165,9 +164,7 @@ impl ManageWorkspaceTool {
             Some(ws) => ws,
             None => {
                 let message = "No primary workspace found.";
-                return Ok(CallToolResult::text_content(vec![Content::text(
-                    message,
-                )]));
+                return Ok(CallToolResult::text_content(vec![Content::text(message)]));
             }
         };
 
@@ -212,6 +209,8 @@ impl ManageWorkspaceTool {
                             Type: {:?}\n\
                             Files: {} | Symbols: {}\n\
                             Embeddings: {}\n\
+                            Embedding Runtime\n\
+                            {}\
                             Index Size: {:.2} MB\n\
                             Created: {} (unix)\n\
                             Last Accessed: {} (unix)\n\
@@ -223,7 +222,15 @@ impl ManageWorkspaceTool {
                             workspace.workspace_type,
                             workspace.file_count,
                             workspace.symbol_count,
-                            if embed_count > 0 { format!("{embed_count} vectors") } else { "None".to_string() },
+                            if embed_count > 0 {
+                                format!("{embed_count} vectors")
+                            } else {
+                                "None".to_string()
+                            },
+                            self.format_runtime_status_for_stats(
+                                &primary_workspace,
+                                matches!(workspace.workspace_type, WorkspaceType::Primary),
+                            ),
                             workspace.index_size_bytes as f64 / (1024.0 * 1024.0),
                             workspace.created_at,
                             workspace.last_accessed,
@@ -232,15 +239,11 @@ impl ManageWorkspaceTool {
                                 .map(|t| t.to_string())
                                 .unwrap_or("never".to_string())
                         );
-                        Ok(CallToolResult::text_content(vec![Content::text(
-                            message,
-                        )]))
+                        Ok(CallToolResult::text_content(vec![Content::text(message)]))
                     }
                     None => {
                         let message = format!("Workspace not found: {}", id);
-                        Ok(CallToolResult::text_content(vec![Content::text(
-                            message,
-                        )]))
+                        Ok(CallToolResult::text_content(vec![Content::text(message)]))
                     }
                 }
             }
@@ -284,10 +287,54 @@ impl ManageWorkspaceTool {
                         "Disabled"
                     }
                 );
-                Ok(CallToolResult::text_content(vec![Content::text(
-                    message,
-                )]))
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
             }
+        }
+    }
+
+    fn format_runtime_status_for_stats(
+        &self,
+        workspace: &crate::workspace::JulieWorkspace,
+        is_primary_workspace: bool,
+    ) -> String {
+        if !is_primary_workspace {
+            return "Backend: unavailable\n\
+                    Device: unavailable\n\
+                    Accelerated: unknown\n\
+                    Degraded: unknown (runtime metadata is only tracked for loaded primary workspace)\n"
+                .to_string();
+        }
+
+        match &workspace.embedding_runtime_status {
+            Some(runtime) => match workspace.embedding_provider.as_ref() {
+                Some(provider) => format!(
+                    "Backend: {}\n\
+                    Device: {}\n\
+                    Accelerated: {}\n\
+                    Degraded: {}\n",
+                    runtime.resolved_backend.as_str(),
+                    provider.device_info().device,
+                    runtime.accelerated,
+                    runtime.degraded_reason.as_deref().unwrap_or("none")
+                ),
+                None => format!(
+                    "Backend: {}\n\
+                    Device: unavailable\n\
+                    Accelerated: {}\n\
+                    Degraded: {}\n",
+                    runtime.resolved_backend.as_str(),
+                    runtime.accelerated,
+                    runtime
+                        .degraded_reason
+                        .as_deref()
+                        .unwrap_or("provider unavailable")
+                ),
+            },
+            None => "Backend: unresolved\n\
+                    Device: unavailable\n\
+                    Accelerated: false\n\
+                    Degraded: none (runtime metadata not initialized)\n"
+                .to_string(),
         }
     }
 }

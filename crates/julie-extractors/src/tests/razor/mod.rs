@@ -240,7 +240,8 @@ mod razor_extractor_tests {
         let view_data_assignment = symbols.iter().find(|s| {
             s.metadata.as_ref().map_or(false, |m| {
                 m.get("type").map_or(false, |t| t == "assignment")
-            }) && s.signature
+            }) && s
+                .signature
                 .as_ref()
                 .map_or(false, |sig| sig.contains("ViewData[\"Title\"]"))
         });
@@ -930,7 +931,8 @@ mod razor_extractor_tests {
         let layout_assignment = symbols.iter().find(|s| {
             s.metadata.as_ref().map_or(false, |m| {
                 m.get("type").map_or(false, |t| t == "assignment")
-            }) && s.signature
+            }) && s
+                .signature
                 .as_ref()
                 .map_or(false, |sig| sig.contains("Layout = \"_Layout\""))
         });
@@ -942,7 +944,8 @@ mod razor_extractor_tests {
         let title_assignment = symbols.iter().find(|s| {
             s.metadata.as_ref().map_or(false, |m| {
                 m.get("type").map_or(false, |t| t == "assignment")
-            }) && s.signature
+            }) && s
+                .signature
                 .as_ref()
                 .map_or(false, |sig| sig.contains("ViewData[\"Title\"]"))
         });
@@ -954,7 +957,8 @@ mod razor_extractor_tests {
         let meta_description_assignment = symbols.iter().find(|s| {
             s.metadata.as_ref().map_or(false, |m| {
                 m.get("type").map_or(false, |t| t == "assignment")
-            }) && s.signature
+            }) && s
+                .signature
                 .as_ref()
                 .map_or(false, |sig| sig.contains("ViewBag.MetaDescription"))
         });
@@ -1630,7 +1634,12 @@ mod razor_extractor_tests {
 
         // Component usages (AppHeader, Navigation, AppFooter, NotificationContainer) are no longer
         // extracted as symbols, so component-usage "uses" relationships shouldn't exist
-        let component_names = ["AppHeader", "Navigation", "AppFooter", "NotificationContainer"];
+        let component_names = [
+            "AppHeader",
+            "Navigation",
+            "AppFooter",
+            "NotificationContainer",
+        ];
         for name in &component_names {
             assert!(
                 !symbols.iter().any(|s| s.name == *name),
@@ -1983,9 +1992,15 @@ mod razor_identifier_extraction_tests {
         // Lowercase HTML elements (header, nav, a) should NOT be extracted as symbols.
         // Only PascalCase Blazor components are extracted.
         let header = symbols.iter().find(|s| s.name == "header");
-        assert!(header.is_none(), "Lowercase HTML elements should not be extracted");
+        assert!(
+            header.is_none(),
+            "Lowercase HTML elements should not be extracted"
+        );
         let nav = symbols.iter().find(|s| s.name == "nav");
-        assert!(nav.is_none(), "Lowercase HTML elements should not be extracted");
+        assert!(
+            nav.is_none(),
+            "Lowercase HTML elements should not be extracted"
+        );
     }
 }
 mod types; // Phase 4: Type extraction verification tests
@@ -2005,9 +2020,7 @@ mod blazor_extraction_tests {
         let symbols = extract_symbols(code);
         let inherits = symbols
             .iter()
-            .find(|s| {
-                s.name.contains("inherits") || s.name.contains("LayoutComponentBase")
-            });
+            .find(|s| s.name.contains("inherits") || s.name.contains("LayoutComponentBase"));
         assert!(
             inherits.is_some(),
             "Should extract @inherits directive. Got symbols: {:?}",
@@ -2045,9 +2058,7 @@ mod blazor_extraction_tests {
 }"#;
 
         let symbols = extract_symbols(code);
-        let lifecycle = symbols
-            .iter()
-            .find(|s| s.name == "OnInitializedAsync");
+        let lifecycle = symbols.iter().find(|s| s.name == "OnInitializedAsync");
         assert!(
             lifecycle.is_some(),
             "Should extract lifecycle method from @code block. Got symbols: {:?}",
@@ -2090,10 +2101,7 @@ mod blazor_extraction_tests {
 </ErrorBoundary>"#;
 
         let symbols = extract_symbols(code);
-        let component_names: Vec<_> = symbols
-            .iter()
-            .map(|s| s.name.as_str())
-            .collect();
+        let component_names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();
 
         assert!(
             !component_names.contains(&"ErrorBoundary"),
@@ -2167,31 +2175,39 @@ mod blazor_extraction_tests {
         // Directives should be present
         assert!(
             symbols.iter().any(|s| s.name == "@page"),
-            "Should have @page directive. Got: {:?}", names
+            "Should have @page directive. Got: {:?}",
+            names
         );
         assert!(
             symbols.iter().any(|s| s.name == "CounterService"),
-            "Should have @inject service. Got: {:?}", names
+            "Should have @inject service. Got: {:?}",
+            names
         );
 
         // @code block C# members should be present
         assert!(
-            symbols.iter().any(|s| s.name == "InitialCount" && s.kind == SymbolKind::Property),
-            "Should have [Parameter] property. Got: {:?}", names
+            symbols
+                .iter()
+                .any(|s| s.name == "InitialCount" && s.kind == SymbolKind::Property),
+            "Should have [Parameter] property. Got: {:?}",
+            names
         );
         assert!(
             symbols.iter().any(|s| s.name == "OnInitialized"),
-            "Should have lifecycle method. Got: {:?}", names
+            "Should have lifecycle method. Got: {:?}",
+            names
         );
         assert!(
             symbols.iter().any(|s| s.name == "IncrementCount"),
-            "Should have event handler method. Got: {:?}", names
+            "Should have event handler method. Got: {:?}",
+            names
         );
 
         // PascalCase component usages should NOT be present (they are references, not definitions)
         assert!(
             !symbols.iter().any(|s| s.name == "ChildComponent"),
-            "Should NOT have component usages as symbols. Got: {:?}", names
+            "Should NOT have component usages as symbols. Got: {:?}",
+            names
         );
 
         // Lowercase HTML should NOT be present
@@ -2284,17 +2300,24 @@ mod blazor_extraction_tests {
         // Method calls should NOT be extracted as Function definitions
         // Note: "Html" may appear as a Variable from razor_expression extraction (@Html.Raw(...)
         // extracts the first word) — that's a separate issue from invocation-as-definition noise.
-        let invocation_names = ["Raw", "Html.Raw", "RenderBody", "RenderSectionAsync",
-                                "Component.InvokeAsync", "InvokeAsync"];
+        let invocation_names = [
+            "Raw",
+            "Html.Raw",
+            "RenderBody",
+            "RenderSectionAsync",
+            "Component.InvokeAsync",
+            "InvokeAsync",
+        ];
         for name in &invocation_names {
-            let found: Vec<_> = symbols.iter()
-                .filter(|s| s.name == *name)
-                .collect();
+            let found: Vec<_> = symbols.iter().filter(|s| s.name == *name).collect();
             assert!(
                 found.is_empty(),
                 "'{}' is a method call (usage), not a definition. Should NOT be extracted as a symbol. Found: {:?}",
                 name,
-                found.iter().map(|s| format!("{} ({:?})", s.name, s.kind)).collect::<Vec<_>>()
+                found
+                    .iter()
+                    .map(|s| format!("{} ({:?})", s.name, s.kind))
+                    .collect::<Vec<_>>()
             );
         }
     }
@@ -2326,9 +2349,8 @@ mod blazor_extraction_tests {
             .iter()
             .filter(|s| {
                 s.metadata.as_ref().map_or(false, |m| {
-                    m.get("type").map_or(false, |t| {
-                        t == "assignment" || t == "element-access"
-                    })
+                    m.get("type")
+                        .map_or(false, |t| t == "assignment" || t == "element-access")
                 })
             })
             .collect();
@@ -2338,8 +2360,12 @@ mod blazor_extraction_tests {
              Should NOT be extracted as Variable symbols. Found: {:?}",
             assignment_symbols
                 .iter()
-                .map(|s| format!("{} ({:?}, type={:?})", s.name, s.kind,
-                    s.metadata.as_ref().and_then(|m| m.get("type"))))
+                .map(|s| format!(
+                    "{} ({:?}, type={:?})",
+                    s.name,
+                    s.kind,
+                    s.metadata.as_ref().and_then(|m| m.get("type"))
+                ))
                 .collect::<Vec<_>>()
         );
 

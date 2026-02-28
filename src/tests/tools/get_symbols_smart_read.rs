@@ -8,8 +8,8 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
 use crate::mcp_compat::CallToolResult;
+use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
 
 /// Extract text from CallToolResult content blocks
 fn extract_text_from_result(result: &CallToolResult) -> String {
@@ -94,9 +94,8 @@ async fn test_default_behavior_strips_context() -> Result<()> {
         max_depth: 1,
         target: None,
         limit: None,
-        mode: None,       // Default = "structure" → lean overview (no code bodies)
+        mode: None, // Default = "structure" → lean overview (no code bodies)
         workspace: None,
-
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -146,7 +145,7 @@ async fn test_structure_mode_strips_context() -> Result<()> {
         limit: None,
         mode: Some("structure".to_string()),
         workspace: None,
- // lean format (structure mode has no code bodies)
+        // lean format (structure mode has no code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -193,7 +192,7 @@ async fn test_mode_structure_always_strips() -> Result<()> {
         limit: None,
         mode: Some("structure".to_string()),
         workspace: None,
- // lean format (structure mode has no code bodies)
+        // lean format (structure mode has no code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -239,7 +238,7 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
- // Default → "code" format (since minimal provides code bodies)
+        // Default → "code" format (since minimal provides code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -291,7 +290,7 @@ async fn test_mode_full_all_symbols() -> Result<()> {
         limit: None,
         mode: Some("full".to_string()),
         workspace: None,
- // Default → "code" format (since full provides code bodies)
+        // Default → "code" format (since full provides code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -349,7 +348,7 @@ async fn test_target_with_minimal_mode() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
- // Default → "code" format (since minimal provides code bodies)
+        // Default → "code" format (since minimal provides code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -403,7 +402,6 @@ async fn test_file_read_error_handling() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
-
     };
 
     let result = tool.call_tool(&handler).await;
@@ -458,7 +456,7 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
         limit: None,
         mode: Some("minimal".to_string()),
         workspace: None,
- // Default → "code" format (since minimal provides code bodies)
+        // Default → "code" format (since minimal provides code bodies)
     };
 
     let result = tool.call_tool(&handler).await?;

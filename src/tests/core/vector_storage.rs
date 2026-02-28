@@ -260,6 +260,31 @@ mod tests {
     }
 
     #[test]
+    fn test_get_embedded_symbol_ids() {
+        let (mut db, _dir) = create_test_db();
+        insert_test_symbol(&mut db, "sym1", "func_a", "src/lib.rs");
+        insert_test_symbol(&mut db, "sym2", "func_b", "src/lib.rs");
+        insert_test_symbol(&mut db, "sym3", "func_c", "src/lib.rs");
+
+        // No embeddings yet
+        let ids = db.get_embedded_symbol_ids().unwrap();
+        assert!(ids.is_empty(), "Should be empty when no embeddings stored");
+
+        // Store embeddings for sym1 and sym3 (not sym2)
+        db.store_embeddings(&[
+            ("sym1".to_string(), vec![0.1_f32; 384]),
+            ("sym3".to_string(), vec![0.3_f32; 384]),
+        ])
+        .unwrap();
+
+        let ids = db.get_embedded_symbol_ids().unwrap();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains("sym1"));
+        assert!(ids.contains("sym3"));
+        assert!(!ids.contains("sym2"), "sym2 should not be in the set");
+    }
+
+    #[test]
     fn test_migration_010_is_idempotent() {
         let (db, _dir) = create_test_db();
 

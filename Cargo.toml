@@ -24,9 +24,16 @@ name = "julie-server"
 path = "src/main.rs"
 
 [features]
-default = ["embeddings-ort"]
-embeddings-ort = ["dep:fastembed"]
-embeddings-candle = []
+default = ["embeddings-ort", "embeddings-candle"]
+embeddings-ort = ["dep:fastembed", "dep:ort", "ort/directml", "ort/coreml"]
+embeddings-candle = [
+    "dep:candle-core",
+    "dep:candle-coreml",
+    "dep:candle-nn",
+    "dep:candle-transformers",
+    "dep:hf-hub",
+    "dep:tokenizers",
+]
 
 
 [dependencies]
@@ -93,6 +100,13 @@ ignore = "0.4"
 
 # Semantic embeddings
 fastembed = { version = "5", optional = true }
+ort = { version = "2.0.0-rc.10", optional = true }
+candle-core = { version = "0.9.2", optional = true, features = ["metal"] }
+candle-coreml = { version = "0.3.1", optional = true }
+candle-nn = { version = "0.9.2", optional = true }
+candle-transformers = { version = "0.9.2", optional = true }
+hf-hub = { version = "0.4.3", optional = true, default-features = false, features = ["ureq", "native-tls"] }
+tokenizers = { version = "0.22.2", optional = true }
 sqlite-vec = "0.1"
 zerocopy = { version = "0.7", features = ["derive"] }
 

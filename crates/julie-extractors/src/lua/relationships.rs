@@ -1,14 +1,10 @@
 use crate::base::{BaseExtractor, PendingRelationship, RelationshipKind, Symbol, SymbolKind};
-use crate::lua::{helpers, LuaExtractor};
+use crate::lua::{LuaExtractor, helpers};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
 /// Extract relationships such as function call edges from the Lua AST.
-pub(super) fn extract_relationships(
-    extractor: &mut LuaExtractor,
-    tree: &Tree,
-    symbols: &[Symbol],
-) {
+pub(super) fn extract_relationships(extractor: &mut LuaExtractor, tree: &Tree, symbols: &[Symbol]) {
     let symbol_map: HashMap<&str, &Symbol> = symbols
         .iter()
         .filter(|symbol| matches!(symbol.kind, SymbolKind::Function | SymbolKind::Method))
@@ -31,8 +27,9 @@ fn traverse_tree_for_relationships<'a>(
             process_function_call(extractor, node, &callee_name, symbol_map);
         }
         // Handle method calls: obj:method() or obj.method()
-        else if let Some(method_expr) = helpers::find_child_by_type(node, "method_index_expression")
-            .or_else(|| helpers::find_child_by_type(node, "dot_index_expression"))
+        else if let Some(method_expr) =
+            helpers::find_child_by_type(node, "method_index_expression")
+                .or_else(|| helpers::find_child_by_type(node, "dot_index_expression"))
         {
             let full_expr = extractor.base().get_node_text(&method_expr);
             // Extract the method name (everything after : or .)

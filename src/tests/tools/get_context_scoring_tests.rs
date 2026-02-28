@@ -8,15 +8,10 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::search::index::SymbolSearchResult;
-    use crate::tools::get_context::pipeline::{select_pivots, Pivot};
+    use crate::tools::get_context::pipeline::{Pivot, select_pivots};
 
     /// Helper to create a SymbolSearchResult with a specific kind.
-    fn make_result_with_kind(
-        id: &str,
-        name: &str,
-        kind: &str,
-        score: f32,
-    ) -> SymbolSearchResult {
+    fn make_result_with_kind(id: &str, name: &str, kind: &str, score: f32) -> SymbolSearchResult {
         SymbolSearchResult {
             id: id.to_string(),
             name: name.to_string(),
@@ -63,10 +58,7 @@ mod tests {
         let ref_scores = HashMap::new();
         let pivots = select_pivots(results, &ref_scores);
 
-        assert!(
-            !pivots.is_empty(),
-            "should return at least one pivot"
-        );
+        assert!(!pivots.is_empty(), "should return at least one pivot");
         assert_eq!(
             pivots[0].result.name, "estimate_tokens",
             "function should rank above namespace after de-boost"
@@ -85,10 +77,7 @@ mod tests {
         let ref_scores = HashMap::new();
         let pivots = select_pivots(results, &ref_scores);
 
-        assert!(
-            !pivots.is_empty(),
-            "should return at least one pivot"
-        );
+        assert!(!pivots.is_empty(), "should return at least one pivot");
         assert_eq!(
             pivots[0].result.name, "Pivot",
             "struct should rank above module after de-boost"
@@ -98,9 +87,12 @@ mod tests {
     /// A sole namespace result should still be returned (penalized but not filtered).
     #[test]
     fn test_select_pivots_namespace_still_shown_if_only_result() {
-        let results = vec![
-            make_result_with_kind("ns", "token_estimation", "namespace", 8.0),
-        ];
+        let results = vec![make_result_with_kind(
+            "ns",
+            "token_estimation",
+            "namespace",
+            8.0,
+        )];
         let ref_scores = HashMap::new();
         let pivots = select_pivots(results, &ref_scores);
 
@@ -126,10 +118,7 @@ mod tests {
         let ref_scores = HashMap::new();
         let pivots = select_pivots(results, &ref_scores);
 
-        assert!(
-            !pivots.is_empty(),
-            "should return at least one pivot"
-        );
+        assert!(!pivots.is_empty(), "should return at least one pivot");
         // namespace in test file: 8.0 * 0.3 * 0.2 = 0.48
         // function in src: 1.0 * 1.0 * 1.0 = 1.0
         // function should win despite much lower raw score
@@ -155,10 +144,7 @@ mod tests {
 
         let pivots = select_pivots(results, &ref_scores);
 
-        assert!(
-            !pivots.is_empty(),
-            "should return at least one pivot"
-        );
+        assert!(!pivots.is_empty(), "should return at least one pivot");
 
         // fmt is noise — should not get centrality boost
         // format_output is not noise — should get centrality boost

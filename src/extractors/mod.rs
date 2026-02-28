@@ -17,4 +17,6 @@ pub use julie_extractors::{
 pub use julie_extractors::base;
 
 // Re-export factory and manager
-pub use julie_extractors::{factory, manager, routing_identifiers, routing_relationships, routing_symbols};
+pub use julie_extractors::{
+    factory, manager, routing_identifiers, routing_relationships, routing_symbols,
+};

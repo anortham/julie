@@ -172,8 +172,16 @@ mod tests {
         // Lean format should be significantly shorter than JSON
         let json_output = serde_json::to_string_pretty(&response).unwrap();
 
-        println!("Lean output ({} chars):\n{}", lean_output.len(), lean_output);
-        println!("\nJSON output ({} chars):\n{}", json_output.len(), json_output);
+        println!(
+            "Lean output ({} chars):\n{}",
+            lean_output.len(),
+            lean_output
+        );
+        println!(
+            "\nJSON output ({} chars):\n{}",
+            json_output.len(),
+            json_output
+        );
 
         // Lean should be at least 50% shorter than JSON
         assert!(

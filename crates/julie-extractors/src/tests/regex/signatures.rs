@@ -2,9 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::regex::signatures::{
-        build_character_class_signature, build_pattern_signature,
-    };
+    use crate::regex::signatures::{build_character_class_signature, build_pattern_signature};
 
     #[test]
     fn test_build_pattern_signature() {

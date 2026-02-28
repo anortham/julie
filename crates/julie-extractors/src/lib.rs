@@ -24,13 +24,13 @@
 
 // Core infrastructure
 pub mod base;
-pub mod language;
-pub mod utils;
 pub mod factory;
+pub mod language;
 pub mod manager;
 pub mod routing_identifiers;
 pub mod routing_relationships;
 pub mod routing_symbols;
+pub mod utils;
 
 // Language extractors (31 total - including documentation/config languages)
 pub mod bash;

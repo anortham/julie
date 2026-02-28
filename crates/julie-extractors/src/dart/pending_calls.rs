@@ -30,11 +30,7 @@ impl super::DartExtractor {
         }
     }
 
-    fn check_identifier_call(
-        &mut self,
-        node: Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn check_identifier_call(&mut self, node: Node, symbol_map: &HashMap<String, &Symbol>) {
         let next = match node.next_sibling() {
             Some(s) => s,
             None => return,
@@ -67,11 +63,7 @@ impl super::DartExtractor {
         }
     }
 
-    fn check_member_access_call(
-        &mut self,
-        node: &Node,
-        symbol_map: &HashMap<String, &Symbol>,
-    ) {
+    fn check_member_access_call(&mut self, node: &Node, symbol_map: &HashMap<String, &Symbol>) {
         let function_name = match self.extract_call_name(node) {
             Some(n) => n,
             None => return,

@@ -6,9 +6,9 @@
 //! constructor parameters. Without these relationships, Julie misses the most
 //! important connections in a C# codebase.
 
+use crate::ExtractionResults;
 use crate::base::{RelationshipKind, SymbolKind};
 use crate::factory::extract_symbols_and_relationships;
-use crate::ExtractionResults;
 use std::path::PathBuf;
 use tree_sitter::Parser;
 
@@ -62,9 +62,7 @@ public class UserService {
         let uses_rels: Vec<_> = results
             .relationships
             .iter()
-            .filter(|r| {
-                r.from_symbol_id == user_service.id && r.kind == RelationshipKind::Uses
-            })
+            .filter(|r| r.from_symbol_id == user_service.id && r.kind == RelationshipKind::Uses)
             .collect();
 
         // Should have Uses relationships to ILogger and IUserRepository
@@ -144,10 +142,7 @@ public class MyService {
             results
                 .relationships
                 .iter()
-                .map(|r| format!(
-                    "{} --{:?}--> {}",
-                    r.from_symbol_id, r.kind, r.to_symbol_id
-                ))
+                .map(|r| format!("{} --{:?}--> {}", r.from_symbol_id, r.kind, r.to_symbol_id))
                 .collect::<Vec<_>>()
         );
     }
@@ -179,9 +174,7 @@ public class MyService {
         let uses_rels: Vec<_> = results
             .relationships
             .iter()
-            .filter(|r| {
-                r.from_symbol_id == my_service.id && r.kind == RelationshipKind::Uses
-            })
+            .filter(|r| r.from_symbol_id == my_service.id && r.kind == RelationshipKind::Uses)
             .collect();
 
         let irepo = results
@@ -274,9 +267,7 @@ public class OrderController {
         let pending_uses: Vec<_> = results
             .pending_relationships
             .iter()
-            .filter(|p| {
-                p.from_symbol_id == controller.id && p.kind == RelationshipKind::Uses
-            })
+            .filter(|p| p.from_symbol_id == controller.id && p.kind == RelationshipKind::Uses)
             .collect();
 
         assert!(
@@ -334,9 +325,7 @@ public class MyService {
         let uses_rels: Vec<_> = results
             .relationships
             .iter()
-            .filter(|r| {
-                r.from_symbol_id == my_service.id && r.kind == RelationshipKind::Uses
-            })
+            .filter(|r| r.from_symbol_id == my_service.id && r.kind == RelationshipKind::Uses)
             .collect();
 
         let ilogger = results
@@ -401,9 +390,7 @@ public class MyService {
         let uses_rels: Vec<_> = results
             .relationships
             .iter()
-            .filter(|r| {
-                r.from_symbol_id == my_service.id && r.kind == RelationshipKind::Uses
-            })
+            .filter(|r| r.from_symbol_id == my_service.id && r.kind == RelationshipKind::Uses)
             .collect();
 
         let irepo = results
@@ -432,9 +419,7 @@ public class MyService {
         let pending_uses: Vec<_> = results
             .pending_relationships
             .iter()
-            .filter(|p| {
-                p.from_symbol_id == my_service.id && p.kind == RelationshipKind::Uses
-            })
+            .filter(|p| p.from_symbol_id == my_service.id && p.kind == RelationshipKind::Uses)
             .collect();
 
         assert!(
@@ -474,9 +459,7 @@ public class MyService {
         let uses_rel = results
             .relationships
             .iter()
-            .find(|r| {
-                r.from_symbol_id == my_service.id && r.kind == RelationshipKind::Uses
-            })
+            .find(|r| r.from_symbol_id == my_service.id && r.kind == RelationshipKind::Uses)
             .expect("Should have Uses relationship");
 
         assert!(

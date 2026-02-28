@@ -69,6 +69,7 @@ pub mod tools {
         pub mod mod_tests; // Workspace module functionality tests
         pub mod registry; // Workspace registry tests
         pub mod registry_service;
+        pub mod runtime_status_stats; // Stats output embedding runtime status tests
         pub mod resolver; // Cross-file relationship resolution tests
         pub mod utils; // Workspace utilities tests // Registry service tests
     }
@@ -77,16 +78,16 @@ pub mod tools {
 
     pub mod filtering_tests; // Symbol filter pipeline tests (index-based refactor TDD)
 
-    pub mod get_context_tests; // get_context tool pipeline tests (pivot selection, scoring)
+    pub mod get_context_allocation_tests; // get_context token allocation tests
+    pub mod get_context_formatting_tests; // get_context output formatting tests
+    pub mod get_context_graph_expansion_tests; // get_context graph expansion tests
+    pub mod get_context_pipeline_relevance_tests;
     pub mod get_context_pipeline_tests; // get_context pipeline integration tests
     pub mod get_context_quality_tests; // get_context fixed-query quality regression tests
-    pub mod get_context_graph_expansion_tests; // get_context graph expansion tests
-    pub mod get_context_allocation_tests; // get_context token allocation tests
-    pub mod get_context_token_budget_tests; // get_context token truncation tests
-    pub mod get_context_formatting_tests; // get_context output formatting tests
-    pub mod get_context_scoring_tests; // get_context namespace/module de-boost scoring tests
     pub mod get_context_relevance_tests; // get_context fallback relevance guardrail tests
-    pub mod get_context_pipeline_relevance_tests; // get_context run_pipeline fallback relevance tests
+    pub mod get_context_scoring_tests; // get_context namespace/module de-boost scoring tests
+    pub mod get_context_tests; // get_context tool pipeline tests (pivot selection, scoring)
+    pub mod get_context_token_budget_tests; // get_context token truncation tests // get_context run_pipeline fallback relevance tests
 
     pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
 }
@@ -114,9 +115,9 @@ pub mod utils {
 // ============================================================================
 pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
+    pub mod documentation_indexing; // Documentation indexing E2E tests (RAG POC)
     pub mod embedding_incremental; // Incremental embedding via file watcher tests
     pub mod embedding_pipeline; // Background embedding pipeline integration tests
-    pub mod documentation_indexing; // Documentation indexing E2E tests (RAG POC)
     pub mod lock_contention; // Lock contention regression tests
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_validation; // Real-world code validation tests

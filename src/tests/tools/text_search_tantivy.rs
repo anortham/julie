@@ -62,7 +62,10 @@ pub fn get_user(id: u32) -> User {
     .await?;
 
     assert!(!results.is_empty(), "Should find the function");
-    assert_eq!(results[0].name, "get_user", "Should match the function name");
+    assert_eq!(
+        results[0].name, "get_user",
+        "Should match the function name"
+    );
 
     Ok(())
 }
@@ -130,7 +133,11 @@ export function process_data(data: string): string {
 
     assert!(!results.is_empty(), "Should find at least one Rust result");
     for result in &results {
-        assert_eq!(result.language.to_lowercase(), "rust", "All results should be Rust");
+        assert_eq!(
+            result.language.to_lowercase(),
+            "rust",
+            "All results should be Rust"
+        );
     }
 
     Ok(())
@@ -201,7 +208,10 @@ pub fn helper() {
 
     assert!(!results.is_empty(), "Should find results in src/");
     for result in &results {
-        assert!(result.file_path.starts_with("src/"), "All results should be in src/");
+        assert!(
+            result.file_path.starts_with("src/"),
+            "All results should be in src/"
+        );
     }
 
     Ok(())
@@ -257,7 +267,10 @@ pub fn get_user(id: u32) -> User {
     )
     .await?;
 
-    assert!(results.is_empty(), "Should return empty for non-matching query");
+    assert!(
+        results.is_empty(),
+        "Should return empty for non-matching query"
+    );
 
     Ok(())
 }
@@ -347,7 +360,10 @@ pub fn example() {
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await
     {
-        eprintln!("Skipping content test: workspace init failed (likely missing ONNX model): {}", e);
+        eprintln!(
+            "Skipping content test: workspace init failed (likely missing ONNX model): {}",
+            e
+        );
         return Ok(());
     }
 
@@ -378,7 +394,10 @@ pub fn example() {
     .await?;
 
     // Content search returns file-level matches
-    assert!(!results.is_empty(), "Content search should find matching file");
+    assert!(
+        !results.is_empty(),
+        "Content search should find matching file"
+    );
 
     Ok(())
 }

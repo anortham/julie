@@ -75,7 +75,6 @@ pub fn collect_symbols_by_depth(
     }
 }
 
-
 // ============================================================================
 // Index-returning filter internals (zero-clone pipeline)
 // ============================================================================
@@ -114,11 +113,7 @@ fn max_depth_indices(all_symbols: &[Symbol], max_depth: u32) -> Vec<usize> {
 /// From the given `candidate_indices` (into `all_symbols`), return those whose
 /// name matches `target` (case-insensitive partial) plus all their descendants
 /// that also appear in `candidate_indices`.
-fn target_indices(
-    all_symbols: &[Symbol],
-    candidate_indices: &[usize],
-    target: &str,
-) -> Vec<usize> {
+fn target_indices(all_symbols: &[Symbol], candidate_indices: &[usize], target: &str) -> Vec<usize> {
     let target_lower = target.to_lowercase();
     let candidate_set: HashSet<usize> = candidate_indices.iter().copied().collect();
 

@@ -5,7 +5,7 @@
 //! - View columns from CREATE VIEW statements
 //! - View columns from ERROR nodes containing CREATE VIEW
 
-use crate::base::{BaseExtractor, SymbolKind, SymbolOptions, Symbol};
+use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions};
 use std::collections::HashMap;
 use tree_sitter::Node;
 

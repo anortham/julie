@@ -309,5 +309,4 @@ impl SymbolDatabase {
         debug!("Created relationships table and indexes");
         Ok(())
     }
-
 }

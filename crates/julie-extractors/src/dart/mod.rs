@@ -26,8 +26,7 @@ use std::sync::LazyLock;
 use tree_sitter::{Node, Tree};
 
 // Static regex compiled once for performance
-static TYPE_SIGNATURE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(\w+)\s+\w+").unwrap());
+static TYPE_SIGNATURE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\w+)\s+\w+").unwrap());
 
 /// Dart language extractor that handles Dart-specific constructs including Flutter
 pub struct DartExtractor {
@@ -283,7 +282,10 @@ fn find_enum_context_parent(node: &Node, symbols: &[Symbol]) -> Option<String> {
                 // Find the enum symbol's id
                 if let Some(name_node) = find_child_by_type(&sib, "identifier") {
                     let name = get_node_text(&name_node);
-                    if let Some(sym) = symbols.iter().find(|s| s.name == name && s.kind == SymbolKind::Enum) {
+                    if let Some(sym) = symbols
+                        .iter()
+                        .find(|s| s.name == name && s.kind == SymbolKind::Enum)
+                    {
                         return Some(sym.id.clone());
                     }
                 }
@@ -411,11 +413,48 @@ fn looks_like_enum_value(name: &str) -> bool {
     // Dart keywords and built-in names that can appear as identifiers in ERROR nodes
     !matches!(
         name,
-        "return" | "switch" | "case" | "default" | "throw" | "break" | "continue"
-            | "this" | "super" | "if" | "else" | "for" | "while" | "do" | "try" | "catch"
-            | "finally" | "new" | "const" | "var" | "final" | "static" | "void" | "null"
-            | "true" | "false" | "async" | "await" | "yield" | "get" | "set"
-            | "String" | "int" | "double" | "bool" | "List" | "Map" | "Set"
-            | "Future" | "Stream" | "dynamic" | "Object" | "num"
+        "return"
+            | "switch"
+            | "case"
+            | "default"
+            | "throw"
+            | "break"
+            | "continue"
+            | "this"
+            | "super"
+            | "if"
+            | "else"
+            | "for"
+            | "while"
+            | "do"
+            | "try"
+            | "catch"
+            | "finally"
+            | "new"
+            | "const"
+            | "var"
+            | "final"
+            | "static"
+            | "void"
+            | "null"
+            | "true"
+            | "false"
+            | "async"
+            | "await"
+            | "yield"
+            | "get"
+            | "set"
+            | "String"
+            | "int"
+            | "double"
+            | "bool"
+            | "List"
+            | "Map"
+            | "Set"
+            | "Future"
+            | "Stream"
+            | "dynamic"
+            | "Object"
+            | "num"
     )
 }

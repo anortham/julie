@@ -202,8 +202,7 @@ pub(super) fn process_impl_blocks(
                             method_symbol.kind = SymbolKind::Method;
 
                             // Preserve the impl type name in metadata so cross-file methods stay discoverable
-                            let metadata =
-                                method_symbol.metadata.get_or_insert_with(HashMap::new);
+                            let metadata = method_symbol.metadata.get_or_insert_with(HashMap::new);
                             metadata.insert(
                                 "impl_type_name".to_string(),
                                 Value::String(impl_block.type_name.clone()),

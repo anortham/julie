@@ -47,11 +47,7 @@ pub(super) fn build_direct_variable_signature(
 
 /// Build signature for a variable with init_declarator
 /// Example: `const int MAX_SIZE` or `static std::string name`
-pub(super) fn build_variable_signature(
-    base: &mut BaseExtractor,
-    node: Node,
-    name: &str,
-) -> String {
+pub(super) fn build_variable_signature(base: &mut BaseExtractor, node: Node, name: &str) -> String {
     let mut signature = String::new();
 
     // Add storage class and type specifiers
@@ -84,11 +80,7 @@ pub(super) fn build_variable_signature(
 
 /// Build signature for a field (class/struct member variable)
 /// Example: `static const size_t rows` or `double* data`
-pub(super) fn build_field_signature(
-    base: &mut BaseExtractor,
-    node: Node,
-    name: &str,
-) -> String {
+pub(super) fn build_field_signature(base: &mut BaseExtractor, node: Node, name: &str) -> String {
     let mut signature = String::new();
 
     // Add storage class and type specifiers

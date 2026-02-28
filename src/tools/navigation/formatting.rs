@@ -175,7 +175,8 @@ mod tests {
         let short = "fn foo()";
         assert_eq!(truncate_signature(short, 20), "fn foo()");
 
-        let long = "pub fn very_long_function_name_with_many_parameters(a: i32, b: String, c: Vec<u8>)";
+        let long =
+            "pub fn very_long_function_name_with_many_parameters(a: i32, b: String, c: Vec<u8>)";
         let truncated = truncate_signature(long, 40);
         assert!(truncated.len() <= 40);
         assert!(truncated.ends_with("..."));

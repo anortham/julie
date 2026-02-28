@@ -393,8 +393,14 @@ normal_key: value3
         );
 
         // The actual keys should still be extracted
-        assert!(symbols.iter().any(|s| s.name == "name"), "Should still extract 'name' key");
-        assert!(symbols.iter().any(|s| s.name == "version"), "Should still extract 'version' key");
+        assert!(
+            symbols.iter().any(|s| s.name == "name"),
+            "Should still extract 'name' key"
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "version"),
+            "Should still extract 'version' key"
+        );
     }
 
     #[test]
@@ -403,7 +409,10 @@ normal_key: value3
         let yaml = "config: {host: localhost, port: 8080}\n";
         let symbols = extract_symbols(yaml);
 
-        let flow_symbols: Vec<_> = symbols.iter().filter(|s| s.name == "flow_mapping").collect();
+        let flow_symbols: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.name == "flow_mapping")
+            .collect();
         assert!(
             flow_symbols.is_empty(),
             "Should NOT create 'flow_mapping' symbol (noise), but found {} flow_mapping symbols",
@@ -411,7 +420,10 @@ normal_key: value3
         );
 
         // The parent key should still be extracted
-        assert!(symbols.iter().any(|s| s.name == "config"), "Should still extract 'config' key");
+        assert!(
+            symbols.iter().any(|s| s.name == "config"),
+            "Should still extract 'config' key"
+        );
     }
 
     #[test]
@@ -529,7 +541,10 @@ production:
         let yaml = "database:\n  host: localhost\n  port: 5432\nsimple_key: value\n";
         let symbols = extract_symbols(yaml);
 
-        let database = symbols.iter().find(|s| s.name == "database").expect("Should find 'database'");
+        let database = symbols
+            .iter()
+            .find(|s| s.name == "database")
+            .expect("Should find 'database'");
         assert_eq!(
             database.kind,
             SymbolKind::Module,
@@ -537,7 +552,10 @@ production:
             database.kind
         );
 
-        let host = symbols.iter().find(|s| s.name == "host").expect("Should find 'host'");
+        let host = symbols
+            .iter()
+            .find(|s| s.name == "host")
+            .expect("Should find 'host'");
         assert_eq!(
             host.kind,
             SymbolKind::Variable,
@@ -545,7 +563,10 @@ production:
             host.kind
         );
 
-        let port = symbols.iter().find(|s| s.name == "port").expect("Should find 'port'");
+        let port = symbols
+            .iter()
+            .find(|s| s.name == "port")
+            .expect("Should find 'port'");
         assert_eq!(
             port.kind,
             SymbolKind::Variable,
@@ -553,7 +574,10 @@ production:
             port.kind
         );
 
-        let simple = symbols.iter().find(|s| s.name == "simple_key").expect("Should find 'simple_key'");
+        let simple = symbols
+            .iter()
+            .find(|s| s.name == "simple_key")
+            .expect("Should find 'simple_key'");
         assert_eq!(
             simple.kind,
             SymbolKind::Variable,
@@ -572,10 +596,22 @@ level1:
 "#;
         let symbols = extract_symbols(yaml);
 
-        let level1 = symbols.iter().find(|s| s.name == "level1").expect("Should find 'level1'");
-        let level2 = symbols.iter().find(|s| s.name == "level2").expect("Should find 'level2'");
-        let level3 = symbols.iter().find(|s| s.name == "level3").expect("Should find 'level3'");
-        let key = symbols.iter().find(|s| s.name == "key").expect("Should find 'key'");
+        let level1 = symbols
+            .iter()
+            .find(|s| s.name == "level1")
+            .expect("Should find 'level1'");
+        let level2 = symbols
+            .iter()
+            .find(|s| s.name == "level2")
+            .expect("Should find 'level2'");
+        let level3 = symbols
+            .iter()
+            .find(|s| s.name == "level3")
+            .expect("Should find 'level3'");
+        let key = symbols
+            .iter()
+            .find(|s| s.name == "key")
+            .expect("Should find 'key'");
 
         assert_eq!(level1.kind, SymbolKind::Module, "level1 should be Module");
         assert_eq!(level2.kind, SymbolKind::Module, "level2 should be Module");
@@ -606,7 +642,10 @@ level1:
         let yaml = "fruits:\n  - apple\n  - banana\n";
         let symbols = extract_symbols(yaml);
 
-        let fruits = symbols.iter().find(|s| s.name == "fruits").expect("Should find 'fruits'");
+        let fruits = symbols
+            .iter()
+            .find(|s| s.name == "fruits")
+            .expect("Should find 'fruits'");
         assert_eq!(
             fruits.kind,
             SymbolKind::Variable,
@@ -626,7 +665,10 @@ level1:
         let symbols = extract_symbols(yaml);
         let identifiers = extract_identifiers(yaml, &symbols);
 
-        let alias_ids: Vec<_> = identifiers.iter().filter(|i| i.name == "defaults").collect();
+        let alias_ids: Vec<_> = identifiers
+            .iter()
+            .filter(|i| i.name == "defaults")
+            .collect();
         assert!(
             !alias_ids.is_empty(),
             "Should extract '*defaults' alias as an identifier"
@@ -676,10 +718,16 @@ production:
         let symbols = extract_symbols(yaml);
         let identifiers = extract_identifiers(yaml, &symbols);
 
-        let alias = identifiers.iter().find(|i| i.name == "defaults").expect("Should find alias identifier");
+        let alias = identifiers
+            .iter()
+            .find(|i| i.name == "defaults")
+            .expect("Should find alias identifier");
 
         // The target_symbol_id should resolve to the 'defaults' symbol that has &defaults anchor
-        let defaults_sym = symbols.iter().find(|s| s.name == "defaults").expect("Should find defaults symbol");
+        let defaults_sym = symbols
+            .iter()
+            .find(|s| s.name == "defaults")
+            .expect("Should find defaults symbol");
         assert_eq!(
             alias.target_symbol_id.as_deref(),
             Some(defaults_sym.id.as_str()),

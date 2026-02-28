@@ -73,7 +73,10 @@ func MainFunction() int {
         let results_b = extract_full("main.go", file_b_code);
 
         // Verify we extracted the symbols
-        let helper_fn = results_a.symbols.iter().find(|s| s.name == "HelperFunction");
+        let helper_fn = results_a
+            .symbols
+            .iter()
+            .find(|s| s.name == "HelperFunction");
         assert!(
             helper_fn.is_some(),
             "Should extract HelperFunction from utils package"
@@ -142,7 +145,10 @@ func MainFunction() int {
             helper_pending.is_some(),
             "PendingRelationship should have callee_name='HelperFunction'.\n\
              Found: {:?}",
-            pending_calls.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            pending_calls
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
 
         // Verify the pending relationship has the correct caller
@@ -176,7 +182,10 @@ func main() {
         }
         println!("=== Pending relationships ===");
         for p in &results.pending_relationships {
-            println!("  {:?}: {} -> '{}'", p.kind, p.from_symbol_id, p.callee_name);
+            println!(
+                "  {:?}: {} -> '{}'",
+                p.kind, p.from_symbol_id, p.callee_name
+            );
         }
 
         // Should have extracted main function
@@ -198,15 +207,16 @@ func main() {
         );
 
         // Verify we captured Println
-        let println_pending = pending_calls
-            .iter()
-            .find(|p| p.callee_name == "Println");
+        let println_pending = pending_calls.iter().find(|p| p.callee_name == "Println");
 
         assert!(
             println_pending.is_some(),
             "PendingRelationship should have callee_name='Println'.\n\
              Found: {:?}",
-            pending_calls.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            pending_calls
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -262,6 +272,9 @@ func caller() int {
             .iter()
             .any(|r| r.from_symbol_id == caller.id && r.to_symbol_id == helper.id);
 
-        assert!(has_correct_rel, "Should have relationship from caller to helper");
+        assert!(
+            has_correct_rel,
+            "Should have relationship from caller to helper"
+        );
     }
 }

@@ -11,12 +11,10 @@ static PARAMETER_ATTR_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[Parameter[^\]]*\]").unwrap());
 
 /// Matches inheritance declaration: `: ClassName`
-static INHERITANCE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r":\s*(\w+)").unwrap());
+static INHERITANCE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r":\s*(\w+)").unwrap());
 
 /// Matches type annotation brackets: `[TypeName]`
-static BRACKET_TYPE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[(\w+)\]").unwrap());
+static BRACKET_TYPE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[(\w+)\]").unwrap());
 
 /// Find the function name node from a function_statement
 pub(super) fn find_function_name_node<'a>(node: Node<'a>) -> Option<Node<'a>> {

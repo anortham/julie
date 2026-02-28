@@ -120,11 +120,16 @@ pub(super) fn extract_struct_field_symbols(
 
         let mut decl_cursor = child.walk();
         for decl_child in child.children_by_field_name("declarator", &mut decl_cursor) {
-            let Some(field_name) = helpers::find_field_identifier_name(&extractor.base, decl_child) else {
+            let Some(field_name) = helpers::find_field_identifier_name(&extractor.base, decl_child)
+            else {
                 continue;
             };
 
-            let signature = format!("{} {}", field_type, extractor.base.get_node_text(&decl_child));
+            let signature = format!(
+                "{} {}",
+                field_type,
+                extractor.base.get_node_text(&decl_child)
+            );
             let doc_comment = extractor.base.find_doc_comment(&child);
 
             let field_symbol = extractor.base.create_symbol(

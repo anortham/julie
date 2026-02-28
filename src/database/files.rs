@@ -139,7 +139,11 @@ impl SymbolDatabase {
                 .prepare("PRAGMA wal_checkpoint(TRUNCATE)")
                 .and_then(|mut stmt| {
                     stmt.query_row([], |row| {
-                        Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                        Ok((
+                            row.get::<_, i32>(0)?,
+                            row.get::<_, i32>(1)?,
+                            row.get::<_, i32>(2)?,
+                        ))
                     })
                 }) {
                 Ok((busy, log, checkpointed)) => debug!(
@@ -287,9 +291,9 @@ impl SymbolDatabase {
     /// Get all file contents with language for Tantivy backfill.
     /// Returns (path, language, content) tuples for files that have content stored.
     pub fn get_all_file_contents_with_language(&self) -> Result<Vec<(String, String, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT path, language, content FROM files WHERE content IS NOT NULL",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path, language, content FROM files WHERE content IS NOT NULL")?;
 
         let rows = stmt.query_map([], |row| {
             Ok((

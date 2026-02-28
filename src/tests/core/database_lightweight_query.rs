@@ -48,10 +48,7 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
             parent_id: None,
             metadata: Some({
                 let mut m = std::collections::HashMap::new();
-                m.insert(
-                    "is_async".to_string(),
-                    serde_json::Value::Bool(true),
-                );
+                m.insert("is_async".to_string(), serde_json::Value::Bool(true));
                 m
             }),
             semantic_group: Some("service".to_string()),
@@ -110,7 +107,10 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
             metadata: None,
             semantic_group: None,
             confidence: None,
-            code_context: Some("pub fn add_user(&mut self, user: User) {\n    self.users.push(user);\n}".to_string()),
+            code_context: Some(
+                "pub fn add_user(&mut self, user: User) {\n    self.users.push(user);\n}"
+                    .to_string(),
+            ),
             content_type: None,
         },
     ];
@@ -128,7 +128,11 @@ fn test_lightweight_query_returns_same_core_fields() {
     let full = db.get_symbols_for_file("src/main.rs").unwrap();
     let lightweight = db.get_symbols_for_file_lightweight("src/main.rs").unwrap();
 
-    assert_eq!(full.len(), lightweight.len(), "Both queries should return same number of symbols");
+    assert_eq!(
+        full.len(),
+        lightweight.len(),
+        "Both queries should return same number of symbols"
+    );
 
     // Core fields must match exactly
     for (f, l) in full.iter().zip(lightweight.iter()) {
@@ -159,14 +163,30 @@ fn test_lightweight_query_skips_expensive_fields() {
 
     // Full query should have the rich data
     let parent_full = full.iter().find(|s| s.id == "sym-parent-1").unwrap();
-    assert!(parent_full.metadata.is_some(), "Full query should have metadata");
-    assert!(parent_full.code_context.is_some(), "Full query should have code_context");
-    assert!(parent_full.semantic_group.is_some(), "Full query should have semantic_group");
-    assert!(parent_full.confidence.is_some(), "Full query should have confidence");
+    assert!(
+        parent_full.metadata.is_some(),
+        "Full query should have metadata"
+    );
+    assert!(
+        parent_full.code_context.is_some(),
+        "Full query should have code_context"
+    );
+    assert!(
+        parent_full.semantic_group.is_some(),
+        "Full query should have semantic_group"
+    );
+    assert!(
+        parent_full.confidence.is_some(),
+        "Full query should have confidence"
+    );
 
     // Lightweight query should have None for all expensive fields
     for sym in &lightweight {
-        assert!(sym.metadata.is_none(), "Lightweight should skip metadata for {}", sym.name);
+        assert!(
+            sym.metadata.is_none(),
+            "Lightweight should skip metadata for {}",
+            sym.name
+        );
         assert!(
             sym.code_context.is_none(),
             "Lightweight should skip code_context for {}",
@@ -177,7 +197,11 @@ fn test_lightweight_query_skips_expensive_fields() {
             "Lightweight should skip semantic_group for {}",
             sym.name
         );
-        assert!(sym.confidence.is_none(), "Lightweight should skip confidence for {}", sym.name);
+        assert!(
+            sym.confidence.is_none(),
+            "Lightweight should skip confidence for {}",
+            sym.name
+        );
         assert!(
             sym.content_type.is_none(),
             "Lightweight should skip content_type for {}",
@@ -205,5 +229,8 @@ fn test_lightweight_query_empty_file() {
     let lightweight = db
         .get_symbols_for_file_lightweight("nonexistent.rs")
         .unwrap();
-    assert!(lightweight.is_empty(), "Nonexistent file should return empty");
+    assert!(
+        lightweight.is_empty(),
+        "Nonexistent file should return empty"
+    );
 }

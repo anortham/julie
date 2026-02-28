@@ -6,9 +6,7 @@ pub(crate) mod identifiers;
 mod patterns;
 pub(crate) mod signatures;
 
-use crate::base::{
-    BaseExtractor, Identifier, Relationship, Symbol, SymbolKind,
-};
+use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 

@@ -265,7 +265,10 @@ Rectangle {
         assert!(
             id_sym.is_some(),
             "id: root should be extracted as Property. Got: {:?}",
-            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
         );
     }
 
@@ -293,14 +296,20 @@ Rectangle {
 
         let id_symbols: Vec<&Symbol> = symbols
             .iter()
-            .filter(|s| s.kind == SymbolKind::Property && ["root", "titleText", "content"].contains(&s.name.as_str()))
+            .filter(|s| {
+                s.kind == SymbolKind::Property
+                    && ["root", "titleText", "content"].contains(&s.name.as_str())
+            })
             .collect();
 
         assert_eq!(
             id_symbols.len(),
             3,
             "Should extract all three id bindings. Got: {:?}",
-            symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| (&s.name, &s.kind))
+                .collect::<Vec<_>>()
         );
     }
 

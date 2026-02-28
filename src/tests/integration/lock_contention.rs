@@ -48,7 +48,11 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
     let mut tasks = vec![];
     for i in 0..10 {
         let handler_clone = handler.clone();
-        let query = if i % 2 == 0 { "summary findings" } else { "recommendations" };
+        let query = if i % 2 == 0 {
+            "summary findings"
+        } else {
+            "recommendations"
+        };
 
         let task = tokio::spawn(async move {
             // Use LINE MODE with file pattern - this is what triggers the bug!
@@ -129,19 +133,13 @@ async fn test_force_reindex_no_lock_busy_errors() -> Result<()> {
 
     // First initialization (simulates startup auto-index)
     handler
-        .initialize_workspace_with_force(
-            Some(workspace_path.to_str().unwrap().to_string()),
-            false,
-        )
+        .initialize_workspace_with_force(Some(workspace_path.to_str().unwrap().to_string()), false)
         .await?;
 
     // Force re-index (simulates manage_workspace(operation="index", force=true))
     // This is where the LockBusy bug manifested — the old SearchIndex still held the lock
     let reindex_result = handler
-        .initialize_workspace_with_force(
-            Some(workspace_path.to_str().unwrap().to_string()),
-            true,
-        )
+        .initialize_workspace_with_force(Some(workspace_path.to_str().unwrap().to_string()), true)
         .await;
 
     assert!(

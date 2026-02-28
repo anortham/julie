@@ -147,6 +147,24 @@ impl SymbolDatabase {
         }
     }
 
+    /// Get the set of symbol IDs that already have stored embeddings.
+    ///
+    /// Used by the incremental embedding pipeline to skip symbols that
+    /// don't need re-embedding.
+    pub fn get_embedded_symbol_ids(&self) -> Result<std::collections::HashSet<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT symbol_id FROM symbol_vectors")
+            .context("Failed to prepare embedded symbol IDs query")?;
+
+        let ids = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<std::collections::HashSet<String>, _>>()
+            .context("Failed to collect embedded symbol IDs")?;
+
+        Ok(ids)
+    }
+
     /// Count the total number of stored embeddings.
     pub fn embedding_count(&self) -> Result<i64> {
         let count: i64 = self

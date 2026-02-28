@@ -6,9 +6,9 @@ use anyhow::Result;
 
 use super::GetContextTool;
 use super::content::abbreviate_code;
-pub use super::scoring::{select_pivots, Pivot};
-use crate::search::scoring::is_test_path;
 pub(crate) use super::content::truncate_to_token_budget;
+pub use super::scoring::{Pivot, select_pivots};
+use crate::search::scoring::is_test_path;
 use tracing::debug;
 
 use crate::database::SymbolDatabase;
@@ -135,7 +135,7 @@ pub fn run_pipeline(
     embedding_provider: Option<&dyn crate::embeddings::EmbeddingProvider>,
 ) -> Result<String> {
     use super::allocation::TokenBudget;
-    use super::formatting::{format_context_with_mode, ContextData};
+    use super::formatting::{ContextData, format_context_with_mode};
     use crate::search::index::SearchFilter;
 
     // 1. Search for relevant symbols (hybrid: keyword + optional semantic)
@@ -145,7 +145,12 @@ pub fn run_pipeline(
         file_pattern,
     };
     let search_results = crate::search::hybrid::hybrid_search(
-        query, &filter, 30, search_index, db, embedding_provider,
+        query,
+        &filter,
+        30,
+        search_index,
+        db,
+        embedding_provider,
     )?;
 
     if search_results.results.is_empty() {
@@ -156,11 +161,16 @@ pub fn run_pipeline(
     }
 
     // 2. Get reference scores for centrality-weighted ranking
-    let result_ids: Vec<&str> = search_results.results.iter().map(|r| r.id.as_str()).collect();
+    let result_ids: Vec<&str> = search_results
+        .results
+        .iter()
+        .map(|r| r.id.as_str())
+        .collect();
     let ref_scores = db.get_reference_scores(&result_ids)?;
 
     // 3. Select pivots using centrality-weighted scoring
-    let pivots = super::scoring::select_pivots_with_code_fallback(search_results.results, &ref_scores);
+    let pivots =
+        super::scoring::select_pivots_with_code_fallback(search_results.results, &ref_scores);
 
     // 4. Expand graph from pivots
     let expansion = expand_graph(&pivots, db)?;
@@ -177,7 +187,8 @@ pub fn run_pipeline(
     let pivot_ref_scores = db.get_reference_scores(&pivot_ids)?;
 
     // 7. Build PivotEntries
-    let pivot_entries = build_pivot_entries(&pivots, &expansion, db, &allocation, &pivot_ref_scores)?;
+    let pivot_entries =
+        build_pivot_entries(&pivots, &expansion, db, &allocation, &pivot_ref_scores)?;
 
     // 8. Build NeighborEntries
     let neighbor_entries = build_neighbor_entries(&expansion);
@@ -406,8 +417,19 @@ fn get_pivot_relationship_names_batched(
 /// These are boilerplate implementations that appear everywhere but tell you nothing
 /// about the actual code architecture.
 const NOISE_NEIGHBOR_NAMES: &[&str] = &[
-    "clone", "to_string", "fmt", "eq", "ne", "cmp", "partial_cmp",
-    "hash", "drop", "deref", "deref_mut", "is_empty", "len",
+    "clone",
+    "to_string",
+    "fmt",
+    "eq",
+    "ne",
+    "cmp",
+    "partial_cmp",
+    "hash",
+    "drop",
+    "deref",
+    "deref_mut",
+    "is_empty",
+    "len",
 ];
 
 /// Build NeighborEntry structs from graph expansion results, filtering noise.
@@ -426,9 +448,11 @@ fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::
             start_line: neighbor.symbol.start_line,
             kind: format!("{:?}", neighbor.symbol.kind).to_lowercase(),
             signature: neighbor.symbol.signature.clone(),
-            doc_summary: neighbor.symbol.doc_comment.as_ref().map(|d| {
-                d.lines().next().unwrap_or("").to_string()
-            }),
+            doc_summary: neighbor
+                .symbol
+                .doc_comment
+                .as_ref()
+                .map(|d| d.lines().next().unwrap_or("").to_string()),
         })
         .collect()
 }
@@ -446,7 +470,10 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
 
     if let Some(ref_workspace_id) = workspace_filter {
         // Reference workspace: open separate DB and SearchIndex
-        debug!("get_context: using reference workspace {}", ref_workspace_id);
+        debug!(
+            "get_context: using reference workspace {}",
+            ref_workspace_id
+        );
         let workspace = handler
             .get_workspace()
             .await?
@@ -494,7 +521,16 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
     let result = tokio::task::spawn_blocking(move || -> Result<String> {
         let index = search_index.lock().unwrap();
         let db_guard = db.lock().unwrap();
-        run_pipeline(&query, max_tokens, language, file_pattern, format, &db_guard, &index, embedding_provider.as_deref())
+        run_pipeline(
+            &query,
+            max_tokens,
+            language,
+            file_pattern,
+            format,
+            &db_guard,
+            &index,
+            embedding_provider.as_deref(),
+        )
     })
     .await??;
 

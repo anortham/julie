@@ -1,7 +1,7 @@
 //! Rename symbol refactoring operations
 
-use anyhow::Result;
 use crate::mcp_compat::CallToolResult;
+use anyhow::Result;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use tracing::debug;

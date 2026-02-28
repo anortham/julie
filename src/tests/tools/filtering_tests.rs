@@ -11,8 +11,8 @@
 /// - Empty input edge cases
 #[cfg(test)]
 mod tests {
-    use crate::extractors::base::types::SymbolKind;
     use crate::extractors::base::Symbol;
+    use crate::extractors::base::types::SymbolKind;
     use crate::tools::symbols::filtering::{
         apply_all_filters, apply_limit_filter, apply_max_depth_filter, apply_target_filter,
     };
@@ -68,7 +68,9 @@ mod tests {
 
         let standalone = make_symbol("s", "standalone_fn", None);
 
-        vec![class_a, method_one, method_two, class_b, helper, nested_fn, standalone]
+        vec![
+            class_a, method_one, method_two, class_b, helper, nested_fn, standalone,
+        ]
     }
 
     // ================================================================

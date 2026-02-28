@@ -82,8 +82,14 @@ mod tests {
         assert!(output.contains("public"), "Should show visibility");
 
         // Other results should follow
-        assert!(output.contains("Other matches:"), "Should have 'Other matches:' section");
-        assert!(output.contains("src/utils.rs"), "Other result should be present");
+        assert!(
+            output.contains("Other matches:"),
+            "Should have 'Other matches:' section"
+        );
+        assert!(
+            output.contains("src/utils.rs"),
+            "Other result should be present"
+        );
     }
 
     #[test]
@@ -124,7 +130,10 @@ mod tests {
 
         // Should still show the results in the standard format
         let standard = format_lean_search_results("SearchIndex", &response);
-        assert_eq!(output, standard, "Without exact match, should fall back to standard format");
+        assert_eq!(
+            output, standard,
+            "Without exact match, should fall back to standard format"
+        );
     }
 
     #[test]

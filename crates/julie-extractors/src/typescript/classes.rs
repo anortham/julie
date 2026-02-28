@@ -10,10 +10,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract a class declaration
-pub(super) fn extract_class(
-    extractor: &mut TypeScriptExtractor,
-    node: Node,
-) -> Option<Symbol> {
+pub(super) fn extract_class(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
@@ -54,7 +51,8 @@ pub(super) fn extract_class(
                         if ext_child.kind() != "extends" && ext_child.kind() != "," {
                             let ext_name = extractor.base().get_node_text(&ext_child);
                             if !ext_name.is_empty() {
-                                metadata.insert("extends".to_string(), serde_json::json!(&ext_name));
+                                metadata
+                                    .insert("extends".to_string(), serde_json::json!(&ext_name));
                                 extends_name = Some(ext_name);
                             }
                         }
@@ -65,7 +63,10 @@ pub(super) fn extract_class(
     }
 
     if !implements_names.is_empty() {
-        metadata.insert("implements".to_string(), serde_json::json!(implements_names));
+        metadata.insert(
+            "implements".to_string(),
+            serde_json::json!(implements_names),
+        );
     }
 
     // Check for abstract modifier

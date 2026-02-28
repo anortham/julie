@@ -89,23 +89,25 @@ pub(super) fn extract_function(
     // Extract PHPDoc comment
     let doc_comment = extractor.get_base().find_doc_comment(&node);
 
-    Some(extractor.get_base_mut().create_symbol(
-        &node,
-        name,
-        symbol_kind,
-        SymbolOptions {
-            signature: Some(signature),
-            visibility: Some(determine_visibility(&modifiers)),
-            parent_id: parent_id.map(|s| s.to_string()),
-            metadata: Some(
-                metadata
-                    .into_iter()
-                    .map(|(k, v)| (k, serde_json::Value::String(v)))
-                    .collect(),
-            ),
-            doc_comment,
-        },
-    ))
+    Some(
+        extractor.get_base_mut().create_symbol(
+            &node,
+            name,
+            symbol_kind,
+            SymbolOptions {
+                signature: Some(signature),
+                visibility: Some(determine_visibility(&modifiers)),
+                parent_id: parent_id.map(|s| s.to_string()),
+                metadata: Some(
+                    metadata
+                        .into_iter()
+                        .map(|(k, v)| (k, serde_json::Value::String(v)))
+                        .collect(),
+                ),
+                doc_comment,
+            },
+        ),
+    )
 }
 
 /// Find return type node after colon

@@ -8,10 +8,7 @@ use crate::typescript::TypeScriptExtractor;
 use tree_sitter::Node;
 
 /// Extract an import statement
-pub(super) fn extract_import(
-    extractor: &mut TypeScriptExtractor,
-    node: Node,
-) -> Option<Symbol> {
+pub(super) fn extract_import(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
     // For imports, extract the source (what's being imported from)
     let name = if let Some(source_node) = node.child_by_field_name("source") {
         extractor
@@ -44,10 +41,7 @@ pub(super) fn extract_import(
 /// Extract an export statement
 ///
 /// Returns a `Vec<Symbol>` because `export { a, b, c }` produces one symbol per specifier.
-pub(super) fn extract_export(
-    extractor: &mut TypeScriptExtractor,
-    node: Node,
-) -> Vec<Symbol> {
+pub(super) fn extract_export(extractor: &mut TypeScriptExtractor, node: Node) -> Vec<Symbol> {
     // For exports, extract what's being exported
     if let Some(declaration_node) = node.child_by_field_name("declaration") {
         // export class/function/const/etc — single symbol

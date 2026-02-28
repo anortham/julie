@@ -10,9 +10,9 @@ mod tests {
     #![allow(unused_imports)]
 
     use crate::handler::JulieServerHandler;
+    use crate::mcp_compat::{CallToolResult, CallToolResultExt};
     use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
     use anyhow::Result;
-    use crate::mcp_compat::{CallToolResult, CallToolResultExt};
 
     #[tokio::test]
     #[ignore] // SLOW/HANGS: Indexes entire workspace (300+ files) - not critical for CLI tools

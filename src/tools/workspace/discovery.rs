@@ -1,6 +1,6 @@
 use crate::tools::shared::BLACKLISTED_EXTENSIONS;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
-use crate::utils::walk::{build_walker, WalkConfig};
+use crate::utils::walk::{WalkConfig, build_walker};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -36,19 +36,28 @@ impl ManageWorkspaceTool {
                 }
             }
 
-            info!("📊 Discovered {} files total after hardcoded filters", all_files.len());
+            info!(
+                "📊 Discovered {} files total after hardcoded filters",
+                all_files.len()
+            );
 
             let detected_patterns = self.analyze_vendor_patterns(&all_files, workspace_path)?;
 
             if !detected_patterns.is_empty() {
                 self.generate_julieignore_file(workspace_path, &detected_patterns)?;
-                info!("✅ Generated .julieignore with {} patterns", detected_patterns.len());
+                info!(
+                    "✅ Generated .julieignore with {} patterns",
+                    detected_patterns.len()
+                );
             } else {
                 info!("✨ No vendor patterns detected - project looks clean!");
             }
         }
 
-        debug!("🔍 Starting file discovery from: {}", workspace_path.display());
+        debug!(
+            "🔍 Starting file discovery from: {}",
+            workspace_path.display()
+        );
 
         // Phase 2: Final indexing — gitignore + julieignore + blacklisted dirs all ON
         let mut indexable_files = Vec::new();
@@ -67,7 +76,10 @@ impl ManageWorkspaceTool {
             }
         }
 
-        debug!("📊 File discovery: {} indexable files found", indexable_files.len());
+        debug!(
+            "📊 File discovery: {} indexable files found",
+            indexable_files.len()
+        );
 
         Ok(indexable_files)
     }

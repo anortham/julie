@@ -1,4 +1,6 @@
-use crate::base::{BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
+};
 use crate::zig::ZigExtractor;
 use tree_sitter::{Node, Tree};
 
@@ -113,7 +115,10 @@ fn traverse_struct_fields(
                         s.name == type_name
                             && matches!(
                                 s.kind,
-                                SymbolKind::Struct | SymbolKind::Union | SymbolKind::Type | SymbolKind::Enum
+                                SymbolKind::Struct
+                                    | SymbolKind::Union
+                                    | SymbolKind::Type
+                                    | SymbolKind::Enum
                             )
                     });
 
@@ -170,10 +175,12 @@ fn extract_function_call_relationships(
         let mut current = node.parent();
         let caller_symbol = loop {
             match current {
-                Some(parent) if matches!(
-                    parent.kind(),
-                    "function_declaration" | "function_definition"
-                ) => {
+                Some(parent)
+                    if matches!(
+                        parent.kind(),
+                        "function_declaration" | "function_definition"
+                    ) =>
+                {
                     if let Some(caller_name_node) = base.find_child_by_type(&parent, "identifier") {
                         let caller_name = base.get_node_text(&caller_name_node);
                         break symbols

@@ -3,8 +3,8 @@
 //! Provides grep-style line-by-line searching with file paths and line numbers.
 //! Used when output format is set to "lines".
 
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use tracing::{debug, warn};
 
 use crate::handler::JulieServerHandler;
@@ -84,14 +84,9 @@ pub async fn line_mode_search(
     // Search the single target workspace
     let all_line_matches: Vec<LineMatch> = if target_workspace_id == primary_workspace_id {
         // Search primary workspace using Tantivy index + shared DB for content
-        let search_index = workspace_struct
-            .search_index
-            .as_ref()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Search index not initialized. Run 'manage_workspace index' first."
-                )
-            })?;
+        let search_index = workspace_struct.search_index.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Search index not initialized. Run 'manage_workspace index' first.")
+        })?;
 
         let search_index = search_index.clone();
         let db = db.clone();
@@ -175,8 +170,9 @@ pub async fn line_mode_search(
                 kind: None,
                 file_pattern: ref_file_pattern.clone(),
             };
-            let file_results =
-                ref_index.search_content(&query_clone, &ref_filter, fetch_limit)?.results;
+            let file_results = ref_index
+                .search_content(&query_clone, &ref_filter, fetch_limit)?
+                .results;
 
             if file_results.is_empty() || !ref_db_path.exists() {
                 return Ok(Vec::new());
@@ -245,9 +241,7 @@ pub async fn line_mode_search(
             💡 Try a broader search term or different query",
             query
         );
-        return Ok(CallToolResult::text_content(vec![Content::text(
-            message,
-        )]));
+        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
     }
 
     // Format results (single workspace search)
@@ -260,12 +254,17 @@ pub async fn line_mode_search(
                 .len();
             format!(
                 "📄 File-level search in [{}]: '{}' (found {} lines across {} files)",
-                target_workspace_id, query, filtered_matches.len(), file_count
+                target_workspace_id,
+                query,
+                filtered_matches.len(),
+                file_count
             )
         }
         _ => format!(
             "📄 Line-level search in [{}]: '{}' (found {} lines)",
-            target_workspace_id, query, filtered_matches.len()
+            target_workspace_id,
+            query,
+            filtered_matches.len()
         ),
     };
     let mut lines = vec![header];

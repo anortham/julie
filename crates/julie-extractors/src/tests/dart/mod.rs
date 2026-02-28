@@ -3,8 +3,8 @@
 // Direct Implementation of Dart extractor tests (TDD RED phase)
 
 // Submodule declarations
-pub mod extractor;
 pub mod cross_file_relationships;
+pub mod extractor;
 
 use crate::base::SymbolKind;
 use crate::dart::DartExtractor;
@@ -2242,7 +2242,10 @@ class MyApp {}
             assert!(
                 import_sym.is_some(),
                 "Should extract import with URI as name. Found symbols: {:?}",
-                symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind))
+                    .collect::<Vec<_>>()
             );
             let import_sym = import_sym.unwrap();
             assert!(
@@ -2280,7 +2283,10 @@ class MyWidget {}
             assert!(
                 import_sym.is_some(),
                 "Should extract package import. Found symbols: {:?}",
-                symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind))
+                    .collect::<Vec<_>>()
             );
         }
 
@@ -2309,7 +2315,10 @@ class MyApp {}
             assert!(
                 export_sym.is_some(),
                 "Should extract export with URI as name. Found symbols: {:?}",
-                symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind))
+                    .collect::<Vec<_>>()
             );
             let export_sym = export_sym.unwrap();
             assert!(
@@ -2425,9 +2434,7 @@ class MyHomePage extends StatefulWidget {
 
             let symbols = extractor.extract_symbols(&tree);
 
-            let import_sym = symbols
-                .iter()
-                .find(|s| s.kind == SymbolKind::Import);
+            let import_sym = symbols.iter().find(|s| s.kind == SymbolKind::Import);
             assert!(import_sym.is_some(), "Should extract import");
             let name = &import_sym.unwrap().name;
             assert!(

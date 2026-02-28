@@ -271,8 +271,7 @@ pub fn helper_function() {}
                 limit: None,
                 mode: None,
                 workspace: None,
-        
-                };
+            };
 
             let get_symbols_extra = GetSymbolsTool {
                 file_path: "src/extra.rs".to_string(),
@@ -281,8 +280,7 @@ pub fn helper_function() {}
                 limit: None,
                 mode: None,
                 workspace: None,
-        
-                };
+            };
 
             let handler_a = handler.clone();
             let handler_b = handler.clone();

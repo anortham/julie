@@ -73,12 +73,21 @@ interface ApiResponse {
         // Verify specific property names
         let prop_names: Vec<&str> = properties.iter().map(|s| s.name.as_str()).collect();
         assert!(prop_names.contains(&"data"), "Should have 'data' property");
-        assert!(prop_names.contains(&"status"), "Should have 'status' property");
+        assert!(
+            prop_names.contains(&"status"),
+            "Should have 'status' property"
+        );
 
         // Verify specific method names
         let method_names: Vec<&str> = methods.iter().map(|s| s.name.as_str()).collect();
-        assert!(method_names.contains(&"getData"), "Should have 'getData' method");
-        assert!(method_names.contains(&"setStatus"), "Should have 'setStatus' method");
+        assert!(
+            method_names.contains(&"getData"),
+            "Should have 'getData' method"
+        );
+        assert!(
+            method_names.contains(&"setStatus"),
+            "Should have 'setStatus' method"
+        );
 
         // Verify members have signatures for searchability
         for method in &methods {
@@ -194,7 +203,10 @@ interface User {
         );
 
         // Verify we got TypeInfo for the typed symbols
-        println!("Extracted {} types from TypeScript code", results.types.len());
+        println!(
+            "Extracted {} types from TypeScript code",
+            results.types.len()
+        );
         for (symbol_id, type_info) in &results.types {
             println!(
                 "  {} -> {} (inferred: {})",

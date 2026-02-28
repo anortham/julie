@@ -5,7 +5,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::search::index::SymbolSearchResult;
-    use crate::tools::get_context::pipeline::{select_pivots, Pivot};
+    use crate::tools::get_context::pipeline::{Pivot, select_pivots};
 
     /// Helper to create a test SymbolSearchResult with minimal boilerplate.
     fn make_result(id: &str, name: &str, score: f32) -> SymbolSearchResult {

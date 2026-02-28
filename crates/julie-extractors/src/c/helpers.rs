@@ -119,7 +119,10 @@ pub(super) fn is_system_header(signature: &str) -> bool {
 }
 
 /// Extract function name from a function definition or declaration
-pub(super) fn extract_function_name(base: &BaseExtractor, node: tree_sitter::Node) -> Option<String> {
+pub(super) fn extract_function_name(
+    base: &BaseExtractor,
+    node: tree_sitter::Node,
+) -> Option<String> {
     // Look for function declarator
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -154,14 +157,16 @@ pub(super) fn extract_function_name_from_declaration(
 }
 
 /// Extract variable name from a declarator node
-pub(super) fn extract_variable_name(base: &BaseExtractor, declarator: tree_sitter::Node) -> Option<String> {
+pub(super) fn extract_variable_name(
+    base: &BaseExtractor,
+    declarator: tree_sitter::Node,
+) -> Option<String> {
     if declarator.kind() == "identifier" {
         return Some(base.get_node_text(&declarator));
     }
 
     // Find deepest identifier in declarator tree
-    find_deepest_identifier(declarator)
-        .map(|node| base.get_node_text(&node))
+    find_deepest_identifier(declarator).map(|node| base.get_node_text(&node))
 }
 
 /// Extract struct name from a struct specifier

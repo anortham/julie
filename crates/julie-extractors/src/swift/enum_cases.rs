@@ -54,12 +54,15 @@ impl SwiftExtractor {
     }
 
     /// Implementation of extractEnumCase method
-    pub(super) fn extract_enum_case(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_enum_case(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let name_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "simple_identifier");
-        let name = name_node
-            .map(|n| self.base.get_node_text(&n))?;
+        let name = name_node.map(|n| self.base.get_node_text(&n))?;
 
         let mut signature = name.clone();
 

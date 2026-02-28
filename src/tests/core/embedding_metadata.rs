@@ -59,10 +59,7 @@ mod tests {
             SymbolKind::Union,
         ];
         for kind in &embeddable {
-            assert!(
-                is_embeddable_kind(kind),
-                "{kind:?} should be embeddable"
-            );
+            assert!(is_embeddable_kind(kind), "{kind:?} should be embeddable");
         }
     }
 
@@ -135,7 +132,10 @@ mod tests {
             None,
         );
         let text = format_symbol_metadata(&sym);
-        assert_eq!(text, "struct DatabaseConnection pub struct DatabaseConnection");
+        assert_eq!(
+            text,
+            "struct DatabaseConnection pub struct DatabaseConnection"
+        );
     }
 
     #[test]
@@ -180,13 +180,7 @@ mod tests {
     #[test]
     fn test_format_truncates_long_text() {
         let long_sig = "a".repeat(500);
-        let sym = make_symbol(
-            "id7",
-            "x",
-            SymbolKind::Function,
-            Some(&long_sig),
-            None,
-        );
+        let sym = make_symbol("id7", "x", SymbolKind::Function, Some(&long_sig), None);
         let text = format_symbol_metadata(&sym);
         assert!(
             text.len() <= 400,
@@ -234,8 +228,14 @@ mod tests {
             None,
         );
         let text = format_symbol_metadata(&sym);
-        assert!(text.contains("fn complex("), "Should use first line: {text}");
-        assert!(!text.contains("arg1"), "Should not include subsequent lines");
+        assert!(
+            text.contains("fn complex("),
+            "Should use first line: {text}"
+        );
+        assert!(
+            !text.contains("arg1"),
+            "Should not include subsequent lines"
+        );
     }
 
     // =========================================================================
@@ -274,7 +274,10 @@ mod tests {
         ];
 
         let batch = prepare_batch_for_embedding(&symbols);
-        assert!(batch.is_empty(), "All non-embeddable should produce empty batch");
+        assert!(
+            batch.is_empty(),
+            "All non-embeddable should produce empty batch"
+        );
     }
 
     #[test]

@@ -131,7 +131,6 @@ fn test_individual_table_creation() {
         "Relationships table creation failed: {:?}",
         relationships_result
     );
-
 }
 
 #[tokio::test]
@@ -594,9 +593,15 @@ async fn test_get_outgoing_relationships_for_symbols_batch() {
     db.store_relationships(&relationships).unwrap();
 
     let caller_ids = vec!["caller_a".to_string(), "caller_b".to_string()];
-    let outgoing = db.get_outgoing_relationships_for_symbols(&caller_ids).unwrap();
+    let outgoing = db
+        .get_outgoing_relationships_for_symbols(&caller_ids)
+        .unwrap();
 
-    assert_eq!(outgoing.len(), 2, "batch outgoing lookup should return both relationships");
+    assert_eq!(
+        outgoing.len(),
+        2,
+        "batch outgoing lookup should return both relationships"
+    );
     assert!(
         outgoing.iter().any(|r| r.id == "rel_a_x"),
         "expected relationship from caller_a"
@@ -1256,7 +1261,10 @@ fn test_wal_checkpoint_restart_mode() {
     let (busy, log, checkpointed) = result.unwrap();
 
     // Verify checkpoint results
-    assert_eq!(busy, 0, "RESTART mode should successfully checkpoint all frames");
+    assert_eq!(
+        busy, 0,
+        "RESTART mode should successfully checkpoint all frames"
+    );
     assert!(log >= 0, "Log should contain frames");
     assert!(checkpointed >= 0, "Should checkpoint frames");
 

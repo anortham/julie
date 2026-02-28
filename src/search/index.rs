@@ -8,8 +8,8 @@
 //! searching "user" finds both `getUserData` and `get_user_data`.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tantivy::collector::TopDocs;
 use tantivy::schema::{OwnedValue, TantivyDocument};
@@ -22,7 +22,7 @@ use crate::search::language_config::LanguageConfigs;
 use crate::search::query::{
     build_content_query_weighted, build_symbol_query, build_symbol_query_weighted,
 };
-use crate::search::schema::{create_schema, SchemaFields};
+use crate::search::schema::{SchemaFields, create_schema};
 use crate::search::scoring::{
     apply_important_patterns_boost, apply_nl_path_prior, is_nl_like_query,
 };

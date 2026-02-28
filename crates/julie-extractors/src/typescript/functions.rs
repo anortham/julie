@@ -10,10 +10,7 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract a function declaration or arrow function
-pub(super) fn extract_function(
-    extractor: &mut TypeScriptExtractor,
-    node: Node,
-) -> Option<Symbol> {
+pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let mut name = name_node.map(|n| extractor.base().get_node_text(&n));
 
@@ -113,10 +110,7 @@ pub(super) fn extract_function(
 }
 
 /// Extract a method definition (inside a class)
-pub(super) fn extract_method(
-    extractor: &mut TypeScriptExtractor,
-    node: Node,
-) -> Option<Symbol> {
+pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 
@@ -137,8 +131,8 @@ pub(super) fn extract_method(
     let signature = format!("{}{}", decorator_prefix, base_sig);
 
     // Use TypeScript-specific visibility extraction (accessibility_modifier nodes)
-    let visibility = helpers::extract_ts_visibility(node)
-        .or_else(|| extractor.base().extract_visibility(&node));
+    let visibility =
+        helpers::extract_ts_visibility(node).or_else(|| extractor.base().extract_visibility(&node));
 
     // Check for modifiers
     let is_async = helpers::has_modifier(node, "async");
@@ -203,10 +197,7 @@ pub(super) fn extract_method(
 }
 
 /// Extract a variable declarator
-pub(super) fn extract_variable(
-    extractor: &mut TypeScriptExtractor,
-    node: Node,
-) -> Option<Symbol> {
+pub(super) fn extract_variable(extractor: &mut TypeScriptExtractor, node: Node) -> Option<Symbol> {
     let name_node = node.child_by_field_name("name");
     let name = name_node.map(|n| extractor.base().get_node_text(&n))?;
 

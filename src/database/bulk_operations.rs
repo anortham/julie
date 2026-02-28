@@ -141,7 +141,11 @@ impl SymbolDatabase {
                 .prepare("PRAGMA wal_checkpoint(TRUNCATE)")
                 .and_then(|mut stmt| {
                     stmt.query_row([], |row| {
-                        Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                        Ok((
+                            row.get::<_, i32>(0)?,
+                            row.get::<_, i32>(1)?,
+                            row.get::<_, i32>(2)?,
+                        ))
                     })
                 }) {
                 Ok((busy, log, checkpointed)) => debug!(
@@ -235,10 +239,7 @@ impl SymbolDatabase {
         }
 
         let start_time = std::time::Instant::now();
-        info!(
-            "🚀 Starting bulk insert of {} types",
-            types.len()
-        );
+        info!("🚀 Starting bulk insert of {} types", types.len());
 
         let original_sync: i64 = self
             .conn
@@ -289,13 +290,19 @@ impl SymbolDatabase {
             for chunk in types.chunks(BATCH_SIZE) {
                 for type_info in chunk {
                     // Serialize JSON fields
-                    let generic_params_json = type_info.generic_params.as_ref()
+                    let generic_params_json = type_info
+                        .generic_params
+                        .as_ref()
                         .map(|v| serde_json::to_string(v).ok())
                         .flatten();
-                    let constraints_json = type_info.constraints.as_ref()
+                    let constraints_json = type_info
+                        .constraints
+                        .as_ref()
                         .map(|v| serde_json::to_string(v).ok())
                         .flatten();
-                    let metadata_json = type_info.metadata.as_ref()
+                    let metadata_json = type_info
+                        .metadata
+                        .as_ref()
                         .map(|m| serde_json::to_string(m).ok())
                         .flatten();
 
@@ -331,10 +338,7 @@ impl SymbolDatabase {
 
         if indexes_dropped {
             if let Err(e) = self.create_type_indexes() {
-                warn!(
-                    "Failed to rebuild type indexes after bulk insert: {}",
-                    e
-                );
+                warn!("Failed to rebuild type indexes after bulk insert: {}", e);
                 if result.is_ok() {
                     result = Err(e);
                 }
@@ -360,7 +364,11 @@ impl SymbolDatabase {
                 .prepare("PRAGMA wal_checkpoint(TRUNCATE)")
                 .and_then(|mut stmt| {
                     stmt.query_row([], |row| {
-                        Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?, row.get::<_, i32>(2)?))
+                        Ok((
+                            row.get::<_, i32>(0)?,
+                            row.get::<_, i32>(1)?,
+                            row.get::<_, i32>(2)?,
+                        ))
                     })
                 }) {
                 Ok((busy, log, checkpointed)) => debug!(
@@ -904,13 +912,19 @@ impl SymbolDatabase {
                 )?;
 
                 for type_info in new_types {
-                    let generic_params_json = type_info.generic_params.as_ref()
+                    let generic_params_json = type_info
+                        .generic_params
+                        .as_ref()
                         .map(serde_json::to_string)
                         .transpose()?;
-                    let constraints_json = type_info.constraints.as_ref()
+                    let constraints_json = type_info
+                        .constraints
+                        .as_ref()
                         .map(serde_json::to_string)
                         .transpose()?;
-                    let metadata_json = type_info.metadata.as_ref()
+                    let metadata_json = type_info
+                        .metadata
+                        .as_ref()
                         .map(serde_json::to_string)
                         .transpose()?;
 

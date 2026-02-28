@@ -1,3 +1,5 @@
+#![cfg(feature = "embeddings-ort")]
+
 //! Semantic Similarity Dogfood Test — Phase 3 Exit Criteria
 //!
 //! Proves that `deep_dive` at "full" depth returns meaningful semantically
@@ -47,11 +49,10 @@ fn setup_similarity_fixture() -> SymbolDatabase {
     println!("Fixture DB opened: {} symbols", symbol_count);
 
     // 3. Run the embedding pipeline
-    let cache_dir = std::path::PathBuf::from(
-        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()),
-    )
-    .join(".cache")
-    .join("fastembed");
+    let cache_dir =
+        std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+            .join(".cache")
+            .join("fastembed");
 
     let provider =
         OrtEmbeddingProvider::try_new(Some(cache_dir)).expect("Embedding provider should init");
@@ -104,7 +105,10 @@ fn test_deep_dive_full_shows_similar_on_real_codebase() {
     let ctx = build_symbol_context(&db, target, "full", 10, 10).unwrap();
 
     // === Check 1: similar field is populated ===
-    println!("\n=== Semantically Similar Symbols ({}) ===", ctx.similar.len());
+    println!(
+        "\n=== Semantically Similar Symbols ({}) ===",
+        ctx.similar.len()
+    );
     for (i, entry) in ctx.similar.iter().enumerate() {
         println!(
             "  [{}] {} (score={:.4}) {:?} at {}:{}",

@@ -2,7 +2,6 @@
 //!
 //! All extractor tests organized by language.
 
-pub mod helpers;
 pub mod base;
 pub mod bash;
 pub mod c;
@@ -12,6 +11,7 @@ pub mod css;
 pub mod dart;
 pub mod gdscript;
 pub mod go;
+pub mod helpers;
 pub mod html;
 pub mod java;
 pub mod javascript;

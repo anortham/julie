@@ -1,6 +1,6 @@
 //! Tests for the code-aware tokenizer.
 
-use crate::search::tokenizer::{split_camel_case, split_snake_case, CodeTokenizer};
+use crate::search::tokenizer::{CodeTokenizer, split_camel_case, split_snake_case};
 use tantivy::tokenizer::{TextAnalyzer, TokenStream};
 
 #[test]

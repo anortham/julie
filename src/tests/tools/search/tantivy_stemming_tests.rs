@@ -79,9 +79,21 @@ fn test_stemming_short_tokens_not_stemmed() {
     let tokens_ok = get_tokens("ok");
 
     // Each should only produce the lowercased original, no stem variant
-    assert_eq!(tokens_fn, vec!["fn"], "Short token 'fn' should not be stemmed");
-    assert_eq!(tokens_if, vec!["if"], "Short token 'if' should not be stemmed");
-    assert_eq!(tokens_ok, vec!["ok"], "Short token 'ok' should not be stemmed");
+    assert_eq!(
+        tokens_fn,
+        vec!["fn"],
+        "Short token 'fn' should not be stemmed"
+    );
+    assert_eq!(
+        tokens_if,
+        vec!["if"],
+        "Short token 'if' should not be stemmed"
+    );
+    assert_eq!(
+        tokens_ok,
+        vec!["ok"],
+        "Short token 'ok' should not be stemmed"
+    );
 }
 
 #[test]

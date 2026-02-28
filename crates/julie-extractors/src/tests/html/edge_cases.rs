@@ -141,12 +141,21 @@ mod edge_cases_tests {
         let symbols = extract_symbols(html);
 
         // Generic containers WITH id are meaningful (referenceable)
-        assert!(symbols.iter().any(|s| s.name == "div"), "div#app should be extracted");
-        assert!(symbols.iter().any(|s| s.name == "p"), "p#intro should be extracted");
+        assert!(
+            symbols.iter().any(|s| s.name == "div"),
+            "div#app should be extracted"
+        );
+        assert!(
+            symbols.iter().any(|s| s.name == "p"),
+            "p#intro should be extracted"
+        );
 
         // Generic containers WITHOUT id should be filtered
         let div_count = symbols.iter().filter(|s| s.name == "div").count();
-        assert_eq!(div_count, 1, "only div with id should be extracted, not bare divs");
+        assert_eq!(
+            div_count, 1,
+            "only div with id should be extracted, not bare divs"
+        );
         assert!(
             !symbols.iter().any(|s| s.name == "span"),
             "bare <span> should be filtered"
@@ -173,7 +182,9 @@ mod edge_cases_tests {
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
 
         // Generic containers should all be filtered
-        let generic_tags = ["div", "span", "p", "ul", "ol", "li", "table", "tr", "td", "dl", "dt", "dd"];
+        let generic_tags = [
+            "div", "span", "p", "ul", "ol", "li", "table", "tr", "td", "dl", "dt", "dd",
+        ];
         for tag in &generic_tags {
             assert!(
                 !names.contains(tag),

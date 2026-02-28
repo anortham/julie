@@ -3,11 +3,11 @@
 use anyhow::Result;
 use tracing::{debug, warn};
 
+use super::query::matches_glob_pattern;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::search::scoring::{apply_centrality_boost, promote_exact_name_matches};
 use crate::search::{SearchFilter, SearchIndex};
-use super::query::matches_glob_pattern;
 
 /// Text search with workspace filtering and search target selection.
 ///
@@ -105,14 +105,19 @@ pub async fn text_search_impl(
                     let relaxed = hybrid_results.relaxed;
 
                     // Apply centrality boost + exact-name promotion + truncate
-                    let symbol_ids: Vec<&str> = hybrid_results.results.iter().map(|r| r.id.as_str()).collect();
+                    let symbol_ids: Vec<&str> = hybrid_results
+                        .results
+                        .iter()
+                        .map(|r| r.id.as_str())
+                        .collect();
                     if let Ok(ref_scores) = ref_db.get_reference_scores(&symbol_ids) {
                         apply_centrality_boost(&mut hybrid_results.results, &ref_scores);
                     }
                     promote_exact_name_matches(&mut hybrid_results.results, &query_clone);
                     hybrid_results.results.truncate(limit_usize);
 
-                    let mut symbols: Vec<Symbol> = hybrid_results.results
+                    let mut symbols: Vec<Symbol> = hybrid_results
+                        .results
                         .into_iter()
                         .map(|result| tantivy_symbol_to_symbol(result))
                         .collect();
@@ -131,15 +136,17 @@ pub async fn text_search_impl(
                     let relaxed = search.relaxed;
 
                     // Apply file_pattern filter BEFORE symbol conversion + enrichment
-                    let mut filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
-                        search.results
-                            .into_iter()
-                            .filter(|r| matches_glob_pattern(&r.file_path, pattern))
-                            .take(limit_usize)
-                            .collect()
-                    } else {
-                        search.results
-                    };
+                    let mut filtered_results: Vec<_> =
+                        if let Some(ref pattern) = filter.file_pattern {
+                            search
+                                .results
+                                .into_iter()
+                                .filter(|r| matches_glob_pattern(&r.file_path, pattern))
+                                .take(limit_usize)
+                                .collect()
+                        } else {
+                            search.results
+                        };
 
                     // Open reference workspace DB once for both centrality boost and enrichment
                     let ref_db_opt = if ref_db_path.exists() {
@@ -150,7 +157,8 @@ pub async fn text_search_impl(
 
                     // Apply centrality boost for reference workspace
                     if let Some(ref ref_db) = ref_db_opt {
-                        let symbol_ids: Vec<&str> = filtered_results.iter().map(|r| r.id.as_str()).collect();
+                        let symbol_ids: Vec<&str> =
+                            filtered_results.iter().map(|r| r.id.as_str()).collect();
                         if let Ok(ref_scores) = ref_db.get_reference_scores(&symbol_ids) {
                             apply_centrality_boost(&mut filtered_results, &ref_scores);
                         }
@@ -181,8 +189,7 @@ pub async fn text_search_impl(
                 } else {
                     limit_usize.saturating_mul(5).max(50)
                 };
-                let content_search =
-                    index.search_content(&query_clone, &filter, fetch_limit)?;
+                let content_search = index.search_content(&query_clone, &filter, fetch_limit)?;
                 let content_relaxed = content_search.relaxed;
                 let search_results = content_search.results;
 
@@ -257,12 +264,9 @@ pub async fn text_search_impl(
     }
 
     // Primary workspace: use shared search index
-    let search_index = workspace
-        .search_index
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!(
-            "Search index not initialized. Run 'manage_workspace index' first."
-        ))?;
+    let search_index = workspace.search_index.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("Search index not initialized. Run 'manage_workspace index' first.")
+    })?;
 
     // Clone the Arc so we can move it into spawn_blocking
     let search_index_clone = search_index.clone();
@@ -287,7 +291,8 @@ pub async fn text_search_impl(
             if use_hybrid {
                 debug!("🔍 NL query detected, using hybrid search (keyword + semantic)");
 
-                let db_guard = db_clone.as_ref()
+                let db_guard = db_clone
+                    .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?;
                 let db_lock = match db_guard.lock() {
                     Ok(guard) => guard,
@@ -309,14 +314,19 @@ pub async fn text_search_impl(
 
                 // Apply same post-processing as keyword path:
                 // centrality boost → exact-name promotion → truncate
-                let symbol_ids: Vec<&str> = hybrid_results.results.iter().map(|r| r.id.as_str()).collect();
+                let symbol_ids: Vec<&str> = hybrid_results
+                    .results
+                    .iter()
+                    .map(|r| r.id.as_str())
+                    .collect();
                 if let Ok(ref_scores) = db_lock.get_reference_scores(&symbol_ids) {
                     apply_centrality_boost(&mut hybrid_results.results, &ref_scores);
                 }
                 promote_exact_name_matches(&mut hybrid_results.results, &query_clone);
                 hybrid_results.results.truncate(limit_usize);
 
-                let mut symbols: Vec<Symbol> = hybrid_results.results
+                let mut symbols: Vec<Symbol> = hybrid_results
+                    .results
                     .into_iter()
                     .map(|result| tantivy_symbol_to_symbol(result))
                     .collect();
@@ -339,7 +349,8 @@ pub async fn text_search_impl(
 
                 // Apply file_pattern filter BEFORE symbol conversion + enrichment
                 let mut filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
-                    search.results
+                    search
+                        .results
                         .into_iter()
                         .filter(|r| matches_glob_pattern(&r.file_path, pattern))
                         .take(limit_usize)
@@ -357,7 +368,8 @@ pub async fn text_search_impl(
                             poisoned.into_inner()
                         }
                     };
-                    let symbol_ids: Vec<&str> = filtered_results.iter().map(|r| r.id.as_str()).collect();
+                    let symbol_ids: Vec<&str> =
+                        filtered_results.iter().map(|r| r.id.as_str()).collect();
                     if let Ok(ref_scores) = db_lock.get_reference_scores(&symbol_ids) {
                         apply_centrality_boost(&mut filtered_results, &ref_scores);
                     }
@@ -380,7 +392,9 @@ pub async fn text_search_impl(
                     let db_lock = match db_arc.lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => {
-                            warn!("Database mutex poisoned during code_context enrichment, recovering");
+                            warn!(
+                                "Database mutex poisoned during code_context enrichment, recovering"
+                            );
                             poisoned.into_inner()
                         }
                     };
@@ -456,17 +470,16 @@ pub async fn text_search_impl(
                         }
                         Err(e) => {
                             // DB error — include as-is (graceful degradation)
-                            debug!(
-                                "Could not verify content for {}: {}",
-                                result.file_path, e
-                            );
+                            debug!("Could not verify content for {}: {}", result.file_path, e);
                             verified_symbols.push(content_result_to_symbol(result));
                         }
                     }
                 }
             } else {
                 // No database available — return unverified results (graceful degradation)
-                debug!("No database available for content verification, returning unverified results");
+                debug!(
+                    "No database available for content verification, returning unverified results"
+                );
                 for result in search_results.into_iter().take(limit_usize) {
                     verified_symbols.push(content_result_to_symbol(result));
                 }

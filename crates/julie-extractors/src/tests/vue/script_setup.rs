@@ -227,7 +227,10 @@ const count = ref(0)
     let computed_import = symbols
         .iter()
         .find(|s| s.name == "computed" && s.kind == SymbolKind::Import);
-    assert!(computed_import.is_some(), "Should extract 'computed' import");
+    assert!(
+        computed_import.is_some(),
+        "Should extract 'computed' import"
+    );
 
     let watch_import = symbols
         .iter()

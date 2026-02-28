@@ -69,7 +69,11 @@ impl JavaScriptExtractor {
     }
 
     /// Walk the tree looking for function calls that reference imported symbols
-    fn walk_for_pending_calls(&mut self, node: tree_sitter::Node, symbol_map: &std::collections::HashMap<String, &Symbol>) {
+    fn walk_for_pending_calls(
+        &mut self,
+        node: tree_sitter::Node,
+        symbol_map: &std::collections::HashMap<String, &Symbol>,
+    ) {
         // Look for call expressions
         if node.kind() == "call_expression" {
             if let Some(function_node) = node.child_by_field_name("function") {
@@ -87,10 +91,14 @@ impl JavaScriptExtractor {
 
                 // Check if this is a call to an import or unknown function
                 match symbol_map.get(function_name.as_str()) {
-                    Some(called_symbol) if called_symbol.kind == crate::base::SymbolKind::Import => {
+                    Some(called_symbol)
+                        if called_symbol.kind == crate::base::SymbolKind::Import =>
+                    {
                         // This is a call to an imported function - create pending relationship
                         // Find the containing function
-                        if let Some(caller_symbol) = self.find_containing_function_in_symbols(node, symbol_map) {
+                        if let Some(caller_symbol) =
+                            self.find_containing_function_in_symbols(node, symbol_map)
+                        {
                             let line_number = node.start_position().row as u32 + 1;
                             self.add_pending_relationship(PendingRelationship {
                                 from_symbol_id: caller_symbol.id.clone(),
@@ -105,7 +113,9 @@ impl JavaScriptExtractor {
                     None => {
                         // Unknown function - could be from another file
                         // Check if it's being called from within a function
-                        if let Some(caller_symbol) = self.find_containing_function_in_symbols(node, symbol_map) {
+                        if let Some(caller_symbol) =
+                            self.find_containing_function_in_symbols(node, symbol_map)
+                        {
                             let line_number = node.start_position().row as u32 + 1;
                             self.add_pending_relationship(PendingRelationship {
                                 from_symbol_id: caller_symbol.id.clone(),
@@ -147,7 +157,10 @@ impl JavaScriptExtractor {
                 if let Some(name_node) = current_node.child_by_field_name("name") {
                     let func_name = self.base.get_node_text(&name_node);
                     if let Some(symbol) = symbol_map.get(&func_name) {
-                        if matches!(symbol.kind, crate::base::SymbolKind::Function | crate::base::SymbolKind::Method) {
+                        if matches!(
+                            symbol.kind,
+                            crate::base::SymbolKind::Function | crate::base::SymbolKind::Method
+                        ) {
                             return Some(symbol);
                         }
                     }
@@ -176,7 +189,11 @@ impl JavaScriptExtractor {
         type_map
     }
 
-    fn extract_jsdoc_type(&self, doc_comment: &str, kind: &crate::base::SymbolKind) -> Option<String> {
+    fn extract_jsdoc_type(
+        &self,
+        doc_comment: &str,
+        kind: &crate::base::SymbolKind,
+    ) -> Option<String> {
         use crate::base::SymbolKind;
 
         match kind {

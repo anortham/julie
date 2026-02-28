@@ -69,7 +69,10 @@ function main_function() {
         let results_b = extract_full("lib/file_b.php", file_b_code);
 
         // Verify we extracted the symbols
-        let helper_fn = results_a.symbols.iter().find(|s| s.name == "helper_function");
+        let helper_fn = results_a
+            .symbols
+            .iter()
+            .find(|s| s.name == "helper_function");
         assert!(
             helper_fn.is_some(),
             "Should extract helper_function from file_a"
@@ -137,7 +140,10 @@ function main_function() {
             helper_pending.is_some(),
             "PendingRelationship should have callee_name='helper_function'.\n\
              Found: {:?}",
-            pending_calls.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            pending_calls
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
 
         // Verify the pending relationship has the correct caller

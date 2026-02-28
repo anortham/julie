@@ -150,6 +150,9 @@ plot <- ggplot2::ggplot(data, aes(x, y))
             .iter()
             .filter(|s| s.kind == SymbolKind::Variable)
             .collect();
-        assert!(variables.len() >= 2, "Should extract result and plot variables");
+        assert!(
+            variables.len() >= 2,
+            "Should extract result and plot variables"
+        );
     }
 }

@@ -1,4 +1,4 @@
-use super::{extract_symbols, SymbolKind};
+use super::{SymbolKind, extract_symbols};
 
 #[cfg(test)]
 mod tests {
@@ -114,10 +114,7 @@ T max_val(const T& a, const T& b) {
         let code = r#"typedef int ErrorCode;"#;
         let symbols = extract_symbols(code);
         let typedef = symbols.iter().find(|s| s.name == "ErrorCode");
-        assert!(
-            typedef.is_some(),
-            "Typedef 'ErrorCode' should be extracted"
-        );
+        assert!(typedef.is_some(), "Typedef 'ErrorCode' should be extracted");
         let typedef = typedef.unwrap();
         assert_eq!(typedef.kind, SymbolKind::Type);
         let sig = typedef.signature.as_ref().unwrap();
@@ -152,10 +149,7 @@ T max_val(const T& a, const T& b) {
         let code = r#"typedef int* IntPtr;"#;
         let symbols = extract_symbols(code);
         let typedef = symbols.iter().find(|s| s.name == "IntPtr");
-        assert!(
-            typedef.is_some(),
-            "Typedef 'IntPtr' should be extracted"
-        );
+        assert!(typedef.is_some(), "Typedef 'IntPtr' should be extracted");
         assert_eq!(typedef.unwrap().kind, SymbolKind::Type);
     }
 

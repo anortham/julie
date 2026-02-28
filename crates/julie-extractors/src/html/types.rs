@@ -90,9 +90,7 @@ impl HTMLTypes {
     }
 
     /// Infer type information from symbol metadata
-    pub(super) fn infer_types(
-        symbols: &[crate::base::Symbol],
-    ) -> HashMap<String, String> {
+    pub(super) fn infer_types(symbols: &[crate::base::Symbol]) -> HashMap<String, String> {
         let mut types = HashMap::new();
 
         for symbol in symbols {

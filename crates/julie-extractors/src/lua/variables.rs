@@ -236,18 +236,17 @@ pub(super) fn extract_assignment_statement(
             let signature = base.get_node_text(&node);
 
             // Resolve dot notation (e.g., M.PI = 3.14159)
-            let (actual_name, parent_symbol_id, is_field) =
-                if var_node.kind() == "dot_index_expression" {
-                    if let Some((prop_name, prop_parent_id)) =
-                        resolve_dot_property(&name, symbols)
-                    {
-                        (prop_name, prop_parent_id, true)
-                    } else {
-                        (name, None, false)
-                    }
+            let (actual_name, parent_symbol_id, is_field) = if var_node.kind()
+                == "dot_index_expression"
+            {
+                if let Some((prop_name, prop_parent_id)) = resolve_dot_property(&name, symbols) {
+                    (prop_name, prop_parent_id, true)
                 } else {
                     (name, None, false)
-                };
+                }
+            } else {
+                (name, None, false)
+            };
 
             // Determine kind and type from the right-hand side
             let (kind, data_type) = if right.kind() == "expression_list" {

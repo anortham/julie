@@ -67,25 +67,13 @@ impl KotlinExtractor {
 
         match node.kind() {
             "class_declaration" | "enum_declaration" => {
-                symbol = types::extract_class(
-                    &mut self.base,
-                    &node,
-                    parent_id.as_deref(),
-                );
+                symbol = types::extract_class(&mut self.base, &node, parent_id.as_deref());
             }
             "interface_declaration" => {
-                symbol = types::extract_interface(
-                    &mut self.base,
-                    &node,
-                    parent_id.as_deref(),
-                );
+                symbol = types::extract_interface(&mut self.base, &node, parent_id.as_deref());
             }
             "object_declaration" => {
-                symbol = types::extract_object(
-                    &mut self.base,
-                    &node,
-                    parent_id.as_deref(),
-                );
+                symbol = types::extract_object(&mut self.base, &node, parent_id.as_deref());
             }
             "companion_object" => {
                 symbol = Some(types::extract_companion_object(
@@ -95,18 +83,11 @@ impl KotlinExtractor {
                 ));
             }
             "function_declaration" => {
-                symbol = declarations::extract_function(
-                    &mut self.base,
-                    &node,
-                    parent_id.as_deref(),
-                );
+                symbol =
+                    declarations::extract_function(&mut self.base, &node, parent_id.as_deref());
             }
             "property_declaration" | "property_signature" => {
-                symbol = properties::extract_property(
-                    &mut self.base,
-                    &node,
-                    parent_id.as_deref(),
-                );
+                symbol = properties::extract_property(&mut self.base, &node, parent_id.as_deref());
             }
             "enum_class_body" => {
                 types::extract_enum_members(&mut self.base, &node, symbols, parent_id.as_deref());
@@ -134,25 +115,14 @@ impl KotlinExtractor {
                 );
             }
             "package_header" => {
-                symbol = declarations::extract_package(
-                    &mut self.base,
-                    &node,
-                    parent_id.as_deref(),
-                );
+                symbol = declarations::extract_package(&mut self.base, &node, parent_id.as_deref());
             }
             "import" => {
-                symbol = declarations::extract_import(
-                    &mut self.base,
-                    &node,
-                    parent_id.as_deref(),
-                );
+                symbol = declarations::extract_import(&mut self.base, &node, parent_id.as_deref());
             }
             "type_alias" => {
-                symbol = declarations::extract_type_alias(
-                    &mut self.base,
-                    &node,
-                    parent_id.as_deref(),
-                );
+                symbol =
+                    declarations::extract_type_alias(&mut self.base, &node, parent_id.as_deref());
             }
             _ => {}
         }

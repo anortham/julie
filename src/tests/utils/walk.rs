@@ -8,7 +8,7 @@
 // - Dotfile inclusion (e.g., .editorconfig)
 // - Non-git workspaces
 
-use crate::utils::walk::{build_walker, WalkConfig};
+use crate::utils::walk::{WalkConfig, build_walker};
 use std::fs;
 use tempfile::TempDir;
 

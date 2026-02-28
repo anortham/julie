@@ -92,7 +92,9 @@ impl super::GoExtractor {
                 "type_parameter_list" => type_parameters = Some(child),
                 "struct_type" => type_def = Some(("struct", child)),
                 "interface_type" => type_def = Some(("interface", child)),
-                "=" => { has_equals = true; } // Type alias syntax detected
+                "=" => {
+                    has_equals = true;
+                } // Type alias syntax detected
                 // Handle basic type definitions (type UserID int64) and aliases (type UserID = int64)
                 "primitive_type" if type_identifier.is_some() && type_def.is_none() => {
                     type_def = Some(("definition", child));

@@ -1,16 +1,15 @@
 use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::workspace::registry::WorkspaceType;
 use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{debug, error, info, warn};
-
 
 fn indexing_lock_cache() -> &'static StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>> {
     static LOCKS: OnceLock<StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>> = OnceLock::new();
@@ -221,9 +220,7 @@ impl ManageWorkspaceTool {
                         "Workspace already indexed: {} symbols\nUse force: true to re-index",
                         symbol_count
                     );
-                    return Ok(CallToolResult::text_content(vec![Content::text(
-                        message,
-                    )]));
+                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                 }
             }
         }
@@ -269,11 +266,9 @@ impl ManageWorkspaceTool {
                                 Some(id) => id,
                                 None => {
                                     warn!("Failed to get primary workspace ID after registration");
-                                    return Ok(CallToolResult::text_content(vec![
-                                        Content::text(
-                                            "⚠️ Indexing completed but could not update workspace statistics",
-                                        ),
-                                    ]));
+                                    return Ok(CallToolResult::text_content(vec![Content::text(
+                                        "⚠️ Indexing completed but could not update workspace statistics",
+                                    )]));
                                 }
                             },
                         }
@@ -331,17 +326,19 @@ impl ManageWorkspaceTool {
                     files_total, symbols_total, relationships_total
                 );
                 if let Some(ws_id) = indexed_workspace_id {
-                    let embed_count = crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
-                        handler,
-                        ws_id,
-                    ).await;
+                    let embed_count =
+                        crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+                            handler, ws_id,
+                        )
+                        .await;
                     if embed_count > 0 {
-                        message.push_str(&format!("\nEmbedding {} symbols in background...", embed_count));
+                        message.push_str(&format!(
+                            "\nEmbedding {} symbols in background...",
+                            embed_count
+                        ));
                     }
                 }
-                Ok(CallToolResult::text_content(vec![Content::text(
-                    message,
-                )]))
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
             }
             Err(e) => {
                 error!("Failed to index workspace: {}", e);
@@ -349,9 +346,7 @@ impl ManageWorkspaceTool {
                     "Workspace indexing failed: {}\nCheck that the path exists and contains source files",
                     e
                 );
-                Ok(CallToolResult::text_content(vec![Content::text(
-                    message,
-                )]))
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
             }
         }
     }

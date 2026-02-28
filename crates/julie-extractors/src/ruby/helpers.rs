@@ -144,7 +144,10 @@ pub(super) fn extract_singleton_method_target(
 }
 
 /// Extract alias name from an alias node
-pub(super) fn extract_alias_name(node: Node, base_get_text: impl Fn(&Node) -> String) -> Option<String> {
+pub(super) fn extract_alias_name(
+    node: Node,
+    base_get_text: impl Fn(&Node) -> String,
+) -> Option<String> {
     // alias new_name old_name - extract the new_name
     let mut cursor = node.walk();
     let children: Vec<_> = node.children(&mut cursor).collect();

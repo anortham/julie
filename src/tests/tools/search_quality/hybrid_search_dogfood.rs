@@ -1,3 +1,5 @@
+#![cfg(feature = "embeddings-ort")]
+
 //! Hybrid Search Dogfood Test — Phase 2 Exit Criteria
 //!
 //! Proves that hybrid search (Tantivy keyword + KNN semantic, merged via RRF)
@@ -57,11 +59,9 @@ fn setup_hybrid_search_fixture() -> (
     std::mem::forget(tantivy_dir);
 
     let configs = crate::search::LanguageConfigs::load_embedded();
-    let search_index = crate::search::SearchIndex::open_or_create_with_language_configs(
-        &tantivy_path,
-        &configs,
-    )
-    .expect("Failed to create Tantivy index");
+    let search_index =
+        crate::search::SearchIndex::open_or_create_with_language_configs(&tantivy_path, &configs)
+            .expect("Failed to create Tantivy index");
 
     let symbols = db
         .get_all_symbols()
@@ -76,11 +76,10 @@ fn setup_hybrid_search_fixture() -> (
     println!("Tantivy backfilled: {} symbols", symbols.len());
 
     // 4. Run the embedding pipeline
-    let cache_dir = std::path::PathBuf::from(
-        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()),
-    )
-    .join(".cache")
-    .join("fastembed");
+    let cache_dir =
+        std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+            .join(".cache")
+            .join("fastembed");
 
     let provider =
         OrtEmbeddingProvider::try_new(Some(cache_dir)).expect("Embedding provider should init");
@@ -137,9 +136,8 @@ fn test_hybrid_search_nl_query_improves_over_keyword_only() {
     }
 
     // ── Hybrid search (keyword + semantic via RRF) ─────────────────────
-    let hybrid_results =
-        hybrid_search(query, &filter, 10, &search_index, &db, Some(&provider))
-            .expect("hybrid_search should succeed");
+    let hybrid_results = hybrid_search(query, &filter, 10, &search_index, &db, Some(&provider))
+        .expect("hybrid_search should succeed");
 
     println!("\n=== Hybrid search results for '{}' ===", query);
     for (i, r) in hybrid_results.results.iter().enumerate() {

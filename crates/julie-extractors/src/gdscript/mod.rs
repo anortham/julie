@@ -20,7 +20,9 @@ mod signals;
 mod types;
 mod variables;
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
+};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
 
@@ -108,11 +110,7 @@ impl GDScriptExtractor {
         symbols
     }
 
-    pub fn extract_relationships(
-        &mut self,
-        tree: &Tree,
-        symbols: &[Symbol],
-    ) -> Vec<Relationship> {
+    pub fn extract_relationships(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Relationship> {
         relationships::extract_relationships(self, tree, symbols)
     }
 
@@ -145,11 +143,16 @@ impl GDScriptExtractor {
             SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor => {
                 // Signature: `func name(...) -> ReturnType:\n    body`
                 // Return type is on the `func` line
-                let func_line = signature.lines().find(|l| l.trim_start().starts_with("func "))?;
+                let func_line = signature
+                    .lines()
+                    .find(|l| l.trim_start().starts_with("func "))?;
                 let re = regex::Regex::new(r"->\s*(\w+)").ok()?;
                 re.captures(func_line).map(|c| c[1].to_string())
             }
-            SymbolKind::Variable | SymbolKind::Property | SymbolKind::Field | SymbolKind::Constant => {
+            SymbolKind::Variable
+            | SymbolKind::Property
+            | SymbolKind::Field
+            | SymbolKind::Constant => {
                 // Signature: `@export var name: Type = value` or `const NAME: Type = value`
                 let re = regex::Regex::new(r"(?:var|const)\s+\w+\s*:\s*(\w+)").ok()?;
                 re.captures(signature).map(|c| c[1].to_string())

@@ -83,14 +83,25 @@ fn test_method_call_relationships() {
         !calls.is_empty(),
         "Expected a Calls relationship from method 'process' to function 'helper', but got none. \
          Symbols: {:?}",
-        symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        symbols
+            .iter()
+            .map(|s| (&s.name, &s.kind))
+            .collect::<Vec<_>>()
     );
 
     // Verify the relationship points from the method to the function
-    let helper_symbol = symbols.iter().find(|s| s.name == "helper").expect("helper symbol");
-    let process_symbol = symbols.iter().find(|s| s.name == "process").expect("process symbol");
+    let helper_symbol = symbols
+        .iter()
+        .find(|s| s.name == "helper")
+        .expect("helper symbol");
+    let process_symbol = symbols
+        .iter()
+        .find(|s| s.name == "process")
+        .expect("process symbol");
     assert!(
-        calls.iter().any(|r| r.from_symbol_id == process_symbol.id && r.to_symbol_id == helper_symbol.id),
+        calls
+            .iter()
+            .any(|r| r.from_symbol_id == process_symbol.id && r.to_symbol_id == helper_symbol.id),
         "Expected Calls relationship from 'process' to 'helper'"
     );
 }

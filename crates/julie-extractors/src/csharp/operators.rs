@@ -109,8 +109,7 @@ pub fn extract_conversion_operator(
     let target_type_node = children[operator_keyword_index + 1..]
         .iter()
         .find(|c| matches!(c.kind(), "predefined_type" | "identifier" | "generic_name"));
-    let target_type = target_type_node
-        .map(|node| base.get_node_text(node))?;
+    let target_type = target_type_node.map(|node| base.get_node_text(node))?;
     let name = format!("{} operator {}", conversion_text, target_type);
 
     let param_list = children.iter().find(|c| c.kind() == "parameter_list");

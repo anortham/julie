@@ -1,12 +1,11 @@
 use anyhow::Result;
 use rmcp::{
-    ServerHandler, RoleServer,
-    model::{CallToolResult, ServerCapabilities, ServerInfo, Implementation},
-    service::NotificationContext,
+    ErrorData as McpError, RoleServer, ServerHandler,
     handler::server::tool::ToolRouter,
     handler::server::wrapper::Parameters,
-    tool, tool_router, tool_handler,
-    ErrorData as McpError,
+    model::{CallToolResult, Implementation, ServerCapabilities, ServerInfo},
+    service::NotificationContext,
+    tool, tool_handler, tool_router,
 };
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -17,8 +16,8 @@ use tokio::sync::RwLock;
 
 // Import tool parameter types
 use crate::tools::{
-    FastSearchTool, FastRefsTool, GetSymbolsTool, DeepDiveTool,
-    RenameSymbolTool, ManageWorkspaceTool, GetContextTool,
+    DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
+    ManageWorkspaceTool, RenameSymbolTool,
 };
 
 /// Tracks which indexes are ready for search operations
@@ -321,8 +320,9 @@ impl JulieServerHandler {
                 } else {
                     info!("✅ Background auto-indexing completed successfully");
 
-                    // Spawn background embedding pipeline (non-blocking)
-                    self.spawn_background_embedding().await;
+                    // NOTE: embedding pipeline is spawned by the index command itself
+                    // (index.rs → spawn_workspace_embedding), so we do NOT spawn it
+                    // again here — that caused duplicate parallel pipelines.
                 }
             }
             Ok(false) => {
@@ -334,59 +334,6 @@ impl JulieServerHandler {
         }
     }
 
-    /// Spawn background embedding pipeline after indexing completes.
-    ///
-    /// Runs in a fire-and-forget tokio task. If the embedding provider is unavailable,
-    /// this is a no-op. Failures are logged but never block keyword search.
-    async fn spawn_background_embedding(&self) {
-        let workspace = match self.get_workspace().await {
-            Ok(Some(ws)) => ws,
-            _ => return,
-        };
-
-        let provider = match &workspace.embedding_provider {
-            Some(p) => p.clone(),
-            None => {
-                debug!("No embedding provider available, skipping background embedding");
-                return;
-            }
-        };
-
-        let db = match &workspace.db {
-            Some(db) => db.clone(),
-            None => return,
-        };
-
-        let indexing_status = self.indexing_status.clone();
-
-        tokio::spawn(async move {
-            info!("🧠 Starting background embedding pipeline...");
-
-            let db_clone = db.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                crate::embeddings::pipeline::run_embedding_pipeline(&db_clone, provider.as_ref())
-            })
-            .await;
-
-            match result {
-                Ok(Ok(stats)) => {
-                    indexing_status
-                        .embeddings_ready
-                        .store(true, std::sync::atomic::Ordering::Release);
-                    info!(
-                        "✅ Background embedding complete: {}/{} symbols embedded",
-                        stats.symbols_embedded, stats.symbols_scanned
-                    );
-                }
-                Ok(Err(e)) => {
-                    warn!("⚠️ Background embedding failed (keyword search unaffected): {e}");
-                }
-                Err(e) => {
-                    warn!("⚠️ Background embedding task panicked: {e}");
-                }
-            }
-        });
-    }
 }
 
 // Load agent instructions for server info
@@ -419,12 +366,16 @@ impl JulieServerHandler {
             open_world_hint = false
         )
     )]
-    async fn fast_search(&self, Parameters(params): Parameters<FastSearchTool>) -> Result<CallToolResult, McpError> {
+    async fn fast_search(
+        &self,
+        Parameters(params): Parameters<FastSearchTool>,
+    ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast search: {:?}", params);
         let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("fast_search failed: {}", e), None)
-        })
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("fast_search failed: {}", e), None))
     }
 
     #[tool(
@@ -438,12 +389,16 @@ impl JulieServerHandler {
             open_world_hint = false
         )
     )]
-    async fn fast_refs(&self, Parameters(params): Parameters<FastRefsTool>) -> Result<CallToolResult, McpError> {
+    async fn fast_refs(
+        &self,
+        Parameters(params): Parameters<FastRefsTool>,
+    ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast find references: {:?}", params);
         let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("fast_refs failed: {}", e), None)
-        })
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("fast_refs failed: {}", e), None))
     }
 
     #[tool(
@@ -457,12 +412,16 @@ impl JulieServerHandler {
             open_world_hint = false
         )
     )]
-    async fn get_symbols(&self, Parameters(params): Parameters<GetSymbolsTool>) -> Result<CallToolResult, McpError> {
+    async fn get_symbols(
+        &self,
+        Parameters(params): Parameters<GetSymbolsTool>,
+    ) -> Result<CallToolResult, McpError> {
         debug!("📋 Get symbols for file: {:?}", params);
         let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("get_symbols failed: {}", e), None)
-        })
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("get_symbols failed: {}", e), None))
     }
 
     #[tool(
@@ -476,12 +435,16 @@ impl JulieServerHandler {
             open_world_hint = false
         )
     )]
-    async fn deep_dive(&self, Parameters(params): Parameters<DeepDiveTool>) -> Result<CallToolResult, McpError> {
+    async fn deep_dive(
+        &self,
+        Parameters(params): Parameters<DeepDiveTool>,
+    ) -> Result<CallToolResult, McpError> {
         debug!("🔍 Deep dive: {:?}", params);
         let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("deep_dive failed: {}", e), None)
-        })
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("deep_dive failed: {}", e), None))
     }
 
     // ========== Context Tools ==========
@@ -497,12 +460,16 @@ impl JulieServerHandler {
             open_world_hint = false
         )
     )]
-    async fn get_context(&self, Parameters(params): Parameters<GetContextTool>) -> Result<CallToolResult, McpError> {
+    async fn get_context(
+        &self,
+        Parameters(params): Parameters<GetContextTool>,
+    ) -> Result<CallToolResult, McpError> {
         debug!("📦 Get context: {:?}", params);
         let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("get_context failed: {}", e), None)
-        })
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("get_context failed: {}", e), None))
     }
 
     // ========== Refactoring Tools ==========
@@ -518,12 +485,16 @@ impl JulieServerHandler {
             open_world_hint = false
         )
     )]
-    async fn rename_symbol(&self, Parameters(params): Parameters<RenameSymbolTool>) -> Result<CallToolResult, McpError> {
+    async fn rename_symbol(
+        &self,
+        Parameters(params): Parameters<RenameSymbolTool>,
+    ) -> Result<CallToolResult, McpError> {
         debug!("✏️ Rename symbol: {:?}", params);
         let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("rename_symbol failed: {}", e), None)
-        })
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("rename_symbol failed: {}", e), None))
     }
 
     // ========== Workspace Management ==========
@@ -539,12 +510,16 @@ impl JulieServerHandler {
             open_world_hint = false
         )
     )]
-    async fn manage_workspace(&self, Parameters(params): Parameters<ManageWorkspaceTool>) -> Result<CallToolResult, McpError> {
+    async fn manage_workspace(
+        &self,
+        Parameters(params): Parameters<ManageWorkspaceTool>,
+    ) -> Result<CallToolResult, McpError> {
         info!("🏗️ Managing workspace: {}", params.operation);
         let _guard = self.tool_execution_lock.lock().await;
-        params.call_tool(self).await.map_err(|e| {
-            McpError::internal_error(format!("manage_workspace failed: {}", e), None)
-        })
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("manage_workspace failed: {}", e), None))
     }
 }
 
@@ -554,9 +529,7 @@ impl ServerHandler for JulieServerHandler {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: rmcp::model::ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation {
                 name: "Julie".into(),
                 version: env!("CARGO_PKG_VERSION").into(),

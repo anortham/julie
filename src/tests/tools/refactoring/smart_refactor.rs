@@ -8,8 +8,8 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::refactoring::RenameSymbolTool;
 use crate::mcp_compat::CallToolResult;
+use crate::tools::refactoring::RenameSymbolTool;
 
 fn extract_text_from_result(result: &CallToolResult) -> String {
     result

@@ -8,12 +8,15 @@ use super::SwiftExtractor;
 /// Extracts Swift extensions, imports, and type aliases
 impl SwiftExtractor {
     /// Implementation of extractExtension method
-    pub(super) fn extract_extension(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_extension(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let type_node = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier");
-        let name = type_node
-            .map(|n| self.base.get_node_text(&n))?;
+        let name = type_node.map(|n| self.base.get_node_text(&n))?;
 
         let modifiers = self.extract_modifiers(node);
         let conformance = self.extract_inheritance(node);
@@ -45,8 +48,10 @@ impl SwiftExtractor {
             doc_comment,
         );
 
-        Some(self.base
-            .create_symbol(&node, name, SymbolKind::Class, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Class, options),
+        )
     }
 
     /// Implementation of extractImport method
@@ -69,12 +74,18 @@ impl SwiftExtractor {
             doc_comment,
         );
 
-        Some(self.base
-            .create_symbol(&node, name, SymbolKind::Import, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Import, options),
+        )
     }
 
     /// Implementation of extractTypeAlias method
-    pub(super) fn extract_type_alias(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
+    pub(super) fn extract_type_alias(
+        &mut self,
+        node: Node,
+        parent_id: Option<&str>,
+    ) -> Option<Symbol> {
         let name = node
             .children(&mut node.walk())
             .find(|c| c.kind() == "type_identifier")
@@ -128,8 +139,10 @@ impl SwiftExtractor {
             doc_comment,
         );
 
-        Some(self.base
-            .create_symbol(&node, name, SymbolKind::Type, options))
+        Some(
+            self.base
+                .create_symbol(&node, name, SymbolKind::Type, options),
+        )
     }
 
     /// Helper method to create SymbolOptions with proper serde_json::Value metadata

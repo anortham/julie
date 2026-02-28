@@ -15,7 +15,8 @@ pub(super) fn extract_relationships(
     let mut relationships = Vec::new();
 
     // Create symbol map for fast lookups by name
-    let symbol_map: HashMap<String, &Symbol> = symbols.iter().map(|s| (s.name.clone(), s)).collect();
+    let symbol_map: HashMap<String, &Symbol> =
+        symbols.iter().map(|s| (s.name.clone(), s)).collect();
 
     // Recursively visit all nodes to extract relationships
     visit_node_for_relationships(extractor, tree.root_node(), &symbol_map, &mut relationships);

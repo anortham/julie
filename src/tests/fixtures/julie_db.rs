@@ -205,11 +205,7 @@ impl JulieTestFixture {
 
         // Wait for search indexing to complete
         for _ in 0..60 {
-            if handler
-                .indexing_status
-                .search_ready
-                .load(Ordering::Relaxed)
-            {
+            if handler.indexing_status.search_ready.load(Ordering::Relaxed) {
                 println!("✅ Search indexing complete");
                 return Ok(());
             }

@@ -31,14 +31,9 @@ func _ready() -> void:
         let tree = parser.parse(code, None).expect("Error parsing code");
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.gd",
-            code,
-            "gdscript",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.gd", code, "gdscript", &workspace_root)
+                .expect("Extraction failed");
 
         assert!(
             !results.types.is_empty(),
@@ -90,14 +85,9 @@ const MAX_SPEED: float = 500.0
         let tree = parser.parse(code, None).expect("Error parsing code");
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.gd",
-            code,
-            "gdscript",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.gd", code, "gdscript", &workspace_root)
+                .expect("Extraction failed");
 
         assert!(
             !results.types.is_empty(),
@@ -137,19 +127,11 @@ func _ready():
         let tree = parser.parse(code, None).expect("Error parsing code");
 
         let workspace_root = PathBuf::from("/tmp/test");
-        let results = extract_symbols_and_relationships(
-            &tree,
-            "test.gd",
-            code,
-            "gdscript",
-            &workspace_root,
-        )
-        .expect("Extraction failed");
+        let results =
+            extract_symbols_and_relationships(&tree, "test.gd", code, "gdscript", &workspace_root)
+                .expect("Extraction failed");
 
         // Untyped GDScript may still infer some types (e.g., from literal assignments)
-        println!(
-            "Untyped GDScript extracted {} types",
-            results.types.len()
-        );
+        println!("Untyped GDScript extracted {} types", results.types.len());
     }
 }

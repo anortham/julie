@@ -257,8 +257,16 @@ fn test_csharp_project_layout() {
     let svc = results.iter().find(|r| r.id == "svc").unwrap();
     let test = results.iter().find(|r| r.id == "test").unwrap();
 
-    assert!(svc.score > 1.0, "C# source should be boosted, got {}", svc.score);
-    assert!(test.score < 1.0, "C# .Tests path should be penalized, got {}", test.score);
+    assert!(
+        svc.score > 1.0,
+        "C# source should be boosted, got {}",
+        svc.score
+    );
+    assert!(
+        test.score < 1.0,
+        "C# .Tests path should be penalized, got {}",
+        test.score
+    );
     assert!(svc.score > test.score, "C# source should outrank C# test");
 }
 
@@ -276,9 +284,21 @@ fn test_python_project_layout() {
     let test_dir = results.iter().find(|r| r.id == "test_dir").unwrap();
     let test_file = results.iter().find(|r| r.id == "test_file").unwrap();
 
-    assert!(src.score > 1.0, "Python source should be boosted, got {}", src.score);
-    assert!(test_dir.score < 1.0, "Python tests/ path should be penalized, got {}", test_dir.score);
-    assert!(test_file.score < 1.0, "Python test_*.py should be penalized, got {}", test_file.score);
+    assert!(
+        src.score > 1.0,
+        "Python source should be boosted, got {}",
+        src.score
+    );
+    assert!(
+        test_dir.score < 1.0,
+        "Python tests/ path should be penalized, got {}",
+        test_dir.score
+    );
+    assert!(
+        test_file.score < 1.0,
+        "Python test_*.py should be penalized, got {}",
+        test_file.score
+    );
 }
 
 #[test]
@@ -293,9 +313,20 @@ fn test_java_project_layout() {
     let main = results.iter().find(|r| r.id == "main").unwrap();
     let test = results.iter().find(|r| r.id == "test").unwrap();
 
-    assert!(main.score > 1.0, "Java main source should be boosted, got {}", main.score);
-    assert!(test.score < 1.0, "Java test path should be penalized, got {}", test.score);
-    assert!(main.score > test.score, "Java source should outrank Java test");
+    assert!(
+        main.score > 1.0,
+        "Java main source should be boosted, got {}",
+        main.score
+    );
+    assert!(
+        test.score < 1.0,
+        "Java test path should be penalized, got {}",
+        test.score
+    );
+    assert!(
+        main.score > test.score,
+        "Java source should outrank Java test"
+    );
 }
 
 #[test]
@@ -310,8 +341,16 @@ fn test_go_project_layout() {
     let src = results.iter().find(|r| r.id == "src").unwrap();
     let test = results.iter().find(|r| r.id == "test").unwrap();
 
-    assert!(src.score > 1.0, "Go source should be boosted, got {}", src.score);
-    assert!(test.score < 1.0, "Go _test.go should be penalized, got {}", test.score);
+    assert!(
+        src.score > 1.0,
+        "Go source should be boosted, got {}",
+        src.score
+    );
+    assert!(
+        test.score < 1.0,
+        "Go _test.go should be penalized, got {}",
+        test.score
+    );
     assert!(src.score > test.score, "Go source should outrank Go test");
 }
 
@@ -331,10 +370,26 @@ fn test_javascript_typescript_project_layout() {
     let spec = results.iter().find(|r| r.id == "spec").unwrap();
     let test_file = results.iter().find(|r| r.id == "test_file").unwrap();
 
-    assert!(src.score > 1.0, "JS/TS source should be boosted, got {}", src.score);
-    assert!(jest.score < 1.0, "__tests__/ path should be penalized, got {}", jest.score);
-    assert!(spec.score < 1.0, "*.spec.ts should be penalized, got {}", spec.score);
-    assert!(test_file.score < 1.0, "*.test.js should be penalized, got {}", test_file.score);
+    assert!(
+        src.score > 1.0,
+        "JS/TS source should be boosted, got {}",
+        src.score
+    );
+    assert!(
+        jest.score < 1.0,
+        "__tests__/ path should be penalized, got {}",
+        jest.score
+    );
+    assert!(
+        spec.score < 1.0,
+        "*.spec.ts should be penalized, got {}",
+        spec.score
+    );
+    assert!(
+        test_file.score < 1.0,
+        "*.test.js should be penalized, got {}",
+        test_file.score
+    );
 }
 
 #[test]
@@ -351,9 +406,21 @@ fn test_ruby_project_layout() {
     let spec = results.iter().find(|r| r.id == "spec_dir").unwrap();
     let test = results.iter().find(|r| r.id == "test_dir").unwrap();
 
-    assert!(src.score > 1.0, "Ruby source should be boosted, got {}", src.score);
-    assert!(spec.score < 1.0, "Ruby spec/ path should be penalized, got {}", spec.score);
-    assert!(test.score < 1.0, "Ruby test/ path should be penalized, got {}", test.score);
+    assert!(
+        src.score > 1.0,
+        "Ruby source should be boosted, got {}",
+        src.score
+    );
+    assert!(
+        spec.score < 1.0,
+        "Ruby spec/ path should be penalized, got {}",
+        spec.score
+    );
+    assert!(
+        test.score < 1.0,
+        "Ruby test/ path should be penalized, got {}",
+        test.score
+    );
 }
 
 #[test]
@@ -372,12 +439,27 @@ fn test_generic_docs_penalization() {
     let documentation = results.iter().find(|r| r.id == "documentation").unwrap();
     let src = results.iter().find(|r| r.id == "src").unwrap();
 
-    assert!(docs.score < 1.0, "docs/ should be penalized, got {}", docs.score);
-    assert!(doc.score < 1.0, "doc/ should be penalized, got {}", doc.score);
-    assert!(documentation.score < 1.0, "documentation/ should be penalized, got {}", documentation.score);
+    assert!(
+        docs.score < 1.0,
+        "docs/ should be penalized, got {}",
+        docs.score
+    );
+    assert!(
+        doc.score < 1.0,
+        "doc/ should be penalized, got {}",
+        doc.score
+    );
+    assert!(
+        documentation.score < 1.0,
+        "documentation/ should be penalized, got {}",
+        documentation.score
+    );
     assert!(src.score > docs.score, "source should outrank docs");
     assert!(src.score > doc.score, "source should outrank doc");
-    assert!(src.score > documentation.score, "source should outrank documentation");
+    assert!(
+        src.score > documentation.score,
+        "source should outrank documentation"
+    );
 }
 
 #[test]
@@ -400,11 +482,31 @@ fn test_generic_fixtures_penalization() {
     let snapshots = results.iter().find(|r| r.id == "snapshots").unwrap();
     let src = results.iter().find(|r| r.id == "src").unwrap();
 
-    assert!(fixtures.score < 1.0, "fixtures/ should be penalized, got {}", fixtures.score);
-    assert!(testdata.score < 1.0, "testdata/ should be penalized, got {}", testdata.score);
-    assert!(test_data.score < 1.0, "test_data/ should be penalized, got {}", test_data.score);
-    assert!(dunder_fixtures.score < 1.0, "__fixtures__/ should be penalized, got {}", dunder_fixtures.score);
-    assert!(snapshots.score < 1.0, "snapshots/ should be penalized, got {}", snapshots.score);
+    assert!(
+        fixtures.score < 1.0,
+        "fixtures/ should be penalized, got {}",
+        fixtures.score
+    );
+    assert!(
+        testdata.score < 1.0,
+        "testdata/ should be penalized, got {}",
+        testdata.score
+    );
+    assert!(
+        test_data.score < 1.0,
+        "test_data/ should be penalized, got {}",
+        test_data.score
+    );
+    assert!(
+        dunder_fixtures.score < 1.0,
+        "__fixtures__/ should be penalized, got {}",
+        dunder_fixtures.score
+    );
+    assert!(
+        snapshots.score < 1.0,
+        "snapshots/ should be penalized, got {}",
+        snapshots.score
+    );
     assert!(src.score > fixtures.score, "source should outrank fixtures");
     assert!(src.score > testdata.score, "source should outrank testdata");
 }
@@ -415,32 +517,68 @@ fn test_generic_fixtures_penalization() {
 
 #[test]
 fn test_is_test_path_detects_various_layouts() {
-    use crate::search::scoring::{is_test_path, is_docs_path, is_fixture_path};
+    use crate::search::scoring::{is_docs_path, is_fixture_path, is_test_path};
 
     // Test directories
     assert!(is_test_path("tests/test_auth.py"), "tests/ directory");
     assert!(is_test_path("test/auth_test.rb"), "test/ directory");
-    assert!(is_test_path("src/tests/integration.rs"), "src/tests/ directory");
-    assert!(is_test_path("MyProject.Tests/UserServiceTests.cs"), ".Tests/ in C#");
-    assert!(is_test_path("__tests__/Auth.test.tsx"), "__tests__/ jest directory");
-    assert!(is_test_path("src/test/java/com/example/ServiceTest.java"), "src/test/ Java");
+    assert!(
+        is_test_path("src/tests/integration.rs"),
+        "src/tests/ directory"
+    );
+    assert!(
+        is_test_path("MyProject.Tests/UserServiceTests.cs"),
+        ".Tests/ in C#"
+    );
+    assert!(
+        is_test_path("__tests__/Auth.test.tsx"),
+        "__tests__/ jest directory"
+    );
+    assert!(
+        is_test_path("src/test/java/com/example/ServiceTest.java"),
+        "src/test/ Java"
+    );
     assert!(is_test_path("spec/auth_spec.rb"), "spec/ Ruby directory");
 
     // Test file patterns (no test directory, but test file naming)
     assert!(is_test_path("pkg/handler/auth_test.go"), "Go _test.go file");
-    assert!(is_test_path("src/components/Auth.test.tsx"), "*.test.tsx file");
-    assert!(is_test_path("src/components/Auth.spec.ts"), "*.spec.ts file");
-    assert!(is_test_path("src/components/Auth.test.js"), "*.test.js file");
-    assert!(is_test_path("src/components/Auth.spec.js"), "*.spec.js file");
-    assert!(is_test_path("mypackage/test_utils.py"), "Python test_*.py file");
+    assert!(
+        is_test_path("src/components/Auth.test.tsx"),
+        "*.test.tsx file"
+    );
+    assert!(
+        is_test_path("src/components/Auth.spec.ts"),
+        "*.spec.ts file"
+    );
+    assert!(
+        is_test_path("src/components/Auth.test.js"),
+        "*.test.js file"
+    );
+    assert!(
+        is_test_path("src/components/Auth.spec.js"),
+        "*.spec.js file"
+    );
+    assert!(
+        is_test_path("mypackage/test_utils.py"),
+        "Python test_*.py file"
+    );
 
     // Non-test paths
     assert!(!is_test_path("src/core/engine.rs"), "regular source file");
     assert!(!is_test_path("lib/auth.rb"), "regular lib file");
     assert!(!is_test_path("pkg/handler/auth.go"), "regular Go file");
-    assert!(!is_test_path("src/components/Auth.tsx"), "regular component");
-    assert!(!is_test_path("contest/results.py"), "contest should not match test");
-    assert!(!is_test_path("src/testing_utils.rs"), "testing_utils is not a test file itself");
+    assert!(
+        !is_test_path("src/components/Auth.tsx"),
+        "regular component"
+    );
+    assert!(
+        !is_test_path("contest/results.py"),
+        "contest should not match test"
+    );
+    assert!(
+        !is_test_path("src/testing_utils.rs"),
+        "testing_utils is not a test file itself"
+    );
 }
 
 #[test]
@@ -449,10 +587,19 @@ fn test_is_docs_path_detects_various_layouts() {
 
     assert!(is_docs_path("docs/architecture.md"), "docs/ directory");
     assert!(is_docs_path("doc/api.md"), "doc/ directory");
-    assert!(is_docs_path("documentation/guide.md"), "documentation/ directory");
-    assert!(is_docs_path("project/docs/setup.md"), "nested docs/ directory");
+    assert!(
+        is_docs_path("documentation/guide.md"),
+        "documentation/ directory"
+    );
+    assert!(
+        is_docs_path("project/docs/setup.md"),
+        "nested docs/ directory"
+    );
 
-    assert!(!is_docs_path("src/core/document.rs"), "document in source is not docs");
+    assert!(
+        !is_docs_path("src/core/document.rs"),
+        "document in source is not docs"
+    );
     assert!(!is_docs_path("lib/doctor.rb"), "doctor is not docs");
 }
 
@@ -460,15 +607,36 @@ fn test_is_docs_path_detects_various_layouts() {
 fn test_is_fixture_path_detects_various_layouts() {
     use crate::search::scoring::is_fixture_path;
 
-    assert!(is_fixture_path("fixtures/sample.json"), "fixtures/ directory");
+    assert!(
+        is_fixture_path("fixtures/sample.json"),
+        "fixtures/ directory"
+    );
     assert!(is_fixture_path("fixture/data.json"), "fixture/ directory");
-    assert!(is_fixture_path("testdata/input.json"), "testdata/ directory");
-    assert!(is_fixture_path("test_data/expected.json"), "test_data/ directory");
-    assert!(is_fixture_path("__fixtures__/mock.json"), "__fixtures__/ directory");
-    assert!(is_fixture_path("snapshots/__snapshots__/App.snap"), "snapshots/ directory");
+    assert!(
+        is_fixture_path("testdata/input.json"),
+        "testdata/ directory"
+    );
+    assert!(
+        is_fixture_path("test_data/expected.json"),
+        "test_data/ directory"
+    );
+    assert!(
+        is_fixture_path("__fixtures__/mock.json"),
+        "__fixtures__/ directory"
+    );
+    assert!(
+        is_fixture_path("snapshots/__snapshots__/App.snap"),
+        "snapshots/ directory"
+    );
 
-    assert!(!is_fixture_path("src/core/engine.rs"), "regular source file");
-    assert!(!is_fixture_path("lib/data_loader.rb"), "data in source is not fixture");
+    assert!(
+        !is_fixture_path("src/core/engine.rs"),
+        "regular source file"
+    );
+    assert!(
+        !is_fixture_path("lib/data_loader.rb"),
+        "data in source is not fixture"
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -487,29 +655,52 @@ fn test_swift_project_layout() {
     let src = results.iter().find(|r| r.id == "src").unwrap();
     let test = results.iter().find(|r| r.id == "test").unwrap();
 
-    assert!(src.score > 1.0, "Swift source should be boosted, got {}", src.score);
-    assert!(test.score < 1.0, "Swift Tests/ should be penalized, got {}", test.score);
-    assert!(src.score > test.score, "Swift source should outrank Swift test");
+    assert!(
+        src.score > 1.0,
+        "Swift source should be boosted, got {}",
+        src.score
+    );
+    assert!(
+        test.score < 1.0,
+        "Swift Tests/ should be penalized, got {}",
+        test.score
+    );
+    assert!(
+        src.score > test.score,
+        "Swift source should outrank Swift test"
+    );
 }
 
 #[test]
 fn test_title_case_path_segments_detected() {
-    use crate::search::scoring::{is_test_path, is_docs_path, is_fixture_path};
+    use crate::search::scoring::{is_docs_path, is_fixture_path, is_test_path};
 
     // Title-case test directories (Swift, some C# projects)
-    assert!(is_test_path("Tests/AuthTests/AuthServiceTests.swift"), "Swift Tests/");
+    assert!(
+        is_test_path("Tests/AuthTests/AuthServiceTests.swift"),
+        "Swift Tests/"
+    );
     assert!(is_test_path("Test/SomeTest.cs"), "Title-case Test/");
     assert!(is_test_path("Spec/models/user_spec.rb"), "Title-case Spec/");
 
     // Title-case docs directories
     assert!(is_docs_path("Docs/architecture.md"), "Title-case Docs/");
     assert!(is_docs_path("Doc/api.md"), "Title-case Doc/");
-    assert!(is_docs_path("Documentation/guide.md"), "Title-case Documentation/");
+    assert!(
+        is_docs_path("Documentation/guide.md"),
+        "Title-case Documentation/"
+    );
 
     // Title-case fixture directories
-    assert!(is_fixture_path("Fixtures/sample.json"), "Title-case Fixtures/");
+    assert!(
+        is_fixture_path("Fixtures/sample.json"),
+        "Title-case Fixtures/"
+    );
     assert!(is_fixture_path("Fixture/data.json"), "Title-case Fixture/");
-    assert!(is_fixture_path("Snapshots/App.snap"), "Title-case Snapshots/");
+    assert!(
+        is_fixture_path("Snapshots/App.snap"),
+        "Title-case Snapshots/"
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

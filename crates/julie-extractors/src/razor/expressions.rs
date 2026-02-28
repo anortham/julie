@@ -107,5 +107,4 @@ impl super::RazorExtractor {
             None
         }
     }
-
 }

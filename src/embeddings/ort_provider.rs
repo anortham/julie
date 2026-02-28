@@ -3,12 +3,19 @@
 //! Wraps `fastembed::TextEmbedding` (BGE-small-en-v1.5, 384-dim) with a `Mutex`
 //! to satisfy the `EmbeddingProvider` trait's `&self` requirement despite fastembed's
 //! `&mut self` on `embed()`.
+//!
+//! GPU acceleration strategy:
+//! - **Windows**: DirectML EP → CPU fallback
+//! - **macOS/Linux**: CPU only (CoreML EP dropped — 13GB+ memory bloat for 33M-param model)
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use anyhow::{Context, Result};
-use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use fastembed::{EmbeddingModel, ExecutionProviderDispatch, InitOptions, TextEmbedding};
+use ort::execution_providers::CPUExecutionProvider;
+#[cfg(target_os = "windows")]
+use ort::execution_providers::DirectMLExecutionProvider;
 
 use super::{DeviceInfo, EmbeddingProvider};
 
@@ -22,6 +29,16 @@ pub struct OrtEmbeddingProvider {
     model: Mutex<TextEmbedding>,
     dimensions: usize,
     model_name: String,
+    device: String,
+    accelerated: bool,
+    degraded_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OrtRuntimeSignal {
+    pub device: String,
+    pub accelerated: bool,
+    pub degraded_reason: Option<String>,
 }
 
 impl OrtEmbeddingProvider {
@@ -30,23 +47,142 @@ impl OrtEmbeddingProvider {
     /// The model is cached at `cache_dir` (defaults to `~/.cache/fastembed/`).
     /// First initialization on a machine triggers a ~30MB download.
     ///
+    /// On macOS, tries CoreML EP first (GPU + Neural Engine acceleration).
+    /// On Windows, tries DirectML EP first (GPU acceleration).
+    /// Falls back to CPU if the accelerated EP fails.
+    ///
     /// Returns `Err` if model download fails or ONNX runtime can't initialize.
     /// Callers should treat this as non-fatal — keyword search works without embeddings.
     pub fn try_new(cache_dir: Option<PathBuf>) -> Result<Self> {
         let cache = cache_dir.unwrap_or_else(default_cache_dir);
+        let policy = ort_execution_provider_policy();
 
-        let model = TextEmbedding::try_new(
-            InitOptions::new(EmbeddingModel::BGESmallENV15)
-                .with_cache_dir(cache)
-                .with_show_download_progress(false),
-        )
-        .context("Failed to initialize fastembed ONNX model")?;
+        let (model, signal) = if policy.is_empty() {
+            // No accelerated EP for this platform — CPU only
+            let model = TextEmbedding::try_new(base_init_options(cache))
+                .context("Failed to initialize fastembed ONNX model")?;
+            (model, ort_runtime_signal(false))
+        } else {
+            // Try accelerated EP first, fall back to CPU
+            let ep_name = accelerated_ep_name();
+            let primary = TextEmbedding::try_new(
+                base_init_options(cache.clone()).with_execution_providers(policy),
+            );
+
+            match primary {
+                Ok(model) => (model, ort_runtime_signal(false)),
+                Err(primary_error) => {
+                    tracing::warn!(
+                        "ORT {ep_name} EP failed, falling back to CPU: {primary_error:#}"
+                    );
+                    let model = TextEmbedding::try_new(
+                        base_init_options(cache)
+                            .with_execution_providers(vec![CPUExecutionProvider::default().build()]),
+                    )
+                    .with_context(|| {
+                        format!(
+                            "Failed to initialize fastembed ONNX model ({ep_name} attempt failed first: {primary_error})"
+                        )
+                    })?;
+                    (model, ort_runtime_signal(true))
+                }
+            }
+        };
 
         Ok(Self {
             model: Mutex::new(model),
             dimensions: BGE_SMALL_DIMENSIONS,
             model_name: "BGE-small-en-v1.5".to_string(),
+            device: signal.device,
+            accelerated: signal.accelerated,
+            degraded_reason: signal.degraded_reason,
         })
+    }
+}
+
+fn base_init_options(cache_dir: PathBuf) -> InitOptions {
+    InitOptions::new(EmbeddingModel::BGESmallENV15)
+        .with_cache_dir(cache_dir)
+        .with_show_download_progress(false)
+}
+
+/// Build the execution provider dispatch list for the current platform.
+///
+/// Returns an empty vec for platforms without GPU acceleration (Linux).
+fn ort_execution_provider_policy() -> Vec<ExecutionProviderDispatch> {
+    // macOS: CPU only. CoreML EP causes 13GB+ memory bloat for a 33M-param model
+    // due to runtime graph conversion and multi-device tensor staging.
+    // BGE-small is small enough that CPU is fast and memory-efficient.
+    #[cfg(target_os = "macos")]
+    {
+        vec![]
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        vec![
+            DirectMLExecutionProvider::default()
+                .build()
+                .error_on_failure(),
+            CPUExecutionProvider::default().build(),
+        ]
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        vec![]
+    }
+}
+
+/// Human-readable name of the accelerated EP for this platform.
+fn accelerated_ep_name() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "DirectML"
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        "None"
+    }
+}
+
+pub fn ort_execution_provider_policy_kinds() -> Vec<&'static str> {
+    #[cfg(target_os = "windows")]
+    {
+        vec!["directml", "cpu"]
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        vec![]
+    }
+}
+
+pub fn ort_runtime_signal(accelerated_ep_fallback_to_cpu: bool) -> OrtRuntimeSignal {
+    let ep_name = accelerated_ep_name();
+
+    if ep_name == "None" {
+        // No accelerated EP available — pure CPU
+        return OrtRuntimeSignal {
+            device: "CPU".to_string(),
+            accelerated: false,
+            degraded_reason: None,
+        };
+    }
+
+    if accelerated_ep_fallback_to_cpu {
+        OrtRuntimeSignal {
+            device: "CPU".to_string(),
+            accelerated: false,
+            degraded_reason: Some(format!(
+                "ORT {ep_name} EP requested but fell back to CPU"
+            )),
+        }
+    } else {
+        OrtRuntimeSignal {
+            device: format!("{ep_name} (GPU)"),
+            accelerated: true,
+            degraded_reason: None,
+        }
     }
 }
 
@@ -88,10 +224,18 @@ impl EmbeddingProvider for OrtEmbeddingProvider {
     fn device_info(&self) -> DeviceInfo {
         DeviceInfo {
             runtime: "ort (ONNX Runtime)".to_string(),
-            device: "CPU".to_string(),
+            device: self.device.clone(),
             model_name: self.model_name.clone(),
             dimensions: self.dimensions,
         }
+    }
+
+    fn accelerated(&self) -> Option<bool> {
+        Some(self.accelerated)
+    }
+
+    fn degraded_reason(&self) -> Option<String> {
+        self.degraded_reason.clone()
     }
 }
 

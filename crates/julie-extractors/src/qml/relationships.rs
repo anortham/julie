@@ -14,7 +14,12 @@ pub(super) fn extract_relationships(
     let mut relationships = Vec::new();
     extract_call_relationships(extractor, tree.root_node(), symbols, &mut relationships);
     extract_instantiation_relationships(extractor, tree.root_node(), symbols, &mut relationships);
-    extract_property_binding_relationships(extractor, tree.root_node(), symbols, &mut relationships);
+    extract_property_binding_relationships(
+        extractor,
+        tree.root_node(),
+        symbols,
+        &mut relationships,
+    );
     relationships
 }
 

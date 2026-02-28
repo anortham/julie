@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::tools::navigation::resolution::resolve_workspace_filter;
 
 fn default_depth() -> String {
@@ -88,7 +88,14 @@ impl DeepDiveTool {
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
                 let db = crate::database::SymbolDatabase::new(ref_db_path)?;
-                deep_dive_query(&db, &symbol_name, context_file.as_deref(), &depth_owned, incoming_cap, outgoing_cap)
+                deep_dive_query(
+                    &db,
+                    &symbol_name,
+                    context_file.as_deref(),
+                    &depth_owned,
+                    incoming_cap,
+                    outgoing_cap,
+                )
             })
             .await
             .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
@@ -105,13 +112,26 @@ impl DeepDiveTool {
         let db_arc = workspace
             .db
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Database not available. Run manage_workspace(operation=\"index\") first."))?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Database not available. Run manage_workspace(operation=\"index\") first."
+                )
+            })?
             .clone();
 
         // All database work in spawn_blocking (SQLite is synchronous)
         let result = tokio::task::spawn_blocking(move || -> Result<String> {
-            let db = db_arc.lock().map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
-            deep_dive_query(&db, &symbol_name, context_file.as_deref(), &depth_owned, incoming_cap, outgoing_cap)
+            let db = db_arc
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
+            deep_dive_query(
+                &db,
+                &symbol_name,
+                context_file.as_deref(),
+                &depth_owned,
+                incoming_cap,
+                outgoing_cap,
+            )
         })
         .await
         .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
@@ -172,13 +192,7 @@ pub(crate) fn deep_dive_query(
     }
 
     for symbol in &symbols {
-        let ctx = data::build_symbol_context(
-            db,
-            symbol,
-            depth,
-            incoming_cap,
-            outgoing_cap,
-        )?;
+        let ctx = data::build_symbol_context(db, symbol, depth, incoming_cap, outgoing_cap)?;
 
         // Step 3: Format with kind-aware output
         let formatted = formatting::format_symbol_context(&ctx, depth);

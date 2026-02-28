@@ -112,12 +112,7 @@ impl YamlExtractor {
             ..Default::default()
         };
 
-        let symbol = self.base.create_symbol(
-            &node,
-            key_name,
-            kind,
-            options,
-        );
+        let symbol = self.base.create_symbol(&node, key_name, kind, options);
 
         Some(symbol)
     }

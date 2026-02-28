@@ -2,7 +2,7 @@
 //!
 //! Handles extraction of relationships between symbols (calls, definitions, usages).
 
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, PendingRelationship};
+use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use tree_sitter::Node;
 
 impl super::BashExtractor {
@@ -67,7 +67,6 @@ impl super::BashExtractor {
             }
         }
     }
-
 }
 
 /// Check if a command is a built-in shell command

@@ -9,11 +9,13 @@ pub fn infer_types(symbols: &[Symbol]) -> HashMap<String, String> {
 
     for symbol in symbols {
         let inferred_type = match symbol.kind {
-            crate::base::SymbolKind::Method
-            | crate::base::SymbolKind::Function => infer_method_return_type(symbol),
+            crate::base::SymbolKind::Method | crate::base::SymbolKind::Function => {
+                infer_method_return_type(symbol)
+            }
             crate::base::SymbolKind::Property => infer_property_type(symbol),
-            crate::base::SymbolKind::Field
-            | crate::base::SymbolKind::Constant => infer_field_type(symbol),
+            crate::base::SymbolKind::Field | crate::base::SymbolKind::Constant => {
+                infer_field_type(symbol)
+            }
             crate::base::SymbolKind::Variable => infer_variable_type(symbol),
             _ => None,
         };

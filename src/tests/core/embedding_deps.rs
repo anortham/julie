@@ -6,6 +6,7 @@
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
+    #[cfg(feature = "embeddings-ort")]
     use serial_test::serial;
     use zerocopy::AsBytes;
 
@@ -14,6 +15,22 @@ mod tests {
         assert!(
             cfg!(feature = "embeddings-ort"),
             "Default build should enable embeddings-ort feature"
+        );
+    }
+
+    #[cfg(feature = "embeddings-candle")]
+    #[test]
+    fn test_candle_feature_can_be_enabled() {
+        assert!(cfg!(feature = "embeddings-candle"));
+    }
+
+    #[cfg(feature = "embeddings-candle")]
+    #[test]
+    fn test_candle_coreml_dependency_is_available() {
+        let type_name = std::any::type_name::<candle_coreml::CoreMLModelBuilder>();
+        assert!(
+            type_name.contains("CoreMLModelBuilder"),
+            "expected candle-coreml type to be available"
         );
     }
 
@@ -69,6 +86,7 @@ mod tests {
     ///
     /// NOTE: This test downloads the BGE-small model on first run (~30MB).
     /// Subsequent runs use the cached model.
+    #[cfg(feature = "embeddings-ort")]
     #[test]
     #[serial(fastembed)]
     fn test_fastembed_single_and_batch_embedding() {
@@ -122,6 +140,18 @@ mod tests {
         for (i, emb) in batch_embeddings.iter().enumerate() {
             assert_eq!(emb.len(), 384, "Embedding {i} should be 384-dim");
         }
+    }
+
+    #[cfg(feature = "embeddings-ort")]
+    #[test]
+    fn test_ort_policy_matches_platform() {
+        let policy = crate::embeddings::ort_execution_provider_policy_kinds();
+
+        #[cfg(target_os = "windows")]
+        assert_eq!(policy, vec!["directml", "cpu"]);
+
+        #[cfg(not(target_os = "windows"))]
+        assert!(policy.is_empty(), "macOS/Linux should have no accelerated EP");
     }
 
     /// Verify zerocopy AsBytes works for f32 slices (used to pass vectors to sqlite-vec).

@@ -92,7 +92,9 @@ fn test_enum_members_extracted() {
     let symbols = extractor.extract_symbols(&tree);
 
     // Should have the enum itself
-    let direction_enum = symbols.iter().find(|s| s.name == "Direction" && s.kind == SymbolKind::Enum);
+    let direction_enum = symbols
+        .iter()
+        .find(|s| s.name == "Direction" && s.kind == SymbolKind::Enum);
     assert!(direction_enum.is_some(), "Should extract Direction enum");
     let enum_id = &direction_enum.unwrap().id;
 
@@ -136,11 +138,15 @@ fn test_class_signature_with_extends() {
     );
     let symbols = extractor.extract_symbols(&tree);
 
-    let dog_class = symbols.iter().find(|s| s.name == "Dog" && s.kind == SymbolKind::Class);
+    let dog_class = symbols
+        .iter()
+        .find(|s| s.name == "Dog" && s.kind == SymbolKind::Class);
     assert!(dog_class.is_some(), "Should extract Dog class");
     let dog = dog_class.unwrap();
     assert!(
-        dog.signature.as_ref().map_or(false, |sig| sig.contains("extends Animal")),
+        dog.signature
+            .as_ref()
+            .map_or(false, |sig| sig.contains("extends Animal")),
         "Dog class signature should contain 'extends Animal', got: {:?}",
         dog.signature
     );

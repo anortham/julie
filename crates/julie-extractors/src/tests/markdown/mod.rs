@@ -783,19 +783,35 @@ Some text here.
 
         let fm = frontmatter.unwrap();
         // Frontmatter should be treated as metadata/property
-        assert_eq!(fm.kind, SymbolKind::Property, "Frontmatter should be Property kind");
+        assert_eq!(
+            fm.kind,
+            SymbolKind::Property,
+            "Frontmatter should be Property kind"
+        );
 
         // doc_comment should contain the YAML content for semantic search
         let doc = fm.doc_comment.as_ref();
-        assert!(doc.is_some(), "Frontmatter should have doc_comment with YAML content");
+        assert!(
+            doc.is_some(),
+            "Frontmatter should have doc_comment with YAML content"
+        );
         let content = doc.unwrap();
-        assert!(content.contains("title: My Document"), "Should contain title field");
-        assert!(content.contains("author: Jane Doe"), "Should contain author field");
+        assert!(
+            content.contains("title: My Document"),
+            "Should contain title field"
+        );
+        assert!(
+            content.contains("author: Jane Doe"),
+            "Should contain author field"
+        );
         assert!(content.contains("date:"), "Should contain date field");
 
         // Heading should still be extracted
         let heading = symbols.iter().find(|s| s.name == "Main Content");
-        assert!(heading.is_some(), "Should still extract heading after frontmatter");
+        assert!(
+            heading.is_some(),
+            "Should still extract heading after frontmatter"
+        );
     }
 
     #[test]
@@ -820,13 +836,22 @@ metadata:
         let symbols = extract_symbols(markdown);
 
         let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
-        assert!(frontmatter.is_some(), "Should extract complex YAML frontmatter");
+        assert!(
+            frontmatter.is_some(),
+            "Should extract complex YAML frontmatter"
+        );
 
         let content = frontmatter.unwrap().doc_comment.as_ref().unwrap();
         assert!(content.contains("tags:"), "Should capture list fields");
         assert!(content.contains("rust"), "Should capture list items");
-        assert!(content.contains("description:"), "Should capture multiline fields");
-        assert!(content.contains("metadata:"), "Should capture nested objects");
+        assert!(
+            content.contains("description:"),
+            "Should capture multiline fields"
+        );
+        assert!(
+            content.contains("metadata:"),
+            "Should capture nested objects"
+        );
     }
 
     #[test]
@@ -841,8 +866,13 @@ metadata:
 
         // Empty frontmatter might or might not be extracted - implementation choice
         // But headings should still work
-        let heading = symbols.iter().find(|s| s.name.contains("Empty Frontmatter"));
-        assert!(heading.is_some(), "Should extract heading after empty frontmatter");
+        let heading = symbols
+            .iter()
+            .find(|s| s.name.contains("Empty Frontmatter"));
+        assert!(
+            heading.is_some(),
+            "Should extract heading after empty frontmatter"
+        );
     }
 
     #[test]
@@ -863,7 +893,10 @@ title: Test
         // Frontmatter starts at line 1
         assert_eq!(fm.start_line, 1, "Frontmatter should start at line 1");
         // Frontmatter ends at line 3 (the closing ---)
-        assert!(fm.end_line >= 3, "Frontmatter should end at or after line 3");
+        assert!(
+            fm.end_line >= 3,
+            "Frontmatter should end at or after line 3"
+        );
 
         // Heading should start after frontmatter
         let heading = symbols.iter().find(|s| s.name == "Heading");
@@ -914,7 +947,10 @@ Let's dive in!
         );
 
         let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
-        assert!(frontmatter.is_some(), "Should extract blog post frontmatter");
+        assert!(
+            frontmatter.is_some(),
+            "Should extract blog post frontmatter"
+        );
 
         let content = frontmatter.unwrap().doc_comment.as_ref().unwrap();
         assert!(
@@ -960,7 +996,11 @@ Some text here.
         );
 
         let fm = frontmatter.unwrap();
-        assert_eq!(fm.kind, SymbolKind::Property, "TOML frontmatter should be Property kind");
+        assert_eq!(
+            fm.kind,
+            SymbolKind::Property,
+            "TOML frontmatter should be Property kind"
+        );
 
         let content = fm.doc_comment.as_ref().unwrap();
         assert!(content.contains("title = "), "Should contain TOML title");
@@ -987,7 +1027,10 @@ Welcome to the docs.
         let symbols = extract_symbols(markdown);
 
         let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
-        assert!(frontmatter.is_some(), "Should extract Hugo TOML frontmatter");
+        assert!(
+            frontmatter.is_some(),
+            "Should extract Hugo TOML frontmatter"
+        );
 
         let content = frontmatter.unwrap().doc_comment.as_ref().unwrap();
         assert!(content.contains("[menu]"), "Should capture TOML sections");
@@ -1066,7 +1109,10 @@ unicode: "日本語タイトル"
         let symbols = extract_symbols(markdown);
 
         let frontmatter = symbols.iter().find(|s| s.name == "frontmatter");
-        assert!(frontmatter.is_some(), "Should handle special characters in frontmatter");
+        assert!(
+            frontmatter.is_some(),
+            "Should handle special characters in frontmatter"
+        );
 
         let content = frontmatter.unwrap().doc_comment.as_ref().unwrap();
         assert!(content.contains("path:"), "Should preserve paths");
@@ -1116,7 +1162,10 @@ Multiple paragraphs should also be captured.
         let doc = frontmatter.unwrap().doc_comment.as_ref().unwrap();
 
         // Should contain the frontmatter YAML
-        assert!(doc.contains("id: checkpoint_abc123"), "Should have frontmatter");
+        assert!(
+            doc.contains("id: checkpoint_abc123"),
+            "Should have frontmatter"
+        );
         assert!(doc.contains("type: checkpoint"), "Should have type field");
 
         // Should ALSO contain the body content after frontmatter
@@ -1157,7 +1206,10 @@ Content under heading should NOT be in frontmatter doc_comment.
         let doc = frontmatter.unwrap().doc_comment.as_ref().unwrap();
 
         // Should have body content
-        assert!(doc.contains("Body content here"), "Should capture body before heading");
+        assert!(
+            doc.contains("Body content here"),
+            "Should capture body before heading"
+        );
 
         // Should NOT have content under heading
         assert!(

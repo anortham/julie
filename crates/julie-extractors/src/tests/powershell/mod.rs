@@ -1718,5 +1718,5 @@ function Simple-Function {
         }
     }
 }
-mod types; // Phase 4: Type extraction verification tests
-mod cross_file_relationships; // Cross-file relationship resolution tests
+mod cross_file_relationships;
+mod types; // Phase 4: Type extraction verification tests // Cross-file relationship resolution tests

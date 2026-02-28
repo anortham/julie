@@ -169,8 +169,7 @@ pub(super) fn extract_enum_member(
 
 /// Extract class signature
 fn extract_class_signature(base: &BaseExtractor, node: Node) -> Option<String> {
-    let name = find_class_name_node(node)
-        .map(|n| base.get_node_text(&n))?;
+    let name = find_class_name_node(node).map(|n| base.get_node_text(&n))?;
 
     // Check for inheritance
     if let Some(inheritance) = extract_inheritance(base, node) {
@@ -182,8 +181,7 @@ fn extract_class_signature(base: &BaseExtractor, node: Node) -> Option<String> {
 
 /// Extract method signature
 fn extract_method_signature(base: &BaseExtractor, node: Node) -> Option<String> {
-    let name = find_method_name_node(node)
-        .map(|n| base.get_node_text(&n))?;
+    let name = find_method_name_node(node).map(|n| base.get_node_text(&n))?;
 
     let return_type = extract_return_type(base, node);
     let is_static = has_modifier(base, node, "static");
@@ -196,8 +194,7 @@ fn extract_method_signature(base: &BaseExtractor, node: Node) -> Option<String> 
 
 /// Extract property signature
 fn extract_property_signature(base: &BaseExtractor, node: Node) -> Option<String> {
-    let name = find_property_name_node(node)
-        .map(|n| base.get_node_text(&n).replace("$", ""))?;
+    let name = find_property_name_node(node).map(|n| base.get_node_text(&n).replace("$", ""))?;
 
     let property_type = extract_property_type(base, node);
     let is_hidden = has_modifier(base, node, "hidden");

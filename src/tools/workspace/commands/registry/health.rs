@@ -1,7 +1,7 @@
 use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use tracing::{info, warn};
 
 impl ManageWorkspaceTool {
@@ -21,9 +21,7 @@ impl ManageWorkspaceTool {
             None => {
                 let message = "CRITICAL: No primary workspace found!\n\
                                Run 'index' command to initialize workspace.";
-                return Ok(CallToolResult::text_content(vec![Content::text(
-                    message,
-                )]));
+                return Ok(CallToolResult::text_content(vec![Content::text(message)]));
             }
         };
 
@@ -39,13 +37,19 @@ impl ManageWorkspaceTool {
 
         // PHASE 2: Search Engine Health
         health_report.push_str("Search Engine (Tantivy)\n");
-        let search_status = self
-            .check_search_engine_health(&primary_workspace)
-            .await?;
+        let search_status = self.check_search_engine_health(&primary_workspace).await?;
         health_report.push_str(&search_status);
         health_report.push('\n');
 
-        // PHASE 3: Overall System Assessment
+        // PHASE 3: Embedding Runtime Health
+        health_report.push_str("Embedding Runtime\n");
+        let embedding_status = self
+            .check_embedding_runtime_health(&primary_workspace)
+            .await?;
+        health_report.push_str(&embedding_status);
+        health_report.push('\n');
+
+        // PHASE 4: Overall System Assessment
         health_report.push_str("Overall System Assessment\n");
         let overall_status = self.assess_overall_health(&primary_workspace).await?;
         health_report.push_str(&overall_status);
@@ -155,6 +159,65 @@ impl ManageWorkspaceTool {
         } else {
             status.push_str("Search Status: NOT AVAILABLE\n");
             status.push_str("Database not initialized\n");
+        }
+
+        Ok(status)
+    }
+
+    /// Check embedding runtime health and fallback/degradation status.
+    async fn check_embedding_runtime_health(
+        &self,
+        workspace: &crate::workspace::JulieWorkspace,
+    ) -> Result<String> {
+        let mut status = String::new();
+
+        match &workspace.embedding_runtime_status {
+            Some(runtime) => match workspace.embedding_provider.as_ref() {
+                Some(provider) => {
+                    let runtime_state = if runtime.degraded_reason.is_some() {
+                        "DEGRADED"
+                    } else {
+                        "INITIALIZED"
+                    };
+
+                    status.push_str(&format!(
+                        "Embedding Status: {}\n\
+                            Backend: {}\n\
+                            Device: {}\n\
+                            Accelerated: {}\n\
+                            Degraded: {}\n",
+                        runtime_state,
+                        runtime.resolved_backend.as_str(),
+                        provider.device_info().device,
+                        runtime.accelerated,
+                        runtime.degraded_reason.as_deref().unwrap_or("none")
+                    ));
+                }
+                None => {
+                    let reason = runtime
+                        .degraded_reason
+                        .as_deref()
+                        .unwrap_or("embedding runtime metadata exists but provider is missing");
+
+                    status.push_str(&format!(
+                        "Embedding Status: UNAVAILABLE\n\
+                            Backend: {}\n\
+                            Device: unavailable\n\
+                            Accelerated: {}\n\
+                            Degraded: {}\n",
+                        runtime.resolved_backend.as_str(),
+                        runtime.accelerated,
+                        reason
+                    ));
+                }
+            },
+            None => {
+                status.push_str("Embedding Status: NOT INITIALIZED\n");
+                status.push_str("Backend: unresolved\n");
+                status.push_str("Device: unavailable\n");
+                status.push_str("Accelerated: false\n");
+                status.push_str("Degraded: none\n");
+            }
         }
 
         Ok(status)

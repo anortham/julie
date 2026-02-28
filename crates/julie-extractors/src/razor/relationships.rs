@@ -150,8 +150,7 @@ impl super::RazorExtractor {
                     let tag_name = tag_match.as_str();
 
                     // Find the component symbol first, then find a different "from" symbol
-                    if let Some(component_symbol) = symbols.iter().find(|s| s.name == tag_name)
-                    {
+                    if let Some(component_symbol) = symbols.iter().find(|s| s.name == tag_name) {
                         // Find the page/module that USES this component (must not be the component itself)
                         let from_symbol = symbols
                             .iter()

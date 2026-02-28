@@ -11,9 +11,9 @@
 mod rename;
 mod utils;
 
+use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
 use schemars::JsonSchema;
-use crate::mcp_compat::{CallToolResult, Content, CallToolResultExt};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -92,9 +92,7 @@ pub(crate) async fn resolve_workspace_root(
     let entry: crate::workspace::registry::WorkspaceEntry = registry_service
         .get_workspace(workspace_param)
         .await?
-        .ok_or_else(|| {
-            anyhow::anyhow!("Reference workspace not found: {}", workspace_param)
-        })?;
+        .ok_or_else(|| anyhow::anyhow!("Reference workspace not found: {}", workspace_param))?;
 
     Ok(PathBuf::from(&entry.original_path))
 }

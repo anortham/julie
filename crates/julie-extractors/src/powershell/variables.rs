@@ -127,6 +127,5 @@ fn extract_variable_signature(base: &BaseExtractor, node: Node) -> Option<String
         }
     }
 
-    find_variable_name_node(node)
-        .map(|n| base.get_node_text(&n))
+    find_variable_name_node(node).map(|n| base.get_node_text(&n))
 }

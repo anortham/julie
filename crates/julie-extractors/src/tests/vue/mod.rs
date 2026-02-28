@@ -1155,8 +1155,8 @@ export default {
         assert!(greet_method.is_some());
     }
 }
-mod types; // Phase 4: Type extraction verification tests
-mod script_setup; // Phase 5: Vue 3 Composition API / <script setup> tests
+mod script_setup;
+mod types; // Phase 4: Type extraction verification tests // Phase 5: Vue 3 Composition API / <script setup> tests
 
 // ========================================================================
 // Vue Style Section Enhanced Tests (TDD RED phase)
@@ -1196,7 +1196,9 @@ mod vue_style_enhanced_tests {
         let mut extractor = create_extractor("id-selectors.vue", vue_code);
         let symbols = extractor.extract_symbols(None);
 
-        let app = symbols.iter().find(|s| s.name == "app" && s.kind == SymbolKind::Property);
+        let app = symbols
+            .iter()
+            .find(|s| s.name == "app" && s.kind == SymbolKind::Property);
         assert!(app.is_some(), "Should extract #app ID selector");
         assert_eq!(app.unwrap().signature.as_ref().unwrap(), "#app");
 
@@ -1271,11 +1273,11 @@ mod vue_style_enhanced_tests {
         let container = symbols
             .iter()
             .find(|s| s.name == "container" && s.kind == SymbolKind::Property);
-        assert!(container.is_some(), "Should extract .container class selector");
-        assert_eq!(
-            container.unwrap().signature.as_ref().unwrap(),
-            ".container"
+        assert!(
+            container.is_some(),
+            "Should extract .container class selector"
         );
+        assert_eq!(container.unwrap().signature.as_ref().unwrap(), ".container");
 
         // ID selector
         let main_content = symbols

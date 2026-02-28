@@ -20,8 +20,8 @@ mod migrations;
 mod relationships;
 mod schema;
 mod symbols;
-pub mod types;
 mod type_queries;
+pub mod types;
 pub mod vectors;
 mod workspace;
 
