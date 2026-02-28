@@ -15,13 +15,22 @@ mod tests {
 
     /// Helper to create a SymbolSearchResult with the given name, file_path, and score.
     fn make_result(name: &str, file_path: &str, score: f32) -> SymbolSearchResult {
+        make_result_with_kind(name, file_path, score, "function")
+    }
+
+    fn make_result_with_kind(
+        name: &str,
+        file_path: &str,
+        score: f32,
+        kind: &str,
+    ) -> SymbolSearchResult {
         SymbolSearchResult {
             id: format!("id_{}_{}", name, file_path.replace('/', "_")),
             name: name.to_string(),
             signature: String::new(),
             doc_comment: String::new(),
             file_path: file_path.to_string(),
-            kind: "function".to_string(),
+            kind: kind.to_string(),
             language: "rust".to_string(),
             start_line: 1,
             score,
@@ -145,5 +154,87 @@ mod tests {
         assert_eq!(results[2].file_path, "src/a.rs");
         assert_eq!(results[3].file_path, "src/b.rs");
         assert_eq!(results[4].file_path, "src/c.rs");
+    }
+
+    // ── Kind-aware promotion tests ──────────────────────────────────────
+
+    #[test]
+    fn test_definition_kind_promoted_over_import_kind() {
+        // Scenario: 5 imports of "UserService" rank higher in Tantivy than
+        // the actual class definition because references mention the name more often.
+        let mut results = vec![
+            make_result_with_kind("UserService", "src/handler.rs", 8.0, "import"),
+            make_result_with_kind("UserService", "src/routes.rs", 7.5, "import"),
+            make_result_with_kind("UserService", "src/middleware.rs", 7.0, "import"),
+            make_result_with_kind("UserService", "src/tests/auth.rs", 6.5, "import"),
+            make_result_with_kind("UserService", "src/di.rs", 6.0, "import"),
+            make_result_with_kind("UserService", "src/services/user.rs", 3.0, "class"),
+        ];
+
+        promote_exact_name_matches(&mut results, "UserService");
+
+        // The class definition should be first among exact matches
+        assert_eq!(
+            results[0].kind, "class",
+            "Definition kind (class) should be promoted above import kind"
+        );
+        assert_eq!(results[0].file_path, "src/services/user.rs");
+
+        // Imports should follow (still exact matches, but lower tier)
+        for i in 1..=5 {
+            assert_eq!(results[i].kind, "import");
+        }
+    }
+
+    #[test]
+    fn test_definition_kinds_all_promoted() {
+        // All "definition-like" kinds should be in the top tier
+        let definition_kinds = vec![
+            "class", "struct", "interface", "trait", "enum", "function", "method", "constructor",
+        ];
+
+        for def_kind in &definition_kinds {
+            let mut results = vec![
+                make_result_with_kind("Foo", "src/ref.rs", 10.0, "import"),
+                make_result_with_kind("Foo", "src/def.rs", 2.0, def_kind),
+            ];
+
+            promote_exact_name_matches(&mut results, "Foo");
+
+            assert_eq!(
+                results[0].kind, *def_kind,
+                "Kind '{}' should be promoted above 'import'",
+                def_kind
+            );
+        }
+    }
+
+    #[test]
+    fn test_three_tier_stable_order() {
+        // Tier 1: exact name + definition kind
+        // Tier 2: exact name + non-definition kind
+        // Tier 3: non-exact matches
+        let mut results = vec![
+            make_result_with_kind("other_fn", "src/other.rs", 10.0, "function"),   // tier 3
+            make_result_with_kind("Config", "src/import1.rs", 8.0, "import"),      // tier 2
+            make_result_with_kind("Config", "src/config.rs", 3.0, "struct"),       // tier 1
+            make_result_with_kind("ConfigHelper", "src/helper.rs", 7.0, "function"), // tier 3
+            make_result_with_kind("Config", "src/import2.rs", 5.0, "import"),      // tier 2
+            make_result_with_kind("Config", "src/trait.rs", 2.0, "trait"),         // tier 1
+        ];
+
+        promote_exact_name_matches(&mut results, "Config");
+
+        // Tier 1: definitions, in original order
+        assert_eq!(results[0].file_path, "src/config.rs");    // struct
+        assert_eq!(results[1].file_path, "src/trait.rs");     // trait
+
+        // Tier 2: non-definition exact matches, in original order
+        assert_eq!(results[2].file_path, "src/import1.rs");   // import
+        assert_eq!(results[3].file_path, "src/import2.rs");   // import
+
+        // Tier 3: non-matches, in original order
+        assert_eq!(results[4].file_path, "src/other.rs");
+        assert_eq!(results[5].file_path, "src/helper.rs");
     }
 }

@@ -142,7 +142,6 @@ pub async fn text_search_impl(
                                 .results
                                 .into_iter()
                                 .filter(|r| matches_glob_pattern(&r.file_path, pattern))
-                                .take(limit_usize)
                                 .collect()
                         } else {
                             search.results
@@ -362,7 +361,6 @@ pub async fn text_search_impl(
                         .results
                         .into_iter()
                         .filter(|r| matches_glob_pattern(&r.file_path, pattern))
-                        .take(limit_usize)
                         .collect()
                 } else {
                     search.results

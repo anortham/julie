@@ -2,6 +2,8 @@
 
 use std::collections::HashSet;
 
+use crate::search::scoring::is_nl_like_query;
+
 /// Maximum number of additional (non-original) terms.
 pub const MAX_ADDED_TERMS: usize = 8;
 
@@ -63,14 +65,6 @@ fn tokenize_query(query: &str) -> Vec<String> {
     }
 
     terms
-}
-
-fn is_nl_like_query(query: &str) -> bool {
-    let words: Vec<&str> = query.split_whitespace().collect();
-    words.len() > 1
-        && words
-            .iter()
-            .all(|word| word.chars().any(|c| c.is_ascii_alphabetic()))
 }
 
 fn apply_aliases(

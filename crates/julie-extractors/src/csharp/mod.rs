@@ -13,6 +13,7 @@
 // - Modern C# features (nullable types, records, pattern matching)
 
 mod helpers;
+pub(crate) mod member_type_relationships;
 mod identifiers;
 mod members;
 mod operators;

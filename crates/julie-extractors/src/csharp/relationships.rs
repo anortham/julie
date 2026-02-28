@@ -2,6 +2,10 @@
 
 use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::csharp::CSharpExtractor;
+use crate::csharp::member_type_relationships::{
+    extract_field_type_relationships, extract_parameter_type_name, extract_property_type_relationships,
+    find_containing_class,
+};
 use tree_sitter::Tree;
 
 /// Extract relationships from the tree
@@ -29,6 +33,12 @@ fn visit_relationships(
         // on class_declaration, not constructor_declaration. Known gap for future work.
         "constructor_declaration" => {
             extract_constructor_parameter_relationships(extractor, node, symbols, relationships);
+        }
+        "field_declaration" => {
+            extract_field_type_relationships(extractor, node, symbols, relationships);
+        }
+        "property_declaration" => {
+            extract_property_type_relationships(extractor, node, symbols, relationships);
         }
         "invocation_expression" => {
             extract_call_relationships(extractor, node, symbols, relationships);
@@ -131,35 +141,7 @@ fn extract_constructor_parameter_relationships(
     let (class_symbol_id, param_types) = {
         let base = extractor.get_base();
 
-        // Find the containing class by walking up the tree
-        let class_symbol = {
-            let mut parent = node.parent();
-            let mut class_sym = None;
-            while let Some(p) = parent {
-                if p.kind() == "class_declaration"
-                    || p.kind() == "struct_declaration"
-                    || p.kind() == "record_declaration"
-                {
-                    let mut p_cursor = p.walk();
-                    if let Some(name_node) =
-                        p.children(&mut p_cursor).find(|c| c.kind() == "identifier")
-                    {
-                        let class_name = base.get_node_text(&name_node);
-                        class_sym = symbols.iter().find(|s| {
-                            s.name == class_name
-                                && (s.kind == SymbolKind::Class
-                                    || s.kind == SymbolKind::Struct
-                                    || s.kind == SymbolKind::Type)
-                        });
-                    }
-                    break;
-                }
-                parent = p.parent();
-            }
-            class_sym
-        };
-
-        let Some(class_symbol) = class_symbol else {
+        let Some(class_symbol) = find_containing_class(base, node, symbols) else {
             return;
         };
 
@@ -241,103 +223,6 @@ fn extract_constructor_parameter_relationships(
             }
         }
     }
-}
-
-/// Extract the type name from a constructor parameter node.
-/// Returns `None` for predefined/tuple types (not interesting relationships).
-fn extract_parameter_type_name(
-    base: &crate::base::BaseExtractor,
-    param: tree_sitter::Node,
-) -> Option<String> {
-    // Parameter structure: [modifier*] type identifier [= default]
-    let mut cursor = param.walk();
-    for child in param.children(&mut cursor) {
-        match child.kind() {
-            "modifier" | "parameter_modifier" | "params" | "this" => continue,
-
-            // Skip predefined (string, int, etc.) and tuple types ((string, int))
-            "predefined_type" | "tuple_type" => return None,
-
-            // Simple type: ILogger, MyClass
-            "identifier" => return Some(base.get_node_text(&child)),
-
-            // Generic: ILogger<MyService> -> "ILogger"
-            "generic_name" => {
-                let mut gc = child.walk();
-                if let Some(name_node) = child.children(&mut gc).find(|c| c.kind() == "identifier")
-                {
-                    return Some(base.get_node_text(&name_node));
-                }
-                return None;
-            }
-
-            // Nullable: ILogger? -> unwrap inner type
-            "nullable_type" => {
-                let mut nc = child.walk();
-                for inner in child.children(&mut nc) {
-                    match inner.kind() {
-                        "predefined_type" => return None,
-                        "identifier" => return Some(base.get_node_text(&inner)),
-                        "generic_name" => {
-                            let mut gc = inner.walk();
-                            if let Some(name_node) =
-                                inner.children(&mut gc).find(|c| c.kind() == "identifier")
-                            {
-                                return Some(base.get_node_text(&name_node));
-                            }
-                            return None;
-                        }
-                        _ => {}
-                    }
-                }
-                return None;
-            }
-
-            // Qualified: Namespace.IType -> last identifier
-            "qualified_name" => {
-                let mut qc = child.walk();
-                let last_ident = child
-                    .children(&mut qc)
-                    .filter(|c| c.kind() == "identifier")
-                    .last();
-                if let Some(ident) = last_ident {
-                    return Some(base.get_node_text(&ident));
-                }
-                return None;
-            }
-
-            // Array: ILogger[] -> extract base type
-            "array_type" => {
-                let mut ac = child.walk();
-                for inner in child.children(&mut ac) {
-                    match inner.kind() {
-                        "predefined_type" => return None,
-                        "identifier" => return Some(base.get_node_text(&inner)),
-                        "generic_name" => {
-                            let mut gc = inner.walk();
-                            if let Some(name_node) =
-                                inner.children(&mut gc).find(|c| c.kind() == "identifier")
-                            {
-                                return Some(base.get_node_text(&name_node));
-                            }
-                            return None;
-                        }
-                        _ => {}
-                    }
-                }
-                return None;
-            }
-
-            // Fallback: if node kind contains "type" or "name", treat as type
-            _ => {
-                if child.kind().contains("type") || child.kind().contains("name") {
-                    return Some(base.get_node_text(&child));
-                }
-                continue;
-            }
-        }
-    }
-    None
 }
 
 /// Extract method call relationships

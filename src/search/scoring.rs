@@ -263,15 +263,29 @@ fn looks_like_identifier_token(term: &str) -> bool {
     has_lower && has_upper
 }
 
-/// Promote exact name matches to the top of results using a stable partition.
+/// Kinds that represent actual definitions (not references/imports).
+const DEFINITION_KINDS: &[&str] = &[
+    "class",
+    "struct",
+    "interface",
+    "trait",
+    "enum",
+    "function",
+    "method",
+    "constructor",
+];
+
+/// Promote exact name matches to the top of results using a three-tier stable partition.
 ///
 /// When `search_target="definitions"`, the actual definition of a symbol may rank
 /// low in Tantivy (mentioned once in its definition vs. many times in references).
-/// This function moves results whose `name` exactly matches the query (case-insensitive)
-/// to the front, preserving the relative order within both the "exact" and "non-exact" groups.
+/// This function applies a three-tier stable partition:
 ///
-/// This is a stable partition, not a sort — it doesn't re-rank by score, just moves
-/// exact matches ahead of non-matches.
+/// 1. **Tier 1**: Exact name match + definition kind (class, struct, function, etc.)
+/// 2. **Tier 2**: Exact name match + non-definition kind (import, variable, etc.)
+/// 3. **Tier 3**: Everything else (non-exact matches)
+///
+/// Within each tier, original relative order is preserved (stable partition).
 pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, query: &str) {
     if results.is_empty() {
         return;
@@ -279,20 +293,25 @@ pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, 
 
     let query_lower = query.trim().to_lowercase();
 
-    // Stable partition: exact matches first, then non-matches, each group in original order.
-    // We do this by collecting into two groups and recombining.
-    let mut exact = Vec::new();
+    // Three-tier stable partition: collect into three groups and recombine.
+    let mut definitions = Vec::new();
+    let mut other_exact = Vec::new();
     let mut rest = Vec::new();
 
     for result in results.drain(..) {
         if result.name.to_lowercase() == query_lower {
-            exact.push(result);
+            if DEFINITION_KINDS.contains(&result.kind.as_str()) {
+                definitions.push(result);
+            } else {
+                other_exact.push(result);
+            }
         } else {
             rest.push(result);
         }
     }
 
-    results.extend(exact);
+    results.extend(definitions);
+    results.extend(other_exact);
     results.extend(rest);
 }
 
