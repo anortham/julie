@@ -18,6 +18,14 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_default_build_enables_sidecar_backend_feature() {
+        assert!(
+            cfg!(feature = "embeddings-sidecar"),
+            "Default build should enable embeddings-sidecar feature"
+        );
+    }
+
     #[cfg(feature = "embeddings-candle")]
     #[test]
     fn test_candle_feature_can_be_enabled() {
@@ -151,7 +159,10 @@ mod tests {
         assert_eq!(policy, vec!["directml", "cpu"]);
 
         #[cfg(not(target_os = "windows"))]
-        assert!(policy.is_empty(), "macOS/Linux should have no accelerated EP");
+        assert!(
+            policy.is_empty(),
+            "macOS/Linux should have no accelerated EP"
+        );
     }
 
     /// Verify zerocopy AsBytes works for f32 slices (used to pass vectors to sqlite-vec).

@@ -12,6 +12,8 @@ mod tests {
     use crate::embeddings::pipeline::run_embedding_pipeline;
     use crate::embeddings::{EmbeddingProvider, OrtEmbeddingProvider};
     use crate::extractors::SymbolKind;
+    #[cfg(feature = "embeddings-sidecar")]
+    use crate::tests::integration::sidecar_test_helpers::create_test_sidecar_provider;
 
     /// Helper: create a test database with symbols.
     fn setup_db_with_symbols(symbols: &[(&str, &str, SymbolKind)]) -> Arc<Mutex<SymbolDatabase>> {
@@ -180,5 +182,22 @@ mod tests {
             "embedding_count should match stats"
         );
         assert_eq!(count, 2, "Should have 2 embeddings (Trait + Enum)");
+    }
+
+    #[cfg(feature = "embeddings-sidecar")]
+    #[test]
+    fn test_pipeline_embeds_with_sidecar_provider() {
+        let db = setup_db_with_symbols(&[
+            ("s1", "process_data", SymbolKind::Function),
+            ("s2", "UserService", SymbolKind::Class),
+            ("s3", "ignored_const", SymbolKind::Constant),
+        ]);
+
+        let provider = create_test_sidecar_provider();
+        let stats = run_embedding_pipeline(&db, &provider).unwrap();
+
+        assert_eq!(stats.symbols_embedded, 2);
+        let db_guard = db.lock().unwrap();
+        assert_eq!(db_guard.embedding_count().unwrap(), 2);
     }
 }

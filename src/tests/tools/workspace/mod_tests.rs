@@ -26,7 +26,7 @@ impl EmbeddingProvider for NoopEmbeddingProvider {
 
     fn device_info(&self) -> DeviceInfo {
         DeviceInfo {
-            runtime: "test".to_string(),
+            runtime: "pytorch-sidecar".to_string(),
             device: "cpu".to_string(),
             model_name: "noop".to_string(),
             dimensions: 384,
@@ -191,6 +191,10 @@ async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
         "health output should mark degraded runtime as DEGRADED: {health}"
     );
     assert!(
+        health.contains("runtime: pytorch-sidecar") || health.contains("Runtime: pytorch-sidecar"),
+        "health output should include sidecar runtime identity: {health}"
+    );
+    assert!(
         health.contains("backend: ort") || health.contains("Backend: ort"),
         "health output should include resolved backend: {health}"
     );
@@ -253,6 +257,10 @@ async fn test_manage_workspace_health_reports_unavailable_when_provider_missing(
         "health output should report missing provider as UNAVAILABLE: {health}"
     );
     assert!(
+        health.contains("runtime: unavailable") || health.contains("Runtime: unavailable"),
+        "health output should include standardized runtime field when provider is missing: {health}"
+    );
+    assert!(
         health.contains("Degraded: provider init failed"),
         "health output should include standardized degraded field when provider is missing: {health}"
     );
@@ -260,6 +268,99 @@ async fn test_manage_workspace_health_reports_unavailable_when_provider_missing(
         health.contains("provider") || health.contains("Provider"),
         "health output should explain provider is missing: {health}"
     );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_health_reports_not_initialized_when_runtime_status_missing() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+        ws.embedding_runtime_status = None;
+    }
+
+    let tool = ManageWorkspaceTool {
+        operation: "health".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: Some(false),
+    };
+
+    let result = tool.call_tool(&handler).await.unwrap();
+    let health = extract_text_from_result(&result);
+
+    assert!(health.contains("Embedding Runtime"), "{health}");
+    assert!(health.contains("Embedding Status: NOT INITIALIZED"), "{health}");
+    assert!(health.contains("Runtime: unavailable"), "{health}");
+    assert!(health.contains("Backend: unresolved"), "{health}");
+    assert!(health.contains("Device: unavailable"), "{health}");
+    assert!(health.contains("Accelerated: false"), "{health}");
+    assert!(health.contains("Degraded: none"), "{health}");
+}
+
+#[tokio::test]
+async fn test_manage_workspace_health_reports_initialized_when_not_degraded() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let handler = JulieServerHandler::new().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+        ws.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
+            requested_backend: EmbeddingBackend::Auto,
+            resolved_backend: EmbeddingBackend::Sidecar,
+            accelerated: false,
+            degraded_reason: None,
+        });
+    }
+
+    let tool = ManageWorkspaceTool {
+        operation: "health".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: Some(false),
+    };
+
+    let result = tool.call_tool(&handler).await.unwrap();
+    let health = extract_text_from_result(&result);
+
+    assert!(health.contains("Embedding Runtime"), "{health}");
+    assert!(health.contains("Embedding Status: INITIALIZED"), "{health}");
+    assert!(health.contains("Runtime: pytorch-sidecar"), "{health}");
+    assert!(health.contains("Backend: sidecar"), "{health}");
+    assert!(health.contains("Device: cpu"), "{health}");
+    assert!(health.contains("Accelerated: false"), "{health}");
+    assert!(health.contains("Degraded: none"), "{health}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

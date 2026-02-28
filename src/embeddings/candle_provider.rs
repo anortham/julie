@@ -142,8 +142,9 @@ impl CandleEmbeddingProvider {
 
                 device_label = "CPU".to_string();
                 accelerated = false;
-                let fallback_reason =
-                    format!("Candle Metal runtime warmup failed, fell back to CPU: {warmup_error:#}");
+                let fallback_reason = format!(
+                    "Candle Metal runtime warmup failed, fell back to CPU: {warmup_error:#}"
+                );
                 let degraded_reason =
                     combine_degraded_reasons(base_degraded_reason, Some(fallback_reason));
                 let degraded_reason =
@@ -446,8 +447,13 @@ fn compute_embeddings_coreml_sequential(
         let (input_ids, attention_mask) = encode_inputs(&mut state.tokenizer, single, &device)?;
         let token_type_ids = input_ids.zeros_like()?;
 
-        let token_embeddings =
-            coreml_forward(&model, &input_ids, &token_type_ids, &attention_mask, &coreml_input_names)?;
+        let token_embeddings = coreml_forward(
+            &model,
+            &input_ids,
+            &token_type_ids,
+            &attention_mask,
+            &coreml_input_names,
+        )?;
 
         let mut embeddings = finalize_embeddings(&token_embeddings, &attention_mask)?;
         all_embeddings.append(&mut embeddings);

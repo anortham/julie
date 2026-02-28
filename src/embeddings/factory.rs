@@ -1,16 +1,19 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 #[cfg(feature = "embeddings-candle")]
 use super::CandleEmbeddingProvider;
 #[cfg(feature = "embeddings-ort")]
 use super::OrtEmbeddingProvider;
+#[cfg(feature = "embeddings-sidecar")]
+use super::SidecarEmbeddingProvider;
 use super::{EmbeddingBackend, EmbeddingProvider};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BackendResolverCapabilities {
+    pub sidecar_available: bool,
     pub ort_available: bool,
     pub candle_available: bool,
     pub target_os: &'static str,
@@ -20,6 +23,7 @@ pub struct BackendResolverCapabilities {
 impl BackendResolverCapabilities {
     pub fn current() -> Self {
         Self {
+            sidecar_available: cfg!(feature = "embeddings-sidecar"),
             ort_available: cfg!(feature = "embeddings-ort"),
             candle_available: cfg!(feature = "embeddings-candle"),
             target_os: std::env::consts::OS,
@@ -29,6 +33,7 @@ impl BackendResolverCapabilities {
 
     fn is_available(self, backend: EmbeddingBackend) -> bool {
         match backend {
+            EmbeddingBackend::Sidecar => self.sidecar_available,
             EmbeddingBackend::Ort => self.ort_available,
             EmbeddingBackend::Candle => self.candle_available,
             _ => false,
@@ -55,10 +60,11 @@ impl Default for EmbeddingConfig {
 pub fn parse_provider_preference(provider: &str) -> Result<EmbeddingBackend> {
     match provider.trim().to_ascii_lowercase().as_str() {
         "auto" => Ok(EmbeddingBackend::Auto),
+        "sidecar" => Ok(EmbeddingBackend::Sidecar),
         "ort" => Ok(EmbeddingBackend::Ort),
         "candle" => Ok(EmbeddingBackend::Candle),
         unknown => bail!(
-            "Unknown embedding provider: {} (valid: auto|ort|candle)",
+            "Unknown embedding provider: {} (valid: auto|sidecar|ort|candle)",
             unknown
         ),
     }
@@ -94,6 +100,14 @@ pub fn fallback_backend_after_init_failure(
     }
 
     if requested_backend == EmbeddingBackend::Auto {
+        if resolved_backend == EmbeddingBackend::Sidecar {
+            if capabilities.ort_available {
+                return Some(EmbeddingBackend::Ort);
+            }
+            if capabilities.candle_available {
+                return Some(EmbeddingBackend::Candle);
+            }
+        }
         if resolved_backend == EmbeddingBackend::Candle && capabilities.ort_available {
             return Some(EmbeddingBackend::Ort);
         }
@@ -111,18 +125,21 @@ pub fn resolve_backend_preference(
 ) -> Result<EmbeddingBackend> {
     let resolved_backend = match requested_backend {
         EmbeddingBackend::Auto => {
-            // ORT is preferred on all platforms:
-            // - Windows: ORT + DirectML EP gives GPU acceleration
-            // - macOS/Linux: ORT + CPU (CoreML EP dropped due to 13GB+ memory bloat)
-            // Candle's Metal backend lacks layer-norm, so it always falls to CPU.
-            if capabilities.ort_available {
+            if capabilities.sidecar_available {
+                EmbeddingBackend::Sidecar
+            } else if capabilities.ort_available {
                 EmbeddingBackend::Ort
             } else if capabilities.candle_available {
                 EmbeddingBackend::Candle
             } else {
-                bail!("No embedding backend available for platform {}-{}", capabilities.target_os, capabilities.target_arch)
+                bail!(
+                    "No embedding backend available for platform {}-{}",
+                    capabilities.target_os,
+                    capabilities.target_arch
+                )
             }
         }
+        EmbeddingBackend::Sidecar => EmbeddingBackend::Sidecar,
         EmbeddingBackend::Ort => EmbeddingBackend::Ort,
         EmbeddingBackend::Candle => EmbeddingBackend::Candle,
         EmbeddingBackend::Unresolved => {
@@ -155,6 +172,17 @@ impl EmbeddingProviderFactory {
             resolve_backend_preference(requested_backend, &BackendResolverCapabilities::current())?;
 
         match resolved_backend {
+            EmbeddingBackend::Sidecar => {
+                #[cfg(feature = "embeddings-sidecar")]
+                {
+                    return Ok(Arc::new(SidecarEmbeddingProvider::try_new()?));
+                }
+
+                #[cfg(not(feature = "embeddings-sidecar"))]
+                {
+                    bail!("Embedding provider 'sidecar' is not available in this build");
+                }
+            }
             EmbeddingBackend::Ort => {
                 #[cfg(feature = "embeddings-ort")]
                 {

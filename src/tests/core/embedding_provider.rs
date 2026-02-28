@@ -2,6 +2,9 @@
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+    use std::process::{Command, Stdio};
+
     use serial_test::serial;
     use tempfile::TempDir;
 
@@ -23,6 +26,101 @@ mod tests {
         OrtEmbeddingProvider, ort_execution_provider_policy_kinds, ort_runtime_signal,
     };
     use crate::workspace::{JulieWorkspace, build_embedding_runtime_log_fields};
+
+    fn test_python_interpreter() -> String {
+        if let Ok(override_value) = std::env::var("JULIE_TEST_PYTHON") {
+            let trimmed = override_value.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+
+        let candidates = if cfg!(target_os = "windows") {
+            vec!["python", "py", "python3"]
+        } else {
+            vec!["python3", "python"]
+        };
+
+        for candidate in candidates {
+            let available = Command::new(candidate)
+                .arg("--version")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success());
+            if available {
+                return candidate.to_string();
+            }
+        }
+
+        panic!("No Python interpreter found for tests; set JULIE_TEST_PYTHON");
+    }
+
+    fn write_fake_sidecar_script(temp_dir: &TempDir) -> PathBuf {
+        let sidecar_script = temp_dir.path().join("fake_sidecar.py");
+        std::fs::write(
+            &sidecar_script,
+            r#"import json
+import sys
+
+while True:
+    line = sys.stdin.readline()
+    if not line:
+        break
+    req = json.loads(line)
+    req_id = req.get("request_id", "")
+    method = req.get("method")
+
+    if method == "health":
+        resp = {
+            "schema": "julie.embedding.sidecar",
+            "version": 1,
+            "request_id": req_id,
+            "result": {
+                "ready": True,
+                "runtime": "fake-sidecar",
+                "device": "cpu",
+                "dims": 384,
+            },
+        }
+        sys.stdout.write(json.dumps(resp) + "\n")
+        sys.stdout.flush()
+        continue
+
+    if method == "shutdown":
+        resp = {
+            "schema": "julie.embedding.sidecar",
+            "version": 1,
+            "request_id": req_id,
+            "result": {"stopping": True},
+        }
+        sys.stdout.write(json.dumps(resp) + "\n")
+        sys.stdout.flush()
+        break
+
+    if method == "embed_query":
+        result = {"dims": 384, "vector": [0.0] * 384}
+    elif method == "embed_batch":
+        texts = req.get("params", {}).get("texts", [])
+        result = {"dims": 384, "vectors": [[0.0] * 384 for _ in texts]}
+    else:
+        result = {}
+
+    resp = {
+        "schema": "julie.embedding.sidecar",
+        "version": 1,
+        "request_id": req_id,
+        "result": result,
+    }
+    sys.stdout.write(json.dumps(resp) + "\n")
+    sys.stdout.flush()
+"#,
+        )
+        .expect("test sidecar script should be written");
+
+        sidecar_script
+    }
 
     #[test]
     fn test_embedding_config_default_provider_is_auto() {
@@ -51,11 +149,19 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_provider_preference_accepts_sidecar() {
+        assert_eq!(
+            parse_provider_preference("sidecar").unwrap(),
+            EmbeddingBackend::Sidecar
+        );
+    }
+
+    #[test]
     fn test_parse_provider_preference_rejects_unknown_values() {
         let err = parse_provider_preference("not-a-real-provider").unwrap_err();
         let message = err.to_string();
         assert!(
-            message.contains("auto|ort|candle"),
+            message.contains("auto|sidecar|ort|candle"),
             "expected valid provider set in error, got: {message}"
         );
     }
@@ -125,10 +231,11 @@ mod tests {
     }
 
     #[test]
-    fn test_resolver_auto_prefers_ort_on_all_platforms() {
+    fn test_resolver_auto_prefers_ort_when_sidecar_unavailable() {
         // ORT is preferred everywhere: CoreML EP on macOS, DirectML on Windows, CPU on Linux
         for (os, arch) in [("macos", "aarch64"), ("linux", "x86_64"), ("windows", "x86_64")] {
             let capabilities = BackendResolverCapabilities {
+                sidecar_available: false,
                 ort_available: true,
                 candle_available: true,
                 target_os: os,
@@ -145,8 +252,24 @@ mod tests {
     }
 
     #[test]
+    fn test_resolver_auto_prefers_sidecar_when_available() {
+        let capabilities = BackendResolverCapabilities {
+            sidecar_available: true,
+            ort_available: true,
+            candle_available: true,
+            target_os: "macos",
+            target_arch: "aarch64",
+        };
+        assert_eq!(
+            resolve_backend_preference(EmbeddingBackend::Auto, &capabilities).unwrap(),
+            EmbeddingBackend::Sidecar
+        );
+    }
+
+    #[test]
     fn test_resolver_auto_falls_back_to_candle_when_ort_unavailable() {
         let capabilities = BackendResolverCapabilities {
+            sidecar_available: false,
             ort_available: false,
             candle_available: true,
             target_os: "macos",
@@ -160,6 +283,7 @@ mod tests {
     #[test]
     fn test_resolver_explicit_provider_overrides_auto_policy() {
         let capabilities = BackendResolverCapabilities {
+            sidecar_available: false,
             ort_available: true,
             candle_available: true,
             target_os: "linux",
@@ -173,6 +297,7 @@ mod tests {
     #[test]
     fn test_resolver_errors_when_explicit_candle_unavailable_even_if_ort_available() {
         let capabilities = BackendResolverCapabilities {
+            sidecar_available: false,
             ort_available: true,
             candle_available: false,
             target_os: "macos",
@@ -190,6 +315,7 @@ mod tests {
     #[test]
     fn test_resolver_auto_errors_when_no_backend_available() {
         let capabilities = BackendResolverCapabilities {
+            sidecar_available: false,
             ort_available: false,
             candle_available: false,
             target_os: "macos",
@@ -206,6 +332,7 @@ mod tests {
     #[test]
     fn test_resolver_errors_when_explicit_provider_unavailable() {
         let capabilities = BackendResolverCapabilities {
+            sidecar_available: false,
             ort_available: false,
             candle_available: false,
             target_os: "linux",
@@ -227,6 +354,7 @@ mod tests {
             EmbeddingBackend::Candle,
             false,
             BackendResolverCapabilities {
+                sidecar_available: false,
                 ort_available: true,
                 candle_available: true,
                 target_os: "macos",
@@ -244,7 +372,44 @@ mod tests {
             EmbeddingBackend::Ort,
             false,
             BackendResolverCapabilities {
+                sidecar_available: false,
                 ort_available: true,
+                candle_available: true,
+                target_os: "macos",
+                target_arch: "aarch64",
+            },
+        );
+
+        assert_eq!(fallback, Some(EmbeddingBackend::Candle));
+    }
+
+    #[test]
+    fn test_auto_fallback_target_is_ort_when_sidecar_init_fails_and_ort_is_available() {
+        let fallback = fallback_backend_after_init_failure(
+            EmbeddingBackend::Auto,
+            EmbeddingBackend::Sidecar,
+            false,
+            BackendResolverCapabilities {
+                sidecar_available: true,
+                ort_available: true,
+                candle_available: true,
+                target_os: "macos",
+                target_arch: "aarch64",
+            },
+        );
+
+        assert_eq!(fallback, Some(EmbeddingBackend::Ort));
+    }
+
+    #[test]
+    fn test_auto_fallback_target_is_candle_when_sidecar_init_fails_and_ort_unavailable() {
+        let fallback = fallback_backend_after_init_failure(
+            EmbeddingBackend::Auto,
+            EmbeddingBackend::Sidecar,
+            false,
+            BackendResolverCapabilities {
+                sidecar_available: true,
+                ort_available: false,
                 candle_available: true,
                 target_os: "macos",
                 target_arch: "aarch64",
@@ -261,6 +426,7 @@ mod tests {
             EmbeddingBackend::Candle,
             true,
             BackendResolverCapabilities {
+                sidecar_available: false,
                 ort_available: true,
                 candle_available: true,
                 target_os: "macos",
@@ -576,17 +742,13 @@ mod tests {
         }
     }
 
-    #[cfg(all(
-        target_os = "macos",
-        target_arch = "aarch64",
-        feature = "embeddings-ort",
-        not(feature = "embeddings-candle")
-    ))]
+    #[cfg(all(feature = "embeddings-sidecar", feature = "embeddings-ort"))]
     #[tokio::test]
     #[serial(embedding_env)]
-    async fn test_workspace_init_auto_on_apple_silicon_falls_back_to_ort_with_truthful_status() {
+    async fn test_workspace_init_sidecar_bootstrap_failure_falls_back_to_ort() {
         unsafe {
             std::env::set_var("JULIE_EMBEDDING_PROVIDER", "auto");
+            std::env::set_var("JULIE_EMBEDDING_SIDECAR_ROOT", "/definitely/not/a/sidecar/root");
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
         }
 
@@ -601,6 +763,126 @@ mod tests {
             .expect("runtime status should be captured");
 
         assert_eq!(status.requested_backend, EmbeddingBackend::Auto);
+        assert_eq!(
+            status.resolved_backend,
+            EmbeddingBackend::Ort,
+            "auto mode should fall back to ORT when managed sidecar bootstrap fails"
+        );
+        assert!(
+            status
+                .degraded_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("sidecar bootstrap")),
+            "expected sidecar bootstrap failure reason, got: {:?}",
+            status.degraded_reason
+        );
+
+        unsafe {
+            std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
+            std::env::remove_var("JULIE_EMBEDDING_SIDECAR_ROOT");
+            std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
+        }
+    }
+
+    #[cfg(feature = "embeddings-sidecar")]
+    #[tokio::test]
+    #[serial(embedding_env)]
+    async fn test_workspace_init_strict_accel_disables_sidecar_when_unaccelerated() {
+        let temp_dir = TempDir::new().unwrap();
+        let sidecar_script = write_fake_sidecar_script(&temp_dir);
+
+        unsafe {
+            std::env::set_var("JULIE_EMBEDDING_PROVIDER", "sidecar");
+            std::env::set_var("JULIE_EMBEDDING_STRICT_ACCEL", "on");
+            std::env::set_var("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+            std::env::set_var("JULIE_EMBEDDING_SIDECAR_SCRIPT", sidecar_script.as_os_str());
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+        }
+
+        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+            .await
+            .unwrap();
+
+        let status = workspace
+            .embedding_runtime_status
+            .as_ref()
+            .expect("runtime status should be captured");
+
+        assert_eq!(status.requested_backend, EmbeddingBackend::Sidecar);
+        assert_eq!(status.resolved_backend, EmbeddingBackend::Sidecar);
+        assert!(
+            workspace.embedding_provider.is_none(),
+            "strict accel mode should disable unaccelerated sidecar runtime"
+        );
+        assert!(
+            status
+                .degraded_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("strict acceleration")
+                    && reason.contains("JULIE_EMBEDDING_STRICT_ACCEL")),
+            "expected strict acceleration disable reason, got: {:?}",
+            status.degraded_reason
+        );
+
+        unsafe {
+            std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
+            std::env::remove_var("JULIE_EMBEDDING_STRICT_ACCEL");
+            std::env::remove_var("JULIE_EMBEDDING_SIDECAR_PROGRAM");
+            std::env::remove_var("JULIE_EMBEDDING_SIDECAR_SCRIPT");
+            std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
+        }
+    }
+
+    #[cfg(all(
+        target_os = "macos",
+        target_arch = "aarch64",
+        feature = "embeddings-ort",
+        not(feature = "embeddings-candle")
+    ))]
+    #[tokio::test]
+    #[serial(embedding_env)]
+    async fn test_workspace_init_auto_on_apple_silicon_uses_sidecar_first_policy() {
+        let temp_dir = TempDir::new().unwrap();
+        let sidecar_script = write_fake_sidecar_script(&temp_dir);
+
+        unsafe {
+            std::env::set_var("JULIE_EMBEDDING_PROVIDER", "auto");
+            std::env::set_var("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+            std::env::set_var("JULIE_EMBEDDING_SIDECAR_SCRIPT", sidecar_script.as_os_str());
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+        }
+
+        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+            .await
+            .unwrap();
+
+        let status = workspace
+            .embedding_runtime_status
+            .as_ref()
+            .expect("runtime status should be captured");
+
+        assert_eq!(status.requested_backend, EmbeddingBackend::Auto);
+        #[cfg(feature = "embeddings-sidecar")]
+        {
+            assert!(
+                matches!(
+                    status.resolved_backend,
+                    EmbeddingBackend::Sidecar | EmbeddingBackend::Ort
+                ),
+                "auto mode should attempt sidecar first, then ORT fallback if bootstrap/init fails"
+            );
+            if status.resolved_backend == EmbeddingBackend::Ort {
+                assert!(
+                    status
+                        .degraded_reason
+                        .as_deref()
+                        .is_some_and(|reason| reason.contains("Auto backend 'sidecar' failed")),
+                    "ORT fallback should preserve sidecar init failure context, got: {:?}",
+                    status.degraded_reason
+                );
+            }
+        }
+        #[cfg(not(feature = "embeddings-sidecar"))]
         assert_eq!(status.resolved_backend, EmbeddingBackend::Ort);
         assert_ne!(status.resolved_backend, EmbeddingBackend::Unresolved);
         assert_eq!(
@@ -610,6 +892,8 @@ mod tests {
 
         unsafe {
             std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
+            std::env::remove_var("JULIE_EMBEDDING_SIDECAR_PROGRAM");
+            std::env::remove_var("JULIE_EMBEDDING_SIDECAR_SCRIPT");
             std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
         }
     }
@@ -622,13 +906,17 @@ mod tests {
     ))]
     #[tokio::test]
     #[serial(embedding_env)]
-    async fn test_workspace_init_auto_prefers_ort_backend() {
+    async fn test_workspace_init_auto_uses_sidecar_first_policy() {
+        let temp_dir = TempDir::new().unwrap();
+        let sidecar_script = write_fake_sidecar_script(&temp_dir);
+
         unsafe {
             std::env::set_var("JULIE_EMBEDDING_PROVIDER", "auto");
+            std::env::set_var("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+            std::env::set_var("JULIE_EMBEDDING_SIDECAR_SCRIPT", sidecar_script.as_os_str());
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
         }
 
-        let temp_dir = TempDir::new().unwrap();
         let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
             .await
             .unwrap();
@@ -639,15 +927,37 @@ mod tests {
             .expect("runtime status should be captured");
 
         assert_eq!(status.requested_backend, EmbeddingBackend::Auto);
-        // ORT is now preferred on all platforms (CoreML EP on macOS, DirectML on Windows)
+        #[cfg(feature = "embeddings-sidecar")]
+        {
+            assert!(
+                matches!(
+                    status.resolved_backend,
+                    EmbeddingBackend::Sidecar | EmbeddingBackend::Ort
+                ),
+                "auto mode should prefer sidecar with ORT fallback on sidecar init failure"
+            );
+            if status.resolved_backend == EmbeddingBackend::Ort {
+                assert!(
+                    status
+                        .degraded_reason
+                        .as_deref()
+                        .is_some_and(|reason| reason.contains("Auto backend 'sidecar' failed")),
+                    "ORT fallback should preserve sidecar failure reason, got: {:?}",
+                    status.degraded_reason
+                );
+            }
+        }
+        #[cfg(not(feature = "embeddings-sidecar"))]
         assert_eq!(status.resolved_backend, EmbeddingBackend::Ort);
         assert!(
             workspace.embedding_provider.is_some(),
-            "auto mode should initialize ORT embedding provider"
+            "auto mode should initialize an embedding provider"
         );
 
         unsafe {
             std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
+            std::env::remove_var("JULIE_EMBEDDING_SIDECAR_PROGRAM");
+            std::env::remove_var("JULIE_EMBEDDING_SIDECAR_SCRIPT");
             std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
         }
     }
@@ -804,7 +1114,7 @@ mod tests {
             Err(err) => err,
         };
         assert!(
-            err.to_string().contains("auto|ort|candle"),
+            err.to_string().contains("auto|sidecar|ort|candle"),
             "Expected unknown provider error, got: {err}"
         );
     }

@@ -17,15 +17,23 @@ pub mod metadata;
 #[cfg(feature = "embeddings-ort")]
 pub mod ort_provider;
 pub mod pipeline;
+#[cfg(feature = "embeddings-sidecar")]
+pub mod sidecar_protocol;
+#[cfg(feature = "embeddings-sidecar")]
+pub mod sidecar_provider;
+#[cfg(feature = "embeddings-sidecar")]
+pub mod sidecar_supervisor;
 
 use anyhow::Result;
 
 pub const EXPECTED_EMBEDDING_DIMENSIONS: usize = 384;
+pub const SIDECAR_BACKEND_COMPILED: bool = cfg!(feature = "embeddings-sidecar");
 
 /// Supported embedding backends.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmbeddingBackend {
     Auto,
+    Sidecar,
     Ort,
     Candle,
     Unresolved,
@@ -36,6 +44,7 @@ impl EmbeddingBackend {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Auto => "auto",
+            Self::Sidecar => "sidecar",
             Self::Ort => "ort",
             Self::Candle => "candle",
             Self::Unresolved => "unresolved",
@@ -116,11 +125,24 @@ pub trait EmbeddingProvider: Send + Sync {
 #[cfg(feature = "embeddings-candle")]
 pub use candle_provider::CandleEmbeddingProvider;
 pub use factory::{
-    BackendResolverCapabilities, EmbeddingConfig, EmbeddingProviderFactory,
     fallback_backend_after_init_failure, parse_provider_preference, resolve_backend_preference,
     should_disable_for_strict_acceleration, strict_acceleration_enabled_from_env_value,
+    BackendResolverCapabilities, EmbeddingConfig, EmbeddingProviderFactory,
 };
 #[cfg(feature = "embeddings-ort")]
 pub use ort_provider::{
-    OrtEmbeddingProvider, ort_execution_provider_policy_kinds, ort_runtime_signal,
+    ort_execution_provider_policy_kinds, ort_runtime_signal, OrtEmbeddingProvider,
+};
+#[cfg(feature = "embeddings-sidecar")]
+pub use sidecar_protocol::{
+    validate_batch_response, validate_query_response, validate_response_envelope,
+    EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, ProtocolError,
+    RequestEnvelope, ResponseEnvelope, SIDECAR_EXPECTED_DIMS, SIDECAR_PROTOCOL_SCHEMA,
+    SIDECAR_PROTOCOL_VERSION,
+};
+#[cfg(feature = "embeddings-sidecar")]
+pub use sidecar_provider::SidecarEmbeddingProvider;
+#[cfg(feature = "embeddings-sidecar")]
+pub use sidecar_supervisor::{
+    SidecarLaunchConfig, build_sidecar_launch_config, managed_venv_path, sidecar_root_path,
 };

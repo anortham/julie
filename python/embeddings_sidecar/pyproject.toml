@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "embeddings-sidecar"
+version = "0.1.0"
+description = "Lightweight protocol sidecar scaffold for embeddings"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+runtime = [
+  "torch>=2.2.0",
+  "sentence-transformers>=3.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -7,8 +7,8 @@
 /// Formula: RRF(d) = Σ 1/(k + rank) where rank is 1-based position.
 #[cfg(test)]
 mod tests {
-    use crate::search::SymbolSearchResult;
     use crate::search::hybrid::rrf_merge;
+    use crate::search::SymbolSearchResult;
 
     /// Helper to build a minimal SymbolSearchResult for testing.
     fn make_result(id: &str, name: &str, score: f32) -> SymbolSearchResult {
@@ -149,12 +149,78 @@ mod tests {
 #[cfg(test)]
 mod orchestrator_tests {
     use anyhow::Result;
+    use std::io;
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::fmt::writer::MakeWriter;
 
     use crate::database::SymbolDatabase;
     use crate::embeddings::{DeviceInfo, EmbeddingProvider};
     use crate::search::hybrid::hybrid_search;
-    use crate::search::index::{SearchFilter, SearchIndex, SymbolDocument};
+    use crate::search::index::{SearchFilter, SearchIndex, SymbolDocument, SymbolSearchResults};
     use tempfile::TempDir;
+
+    #[derive(Clone)]
+    struct LogCaptureWriter {
+        buf: Arc<Mutex<Vec<u8>>>,
+    }
+
+    struct LogCaptureGuard {
+        buf: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl<'a> MakeWriter<'a> for LogCaptureWriter {
+        type Writer = LogCaptureGuard;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            LogCaptureGuard {
+                buf: Arc::clone(&self.buf),
+            }
+        }
+    }
+
+    impl Write for LogCaptureGuard {
+        fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+            let mut guard = self
+                .buf
+                .lock()
+                .map_err(|_| io::Error::other("log buffer mutex poisoned"))?;
+            guard.extend_from_slice(data);
+            Ok(data.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn run_hybrid_search_with_warn_capture<F>(run: F) -> (Result<SymbolSearchResults>, String)
+    where
+        F: FnOnce() -> Result<SymbolSearchResults>,
+    {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let writer = LogCaptureWriter {
+            buf: Arc::clone(&buffer),
+        };
+
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .with_ansi(false)
+            .with_writer(writer)
+            .finish();
+
+        let results = tracing::subscriber::with_default(subscriber, run);
+
+        let logs = String::from_utf8(
+            buffer
+                .lock()
+                .expect("log capture mutex should not be poisoned")
+                .clone(),
+        )
+        .expect("captured logs should be utf-8");
+
+        (results, logs)
+    }
 
     /// Mock embedding provider that always fails (for degradation testing).
     struct FailingProvider;
@@ -174,6 +240,36 @@ mod orchestrator_tests {
                 runtime: "test".into(),
                 device: "cpu".into(),
                 model_name: "failing-mock".into(),
+                dimensions: 384,
+            }
+        }
+    }
+
+    /// Mock sidecar provider that simulates query timeout.
+    struct SidecarTimeoutProvider;
+
+    impl EmbeddingProvider for SidecarTimeoutProvider {
+        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+            anyhow::bail!(
+                "timed out waiting for sidecar response for method 'embed_query' after 50ms"
+            )
+        }
+
+        fn embed_batch(&self, _texts: &[String]) -> Result<Vec<Vec<f32>>> {
+            anyhow::bail!(
+                "timed out waiting for sidecar response for method 'embed_batch' after 50ms"
+            )
+        }
+
+        fn dimensions(&self) -> usize {
+            384
+        }
+
+        fn device_info(&self) -> DeviceInfo {
+            DeviceInfo {
+                runtime: "python-sidecar".into(),
+                device: "cpu".into(),
+                model_name: "fake-sidecar-timeout".into(),
                 dimensions: 384,
             }
         }
@@ -370,6 +466,34 @@ mod orchestrator_tests {
                 .iter()
                 .all(|r| r.file_path.starts_with("src/") && r.file_path.ends_with(".rs")),
             "all results should respect file_pattern filter"
+        );
+    }
+
+    #[test]
+    fn test_hybrid_search_sidecar_timeout_degrades_to_keyword_results() {
+        let (index, db, _idx_dir, _db_dir) = setup_index_and_db();
+        let timeout = SidecarTimeoutProvider;
+
+        let (results, logs) = run_hybrid_search_with_warn_capture(|| {
+            hybrid_search(
+                "process_data",
+                &SearchFilter::default(),
+                10,
+                &index,
+                &db,
+                Some(&timeout),
+            )
+        });
+        let results = results.unwrap();
+
+        assert!(
+            !results.results.is_empty(),
+            "should still return keyword results"
+        );
+        assert_eq!(results.results[0].name, "process_data");
+        assert!(
+            logs.contains("Semantic search failed, falling back to keyword-only"),
+            "expected fallback warning log, got: {logs}"
         );
     }
 }

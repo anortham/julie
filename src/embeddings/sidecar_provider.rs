@@ -1,0 +1,308 @@
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
+
+use anyhow::{anyhow, bail, Context, Result};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+
+use super::sidecar_protocol::{
+    validate_batch_response, validate_query_response, validate_response_envelope,
+    EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, RequestEnvelope,
+    ResponseEnvelope, SIDECAR_EXPECTED_DIMS, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
+};
+use super::sidecar_supervisor::build_sidecar_launch_config;
+use super::{DeviceInfo, EmbeddingProvider};
+
+pub struct SidecarEmbeddingProvider {
+    process: Mutex<SidecarProcess>,
+}
+
+struct SidecarProcess {
+    child: Child,
+    stdin: ChildStdin,
+    stdout_rx: Receiver<Result<String>>,
+    request_seq: u64,
+    response_timeout: Duration,
+}
+
+const DEFAULT_SIDECAR_TIMEOUT_MS: u64 = 5000;
+const SHUTDOWN_TIMEOUT_MS: u64 = 500;
+
+#[derive(Debug, Deserialize)]
+struct HealthResult {
+    ready: bool,
+    #[serde(default)]
+    dims: Option<usize>,
+}
+
+impl SidecarEmbeddingProvider {
+    pub fn try_new() -> Result<Self> {
+        let launch = build_sidecar_launch_config()?;
+        let mut command = Command::new(&launch.program);
+        command.args(launch.args);
+        for (key, value) in launch.env {
+            command.env(key, value);
+        }
+
+        Self::spawn_from_command(command)
+    }
+
+    pub(crate) fn try_new_for_command(program: String, args: Vec<String>) -> Result<Self> {
+        let mut command = Command::new(program);
+        command.args(args);
+        Self::spawn_from_command(command)
+    }
+
+    fn spawn_from_command(mut command: Command) -> Result<Self> {
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+
+        let mut child = command
+            .spawn()
+            .context("failed to spawn embedding sidecar")?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow!("sidecar stdin unavailable"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("sidecar stdout unavailable"))?;
+        let stdout_rx = spawn_stdout_reader(stdout);
+        let response_timeout = read_response_timeout();
+
+        let mut process = SidecarProcess {
+            child,
+            stdin,
+            stdout_rx,
+            request_seq: 0,
+            response_timeout,
+        };
+
+        if let Err(err) = process.probe_readiness() {
+            process.terminate();
+            return Err(err);
+        }
+
+        Ok(Self {
+            process: Mutex::new(process),
+        })
+    }
+}
+
+impl EmbeddingProvider for SidecarEmbeddingProvider {
+    fn embed_query(&self, text: &str) -> Result<Vec<f32>> {
+        let mut process = self
+            .process
+            .lock()
+            .map_err(|_| anyhow!("sidecar process lock poisoned"))?;
+
+        let result: EmbedQueryResult = process.send_request(
+            "embed_query",
+            EmbedQueryRequest {
+                text: text.to_string(),
+            },
+        )?;
+        validate_query_response(&result)?;
+        Ok(result.vector)
+    }
+
+    fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut process = self
+            .process
+            .lock()
+            .map_err(|_| anyhow!("sidecar process lock poisoned"))?;
+
+        let result: EmbedBatchResult = process.send_request(
+            "embed_batch",
+            EmbedBatchRequest {
+                texts: texts.to_vec(),
+            },
+        )?;
+        validate_batch_response(&result, texts.len())?;
+        Ok(result.vectors)
+    }
+
+    fn dimensions(&self) -> usize {
+        SIDECAR_EXPECTED_DIMS
+    }
+
+    fn device_info(&self) -> DeviceInfo {
+        DeviceInfo {
+            runtime: "python-sidecar".to_string(),
+            device: "unknown".to_string(),
+            model_name: "BAAI/bge-small-en-v1.5".to_string(),
+            dimensions: SIDECAR_EXPECTED_DIMS,
+        }
+    }
+}
+
+impl Drop for SidecarEmbeddingProvider {
+    fn drop(&mut self) {
+        match self.process.lock() {
+            Ok(mut process) => process.shutdown_and_terminate(),
+            Err(poisoned) => {
+                let mut process = poisoned.into_inner();
+                process.terminate();
+            }
+        }
+    }
+}
+
+impl SidecarProcess {
+    fn next_request_id(&mut self) -> String {
+        self.request_seq = self.request_seq.wrapping_add(1);
+        format!("req-{}", self.request_seq)
+    }
+
+    fn send_request<Params, Resp>(&mut self, method: &str, params: Params) -> Result<Resp>
+    where
+        Params: Serialize,
+        Resp: DeserializeOwned,
+    {
+        self.send_request_with_timeout(method, params, self.response_timeout)
+    }
+
+    fn send_request_with_timeout<Params, Resp>(
+        &mut self,
+        method: &str,
+        params: Params,
+        timeout: Duration,
+    ) -> Result<Resp>
+    where
+        Params: Serialize,
+        Resp: DeserializeOwned,
+    {
+        let request_id = self.next_request_id();
+        let envelope = RequestEnvelope {
+            schema: SIDECAR_PROTOCOL_SCHEMA.to_string(),
+            version: SIDECAR_PROTOCOL_VERSION,
+            request_id: request_id.clone(),
+            method: method.to_string(),
+            params,
+        };
+
+        serde_json::to_writer(&mut self.stdin, &envelope)
+            .with_context(|| format!("failed to encode sidecar request for method '{method}'"))?;
+        self.stdin
+            .write_all(b"\n")
+            .with_context(|| format!("failed to write sidecar request for method '{method}'"))?;
+        self.stdin
+            .flush()
+            .with_context(|| format!("failed to flush sidecar request for method '{method}'"))?;
+
+        let line = match self.stdout_rx.recv_timeout(timeout) {
+            Ok(Ok(line)) => line,
+            Ok(Err(err)) => {
+                bail!("sidecar stream error while handling method '{method}': {err}");
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                bail!(
+                    "timed out waiting for sidecar response for method '{method}' after {}ms",
+                    timeout.as_millis()
+                );
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                bail!("sidecar stdout reader disconnected while handling method '{method}'");
+            }
+        };
+
+        let envelope: ResponseEnvelope<Resp> = serde_json::from_str(line.trim())
+            .with_context(|| format!("failed to decode sidecar response for method '{method}'"))?;
+        validate_response_envelope(&envelope, &request_id)?;
+
+        if let Some(err) = envelope.error {
+            bail!(
+                "sidecar error for method '{method}': [{}] {}",
+                err.code,
+                err.message
+            );
+        }
+
+        envelope
+            .result
+            .ok_or_else(|| anyhow!("sidecar response missing result for method '{method}'"))
+    }
+
+    fn probe_readiness(&mut self) -> Result<()> {
+        let health: HealthResult = self.send_request("health", serde_json::json!({}))?;
+        if !health.ready {
+            bail!("sidecar reported not ready in health probe");
+        }
+
+        if let Some(dims) = health.dims {
+            if dims != SIDECAR_EXPECTED_DIMS {
+                bail!(
+                    "sidecar health dimension mismatch: expected {}, got {}",
+                    SIDECAR_EXPECTED_DIMS,
+                    dims
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    fn shutdown_and_terminate(&mut self) {
+        let _ = self.send_request_with_timeout::<_, serde_json::Value>(
+            "shutdown",
+            serde_json::json!({}),
+            Duration::from_millis(SHUTDOWN_TIMEOUT_MS),
+        );
+        self.terminate();
+    }
+
+    fn terminate(&mut self) {
+        if let Ok(Some(_)) = self.child.try_wait() {
+            return;
+        }
+
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+fn spawn_stdout_reader(stdout: ChildStdout) -> Receiver<Result<String>> {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) => {
+                    let _ = tx.send(Err(anyhow!("sidecar stdout closed")));
+                    break;
+                }
+                Ok(_) => {
+                    if tx.send(Ok(line)).is_err() {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    let _ = tx.send(Err(err.into()));
+                    break;
+                }
+            }
+        }
+    });
+    rx
+}
+
+fn read_response_timeout() -> Duration {
+    let timeout_ms = std::env::var("JULIE_EMBEDDING_SIDECAR_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_SIDECAR_TIMEOUT_MS);
+    Duration::from_millis(timeout_ms)
+}

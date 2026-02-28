@@ -174,6 +174,7 @@ impl ManageWorkspaceTool {
         match &workspace.embedding_runtime_status {
             Some(runtime) => match workspace.embedding_provider.as_ref() {
                 Some(provider) => {
+                    let device_info = provider.device_info();
                     let runtime_state = if runtime.degraded_reason.is_some() {
                         "DEGRADED"
                     } else {
@@ -182,13 +183,15 @@ impl ManageWorkspaceTool {
 
                     status.push_str(&format!(
                         "Embedding Status: {}\n\
+                            Runtime: {}\n\
                             Backend: {}\n\
                             Device: {}\n\
                             Accelerated: {}\n\
                             Degraded: {}\n",
                         runtime_state,
+                        device_info.runtime,
                         runtime.resolved_backend.as_str(),
-                        provider.device_info().device,
+                        device_info.device,
                         runtime.accelerated,
                         runtime.degraded_reason.as_deref().unwrap_or("none")
                     ));
@@ -201,6 +204,7 @@ impl ManageWorkspaceTool {
 
                     status.push_str(&format!(
                         "Embedding Status: UNAVAILABLE\n\
+                            Runtime: unavailable\n\
                             Backend: {}\n\
                             Device: unavailable\n\
                             Accelerated: {}\n\
@@ -213,6 +217,7 @@ impl ManageWorkspaceTool {
             },
             None => {
                 status.push_str("Embedding Status: NOT INITIALIZED\n");
+                status.push_str("Runtime: unavailable\n");
                 status.push_str("Backend: unresolved\n");
                 status.push_str("Device: unavailable\n");
                 status.push_str("Accelerated: false\n");

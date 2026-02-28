@@ -24,8 +24,9 @@ name = "julie-server"
 path = "src/main.rs"
 
 [features]
-default = ["embeddings-ort", "embeddings-candle"]
+default = ["embeddings-ort", "embeddings-candle", "embeddings-sidecar"]
 embeddings-ort = ["dep:fastembed", "dep:ort", "ort/directml", "ort/coreml"]
+embeddings-sidecar = []
 embeddings-candle = [
     "dep:candle-core",
     "dep:candle-coreml",

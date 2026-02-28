@@ -14,9 +14,16 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 - Search latency: <5ms (Tantivy full-text search)
 - Memory usage: <100MB typical workload
 - Startup time: <2s (database + Tantivy indexing)
-- Single binary deployment with no external dependencies
+- Single binary server deployment; embeddings may initialize managed runtime dependencies based on backend
 
 **Incremental Updates**: Only changed files are re-indexed, typically completing in 3-15 seconds.
+
+### Embeddings Runtime
+
+- Default behavior is sidecar-first: `JULIE_EMBEDDING_PROVIDER=auto` resolves to the Python sidecar backend first (with fallback to in-process backends when available).
+- Runtime controls include `JULIE_EMBEDDING_PROVIDER` and `JULIE_EMBEDDING_STRICT_ACCEL`.
+- For prebuilt binaries, you may need sidecar path overrides (`JULIE_EMBEDDING_SIDECAR_PROGRAM` and/or `JULIE_EMBEDDING_SIDECAR_ROOT`) depending on your deployment layout.
+- See `docs/operations/embedding-sidecar.md` for bootstrap flow, env vars, health/stats interpretation, and troubleshooting.
 
 ## Supported Languages (31)
 

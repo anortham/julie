@@ -173,9 +173,7 @@ pub fn ort_runtime_signal(accelerated_ep_fallback_to_cpu: bool) -> OrtRuntimeSig
         OrtRuntimeSignal {
             device: "CPU".to_string(),
             accelerated: false,
-            degraded_reason: Some(format!(
-                "ORT {ep_name} EP requested but fell back to CPU"
-            )),
+            degraded_reason: Some(format!("ORT {ep_name} EP requested but fell back to CPU")),
         }
     } else {
         OrtRuntimeSignal {

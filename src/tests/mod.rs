@@ -25,6 +25,8 @@ pub mod core {
     pub mod embedding_deps; // Embedding dependency smoke tests (fastembed + sqlite-vec)
     pub mod embedding_metadata; // Symbol metadata formatting for embeddings
     pub mod embedding_provider; // EmbeddingProvider trait + OrtEmbeddingProvider tests
+    pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
+    pub mod embedding_sidecar_protocol; // Sidecar protocol contracts + validation tests
     pub mod handler; // MCP handler tests
     pub mod language; // Language detection and support tests
     pub mod tracing; // Tracing and logging tests
@@ -123,6 +125,7 @@ pub mod integration {
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests
     pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, Tantivy query semantics, limit/ranking)
+    pub mod sidecar_test_helpers; // Shared fake-sidecar helpers for integration tests
     pub mod stale_index_detection; // Stale index detection tests
     pub mod tracing;
     pub mod watcher; // File watcher tests

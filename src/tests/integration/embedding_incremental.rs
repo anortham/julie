@@ -11,6 +11,8 @@ mod tests {
     use crate::database::SymbolDatabase;
     use crate::embeddings::pipeline::{embed_symbols_for_file, reembed_symbols_for_file};
     use crate::embeddings::{DeviceInfo, EmbeddingProvider, OrtEmbeddingProvider};
+    #[cfg(feature = "embeddings-sidecar")]
+    use crate::tests::integration::sidecar_test_helpers::create_test_sidecar_provider;
     use crate::watcher::handlers;
 
     /// Helper: create a test database with a file and symbols.
@@ -239,5 +241,27 @@ mod tests {
             err.to_string().contains("Embedding count mismatch"),
             "Expected vector count mismatch error, got: {err}"
         );
+    }
+
+    #[cfg(feature = "embeddings-sidecar")]
+    #[test]
+    fn test_embed_symbols_for_file_with_sidecar_provider() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = setup_db_with_file(
+            dir.path(),
+            "src/lib.rs",
+            &[
+                ("s1", "process_data", "function"),
+                ("s2", "UserService", "class"),
+                ("s3", "my_var", "variable"),
+            ],
+        );
+
+        let provider = create_test_sidecar_provider();
+        let count = embed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
+
+        assert_eq!(count, 2, "Should embed only embeddable symbols");
+        let db_guard = db.lock().unwrap();
+        assert_eq!(db_guard.embedding_count().unwrap(), 2);
     }
 }

@@ -298,7 +298,8 @@ impl ManageWorkspaceTool {
         is_primary_workspace: bool,
     ) -> String {
         if !is_primary_workspace {
-            return "Backend: unavailable\n\
+            return "Runtime: unavailable\n\
+                    Backend: unavailable\n\
                     Device: unavailable\n\
                     Accelerated: unknown\n\
                     Degraded: unknown (runtime metadata is only tracked for loaded primary workspace)\n"
@@ -307,18 +308,25 @@ impl ManageWorkspaceTool {
 
         match &workspace.embedding_runtime_status {
             Some(runtime) => match workspace.embedding_provider.as_ref() {
-                Some(provider) => format!(
-                    "Backend: {}\n\
+                Some(provider) => {
+                    let device_info = provider.device_info();
+
+                    format!(
+                        "Runtime: {}\n\
+                    Backend: {}\n\
                     Device: {}\n\
                     Accelerated: {}\n\
                     Degraded: {}\n",
+                    device_info.runtime,
                     runtime.resolved_backend.as_str(),
-                    provider.device_info().device,
+                    device_info.device,
                     runtime.accelerated,
                     runtime.degraded_reason.as_deref().unwrap_or("none")
-                ),
+                    )
+                }
                 None => format!(
-                    "Backend: {}\n\
+                    "Runtime: unavailable\n\
+                    Backend: {}\n\
                     Device: unavailable\n\
                     Accelerated: {}\n\
                     Degraded: {}\n",
@@ -330,7 +338,8 @@ impl ManageWorkspaceTool {
                         .unwrap_or("provider unavailable")
                 ),
             },
-            None => "Backend: unresolved\n\
+            None => "Runtime: unavailable\n\
+                    Backend: unresolved\n\
                     Device: unavailable\n\
                     Accelerated: false\n\
                     Degraded: none (runtime metadata not initialized)\n"

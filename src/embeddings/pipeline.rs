@@ -6,12 +6,12 @@
 
 use std::sync::{Arc, Mutex};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use tracing::{info, warn};
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::EmbeddingProvider;
 use crate::embeddings::metadata::prepare_batch_for_embedding;
+use crate::embeddings::EmbeddingProvider;
 
 /// Batch size for embedding generation (symbols per batch).
 const EMBEDDING_BATCH_SIZE: usize = 500;
