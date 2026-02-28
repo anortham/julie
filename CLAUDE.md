@@ -372,8 +372,8 @@ fast_search(
 
 ---
 
-**Last Updated:** 2026-02-27
-**Status:** Production Ready (v3.4.0)
+**Last Updated:** 2026-02-28
+**Status:** Production Ready (v3.5.0)
 
 ---
 
