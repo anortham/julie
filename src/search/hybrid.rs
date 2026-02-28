@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 use super::SymbolSearchResult;
 use super::index::{SearchFilter, SearchIndex, SymbolSearchResults};
@@ -174,7 +174,7 @@ pub fn hybrid_search(
     let semantic_results = match run_semantic_search(query, limit * 2, db, provider) {
         Ok(results) => results,
         Err(e) => {
-            debug!("Semantic search failed, falling back to keyword-only: {e}");
+            warn!("Semantic search failed, falling back to keyword-only: {e}");
             Vec::new()
         }
     };
@@ -186,6 +186,12 @@ pub fn hybrid_search(
         .collect();
 
     // Step 4: Merge via RRF (k=60)
+    info!(
+        "Hybrid merge: {} keyword + {} semantic results → RRF merge (limit {})",
+        tantivy_results.results.len(),
+        semantic_results.len(),
+        limit
+    );
     let merged = rrf_merge(tantivy_results.results, semantic_results, 60, limit);
 
     Ok(SymbolSearchResults {

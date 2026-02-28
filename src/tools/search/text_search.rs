@@ -1,7 +1,7 @@
 //! Text-based search using Tantivy with code-aware tokenization.
 
 use anyhow::Result;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use super::query::matches_glob_pattern;
 use crate::extractors::{Symbol, SymbolKind};
@@ -289,7 +289,16 @@ pub async fn text_search_impl(
                 && embedding_provider.is_some();
 
             if use_hybrid {
-                debug!("🔍 NL query detected, using hybrid search (keyword + semantic)");
+                info!("🔍 Hybrid search (keyword + semantic) for NL query: '{}'", query_clone);
+            } else {
+                info!(
+                    "🔍 Hybrid search skipped: is_nl={}, has_embeddings={}",
+                    crate::search::scoring::is_nl_like_query(&query_clone),
+                    embedding_provider.is_some()
+                );
+            }
+
+            if use_hybrid {
 
                 let db_guard = db_clone
                     .as_ref()

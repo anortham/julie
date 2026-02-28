@@ -238,6 +238,23 @@ mod tests {
     }
 
     #[test]
+    fn test_auto_fallback_target_is_candle_when_ort_init_fails_and_candle_is_available() {
+        let fallback = fallback_backend_after_init_failure(
+            EmbeddingBackend::Auto,
+            EmbeddingBackend::Ort,
+            false,
+            BackendResolverCapabilities {
+                ort_available: true,
+                candle_available: true,
+                target_os: "macos",
+                target_arch: "aarch64",
+            },
+        );
+
+        assert_eq!(fallback, Some(EmbeddingBackend::Candle));
+    }
+
+    #[test]
     fn test_auto_fallback_disabled_when_strict_accel_is_enabled() {
         let fallback = fallback_backend_after_init_failure(
             EmbeddingBackend::Auto,

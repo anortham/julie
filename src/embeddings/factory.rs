@@ -93,11 +93,13 @@ pub fn fallback_backend_after_init_failure(
         return None;
     }
 
-    if requested_backend == EmbeddingBackend::Auto
-        && resolved_backend == EmbeddingBackend::Candle
-        && capabilities.ort_available
-    {
-        return Some(EmbeddingBackend::Ort);
+    if requested_backend == EmbeddingBackend::Auto {
+        if resolved_backend == EmbeddingBackend::Candle && capabilities.ort_available {
+            return Some(EmbeddingBackend::Ort);
+        }
+        if resolved_backend == EmbeddingBackend::Ort && capabilities.candle_available {
+            return Some(EmbeddingBackend::Candle);
+        }
     }
 
     None
