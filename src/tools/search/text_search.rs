@@ -130,7 +130,7 @@ pub async fn text_search_impl(
                     let tantivy_limit = if filter.file_pattern.is_some() {
                         limit_usize.saturating_mul(50).max(500).min(5000)
                     } else {
-                        limit_usize.saturating_mul(5).max(50)
+                        limit_usize.saturating_mul(10).max(200)
                     };
                     let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
                     let relaxed = search.relaxed;
@@ -350,7 +350,7 @@ pub async fn text_search_impl(
                 let tantivy_limit = if filter.file_pattern.is_some() {
                     limit_usize.saturating_mul(50).max(500).min(5000)
                 } else {
-                    limit_usize.saturating_mul(5).max(50)
+                    limit_usize.saturating_mul(10).max(200)
                 };
                 let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
                 let relaxed = search.relaxed;
