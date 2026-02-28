@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 from sidecar.protocol import run_stdio_loop
 from sidecar.runtime import DEFAULT_MODEL_ID, build_runtime
@@ -29,7 +30,20 @@ def _runtime_config_from_env() -> tuple[str, int]:
 
 def main() -> int:
     model_id, batch_size = _runtime_config_from_env()
-    runtime = build_runtime(model_id=model_id, batch_size=batch_size)
+
+    # Redirect stdout → stderr at the OS file-descriptor level during model
+    # loading.  C extensions (safetensors / tqdm) write progress bars directly
+    # to fd 1, bypassing Python's sys.stdout, so a Python-level redirect is
+    # not sufficient.
+    saved_stdout_fd = os.dup(1)
+    os.dup2(2, 1)  # fd 1 now points to stderr
+    try:
+        runtime = build_runtime(model_id=model_id, batch_size=batch_size)
+    finally:
+        os.dup2(saved_stdout_fd, 1)  # restore fd 1 → real stdout pipe
+        os.close(saved_stdout_fd)
+        sys.stdout = open(1, "w", closefd=False)  # reconnect Python sys.stdout
+
     run_stdio_loop(runtime)
     return 0
 

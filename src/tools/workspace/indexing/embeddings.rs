@@ -16,24 +16,53 @@ use crate::handler::JulieServerHandler;
 ///
 /// Returns the symbol count so the caller can include it in response messages.
 /// Returns 0 if embedding is skipped (no provider, no workspace, etc.).
+///
+/// If the embedding provider has not been initialized yet (deferred from
+/// workspace startup to avoid blocking indexing), this function initializes
+/// it here — right before the first embedding run.
 pub(crate) async fn spawn_workspace_embedding(
     handler: &JulieServerHandler,
     workspace_id: String,
 ) -> usize {
-    let workspace = match handler.get_workspace().await {
-        Ok(Some(ws)) => ws,
-        _ => return 0,
+    // Check if provider is already initialized (fast read lock path)
+    let provider = {
+        let ws_guard = handler.workspace.read().await;
+        ws_guard
+            .as_ref()
+            .and_then(|ws| ws.embedding_provider.clone())
     };
 
-    let provider = match &workspace.embedding_provider {
-        Some(p) => p.clone(),
+    let provider = match provider {
+        Some(p) => p,
         None => {
-            debug!("No embedding provider, skipping workspace embedding");
-            return 0;
+            // Provider not yet initialized — do it now (deferred from workspace init
+            // to avoid blocking symbol extraction and Tantivy indexing).
+            info!("Initializing embedding provider (deferred from workspace startup)...");
+            let mut ws_guard = handler.workspace.write().await;
+            if let Some(ref mut ws) = *ws_guard {
+                ws.initialize_embedding_provider();
+                match &ws.embedding_provider {
+                    Some(p) => p.clone(),
+                    None => {
+                        debug!(
+                            "Embedding provider unavailable after init, skipping workspace embedding"
+                        );
+                        return 0;
+                    }
+                }
+            } else {
+                return 0;
+            }
         }
     };
 
-    let db_path = workspace.workspace_db_path(&workspace_id);
+    let db_path = {
+        let ws_guard = handler.workspace.read().await;
+        match ws_guard.as_ref() {
+            Some(ws) => ws.workspace_db_path(&workspace_id),
+            None => return 0,
+        }
+    };
     if !db_path.exists() {
         warn!("Reference workspace DB not found at {}", db_path.display());
         return 0;
@@ -82,7 +111,7 @@ pub(crate) async fn spawn_workspace_embedding(
                 );
             }
             Ok(Err(e)) => {
-                warn!("Workspace {workspace_id} embedding failed: {e}");
+                warn!("Workspace {workspace_id} embedding failed: {e:#}");
             }
             Err(e) => {
                 warn!("Workspace {workspace_id} embedding task panicked: {e}");

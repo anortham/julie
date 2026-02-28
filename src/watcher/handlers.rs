@@ -190,6 +190,17 @@ pub async fn handle_file_deleted_static(
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
 ) -> Result<()> {
+    // Guard against atomic save patterns (write-temp → delete → rename).
+    // If the file still exists when we process the DELETE event, the deletion
+    // was transient — skip it so we don't nuke valid symbols/embeddings.
+    if path.exists() {
+        info!(
+            "Skipping DELETE for {} (file still exists, likely atomic save)",
+            path.display()
+        );
+        return Ok(());
+    }
+
     info!("Processing file deletion: {}", path.display());
 
     // CRITICAL FIX: Convert absolute path to relative for database operations

@@ -583,15 +583,18 @@ impl JulieWorkspace {
         Ok(())
     }
 
-    /// Initialize all persistent components (database, search index, file watcher, embeddings)
+    /// Initialize all persistent components (database, search index, file watcher).
+    ///
+    /// Embedding provider initialization is intentionally deferred — it can take
+    /// 30-60s on cold start (venv bootstrap, pip install, model download) and
+    /// nothing in the indexing pipeline needs it.  The embedding provider is
+    /// initialized lazily in [`initialize_embedding_provider`] which is called
+    /// by the embedding pipeline after indexing completes.
     pub async fn initialize_all_components(&mut self) -> Result<()> {
         self.initialize_database()?;
         self.initialize_search_index()?;
 
-        // Initialize embedding provider (best-effort, non-fatal)
-        self.initialize_embedding_provider();
-
-        // Initialize file watcher last (requires database)
+        // Initialize file watcher (requires database)
         if self.config.incremental_updates {
             self.initialize_file_watcher()?;
         }
@@ -602,10 +605,14 @@ impl JulieWorkspace {
 
     /// Initialize the embedding provider (best-effort).
     ///
-    /// If model download fails or ONNX runtime can't initialize, this sets
-    /// `embedding_provider` to `None` and logs a warning. Keyword search
-    /// continues to work without embeddings.
-    fn initialize_embedding_provider(&mut self) {
+    /// This is called lazily by the embedding pipeline after indexing completes,
+    /// NOT during workspace initialization. Cold starts (venv bootstrap, pip
+    /// install, model download) can take 30-60s — deferring this lets keyword
+    /// search and navigation become available immediately.
+    ///
+    /// If initialization fails, `embedding_provider` stays `None` and keyword
+    /// search continues to work without embeddings.
+    pub fn initialize_embedding_provider(&mut self) {
         use crate::embeddings::{
             BackendResolverCapabilities, EmbeddingBackend, EmbeddingConfig,
             EmbeddingProviderFactory, EmbeddingRuntimeStatus, fallback_backend_after_init_failure,

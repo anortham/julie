@@ -649,3 +649,67 @@ async fn test_transaction_leak_on_error() {
         }
     }
 }
+
+/// Test: DELETE event for a file that still exists on disk (atomic save pattern)
+///
+/// Editors like VS Code, vim, and IntelliJ do atomic saves:
+///   1. Write temp file (e.g. foo.rs.tmp)
+///   2. Delete original (foo.rs) → DELETE event fires
+///   3. Rename temp to original (foo.rs.tmp → foo.rs)
+///
+/// By the time we process the DELETE event, the file often already exists again.
+/// We should NOT delete symbols/embeddings in this case — the file was edited,
+/// not truly deleted.
+#[tokio::test]
+async fn test_delete_handler_skips_when_file_still_exists() {
+    let temp_dir = crate::tests::helpers::unique_temp_dir("atomic_save");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    // Create and index a file
+    let test_file = workspace_root.join("edited_not_deleted.rs");
+    fs::write(&test_file, "fn original() {}").unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    // Index the file
+    handle_file_created_or_modified_static(
+        absolute_path.clone(),
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        None,
+    )
+    .await
+    .expect("Initial indexing should succeed");
+
+    // Verify symbol exists
+    {
+        let db_lock = db.lock().unwrap();
+        let count = db_lock.count_symbols_for_workspace().unwrap();
+        assert_eq!(count, 1, "Should have 1 symbol before deletion event");
+    }
+
+    // DO NOT delete the file — simulate atomic save where file still exists
+    // when we process the DELETE event
+    assert!(test_file.exists(), "File should still exist (atomic save simulation)");
+
+    // Call deletion handler with absolute path — file still on disk!
+    handle_file_deleted_static(absolute_path, &db, &workspace_root)
+        .await
+        .expect("Delete handler should succeed");
+
+    // Symbols should NOT have been deleted — file still exists
+    {
+        let db_lock = db.lock().unwrap();
+        let count = db_lock.count_symbols_for_workspace().unwrap();
+        assert_eq!(
+            count, 1,
+            "Symbols should be preserved when file still exists (atomic save)"
+        );
+    }
+}

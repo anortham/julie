@@ -177,3 +177,59 @@ async fn test_real_time_file_watcher_indexing() {
 async fn test_blake3_change_detection_placeholder() {
     // TODO: Implement with proper database mocking once incremental pipeline is finalized.
 }
+
+/// Test: Remove events should be queued even when the file no longer exists on disk.
+///
+/// `should_index_file()` checks `path.is_file()` which returns false for deleted
+/// files. This means real file deletions are silently dropped — stale symbols and
+/// embeddings persist in the database forever.
+///
+/// The fix: for Remove events, check extension and ignore patterns without
+/// requiring the file to exist on disk.
+#[tokio::test]
+async fn test_remove_event_queued_for_deleted_file() {
+    use crate::watcher::events::process_file_system_event;
+    use notify::{Event, EventKind, event::RemoveKind};
+    use std::collections::{HashSet, VecDeque};
+    use std::sync::Arc;
+    use tokio::sync::Mutex as TokioMutex;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let test_file = temp_dir.path().join("deleted.rs");
+
+    // Create then delete — simulating a real file deletion
+    fs::write(&test_file, "fn gone() {}").unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+    fs::remove_file(&test_file).unwrap();
+    assert!(!test_file.exists(), "File should be gone");
+
+    let mut extensions = HashSet::new();
+    extensions.insert("rs".to_string());
+    let ignore_patterns: Vec<glob::Pattern> = vec![];
+    let queue: Arc<TokioMutex<VecDeque<crate::watcher::types::FileChangeEvent>>> =
+        Arc::new(TokioMutex::new(VecDeque::new()));
+
+    let event = Event {
+        kind: EventKind::Remove(RemoveKind::File),
+        paths: vec![absolute_path],
+        attrs: Default::default(),
+    };
+
+    process_file_system_event(&extensions, &ignore_patterns, queue.clone(), event)
+        .await
+        .expect("Event processing should succeed");
+
+    let queue_lock = queue.lock().await;
+    assert_eq!(
+        queue_lock.len(),
+        1,
+        "Remove event should be queued even though file no longer exists"
+    );
+    assert!(
+        matches!(
+            queue_lock[0].change_type,
+            crate::watcher::types::FileChangeType::Deleted
+        ),
+        "Queued event should be a Deleted type"
+    );
+}

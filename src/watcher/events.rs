@@ -49,8 +49,9 @@ pub async fn process_file_system_event(
         }
         EventKind::Remove(_) => {
             for path in event.paths {
-                // Check ignore patterns before processing deletion
-                if should_index_file(&path, supported_extensions, ignore_patterns) {
+                // For deletions, the file no longer exists on disk so we cannot
+                // use `is_file()`. Check extension and ignore patterns only.
+                if should_process_deletion(&path, supported_extensions, ignore_patterns) {
                     let change_event = FileChangeEvent {
                         path: path.clone(),
                         change_type: FileChangeType::Deleted,
@@ -81,6 +82,36 @@ fn should_index_file(
     }
 
     // Check extension
+    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+        if !supported_extensions.contains(ext) {
+            return false;
+        }
+    } else {
+        return false; // No extension
+    }
+
+    // Check ignore patterns
+    let path_str = path.to_string_lossy();
+    for pattern in ignore_patterns {
+        if pattern.matches(&path_str) {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Check if a Remove event should be queued for processing.
+///
+/// Unlike `should_index_file`, this does NOT check `path.is_file()` because
+/// the file no longer exists on disk after deletion. We only verify that the
+/// path has a supported extension and doesn't match ignore patterns.
+fn should_process_deletion(
+    path: &Path,
+    supported_extensions: &HashSet<String>,
+    ignore_patterns: &[glob::Pattern],
+) -> bool {
+    // Check extension (the file is gone, but the path still has its extension)
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
         if !supported_extensions.contains(ext) {
             return false;

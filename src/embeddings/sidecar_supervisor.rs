@@ -172,14 +172,25 @@ fn detect_bootstrap_python_interpreter() -> Result<OsString> {
 }
 
 fn python_interpreter_candidates() -> Vec<OsString> {
+    // Prefer 3.12 for best cross-platform compatibility (macOS, Windows, Linux)
+    // with PyTorch and sentence-transformers. Fall back to newer/older versions.
     if cfg!(target_os = "windows") {
         vec![
-            OsString::from("python"),
             OsString::from("py"),
+            OsString::from("python3.12"),
+            OsString::from("python3.13"),
+            OsString::from("python3.11"),
+            OsString::from("python"),
             OsString::from("python3"),
         ]
     } else {
-        vec![OsString::from("python3"), OsString::from("python")]
+        vec![
+            OsString::from("python3.12"),
+            OsString::from("python3.13"),
+            OsString::from("python3.11"),
+            OsString::from("python3"),
+            OsString::from("python"),
+        ]
     }
 }
 

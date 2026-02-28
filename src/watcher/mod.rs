@@ -11,7 +11,7 @@
 //!
 //! This separation prevents blocking on file I/O or database operations.
 
-mod events;
+pub(crate) mod events;
 pub mod filtering; // Public for tests
 pub mod handlers; // Public for tests
 pub mod types;
@@ -251,22 +251,35 @@ impl IncrementalIndexer {
                             }
                         }
                         FileChangeType::Deleted => {
-                            // Delete embeddings BEFORE deleting symbols (join requires symbols to exist)
-                            if let Some(ref rel) = relative_for_embed {
-                                if let Ok(mut db_guard) = db.lock() {
-                                    if let Err(e) = db_guard.delete_embeddings_for_file(rel) {
-                                        warn!("Failed to delete embeddings for {}: {}", rel, e);
+                            // Guard: if the file still exists, this was likely an atomic
+                            // save (write-temp → delete → rename). Skip to avoid nuking
+                            // valid data — the subsequent Create/Modify event will re-index.
+                            if event.path.exists() {
+                                info!(
+                                    "Skipping DELETE for {} (file still exists, likely atomic save)",
+                                    event.path.display()
+                                );
+                                // Clear dedup entry so the follow-up Create/Modify event
+                                // for this path is NOT skipped by the 1s dedup window.
+                                last_processed.lock().await.remove(&event.path);
+                            } else {
+                                // Delete embeddings BEFORE deleting symbols (join requires symbols to exist)
+                                if let Some(ref rel) = relative_for_embed {
+                                    if let Ok(mut db_guard) = db.lock() {
+                                        if let Err(e) = db_guard.delete_embeddings_for_file(rel) {
+                                            warn!("Failed to delete embeddings for {}: {}", rel, e);
+                                        }
                                     }
                                 }
-                            }
-                            if let Err(e) = handlers::handle_file_deleted_static(
-                                event.path,
-                                &db,
-                                &workspace_root,
-                            )
-                            .await
-                            {
-                                error!("Failed to handle file deletion: {}", e);
+                                if let Err(e) = handlers::handle_file_deleted_static(
+                                    event.path,
+                                    &db,
+                                    &workspace_root,
+                                )
+                                .await
+                                {
+                                    error!("Failed to handle file deletion: {}", e);
+                                }
                             }
                         }
                         FileChangeType::Renamed { from, to } => {
@@ -347,19 +360,27 @@ impl IncrementalIndexer {
                     }
                 }
                 FileChangeType::Deleted => {
-                    if let Some(ref rel) = relative_for_embed {
-                        if let Ok(mut db_guard) = self.db.lock() {
-                            let _ = db_guard.delete_embeddings_for_file(rel);
+                    // Guard: atomic save pattern — file still exists after DELETE event
+                    if event.path.exists() {
+                        info!(
+                            "Skipping DELETE for {} (file still exists, likely atomic save)",
+                            event.path.display()
+                        );
+                    } else {
+                        if let Some(ref rel) = relative_for_embed {
+                            if let Ok(mut db_guard) = self.db.lock() {
+                                let _ = db_guard.delete_embeddings_for_file(rel);
+                            }
                         }
-                    }
-                    if let Err(e) = handlers::handle_file_deleted_static(
-                        event.path,
-                        &self.db,
-                        &self.workspace_root,
-                    )
-                    .await
-                    {
-                        error!("Failed to handle file deletion: {}", e);
+                        if let Err(e) = handlers::handle_file_deleted_static(
+                            event.path,
+                            &self.db,
+                            &self.workspace_root,
+                        )
+                        .await
+                        {
+                            error!("Failed to handle file deletion: {}", e);
+                        }
                     }
                 }
                 FileChangeType::Renamed { from, to } => {

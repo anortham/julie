@@ -95,9 +95,14 @@ pub fn run_embedding_pipeline(
         let texts: Vec<String> = chunk.iter().map(|(_, text)| text.clone()).collect();
 
         // Generate embeddings
-        let vectors = provider
-            .embed_batch(&texts)
-            .context("Embedding batch failed")?;
+        let vectors = provider.embed_batch(&texts).with_context(|| {
+            format!(
+                "Embedding batch {}/{} failed ({} texts)",
+                stats.batches_processed + 1,
+                (prepared.len() + EMBEDDING_BATCH_SIZE - 1) / EMBEDDING_BATCH_SIZE,
+                texts.len()
+            )
+        })?;
 
         if vectors.len() != chunk.len() {
             warn!(

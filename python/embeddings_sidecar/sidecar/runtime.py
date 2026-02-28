@@ -40,6 +40,8 @@ def _as_vectors(raw: Any) -> list[list[float]]:
         return [[float(value) for value in data]]
     vectors: list[list[float]] = []
     for row in data:
+        if hasattr(row, "tolist"):
+            row = row.tolist()
         if not isinstance(row, list):
             raise TypeError("embedding output must be a 2D list-like object")
         vectors.append([float(value) for value in row])

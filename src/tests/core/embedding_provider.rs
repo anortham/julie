@@ -627,9 +627,10 @@ while True:
         }
 
         let temp_dir = TempDir::new().unwrap();
-        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
             .await
             .unwrap();
+        workspace.initialize_embedding_provider();
 
         let status = workspace
             .embedding_runtime_status
@@ -659,9 +660,10 @@ while True:
         }
 
         let temp_dir = TempDir::new().unwrap();
-        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
             .await
             .unwrap();
+        workspace.initialize_embedding_provider();
 
         let status = workspace
             .embedding_runtime_status
@@ -710,9 +712,10 @@ while True:
         }
 
         let temp_dir = TempDir::new().unwrap();
-        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
             .await
             .unwrap();
+        workspace.initialize_embedding_provider();
 
         let status = workspace
             .embedding_runtime_status
@@ -753,9 +756,10 @@ while True:
         }
 
         let temp_dir = TempDir::new().unwrap();
-        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
             .await
             .unwrap();
+        workspace.initialize_embedding_provider();
 
         let status = workspace
             .embedding_runtime_status
@@ -799,9 +803,10 @@ while True:
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
         }
 
-        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
             .await
             .unwrap();
+        workspace.initialize_embedding_provider();
 
         let status = workspace
             .embedding_runtime_status
@@ -852,9 +857,10 @@ while True:
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
         }
 
-        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
             .await
             .unwrap();
+        workspace.initialize_embedding_provider();
 
         let status = workspace
             .embedding_runtime_status
@@ -917,9 +923,10 @@ while True:
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
         }
 
-        let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
             .await
             .unwrap();
+        workspace.initialize_embedding_provider();
 
         let status = workspace
             .embedding_runtime_status

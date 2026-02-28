@@ -30,6 +30,7 @@ struct SidecarProcess {
 }
 
 const DEFAULT_SIDECAR_TIMEOUT_MS: u64 = 5000;
+const DEFAULT_SIDECAR_INIT_TIMEOUT_MS: u64 = 120_000;
 const SHUTDOWN_TIMEOUT_MS: u64 = 500;
 
 #[derive(Debug, Deserialize)]
@@ -235,7 +236,9 @@ impl SidecarProcess {
     }
 
     fn probe_readiness(&mut self) -> Result<()> {
-        let health: HealthResult = self.send_request("health", serde_json::json!({}))?;
+        let init_timeout = read_init_timeout();
+        let health: HealthResult =
+            self.send_request_with_timeout("health", serde_json::json!({}), init_timeout)?;
         if !health.ready {
             bail!("sidecar reported not ready in health probe");
         }
@@ -304,5 +307,14 @@ fn read_response_timeout() -> Duration {
         .and_then(|value| value.trim().parse::<u64>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(DEFAULT_SIDECAR_TIMEOUT_MS);
+    Duration::from_millis(timeout_ms)
+}
+
+fn read_init_timeout() -> Duration {
+    let timeout_ms = std::env::var("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_SIDECAR_INIT_TIMEOUT_MS);
     Duration::from_millis(timeout_ms)
 }
