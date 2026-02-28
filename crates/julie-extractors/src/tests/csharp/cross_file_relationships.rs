@@ -145,4 +145,146 @@ namespace Main
             "PendingRelationship should have a valid from_symbol_id"
         );
     }
+
+    // ========================================================================
+    // TEST: Cross-file interface implementation should create PendingRelationship
+    // ========================================================================
+
+    #[test]
+    fn test_cross_file_interface_implementation_creates_pending_relationship() {
+        // ILuceneIndexService is in a DIFFERENT file — not defined here
+        let code = r#"
+namespace Services
+{
+    public class LuceneIndexService : ILuceneIndexService, IAsyncDisposable
+    {
+        public async Task<SearchResult> SearchAsync(string query)
+        {
+            return new SearchResult();
+        }
+    }
+}
+"#;
+
+        let results = extract_full("src/LuceneIndexService.cs", code);
+
+        // Should create PendingRelationship for ILuceneIndexService (cross-file interface)
+        let pending_implements: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Implements)
+            .collect();
+
+        let ilucene_pending = pending_implements
+            .iter()
+            .find(|p| p.callee_name == "ILuceneIndexService");
+        assert!(
+            ilucene_pending.is_some(),
+            "Should create PendingRelationship(Implements) for cross-file ILuceneIndexService.\n\
+             Found pending implements: {:?}",
+            pending_implements
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
+        );
+
+        // Verify from_symbol_id references the class
+        let pending = ilucene_pending.unwrap();
+        let class_symbol = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "LuceneIndexService")
+            .expect("Should extract LuceneIndexService class");
+        assert_eq!(
+            pending.from_symbol_id, class_symbol.id,
+            "PendingRelationship should reference the implementing class"
+        );
+    }
+
+    #[test]
+    fn test_cross_file_base_class_creates_pending_extends() {
+        // BaseService is in a DIFFERENT file
+        let code = r#"
+namespace Services
+{
+    public class DerivedService : BaseService
+    {
+        public void DoWork() { }
+    }
+}
+"#;
+
+        let results = extract_full("src/DerivedService.cs", code);
+
+        let pending_extends: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| {
+                p.kind == RelationshipKind::Extends || p.kind == RelationshipKind::Implements
+            })
+            .collect();
+
+        let base_pending = pending_extends
+            .iter()
+            .find(|p| p.callee_name == "BaseService");
+        assert!(
+            base_pending.is_some(),
+            "Should create PendingRelationship for cross-file BaseService.\n\
+             Found pending: {:?}",
+            pending_extends
+                .iter()
+                .map(|p| (&p.callee_name, &p.kind))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_same_file_interface_still_creates_direct_relationship() {
+        // Interface and implementation in the SAME file
+        let code = r#"
+namespace Services
+{
+    public interface IMyService
+    {
+        void DoWork();
+    }
+
+    public class MyService : IMyService
+    {
+        public void DoWork() { }
+    }
+}
+"#;
+
+        let results = extract_full("src/MyService.cs", code);
+
+        // Should create a direct Relationship (not pending) since both are in the same file
+        let implements_rels: Vec<_> = results
+            .relationships
+            .iter()
+            .filter(|r| r.kind == RelationshipKind::Implements)
+            .collect();
+
+        assert!(
+            !implements_rels.is_empty(),
+            "Same-file interface implementation should create direct Relationship.\n\
+             Found {} implements relationships",
+            implements_rels.len()
+        );
+
+        // Verify it links MyService -> IMyService
+        let rel = &implements_rels[0];
+        let my_service = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "MyService")
+            .expect("Should extract MyService");
+        let i_my_service = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "IMyService")
+            .expect("Should extract IMyService");
+        assert_eq!(rel.from_symbol_id, my_service.id);
+        assert_eq!(rel.to_symbol_id, i_my_service.id);
+    }
 }

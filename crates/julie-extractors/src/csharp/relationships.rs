@@ -67,56 +67,91 @@ fn extract_inheritance_relationships(
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
-    let base = extractor.get_base();
-    let mut cursor = node.walk();
-    let name_node = node
-        .children(&mut cursor)
-        .find(|c| c.kind() == "identifier");
-    let Some(name_node) = name_node else { return };
+    // Phase 1: Collect all data using immutable borrow of extractor
+    let (current_symbol_id, base_types, file_path, line_number) = {
+        let base = extractor.get_base();
+        let mut cursor = node.walk();
+        let name_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "identifier");
+        let Some(name_node) = name_node else { return };
 
-    let current_symbol_name = base.get_node_text(&name_node);
-    let Some(current_symbol) = symbols.iter().find(|s| s.name == current_symbol_name) else {
-        return;
+        let current_symbol_name = base.get_node_text(&name_node);
+        let Some(current_symbol) = symbols.iter().find(|s| s.name == current_symbol_name) else {
+            return;
+        };
+
+        let base_list = node.children(&mut cursor).find(|c| c.kind() == "base_list");
+        let Some(base_list) = base_list else { return };
+
+        let mut base_cursor = base_list.walk();
+        let base_types: Vec<String> = base_list
+            .children(&mut base_cursor)
+            .filter(|c| c.kind() != ":" && c.kind() != ",")
+            .map(|c| base.get_node_text(&c))
+            .collect();
+
+        (
+            current_symbol.id.clone(),
+            base_types,
+            base.file_path.clone(),
+            (node.start_position().row + 1) as u32,
+        )
     };
 
-    let base_list = node.children(&mut cursor).find(|c| c.kind() == "base_list");
-    let Some(base_list) = base_list else { return };
-
-    let mut base_cursor = base_list.walk();
-    let base_types: Vec<String> = base_list
-        .children(&mut base_cursor)
-        .filter(|c| c.kind() != ":" && c.kind() != ",")
-        .map(|c| base.get_node_text(&c))
-        .collect();
-
+    // Phase 2: Create relationships (may need &mut extractor for pending)
     for base_type_name in base_types {
         if let Some(base_symbol) = symbols.iter().find(|s| s.name == base_type_name) {
+            // Same-file: we know the target's kind, so we can resolve directly
             let relationship_kind = if base_symbol.kind == SymbolKind::Interface {
                 RelationshipKind::Implements
             } else {
                 RelationshipKind::Extends
             };
 
-            let relationship = Relationship {
+            relationships.push(Relationship {
                 id: format!(
                     "{}_{}_{:?}_{}",
-                    current_symbol.id,
+                    current_symbol_id,
                     base_symbol.id,
                     relationship_kind,
                     node.start_position().row
                 ),
-                from_symbol_id: current_symbol.id.clone(),
+                from_symbol_id: current_symbol_id.clone(),
                 to_symbol_id: base_symbol.id.clone(),
                 kind: relationship_kind,
-                file_path: base.file_path.clone(),
-                line_number: (node.start_position().row + 1) as u32,
+                file_path: file_path.clone(),
+                line_number,
                 confidence: 1.0,
                 metadata: None,
+            });
+        } else {
+            // Cross-file: base type is defined in another file.
+            // Use C# naming convention (IFoo = interface) to infer relationship kind.
+            let relationship_kind = if is_interface_name(&base_type_name) {
+                RelationshipKind::Implements
+            } else {
+                RelationshipKind::Extends
             };
 
-            relationships.push(relationship);
+            extractor.add_pending_relationship(PendingRelationship {
+                from_symbol_id: current_symbol_id.clone(),
+                callee_name: base_type_name,
+                kind: relationship_kind,
+                file_path: file_path.clone(),
+                line_number,
+                confidence: 0.9,
+            });
         }
     }
+}
+
+/// Check if a type name follows C# interface naming convention (IFoo).
+/// Requires 'I' prefix followed by an uppercase letter to avoid false positives
+/// with regular names like "Item" or "Index".
+fn is_interface_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!((chars.next(), chars.next()), (Some('I'), Some(c)) if c.is_ascii_uppercase())
 }
 
 /// Extract constructor parameter type relationships (DI injection pattern)

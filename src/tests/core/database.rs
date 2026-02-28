@@ -1881,3 +1881,187 @@ fn test_compute_reference_scores_zero_for_no_incoming() {
         receiver_score
     );
 }
+
+/// C# DI pattern: interface gets all the centrality, concrete implementation gets zero.
+/// After propagation, the implementing class should inherit a fraction of the interface's score.
+#[test]
+fn test_compute_reference_scores_propagates_interface_centrality_to_implementations() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.store_file_info(&FileInfo {
+        path: "test.cs".to_string(),
+        language: "csharp".to_string(),
+        hash: "abc123".to_string(),
+        size: 1000,
+        last_modified: 1234567890,
+        last_indexed: 0,
+        symbol_count: 5,
+        content: None,
+    })
+    .unwrap();
+
+    // IService (interface), ServiceImpl (class), 3 consumers
+    for (id, name, kind) in [
+        ("iservice", "IService", "interface"),
+        ("service_impl", "ServiceImpl", "class"),
+        ("consumer1", "Consumer1", "class"),
+        ("consumer2", "Consumer2", "class"),
+        ("consumer3", "Consumer3", "class"),
+    ] {
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+                 VALUES (?1, ?2, ?3, 'csharp', 'test.cs', 1, 10, 0, 1, 0, 100)",
+                rusqlite::params![id, name, kind],
+            )
+            .unwrap();
+    }
+
+    // ServiceImpl implements IService
+    db.conn
+        .execute(
+            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+             VALUES ('r_impl', 'service_impl', 'iservice', 'implements')",
+            [],
+        )
+        .unwrap();
+
+    // 3 consumers reference IService (constructor params / field types)
+    for (rel_id, from_id) in [("r1", "consumer1"), ("r2", "consumer2"), ("r3", "consumer3")] {
+        db.conn
+            .execute(
+                "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+                 VALUES (?1, ?2, 'iservice', 'uses')",
+                rusqlite::params![rel_id, from_id],
+            )
+            .unwrap();
+    }
+
+    db.compute_reference_scores().unwrap();
+
+    // IService: 3 × uses(1) + 1 × implements(2) = 5.0
+    let iservice_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'iservice'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        (iservice_score - 5.0).abs() < f64::EPSILON,
+        "IService should have ref_score 5.0, got {}",
+        iservice_score
+    );
+
+    // ServiceImpl should inherit centrality from IService via implements relationship
+    let impl_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'service_impl'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        impl_score > 0.0,
+        "ServiceImpl should inherit centrality from IService via implements, got {}",
+        impl_score
+    );
+    // Should be a meaningful fraction of the interface's score
+    assert!(
+        impl_score >= iservice_score * 0.5,
+        "ServiceImpl should get at least 50% of IService's score ({}), got {}",
+        iservice_score,
+        impl_score
+    );
+}
+
+/// Same propagation should work for extends (class inheritance)
+#[test]
+fn test_compute_reference_scores_propagates_base_class_centrality() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.store_file_info(&FileInfo {
+        path: "test.cs".to_string(),
+        language: "csharp".to_string(),
+        hash: "abc123".to_string(),
+        size: 1000,
+        last_modified: 1234567890,
+        last_indexed: 0,
+        symbol_count: 4,
+        content: None,
+    })
+    .unwrap();
+
+    for (id, name, kind) in [
+        ("base_class", "BaseService", "class"),
+        ("derived", "DerivedService", "class"),
+        ("caller1", "Caller1", "class"),
+        ("caller2", "Caller2", "class"),
+    ] {
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+                 VALUES (?1, ?2, ?3, 'csharp', 'test.cs', 1, 10, 0, 1, 0, 100)",
+                rusqlite::params![id, name, kind],
+            )
+            .unwrap();
+    }
+
+    // DerivedService extends BaseService
+    db.conn
+        .execute(
+            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+             VALUES ('r_ext', 'derived', 'base_class', 'extends')",
+            [],
+        )
+        .unwrap();
+
+    // 2 callers reference BaseService
+    for (rel_id, from_id) in [("r1", "caller1"), ("r2", "caller2")] {
+        db.conn
+            .execute(
+                "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+                 VALUES (?1, ?2, 'base_class', 'calls')",
+                rusqlite::params![rel_id, from_id],
+            )
+            .unwrap();
+    }
+
+    db.compute_reference_scores().unwrap();
+
+    // BaseService: 2 × calls(3) + 1 × extends(2) = 8.0
+    let base_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'base_class'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        (base_score - 8.0).abs() < f64::EPSILON,
+        "BaseService should have ref_score 8.0, got {}",
+        base_score
+    );
+
+    // DerivedService should inherit some centrality
+    let derived_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'derived'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        derived_score > 0.0,
+        "DerivedService should inherit centrality from BaseService via extends, got {}",
+        derived_score
+    );
+}

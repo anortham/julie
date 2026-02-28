@@ -1,9 +1,9 @@
 ---
 id: fix-embedding-performance-incremental-pipeline-mps
 title: "Fix Embedding Performance: Incremental Pipeline + MPS"
-status: active
+status: completed
 created: 2026-02-27T23:46:08.451Z
-updated: 2026-02-27T23:46:08.451Z
+updated: 2026-02-28T23:07:24.355Z
 tags:
   - embeddings
   - performance

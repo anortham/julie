@@ -245,7 +245,12 @@ impl SymbolDatabase {
     ///   Calls=3, Implements/Imports/Extends/Instantiates=2,
     ///   Uses/References/Returns/Parameter/Defines/Overrides/Joins/Composition=1,
     ///   Contains=0 (structural, not a usage signal)
+    ///
+    /// After computing direct scores, propagates centrality from interfaces and base
+    /// classes to their implementations. This fixes C# DI patterns where concrete
+    /// classes get zero centrality because all references go through interfaces.
     pub fn compute_reference_scores(&self) -> Result<()> {
+        // Step 1: Compute direct reference scores from incoming relationships
         self.conn.execute(
             "UPDATE symbols SET reference_score = COALESCE(
                 (SELECT SUM(
@@ -271,6 +276,28 @@ impl SymbolDatabase {
                 WHERE r.to_symbol_id = symbols.id
                   AND r.from_symbol_id != symbols.id),
                 0.0
+            )",
+            [],
+        )?;
+
+        // Step 2: Propagate centrality from interfaces/base classes to implementations.
+        // When class Foo implements IBar, Foo gets 70% of IBar's centrality added.
+        // This fixes C# DI patterns where all references go through interfaces,
+        // leaving concrete implementations with zero centrality.
+        self.conn.execute(
+            "UPDATE symbols SET reference_score = reference_score + COALESCE(
+                (SELECT SUM(target_sym.reference_score * 0.7)
+                 FROM relationships r
+                 JOIN symbols target_sym ON target_sym.id = r.to_symbol_id
+                 WHERE r.from_symbol_id = symbols.id
+                   AND r.kind IN ('implements', 'extends')
+                   AND r.from_symbol_id != r.to_symbol_id
+                ), 0.0
+            )
+            WHERE EXISTS (
+                SELECT 1 FROM relationships r
+                WHERE r.from_symbol_id = symbols.id
+                  AND r.kind IN ('implements', 'extends')
             )",
             [],
         )?;
