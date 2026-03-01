@@ -1,0 +1,5 @@
+{"query":"how does workspace routing pick the right index","intent_tag":"workspace-routing","expected_symbol_ids":["workspace::registry::resolve_workspace_for_tool","workspace::registry::generate_workspace_id"]}
+{"query":"why is source code ranked above test files","intent_tag":"ranking-source-vs-tests","expected_symbol_ids":["search::ranking::apply_path_heuristics","search::ranking::score_symbol_match"]}
+{"query":"how are camel case and snake case tokens split","intent_tag":"tokenization"}
+{"query":"where does fast_refs gather identifier based references","intent_tag":"reference-discovery","expected_symbol_ids":["database::identifiers::queries::get_identifiers_by_names","tools::navigation::fast_refs::FastRefsTool::call_tool"]}
+{"query":"how do embeddings merge with keyword search","intent_tag":"hybrid-search","expected_symbol_ids":["search::hybrid::hybrid_search","search::hybrid::rrf_merge"]}
