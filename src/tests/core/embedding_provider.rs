@@ -8,13 +8,6 @@ mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
 
-    #[cfg(feature = "embeddings-candle")]
-    use crate::embeddings::candle_provider::validate_output_dimensions;
-    #[cfg(feature = "embeddings-candle")]
-    use crate::embeddings::candle_provider::{
-        coreml_runtime_requested, default_coreml_model_id_for_platform,
-        parse_coreml_input_names,
-    };
     use crate::embeddings::{
         BackendResolverCapabilities, DeviceInfo, EmbeddingBackend, EmbeddingConfig,
         EmbeddingProvider, EmbeddingProviderFactory, EmbeddingRuntimeStatus,
@@ -139,10 +132,6 @@ while True:
             EmbeddingBackend::Ort
         );
         assert_eq!(
-            parse_provider_preference("candle").unwrap(),
-            EmbeddingBackend::Candle
-        );
-        assert_eq!(
             parse_provider_preference("  ORT\t").unwrap(),
             EmbeddingBackend::Ort
         );
@@ -161,7 +150,7 @@ while True:
         let err = parse_provider_preference("not-a-real-provider").unwrap_err();
         let message = err.to_string();
         assert!(
-            message.contains("auto|sidecar|ort|candle"),
+            message.contains("auto|sidecar|ort"),
             "expected valid provider set in error, got: {message}"
         );
     }
@@ -237,7 +226,7 @@ while True:
             let capabilities = BackendResolverCapabilities {
                 sidecar_available: false,
                 ort_available: true,
-                candle_available: true,
+    
                 target_os: os,
                 target_arch: arch,
             };
@@ -256,7 +245,7 @@ while True:
         let capabilities = BackendResolverCapabilities {
             sidecar_available: true,
             ort_available: true,
-            candle_available: true,
+
             target_os: "macos",
             target_arch: "aarch64",
         };
@@ -267,57 +256,11 @@ while True:
     }
 
     #[test]
-    fn test_resolver_auto_falls_back_to_candle_when_ort_unavailable() {
-        let capabilities = BackendResolverCapabilities {
-            sidecar_available: false,
-            ort_available: false,
-            candle_available: true,
-            target_os: "macos",
-            target_arch: "aarch64",
-        };
-
-        let resolved = resolve_backend_preference(EmbeddingBackend::Auto, &capabilities).unwrap();
-        assert_eq!(resolved, EmbeddingBackend::Candle);
-    }
-
-    #[test]
-    fn test_resolver_explicit_provider_overrides_auto_policy() {
-        let capabilities = BackendResolverCapabilities {
-            sidecar_available: false,
-            ort_available: true,
-            candle_available: true,
-            target_os: "linux",
-            target_arch: "x86_64",
-        };
-
-        let resolved = resolve_backend_preference(EmbeddingBackend::Candle, &capabilities).unwrap();
-        assert_eq!(resolved, EmbeddingBackend::Candle);
-    }
-
-    #[test]
-    fn test_resolver_errors_when_explicit_candle_unavailable_even_if_ort_available() {
-        let capabilities = BackendResolverCapabilities {
-            sidecar_available: false,
-            ort_available: true,
-            candle_available: false,
-            target_os: "macos",
-            target_arch: "aarch64",
-        };
-
-        let err = resolve_backend_preference(EmbeddingBackend::Candle, &capabilities).unwrap_err();
-        let message = err.to_string();
-        assert!(
-            message.contains("requested 'candle'") && message.contains("not available"),
-            "expected clear explicit candle availability error, got: {message}"
-        );
-    }
-
-    #[test]
     fn test_resolver_auto_errors_when_no_backend_available() {
         let capabilities = BackendResolverCapabilities {
             sidecar_available: false,
             ort_available: false,
-            candle_available: false,
+
             target_os: "macos",
             target_arch: "aarch64",
         };
@@ -334,7 +277,7 @@ while True:
         let capabilities = BackendResolverCapabilities {
             sidecar_available: false,
             ort_available: false,
-            candle_available: false,
+
             target_os: "linux",
             target_arch: "x86_64",
         };
@@ -348,42 +291,6 @@ while True:
     }
 
     #[test]
-    fn test_auto_fallback_target_is_ort_when_candle_init_fails_and_ort_is_available() {
-        let fallback = fallback_backend_after_init_failure(
-            EmbeddingBackend::Auto,
-            EmbeddingBackend::Candle,
-            false,
-            BackendResolverCapabilities {
-                sidecar_available: false,
-                ort_available: true,
-                candle_available: true,
-                target_os: "macos",
-                target_arch: "aarch64",
-            },
-        );
-
-        assert_eq!(fallback, Some(EmbeddingBackend::Ort));
-    }
-
-    #[test]
-    fn test_auto_fallback_target_is_candle_when_ort_init_fails_and_candle_is_available() {
-        let fallback = fallback_backend_after_init_failure(
-            EmbeddingBackend::Auto,
-            EmbeddingBackend::Ort,
-            false,
-            BackendResolverCapabilities {
-                sidecar_available: false,
-                ort_available: true,
-                candle_available: true,
-                target_os: "macos",
-                target_arch: "aarch64",
-            },
-        );
-
-        assert_eq!(fallback, Some(EmbeddingBackend::Candle));
-    }
-
-    #[test]
     fn test_auto_fallback_target_is_ort_when_sidecar_init_fails_and_ort_is_available() {
         let fallback = fallback_backend_after_init_failure(
             EmbeddingBackend::Auto,
@@ -392,7 +299,7 @@ while True:
             BackendResolverCapabilities {
                 sidecar_available: true,
                 ort_available: true,
-                candle_available: true,
+    
                 target_os: "macos",
                 target_arch: "aarch64",
             },
@@ -402,33 +309,15 @@ while True:
     }
 
     #[test]
-    fn test_auto_fallback_target_is_candle_when_sidecar_init_fails_and_ort_unavailable() {
-        let fallback = fallback_backend_after_init_failure(
-            EmbeddingBackend::Auto,
-            EmbeddingBackend::Sidecar,
-            false,
-            BackendResolverCapabilities {
-                sidecar_available: true,
-                ort_available: false,
-                candle_available: true,
-                target_os: "macos",
-                target_arch: "aarch64",
-            },
-        );
-
-        assert_eq!(fallback, Some(EmbeddingBackend::Candle));
-    }
-
-    #[test]
     fn test_auto_fallback_disabled_when_strict_accel_is_enabled() {
         let fallback = fallback_backend_after_init_failure(
             EmbeddingBackend::Auto,
-            EmbeddingBackend::Candle,
+            EmbeddingBackend::Sidecar,
             true,
             BackendResolverCapabilities {
                 sidecar_available: false,
                 ort_available: true,
-                candle_available: true,
+    
                 target_os: "macos",
                 target_arch: "aarch64",
             },
@@ -526,23 +415,23 @@ while True:
     fn test_build_embedding_runtime_log_fields_includes_provider_runtime_context() {
         let status = EmbeddingRuntimeStatus {
             requested_backend: EmbeddingBackend::Auto,
-            resolved_backend: EmbeddingBackend::Candle,
+            resolved_backend: EmbeddingBackend::Sidecar,
             accelerated: true,
             degraded_reason: None,
         };
         let provider_info = DeviceInfo {
-            runtime: "candle-coreml".to_string(),
-            device: "Metal (CoreML input)".to_string(),
-            model_name: "bge-small-coreml".to_string(),
+            runtime: "sidecar-mps".to_string(),
+            device: "Metal (MPS)".to_string(),
+            model_name: "bge-small-en-v1.5".to_string(),
             dimensions: 384,
         };
 
         let fields =
             build_embedding_runtime_log_fields(&status, Some(&provider_info), false, false);
         assert_eq!(fields.requested_backend, "auto");
-        assert_eq!(fields.resolved_backend, "candle");
-        assert_eq!(fields.runtime, "candle-coreml");
-        assert_eq!(fields.device, "Metal (CoreML input)");
+        assert_eq!(fields.resolved_backend, "sidecar");
+        assert_eq!(fields.runtime, "sidecar-mps");
+        assert_eq!(fields.device, "Metal (MPS)");
         assert!(fields.accelerated);
         assert_eq!(fields.degraded_reason, "none");
         assert_eq!(fields.telemetry_confidence, "high");
@@ -602,7 +491,7 @@ while True:
         assert!(!cpu_fallback.is_accelerated());
 
         let metal_gpu = DeviceInfo {
-            runtime: "candle".to_string(),
+            runtime: "sidecar".to_string(),
             device: "Metal (MPS)".to_string(),
             model_name: "BGE-small-en-v1.5".to_string(),
             dimensions: 384,
@@ -646,101 +535,6 @@ while True:
 
         unsafe {
             std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
-            std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
-        }
-    }
-
-    #[cfg(not(feature = "embeddings-candle"))]
-    #[tokio::test]
-    #[serial(embedding_env)]
-    async fn test_workspace_init_explicit_candle_unavailable_sets_unresolved_runtime_status() {
-        unsafe {
-            std::env::set_var("JULIE_EMBEDDING_PROVIDER", "candle");
-            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
-        }
-
-        let temp_dir = TempDir::new().unwrap();
-        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
-            .await
-            .unwrap();
-        workspace.initialize_embedding_provider();
-
-        let status = workspace
-            .embedding_runtime_status
-            .as_ref()
-            .expect("runtime status should be captured");
-
-        assert_eq!(status.requested_backend, EmbeddingBackend::Candle);
-        assert_eq!(status.resolved_backend, EmbeddingBackend::Unresolved);
-        assert!(!status.accelerated);
-        assert!(
-            status
-                .degraded_reason
-                .as_deref()
-                .is_some_and(|reason| reason.contains("requested 'candle'")
-                    && reason.contains("not available")),
-            "expected explicit candle unavailability reason, got: {:?}",
-            status.degraded_reason
-        );
-        assert!(
-            workspace.embedding_provider.is_none(),
-            "explicit candle request must not silently fall back to another provider"
-        );
-        assert!(
-            status
-                .degraded_reason
-                .as_deref()
-                .is_some_and(|reason| !reason.contains("strict acceleration")),
-            "non-strict mode should preserve the original availability reason, got: {:?}",
-            status.degraded_reason
-        );
-
-        unsafe {
-            std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
-            std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
-        }
-    }
-
-    #[cfg(not(feature = "embeddings-candle"))]
-    #[tokio::test]
-    #[serial(embedding_env)]
-    async fn test_workspace_init_strict_accel_disables_unresolved_provider_with_clear_reason() {
-        unsafe {
-            std::env::set_var("JULIE_EMBEDDING_PROVIDER", "candle");
-            std::env::set_var("JULIE_EMBEDDING_STRICT_ACCEL", "on");
-            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
-        }
-
-        let temp_dir = TempDir::new().unwrap();
-        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
-            .await
-            .unwrap();
-        workspace.initialize_embedding_provider();
-
-        let status = workspace
-            .embedding_runtime_status
-            .as_ref()
-            .expect("runtime status should be captured");
-
-        assert_eq!(status.requested_backend, EmbeddingBackend::Candle);
-        assert_eq!(status.resolved_backend, EmbeddingBackend::Unresolved);
-        assert!(
-            workspace.embedding_provider.is_none(),
-            "strict accel mode should disable embeddings when preferred accelerator is unavailable"
-        );
-        assert!(
-            status
-                .degraded_reason
-                .as_deref()
-                .is_some_and(|reason| reason.contains("strict acceleration")
-                    && reason.contains("JULIE_EMBEDDING_STRICT_ACCEL")),
-            "expected strict acceleration disable reason, got: {:?}",
-            status.degraded_reason
-        );
-
-        unsafe {
-            std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
-            std::env::remove_var("JULIE_EMBEDDING_STRICT_ACCEL");
             std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
         }
     }
@@ -841,8 +635,7 @@ while True:
     #[cfg(all(
         target_os = "macos",
         target_arch = "aarch64",
-        feature = "embeddings-ort",
-        not(feature = "embeddings-candle")
+        feature = "embeddings-ort"
     ))]
     #[tokio::test]
     #[serial(embedding_env)]
@@ -894,71 +687,6 @@ while True:
         assert_eq!(
             status.degraded_reason.is_none(),
             workspace.embedding_provider.is_some()
-        );
-
-        unsafe {
-            std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
-            std::env::remove_var("JULIE_EMBEDDING_SIDECAR_PROGRAM");
-            std::env::remove_var("JULIE_EMBEDDING_SIDECAR_SCRIPT");
-            std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
-        }
-    }
-
-    #[cfg(all(
-        target_os = "macos",
-        target_arch = "aarch64",
-        feature = "embeddings-ort",
-        feature = "embeddings-candle"
-    ))]
-    #[tokio::test]
-    #[serial(embedding_env)]
-    async fn test_workspace_init_auto_uses_sidecar_first_policy() {
-        let temp_dir = TempDir::new().unwrap();
-        let sidecar_script = write_fake_sidecar_script(&temp_dir);
-
-        unsafe {
-            std::env::set_var("JULIE_EMBEDDING_PROVIDER", "auto");
-            std::env::set_var("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
-            std::env::set_var("JULIE_EMBEDDING_SIDECAR_SCRIPT", sidecar_script.as_os_str());
-            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
-        }
-
-        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
-            .await
-            .unwrap();
-        workspace.initialize_embedding_provider();
-
-        let status = workspace
-            .embedding_runtime_status
-            .as_ref()
-            .expect("runtime status should be captured");
-
-        assert_eq!(status.requested_backend, EmbeddingBackend::Auto);
-        #[cfg(feature = "embeddings-sidecar")]
-        {
-            assert!(
-                matches!(
-                    status.resolved_backend,
-                    EmbeddingBackend::Sidecar | EmbeddingBackend::Ort
-                ),
-                "auto mode should prefer sidecar with ORT fallback on sidecar init failure"
-            );
-            if status.resolved_backend == EmbeddingBackend::Ort {
-                assert!(
-                    status
-                        .degraded_reason
-                        .as_deref()
-                        .is_some_and(|reason| reason.contains("Auto backend 'sidecar' failed")),
-                    "ORT fallback should preserve sidecar failure reason, got: {:?}",
-                    status.degraded_reason
-                );
-            }
-        }
-        #[cfg(not(feature = "embeddings-sidecar"))]
-        assert_eq!(status.resolved_backend, EmbeddingBackend::Ort);
-        assert!(
-            workspace.embedding_provider.is_some(),
-            "auto mode should initialize an embedding provider"
         );
 
         unsafe {
@@ -1121,124 +849,9 @@ while True:
             Err(err) => err,
         };
         assert!(
-            err.to_string().contains("auto|sidecar|ort|candle"),
+            err.to_string().contains("auto|sidecar|ort"),
             "Expected unknown provider error, got: {err}"
         );
     }
 
-    #[cfg(feature = "embeddings-candle")]
-    #[test]
-    #[serial(embedding_env)]
-    fn test_provider_factory_creates_candle_provider() {
-        let config = EmbeddingConfig {
-            provider: "candle".to_string(),
-            cache_dir: None,
-        };
-
-        let provider = EmbeddingProviderFactory::create(&config)
-            .expect("factory should create candle provider");
-        assert_eq!(provider.dimensions(), 384);
-
-        let embedding = provider
-            .embed_query("function to handle authentication")
-            .expect("candle embed_query should succeed");
-        assert_eq!(embedding.len(), 384);
-
-        let info = provider.device_info();
-        assert!(info.runtime.contains("candle"));
-    }
-
-    #[cfg(feature = "embeddings-candle")]
-    #[test]
-    fn test_candle_dim_guard_rejects_non_384_dimensions() {
-        let err = validate_output_dimensions(Some(256)).unwrap_err();
-        let message = err.to_string();
-
-        assert!(
-            message.contains("expected 384") && message.contains("got 256"),
-            "expected explicit dimension mismatch error, got: {message}"
-        );
-    }
-
-    #[cfg(feature = "embeddings-candle")]
-    #[test]
-    fn test_candle_dim_guard_error_mentions_effective_model_output_dim() {
-        let err = validate_output_dimensions(Some(129)).unwrap_err();
-        let message = err.to_string();
-
-        assert!(
-            message.contains("effective model output dim") && message.contains("expected 384"),
-            "expected effective dimension wording in guard error, got: {message}"
-        );
-    }
-
-    #[cfg(feature = "embeddings-candle")]
-    #[test]
-    fn test_candle_dim_guard_reports_scaffold_state_when_effective_dim_unavailable() {
-        let err = validate_output_dimensions(None).unwrap_err();
-        let message = err.to_string();
-
-        assert!(
-            message.contains("effective model output dim unavailable")
-                && !message.contains("scaffold"),
-            "expected explicit unavailable-dimension error, got: {message}"
-        );
-    }
-
-    #[cfg(feature = "embeddings-candle")]
-    #[test]
-    fn test_parse_coreml_input_names_uses_defaults_when_unset() {
-        let input_names = parse_coreml_input_names(None);
-        assert_eq!(
-            input_names,
-            vec![
-                "input_ids".to_string(),
-                "token_type_ids".to_string(),
-                "attention_mask".to_string()
-            ]
-        );
-    }
-
-    #[cfg(feature = "embeddings-candle")]
-    #[test]
-    fn test_parse_coreml_input_names_trims_and_filters_empty_entries() {
-        let input_names = parse_coreml_input_names(Some(" input_ids, ,attention_mask , token_type_ids "));
-        assert_eq!(
-            input_names,
-            vec![
-                "input_ids".to_string(),
-                "attention_mask".to_string(),
-                "token_type_ids".to_string()
-            ]
-        );
-    }
-
-    #[cfg(feature = "embeddings-candle")]
-    #[test]
-    fn test_coreml_runtime_requested_requires_model_id_and_macos() {
-        assert!(!coreml_runtime_requested(None, true));
-        assert!(!coreml_runtime_requested(Some(""), true));
-        assert!(!coreml_runtime_requested(Some("org/model"), false));
-        assert!(coreml_runtime_requested(Some("org/model"), true));
-    }
-
-    #[cfg(feature = "embeddings-candle")]
-    #[test]
-    fn test_default_coreml_model_id_for_platform_returns_none() {
-        // CoreML is disabled by default — batch=1 sequential inference is slower
-        // than Candle Transformers + Metal batched inference.
-        // Opt-in via JULIE_CANDLE_COREML_MODEL_ID env var.
-        assert_eq!(
-            default_coreml_model_id_for_platform("macos", "aarch64"),
-            None
-        );
-        assert_eq!(
-            default_coreml_model_id_for_platform("macos", "x86_64"),
-            None
-        );
-        assert_eq!(
-            default_coreml_model_id_for_platform("linux", "aarch64"),
-            None
-        );
-    }
 }

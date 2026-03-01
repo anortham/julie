@@ -26,22 +26,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "embeddings-candle")]
-    #[test]
-    fn test_candle_feature_can_be_enabled() {
-        assert!(cfg!(feature = "embeddings-candle"));
-    }
-
-    #[cfg(feature = "embeddings-candle")]
-    #[test]
-    fn test_candle_coreml_dependency_is_available() {
-        let type_name = std::any::type_name::<candle_coreml::CoreMLModelBuilder>();
-        assert!(
-            type_name.contains("CoreMLModelBuilder"),
-            "expected candle-coreml type to be available"
-        );
-    }
-
     /// Verify sqlite-vec loads and vec_version() returns a version string.
     #[test]
     fn test_sqlite_vec_registration_and_version() {

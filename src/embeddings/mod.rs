@@ -10,8 +10,6 @@
 //! - [`OrtEmbeddingProvider`] — production implementation using fastembed (ONNX Runtime)
 //! - Vector storage lives in `database::vectors` (sqlite-vec)
 
-#[cfg(feature = "embeddings-candle")]
-pub mod candle_provider;
 pub mod factory;
 pub mod metadata;
 #[cfg(feature = "embeddings-ort")]
@@ -35,7 +33,6 @@ pub enum EmbeddingBackend {
     Auto,
     Sidecar,
     Ort,
-    Candle,
     Unresolved,
     Invalid(String),
 }
@@ -46,7 +43,6 @@ impl EmbeddingBackend {
             Self::Auto => "auto",
             Self::Sidecar => "sidecar",
             Self::Ort => "ort",
-            Self::Candle => "candle",
             Self::Unresolved => "unresolved",
             Self::Invalid(_) => "invalid",
         }
@@ -122,8 +118,6 @@ pub trait EmbeddingProvider: Send + Sync {
 }
 
 // Re-exports
-#[cfg(feature = "embeddings-candle")]
-pub use candle_provider::CandleEmbeddingProvider;
 pub use factory::{
     fallback_backend_after_init_failure, parse_provider_preference, resolve_backend_preference,
     should_disable_for_strict_acceleration, strict_acceleration_enabled_from_env_value,

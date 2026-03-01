@@ -3,8 +3,6 @@ use std::sync::Arc;
 
 use anyhow::{bail, Result};
 
-#[cfg(feature = "embeddings-candle")]
-use super::CandleEmbeddingProvider;
 #[cfg(feature = "embeddings-ort")]
 use super::OrtEmbeddingProvider;
 #[cfg(feature = "embeddings-sidecar")]
@@ -15,7 +13,6 @@ use super::{EmbeddingBackend, EmbeddingProvider};
 pub struct BackendResolverCapabilities {
     pub sidecar_available: bool,
     pub ort_available: bool,
-    pub candle_available: bool,
     pub target_os: &'static str,
     pub target_arch: &'static str,
 }
@@ -25,7 +22,6 @@ impl BackendResolverCapabilities {
         Self {
             sidecar_available: cfg!(feature = "embeddings-sidecar"),
             ort_available: cfg!(feature = "embeddings-ort"),
-            candle_available: cfg!(feature = "embeddings-candle"),
             target_os: std::env::consts::OS,
             target_arch: std::env::consts::ARCH,
         }
@@ -35,7 +31,6 @@ impl BackendResolverCapabilities {
         match backend {
             EmbeddingBackend::Sidecar => self.sidecar_available,
             EmbeddingBackend::Ort => self.ort_available,
-            EmbeddingBackend::Candle => self.candle_available,
             _ => false,
         }
     }
@@ -62,9 +57,8 @@ pub fn parse_provider_preference(provider: &str) -> Result<EmbeddingBackend> {
         "auto" => Ok(EmbeddingBackend::Auto),
         "sidecar" => Ok(EmbeddingBackend::Sidecar),
         "ort" => Ok(EmbeddingBackend::Ort),
-        "candle" => Ok(EmbeddingBackend::Candle),
         unknown => bail!(
-            "Unknown embedding provider: {} (valid: auto|sidecar|ort|candle)",
+            "Unknown embedding provider: {} (valid: auto|sidecar|ort)",
             unknown
         ),
     }
@@ -100,19 +94,8 @@ pub fn fallback_backend_after_init_failure(
     }
 
     if requested_backend == EmbeddingBackend::Auto {
-        if resolved_backend == EmbeddingBackend::Sidecar {
-            if capabilities.ort_available {
-                return Some(EmbeddingBackend::Ort);
-            }
-            if capabilities.candle_available {
-                return Some(EmbeddingBackend::Candle);
-            }
-        }
-        if resolved_backend == EmbeddingBackend::Candle && capabilities.ort_available {
+        if resolved_backend == EmbeddingBackend::Sidecar && capabilities.ort_available {
             return Some(EmbeddingBackend::Ort);
-        }
-        if resolved_backend == EmbeddingBackend::Ort && capabilities.candle_available {
-            return Some(EmbeddingBackend::Candle);
         }
     }
 
@@ -129,8 +112,6 @@ pub fn resolve_backend_preference(
                 EmbeddingBackend::Sidecar
             } else if capabilities.ort_available {
                 EmbeddingBackend::Ort
-            } else if capabilities.candle_available {
-                EmbeddingBackend::Candle
             } else {
                 bail!(
                     "No embedding backend available for platform {}-{}",
@@ -141,7 +122,6 @@ pub fn resolve_backend_preference(
         }
         EmbeddingBackend::Sidecar => EmbeddingBackend::Sidecar,
         EmbeddingBackend::Ort => EmbeddingBackend::Ort,
-        EmbeddingBackend::Candle => EmbeddingBackend::Candle,
         EmbeddingBackend::Unresolved => {
             bail!("Cannot resolve embedding backend from unresolved preference")
         }
@@ -194,19 +174,6 @@ impl EmbeddingProviderFactory {
                 #[cfg(not(feature = "embeddings-ort"))]
                 {
                     bail!("Embedding provider 'ort' is not available in this build");
-                }
-            }
-            EmbeddingBackend::Candle => {
-                #[cfg(feature = "embeddings-candle")]
-                {
-                    return Ok(Arc::new(CandleEmbeddingProvider::try_new(
-                        config.cache_dir.clone(),
-                    )?));
-                }
-
-                #[cfg(not(feature = "embeddings-candle"))]
-                {
-                    bail!("Embedding provider 'candle' is not available in this build");
                 }
             }
             backend => {
