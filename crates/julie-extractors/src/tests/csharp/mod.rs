@@ -55,3 +55,4 @@ pub mod language_features;
 pub mod metadata;
 pub mod runtime;
 mod types; // Phase 4: Type extraction verification tests
+pub mod di_registration_relationships;

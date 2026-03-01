@@ -83,6 +83,16 @@ fn score_candidate(candidate: &Symbol, pending: &PendingRelationship) -> u32 {
         score += 10;
     }
 
+    // Prefer type kinds for Instantiates relationships (DI registrations target types, not constructors)
+    if pending.kind == RelationshipKind::Instantiates
+        && matches!(
+            candidate.kind,
+            SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct | SymbolKind::Type
+        )
+    {
+        score += 10;
+    }
+
     score
 }
 

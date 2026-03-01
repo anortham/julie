@@ -14,6 +14,7 @@
 
 mod helpers;
 pub(crate) mod member_type_relationships;
+pub(crate) mod di_relationships;
 mod identifiers;
 mod members;
 mod operators;

@@ -273,7 +273,7 @@ pub(crate) fn extract_parameter_type_name(
 /// - Predefined: `string`, `int`, `bool` → returns None (not interesting)
 ///
 /// Shared between constructor parameters, field declarations, and property declarations.
-fn extract_type_name_from_node(
+pub(crate) fn extract_type_name_from_node(
     base: &crate::base::BaseExtractor,
     node: tree_sitter::Node,
 ) -> Option<String> {

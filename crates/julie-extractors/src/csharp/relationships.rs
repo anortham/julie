@@ -41,6 +41,9 @@ fn visit_relationships(
             extract_property_type_relationships(extractor, node, symbols, relationships);
         }
         "invocation_expression" => {
+            crate::csharp::di_relationships::extract_di_registration_relationships(
+                extractor, node, symbols, relationships,
+            );
             extract_call_relationships(extractor, node, symbols, relationships);
         }
         // In C#, method calls are represented as member_access_expression followed by argument_list

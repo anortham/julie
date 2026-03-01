@@ -248,6 +248,32 @@ mod resolver_tests {
         assert_eq!(result.unwrap().kind, SymbolKind::Function);
     }
 
+    #[test]
+    fn test_instantiates_prefers_class_over_constructor() {
+        // For an Instantiates relationship (DI registration), prefer Class over Constructor
+        // when both share the same name (which is always the case in C#)
+        let candidates = vec![
+            make_symbol("SearchFilesTool", SymbolKind::Constructor, "csharp", "Tools/SearchFilesTool.cs"),
+            make_symbol("SearchFilesTool", SymbolKind::Class, "csharp", "Tools/SearchFilesTool.cs"),
+        ];
+        let pending = PendingRelationship {
+            from_symbol_id: "startup_1".to_string(),
+            callee_name: "SearchFilesTool".to_string(),
+            kind: RelationshipKind::Instantiates,
+            file_path: "Program.cs".to_string(),
+            line_number: 10,
+            confidence: 0.9,
+        };
+
+        let result = select_best_candidate(&candidates, &pending);
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap().kind,
+            SymbolKind::Class,
+            "Instantiates should prefer Class over Constructor"
+        );
+    }
+
     // =========================================================================
     // Combined scoring
     // =========================================================================
