@@ -256,8 +256,8 @@ mod tests {
         let sym = make_symbol("id7", "x", SymbolKind::Function, Some(&long_sig), None);
         let text = format_symbol_metadata(&sym);
         assert!(
-            text.len() <= 400,
-            "Should be truncated to ≤400 chars, got {}",
+            text.len() <= 600,
+            "Should be truncated to ≤600 chars, got {}",
             text.len()
         );
     }
@@ -458,8 +458,8 @@ mod tests {
         let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
 
         assert!(
-            class_entry.1.len() <= 400,
-            "Enriched text should be within 400 chars, got {}",
+            class_entry.1.len() <= 600,
+            "Enriched text should be within 600 chars, got {}",
             class_entry.1.len()
         );
     }
@@ -606,6 +606,128 @@ mod tests {
             struct_entry.1.contains("file_path"),
             "Struct embedding should include child field name 'file_path': {}",
             struct_entry.1
+        );
+    }
+
+    // =========================================================================
+    // Enum variant enrichment
+    // =========================================================================
+
+    #[test]
+    fn test_prepare_batch_enriches_enum_with_variants() {
+        // Enum with EnumMember children should be enriched with variant names
+        let enum_sym = make_symbol_with_lang("e1", "SymbolKind", SymbolKind::Enum, "rust");
+
+        let mut v1 = make_symbol_with_lang("v1", "Class", SymbolKind::EnumMember, "rust");
+        v1.parent_id = Some("e1".to_string());
+
+        let mut v2 = make_symbol_with_lang("v2", "Function", SymbolKind::EnumMember, "rust");
+        v2.parent_id = Some("e1".to_string());
+
+        let mut v3 = make_symbol_with_lang("v3", "Interface", SymbolKind::EnumMember, "rust");
+        v3.parent_id = Some("e1".to_string());
+
+        let symbols = vec![enum_sym, v1, v2, v3];
+        let batch = prepare_batch_for_embedding(&symbols);
+
+        // Only the enum itself should be embedded (EnumMember is not an embeddable kind)
+        assert_eq!(batch.len(), 1);
+
+        let enum_entry = &batch[0];
+        assert!(
+            enum_entry.1.contains("variants:"),
+            "Enum embedding should use 'variants:' label: {}",
+            enum_entry.1
+        );
+        assert!(
+            enum_entry.1.contains("Class"),
+            "Enum embedding should include variant 'Class': {}",
+            enum_entry.1
+        );
+        assert!(
+            enum_entry.1.contains("Function"),
+            "Enum embedding should include variant 'Function': {}",
+            enum_entry.1
+        );
+        assert!(
+            enum_entry.1.contains("Interface"),
+            "Enum embedding should include variant 'Interface': {}",
+            enum_entry.1
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_csharp_enum_with_members() {
+        // C# enum with EnumMember children
+        let enum_sym = make_symbol_with_lang("e1", "UserRole", SymbolKind::Enum, "csharp");
+
+        let mut v1 = make_symbol_with_lang("v1", "Admin", SymbolKind::EnumMember, "csharp");
+        v1.parent_id = Some("e1".to_string());
+
+        let mut v2 = make_symbol_with_lang("v2", "Editor", SymbolKind::EnumMember, "csharp");
+        v2.parent_id = Some("e1".to_string());
+
+        let mut v3 = make_symbol_with_lang("v3", "Viewer", SymbolKind::EnumMember, "csharp");
+        v3.parent_id = Some("e1".to_string());
+
+        let symbols = vec![enum_sym, v1, v2, v3];
+        let batch = prepare_batch_for_embedding(&symbols);
+
+        assert_eq!(batch.len(), 1);
+        let enum_entry = &batch[0];
+        assert!(
+            enum_entry.1.contains("Admin"),
+            "C# enum should include member 'Admin': {}",
+            enum_entry.1
+        );
+        assert!(
+            enum_entry.1.contains("Viewer"),
+            "C# enum should include member 'Viewer': {}",
+            enum_entry.1
+        );
+    }
+
+    // =========================================================================
+    // Truncation limit validation
+    // =========================================================================
+
+    #[test]
+    fn test_enriched_container_preserves_more_content_within_limit() {
+        // A class with many properties should retain most of them within the metadata limit.
+        // This test verifies the limit is generous enough for enriched containers.
+        let class_sym = make_symbol_with_lang("c1", "UserProfile", SymbolKind::Class, "csharp");
+
+        let prop_names = [
+            "Id",
+            "FirstName",
+            "LastName",
+            "Email",
+            "PhoneNumber",
+            "Department",
+            "Title",
+            "IsActive",
+            "CreatedAt",
+            "UpdatedAt",
+            "Manager",
+            "TeamId",
+        ];
+        let mut symbols = vec![class_sym];
+        for (i, name) in prop_names.iter().enumerate() {
+            let mut prop =
+                make_symbol_with_lang(&format!("p{i}"), name, SymbolKind::Property, "csharp");
+            prop.parent_id = Some("c1".to_string());
+            symbols.push(prop);
+        }
+
+        let batch = prepare_batch_for_embedding(&symbols);
+        let class_entry = &batch[0];
+
+        // With a reasonable limit, a class with 12 properties should retain most of them
+        // (12 short property names ≈ 120 chars for "properties: Id, FirstName, ...")
+        assert!(
+            class_entry.1.contains("UpdatedAt"),
+            "Should retain properties near end of list — limit should be generous enough: {}",
+            class_entry.1
         );
     }
 

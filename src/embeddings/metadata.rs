@@ -9,9 +9,10 @@ use std::collections::HashMap;
 use crate::extractors::{Symbol, SymbolKind};
 
 /// Maximum characters for the embedding input text.
-/// BGE-small handles up to 512 tokens (~2000 chars), but shorter is better
-/// for embedding quality. 400 chars ≈ 80-100 tokens.
-const MAX_METADATA_CHARS: usize = 400;
+/// BGE-small handles up to 512 tokens (~2000 chars). With enrichment (methods,
+/// properties, variants), containers need more room to fit their semantic
+/// fingerprint. 600 chars ≈ 120-150 tokens — still well within model capacity.
+const MAX_METADATA_CHARS: usize = 600;
 
 /// Symbol kinds worth embedding — structural definitions that carry semantic meaning.
 const EMBEDDABLE_KINDS: &[SymbolKind] = &[
@@ -96,12 +97,14 @@ const CONTAINER_KINDS: &[SymbolKind] = &[
     SymbolKind::Struct,
     SymbolKind::Interface,
     SymbolKind::Trait,
+    SymbolKind::Enum,
 ];
 
 pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> {
     // Build parent_id → child method names mapping for container enrichment.
     let mut methods_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
     let mut properties_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut variants_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
     for sym in symbols {
         if let Some(ref parent_id) = sym.parent_id {
             match sym.kind {
@@ -113,6 +116,12 @@ pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> 
                 }
                 SymbolKind::Property | SymbolKind::Field => {
                     properties_by_parent
+                        .entry(parent_id.as_str())
+                        .or_default()
+                        .push(&sym.name);
+                }
+                SymbolKind::EnumMember => {
+                    variants_by_parent
                         .entry(parent_id.as_str())
                         .or_default()
                         .push(&sym.name);
@@ -138,6 +147,10 @@ pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> 
                 }
                 if let Some(properties) = properties_by_parent.get(s.id.as_str()) {
                     let suffix = format!(" properties: {}", properties.join(", "));
+                    text.push_str(&suffix);
+                }
+                if let Some(variants) = variants_by_parent.get(s.id.as_str()) {
+                    let suffix = format!(" variants: {}", variants.join(", "));
                     text.push_str(&suffix);
                 }
                 text = truncate_on_word_boundary(&text, MAX_METADATA_CHARS);

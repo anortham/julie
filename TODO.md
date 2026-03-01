@@ -2,7 +2,12 @@
 
 ## Open Items
 
-_(none currently)_
+- [ ] **Re-evaluate variable kind exclusion from embeddings**
+  - Currently 4,521 variables excluded in LabHandbookV2 alone — includes Vue composables (`usePagesStore`), store exports, and other functionally important symbols
+  - Most variables ARE noise (locals, loop counters), so a blanket inclusion would hurt signal-to-noise
+  - Needs a smarter heuristic: e.g., only embed exported/public variables, or variables with high centrality scores
+  - Consider the JS/TS pattern where `const useXyz = () => { ... }` is functionally a module/class
+  - Trade-off: more embeddings = slower pipeline, but GPU sidecar mitigates this
 
 ## Recently Completed
 
