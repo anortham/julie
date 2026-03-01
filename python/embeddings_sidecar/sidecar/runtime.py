@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, Callable, Sequence
@@ -15,11 +16,18 @@ def _import_module(name: str) -> Any:
         raise RuntimeError(f"missing runtime dependency: {name}") from exc
 
 
-def _select_device(torch_module: Any) -> str:
+def _select_device(torch_module: Any, dml_module: Any = None) -> str:
     cuda = getattr(torch_module, "cuda", None)
     cuda_probe = getattr(cuda, "is_available", None)
     if callable(cuda_probe) and cuda_probe():
         return "cuda"
+
+    if dml_module is not None:
+        dml_probe = getattr(dml_module, "is_available", None)
+        if callable(dml_probe) and dml_probe():
+            dml_device = getattr(dml_module, "device", None)
+            if callable(dml_device):
+                return str(dml_device())
 
     backends = getattr(torch_module, "backends", None)
     mps = getattr(backends, "mps", None)
@@ -28,6 +36,50 @@ def _select_device(torch_module: Any) -> str:
         return "mps"
 
     return "cpu"
+
+
+def _patch_directml_inference_mode(torch_module: Any) -> None:
+    """Patch torch.inference_mode for DirectML compatibility.
+
+    DirectML throws ``RuntimeError: Cannot set version_counter for
+    inference tensor`` when using ``torch.inference_mode()``.  Replacing
+    it with ``torch.no_grad()`` avoids the crash while preserving the
+    same inference-time semantics.
+
+    Must be called BEFORE importing sentence_transformers (which decorates
+    internal functions with inference_mode at import time).
+
+    See: https://github.com/microsoft/DirectML/issues/622
+    """
+    if hasattr(torch_module, "_original_inference_mode"):
+        return  # Already patched — idempotent
+    original = getattr(torch_module, "inference_mode", None)
+    if original is None:
+        return  # Nothing to patch
+    torch_module._original_inference_mode = original
+    torch_module.inference_mode = (
+        lambda mode=True: torch_module.no_grad() if mode else torch_module.enable_grad()
+    )
+
+
+def _sanitize_texts(texts: Sequence[Any]) -> list[str]:
+    """Ensure every element is a non-empty string the tokenizer can handle.
+
+    This runs on input from 30+ languages — symbol names, signatures, and doc
+    comments can contain arbitrary Unicode, control characters, or be empty
+    after metadata formatting strips content.  The tokenizer (HuggingFace
+    ``tokenizers``) raises ``TypeError`` on non-string or empty input.
+    """
+    cleaned: list[str] = []
+    for text in texts:
+        if not isinstance(text, str) or not text.strip():
+            cleaned.append("[empty]")
+        else:
+            # Strip null bytes and other control characters that can
+            # confuse the tokenizer's internal Rust encoder.
+            safe = text.replace("\x00", "")
+            cleaned.append(safe if safe.strip() else "[empty]")
+    return cleaned
 
 
 def _as_vectors(raw: Any) -> list[list[float]]:
@@ -86,13 +138,14 @@ class SentenceTransformerRuntime:
     def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
-        raw_vectors = self._model.encode(
-            list(texts),
-            batch_size=self._batch_size,
-            convert_to_numpy=False,
-            normalize_embeddings=True,
-            show_progress_bar=False,
-        )
+        sanitized = _sanitize_texts(texts)
+        raw_vectors = self._encode_with_fallback(sanitized)
+        # DirectML has no explicit cache clearing (unlike torch.cuda.empty_cache).
+        # Force a GC pass to release any stale GPU tensor references that
+        # Python's refcount alone may not catch (cycles, weak refs, etc.).
+        # Without this, DirectML leaks GPU memory across many forward passes
+        # until the driver crashes.
+        gc.collect()
         vectors = _as_vectors(raw_vectors)
         if len(vectors) != len(texts):
             raise ValueError(
@@ -102,6 +155,40 @@ class SentenceTransformerRuntime:
         for vector in vectors:
             self._guard_dims(len(vector), context="inference")
         return vectors
+
+    def _encode_with_fallback(self, texts: list[str]) -> Any:
+        """Encode texts with binary-search fallback for bad inputs.
+
+        Tries the full batch first.  On failure, recursively splits in half
+        to isolate the problematic text(s).  For 500 texts with 1 bad text
+        this takes ~9 splits (~800ms) instead of 500 individual calls (~25s).
+        """
+        try:
+            return self._model.encode(
+                texts,
+                batch_size=self._batch_size,
+                convert_to_numpy=True,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+        except Exception as exc:
+            if len(texts) <= 1:
+                # Single unencodable text — log it and return zero vector.
+                import sys
+
+                print(
+                    f"[sidecar] skipping unencodable text "
+                    f"({type(exc).__name__}: {exc}): {texts[0][:120]!r}",
+                    file=sys.stderr,
+                )
+                return [[0.0] * self.dims]
+
+            # Split and try each half — good halves batch-encode normally,
+            # only the failing half gets split further.
+            mid = len(texts) // 2
+            left = _as_vectors(self._encode_with_fallback(texts[:mid]))
+            right = _as_vectors(self._encode_with_fallback(texts[mid:]))
+            return left + right
 
     def _resolve_declared_dims(self) -> int:
         getter = getattr(self._model, "get_sentence_embedding_dimension", None)
@@ -126,12 +213,25 @@ def build_runtime(
     batch_size: int = 32,
     model_factory: Callable[..., Any] | None = None,
     torch_module: Any | None = None,
+    dml_module: Any | None = None,
 ) -> SentenceTransformerRuntime:
     if not isinstance(batch_size, int) or batch_size <= 0:
         raise ValueError("batch_size must be a positive integer")
 
     torch = torch_module if torch_module is not None else _import_module("torch")
-    device = _select_device(torch)
+
+    if dml_module is None:
+        try:
+            dml_module = import_module("torch_directml")
+        except ModuleNotFoundError:
+            pass
+
+    device = _select_device(torch, dml_module)
+
+    # DirectML crashes with torch.inference_mode() — patch before importing
+    # sentence_transformers which uses it at import time in decorators.
+    if device not in ("cuda", "mps", "cpu"):
+        _patch_directml_inference_mode(torch)
 
     if model_factory is not None:
         model = model_factory(model_id=model_id, device=device)

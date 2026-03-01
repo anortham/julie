@@ -155,6 +155,18 @@ def run_stdio_loop(
             response = dispatch_request(runtime, request)
         except json.JSONDecodeError as exc:
             response = _error_response("", "invalid_json", f"invalid json: {exc.msg}")
+        except Exception as exc:
+            # Catch ALL exceptions (RuntimeError from DirectML, OOM, etc.)
+            # so the protocol loop stays alive and returns a proper error
+            # instead of crashing the sidecar silently.
+            request_id = ""
+            if isinstance(request, dict):
+                rid = request.get("request_id") or request.get("id")
+                if isinstance(rid, str):
+                    request_id = rid
+            response = _error_response(
+                request_id, "internal_error", f"{type(exc).__name__}: {exc}"
+            )
 
         writer.write(json.dumps(response, separators=(",", ":")) + "\n")
         writer.flush()

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{anyhow, bail, Context, Result};
+use tracing::warn;
 
 const DEFAULT_SIDECAR_MODULE: &str = "sidecar.main";
 const SIDECAR_ROOT_ENV: &str = "JULIE_EMBEDDING_SIDECAR_ROOT";
@@ -13,7 +14,9 @@ const SIDECAR_MODULE_ENV: &str = "JULIE_EMBEDDING_SIDECAR_MODULE";
 const SIDECAR_BOOTSTRAP_PYTHON_ENV: &str = "JULIE_EMBEDDING_SIDECAR_BOOTSTRAP_PYTHON";
 const EMBEDDING_CACHE_DIR_ENV: &str = "JULIE_EMBEDDING_CACHE_DIR";
 const INSTALL_MARKER: &str = ".julie-sidecar-install-root";
-const INSTALL_MARKER_VERSION: &str = "v2-runtime-extras";
+const INSTALL_MARKER_VERSION: &str = "v7-directml-simple";
+/// PyTorch publishes wheels for these minor versions (3.10 through 3.13).
+const SUPPORTED_PYTHON_MINORS: [u32; 4] = [12, 13, 11, 10];
 const RUNTIME_EDITABLE_REQUIREMENT: &str = ".[runtime]";
 
 #[derive(Debug, Clone)]
@@ -128,7 +131,26 @@ fn launch_args(script_override: Option<String>, module: &str) -> Vec<String> {
 fn ensure_venv_exists(venv_path: &Path) -> Result<()> {
     let venv_python = managed_venv_python_path(venv_path);
     if venv_python.exists() {
-        return Ok(());
+        // Verify the Python version is supported by PyTorch. If the venv
+        // was created with a too-new Python (e.g. 3.14), nuke it and
+        // recreate with a supported version.
+        if let Some((_major, minor)) = python_version(&venv_python) {
+            if SUPPORTED_PYTHON_MINORS.contains(&minor) {
+                return Ok(());
+            }
+            warn!(
+                "Managed sidecar venv has Python 3.{minor} which lacks \
+                 PyTorch wheels (need 3.10-3.13). Recreating venv..."
+            );
+            std::fs::remove_dir_all(venv_path).with_context(|| {
+                format!(
+                    "sidecar bootstrap failed to remove stale venv at '{}'",
+                    venv_path.display()
+                )
+            })?;
+        } else {
+            return Ok(()); // Can't determine version — keep existing venv
+        }
     }
 
     if let Some(parent) = venv_path.parent() {
@@ -155,19 +177,37 @@ fn detect_bootstrap_python_interpreter() -> Result<OsString> {
         }
     }
 
+    // Try uv-managed Python installations first. uv maintains its own
+    // Python cache and can locate versions that aren't on system PATH.
+    // This is critical on Windows where the py launcher defaults to
+    // the latest installed Python (which may be too new for PyTorch).
+    for minor in SUPPORTED_PYTHON_MINORS {
+        if let Some(path) = uv_python_find(minor) {
+            return Ok(path);
+        }
+    }
+
+    // Fall back to system Python candidates, but verify the version is
+    // supported. Without this check, `py` on Windows picks 3.14+ which
+    // has no PyTorch wheels.
     for candidate in python_interpreter_candidates() {
-        if command_exists(&candidate) {
+        if !command_exists(&candidate) {
+            continue;
+        }
+        if let Some((_major, minor)) = python_version_from_program(&candidate) {
+            if SUPPORTED_PYTHON_MINORS.contains(&minor) {
+                return Ok(candidate);
+            }
+        } else {
+            // Can't determine version — use it anyway as a last resort
             return Ok(candidate);
         }
     }
 
     bail!(
-        "sidecar bootstrap failed: no Python interpreter found on PATH (tried: {})",
-        python_interpreter_candidates()
-            .iter()
-            .map(|candidate| candidate.to_string_lossy().to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
+        "sidecar bootstrap failed: no Python 3.10-3.13 interpreter found \
+         (PyTorch does not support newer versions yet). \
+         Install Python 3.12 or run: uv python install 3.12"
     )
 }
 
@@ -204,6 +244,64 @@ fn command_exists(program: &OsStr) -> bool {
         .is_ok_and(|status| status.success())
 }
 
+/// Ask `uv python find 3.{minor}` for a Python interpreter path.
+/// Returns `None` if uv isn't installed or doesn't have that version.
+fn uv_python_find(minor: u32) -> Option<OsString> {
+    let output = Command::new("uv")
+        .arg("python")
+        .arg("find")
+        .arg(format!("3.{minor}"))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if path.is_empty() || !Path::new(&path).exists() {
+        return None;
+    }
+
+    Some(OsString::from(path))
+}
+
+/// Parse `(major, minor)` from the `--version` output of a Python executable.
+fn python_version(python_path: &Path) -> Option<(u32, u32)> {
+    python_version_from_program(python_path.as_os_str())
+}
+
+fn python_version_from_program(program: &OsStr) -> Option<(u32, u32)> {
+    let output = Command::new(program)
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    // Python prints to stdout (3.4+) or stderr (older).
+    let text = if output.stdout.is_empty() {
+        String::from_utf8_lossy(&output.stderr).to_string()
+    } else {
+        String::from_utf8_lossy(&output.stdout).to_string()
+    };
+
+    // Parse "Python 3.12.1" → (3, 12)
+    let version_str = text.trim().strip_prefix("Python ")?;
+    let mut parts = version_str.split('.');
+    let major: u32 = parts.next()?.parse().ok()?;
+    let minor: u32 = parts.next()?.parse().ok()?;
+    Some((major, minor))
+}
+
 fn ensure_sidecar_package_installed(
     venv_python: &Path,
     venv_path: &Path,
@@ -235,18 +333,18 @@ fn ensure_sidecar_package_installed(
         return Ok(());
     }
 
-    let mut install_cmd = Command::new(venv_python);
-    install_cmd
-        .arg("-m")
-        .arg("pip")
-        .arg("install")
-        .arg("--disable-pip-version-check")
-        .arg("--editable")
-        .arg(RUNTIME_EDITABLE_REQUIREMENT)
-        .current_dir(sidecar_root);
-
+    // Install the sidecar package and all deps. On Windows, pyproject.toml
+    // includes torch-directml which provides GPU acceleration via DirectX 12
+    // for NVIDIA, AMD, and Intel GPUs — no CUDA download required.
     run_command(
-        &mut install_cmd,
+        Command::new(venv_python)
+            .arg("-m")
+            .arg("pip")
+            .arg("install")
+            .arg("--disable-pip-version-check")
+            .arg("--editable")
+            .arg(RUNTIME_EDITABLE_REQUIREMENT)
+            .current_dir(sidecar_root),
         "sidecar bootstrap failed to install managed sidecar package",
     )?;
 
@@ -318,7 +416,11 @@ fn run_command(command: &mut Command, error_context: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{install_marker_value, INSTALL_MARKER_VERSION, RUNTIME_EDITABLE_REQUIREMENT};
+    use super::{
+        install_marker_value, python_version_from_program, INSTALL_MARKER_VERSION,
+        RUNTIME_EDITABLE_REQUIREMENT, SUPPORTED_PYTHON_MINORS,
+    };
+    use std::ffi::OsStr;
     use std::path::Path;
 
     #[test]
@@ -331,5 +433,34 @@ mod tests {
     #[test]
     fn test_runtime_editable_requirement_targets_runtime_extras() {
         assert_eq!(RUNTIME_EDITABLE_REQUIREMENT, ".[runtime]");
+    }
+
+    #[test]
+    fn test_supported_python_minors_covers_pytorch_range() {
+        // PyTorch supports 3.10-3.13 as of early 2026.
+        assert!(SUPPORTED_PYTHON_MINORS.contains(&10));
+        assert!(SUPPORTED_PYTHON_MINORS.contains(&11));
+        assert!(SUPPORTED_PYTHON_MINORS.contains(&12));
+        assert!(SUPPORTED_PYTHON_MINORS.contains(&13));
+        // 3.14+ is not supported yet.
+        assert!(!SUPPORTED_PYTHON_MINORS.contains(&14));
+    }
+
+    #[test]
+    fn test_python_version_parses_current_interpreter() {
+        // Use whatever Python is available in CI/dev to smoke-test parsing.
+        let candidates: &[&str] = if cfg!(target_os = "windows") {
+            &["py", "python"]
+        } else {
+            &["python3", "python"]
+        };
+        for &name in candidates {
+            if let Some((major, minor)) = python_version_from_program(OsStr::new(name)) {
+                assert_eq!(major, 3, "Expected Python 3.x");
+                assert!(minor >= 10, "Expected Python 3.10+, got 3.{minor}");
+                return;
+            }
+        }
+        // No Python found — skip rather than fail (CI might not have Python).
     }
 }

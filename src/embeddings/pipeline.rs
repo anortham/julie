@@ -128,15 +128,24 @@ pub fn run_embedding_pipeline(
     for chunk in prepared.chunks(EMBEDDING_BATCH_SIZE) {
         let texts: Vec<String> = chunk.iter().map(|(_, text)| text.clone()).collect();
 
-        // Generate embeddings
-        let vectors = provider.embed_batch(&texts).with_context(|| {
-            format!(
-                "Embedding batch {}/{} failed ({} texts)",
-                stats.batches_processed + 1,
-                (prepared.len() + EMBEDDING_BATCH_SIZE - 1) / EMBEDDING_BATCH_SIZE,
-                texts.len()
-            )
-        })?;
+        // Generate embeddings — if a batch fails (e.g., DirectML RuntimeError),
+        // log the error and stop. Successful batches are already persisted, and
+        // the incremental filter will pick up missed symbols on the next run.
+        let total_batches =
+            (prepared.len() + EMBEDDING_BATCH_SIZE - 1) / EMBEDDING_BATCH_SIZE;
+        let vectors = match provider.embed_batch(&texts) {
+            Ok(v) => v,
+            Err(err) => {
+                warn!(
+                    "Embedding batch {}/{total_batches} failed ({} texts), \
+                     stopping pipeline ({} embeddings stored so far): {err:#}",
+                    stats.batches_processed + 1,
+                    texts.len(),
+                    stats.symbols_embedded,
+                );
+                break;
+            }
+        };
 
         if vectors.len() != chunk.len() {
             warn!(

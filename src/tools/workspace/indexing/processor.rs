@@ -809,23 +809,32 @@ fn populate_tantivy_index(
     for file_path in files_to_clean {
         if let Err(e) = idx.remove_by_file_path(file_path) {
             warn!(
-                "Failed to remove stale Tantivy docs for {}: {}",
-                file_path, e
+                "Tantivy writer is dead, cannot populate index \
+                 (will rebuild on next restart): {e}"
             );
+            return;
         }
     }
 
     // Index symbols
     for doc in symbol_docs {
         if let Err(e) = idx.add_symbol(doc) {
-            warn!("Failed to add symbol to Tantivy: {}", e);
+            warn!(
+                "Tantivy writer is dead, cannot populate index \
+                 (will rebuild on next restart): {e}"
+            );
+            return;
         }
     }
 
     // Index file content
     for doc in file_docs {
         if let Err(e) = idx.add_file_content(doc) {
-            warn!("Failed to add file to Tantivy: {}", e);
+            warn!(
+                "Tantivy writer is dead, cannot populate index \
+                 (will rebuild on next restart): {e}"
+            );
+            return;
         }
     }
 

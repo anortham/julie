@@ -118,6 +118,51 @@ def test_loop_returns_structured_error_for_malformed_json() -> None:
     assert payloads[1]["result"]["ready"] is True
 
 
+def test_loop_returns_error_and_survives_runtime_exception() -> None:
+    """If model.encode() throws (e.g., DirectML RuntimeError), the protocol
+    loop must return a proper error response and keep running — not crash."""
+
+    class ExplodingRuntime(FakeRuntime):
+        def embed_batch(self, texts: list[str]) -> list[list[float]]:
+            raise RuntimeError("DirectML: device removed")
+
+    runtime = ExplodingRuntime()
+    input_stream = io.StringIO(
+        "\n".join(
+            [
+                # This batch should trigger the RuntimeError
+                json.dumps(
+                    {
+                        "request_id": "b1",
+                        "method": "embed_batch",
+                        "params": {"texts": ["hello"]},
+                    }
+                ),
+                # This health check should STILL work after the error
+                json.dumps({"request_id": "h1", "method": "health", "params": {}}),
+            ]
+        )
+        + "\n"
+    )
+    output_stream = io.StringIO()
+
+    run_stdio_loop(runtime, input_stream, output_stream)
+    lines = [line for line in output_stream.getvalue().splitlines() if line.strip()]
+    payloads = [json.loads(line) for line in lines]
+
+    assert len(payloads) == 2
+
+    # First response: error from the RuntimeError
+    assert payloads[0]["request_id"] == "b1"
+    assert payloads[0]["error"]["code"] == "internal_error"
+    assert "DirectML" in payloads[0]["error"]["message"]
+
+    # Second response: health check succeeds — loop survived!
+    assert payloads[1]["request_id"] == "h1"
+    assert "result" in payloads[1]
+    assert payloads[1]["result"]["ready"] is True
+
+
 def test_protocol_handlers_accept_embedding_runtime_protocol_type() -> None:
     health_hints = get_type_hints(handle_health)
     dispatch_hints = get_type_hints(dispatch_request)

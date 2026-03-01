@@ -52,6 +52,7 @@ impl SidecarEmbeddingProvider {
         Self::spawn_from_command(command)
     }
 
+    #[cfg(test)]
     pub(crate) fn try_new_for_command(program: String, args: Vec<String>) -> Result<Self> {
         let mut command = Command::new(program);
         command.args(args);
@@ -205,7 +206,16 @@ impl SidecarProcess {
         let line = match self.stdout_rx.recv_timeout(timeout) {
             Ok(Ok(line)) => line,
             Ok(Err(err)) => {
-                bail!("sidecar stream error while handling method '{method}': {err}");
+                // stdout closed = process likely crashed. Allow a short delay
+                // for Windows to update the process handle state before checking
+                // exit code (pipe close is detected before process termination).
+                std::thread::sleep(Duration::from_millis(50));
+                let exit_info = match self.child.try_wait() {
+                    Ok(Some(status)) => format!(" (exit status: {status})"),
+                    Ok(None) => " (process still running)".to_string(),
+                    Err(e) => format!(" (could not check exit status: {e})"),
+                };
+                bail!("sidecar stream error while handling method '{method}': {err}{exit_info}");
             }
             Err(RecvTimeoutError::Timeout) => {
                 bail!(

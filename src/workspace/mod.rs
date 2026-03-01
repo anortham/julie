@@ -533,6 +533,33 @@ impl JulieWorkspace {
             tantivy_path.display()
         );
 
+        // If the database has 0 symbols but a Tantivy index exists on disk,
+        // the index contains stale segments from a previous session (e.g.,
+        // after a crash or DB migration).  Delete them before opening —
+        // Tantivy's background merge threads can hit IO errors on corrupted
+        // or Windows-locked stale segments, killing the writer permanently.
+        if tantivy_path.exists() {
+            let db_empty = self
+                .db
+                .as_ref()
+                .and_then(|db| {
+                    db.lock()
+                        .ok()
+                        .and_then(|g| g.count_symbols_for_workspace().ok())
+                })
+                .is_some_and(|count| count == 0);
+
+            if db_empty {
+                info!(
+                    "Database is empty — deleting stale Tantivy index at {}",
+                    tantivy_path.display()
+                );
+                if let Err(e) = std::fs::remove_dir_all(&tantivy_path) {
+                    warn!("Failed to delete stale Tantivy index: {e}");
+                }
+            }
+        }
+
         // Ensure directory exists (create_dir_all handles parents)
         std::fs::create_dir_all(&tantivy_path).context(format!(
             "Failed to create Tantivy index directory: {}",
