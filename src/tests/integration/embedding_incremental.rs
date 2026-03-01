@@ -451,6 +451,72 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_reembed_symbols_for_file_preserves_budgeted_variable_embeddings() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = setup_db_with_file(
+            dir.path(),
+            "src/lib.rs",
+            &[
+                ("fn_1", "alpha", "function"),
+                ("fn_2", "beta", "function"),
+                ("fn_3", "gamma", "function"),
+                ("fn_4", "delta", "function"),
+                ("fn_5", "epsilon", "function"),
+                ("var_keep", "request_payload", "variable"),
+                ("var_skip", "i", "variable"),
+            ],
+        );
+
+        {
+            let db_guard = db.lock().unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = 25.0 WHERE id = 'var_keep'",
+                    [],
+                )
+                .unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = 0.0 WHERE id = 'var_skip'",
+                    [],
+                )
+                .unwrap();
+        }
+
+        let provider = FixedBatchProvider;
+        run_embedding_pipeline(&db, &provider).unwrap();
+
+        {
+            let db_guard = db.lock().unwrap();
+            assert!(
+                db_guard.get_embedding("var_keep").unwrap().is_some(),
+                "Full pipeline should embed the selected variable under budget"
+            );
+            assert!(db_guard.get_embedding("var_skip").unwrap().is_none());
+            assert_eq!(db_guard.embedding_count().unwrap(), 6);
+        }
+
+        reembed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
+
+        let db_guard = db.lock().unwrap();
+        assert!(
+            db_guard.get_embedding("var_keep").unwrap().is_some(),
+            "Incremental re-embed should preserve selected variable embedding"
+        );
+        assert!(
+            db_guard.get_embedding("var_skip").unwrap().is_none(),
+            "Incremental re-embed should not embed variables outside policy budget"
+        );
+        assert_eq!(
+            db_guard.embedding_count().unwrap(),
+            6,
+            "Incremental re-embed should keep file embedding count aligned with variable policy"
+        );
+    }
+
     #[cfg(feature = "embeddings-sidecar")]
     #[test]
     fn test_embed_symbols_for_file_with_sidecar_provider() {
