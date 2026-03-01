@@ -10,10 +10,12 @@ Julie defaults to a Python sidecar runtime for embeddings (`JULIE_EMBEDDING_PROV
    - If `JULIE_EMBEDDING_SIDECAR_PROGRAM` is set, Julie launches that program directly.
    - Otherwise Julie uses a managed venv (`.../embeddings/sidecar/venv`) and launches its Python.
 4. Managed venv behavior:
-   - Creates venv if missing (`python -m venv ...`).
-   - Installs sidecar package editable with runtime extras from sidecar root (`pip install --editable .[runtime]`).
+   - If `uv` is available, creates venv with `uv venv --python 3.12` (handles uv's standalone Python builds correctly).
+   - If no compatible Python 3.10-3.13 is found, auto-installs one via `uv python install 3.12`.
+   - Falls back to `python -m venv` only when `uv` is not available.
+   - Installs sidecar package with `uv pip install --editable .[runtime]` (or `pip install` as fallback).
    - Writes install marker `.julie-sidecar-install-root` in the venv (versioned marker content + root) to avoid unnecessary reinstalls.
-5. Sidecar process is health-probed (`health` IPC) before being accepted.
+5. Sidecar process is health-probed (`health` IPC) before being accepted. Health response includes device (cuda/mps/directml/cpu), runtime, model ID, and dimensions.
 
 Operational caveat (release binaries): default sidecar root is derived from build-time `CARGO_MANIFEST_DIR` (`<manifest>/python/embeddings_sidecar`). On prebuilt binaries that path may not exist on the target machine.
 
@@ -63,7 +65,7 @@ Health-only status labels:
 
 `stats` does not emit `Embedding Status: ...` labels; it reports runtime/backend/device/accelerated/degraded fields directly.
 
-Current sidecar telemetry note: provider currently reports `Runtime: python-sidecar` and `Device: unknown` when active.
+Sidecar telemetry reports the actual device from the Python runtime (e.g., `Runtime: python-sidecar (sentence-transformers)`, `Device: cuda`).
 
 ## Fallback Behavior
 
@@ -81,7 +83,7 @@ Current sidecar telemetry note: provider currently reports `Runtime: python-side
 
 | Symptom | Likely Cause | Action |
 | --- | --- | --- |
-| `Embedding provider unavailable ... sidecar bootstrap failed: no Python interpreter found` | No bootstrap Python on `PATH` | Install Python 3 or set `JULIE_EMBEDDING_SIDECAR_BOOTSTRAP_PYTHON` |
+| `Embedding provider unavailable ... sidecar bootstrap failed: no Python 3.10-3.13 interpreter found` | No compatible Python on PATH and `uv` unavailable or auto-install failed | Install `uv` (recommended — Julie will auto-install Python 3.12), or install Python 3.12 manually, or set `JULIE_EMBEDDING_SIDECAR_BOOTSTRAP_PYTHON` |
 | `... sidecar root '...' does not exist` or missing `pyproject.toml` | Invalid sidecar root override | Fix `JULIE_EMBEDDING_SIDECAR_ROOT` or remove override |
 | `timed out waiting for sidecar response ...` | Sidecar hung or too slow | Increase `JULIE_EMBEDDING_SIDECAR_TIMEOUT_MS`; inspect sidecar runtime load |
 | `Embedding Status: UNAVAILABLE` with strict acceleration reason | Strict mode rejected unaccelerated/degraded runtime | Disable strict mode or ensure accelerated backend is available |

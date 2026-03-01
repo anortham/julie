@@ -267,10 +267,10 @@ ls -lh .julie/logs/
 1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization + English stemming
 2. **Graph Centrality Ranking**: Pre-computed reference scores boost well-connected symbols in search results
 3. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`
-4. **Native Rust**: No FFI, no CGO, no external dependencies
+4. **Native Rust Core**: No FFI, no CGO — core indexing/search has zero external dependencies
 5. **Tree-sitter Native**: Direct Rust bindings for all language parsers
 6. **SQLite Storage**: Symbols, identifiers, relationships, types, files
-7. **Single Binary**: Deploy anywhere, no runtime required
+7. **Single Binary + Optional Sidecar**: Core features work standalone; GPU-accelerated embeddings use a managed Python sidecar (auto-provisioned via `uv`)
 8. **Instant Search**: Tantivy index available immediately after indexing
 9. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
 10. **Language-Agnostic Everything**: See below — this is critical
@@ -311,6 +311,7 @@ src/
 ├── extractors/          # Language-specific symbol extraction (31 languages)
 ├── search/              # Tantivy search engine, tokenizer, centrality scoring
 ├── database/            # SQLite structured storage
+├── embeddings/          # Embedding pipeline, sidecar supervisor, protocol
 ├── tools/               # MCP tool implementations
 │   ├── get_context/     # Token-budgeted context retrieval (search → rank → expand → allocate → format)
 │   ├── deep_dive/       # Progressive-depth symbol investigation
@@ -321,6 +322,13 @@ src/
 │   └── workspace/       # manage_workspace
 ├── workspace/           # Multi-workspace registry
 └── tests/               # Comprehensive test infrastructure
+
+python/embeddings_sidecar/  # Python sidecar for GPU-accelerated embeddings
+├── sidecar/
+│   ├── main.py          # Entry point (model loading, fd redirect)
+│   ├── runtime.py       # PyTorch runtime, device selection (CUDA/MPS/DirectML/CPU)
+│   └── protocol.py      # JSON-over-stdio IPC protocol
+└── pyproject.toml       # Dependencies: torch, sentence-transformers, torch-directml (Windows)
 ```
 
 ---
@@ -372,8 +380,8 @@ fast_search(
 
 ---
 
-**Last Updated:** 2026-02-28
-**Status:** Production Ready (v3.5.0)
+**Last Updated:** 2026-03-01
+**Status:** Production Ready (v3.6.1)
 
 ---
 

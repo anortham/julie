@@ -128,6 +128,68 @@ fn launch_args(script_override: Option<String>, module: &str) -> Vec<String> {
     }
 }
 
+/// Try creating the sidecar venv with `uv venv --python 3.X`.
+///
+/// Returns `Some(Ok(()))` on success, `Some(Err(_))` if uv ran but the venv
+/// is still missing, or `None` if no compatible Python could be located or
+/// installed (caller should fall back to `python -m venv`).
+fn try_uv_venv(venv_path: &Path) -> Option<Result<()>> {
+    // Try each supported version — uv will find both its own managed
+    // installs and system interpreters.
+    for minor in SUPPORTED_PYTHON_MINORS {
+        let status = Command::new("uv")
+            .arg("venv")
+            .arg("--python")
+            .arg(format!("3.{minor}"))
+            .arg(venv_path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .status();
+        if matches!(status, Ok(s) if s.success()) {
+            return Some(Ok(()));
+        }
+    }
+
+    // No compatible Python available — auto-install the preferred version.
+    let preferred = SUPPORTED_PYTHON_MINORS[0]; // 3.12
+    tracing::info!(
+        "No Python 3.10-3.13 found — installing Python 3.{preferred} via uv"
+    );
+    let install_ok = Command::new("uv")
+        .arg("python")
+        .arg("install")
+        .arg(format!("3.{preferred}"))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if !install_ok {
+        warn!("uv python install 3.{preferred} failed");
+        return None;
+    }
+
+    // Retry venv creation with the freshly installed interpreter.
+    let status = Command::new("uv")
+        .arg("venv")
+        .arg("--python")
+        .arg(format!("3.{preferred}"))
+        .arg(venv_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .status();
+    if matches!(status, Ok(s) if s.success()) {
+        return Some(Ok(()));
+    }
+
+    warn!("uv venv --python 3.{preferred} failed even after installing");
+    None
+}
+
 fn ensure_venv_exists(venv_path: &Path) -> Result<()> {
     let venv_python = managed_venv_python_path(venv_path);
     if venv_python.exists() {
@@ -157,6 +219,18 @@ fn ensure_venv_exists(venv_path: &Path) -> Result<()> {
         std::fs::create_dir_all(parent).with_context(|| {
             format!("sidecar bootstrap failed to create '{}'", parent.display())
         })?;
+    }
+
+    // Prefer `uv venv` over `python -m venv`. uv's standalone/portable
+    // Python builds have a placeholder sys.base_prefix ('/install') that
+    // doesn't exist on disk — `python -m venv` copies that broken prefix
+    // into the new venv, producing a non-functional environment.
+    // `uv venv --python` handles this correctly because uv knows the real
+    // layout of its own managed interpreters.
+    if command_exists(OsStr::new("uv")) {
+        if let Some(result) = try_uv_venv(venv_path) {
+            return result;
+        }
     }
 
     let bootstrap_python = detect_bootstrap_python_interpreter()?;
@@ -204,6 +278,9 @@ fn detect_bootstrap_python_interpreter() -> Result<OsString> {
         }
     }
 
+    // Auto-install is handled by try_uv_venv() in ensure_venv_exists.
+    // This path is only reached when uv is unavailable or the caller
+    // bypassed the uv venv flow (e.g. JULIE_SIDECAR_PROGRAM override).
     bail!(
         "sidecar bootstrap failed: no Python 3.10-3.13 interpreter found \
          (PyTorch does not support newer versions yet). \
@@ -336,17 +413,34 @@ fn ensure_sidecar_package_installed(
     // Install the sidecar package and all deps. On Windows, pyproject.toml
     // includes torch-directml which provides GPU acceleration via DirectX 12
     // for NVIDIA, AMD, and Intel GPUs — no CUDA download required.
-    run_command(
-        Command::new(venv_python)
-            .arg("-m")
-            .arg("pip")
-            .arg("install")
-            .arg("--disable-pip-version-check")
-            .arg("--editable")
-            .arg(RUNTIME_EDITABLE_REQUIREMENT)
-            .current_dir(sidecar_root),
-        "sidecar bootstrap failed to install managed sidecar package",
-    )?;
+    //
+    // Prefer `uv pip install` when available — it's faster and doesn't
+    // require pip to be bundled in the venv (uv venv omits pip by design).
+    if command_exists(OsStr::new("uv")) {
+        run_command(
+            Command::new("uv")
+                .arg("pip")
+                .arg("install")
+                .arg("--python")
+                .arg(venv_python)
+                .arg("--editable")
+                .arg(RUNTIME_EDITABLE_REQUIREMENT)
+                .current_dir(sidecar_root),
+            "sidecar bootstrap failed to install managed sidecar package",
+        )?;
+    } else {
+        run_command(
+            Command::new(venv_python)
+                .arg("-m")
+                .arg("pip")
+                .arg("install")
+                .arg("--disable-pip-version-check")
+                .arg("--editable")
+                .arg(RUNTIME_EDITABLE_REQUIREMENT)
+                .current_dir(sidecar_root),
+            "sidecar bootstrap failed to install managed sidecar package",
+        )?;
+    }
 
     std::fs::write(&marker_path, expected_marker).with_context(|| {
         format!(

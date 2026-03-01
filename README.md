@@ -14,16 +14,23 @@ A cross-platform code intelligence server built in Rust, providing LSP-quality f
 - Search latency: <5ms (Tantivy full-text search)
 - Memory usage: <100MB typical workload
 - Startup time: <2s (database + Tantivy indexing)
-- Single binary server deployment; embeddings may initialize managed runtime dependencies based on backend
+- Single binary server deployment with optional GPU-accelerated embedding sidecar
 
 **Incremental Updates**: Only changed files are re-indexed, typically completing in 3-15 seconds.
 
 ### Embeddings Runtime
 
-- Default behavior is sidecar-first: `JULIE_EMBEDDING_PROVIDER=auto` resolves to the Python sidecar backend first (with fallback to in-process backends when available).
-- Runtime controls include `JULIE_EMBEDDING_PROVIDER` and `JULIE_EMBEDDING_STRICT_ACCEL`.
-- For prebuilt binaries, you may need sidecar path overrides (`JULIE_EMBEDDING_SIDECAR_PROGRAM` and/or `JULIE_EMBEDDING_SIDECAR_ROOT`) depending on your deployment layout.
-- See `docs/operations/embedding-sidecar.md` for bootstrap flow, env vars, health/stats interpretation, and troubleshooting.
+Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings (BGE-small-en-v1.5, 384 dimensions). The sidecar is fully automated:
+
+- **Auto-provisioning**: If `uv` is available and no compatible Python 3.10-3.13 is found, Julie installs one via `uv python install` and creates a managed venv with `uv venv`
+- **GPU acceleration**: Automatically detects and uses CUDA (Linux/Windows), MPS (macOS), or DirectML (Windows) — falls back to CPU if no GPU is available
+- **Fallback**: If the sidecar fails to initialize, Julie falls back to in-process ONNX Runtime (CPU-only) — keyword search always remains available
+- **Zero configuration**: Works out of the box on systems with `uv` or a compatible Python on PATH
+
+**Runtime controls:**
+- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`, tries sidecar first)
+- `JULIE_EMBEDDING_STRICT_ACCEL`: `1` to disable embeddings when no GPU is available
+- See `docs/operations/embedding-sidecar.md` for all env vars and troubleshooting
 
 ## Supported Languages (31)
 
@@ -273,9 +280,10 @@ cargo tarpaulin
 
 ```
 src/
-├── extractors/      # Language-specific symbol extraction (30 languages)
+├── extractors/      # Language-specific symbol extraction (31 languages)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer
+├── embeddings/      # Embedding pipeline, sidecar supervisor and protocol
 ├── tools/           # MCP tool implementations
 │   ├── deep_dive/   # Progressive-depth symbol investigation
 │   ├── navigation/  # fast_refs
@@ -285,6 +293,9 @@ src/
 │   └── workspace/   # Workspace management
 ├── workspace/       # Multi-workspace management
 └── tests/           # Test infrastructure
+
+python/
+└── embeddings_sidecar/  # GPU-accelerated embedding sidecar (PyTorch + sentence-transformers)
 
 fixtures/            # Test data (SOURCE/CONTROL files, real-world samples)
 ```

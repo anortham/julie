@@ -19,6 +19,9 @@ use super::{DeviceInfo, EmbeddingProvider};
 
 pub struct SidecarEmbeddingProvider {
     process: Mutex<SidecarProcess>,
+    device: String,
+    sidecar_runtime: String,
+    model_id: String,
 }
 
 struct SidecarProcess {
@@ -38,6 +41,12 @@ struct HealthResult {
     ready: bool,
     #[serde(default)]
     dims: Option<usize>,
+    #[serde(default)]
+    device: Option<String>,
+    #[serde(default)]
+    runtime: Option<String>,
+    #[serde(default)]
+    model_id: Option<String>,
 }
 
 impl SidecarEmbeddingProvider {
@@ -87,13 +96,19 @@ impl SidecarEmbeddingProvider {
             response_timeout,
         };
 
-        if let Err(err) = process.probe_readiness() {
-            process.terminate();
-            return Err(err);
-        }
+        let health = match process.probe_readiness() {
+            Ok(h) => h,
+            Err(err) => {
+                process.terminate();
+                return Err(err);
+            }
+        };
 
         Ok(Self {
             process: Mutex::new(process),
+            device: health.device.unwrap_or_else(|| "unknown".to_string()),
+            sidecar_runtime: health.runtime.unwrap_or_else(|| "python-sidecar".to_string()),
+            model_id: health.model_id.unwrap_or_else(|| "BAAI/bge-small-en-v1.5".to_string()),
         })
     }
 }
@@ -141,9 +156,9 @@ impl EmbeddingProvider for SidecarEmbeddingProvider {
 
     fn device_info(&self) -> DeviceInfo {
         DeviceInfo {
-            runtime: "python-sidecar".to_string(),
-            device: "unknown".to_string(),
-            model_name: "BAAI/bge-small-en-v1.5".to_string(),
+            runtime: format!("python-sidecar ({})", self.sidecar_runtime),
+            device: self.device.clone(),
+            model_name: self.model_id.clone(),
             dimensions: SIDECAR_EXPECTED_DIMS,
         }
     }
@@ -245,7 +260,7 @@ impl SidecarProcess {
             .ok_or_else(|| anyhow!("sidecar response missing result for method '{method}'"))
     }
 
-    fn probe_readiness(&mut self) -> Result<()> {
+    fn probe_readiness(&mut self) -> Result<HealthResult> {
         let init_timeout = read_init_timeout();
         let health: HealthResult =
             self.send_request_with_timeout("health", serde_json::json!({}), init_timeout)?;
@@ -263,7 +278,7 @@ impl SidecarProcess {
             }
         }
 
-        Ok(())
+        Ok(health)
     }
 
     fn shutdown_and_terminate(&mut self) {
