@@ -40,6 +40,13 @@ pub const NON_EMBEDDABLE_LANGUAGES: &[&str] = &[
     "markdown", "json", "jsonl", "toml", "yaml", "css", "html", "regex", "sql",
 ];
 
+/// Policy for including variable symbols in embedding batches.
+#[derive(Debug, Clone, Copy)]
+pub struct VariableEmbeddingPolicy {
+    pub enabled: bool,
+    pub max_ratio: f64,
+}
+
 /// Returns true if symbols from this language are worth embedding.
 /// Non-code languages (markdown, config files, etc.) produce embeddings
 /// that dominate NL queries due to their natural-language headings.
@@ -159,6 +166,16 @@ pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> 
             (s.id.clone(), text)
         })
         .collect()
+}
+
+/// Select variable symbols under a configurable embedding budget.
+pub fn select_budgeted_variables(
+    _symbols: &[Symbol],
+    _reference_scores: &HashMap<String, f64>,
+    _base_count: usize,
+    _policy: &VariableEmbeddingPolicy,
+) -> Vec<(String, String)> {
+    Vec::new()
 }
 
 /// Convert SymbolKind to a lowercase embedding-friendly string.

@@ -2,9 +2,11 @@
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use crate::embeddings::metadata::{
         format_symbol_metadata, is_embeddable_kind, is_embeddable_language,
-        prepare_batch_for_embedding,
+        prepare_batch_for_embedding, select_budgeted_variables, VariableEmbeddingPolicy,
     };
     use crate::extractors::{Symbol, SymbolKind};
 
@@ -799,5 +801,102 @@ mod tests {
             !text.contains("Also does"),
             "Should not include second sentence: {text}"
         );
+    }
+
+    // =========================================================================
+    // select_budgeted_variables (RED)
+    // =========================================================================
+
+    #[test]
+    fn test_select_budgeted_variables_prefers_high_signal_over_local_low_signal() {
+        let local_low_signal = make_symbol(
+            "var_local",
+            "i",
+            SymbolKind::Variable,
+            Some("let i = 0;"),
+            None,
+        );
+        let high_signal = make_symbol(
+            "var_high",
+            "customer_credit_score",
+            SymbolKind::Variable,
+            Some("let customer_credit_score = risk_model.compute(user);"),
+            None,
+        );
+
+        let symbols = vec![local_low_signal, high_signal];
+        let reference_scores = HashMap::from([
+            ("var_local".to_string(), 0.05_f64),
+            ("var_high".to_string(), 0.95_f64),
+        ]);
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        assert_eq!(selected.len(), 1, "Expected exactly one selected variable");
+        assert_eq!(selected[0].0, "var_high");
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_enforces_budget_cap() {
+        let symbols = vec![
+            make_symbol("var_1", "alpha", SymbolKind::Variable, None, None),
+            make_symbol("var_2", "beta", SymbolKind::Variable, None, None),
+            make_symbol("var_3", "gamma", SymbolKind::Variable, None, None),
+            make_symbol("var_4", "delta", SymbolKind::Variable, None, None),
+            make_symbol("var_5", "epsilon", SymbolKind::Variable, None, None),
+        ];
+        let reference_scores = HashMap::from([
+            ("var_1".to_string(), 0.90_f64),
+            ("var_2".to_string(), 0.80_f64),
+            ("var_3".to_string(), 0.70_f64),
+            ("var_4".to_string(), 0.60_f64),
+            ("var_5".to_string(), 0.50_f64),
+        ]);
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 0.20,
+        };
+
+        let base_count = 11;
+        let cap = ((base_count as f64) * policy.max_ratio).floor() as usize;
+        let selected = select_budgeted_variables(&symbols, &reference_scores, base_count, &policy);
+
+        assert_eq!(
+            selected.len(),
+            cap,
+            "Expected selection to fill cap when enough candidates exist"
+        );
+        assert!(
+            selected.len() <= cap,
+            "Selected {} variables but cap is {}",
+            selected.len(),
+            cap
+        );
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_tie_breaks_deterministically_by_score_then_id() {
+        let symbols = vec![
+            make_symbol("var_b", "beta", SymbolKind::Variable, None, None),
+            make_symbol("var_top", "top", SymbolKind::Variable, None, None),
+            make_symbol("var_a", "alpha", SymbolKind::Variable, None, None),
+        ];
+        let reference_scores = HashMap::from([
+            ("var_b".to_string(), 0.50_f64),
+            ("var_top".to_string(), 0.90_f64),
+            ("var_a".to_string(), 0.50_f64),
+        ]);
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 3, &policy);
+        let selected_ids: Vec<&str> = selected.iter().map(|(id, _)| id.as_str()).collect();
+
+        assert_eq!(selected_ids, vec!["var_top", "var_a", "var_b"]);
     }
 }
