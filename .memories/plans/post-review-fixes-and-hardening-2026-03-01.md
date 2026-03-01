@@ -1,9 +1,9 @@
 ---
 id: post-review-fixes-and-hardening-2026-03-01
 title: Post-review fixes and hardening (2026-03-01)
-status: active
+status: completed
 created: 2026-03-01T16:38:36.080Z
-updated: 2026-03-01T16:38:36.080Z
+updated: 2026-03-01T20:41:11.686Z
 tags:
   - hardening
   - embeddings
