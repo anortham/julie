@@ -808,6 +808,163 @@ mod tests {
     // =========================================================================
 
     #[test]
+    fn test_select_budgeted_variables_returns_empty_when_policy_disabled_or_zero_cap() {
+        let symbols = vec![make_symbol(
+            "var_1",
+            "customer_id",
+            SymbolKind::Variable,
+            Some("let customer_id = request.customer_id;"),
+            None,
+        )];
+        let reference_scores = HashMap::from([("var_1".to_string(), 0.90_f64)]);
+
+        let disabled = VariableEmbeddingPolicy {
+            enabled: false,
+            max_ratio: 1.0,
+        };
+        let zero_cap = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 0.0,
+        };
+
+        assert!(
+            select_budgeted_variables(&symbols, &reference_scores, 10, &disabled).is_empty(),
+            "Disabled policy should return no variables"
+        );
+        assert!(
+            select_budgeted_variables(&symbols, &reference_scores, 10, &zero_cap).is_empty(),
+            "Zero cap policy should return no variables"
+        );
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_only_considers_variable_symbols() {
+        let symbols = vec![
+            make_symbol("fn_1", "process_order", SymbolKind::Function, None, None),
+            make_symbol(
+                "var_1",
+                "order_total",
+                SymbolKind::Variable,
+                Some("let order_total = line_items.sum();"),
+                None,
+            ),
+            make_symbol("class_1", "OrderService", SymbolKind::Class, None, None),
+        ];
+
+        let reference_scores = HashMap::from([
+            ("fn_1".to_string(), 0.99_f64),
+            ("var_1".to_string(), 0.10_f64),
+            ("class_1".to_string(), 0.99_f64),
+        ]);
+
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].0, "var_1");
+        assert!(selected[0].1.contains("order_total"));
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_includes_reference_score_contribution() {
+        let symbols = vec![
+            make_symbol(
+                "var_low_ref",
+                "customer_status",
+                SymbolKind::Variable,
+                Some("let customer_status = fetch_customer_status(user);"),
+                None,
+            ),
+            make_symbol(
+                "var_high_ref",
+                "customer_status_cached",
+                SymbolKind::Variable,
+                Some("let customer_status_cached = fetch_customer_status(user);"),
+                None,
+            ),
+        ];
+
+        let reference_scores = HashMap::from([
+            ("var_low_ref".to_string(), 0.10_f64),
+            ("var_high_ref".to_string(), 0.95_f64),
+        ]);
+
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].0, "var_high_ref");
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_boosts_api_surface_variables() {
+        let symbols = vec![
+            make_symbol(
+                "var_api",
+                "request_payload",
+                SymbolKind::Variable,
+                Some("let request_payload = serde_json::from_str(body)?;"),
+                None,
+            ),
+            make_symbol(
+                "var_plain",
+                "state",
+                SymbolKind::Variable,
+                Some("let state = 0;"),
+                None,
+            ),
+        ];
+
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &HashMap::new(), 1, &policy);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].0, "var_api");
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_penalizes_noise_variables() {
+        let symbols = vec![
+            make_symbol(
+                "var_noise",
+                "i",
+                SymbolKind::Variable,
+                Some("let i = 0;"),
+                None,
+            ),
+            make_symbol(
+                "var_signal",
+                "customer_id",
+                SymbolKind::Variable,
+                Some("let customer_id = request.customer_id;"),
+                None,
+            ),
+        ];
+
+        let reference_scores = HashMap::from([
+            ("var_noise".to_string(), 0.40_f64),
+            ("var_signal".to_string(), 0.40_f64),
+        ]);
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].0, "var_signal");
+    }
+
+    #[test]
     fn test_select_budgeted_variables_prefers_high_signal_over_local_low_signal() {
         let local_low_signal = make_symbol(
             "var_local",

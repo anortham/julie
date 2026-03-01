@@ -170,12 +170,102 @@ pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> 
 
 /// Select variable symbols under a configurable embedding budget.
 pub fn select_budgeted_variables(
-    _symbols: &[Symbol],
-    _reference_scores: &HashMap<String, f64>,
-    _base_count: usize,
-    _policy: &VariableEmbeddingPolicy,
+    symbols: &[Symbol],
+    reference_scores: &HashMap<String, f64>,
+    base_count: usize,
+    policy: &VariableEmbeddingPolicy,
 ) -> Vec<(String, String)> {
-    Vec::new()
+    if !policy.enabled {
+        return Vec::new();
+    }
+
+    let cap = ((base_count as f64) * policy.max_ratio).floor() as usize;
+    if cap == 0 {
+        return Vec::new();
+    }
+
+    let mut ranked: Vec<(&Symbol, f64)> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::Variable)
+        .map(|s| {
+            let reference_score = *reference_scores.get(&s.id).unwrap_or(&0.0);
+            let score = reference_score + variable_signal_boost(s) - variable_noise_penalty(s);
+            (s, score)
+        })
+        .collect();
+
+    ranked.sort_by(|(a_sym, a_score), (b_sym, b_score)| {
+        b_score
+            .total_cmp(a_score)
+            .then_with(|| a_sym.id.cmp(&b_sym.id))
+    });
+
+    ranked
+        .into_iter()
+        .take(cap)
+        .map(|(s, _)| (s.id.clone(), format_symbol_metadata(s)))
+        .collect()
+}
+
+fn variable_signal_boost(symbol: &Symbol) -> f64 {
+    let mut score = 0.0;
+    let mut haystack = symbol.name.to_lowercase();
+    if let Some(signature) = &symbol.signature {
+        haystack.push(' ');
+        haystack.push_str(&signature.to_lowercase());
+    }
+    if let Some(doc) = &symbol.doc_comment {
+        haystack.push(' ');
+        haystack.push_str(&doc.to_lowercase());
+    }
+
+    if [
+        "request", "response", "payload", "body", "header", "token", "json", "api", "query",
+        "params", "customer", "order",
+    ]
+    .iter()
+    .any(|needle| haystack.contains(needle))
+    {
+        score += 0.25;
+    }
+
+    if symbol.name.contains('_') || symbol.name.len() >= 12 {
+        score += 0.10;
+    }
+
+    score
+}
+
+fn variable_noise_penalty(symbol: &Symbol) -> f64 {
+    let mut penalty = 0.0;
+    let lower = symbol.name.to_lowercase();
+
+    if lower.len() <= 2 {
+        penalty += 0.30;
+    }
+
+    if [
+        "i", "j", "k", "x", "y", "z", "n", "tmp", "temp", "var", "val", "obj", "data", "res", "req",
+    ]
+    .contains(&lower.as_str())
+    {
+        penalty += 0.35;
+    }
+
+    if let Some(signature) = &symbol.signature {
+        let sig = signature.to_lowercase();
+        if sig.contains("= 0")
+            || sig.contains("= 1")
+            || sig.contains("= true")
+            || sig.contains("= false")
+            || sig.contains("= none")
+            || sig.contains("= null")
+        {
+            penalty += 0.10;
+        }
+    }
+
+    penalty
 }
 
 /// Convert SymbolKind to a lowercase embedding-friendly string.
