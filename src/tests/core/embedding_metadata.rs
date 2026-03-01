@@ -3,7 +3,8 @@
 #[cfg(test)]
 mod tests {
     use crate::embeddings::metadata::{
-        format_symbol_metadata, is_embeddable_kind, prepare_batch_for_embedding,
+        format_symbol_metadata, is_embeddable_kind, is_embeddable_language,
+        prepare_batch_for_embedding,
     };
     use crate::extractors::{Symbol, SymbolKind};
 
@@ -37,6 +38,67 @@ mod tests {
             code_context: None,
             content_type: None,
         }
+    }
+
+    /// Helper: create a test symbol with a specific language.
+    fn make_symbol_with_lang(
+        id: &str,
+        name: &str,
+        kind: SymbolKind,
+        language: &str,
+    ) -> Symbol {
+        let mut sym = make_symbol(id, name, kind, None, None);
+        sym.language = language.to_string();
+        sym
+    }
+
+    // =========================================================================
+    // is_embeddable_language
+    // =========================================================================
+
+    #[test]
+    fn test_embeddable_languages() {
+        let code_languages = [
+            "rust", "python", "csharp", "typescript", "javascript", "go", "java",
+            "kotlin", "swift", "cpp", "c", "php", "ruby", "lua", "dart", "zig",
+            "gdscript", "qml", "r", "vue", "bash", "powershell",
+        ];
+        for lang in &code_languages {
+            assert!(
+                is_embeddable_language(lang),
+                "{lang} should be embeddable"
+            );
+        }
+    }
+
+    #[test]
+    fn test_non_embeddable_languages() {
+        let non_code_languages = [
+            "markdown", "json", "jsonl", "toml", "yaml", "css", "html", "regex", "sql",
+        ];
+        for lang in &non_code_languages {
+            assert!(
+                !is_embeddable_language(lang),
+                "{lang} should NOT be embeddable"
+            );
+        }
+    }
+
+    #[test]
+    fn test_prepare_batch_filters_non_code_languages() {
+        let symbols = vec![
+            make_symbol_with_lang("s1", "MyClass", SymbolKind::Class, "rust"),
+            make_symbol_with_lang("s2", "Features", SymbolKind::Module, "markdown"),
+            make_symbol_with_lang("s3", "search_impl", SymbolKind::Function, "python"),
+            make_symbol_with_lang("s4", "config", SymbolKind::Module, "toml"),
+            make_symbol_with_lang("s5", "SearchTool", SymbolKind::Class, "csharp"),
+        ];
+
+        let batch = prepare_batch_for_embedding(&symbols);
+        assert_eq!(batch.len(), 3, "Should filter out markdown and toml");
+
+        let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, vec!["s1", "s3", "s5"]);
     }
 
     // =========================================================================
@@ -277,6 +339,163 @@ mod tests {
         assert!(
             batch.is_empty(),
             "All non-embeddable should produce empty batch"
+        );
+    }
+
+    // =========================================================================
+    // Child method enrichment for container symbols
+    // =========================================================================
+
+    #[test]
+    fn test_prepare_batch_enriches_class_with_child_methods() {
+        let mut class_sym = make_symbol(
+            "c1",
+            "LuceneIndexService",
+            SymbolKind::Class,
+            None,
+            Some("/// Thread-safe Lucene index service"),
+        );
+        class_sym.language = "csharp".to_string();
+
+        let mut method1 = make_symbol_with_lang("m1", "SearchAsync", SymbolKind::Method, "csharp");
+        method1.parent_id = Some("c1".to_string());
+
+        let mut method2 =
+            make_symbol_with_lang("m2", "IndexDocumentAsync", SymbolKind::Method, "csharp");
+        method2.parent_id = Some("c1".to_string());
+
+        let mut method3 =
+            make_symbol_with_lang("m3", "DeleteDocumentAsync", SymbolKind::Method, "csharp");
+        method3.parent_id = Some("c1".to_string());
+
+        let symbols = vec![class_sym, method1, method2, method3];
+        let batch = prepare_batch_for_embedding(&symbols);
+
+        // Class + 3 methods = 4 embeddable symbols
+        assert_eq!(batch.len(), 4);
+
+        // Find the class entry and check it contains method names
+        let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
+        assert!(
+            class_entry.1.contains("SearchAsync"),
+            "Class embedding should include child method name 'SearchAsync': {}",
+            class_entry.1
+        );
+        assert!(
+            class_entry.1.contains("IndexDocumentAsync"),
+            "Class embedding should include child method name 'IndexDocumentAsync': {}",
+            class_entry.1
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_enriches_interface_with_methods() {
+        let iface = make_symbol_with_lang("i1", "ISearchService", SymbolKind::Interface, "csharp");
+
+        let mut method1 = make_symbol_with_lang("m1", "Search", SymbolKind::Method, "csharp");
+        method1.parent_id = Some("i1".to_string());
+
+        let mut method2 = make_symbol_with_lang("m2", "Initialize", SymbolKind::Method, "csharp");
+        method2.parent_id = Some("i1".to_string());
+
+        let symbols = vec![iface, method1, method2];
+        let batch = prepare_batch_for_embedding(&symbols);
+
+        let iface_entry = batch.iter().find(|(id, _)| id == "i1").unwrap();
+        assert!(
+            iface_entry.1.contains("Search"),
+            "Interface embedding should include child method names: {}",
+            iface_entry.1
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_no_enrichment_for_functions() {
+        let func = make_symbol("f1", "standalone_func", SymbolKind::Function, None, None);
+
+        let symbols = vec![func];
+        let batch = prepare_batch_for_embedding(&symbols);
+
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].1, "function standalone_func");
+    }
+
+    #[test]
+    fn test_child_enrichment_truncates_within_budget() {
+        let class_sym = make_symbol(
+            "c1",
+            "HugeClass",
+            SymbolKind::Class,
+            Some("pub class HugeClass : BaseClass, IDisposable, IAsyncDisposable"),
+            Some("/// A very large class with many methods for comprehensive testing"),
+        );
+
+        // Create 30 child methods with long names
+        let mut symbols = vec![class_sym];
+        for i in 0..30 {
+            let mut method = make_symbol_with_lang(
+                &format!("m{i}"),
+                &format!("VeryLongMethodName{i}ForTesting"),
+                SymbolKind::Method,
+                "rust",
+            );
+            method.parent_id = Some("c1".to_string());
+            symbols.push(method);
+        }
+
+        let batch = prepare_batch_for_embedding(&symbols);
+        let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
+
+        assert!(
+            class_entry.1.len() <= 400,
+            "Enriched text should be within 400 chars, got {}",
+            class_entry.1.len()
+        );
+    }
+
+    // =========================================================================
+    // first_sentence extraction
+    // =========================================================================
+
+    #[test]
+    fn test_format_strips_xml_doc_tags_csharp() {
+        // C# XML doc comments have <summary> tags on separate lines
+        let sym = make_symbol(
+            "id_xml",
+            "LuceneIndexService",
+            SymbolKind::Class,
+            Some("public class LuceneIndexService : ILuceneIndexService"),
+            Some("/// <summary>\n/// Thread-safe Lucene index service with centralized architecture support\n/// </summary>"),
+        );
+        let text = format_symbol_metadata(&sym);
+        assert!(
+            text.contains("Thread-safe Lucene index service"),
+            "Should extract actual description, not XML tags: {text}"
+        );
+        assert!(
+            !text.contains("<summary>"),
+            "Should not contain XML tags: {text}"
+        );
+    }
+
+    #[test]
+    fn test_format_strips_inline_xml_tags() {
+        // C# doc comment with inline <see cref="..."/> tags
+        let sym = make_symbol(
+            "id_xml2",
+            "ProcessPayment",
+            SymbolKind::Method,
+            None,
+            Some("/// Processes a <see cref=\"Payment\"/> using the <see cref=\"IPaymentGateway\"/> service."),
+        );
+        let text = format_symbol_metadata(&sym);
+        assert!(
+            text.contains("Processes a"),
+            "Should preserve text around XML tags: {text}"
+        );
+        assert!(
+            !text.contains("<see"),
+            "Should strip inline XML tags: {text}"
         );
     }
 

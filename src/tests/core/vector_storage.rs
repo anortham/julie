@@ -15,19 +15,30 @@ mod tests {
 
     /// Helper: insert a symbol into the symbols table so we can join on it.
     fn insert_test_symbol(db: &mut SymbolDatabase, id: &str, name: &str, file_path: &str) {
+        insert_test_symbol_with_lang(db, id, name, file_path, "rust");
+    }
+
+    /// Helper: insert a symbol with a specific language.
+    fn insert_test_symbol_with_lang(
+        db: &mut SymbolDatabase,
+        id: &str,
+        name: &str,
+        file_path: &str,
+        language: &str,
+    ) {
         // File record must exist first (foreign key constraint)
         db.conn
             .execute(
                 "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
-                 VALUES (?, 'rust', 'deadbeef', 100, 0, 0)",
-                [file_path],
+                 VALUES (?, ?, 'deadbeef', 100, 0, 0)",
+                rusqlite::params![file_path, language],
             )
             .expect("Failed to insert test file");
         db.conn
             .execute(
                 "INSERT INTO symbols (id, name, kind, file_path, language, start_line, end_line, reference_score)
-                 VALUES (?, ?, 'function', ?, 'rust', 1, 10, 0.0)",
-                rusqlite::params![id, name, file_path],
+                 VALUES (?, ?, 'function', ?, ?, 1, 10, 0.0)",
+                rusqlite::params![id, name, file_path, language],
             )
             .expect("Failed to insert test symbol");
     }
@@ -332,5 +343,36 @@ mod tests {
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].0, "sym1");
         }
+    }
+
+    #[test]
+    fn test_delete_embeddings_for_non_code_languages() {
+        let (mut db, _dir) = create_test_db();
+
+        // Insert symbols with different languages
+        insert_test_symbol_with_lang(&mut db, "r1", "my_func", "src/lib.rs", "rust");
+        insert_test_symbol_with_lang(&mut db, "md1", "Features", "README.md", "markdown");
+        insert_test_symbol_with_lang(&mut db, "cs1", "MyClass", "src/Foo.cs", "csharp");
+        insert_test_symbol_with_lang(&mut db, "json1", "config", "package.json", "json");
+        insert_test_symbol_with_lang(&mut db, "toml1", "deps", "Cargo.toml", "toml");
+
+        // Store embeddings for all
+        let embeddings: Vec<_> = ["r1", "md1", "cs1", "json1", "toml1"]
+            .iter()
+            .map(|id| (id.to_string(), vec![0.1_f32; 384]))
+            .collect();
+        db.store_embeddings(&embeddings).unwrap();
+        assert_eq!(db.embedding_count().unwrap(), 5);
+
+        // Purge non-code languages
+        let purged = db
+            .delete_embeddings_for_languages(&["markdown", "json", "toml"])
+            .unwrap();
+        assert_eq!(purged, 3, "Should delete markdown + json + toml embeddings");
+        assert_eq!(
+            db.embedding_count().unwrap(),
+            2,
+            "Only rust + csharp should remain"
+        );
     }
 }

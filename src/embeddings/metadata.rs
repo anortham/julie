@@ -4,6 +4,8 @@
 //! Only "structural" symbol kinds are embedded — leaf nodes like variables,
 //! fields, and imports are too granular for semantic search.
 
+use std::collections::HashMap;
+
 use crate::extractors::{Symbol, SymbolKind};
 
 /// Maximum characters for the embedding input text.
@@ -29,6 +31,19 @@ const EMBEDDABLE_KINDS: &[SymbolKind] = &[
 /// Returns true if this symbol kind is worth embedding.
 pub fn is_embeddable_kind(kind: &SymbolKind) -> bool {
     EMBEDDABLE_KINDS.contains(kind)
+}
+
+/// Languages that are structural/configuration rather than code logic.
+/// These shouldn't compete with code symbols in the semantic vector space.
+pub const NON_EMBEDDABLE_LANGUAGES: &[&str] = &[
+    "markdown", "json", "jsonl", "toml", "yaml", "css", "html", "regex", "sql",
+];
+
+/// Returns true if symbols from this language are worth embedding.
+/// Non-code languages (markdown, config files, etc.) produce embeddings
+/// that dominate NL queries due to their natural-language headings.
+pub fn is_embeddable_language(language: &str) -> bool {
+    !NON_EMBEDDABLE_LANGUAGES.contains(&language)
 }
 
 /// Format a symbol's metadata into a natural language string for embedding.
@@ -75,11 +90,45 @@ pub fn format_symbol_metadata(symbol: &Symbol) -> String {
 /// Filter symbols to embeddable ones and format their metadata.
 ///
 /// Returns `(symbol_id, formatted_text)` pairs ready for `embed_batch`.
+/// Container kinds whose embeddings benefit from child method names.
+const CONTAINER_KINDS: &[SymbolKind] = &[
+    SymbolKind::Class,
+    SymbolKind::Struct,
+    SymbolKind::Interface,
+    SymbolKind::Trait,
+];
+
 pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> {
+    // Build parent_id → child method names mapping for container enrichment.
+    let mut children_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
+    for sym in symbols {
+        if matches!(sym.kind, SymbolKind::Method | SymbolKind::Function) {
+            if let Some(ref parent_id) = sym.parent_id {
+                children_by_parent
+                    .entry(parent_id.as_str())
+                    .or_default()
+                    .push(&sym.name);
+            }
+        }
+    }
+
     symbols
         .iter()
-        .filter(|s| is_embeddable_kind(&s.kind))
-        .map(|s| (s.id.clone(), format_symbol_metadata(s)))
+        .filter(|s| is_embeddable_kind(&s.kind) && is_embeddable_language(&s.language))
+        .map(|s| {
+            let mut text = format_symbol_metadata(s);
+
+            // Enrich container symbols with child method names
+            if CONTAINER_KINDS.contains(&s.kind) {
+                if let Some(children) = children_by_parent.get(s.id.as_str()) {
+                    let suffix = format!(" methods: {}", children.join(", "));
+                    text.push_str(&suffix);
+                    text = truncate_on_word_boundary(&text, MAX_METADATA_CHARS);
+                }
+            }
+
+            (s.id.clone(), text)
+        })
         .collect()
 }
 
@@ -111,11 +160,12 @@ fn first_line_trimmed(text: &str) -> String {
 }
 
 /// Extract the first sentence from a doc comment.
-/// Strips leading `///`, `//!`, `#`, `*` markers and trims.
+/// Strips leading `///`, `//!`, `#`, `*` markers and XML tags, then takes
+/// the first line with actual content (skipping tag-only lines like `<summary>`).
 fn first_sentence(doc: &str) -> String {
     let cleaned: String = doc
         .lines()
-        .map(|line| {
+        .filter_map(|line| {
             let trimmed = line.trim();
             // Strip common doc comment prefixes
             let stripped = trimmed
@@ -128,12 +178,21 @@ fn first_sentence(doc: &str) -> String {
                 .or_else(|| trimmed.strip_prefix("# "))
                 .or_else(|| trimmed.strip_prefix("## "))
                 .or_else(|| trimmed.strip_prefix("### "))
-                .unwrap_or(trimmed);
-            stripped.trim()
+                .unwrap_or(trimmed)
+                .trim();
+
+            // Strip XML tags (e.g. <summary>, </remarks>, <see cref="..."/>)
+            let without_tags = strip_xml_tags(stripped);
+            let content = without_tags.trim();
+
+            if content.is_empty() {
+                None
+            } else {
+                Some(content.to_string())
+            }
         })
         .next()
-        .unwrap_or("")
-        .to_string();
+        .unwrap_or_default();
 
     // Take up to the first sentence boundary
     if let Some(pos) = cleaned.find(". ") {
@@ -141,6 +200,22 @@ fn first_sentence(doc: &str) -> String {
     } else {
         cleaned
     }
+}
+
+/// Strip XML tags from text, preserving content between tags.
+/// E.g. `"<see cref=\"Foo\"/>bar"` → `"bar"`, `"<summary>"` → `""`.
+fn strip_xml_tags(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for ch in s.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => result.push(ch),
+            _ => {}
+        }
+    }
+    result
 }
 
 /// Truncate a string on a word boundary, appending no ellipsis.

@@ -10,8 +10,9 @@ use anyhow::{bail, Context, Result};
 use tracing::{info, warn};
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::metadata::prepare_batch_for_embedding;
+use crate::embeddings::metadata::{prepare_batch_for_embedding, NON_EMBEDDABLE_LANGUAGES};
 use crate::embeddings::EmbeddingProvider;
+use crate::extractors::SymbolKind;
 
 /// Batch size for embedding generation (symbols per batch).
 const EMBEDDING_BATCH_SIZE: usize = 500;
@@ -43,6 +44,22 @@ pub fn run_embedding_pipeline(
         batches_processed: 0,
     };
 
+    // Purge embeddings for non-code languages (markdown, json, toml, etc.)
+    // before loading the incremental set, so purged symbols aren't in "already_embedded".
+    {
+        let mut db_guard = db
+            .lock()
+            .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
+        let purged = db_guard
+            .delete_embeddings_for_languages(NON_EMBEDDABLE_LANGUAGES)
+            .context("Failed to purge non-code embeddings")?;
+        if purged > 0 {
+            info!(
+                "Embedding pipeline: purged {purged} non-code embeddings (markdown, json, etc.)"
+            );
+        }
+    }
+
     // Load all symbols and existing embedding IDs from the database
     let (symbols, already_embedded) = {
         let db_guard = db
@@ -67,10 +84,27 @@ pub fn run_embedding_pipeline(
         return Ok(stats);
     }
 
-    // Skip symbols that already have embeddings (incremental)
+    // Container symbols always get fresh embeddings because their text includes
+    // child method names (via enrichment), which change when children are added/removed.
+    let container_ids: std::collections::HashSet<&str> = symbols
+        .iter()
+        .filter(|s| {
+            matches!(
+                s.kind,
+                SymbolKind::Class
+                    | SymbolKind::Struct
+                    | SymbolKind::Interface
+                    | SymbolKind::Trait
+            )
+        })
+        .map(|s| s.id.as_str())
+        .collect();
+
+    // Skip symbols that already have embeddings (incremental),
+    // EXCEPT container symbols which always get re-embedded with enriched child names.
     let prepared: Vec<_> = all_prepared
         .into_iter()
-        .filter(|(id, _)| !already_embedded.contains(id))
+        .filter(|(id, _)| !already_embedded.contains(id) || container_ids.contains(id.as_str()))
         .collect();
 
     stats.symbols_skipped = already_embedded.len();

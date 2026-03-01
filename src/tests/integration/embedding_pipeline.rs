@@ -147,18 +147,22 @@ mod tests {
             assert_eq!(db_guard.embedding_count().unwrap(), 2);
         }
 
-        // Run pipeline — should only embed s3 (the one without a vector)
+        // Run pipeline — should embed s3 (new) + re-embed s2 (container symbol,
+        // always re-embedded because child method enrichment may change).
+        // s1 (Function) is skipped because it's already embedded and not a container.
         let provider = create_test_provider();
         let stats = run_embedding_pipeline(&db, &provider).unwrap();
 
-        assert_eq!(stats.symbols_skipped, 2, "Should skip s1 and s2");
-        assert_eq!(stats.symbols_embedded, 1, "Should embed only s3");
+        assert_eq!(
+            stats.symbols_embedded, 2,
+            "Should embed s3 (new) + s2 (container re-embed)"
+        );
 
         let db_guard = db.lock().unwrap();
         assert_eq!(
             db_guard.embedding_count().unwrap(),
             3,
-            "Total should be 3 (2 pre-existing + 1 new)"
+            "Total should be 3 (s1 pre-existing + s2 re-embedded + s3 new)"
         );
     }
 

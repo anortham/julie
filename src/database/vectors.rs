@@ -174,6 +174,30 @@ impl SymbolDatabase {
         Ok(count)
     }
 
+    /// Delete embeddings for symbols in the specified languages.
+    ///
+    /// Used to purge non-code embeddings (markdown, json, toml, etc.) that
+    /// pollute semantic search by matching NL queries too closely.
+    pub fn delete_embeddings_for_languages(&mut self, languages: &[&str]) -> Result<usize> {
+        if languages.is_empty() {
+            return Ok(0);
+        }
+        let placeholders: Vec<&str> = languages.iter().map(|_| "?").collect();
+        let sql = format!(
+            "DELETE FROM symbol_vectors WHERE symbol_id IN (
+                SELECT id FROM symbols WHERE language IN ({})
+            )",
+            placeholders.join(", ")
+        );
+        let params: Vec<&dyn rusqlite::types::ToSql> =
+            languages.iter().map(|l| l as &dyn rusqlite::types::ToSql).collect();
+        let deleted = self.conn.execute(&sql, params.as_slice())?;
+        if deleted > 0 {
+            debug!("Purged {deleted} embeddings for non-code languages: {languages:?}");
+        }
+        Ok(deleted)
+    }
+
     /// Delete all embeddings (used during re-indexing).
     pub fn clear_all_embeddings(&mut self) -> Result<()> {
         self.conn.execute("DELETE FROM symbol_vectors", [])?;

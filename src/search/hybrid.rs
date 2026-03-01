@@ -192,6 +192,31 @@ pub fn hybrid_search(
         semantic_results.len(),
         limit
     );
+
+    // Trace top keyword and semantic results for diagnostics
+    // Enable with RUST_LOG=julie::search::hybrid=debug
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        let kw_top: Vec<_> = tantivy_results
+            .results
+            .iter()
+            .take(10)
+            .map(|r| format!("{}({:.3})", r.name, r.score))
+            .collect();
+        let sem_top: Vec<_> = semantic_results
+            .iter()
+            .take(10)
+            .map(|r| format!("{}({:.3})", r.name, r.score))
+            .collect();
+        debug!(
+            "  keyword top-10: [{}]",
+            kw_top.join(", ")
+        );
+        debug!(
+            "  semantic top-10: [{}]",
+            sem_top.join(", ")
+        );
+    }
+
     let merged = rrf_merge(tantivy_results.results, semantic_results, 60, limit);
 
     Ok(SymbolSearchResults {
