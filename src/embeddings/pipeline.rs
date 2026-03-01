@@ -4,18 +4,26 @@
 //! generate vector embeddings for all embeddable symbols. It processes symbols
 //! in batches to avoid holding the database lock for too long.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use tracing::{info, warn};
 
 use crate::database::SymbolDatabase;
+use crate::embeddings::metadata::{
+    prepare_batch_for_embedding, select_budgeted_variables, VariableEmbeddingPolicy,
+    NON_EMBEDDABLE_LANGUAGES,
+};
 use crate::embeddings::EmbeddingProvider;
-use crate::embeddings::metadata::{NON_EMBEDDABLE_LANGUAGES, prepare_batch_for_embedding};
 use crate::extractors::SymbolKind;
 
 /// Batch size for embedding generation (symbols per batch).
 const EMBEDDING_BATCH_SIZE: usize = 500;
+const VARIABLE_EMBEDDING_POLICY: VariableEmbeddingPolicy = VariableEmbeddingPolicy {
+    enabled: true,
+    max_ratio: 0.20,
+};
 
 /// Statistics from an embedding pipeline run.
 #[derive(Debug, Clone)]
@@ -58,8 +66,8 @@ pub fn run_embedding_pipeline(
         }
     }
 
-    // Load all symbols and existing embedding IDs from the database
-    let (symbols, already_embedded) = {
+    // Load all symbols, existing embedding IDs, and variable reference scores.
+    let (symbols, already_embedded, variable_reference_scores) = {
         let db_guard = db
             .lock()
             .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
@@ -69,14 +77,81 @@ pub fn run_embedding_pipeline(
         let embedded = db_guard
             .get_embedded_symbol_ids()
             .context("Failed to load existing embedding IDs")?;
-        (syms, embedded)
+
+        let variable_ids: Vec<&str> = syms
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Variable)
+            .map(|s| s.id.as_str())
+            .collect();
+        let reference_scores = match db_guard.get_reference_scores(&variable_ids) {
+            Ok(scores) => scores,
+            Err(err) => {
+                warn!(
+                    "Embedding pipeline: failed to load variable reference scores, using defaults: {err:#}"
+                );
+                HashMap::new()
+            }
+        };
+
+        (syms, embedded, reference_scores)
     };
 
     stats.symbols_scanned = symbols.len();
     info!("Embedding pipeline: {} total symbols loaded", symbols.len());
 
-    // Filter to embeddable kinds and format metadata
-    let all_prepared = prepare_batch_for_embedding(&symbols);
+    // Build base prepared symbols (existing embeddable kinds) and merge selected variables.
+    let base_prepared = prepare_batch_for_embedding(&symbols);
+    let candidate_variable_ids: HashSet<String> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::Variable)
+        .map(|s| s.id.clone())
+        .collect();
+    let selected_variables = select_budgeted_variables(
+        &symbols,
+        &variable_reference_scores,
+        base_prepared.len(),
+        &VARIABLE_EMBEDDING_POLICY,
+    );
+    let selected_variable_ids: HashSet<String> = selected_variables
+        .iter()
+        .map(|(id, _)| id.clone())
+        .collect();
+    let variable_budget_cap =
+        ((base_prepared.len() as f64) * VARIABLE_EMBEDDING_POLICY.max_ratio).floor() as usize;
+
+    let stale_variable_ids: Vec<String> = already_embedded
+        .iter()
+        .filter(|id| candidate_variable_ids.contains(*id) && !selected_variable_ids.contains(*id))
+        .cloned()
+        .collect();
+    let stale_deleted = if stale_variable_ids.is_empty() {
+        0
+    } else {
+        match db
+            .lock()
+            .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?
+            .delete_embeddings_for_symbol_ids(&stale_variable_ids)
+        {
+            Ok(deleted) => deleted,
+            Err(err) => {
+                warn!(
+                    "Embedding pipeline: failed to delete stale variable embeddings, continuing: {err:#}"
+                );
+                0
+            }
+        }
+    };
+
+    info!(
+        "Embedding pipeline variable policy: candidate_count={}, selected_count={}, budget_cap={}, stale_deleted={}",
+        candidate_variable_ids.len(),
+        selected_variable_ids.len(),
+        variable_budget_cap,
+        stale_deleted
+    );
+
+    let mut all_prepared = base_prepared;
+    all_prepared.extend(selected_variables);
     if all_prepared.is_empty() {
         info!("Embedding pipeline: no embeddable symbols found, skipping");
         return Ok(stats);
@@ -84,7 +159,7 @@ pub fn run_embedding_pipeline(
 
     // Container symbols always get fresh embeddings because their text includes
     // child method names (via enrichment), which change when children are added/removed.
-    let container_ids: std::collections::HashSet<&str> = symbols
+    let container_ids: HashSet<&str> = symbols
         .iter()
         .filter(|s| {
             matches!(

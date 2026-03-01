@@ -9,7 +9,9 @@ mod tests {
     use serial_test::serial;
 
     use crate::database::SymbolDatabase;
-    use crate::embeddings::pipeline::{embed_symbols_for_file, reembed_symbols_for_file};
+    use crate::embeddings::pipeline::{
+        embed_symbols_for_file, reembed_symbols_for_file, run_embedding_pipeline,
+    };
     use crate::embeddings::{DeviceInfo, EmbeddingProvider, OrtEmbeddingProvider};
     #[cfg(feature = "embeddings-sidecar")]
     use crate::tests::integration::sidecar_test_helpers::create_test_sidecar_provider;
@@ -58,6 +60,8 @@ mod tests {
 
     struct ShortBatchProvider;
 
+    struct FixedBatchProvider;
+
     impl EmbeddingProvider for ShortBatchProvider {
         fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
             Ok(vec![0.1_f32; 384])
@@ -77,6 +81,29 @@ mod tests {
                 runtime: "test".to_string(),
                 device: "cpu".to_string(),
                 model_name: "short-batch".to_string(),
+                dimensions: 384,
+            }
+        }
+    }
+
+    impl EmbeddingProvider for FixedBatchProvider {
+        fn embed_query(&self, _text: &str) -> anyhow::Result<Vec<f32>> {
+            Ok(vec![0.1_f32; 384])
+        }
+
+        fn embed_batch(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| vec![0.1_f32; 384]).collect())
+        }
+
+        fn dimensions(&self) -> usize {
+            384
+        }
+
+        fn device_info(&self) -> DeviceInfo {
+            DeviceInfo {
+                runtime: "test".to_string(),
+                device: "cpu".to_string(),
+                model_name: "fixed-batch".to_string(),
                 dimensions: 384,
             }
         }
@@ -240,6 +267,187 @@ mod tests {
         assert!(
             err.to_string().contains("Embedding count mismatch"),
             "Expected vector count mismatch error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_full_pipeline_caps_variable_embeddings_relative_to_non_variable_baseline() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = setup_db_with_file(
+            dir.path(),
+            "src/lib.rs",
+            &[
+                ("fn_1", "alpha", "function"),
+                ("fn_2", "beta", "function"),
+                ("fn_3", "gamma", "function"),
+                ("fn_4", "delta", "function"),
+                ("fn_5", "epsilon", "function"),
+                ("var_1", "request_payload", "variable"),
+                ("var_2", "tmp", "variable"),
+                ("var_3", "counter", "variable"),
+            ],
+        );
+
+        {
+            let db_guard = db.lock().unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = 10.0 WHERE id = 'var_1'",
+                    [],
+                )
+                .unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = 1.0 WHERE id = 'var_2'",
+                    [],
+                )
+                .unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = 0.5 WHERE id = 'var_3'",
+                    [],
+                )
+                .unwrap();
+        }
+
+        let provider = FixedBatchProvider;
+        run_embedding_pipeline(&db, &provider).unwrap();
+
+        let db_guard = db.lock().unwrap();
+        let variable_embedded = ["var_1", "var_2", "var_3"]
+            .iter()
+            .filter(|id| db_guard.get_embedding(id).unwrap().is_some())
+            .count();
+
+        assert_eq!(db_guard.embedding_count().unwrap(), 6);
+        assert_eq!(
+            variable_embedded, 1,
+            "Variable selection should be capped to 20% of base count"
+        );
+    }
+
+    #[test]
+    fn test_full_pipeline_selects_higher_signal_variable_under_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = setup_db_with_file(
+            dir.path(),
+            "src/lib.rs",
+            &[
+                ("fn_1", "alpha", "function"),
+                ("fn_2", "beta", "function"),
+                ("fn_3", "gamma", "function"),
+                ("fn_4", "delta", "function"),
+                ("fn_5", "epsilon", "function"),
+                ("var_high", "request_payload", "variable"),
+                ("var_low", "i", "variable"),
+            ],
+        );
+
+        {
+            let db_guard = db.lock().unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = 25.0 WHERE id = 'var_high'",
+                    [],
+                )
+                .unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = 0.0 WHERE id = 'var_low'",
+                    [],
+                )
+                .unwrap();
+        }
+
+        let provider = FixedBatchProvider;
+        run_embedding_pipeline(&db, &provider).unwrap();
+
+        let db_guard = db.lock().unwrap();
+        assert!(db_guard.get_embedding("var_high").unwrap().is_some());
+        assert!(db_guard.get_embedding("var_low").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_full_pipeline_removes_stale_variable_vectors_when_policy_deselects() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = setup_db_with_file(
+            dir.path(),
+            "src/lib.rs",
+            &[
+                ("fn_1", "alpha", "function"),
+                ("fn_2", "beta", "function"),
+                ("fn_3", "gamma", "function"),
+                ("fn_4", "delta", "function"),
+                ("fn_5", "epsilon", "function"),
+                ("var_old", "request_payload", "variable"),
+                ("var_new", "response_body", "variable"),
+            ],
+        );
+
+        let provider = FixedBatchProvider;
+
+        {
+            let db_guard = db.lock().unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = 10.0 WHERE id = 'var_old'",
+                    [],
+                )
+                .unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = 1.0 WHERE id = 'var_new'",
+                    [],
+                )
+                .unwrap();
+        }
+
+        run_embedding_pipeline(&db, &provider).unwrap();
+
+        {
+            let db_guard = db.lock().unwrap();
+            assert!(
+                db_guard.get_embedding("var_old").unwrap().is_some(),
+                "Initial run should embed the highest-signal variable"
+            );
+            assert!(db_guard.get_embedding("var_new").unwrap().is_none());
+        }
+
+        {
+            let db_guard = db.lock().unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = -5.0 WHERE id = 'var_old'",
+                    [],
+                )
+                .unwrap();
+            db_guard
+                .conn
+                .execute(
+                    "UPDATE symbols SET reference_score = 20.0 WHERE id = 'var_new'",
+                    [],
+                )
+                .unwrap();
+        }
+
+        run_embedding_pipeline(&db, &provider).unwrap();
+
+        let db_guard = db.lock().unwrap();
+        assert!(
+            db_guard.get_embedding("var_old").unwrap().is_none(),
+            "Stale variable embedding should be deleted when deselected"
+        );
+        assert!(
+            db_guard.get_embedding("var_new").unwrap().is_some(),
+            "Newly selected variable should be embedded"
         );
     }
 
