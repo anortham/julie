@@ -12,12 +12,27 @@ struct RetrievedHit {
     off_topic: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ExpectedCrossLangSymbol<'a> {
+    symbol_id: &'a str,
+    language: &'a str,
+}
+
 impl RetrievedHit {
     fn new(symbol_id: &str, language: &str, off_topic: bool) -> Self {
         Self {
             symbol_id: symbol_id.to_string(),
             language: language.to_string(),
             off_topic,
+        }
+    }
+}
+
+impl<'a> ExpectedCrossLangSymbol<'a> {
+    fn new(symbol_id: &'a str, language: &'a str) -> Self {
+        Self {
+            symbol_id,
+            language,
         }
     }
 }
@@ -70,21 +85,31 @@ fn off_topic_at_5(ranked_hits: &[RetrievedHit]) -> f64 {
 
 fn cross_lang_recall_at_5(
     source_language: &str,
-    expected_cross_lang_symbol_ids: &[&str],
+    expected_cross_lang_symbols: &[ExpectedCrossLangSymbol<'_>],
     ranked_hits: &[RetrievedHit],
 ) -> f64 {
-    if expected_cross_lang_symbol_ids.is_empty() {
+    // Semantics:
+    // - Denominator: unique expected (symbol_id, language) pairs that are cross-language
+    //   relative to the source language.
+    // - Numerator: how many of those expected cross-language pairs appear in the top-5,
+    //   deduplicated by the same (symbol_id, language) key.
+    // This avoids ambiguity when identical symbol IDs exist in multiple languages.
+    let expected: HashSet<(&str, &str)> = expected_cross_lang_symbols
+        .iter()
+        .filter(|expected| expected.language != source_language)
+        .map(|expected| (expected.symbol_id, expected.language))
+        .collect();
+    if expected.is_empty() {
         return 0.0;
     }
 
-    let expected: HashSet<&str> = expected_cross_lang_symbol_ids.iter().copied().collect();
-    let found: HashSet<&str> = ranked_hits
+    let found: HashSet<(&str, &str)> = ranked_hits
         .iter()
         .take(5)
         .filter(|hit| hit.language != source_language)
         .filter_map(|hit| {
-            let symbol_id = hit.symbol_id.as_str();
-            expected.contains(symbol_id).then_some(symbol_id)
+            let key = (hit.symbol_id.as_str(), hit.language.as_str());
+            expected.contains(&key).then_some(key)
         })
         .collect();
 
@@ -173,8 +198,16 @@ fn test_cross_lang_recall_at_5_counts_only_cross_language_hits() {
         RetrievedHit::new("rust_target", "rust", false),
     ];
 
-    let score = cross_lang_recall_at_5("rust", &["py_target", "ts_target", "rust_target"], &hits);
-    assert!((score - (2.0 / 3.0)).abs() < f64::EPSILON);
+    let score = cross_lang_recall_at_5(
+        "rust",
+        &[
+            ExpectedCrossLangSymbol::new("py_target", "python"),
+            ExpectedCrossLangSymbol::new("ts_target", "typescript"),
+            ExpectedCrossLangSymbol::new("rust_target", "rust"),
+        ],
+        &hits,
+    );
+    assert_eq!(score, 1.0);
 }
 
 #[test]
@@ -185,8 +218,39 @@ fn test_cross_lang_recall_at_5_deduplicates_symbols() {
         RetrievedHit::new("ts_target", "typescript", false),
     ];
 
-    let score = cross_lang_recall_at_5("rust", &["py_target", "ts_target"], &hits);
+    let score = cross_lang_recall_at_5(
+        "rust",
+        &[
+            ExpectedCrossLangSymbol::new("py_target", "python"),
+            ExpectedCrossLangSymbol::new("ts_target", "typescript"),
+        ],
+        &hits,
+    );
     assert_eq!(score, 1.0);
+}
+
+#[test]
+fn test_cross_lang_recall_at_5_matches_symbol_and_language_pair() {
+    let hits = vec![RetrievedHit::new("shared_symbol", "go", false)];
+
+    let score = cross_lang_recall_at_5(
+        "rust",
+        &[ExpectedCrossLangSymbol::new("shared_symbol", "python")],
+        &hits,
+    );
+    assert_eq!(score, 0.0);
+}
+
+#[test]
+fn test_cross_lang_recall_at_5_returns_zero_when_no_cross_language_expectations() {
+    let hits = vec![RetrievedHit::new("py_target", "python", false)];
+
+    let score = cross_lang_recall_at_5(
+        "rust",
+        &[ExpectedCrossLangSymbol::new("rust_target", "rust")],
+        &hits,
+    );
+    assert_eq!(score, 0.0);
 }
 
 #[test]
@@ -197,5 +261,5 @@ fn test_labhandbook_v2_integration_skeleton() {
     // 2) Execute each query through fast_search against LabHandbookV2 workspace.
     // 3) Compute aggregate Hit@k, MRR@10, OffTopic@5, and CrossLangRecall@5.
     // 4) Assert minimum thresholds once baseline is calibrated.
-    panic!("integration skeleton only");
+    // Keep ignored until real fixture-backed wiring exists.
 }
