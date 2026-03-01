@@ -65,6 +65,32 @@ impl SymbolDatabase {
         Ok(deleted)
     }
 
+    /// Delete embedding rows for specific symbol IDs.
+    ///
+    /// Returns the number of deleted rows.
+    pub fn delete_embeddings_for_symbol_ids(&mut self, symbol_ids: &[String]) -> Result<usize> {
+        if symbol_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let placeholders: Vec<&str> = symbol_ids.iter().map(|_| "?").collect();
+        let sql = format!(
+            "DELETE FROM symbol_vectors WHERE symbol_id IN ({})",
+            placeholders.join(", ")
+        );
+        let params: Vec<&dyn rusqlite::types::ToSql> = symbol_ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::types::ToSql)
+            .collect();
+        let deleted = self.conn.execute(&sql, params.as_slice())?;
+
+        if deleted > 0 {
+            debug!("Deleted {deleted} embeddings for selected symbol IDs");
+        }
+
+        Ok(deleted)
+    }
+
     /// Delete embedding rows that no longer have a matching symbol.
     pub fn delete_orphan_embeddings(&mut self) -> Result<usize> {
         let deleted = self.conn.execute(
