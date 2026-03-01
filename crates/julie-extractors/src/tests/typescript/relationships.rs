@@ -31,7 +31,7 @@ fn test_extract_call_relationships() {
         &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
-    let relationships = extract_relationships(&extractor, &tree, &symbols);
+    let relationships = extract_relationships(&mut extractor, &tree, &symbols);
 
     assert!(!relationships.is_empty());
     assert!(
@@ -72,7 +72,7 @@ fn test_method_call_relationships() {
         &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
-    let relationships = extract_relationships(&extractor, &tree, &symbols);
+    let relationships = extract_relationships(&mut extractor, &tree, &symbols);
 
     // There must be a Calls relationship from process -> helper
     let calls: Vec<_> = relationships
@@ -127,7 +127,7 @@ fn test_extract_inheritance_relationships() {
         &workspace_root,
     );
     let symbols = extractor.extract_symbols(&tree);
-    let relationships = extract_relationships(&extractor, &tree, &symbols);
+    let relationships = extract_relationships(&mut extractor, &tree, &symbols);
 
     assert!(!relationships.is_empty());
     assert!(

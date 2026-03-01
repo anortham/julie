@@ -5,7 +5,7 @@
 //! - Familiar grep-style output
 //! - Zero parsing overhead
 
-use crate::extractors::{Relationship, Symbol};
+use crate::extractors::{Relationship, Symbol, SymbolKind};
 
 /// Format references in lean text format for AI agents
 ///
@@ -15,6 +15,10 @@ use crate::extractors::{Relationship, Symbol};
 ///
 /// Definition:
 ///   src/services/user.rs:15 (struct) → pub struct UserService
+///
+/// Imports (2):
+///   src/api/auth.rs:3 (import)
+///   src/handlers/login.rs:5 (import)
 ///
 /// References (4):
 ///   src/api/auth.rs:42 (Calls)
@@ -35,17 +39,22 @@ pub fn format_lean_refs_results(
         return format!("No references found for \"{}\"", symbol);
     }
 
+    // Partition definitions into real definitions and imports
+    let (real_definitions, import_definitions): (Vec<_>, Vec<_>) = definitions
+        .iter()
+        .partition(|d| d.kind != SymbolKind::Import);
+
     output.push_str(&format!("{} references to \"{}\":\n\n", total, symbol));
 
-    // Definitions section
-    if !definitions.is_empty() {
-        if definitions.len() == 1 {
+    // Definitions section (non-import symbols)
+    if !real_definitions.is_empty() {
+        if real_definitions.len() == 1 {
             output.push_str("Definition:\n");
         } else {
-            output.push_str(&format!("Definitions ({}):\n", definitions.len()));
+            output.push_str(&format!("Definitions ({}):\n", real_definitions.len()));
         }
 
-        for def in definitions {
+        for def in &real_definitions {
             let kind = format!("{:?}", def.kind).to_lowercase();
             let sig = def
                 .signature
@@ -62,6 +71,36 @@ pub fn format_lean_refs_results(
                 output.push_str(&format!(
                     "  {}:{} ({}) → {}\n",
                     def.file_path, def.start_line, kind, sig
+                ));
+            }
+        }
+        output.push('\n');
+    }
+
+    // Imports section
+    if !import_definitions.is_empty() {
+        if import_definitions.len() == 1 {
+            output.push_str("Import:\n");
+        } else {
+            output.push_str(&format!("Imports ({}):\n", import_definitions.len()));
+        }
+
+        for def in &import_definitions {
+            let sig = def
+                .signature
+                .as_ref()
+                .map(|s| truncate_signature(s, 60))
+                .unwrap_or_default();
+
+            if sig.is_empty() {
+                output.push_str(&format!(
+                    "  {}:{} (import)\n",
+                    def.file_path, def.start_line
+                ));
+            } else {
+                output.push_str(&format!(
+                    "  {}:{} (import) → {}\n",
+                    def.file_path, def.start_line, sig
                 ));
             }
         }
@@ -99,7 +138,7 @@ fn truncate_signature(sig: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::extractors::base::{RelationshipKind, SymbolKind};
+    use crate::extractors::base::{RelationshipKind, SymbolKind, Visibility};
     use crate::tools::navigation::resolution::parse_qualified_name;
 
     fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&str>) -> Symbol {
@@ -180,6 +219,82 @@ mod tests {
         let truncated = truncate_signature(long, 40);
         assert!(truncated.len() <= 40);
         assert!(truncated.ends_with("..."));
+    }
+
+    #[test]
+    fn test_lean_refs_separates_imports_from_definitions() {
+        let class_def = make_test_symbol(
+            "src/services/user.rs",
+            15,
+            SymbolKind::Struct,
+            Some("pub struct UserService"),
+        );
+        let import1 = make_test_symbol("src/api/auth.rs", 3, SymbolKind::Import, None);
+        let import2 = make_test_symbol("src/handlers/login.rs", 5, SymbolKind::Import, None);
+
+        let defs = vec![class_def, import1, import2];
+        let refs = vec![make_test_relationship(
+            "src/api/auth.rs",
+            42,
+            RelationshipKind::Calls,
+        )];
+
+        let output = format_lean_refs_results("UserService", &defs, &refs);
+
+        // Total should include all definitions + references
+        assert!(
+            output.contains("4 references to \"UserService\":"),
+            "Should show total count of 4. Got:\n{}",
+            output
+        );
+        // Real definition section
+        assert!(
+            output.contains("Definition:\n"),
+            "Should have Definition section. Got:\n{}",
+            output
+        );
+        assert!(
+            output.contains("src/services/user.rs:15 (struct)"),
+            "Should show struct definition"
+        );
+        // Imports section (separate from definitions)
+        assert!(
+            output.contains("Imports (2):\n"),
+            "Should have Imports section with count. Got:\n{}",
+            output
+        );
+        assert!(
+            output.contains("src/api/auth.rs:3 (import)"),
+            "Should show import"
+        );
+        assert!(
+            output.contains("src/handlers/login.rs:5 (import)"),
+            "Should show import"
+        );
+        // References section
+        assert!(
+            output.contains("References (1):"),
+            "Should have References section"
+        );
+    }
+
+    #[test]
+    fn test_lean_refs_single_import_uses_singular() {
+        let import = make_test_symbol("src/api/auth.rs", 3, SymbolKind::Import, None);
+        let defs = vec![import];
+
+        let output = format_lean_refs_results("UserService", &defs, &[]);
+
+        assert!(
+            output.contains("Import:\n"),
+            "Should use singular 'Import:' for single import. Got:\n{}",
+            output
+        );
+        // Should NOT show "Definition:" since there are no real definitions
+        assert!(
+            !output.contains("Definition:"),
+            "Should not show Definition section when only imports exist"
+        );
     }
 
     // --- Qualified name parsing tests ---

@@ -311,4 +311,124 @@ public class Calculator {
             "Should have relationship from caller to helper"
         );
     }
+
+    // ========================================================================
+    // TEST: Cross-file extends should create PendingRelationship
+    // ========================================================================
+
+    #[test]
+    fn test_cross_file_extends_creates_pending_relationship() {
+        // Bar is NOT defined in this file
+        let code = r#"
+public class Foo extends Bar {
+    public void doWork() { }
+}
+"#;
+
+        let results = extract_full("src/Foo.java", code);
+
+        let pending_extends: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Extends)
+            .collect();
+
+        let bar_pending = pending_extends
+            .iter()
+            .find(|p| p.callee_name == "Bar");
+        assert!(
+            bar_pending.is_some(),
+            "Should create PendingRelationship(Extends) for cross-file Bar.\n\
+             Found pending: {:?}",
+            pending_extends
+                .iter()
+                .map(|p| (&p.callee_name, &p.kind))
+                .collect::<Vec<_>>()
+        );
+
+        // Verify from_symbol_id references Foo
+        let foo_class = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "Foo")
+            .expect("Should extract Foo class");
+        assert_eq!(bar_pending.unwrap().from_symbol_id, foo_class.id);
+    }
+
+    #[test]
+    fn test_cross_file_implements_creates_pending_relationship() {
+        // IService is NOT defined in this file
+        let code = r#"
+public class ServiceImpl implements IService {
+    public void serve() { }
+}
+"#;
+
+        let results = extract_full("src/ServiceImpl.java", code);
+
+        let pending_implements: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Implements)
+            .collect();
+
+        let iservice_pending = pending_implements
+            .iter()
+            .find(|p| p.callee_name == "IService");
+        assert!(
+            iservice_pending.is_some(),
+            "Should create PendingRelationship(Implements) for cross-file IService.\n\
+             Found pending: {:?}",
+            pending_implements
+                .iter()
+                .map(|p| (&p.callee_name, &p.kind))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_same_file_extends_still_creates_direct_relationship() {
+        // Both class and superclass in the same file
+        let code = r#"
+public class Animal {
+    public void eat() { }
+}
+
+public class Dog extends Animal {
+    public void bark() { }
+}
+"#;
+
+        let results = extract_full("src/Animals.java", code);
+
+        let extends_rels: Vec<_> = results
+            .relationships
+            .iter()
+            .filter(|r| r.kind == RelationshipKind::Extends)
+            .collect();
+
+        assert!(
+            !extends_rels.is_empty(),
+            "Same-file extends should create direct Relationship"
+        );
+
+        let dog = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "Dog")
+            .expect("Should extract Dog");
+        let animal = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "Animal")
+            .expect("Should extract Animal");
+
+        let has_correct_rel = extends_rels
+            .iter()
+            .any(|r| r.from_symbol_id == dog.id && r.to_symbol_id == animal.id);
+        assert!(
+            has_correct_rel,
+            "Should have Extends relationship from Dog to Animal"
+        );
+    }
 }

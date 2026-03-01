@@ -5,13 +5,13 @@
 //!
 //! Adapted from TypeScript extractor (JavaScript and TypeScript share AST structure)
 
-use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::javascript::JavaScriptExtractor;
 use tree_sitter::{Node, Tree};
 
 /// Extract all relationships from the syntax tree
 pub(crate) fn extract_relationships(
-    extractor: &JavaScriptExtractor,
+    extractor: &mut JavaScriptExtractor,
     tree: &Tree,
     symbols: &[Symbol],
 ) -> Vec<Relationship> {
@@ -23,7 +23,7 @@ pub(crate) fn extract_relationships(
 
 /// Extract function call relationships
 fn extract_call_relationships(
-    extractor: &JavaScriptExtractor,
+    extractor: &mut JavaScriptExtractor,
     node: Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
@@ -71,62 +71,53 @@ fn extract_call_relationships(
 
 /// Extract inheritance relationships (extends)
 fn extract_inheritance_relationships(
-    extractor: &JavaScriptExtractor,
+    extractor: &mut JavaScriptExtractor,
     node: Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
-    // Look for extends_clause or class_heritage nodes
-    match node.kind() {
-        "extends_clause" | "class_heritage" => {
-            if let Some(parent) = node.parent() {
-                if parent.kind() == "class_declaration" {
-                    // Get the class name from parent
-                    if let Some(class_name_node) = parent.child_by_field_name("name") {
-                        let class_name = extractor.base().get_node_text(&class_name_node);
+    // Phase 1: Collect data using immutable borrow
+    let heritage_data = match node.kind() {
+        "extends_clause" | "class_heritage" => collect_heritage_data(extractor, node, symbols),
+        _ => None,
+    };
 
-                        // Find the class symbol
-                        if let Some(class_symbol) = symbols
-                            .iter()
-                            .find(|s| s.name == class_name && s.kind == SymbolKind::Class)
-                        {
-                            // Look for identifier or type_identifier children to get superclass name
-                            let mut cursor = node.walk();
-                            for child in node.children(&mut cursor) {
-                                if child.kind() == "identifier" || child.kind() == "type_identifier"
-                                {
-                                    let superclass_name = extractor.base().get_node_text(&child);
-
-                                    // Find the superclass symbol
-                                    if let Some(superclass_symbol) = symbols.iter().find(|s| {
-                                        s.name == superclass_name && s.kind == SymbolKind::Class
-                                    }) {
-                                        let relationship = Relationship {
-                                            id: format!(
-                                                "{}_{}_{:?}_{}",
-                                                class_symbol.id,
-                                                superclass_symbol.id,
-                                                RelationshipKind::Extends,
-                                                child.start_position().row
-                                            ),
-                                            from_symbol_id: class_symbol.id.clone(),
-                                            to_symbol_id: superclass_symbol.id.clone(),
-                                            kind: RelationshipKind::Extends,
-                                            file_path: extractor.base().file_path.clone(),
-                                            line_number: (child.start_position().row + 1) as u32,
-                                            confidence: 1.0,
-                                            metadata: None,
-                                        };
-                                        relationships.push(relationship);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+    // Phase 2: Create relationships (may need &mut extractor for pending)
+    if let Some((class_symbol_id, base_types, file_path)) = heritage_data {
+        for (base_type_name, line_number) in base_types {
+            // JS only has extends, check for Class (JS has no Interface kind)
+            if let Some(base_symbol) = symbols.iter().find(|s| {
+                s.name == base_type_name
+                    && matches!(s.kind, SymbolKind::Class | SymbolKind::Interface)
+            }) {
+                relationships.push(Relationship {
+                    id: format!(
+                        "{}_{}_{:?}_{}",
+                        class_symbol_id,
+                        base_symbol.id,
+                        RelationshipKind::Extends,
+                        line_number - 1
+                    ),
+                    from_symbol_id: class_symbol_id.clone(),
+                    to_symbol_id: base_symbol.id.clone(),
+                    kind: RelationshipKind::Extends,
+                    file_path: file_path.clone(),
+                    line_number,
+                    confidence: 1.0,
+                    metadata: None,
+                });
+            } else {
+                // Cross-file: superclass is defined in another file
+                extractor.add_pending_relationship(PendingRelationship {
+                    from_symbol_id: class_symbol_id.clone(),
+                    callee_name: base_type_name,
+                    kind: RelationshipKind::Extends,
+                    file_path: file_path.clone(),
+                    line_number,
+                    confidence: 0.9,
+                });
             }
         }
-        _ => {}
     }
 
     // Recursively process children
@@ -134,6 +125,40 @@ fn extract_inheritance_relationships(
     for child in node.children(&mut cursor) {
         extract_inheritance_relationships(extractor, child, symbols, relationships);
     }
+}
+
+/// Collect heritage clause data without needing mutable access
+fn collect_heritage_data(
+    extractor: &JavaScriptExtractor,
+    node: Node,
+    symbols: &[Symbol],
+) -> Option<(String, Vec<(String, u32)>, String)> {
+    let parent = node.parent()?;
+    if parent.kind() != "class_declaration" {
+        return None;
+    }
+
+    let class_name_node = parent.child_by_field_name("name")?;
+    let class_name = extractor.base().get_node_text(&class_name_node);
+    let class_symbol = symbols
+        .iter()
+        .find(|s| s.name == class_name && s.kind == SymbolKind::Class)?;
+
+    let mut base_types = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "identifier" || child.kind() == "type_identifier" {
+            let name = extractor.base().get_node_text(&child);
+            let line = (child.start_position().row + 1) as u32;
+            base_types.push((name, line));
+        }
+    }
+
+    Some((
+        class_symbol.id.clone(),
+        base_types,
+        extractor.base().file_path.clone(),
+    ))
 }
 
 /// Helper to find the function that contains a given node

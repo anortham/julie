@@ -340,4 +340,101 @@ class Calculator {
             "Should have relationship from caller to helper"
         );
     }
+
+    // ========================================================================
+    // TEST: Cross-file protocol conformance should create PendingRelationship
+    // ========================================================================
+
+    #[test]
+    fn test_cross_file_protocol_conformance_creates_pending_relationship() {
+        // Codable is NOT defined in this file (it's a Swift stdlib protocol)
+        let code = r#"
+class UserModel: Codable {
+    var name: String = ""
+    var age: Int = 0
+}
+"#;
+
+        let results = extract_full("UserModel.swift", code);
+
+        let pending_inheritance: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| {
+                p.kind == RelationshipKind::Extends || p.kind == RelationshipKind::Implements
+            })
+            .collect();
+
+        let codable_pending = pending_inheritance
+            .iter()
+            .find(|p| p.callee_name == "Codable");
+        assert!(
+            codable_pending.is_some(),
+            "Should create PendingRelationship for cross-file Codable protocol.\n\
+             Found pending: {:?}",
+            pending_inheritance
+                .iter()
+                .map(|p| (&p.callee_name, &p.kind))
+                .collect::<Vec<_>>()
+        );
+
+        let user_model = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "UserModel")
+            .expect("Should extract UserModel class");
+        assert_eq!(codable_pending.unwrap().from_symbol_id, user_model.id);
+    }
+
+    #[test]
+    fn test_same_file_protocol_still_creates_direct_relationship() {
+        // Protocol and conforming class in the same file
+        let code = r#"
+protocol Drawable {
+    func draw()
+}
+
+class Circle: Drawable {
+    func draw() {
+        print("Drawing circle")
+    }
+}
+"#;
+
+        let results = extract_full("Shapes.swift", code);
+
+        let inheritance_rels: Vec<_> = results
+            .relationships
+            .iter()
+            .filter(|r| {
+                r.kind == RelationshipKind::Extends || r.kind == RelationshipKind::Implements
+            })
+            .collect();
+
+        assert!(
+            !inheritance_rels.is_empty(),
+            "Same-file protocol conformance should create direct Relationship.\n\
+             Found {} inheritance relationships",
+            inheritance_rels.len()
+        );
+
+        let circle = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "Circle")
+            .expect("Should extract Circle");
+        let drawable = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "Drawable")
+            .expect("Should extract Drawable");
+
+        let has_correct_rel = inheritance_rels
+            .iter()
+            .any(|r| r.from_symbol_id == circle.id && r.to_symbol_id == drawable.id);
+        assert!(
+            has_correct_rel,
+            "Should have inheritance relationship from Circle to Drawable"
+        );
+    }
 }

@@ -20,6 +20,9 @@ pub(super) fn extract_inheritance_relationships(
     }
     let type_symbol = type_symbol.unwrap();
 
+    let file_path = extractor.base().file_path.clone();
+    let line_number = (node.start_position().row + 1) as u32;
+
     // Handle class inheritance (extends)
     if let Some(superclass) = helpers::extract_superclass(extractor.base(), node) {
         if let Some(base_type_symbol) = symbols.iter().find(|s| {
@@ -36,8 +39,8 @@ pub(super) fn extract_inheritance_relationships(
                 from_symbol_id: type_symbol.id.clone(),
                 to_symbol_id: base_type_symbol.id.clone(),
                 kind: RelationshipKind::Extends,
-                file_path: extractor.base().file_path.clone(),
-                line_number: (node.start_position().row + 1) as u32,
+                file_path: file_path.clone(),
+                line_number,
                 confidence: 1.0,
                 metadata: {
                     let mut map = HashMap::new();
@@ -47,6 +50,16 @@ pub(super) fn extract_inheritance_relationships(
                     );
                     Some(map)
                 },
+            });
+        } else {
+            // Cross-file: superclass is defined in another file
+            extractor.add_pending_relationship(PendingRelationship {
+                from_symbol_id: type_symbol.id.clone(),
+                callee_name: superclass,
+                kind: RelationshipKind::Extends,
+                file_path: file_path.clone(),
+                line_number,
+                confidence: 0.9,
             });
         }
     }
@@ -69,8 +82,8 @@ pub(super) fn extract_inheritance_relationships(
                 from_symbol_id: type_symbol.id.clone(),
                 to_symbol_id: interface_symbol.id.clone(),
                 kind: RelationshipKind::Implements,
-                file_path: extractor.base().file_path.clone(),
-                line_number: (node.start_position().row + 1) as u32,
+                file_path: file_path.clone(),
+                line_number,
                 confidence: 1.0,
                 metadata: {
                     let mut map = HashMap::new();
@@ -80,6 +93,16 @@ pub(super) fn extract_inheritance_relationships(
                     );
                     Some(map)
                 },
+            });
+        } else {
+            // Cross-file: interface is defined in another file
+            extractor.add_pending_relationship(PendingRelationship {
+                from_symbol_id: type_symbol.id.clone(),
+                callee_name: interface_name,
+                kind: RelationshipKind::Implements,
+                file_path: file_path.clone(),
+                line_number,
+                confidence: 0.9,
             });
         }
     }

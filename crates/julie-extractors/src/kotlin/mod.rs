@@ -177,7 +177,7 @@ impl KotlinExtractor {
             | "object_declaration"
             | "interface_declaration" => {
                 relationships::extract_inheritance_relationships(
-                    &self.base,
+                    self,
                     &node,
                     symbols,
                     relationships,

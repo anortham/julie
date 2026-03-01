@@ -331,4 +331,117 @@ class Service {
         assert!(from_symbol.is_some());
         assert_eq!(from_symbol.unwrap().name, "process");
     }
+
+    // ========================================================================
+    // Cross-file inheritance tests
+    // ========================================================================
+
+    #[test]
+    fn test_cross_file_inheritance_creates_pending_relationship() {
+        // BaseService is NOT defined in this file
+        let code = r#"
+class MyService : BaseService() {
+    fun doWork() {
+        println("working")
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "MyService.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_pending_relationships();
+
+        // Should create a pending relationship for cross-file BaseService
+        let pending_inheritance = pending
+            .iter()
+            .find(|p| {
+                p.callee_name == "BaseService"
+                    && (p.kind == RelationshipKind::Extends
+                        || p.kind == RelationshipKind::Implements)
+            });
+
+        assert!(
+            pending_inheritance.is_some(),
+            "Should create pending relationship for cross-file BaseService.\n\
+             Found pending: {:?}",
+            pending
+                .iter()
+                .map(|p| (&p.callee_name, &p.kind))
+                .collect::<Vec<_>>()
+        );
+
+        // Verify from_symbol_id references MyService
+        let my_service = symbols
+            .iter()
+            .find(|s| s.name == "MyService")
+            .expect("Should extract MyService class");
+        assert_eq!(pending_inheritance.unwrap().from_symbol_id, my_service.id);
+    }
+
+    #[test]
+    fn test_same_file_inheritance_still_creates_direct_relationship() {
+        // Both class and superclass in the same file
+        let code = r#"
+open class Animal {
+    fun eat() { }
+}
+
+class Dog : Animal() {
+    fun bark() { }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "Animals.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let relationships = extractor.extract_relationships(&tree, &symbols);
+
+        // Should create a direct Extends relationship
+        let extends_rels: Vec<_> = relationships
+            .iter()
+            .filter(|r| r.kind == RelationshipKind::Extends)
+            .collect();
+
+        assert!(
+            !extends_rels.is_empty(),
+            "Same-file inheritance should create direct Relationship"
+        );
+
+        let dog = symbols
+            .iter()
+            .find(|s| s.name == "Dog")
+            .expect("Should extract Dog");
+        let animal = symbols
+            .iter()
+            .find(|s| s.name == "Animal")
+            .expect("Should extract Animal");
+
+        let has_correct_rel = extends_rels
+            .iter()
+            .any(|r| r.from_symbol_id == dog.id && r.to_symbol_id == animal.id);
+        assert!(
+            has_correct_rel,
+            "Should have Extends relationship from Dog to Animal"
+        );
+    }
 }

@@ -1,5 +1,6 @@
 mod annotation_tests;
 mod class_tests;
+mod cross_file_relationships;
 /// Java extractor tests
 mod extractor;
 mod generic_tests;

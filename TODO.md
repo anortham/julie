@@ -2,25 +2,35 @@
 
 ## Open Items
 
-- [ ] **Evaluate token optimization across tools**: The `get_context` pipeline now has `truncate_to_token_budget` (head-biased truncation, 2/3 top + 1/3 bottom) and adaptive token allocation (`pivot_tokens` / `neighbor_tokens` / `summary_tokens` split). Evaluate whether any of this should be ported to other tools:
-  - `deep_dive` — currently returns full code bodies at `context`/`full` depth; could benefit from per-symbol budget enforcement when multiple symbols are returned
-  - `get_symbols` — already has its own truncation logic in `mode="minimal"`/`mode="full"`; check if the head-biased approach would be better than its current strategy
-  - `fast_search` — content mode returns matching lines; probably fine as-is (already line-limited)
-  - General question: should `TokenEstimator`-based budgets be a shared utility pattern rather than per-tool implementations?
-
-- [ ] **NL query recall for C# classes with indirect naming** (Medium)
-  - `get_context("LuceneIndexService")` returns correct pivots (ref=9.1), but `get_context("Lucene search implementation")` misses it
-  - BM25 term overlap: query ["lucen","search","implement"] vs symbol ["lucen","index","servic"] = only 1/3 match
-  - File content has "search" many times but spread across method-level symbols in 1200-line file, diluting per-symbol BM25
-  - Potential fixes: NL synonym expansion ("search" ↔ "index"), semantic search fallback, or name-boosted BM25 scoring
-  - `TextSearchTool` also invisible (ref=0) — only referenced by test classes; production code uses DI resolution
-
-- [ ] **`fast_refs` classifies Python imports as "Definitions"** (Low/UX)
-  - `EmbeddingManager` in miller shows "Definitions (123)" but 122 are imports, only 1 is the real class
-  - Technically correct (imports create local bindings) but misleading for users expecting 1 definition
-  - Consider a separate "Imports" category or only showing the actual definition under "Definitions"
+_(none currently)_
 
 ## Recently Completed
+
+- [x] **Cross-file inheritance extraction ported to 5 languages** (2026-03-01)
+  - Java, TypeScript, JavaScript, Kotlin, Swift now create `PendingRelationship` when base types aren't found in local symbols
+  - TypeScript also gained `implements_clause` support (was only handling `extends_clause`)
+  - Two-phase borrow pattern (collect data → create relationships) applied to each language
+  - 10 new tests across all 5 languages, 1347 extractors tests pass
+  - Java test module was missing `cross_file_relationships` registration in `mod.rs` — fixed
+
+- [x] **`fast_refs` import classification fix** (2026-03-01)
+  - `format_lean_refs_results` now partitions definitions into real definitions vs imports
+  - Imports shown in separate "Imports" section between Definitions and References
+  - 2 new tests, all formatting tests pass
+
+
+- [x] **NL query recall for C# classes with indirect naming** (2026-03-01)
+  - Verified FIXED by the combination of: (1) cross-file inheritance via PendingRelationship, (2) centrality propagation from interfaces to implementations, (3) semantic search via hybrid_search
+  - `get_context("Lucene search implementation")` on coa-codesearch-mcp now returns `SearchAsync` from `LuceneIndexService.cs` as pivot (ref_score: 24)
+  - `get_context("LuceneIndexService")` returns both `ILuceneIndexService` (ref_score: 15) and `LuceneIndexService` (ref_score: 12) as pivots
+  - `TextSearchTool` no longer invisible — appears as pivot for "text search service" (ref_score: 2)
+  - `get_context("circuit breaker error handling")` correctly navigates DI graph to find `LuceneIndexService` + `ICircuitBreakerService`
+
+- [x] **Token optimization across tools: evaluated, no action needed** (2026-03-01)
+  - `TokenEstimator` is already a shared utility in `src/utils/token_estimation.rs`, used by get_context, progressive_reduction, and workspace listing
+  - `truncate_to_token_budget` is get_context-specific (pivots/neighbors/summaries allocation) — not generalizable
+  - Other tools have natural limiting mechanisms: deep_dive has depth levels (~200/600/1500 tokens), get_symbols has mode-based truncation, fast_search has line limits
+  - No concrete problems found — design is appropriate as-is
 
 - [x] **C# centrality propagation: interface → implementation** (2026-02-28)
   - Added Step 2 to `compute_reference_scores()`: propagates 70% of interface/base class centrality to implementations

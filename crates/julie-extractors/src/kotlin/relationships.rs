@@ -13,24 +13,84 @@ use tree_sitter::Node;
 
 /// Extract inheritance and implementation relationships from a Kotlin type
 pub(super) fn extract_inheritance_relationships(
-    base: &BaseExtractor,
+    extractor: &mut KotlinExtractor,
     node: &Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
 ) {
+    let base = extractor.base();
     let class_symbol = find_class_symbol(base, node, symbols);
     if class_symbol.is_none() {
         return;
     }
     let class_symbol = class_symbol.unwrap();
 
+    // Phase 1: Collect base type names using immutable borrow
+    let base_type_names = collect_base_type_names(extractor.base(), node);
+    let file_path = extractor.base().file_path.clone();
+    let line_number = (node.start_position().row + 1) as u32;
+
+    // Phase 2: Create relationships (may need &mut extractor for pending)
+    for base_type_name in base_type_names {
+        let base_type_symbol = symbols.iter().find(|s| {
+            s.name == base_type_name
+                && matches!(
+                    s.kind,
+                    SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct
+                )
+        });
+
+        if let Some(base_type_symbol) = base_type_symbol {
+            let relationship_kind = if base_type_symbol.kind == SymbolKind::Interface {
+                RelationshipKind::Implements
+            } else {
+                RelationshipKind::Extends
+            };
+
+            relationships.push(Relationship {
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    class_symbol.id,
+                    base_type_symbol.id,
+                    relationship_kind,
+                    node.start_position().row
+                ),
+                from_symbol_id: class_symbol.id.clone(),
+                to_symbol_id: base_type_symbol.id.clone(),
+                kind: relationship_kind,
+                file_path: file_path.clone(),
+                line_number,
+                confidence: 1.0,
+                metadata: Some(HashMap::from([(
+                    "baseType".to_string(),
+                    Value::String(base_type_name),
+                )])),
+            });
+        } else {
+            // Cross-file: base type is defined in another file.
+            // Kotlin doesn't have a reliable naming convention for interfaces,
+            // so default to Extends (resolver handles both equally).
+            extractor.add_pending_relationship(PendingRelationship {
+                from_symbol_id: class_symbol.id.clone(),
+                callee_name: base_type_name,
+                kind: RelationshipKind::Extends,
+                file_path: file_path.clone(),
+                line_number,
+                confidence: 0.9,
+            });
+        }
+    }
+}
+
+/// Collect base type names from delegation specifiers (immutable borrow only)
+fn collect_base_type_names(base: &BaseExtractor, node: &Node) -> Vec<String> {
+    let mut base_type_names = Vec::new();
+
     // Look for delegation_specifiers container first (wrapped case)
     let delegation_container = node
         .children(&mut node.walk())
         .find(|n| n.kind() == "delegation_specifiers");
-    let mut base_type_names = Vec::new();
 
-    // Look for delegation_specifiers to find inheritance/interface implementation
     if let Some(delegation_container) = delegation_container {
         for child in delegation_container.children(&mut delegation_container.walk()) {
             if child.kind() == "delegation_specifier" {
@@ -109,44 +169,7 @@ pub(super) fn extract_inheritance_relationships(
         }
     }
 
-    // Create relationships for each base type
-    for base_type_name in base_type_names {
-        let base_type_symbol = symbols.iter().find(|s| {
-            s.name == base_type_name
-                && matches!(
-                    s.kind,
-                    SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct
-                )
-        });
-
-        if let Some(base_type_symbol) = base_type_symbol {
-            let relationship_kind = if base_type_symbol.kind == SymbolKind::Interface {
-                RelationshipKind::Implements
-            } else {
-                RelationshipKind::Extends
-            };
-
-            relationships.push(Relationship {
-                id: format!(
-                    "{}_{}_{:?}_{}",
-                    class_symbol.id,
-                    base_type_symbol.id,
-                    relationship_kind,
-                    node.start_position().row
-                ),
-                from_symbol_id: class_symbol.id.clone(),
-                to_symbol_id: base_type_symbol.id.clone(),
-                kind: relationship_kind,
-                file_path: base.file_path.clone(),
-                line_number: (node.start_position().row + 1) as u32,
-                confidence: 1.0,
-                metadata: Some(HashMap::from([(
-                    "baseType".to_string(),
-                    Value::String(base_type_name),
-                )])),
-            });
-        }
-    }
+    base_type_names
 }
 
 /// Find the symbol corresponding to a class/interface/enum node

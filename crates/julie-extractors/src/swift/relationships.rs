@@ -44,7 +44,7 @@ impl SwiftExtractor {
 
     /// Implementation of extractInheritanceRelationships method
     fn extract_inheritance_relationships(
-        &self,
+        &mut self,
         node: Node,
         symbols: &[Symbol],
         relationships: &mut Vec<Relationship>,
@@ -104,7 +104,7 @@ impl SwiftExtractor {
 
     /// Implementation of addInheritanceRelationship method
     fn add_inheritance_relationship(
-        &self,
+        &mut self,
         type_symbol: &Symbol,
         base_type_name: &str,
         symbols: &[Symbol],
@@ -146,6 +146,17 @@ impl SwiftExtractor {
                 line_number: (node.start_position().row + 1) as u32,
                 confidence: 1.0,
                 metadata: Some(metadata),
+            });
+        } else {
+            // Cross-file: base type is defined in another file.
+            // Swift protocols don't have a naming convention, default to Extends.
+            self.add_pending_relationship(PendingRelationship {
+                from_symbol_id: type_symbol.id.clone(),
+                callee_name: base_type_name.to_string(),
+                kind: RelationshipKind::Extends,
+                file_path: self.base.file_path.clone(),
+                line_number: (node.start_position().row + 1) as u32,
+                confidence: 0.9,
             });
         }
     }
