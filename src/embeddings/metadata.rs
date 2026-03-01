@@ -4,7 +4,7 @@
 //! Only "structural" symbol kinds are embedded — leaf nodes like variables,
 //! fields, and imports are too granular for semantic search.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::extractors::{Symbol, SymbolKind};
 
@@ -208,24 +208,15 @@ pub fn select_budgeted_variables(
 }
 
 fn variable_signal_boost(symbol: &Symbol) -> f64 {
-    let mut score = 0.0;
-    let mut haystack = symbol.name.to_lowercase();
-    if let Some(signature) = &symbol.signature {
-        haystack.push(' ');
-        haystack.push_str(&signature.to_lowercase());
-    }
-    if let Some(doc) = &symbol.doc_comment {
-        haystack.push(' ');
-        haystack.push_str(&doc.to_lowercase());
-    }
-
-    if [
+    const SIGNAL_TOKENS: &[&str] = &[
         "request", "response", "payload", "body", "header", "token", "json", "api", "query",
-        "params", "customer", "order",
-    ]
-    .iter()
-    .any(|needle| haystack.contains(needle))
-    {
+        "params",
+    ];
+
+    let mut score = 0.0;
+    let tokens = symbol_tokens(symbol);
+
+    if SIGNAL_TOKENS.iter().any(|needle| tokens.contains(*needle)) {
         score += 0.25;
     }
 
@@ -253,19 +244,121 @@ fn variable_noise_penalty(symbol: &Symbol) -> f64 {
     }
 
     if let Some(signature) = &symbol.signature {
-        let sig = signature.to_lowercase();
-        if sig.contains("= 0")
-            || sig.contains("= 1")
-            || sig.contains("= true")
-            || sig.contains("= false")
-            || sig.contains("= none")
-            || sig.contains("= null")
-        {
+        if has_simple_default_literal(signature) {
             penalty += 0.10;
         }
     }
 
     penalty
+}
+
+fn symbol_tokens(symbol: &Symbol) -> HashSet<String> {
+    let mut tokens = HashSet::new();
+    extend_tokens(&symbol.name, &mut tokens);
+
+    if let Some(signature) = &symbol.signature {
+        extend_tokens(signature, &mut tokens);
+    }
+
+    if let Some(doc) = &symbol.doc_comment {
+        extend_tokens(doc, &mut tokens);
+    }
+
+    tokens
+}
+
+fn extend_tokens(text: &str, output: &mut HashSet<String>) {
+    let mut token = String::new();
+    let mut prev_is_lower = false;
+    let mut prev_is_digit = false;
+
+    for ch in text.chars() {
+        if ch.is_alphanumeric() {
+            let is_upper = ch.is_uppercase();
+            let is_digit = ch.is_ascii_digit();
+            let split_camel_case =
+                !token.is_empty() && is_upper && (prev_is_lower || prev_is_digit);
+
+            if split_camel_case {
+                output.insert(token.to_lowercase());
+                token.clear();
+            }
+
+            token.push(ch);
+            prev_is_lower = ch.is_lowercase();
+            prev_is_digit = is_digit;
+        } else if !token.is_empty() {
+            output.insert(token.to_lowercase());
+            token.clear();
+            prev_is_lower = false;
+            prev_is_digit = false;
+        } else {
+            prev_is_lower = false;
+            prev_is_digit = false;
+        }
+    }
+
+    if !token.is_empty() {
+        output.insert(token.to_lowercase());
+    }
+}
+
+fn has_simple_default_literal(signature: &str) -> bool {
+    const DEFAULT_LITERALS: &[&str] = &["0", "1", "true", "false", "none", "null"];
+    let chars: Vec<char> = signature.chars().collect();
+    let len = chars.len();
+
+    let mut i = 0;
+    while i < len {
+        if chars[i] != '=' {
+            i += 1;
+            continue;
+        }
+
+        let mut left = i;
+        while left > 0 && chars[left - 1].is_whitespace() {
+            left -= 1;
+        }
+
+        if left > 0 {
+            let prev = chars[left - 1];
+            if prev == '=' || prev == '!' || prev == '<' || prev == '>' {
+                i += 1;
+                continue;
+            }
+        }
+
+        let mut right = i + 1;
+        while right < len && chars[right].is_whitespace() {
+            right += 1;
+        }
+
+        if right >= len {
+            return false;
+        }
+
+        let start = right;
+        while right < len && chars[right].is_alphanumeric() {
+            right += 1;
+        }
+
+        if start == right {
+            i += 1;
+            continue;
+        }
+
+        let literal: String = chars[start..right]
+            .iter()
+            .collect::<String>()
+            .to_lowercase();
+        if DEFAULT_LITERALS.contains(&literal.as_str()) {
+            return true;
+        }
+
+        i += 1;
+    }
+
+    false
 }
 
 /// Convert SymbolKind to a lowercase embedding-friendly string.

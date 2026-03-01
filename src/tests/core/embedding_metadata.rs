@@ -804,7 +804,7 @@ mod tests {
     }
 
     // =========================================================================
-    // select_budgeted_variables (RED)
+    // select_budgeted_variables
     // =========================================================================
 
     #[test]
@@ -1055,5 +1055,166 @@ mod tests {
         let selected_ids: Vec<&str> = selected.iter().map(|(id, _)| id.as_str()).collect();
 
         assert_eq!(selected_ids, vec!["var_top", "var_a", "var_b"]);
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_uses_token_boundaries_not_substrings() {
+        let symbols = vec![
+            make_symbol(
+                "var_false_positive",
+                "rapidly",
+                SymbolKind::Variable,
+                Some("let rapidly = compute();"),
+                None,
+            ),
+            make_symbol(
+                "var_token_match",
+                "state_value",
+                SymbolKind::Variable,
+                Some("let state_value = load_state();"),
+                None,
+            ),
+        ];
+
+        let reference_scores = HashMap::from([
+            ("var_false_positive".to_string(), 0.40_f64),
+            ("var_token_match".to_string(), 0.40_f64),
+        ]);
+
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(
+            selected[0].0, "var_token_match",
+            "Substring matches should not receive API-surface boost"
+        );
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_treats_camel_and_snake_case_tokens_consistently() {
+        let symbols = vec![
+            make_symbol(
+                "var_camel",
+                "requestPayload",
+                SymbolKind::Variable,
+                Some("let requestPayload = build_payload();"),
+                None,
+            ),
+            make_symbol(
+                "var_snake",
+                "request_payload",
+                SymbolKind::Variable,
+                Some("let request_payload = build_payload();"),
+                None,
+            ),
+        ];
+
+        let reference_scores = HashMap::from([
+            ("var_camel".to_string(), 0.30_f64),
+            ("var_snake".to_string(), 0.30_f64),
+        ]);
+
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 2, &policy);
+        let selected_ids: Vec<&str> = selected.iter().map(|(id, _)| id.as_str()).collect();
+
+        assert_eq!(selected_ids.len(), 2);
+        assert!(selected_ids.contains(&"var_camel"));
+        assert!(selected_ids.contains(&"var_snake"));
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_handles_non_english_identifier_and_docs() {
+        let symbols = vec![
+            make_symbol(
+                "var_non_english",
+                "estadoUsuario",
+                SymbolKind::Variable,
+                Some("let estadoUsuario = obtener_estado(usuario);"),
+                Some("/// Devuelve el estado actual del usuario."),
+            ),
+            make_symbol(
+                "var_ascii",
+                "state_cache",
+                SymbolKind::Variable,
+                Some("let state_cache = load_state();"),
+                Some("/// Stores cached state."),
+            ),
+        ];
+
+        let reference_scores = HashMap::from([
+            ("var_non_english".to_string(), 0.50_f64),
+            ("var_ascii".to_string(), 0.49_f64),
+        ]);
+
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].0, "var_non_english");
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_penalizes_default_values_across_signature_styles() {
+        let symbols = vec![
+            make_symbol(
+                "var_default_equals_spaced",
+                "configValue",
+                SymbolKind::Variable,
+                Some("config_value = false"),
+                None,
+            ),
+            make_symbol(
+                "var_default_equals_compact",
+                "limitValue",
+                SymbolKind::Variable,
+                Some("limit_value=false"),
+                None,
+            ),
+            make_symbol(
+                "var_default_colon_equals",
+                "modeValue",
+                SymbolKind::Variable,
+                Some("mode_value:=0"),
+                None,
+            ),
+            make_symbol(
+                "var_no_default",
+                "resultValue",
+                SymbolKind::Variable,
+                Some("result_value: bool"),
+                None,
+            ),
+        ];
+
+        let reference_scores = HashMap::from([
+            ("var_default_equals_spaced".to_string(), 0.40_f64),
+            ("var_default_equals_compact".to_string(), 0.40_f64),
+            ("var_default_colon_equals".to_string(), 0.40_f64),
+            ("var_no_default".to_string(), 0.40_f64),
+        ]);
+
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(
+            selected[0].0, "var_no_default",
+            "Mixed default styles should all receive the same penalty"
+        );
     }
 }
