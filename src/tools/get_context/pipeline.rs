@@ -452,7 +452,8 @@ fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::
                 .symbol
                 .doc_comment
                 .as_ref()
-                .map(|d| d.lines().next().unwrap_or("").to_string()),
+                .map(|d| crate::embeddings::metadata::first_sentence(d))
+                .filter(|s| !s.is_empty()),
         })
         .collect()
 }

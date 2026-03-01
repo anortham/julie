@@ -162,7 +162,7 @@ fn first_line_trimmed(text: &str) -> String {
 /// Extract the first sentence from a doc comment.
 /// Strips leading `///`, `//!`, `#`, `*` markers and XML tags, then takes
 /// the first line with actual content (skipping tag-only lines like `<summary>`).
-fn first_sentence(doc: &str) -> String {
+pub fn first_sentence(doc: &str) -> String {
     let cleaned: String = doc
         .lines()
         .filter_map(|line| {
