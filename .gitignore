@@ -51,3 +51,10 @@ cache/
 
 poc_output.txt
 .worktrees/
+
+# Python
+__pycache__/
+*.pyc
+
+# Temp files
+*.rs.tmp

@@ -1,9 +1,9 @@
 ---
 id: semantic-embedding-layer-for-julie
 title: Semantic Embedding Layer for Julie
-status: active
+status: completed
 created: 2026-02-26T19:19:12.286Z
-updated: 2026-02-27T01:45:24.804Z
+updated: 2026-03-01T02:01:04.777Z
 tags:
   - embeddings
   - semantic-search

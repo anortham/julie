@@ -1,9 +1,9 @@
 ---
 id: embeddings-hardening-and-backend-foundation
 title: Embeddings Hardening and Backend Foundation
-status: active
+status: completed
 created: 2026-02-27T14:51:14.682Z
-updated: 2026-02-27T14:51:14.682Z
+updated: 2026-03-01T02:01:05.837Z
 tags:
   - embeddings
   - semantic-search

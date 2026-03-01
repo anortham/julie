@@ -1,9 +1,9 @@
 ---
 id: dogfood-bug-fixes-fast-search-hybrid-rust-extracto
 title: "Dogfood Bug Fixes: fast_search Hybrid + Rust Extractor Qualified Paths"
-status: active
+status: completed
 created: 2026-02-27T01:58:58.968Z
-updated: 2026-02-27T01:58:58.968Z
+updated: 2026-03-01T02:01:05.395Z
 tags:
   - dogfood
   - bug-fix
