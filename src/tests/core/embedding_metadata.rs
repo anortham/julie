@@ -465,6 +465,151 @@ mod tests {
     }
 
     // =========================================================================
+    // Property/field enrichment for container symbols
+    // =========================================================================
+
+    #[test]
+    fn test_prepare_batch_enriches_class_with_child_properties() {
+        // Simulates a C# DTO: class UserDto with property children
+        let class_sym = make_symbol_with_lang("c1", "UserDto", SymbolKind::Class, "csharp");
+
+        let mut prop1 = make_symbol_with_lang("p1", "Id", SymbolKind::Property, "csharp");
+        prop1.parent_id = Some("c1".to_string());
+
+        let mut prop2 =
+            make_symbol_with_lang("p2", "SamAccountName", SymbolKind::Property, "csharp");
+        prop2.parent_id = Some("c1".to_string());
+
+        let mut prop3 = make_symbol_with_lang("p3", "Email", SymbolKind::Property, "csharp");
+        prop3.parent_id = Some("c1".to_string());
+
+        let mut prop4 = make_symbol_with_lang("p4", "Roles", SymbolKind::Property, "csharp");
+        prop4.parent_id = Some("c1".to_string());
+
+        let symbols = vec![class_sym, prop1, prop2, prop3, prop4];
+        let batch = prepare_batch_for_embedding(&symbols);
+
+        // Only the class should be embedded (properties are not embeddable kinds)
+        assert_eq!(batch.len(), 1);
+
+        let class_entry = &batch[0];
+        assert!(
+            class_entry.1.contains("SamAccountName"),
+            "Class embedding should include child property name 'SamAccountName': {}",
+            class_entry.1
+        );
+        assert!(
+            class_entry.1.contains("Email"),
+            "Class embedding should include child property name 'Email': {}",
+            class_entry.1
+        );
+        assert!(
+            class_entry.1.contains("properties:"),
+            "Property enrichment should use 'properties:' label: {}",
+            class_entry.1
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_enriches_interface_with_fields() {
+        // Simulates a TypeScript interface: interface PageDto with field children
+        let iface = make_symbol_with_lang("i1", "PageDto", SymbolKind::Interface, "typescript");
+
+        let mut field1 = make_symbol_with_lang("f1", "id", SymbolKind::Field, "typescript");
+        field1.parent_id = Some("i1".to_string());
+
+        let mut field2 = make_symbol_with_lang("f2", "title", SymbolKind::Field, "typescript");
+        field2.parent_id = Some("i1".to_string());
+
+        let mut field3 = make_symbol_with_lang("f3", "slug", SymbolKind::Field, "typescript");
+        field3.parent_id = Some("i1".to_string());
+
+        let symbols = vec![iface, field1, field2, field3];
+        let batch = prepare_batch_for_embedding(&symbols);
+
+        assert_eq!(batch.len(), 1);
+
+        let iface_entry = &batch[0];
+        assert!(
+            iface_entry.1.contains("title"),
+            "Interface embedding should include child field name 'title': {}",
+            iface_entry.1
+        );
+        assert!(
+            iface_entry.1.contains("slug"),
+            "Interface embedding should include child field name 'slug': {}",
+            iface_entry.1
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_enriches_with_both_methods_and_properties() {
+        // A class with both methods and properties should include both
+        let class_sym = make_symbol_with_lang("c1", "UserService", SymbolKind::Class, "csharp");
+
+        let mut method = make_symbol_with_lang("m1", "GetUserById", SymbolKind::Method, "csharp");
+        method.parent_id = Some("c1".to_string());
+
+        let mut prop = make_symbol_with_lang("p1", "DbContext", SymbolKind::Property, "csharp");
+        prop.parent_id = Some("c1".to_string());
+
+        let symbols = vec![class_sym, method, prop];
+        let batch = prepare_batch_for_embedding(&symbols);
+
+        let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
+        assert!(
+            class_entry.1.contains("methods:"),
+            "Should have methods label: {}",
+            class_entry.1
+        );
+        assert!(
+            class_entry.1.contains("GetUserById"),
+            "Should include method name: {}",
+            class_entry.1
+        );
+        assert!(
+            class_entry.1.contains("properties:"),
+            "Should have properties label: {}",
+            class_entry.1
+        );
+        assert!(
+            class_entry.1.contains("DbContext"),
+            "Should include property name: {}",
+            class_entry.1
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_struct_enriched_with_fields() {
+        // Rust struct with field children
+        let struct_sym = make_symbol("s1", "SearchResult", SymbolKind::Struct, None, None);
+
+        let mut field1 = make_symbol_with_lang("f1", "name", SymbolKind::Field, "rust");
+        field1.parent_id = Some("s1".to_string());
+
+        let mut field2 = make_symbol_with_lang("f2", "score", SymbolKind::Field, "rust");
+        field2.parent_id = Some("s1".to_string());
+
+        let mut field3 = make_symbol_with_lang("f3", "file_path", SymbolKind::Field, "rust");
+        field3.parent_id = Some("s1".to_string());
+
+        let symbols = vec![struct_sym, field1, field2, field3];
+        let batch = prepare_batch_for_embedding(&symbols);
+
+        let struct_entry = batch.iter().find(|(id, _)| id == "s1").unwrap();
+        assert!(
+            struct_entry.1.contains("score"),
+            "Struct embedding should include child field name 'score': {}",
+            struct_entry.1
+        );
+        assert!(
+            struct_entry.1.contains("file_path"),
+            "Struct embedding should include child field name 'file_path': {}",
+            struct_entry.1
+        );
+    }
+
+    // =========================================================================
     // first_sentence extraction
     // =========================================================================
 

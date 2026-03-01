@@ -100,14 +100,24 @@ const CONTAINER_KINDS: &[SymbolKind] = &[
 
 pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> {
     // Build parent_id → child method names mapping for container enrichment.
-    let mut children_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut methods_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut properties_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
     for sym in symbols {
-        if matches!(sym.kind, SymbolKind::Method | SymbolKind::Function) {
-            if let Some(ref parent_id) = sym.parent_id {
-                children_by_parent
-                    .entry(parent_id.as_str())
-                    .or_default()
-                    .push(&sym.name);
+        if let Some(ref parent_id) = sym.parent_id {
+            match sym.kind {
+                SymbolKind::Method | SymbolKind::Function => {
+                    methods_by_parent
+                        .entry(parent_id.as_str())
+                        .or_default()
+                        .push(&sym.name);
+                }
+                SymbolKind::Property | SymbolKind::Field => {
+                    properties_by_parent
+                        .entry(parent_id.as_str())
+                        .or_default()
+                        .push(&sym.name);
+                }
+                _ => {}
             }
         }
     }
@@ -118,13 +128,19 @@ pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> 
         .map(|s| {
             let mut text = format_symbol_metadata(s);
 
-            // Enrich container symbols with child method names
+            // Enrich container symbols with child method and property/field names.
+            // Properties/fields are the semantic fingerprint of DTOs and data types,
+            // enabling cross-language matching (e.g., C# UserDto ↔ TS UserDto).
             if CONTAINER_KINDS.contains(&s.kind) {
-                if let Some(children) = children_by_parent.get(s.id.as_str()) {
-                    let suffix = format!(" methods: {}", children.join(", "));
+                if let Some(methods) = methods_by_parent.get(s.id.as_str()) {
+                    let suffix = format!(" methods: {}", methods.join(", "));
                     text.push_str(&suffix);
-                    text = truncate_on_word_boundary(&text, MAX_METADATA_CHARS);
                 }
+                if let Some(properties) = properties_by_parent.get(s.id.as_str()) {
+                    let suffix = format!(" properties: {}", properties.join(", "));
+                    text.push_str(&suffix);
+                }
+                text = truncate_on_word_boundary(&text, MAX_METADATA_CHARS);
             }
 
             (s.id.clone(), text)
