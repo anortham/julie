@@ -239,6 +239,34 @@ namespace Services
     }
 
     #[test]
+    fn qualified_interface_name_keeps_implements_kind() {
+        // Contracts.IService is cross-file and unresolved in this file.
+        // We still expect Implements based on terminal identifier IService.
+        let code = r#"
+namespace Services
+{
+    public class ServiceImpl : Contracts.IService
+    {
+    }
+}
+"#;
+
+        let results = extract_full("src/ServiceImpl.cs", code);
+
+        let pending = results
+            .pending_relationships
+            .iter()
+            .find(|p| p.callee_name == "Contracts.IService")
+            .expect("Should create pending relationship for qualified interface base");
+
+        assert_eq!(
+            pending.kind,
+            RelationshipKind::Implements,
+            "Qualified interface name should infer Implements, not Extends"
+        );
+    }
+
+    #[test]
     fn test_same_file_interface_still_creates_direct_relationship() {
         // Interface and implementation in the SAME file
         let code = r#"

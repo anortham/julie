@@ -89,6 +89,25 @@ def dispatch_request(
     if request_id_error is not None:
         return _error_response(request_id, "invalid_request", request_id_error)
 
+    schema = request.get("schema")
+    if schema is not None and schema != SIDECAR_PROTOCOL_SCHEMA:
+        return _error_response(
+            request_id,
+            "invalid_request",
+            (f"schema mismatch: expected '{SIDECAR_PROTOCOL_SCHEMA}', got {schema!r}"),
+        )
+
+    version = request.get("version")
+    if version is not None and version != SIDECAR_PROTOCOL_VERSION:
+        return _error_response(
+            request_id,
+            "invalid_request",
+            (
+                "unsupported version: "
+                f"expected {SIDECAR_PROTOCOL_VERSION}, got {version!r}"
+            ),
+        )
+
     method = request.get("method")
     if not isinstance(method, str):
         return _error_response(request_id, "invalid_request", "method must be a string")

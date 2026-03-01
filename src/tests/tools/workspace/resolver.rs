@@ -253,8 +253,18 @@ mod resolver_tests {
         // For an Instantiates relationship (DI registration), prefer Class over Constructor
         // when both share the same name (which is always the case in C#)
         let candidates = vec![
-            make_symbol("SearchFilesTool", SymbolKind::Constructor, "csharp", "Tools/SearchFilesTool.cs"),
-            make_symbol("SearchFilesTool", SymbolKind::Class, "csharp", "Tools/SearchFilesTool.cs"),
+            make_symbol(
+                "SearchFilesTool",
+                SymbolKind::Constructor,
+                "csharp",
+                "Tools/SearchFilesTool.cs",
+            ),
+            make_symbol(
+                "SearchFilesTool",
+                SymbolKind::Class,
+                "csharp",
+                "Tools/SearchFilesTool.cs",
+            ),
         ];
         let pending = PendingRelationship {
             from_symbol_id: "startup_1".to_string(),

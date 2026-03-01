@@ -4,9 +4,19 @@ use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, Embeddi
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt};
 use crate::tools::workspace::ManageWorkspaceTool;
+#[cfg(feature = "embeddings-sidecar")]
+use crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding;
 use crate::workspace::JulieWorkspace;
+#[cfg(feature = "embeddings-sidecar")]
+use serial_test::serial;
+#[cfg(feature = "embeddings-sidecar")]
+use std::collections::HashMap;
+#[cfg(feature = "embeddings-sidecar")]
+use std::ffi::OsString;
 use std::fs;
 use std::sync::Arc;
+#[cfg(feature = "embeddings-sidecar")]
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 struct NoopEmbeddingProvider;
@@ -47,6 +57,257 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[cfg(feature = "embeddings-sidecar")]
+use crate::tests::integration::sidecar_test_helpers::test_python_interpreter;
+
+#[cfg(feature = "embeddings-sidecar")]
+fn write_slow_health_sidecar_script(
+    temp_dir: &TempDir,
+    marker_path: &std::path::Path,
+) -> std::path::PathBuf {
+    let sidecar_script = temp_dir.path().join("slow_health_sidecar.py");
+    let marker_literal = marker_path.to_string_lossy();
+    std::fs::write(
+        &sidecar_script,
+        format!(
+            r#"import json
+import pathlib
+import sys
+import time
+
+MARKER_PATH = pathlib.Path({marker_literal:?})
+
+while True:
+    line = sys.stdin.readline()
+    if not line:
+        break
+    req = json.loads(line)
+    req_id = req.get("request_id", "")
+    method = req.get("method")
+
+    if method == "health":
+        MARKER_PATH.write_text("health-started", encoding="utf-8")
+        time.sleep(0.35)
+        result = {{"ready": True, "runtime": "slow-fake-sidecar", "device": "cpu", "dims": 384}}
+    elif method == "embed_query":
+        result = {{"dims": 384, "vector": [0.1] * 384}}
+    elif method == "embed_batch":
+        texts = req.get("params", {{}}).get("texts", [])
+        result = {{"dims": 384, "vectors": [[0.1] * 384 for _ in texts]}}
+    elif method == "shutdown":
+        result = {{"stopping": True}}
+    else:
+        result = {{}}
+
+    response = {{
+        "schema": "julie.embedding.sidecar",
+        "version": 1,
+        "request_id": req_id,
+        "result": result,
+    }}
+    sys.stdout.write(json.dumps(response) + "\\n")
+    sys.stdout.flush()
+
+    if method == "shutdown":
+        break
+"#,
+        ),
+    )
+    .expect("slow health sidecar script should be written");
+
+    sidecar_script
+}
+
+#[cfg(feature = "embeddings-sidecar")]
+struct EnvVarGuard {
+    original: HashMap<String, Option<OsString>>,
+}
+
+#[cfg(feature = "embeddings-sidecar")]
+impl EnvVarGuard {
+    fn new() -> Self {
+        Self {
+            original: HashMap::new(),
+        }
+    }
+
+    fn set(&mut self, key: &str, value: impl Into<OsString>) {
+        if !self.original.contains_key(key) {
+            self.original.insert(key.to_string(), std::env::var_os(key));
+        }
+        let value = value.into();
+        unsafe {
+            std::env::set_var(key, &value);
+        }
+    }
+
+    fn remove(&mut self, key: &str) {
+        if !self.original.contains_key(key) {
+            self.original.insert(key.to_string(), std::env::var_os(key));
+        }
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+}
+
+#[cfg(feature = "embeddings-sidecar")]
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        for (key, value) in self.original.drain() {
+            match value {
+                Some(original_value) => unsafe {
+                    std::env::set_var(&key, original_value);
+                },
+                None => unsafe {
+                    std::env::remove_var(&key);
+                },
+            }
+        }
+    }
+}
+
+#[cfg(feature = "embeddings-sidecar")]
+#[tokio::test]
+#[serial(embedding_env)]
+async fn test_spawn_workspace_embedding_discards_init_result_after_workspace_switch() {
+    let temp_dir_a = TempDir::new().unwrap();
+    let marker_path = temp_dir_a.path().join("health.marker");
+    let sidecar_script = write_slow_health_sidecar_script(&temp_dir_a, &marker_path);
+    let temp_dir_b = TempDir::new().unwrap();
+
+    let mut env_guard = EnvVarGuard::new();
+    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+    env_guard.set(
+        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
+        sidecar_script.to_string_lossy().to_string(),
+    );
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
+    env_guard.set("JULIE_SKIP_EMBEDDINGS", "1");
+    env_guard.set("JULIE_SKIP_SEARCH_INDEX", "1");
+
+    let workspace_a = JulieWorkspace::initialize(temp_dir_a.path().to_path_buf())
+        .await
+        .expect("workspace A initialization should succeed");
+    let workspace_b = JulieWorkspace::initialize(temp_dir_b.path().to_path_buf())
+        .await
+        .expect("workspace B initialization should succeed");
+    let expected_root_b = workspace_b.root.clone();
+
+    let handler = JulieServerHandler::new().await.unwrap();
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        *ws_guard = Some(workspace_a);
+    }
+
+    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
+    assert!(
+        !marker_path.exists(),
+        "slow sidecar marker should not exist before deferred init starts"
+    );
+
+    let handler_for_init = handler.clone();
+    let init_task = tokio::spawn(async move {
+        spawn_workspace_embedding(&handler_for_init, "missing-workspace-id".to_string()).await
+    });
+
+    let marker_deadline = Instant::now() + Duration::from_secs(2);
+    while !marker_path.exists() {
+        if Instant::now() >= marker_deadline {
+            panic!(
+                "slow sidecar marker was never written; deferred init did not reach health check"
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        *ws_guard = Some(workspace_b);
+    }
+
+    let _ = init_task.await;
+
+    let ws_guard = handler.workspace.read().await;
+    let active = ws_guard
+        .as_ref()
+        .expect("active workspace should remain set");
+    assert_eq!(
+        active.root, expected_root_b,
+        "active workspace should be workspace B after switch"
+    );
+    assert!(
+        active.embedding_provider.is_none(),
+        "stale init result from workspace A must not be published to workspace B"
+    );
+    assert!(
+        active.embedding_runtime_status.is_none(),
+        "stale runtime status from workspace A must not be published to workspace B"
+    );
+}
+
+#[cfg(feature = "embeddings-sidecar")]
+#[tokio::test]
+#[serial(embedding_env)]
+async fn test_spawn_workspace_embedding_does_not_hold_write_lock_during_provider_init() {
+    let temp_dir = TempDir::new().unwrap();
+    let marker_path = temp_dir.path().join("health.marker");
+    let sidecar_script = write_slow_health_sidecar_script(&temp_dir, &marker_path);
+
+    let mut env_guard = EnvVarGuard::new();
+    env_guard.set("JULIE_EMBEDDING_PROVIDER", "sidecar");
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_PROGRAM", test_python_interpreter());
+    env_guard.set(
+        "JULIE_EMBEDDING_SIDECAR_SCRIPT",
+        sidecar_script.to_string_lossy().to_string(),
+    );
+    env_guard.set("JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS", "5000");
+    env_guard.set("JULIE_SKIP_EMBEDDINGS", "1");
+    env_guard.set("JULIE_SKIP_SEARCH_INDEX", "1");
+
+    let workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+        .await
+        .expect("workspace initialization should succeed");
+
+    let handler = JulieServerHandler::new().await.unwrap();
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        *ws_guard = Some(workspace);
+    }
+
+    env_guard.remove("JULIE_SKIP_EMBEDDINGS");
+    assert!(
+        !marker_path.exists(),
+        "slow sidecar marker should not exist before deferred init starts"
+    );
+
+    let handler_for_init = handler.clone();
+    let init_task = tokio::spawn(async move {
+        spawn_workspace_embedding(&handler_for_init, "missing-workspace-id".to_string()).await
+    });
+
+    let marker_deadline = Instant::now() + Duration::from_secs(2);
+    while !marker_path.exists() {
+        if Instant::now() >= marker_deadline {
+            panic!(
+                "slow sidecar marker was never written; deferred init did not reach health check"
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    let read_lock_result =
+        tokio::time::timeout(Duration::from_millis(75), handler.workspace.read()).await;
+    assert!(
+        read_lock_result.is_ok(),
+        "workspace read lock should remain available while provider init is running"
+    );
+
+    init_task.abort();
+    let _ = init_task.await;
 }
 
 #[tokio::test]
@@ -306,7 +567,10 @@ async fn test_manage_workspace_health_reports_not_initialized_when_runtime_statu
     let health = extract_text_from_result(&result);
 
     assert!(health.contains("Embedding Runtime"), "{health}");
-    assert!(health.contains("Embedding Status: NOT INITIALIZED"), "{health}");
+    assert!(
+        health.contains("Embedding Status: NOT INITIALIZED"),
+        "{health}"
+    );
     assert!(health.contains("Runtime: unavailable"), "{health}");
     assert!(health.contains("Backend: unresolved"), "{health}");
     assert!(health.contains("Device: unavailable"), "{health}");

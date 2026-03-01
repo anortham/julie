@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 #[cfg(feature = "embeddings-ort")]
 use super::OrtEmbeddingProvider;

@@ -207,14 +207,8 @@ pub fn hybrid_search(
             .take(10)
             .map(|r| format!("{}({:.3})", r.name, r.score))
             .collect();
-        debug!(
-            "  keyword top-10: [{}]",
-            kw_top.join(", ")
-        );
-        debug!(
-            "  semantic top-10: [{}]",
-            sem_top.join(", ")
-        );
+        debug!("  keyword top-10: [{}]", kw_top.join(", "));
+        debug!("  semantic top-10: [{}]", sem_top.join(", "));
     }
 
     let merged = rrf_merge(tantivy_results.results, semantic_results, 60, limit);

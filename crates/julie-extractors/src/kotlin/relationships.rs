@@ -11,6 +11,11 @@ use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
+struct BaseTypeEntry {
+    name: String,
+    is_constructor_invocation: bool,
+}
+
 /// Extract inheritance and implementation relationships from a Kotlin type
 pub(super) fn extract_inheritance_relationships(
     extractor: &mut KotlinExtractor,
@@ -26,12 +31,13 @@ pub(super) fn extract_inheritance_relationships(
     let class_symbol = class_symbol.unwrap();
 
     // Phase 1: Collect base type names using immutable borrow
-    let base_type_names = collect_base_type_names(extractor.base(), node);
+    let base_type_entries = collect_base_type_entries(extractor.base(), node);
     let file_path = extractor.base().file_path.clone();
     let line_number = (node.start_position().row + 1) as u32;
 
     // Phase 2: Create relationships (may need &mut extractor for pending)
-    for base_type_name in base_type_names {
+    for base_type_entry in base_type_entries {
+        let base_type_name = base_type_entry.name;
         let base_type_symbol = symbols.iter().find(|s| {
             s.name == base_type_name
                 && matches!(
@@ -67,13 +73,22 @@ pub(super) fn extract_inheritance_relationships(
                 )])),
             });
         } else {
-            // Cross-file: base type is defined in another file.
-            // Kotlin doesn't have a reliable naming convention for interfaces,
-            // so default to Extends (resolver handles both equally).
+            // Two distinct cases both produce Extends:
+            //   1. Source is an interface → interfaces extend other interfaces
+            //   2. Constructor invocation (e.g. `BaseModel()`) → concrete class inheritance
+            // Everything else (bare name without parens) → interface implementation
+            let pending_kind = if class_symbol.kind == SymbolKind::Interface
+                || base_type_entry.is_constructor_invocation
+            {
+                RelationshipKind::Extends
+            } else {
+                RelationshipKind::Implements
+            };
+
             extractor.add_pending_relationship(PendingRelationship {
                 from_symbol_id: class_symbol.id.clone(),
                 callee_name: base_type_name,
-                kind: RelationshipKind::Extends,
+                kind: pending_kind,
                 file_path: file_path.clone(),
                 line_number,
                 confidence: 0.9,
@@ -82,9 +97,9 @@ pub(super) fn extract_inheritance_relationships(
     }
 }
 
-/// Collect base type names from delegation specifiers (immutable borrow only)
-fn collect_base_type_names(base: &BaseExtractor, node: &Node) -> Vec<String> {
-    let mut base_type_names = Vec::new();
+/// Collect base type entries from delegation specifiers (immutable borrow only)
+fn collect_base_type_entries(base: &BaseExtractor, node: &Node) -> Vec<BaseTypeEntry> {
+    let mut base_type_entries = Vec::new();
 
     // Look for delegation_specifiers container first (wrapped case)
     let delegation_container = node
@@ -119,17 +134,26 @@ fn collect_base_type_names(base: &BaseExtractor, node: &Node) -> Vec<String> {
                     } else {
                         base.get_node_text(&type_node)
                     };
-                    base_type_names.push(base_type);
+                    base_type_entries.push(BaseTypeEntry {
+                        name: base_type,
+                        is_constructor_invocation: type_node.kind() == "constructor_invocation",
+                    });
                 }
             } else if child.kind() == "delegated_super_type" {
                 let type_node = child
                     .children(&mut child.walk())
                     .find(|n| matches!(n.kind(), "type" | "user_type" | "identifier"));
                 if let Some(type_node) = type_node {
-                    base_type_names.push(base.get_node_text(&type_node));
+                    base_type_entries.push(BaseTypeEntry {
+                        name: base.get_node_text(&type_node),
+                        is_constructor_invocation: false,
+                    });
                 }
             } else if matches!(child.kind(), "type" | "user_type" | "identifier") {
-                base_type_names.push(base.get_node_text(&child));
+                base_type_entries.push(BaseTypeEntry {
+                    name: base.get_node_text(&child),
+                    is_constructor_invocation: false,
+                });
             }
         }
     } else {
@@ -145,7 +169,10 @@ fn collect_base_type_names(base: &BaseExtractor, node: &Node) -> Vec<String> {
             if let Some(explicit_delegation) = explicit_delegation {
                 let type_text = base.get_node_text(&explicit_delegation);
                 let type_name = type_text.split(" by ").next().unwrap_or(&type_text);
-                base_type_names.push(type_name.to_string());
+                base_type_entries.push(BaseTypeEntry {
+                    name: type_name.to_string(),
+                    is_constructor_invocation: false,
+                });
             } else {
                 let type_node = delegation.children(&mut delegation.walk()).find(|n| {
                     matches!(
@@ -159,17 +186,23 @@ fn collect_base_type_names(base: &BaseExtractor, node: &Node) -> Vec<String> {
                             .children(&mut type_node.walk())
                             .find(|n| n.kind() == "user_type");
                         if let Some(user_type_node) = user_type_node {
-                            base_type_names.push(base.get_node_text(&user_type_node));
+                            base_type_entries.push(BaseTypeEntry {
+                                name: base.get_node_text(&user_type_node),
+                                is_constructor_invocation: true,
+                            });
                         }
                     } else {
-                        base_type_names.push(base.get_node_text(&type_node));
+                        base_type_entries.push(BaseTypeEntry {
+                            name: base.get_node_text(&type_node),
+                            is_constructor_invocation: false,
+                        });
                     }
                 }
             }
         }
     }
 
-    base_type_names
+    base_type_entries
 }
 
 /// Find the symbol corresponding to a class/interface/enum node
@@ -185,7 +218,10 @@ fn find_class_symbol<'a>(
 
     symbols.iter().find(|s| {
         s.name == class_name
-            && matches!(s.kind, SymbolKind::Class | SymbolKind::Interface)
+            && matches!(
+                s.kind,
+                SymbolKind::Class | SymbolKind::Interface | SymbolKind::Enum | SymbolKind::Struct
+            )
             && s.file_path == base.file_path
     })
 }

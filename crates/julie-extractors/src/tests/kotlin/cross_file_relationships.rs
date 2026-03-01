@@ -363,13 +363,10 @@ class MyService : BaseService() {
         let pending = extractor.get_pending_relationships();
 
         // Should create a pending relationship for cross-file BaseService
-        let pending_inheritance = pending
-            .iter()
-            .find(|p| {
-                p.callee_name == "BaseService"
-                    && (p.kind == RelationshipKind::Extends
-                        || p.kind == RelationshipKind::Implements)
-            });
+        let pending_inheritance = pending.iter().find(|p| {
+            p.callee_name == "BaseService"
+                && (p.kind == RelationshipKind::Extends || p.kind == RelationshipKind::Implements)
+        });
 
         assert!(
             pending_inheritance.is_some(),
@@ -443,5 +440,130 @@ class Dog : Animal() {
             has_correct_rel,
             "Should have Extends relationship from Dog to Animal"
         );
+    }
+
+    #[test]
+    fn test_cross_file_constructor_supertype_defaults_to_extends() {
+        let code = r#"
+class Foo : BaseModel() {
+    fun work() { }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "Foo.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_pending_relationships();
+
+        let pending_rel = pending
+            .iter()
+            .find(|p| p.callee_name == "BaseModel")
+            .expect("Should create pending relationship for BaseModel");
+
+        assert_eq!(pending_rel.kind, RelationshipKind::Extends);
+    }
+
+    #[test]
+    fn test_cross_file_interface_supertype_defaults_to_implements_for_classes() {
+        let code = r#"
+class Foo : IService {
+    fun work() { }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "Foo.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_pending_relationships();
+
+        let pending_rel = pending
+            .iter()
+            .find(|p| p.callee_name == "IService")
+            .expect("Should create pending relationship for IService");
+
+        assert_eq!(pending_rel.kind, RelationshipKind::Implements);
+    }
+
+    #[test]
+    fn test_cross_file_interface_source_unresolved_inheritance_defaults_to_extends() {
+        let code = r#"
+interface ChildService : ParentService {
+    fun work()
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "Service.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_pending_relationships();
+
+        let pending_rel = pending
+            .iter()
+            .find(|p| p.callee_name == "ParentService")
+            .expect("Should create pending relationship for ParentService");
+
+        assert_eq!(pending_rel.kind, RelationshipKind::Extends);
+    }
+
+    #[test]
+    fn test_cross_file_enum_conformance_creates_pending_relationship() {
+        let code = r#"
+enum class SyncState : ExternalProtocol {
+    IDLE,
+    RUNNING
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "SyncState.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_pending_relationships();
+
+        let pending_rel = pending
+            .iter()
+            .find(|p| p.callee_name == "ExternalProtocol")
+            .expect("Should create pending relationship for ExternalProtocol");
+
+        assert_eq!(pending_rel.kind, RelationshipKind::Implements);
     }
 }

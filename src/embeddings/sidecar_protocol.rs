@@ -1,6 +1,6 @@
 //! Sidecar IPC protocol contracts for embedding requests/responses.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 use super::EXPECTED_EMBEDDING_DIMENSIONS;

@@ -76,15 +76,17 @@ fn extract_inheritance_relationships(
 ) {
     // Phase 1: Collect data using immutable borrow
     let heritage_data = match node.kind() {
-        "extends_clause" | "class_heritage" | "implements_clause" => {
-            collect_heritage_data(extractor, node, symbols)
-        }
+        "extends_clause"
+        | "class_heritage"
+        | "implements_clause"
+        | "extends_type_clause"
+        | "implements_type_clause" => collect_heritage_data(extractor, node, symbols),
         _ => None,
     };
 
     // Phase 2: Create relationships (may need &mut extractor for pending)
-    if let Some((class_symbol_id, base_types, file_path, relationship_kind)) = heritage_data {
-        for (base_type_name, line_number) in base_types {
+    if let Some((class_symbol_id, base_types, file_path)) = heritage_data {
+        for (base_type_name, line_number, pending_kind) in base_types {
             if let Some(base_symbol) = symbols.iter().find(|s| {
                 s.name == base_type_name
                     && matches!(
@@ -119,7 +121,7 @@ fn extract_inheritance_relationships(
                 extractor.add_pending_relationship(PendingRelationship {
                     from_symbol_id: class_symbol_id.clone(),
                     callee_name: base_type_name,
-                    kind: relationship_kind.clone(),
+                    kind: pending_kind,
                     file_path: file_path.clone(),
                     line_number,
                     confidence: 0.9,
@@ -140,10 +142,10 @@ fn collect_heritage_data(
     extractor: &TypeScriptExtractor,
     node: Node,
     symbols: &[Symbol],
-) -> Option<(String, Vec<(String, u32)>, String, RelationshipKind)> {
-    let parent = node.parent()?;
-    if parent.kind() != "class_declaration" {
-        return None;
+) -> Option<(String, Vec<(String, u32, RelationshipKind)>, String)> {
+    let mut parent = node.parent()?;
+    while parent.kind() != "class_declaration" {
+        parent = parent.parent()?;
     }
 
     let class_name_node = parent.child_by_field_name("name")?;
@@ -152,29 +154,126 @@ fn collect_heritage_data(
         .iter()
         .find(|s| s.name == class_name && s.kind == SymbolKind::Class)?;
 
-    // Determine relationship kind from clause type
-    let relationship_kind = if node.kind() == "implements_clause" {
-        RelationshipKind::Implements
-    } else {
-        RelationshipKind::Extends
-    };
-
     let mut base_types = Vec::new();
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "identifier" || child.kind() == "type_identifier" {
-            let name = extractor.base().get_node_text(&child);
-            let line = (child.start_position().row + 1) as u32;
-            base_types.push((name, line));
+    match node.kind() {
+        "extends_clause" => {
+            collect_clause_targets(extractor, node, RelationshipKind::Extends, &mut base_types)
         }
+        "extends_type_clause" => {
+            collect_clause_targets(extractor, node, RelationshipKind::Extends, &mut base_types)
+        }
+        "implements_clause" => collect_clause_targets(
+            extractor,
+            node,
+            RelationshipKind::Implements,
+            &mut base_types,
+        ),
+        "implements_type_clause" => collect_clause_targets(
+            extractor,
+            node,
+            RelationshipKind::Implements,
+            &mut base_types,
+        ),
+        "class_heritage" => {
+            let mut found_structured_clause = false;
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                match child.kind() {
+                    "extends_clause"
+                    | "implements_clause"
+                    | "extends_type_clause"
+                    | "implements_type_clause" => found_structured_clause = true,
+                    _ => {}
+                }
+            }
+
+            if found_structured_clause {
+                return None;
+            }
+
+            // Direct equivalent: some grammars model class_heritage without nested clause nodes.
+            collect_clause_targets(extractor, node, RelationshipKind::Extends, &mut base_types);
+        }
+        _ => return None,
     }
 
     Some((
         class_symbol.id.clone(),
         base_types,
         extractor.base().file_path.clone(),
-        relationship_kind,
     ))
+}
+
+fn extract_terminal_heritage_identifier(
+    extractor: &TypeScriptExtractor,
+    node: Node,
+) -> Option<(String, u32)> {
+    match node.kind() {
+        "identifier" | "type_identifier" | "property_identifier" => {
+            let name = extractor.base().get_node_text(&node);
+            let line = (node.start_position().row + 1) as u32;
+            Some((name, line))
+        }
+        "generic_type" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                return extract_terminal_heritage_identifier(extractor, name_node);
+            }
+
+            let mut cursor = node.walk();
+            for child in node.named_children(&mut cursor) {
+                if child.kind() == "type_arguments" {
+                    continue;
+                }
+                if let Some(target) = extract_terminal_heritage_identifier(extractor, child) {
+                    return Some(target);
+                }
+            }
+            None
+        }
+        "nested_type_identifier" | "member_expression" | "qualified_name" => {
+            if let Some(property_node) = node
+                .child_by_field_name("name")
+                .or_else(|| node.child_by_field_name("property"))
+                .or_else(|| node.child_by_field_name("right"))
+            {
+                return extract_terminal_heritage_identifier(extractor, property_node);
+            }
+
+            let mut cursor = node.walk();
+            let mut named_children: Vec<Node> = node.named_children(&mut cursor).collect();
+            while let Some(child) = named_children.pop() {
+                if let Some(target) = extract_terminal_heritage_identifier(extractor, child) {
+                    return Some(target);
+                }
+            }
+            None
+        }
+        "type_arguments" | "type_parameter" | "type_parameters" => None,
+        _ => None,
+    }
+}
+
+fn collect_clause_targets(
+    extractor: &TypeScriptExtractor,
+    node: Node,
+    relationship_kind: RelationshipKind,
+    base_types: &mut Vec<(String, u32, RelationshipKind)>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "type_arguments" {
+            continue;
+        }
+
+        if let Some((name, line)) = extract_terminal_heritage_identifier(extractor, child) {
+            base_types.push((name, line, relationship_kind.clone()));
+            // TypeScript only allows a single superclass in extends_clause;
+            // break after the first target to match JS semantics.
+            if relationship_kind == RelationshipKind::Extends {
+                break;
+            }
+        }
+    }
 }
 
 /// Helper to find the function that contains a given node

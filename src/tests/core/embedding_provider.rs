@@ -222,11 +222,15 @@ while True:
     #[test]
     fn test_resolver_auto_prefers_ort_when_sidecar_unavailable() {
         // ORT is preferred everywhere: CoreML EP on macOS, DirectML on Windows, CPU on Linux
-        for (os, arch) in [("macos", "aarch64"), ("linux", "x86_64"), ("windows", "x86_64")] {
+        for (os, arch) in [
+            ("macos", "aarch64"),
+            ("linux", "x86_64"),
+            ("windows", "x86_64"),
+        ] {
             let capabilities = BackendResolverCapabilities {
                 sidecar_available: false,
                 ort_available: true,
-    
+
                 target_os: os,
                 target_arch: arch,
             };
@@ -299,7 +303,7 @@ while True:
             BackendResolverCapabilities {
                 sidecar_available: true,
                 ort_available: true,
-    
+
                 target_os: "macos",
                 target_arch: "aarch64",
             },
@@ -317,7 +321,7 @@ while True:
             BackendResolverCapabilities {
                 sidecar_available: false,
                 ort_available: true,
-    
+
                 target_os: "macos",
                 target_arch: "aarch64",
             },
@@ -335,7 +339,10 @@ while True:
         assert_eq!(policy, vec!["directml", "cpu"]);
 
         #[cfg(not(target_os = "windows"))]
-        assert!(policy.is_empty(), "macOS/Linux should use CPU only (no accelerated EP)");
+        assert!(
+            policy.is_empty(),
+            "macOS/Linux should use CPU only (no accelerated EP)"
+        );
     }
 
     #[cfg(feature = "embeddings-ort")]
@@ -545,7 +552,10 @@ while True:
     async fn test_workspace_init_sidecar_bootstrap_failure_falls_back_to_ort() {
         unsafe {
             std::env::set_var("JULIE_EMBEDDING_PROVIDER", "auto");
-            std::env::set_var("JULIE_EMBEDDING_SIDECAR_ROOT", "/definitely/not/a/sidecar/root");
+            std::env::set_var(
+                "JULIE_EMBEDDING_SIDECAR_ROOT",
+                "/definitely/not/a/sidecar/root",
+            );
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
         }
 
@@ -853,5 +863,4 @@ while True:
             "Expected unknown provider error, got: {err}"
         );
     }
-
 }

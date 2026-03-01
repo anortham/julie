@@ -87,7 +87,9 @@ pub(crate) struct EmbeddingRuntimeLogFields {
     pub fallback_used: bool,
 }
 
-fn embedding_telemetry_confidence(provider_info: Option<&crate::embeddings::DeviceInfo>) -> &'static str {
+fn embedding_telemetry_confidence(
+    provider_info: Option<&crate::embeddings::DeviceInfo>,
+) -> &'static str {
     let Some(info) = provider_info else {
         return "low";
     };

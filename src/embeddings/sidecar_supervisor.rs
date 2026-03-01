@@ -2,13 +2,14 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use tracing::warn;
 
 const DEFAULT_SIDECAR_MODULE: &str = "sidecar.main";
 const SIDECAR_ROOT_ENV: &str = "JULIE_EMBEDDING_SIDECAR_ROOT";
 const SIDECAR_VENV_ENV: &str = "JULIE_EMBEDDING_SIDECAR_VENV";
 const SIDECAR_PROGRAM_ENV: &str = "JULIE_EMBEDDING_SIDECAR_PROGRAM";
+const SIDECAR_RAW_PROGRAM_ENV: &str = "JULIE_EMBEDDING_SIDECAR_RAW_PROGRAM";
 const SIDECAR_SCRIPT_ENV: &str = "JULIE_EMBEDDING_SIDECAR_SCRIPT";
 const SIDECAR_MODULE_ENV: &str = "JULIE_EMBEDDING_SIDECAR_MODULE";
 const SIDECAR_BOOTSTRAP_PYTHON_ENV: &str = "JULIE_EMBEDDING_SIDECAR_BOOTSTRAP_PYTHON";
@@ -40,18 +41,18 @@ pub fn build_sidecar_launch_config() -> Result<SidecarLaunchConfig> {
 
     if let Some(program_override) = std::env::var_os(SIDECAR_PROGRAM_ENV) {
         let program = PathBuf::from(program_override);
-        let args = launch_args(script_override.clone(), &module);
-        let env = if script_override.is_some() {
-            Vec::new()
-        } else {
-            vec![(
-                OsString::from("PYTHONPATH"),
-                build_pythonpath_with_root(&sidecar_root)
-                    .context("sidecar bootstrap failed to prepare PYTHONPATH")?,
-            )]
-        };
+        let raw_program_mode = std::env::var(SIDECAR_RAW_PROGRAM_ENV)
+            .ok()
+            .as_deref()
+            .is_some_and(is_truthy_env_flag);
 
-        return Ok(SidecarLaunchConfig { program, args, env });
+        return build_program_override_launch_config(
+            program,
+            script_override,
+            &module,
+            &sidecar_root,
+            raw_program_mode,
+        );
     }
 
     let venv_path = managed_venv_path();
@@ -128,6 +129,42 @@ fn launch_args(script_override: Option<String>, module: &str) -> Vec<String> {
     }
 }
 
+fn build_program_override_launch_config(
+    program: PathBuf,
+    script_override: Option<String>,
+    module: &str,
+    sidecar_root: &Path,
+    raw_program_mode: bool,
+) -> Result<SidecarLaunchConfig> {
+    if raw_program_mode {
+        return Ok(SidecarLaunchConfig {
+            program,
+            args: Vec::new(),
+            env: Vec::new(),
+        });
+    }
+
+    let args = launch_args(script_override.clone(), module);
+    let env = if script_override.is_some() {
+        Vec::new()
+    } else {
+        vec![(
+            OsString::from("PYTHONPATH"),
+            build_pythonpath_with_root(sidecar_root)
+                .context("sidecar bootstrap failed to prepare PYTHONPATH")?,
+        )]
+    };
+
+    Ok(SidecarLaunchConfig { program, args, env })
+}
+
+fn is_truthy_env_flag(value: &str) -> bool {
+    let normalized = value.trim();
+    normalized == "1"
+        || normalized.eq_ignore_ascii_case("true")
+        || normalized.eq_ignore_ascii_case("on")
+}
+
 /// Try creating the sidecar venv with `uv venv --python 3.X`.
 ///
 /// Returns `Some(Ok(()))` on success, `Some(Err(_))` if uv ran but the venv
@@ -153,9 +190,7 @@ fn try_uv_venv(venv_path: &Path) -> Option<Result<()>> {
 
     // No compatible Python available — auto-install the preferred version.
     let preferred = SUPPORTED_PYTHON_MINORS[0]; // 3.12
-    tracing::info!(
-        "No Python 3.10-3.13 found — installing Python 3.{preferred} via uv"
-    );
+    tracing::info!("No Python 3.10-3.13 found — installing Python 3.{preferred} via uv");
     let install_ok = Command::new("uv")
         .arg("python")
         .arg("install")
@@ -511,8 +546,9 @@ fn run_command(command: &mut Command, error_context: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        install_marker_value, python_version_from_program, INSTALL_MARKER_VERSION,
-        RUNTIME_EDITABLE_REQUIREMENT, SUPPORTED_PYTHON_MINORS,
+        INSTALL_MARKER_VERSION, RUNTIME_EDITABLE_REQUIREMENT, SUPPORTED_PYTHON_MINORS,
+        build_program_override_launch_config, install_marker_value, is_truthy_env_flag,
+        python_version_from_program,
     };
     use std::ffi::OsStr;
     use std::path::Path;
@@ -556,5 +592,69 @@ mod tests {
             }
         }
         // No Python found — skip rather than fail (CI might not have Python).
+    }
+
+    #[test]
+    fn test_program_override_raw_mode_uses_no_implicit_args() {
+        let launch = build_program_override_launch_config(
+            Path::new("/usr/bin/env").to_path_buf(),
+            None,
+            "custom.module",
+            Path::new("/tmp/sidecar"),
+            true,
+        )
+        .expect("raw override launch should build");
+
+        assert_eq!(launch.program, Path::new("/usr/bin/env"));
+        assert!(
+            launch.args.is_empty(),
+            "raw mode should not add implicit args: {:?}",
+            launch.args
+        );
+        assert!(
+            launch.env.is_empty(),
+            "raw mode should not inject env vars: {:?}",
+            launch.env
+        );
+    }
+
+    #[test]
+    fn test_program_override_without_raw_mode_keeps_python_entrypoint_args() {
+        let launch = build_program_override_launch_config(
+            Path::new("/usr/bin/env").to_path_buf(),
+            None,
+            "custom.module",
+            Path::new("/tmp/sidecar"),
+            false,
+        )
+        .expect("override launch should build");
+
+        assert_eq!(launch.program, Path::new("/usr/bin/env"));
+        assert_eq!(
+            launch.args,
+            vec!["-m".to_string(), "custom.module".to_string()]
+        );
+        assert_eq!(launch.env.len(), 1, "expected PYTHONPATH to be injected");
+        assert_eq!(launch.env[0].0, "PYTHONPATH");
+    }
+
+    #[test]
+    fn test_is_truthy_env_flag_accepts_expected_values() {
+        for value in ["1", " true ", "TRUE", "on", "On"] {
+            assert!(
+                is_truthy_env_flag(value),
+                "expected value '{value}' to be truthy"
+            );
+        }
+    }
+
+    #[test]
+    fn test_is_truthy_env_flag_rejects_non_truthy_values() {
+        for value in ["", "0", "false", "off", "yes"] {
+            assert!(
+                !is_truthy_env_flag(value),
+                "expected value '{value}' to be non-truthy"
+            );
+        }
     }
 }

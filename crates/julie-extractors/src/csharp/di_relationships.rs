@@ -11,8 +11,10 @@
 //! at runtime.
 
 use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::csharp::member_type_relationships::{
+    extract_type_name_from_node, find_containing_class,
+};
 use crate::csharp::CSharpExtractor;
-use crate::csharp::member_type_relationships::{extract_type_name_from_node, find_containing_class};
 
 /// DI registration method names that we recognize.
 /// These are the standard Microsoft.Extensions.DependencyInjection methods.
@@ -28,6 +30,10 @@ const DI_REGISTRATION_METHODS: &[&str] = &[
     "TryAddScoped",
     "TryAddTransient",
 ];
+
+fn file_scope_owner_symbol_id(file_path: &str) -> String {
+    format!("file::{}", file_path)
+}
 
 /// Extract `Instantiates` relationships from DI registration calls.
 ///
@@ -78,14 +84,24 @@ pub(crate) fn extract_di_registration_relationships(
         None => return,
     };
 
-    // Find containing class — this is the `from` side of the relationship
-    let containing_class = match find_containing_class(base, node, symbols) {
-        Some(cls) => cls,
-        None => return, // Top-level statements — skip, matching extract_call_relationships behavior
-    };
-
     let file_path = base.file_path.clone();
     let line_number = node.start_position().row as u32 + 1;
+
+    // Prefer containing class when available.
+    // For top-level statements (minimal hosting Program.cs), use deterministic
+    // file-scope owner symbol id if that symbol exists in this file's symbol set.
+    // If no valid owner symbol exists, skip safely instead of emitting dangling IDs.
+    let from_id = match find_containing_class(base, node, symbols) {
+        Some(cls) => cls.id.clone(),
+        None => {
+            let file_owner_id = file_scope_owner_symbol_id(&file_path);
+            if symbols.iter().any(|symbol| symbol.id == file_owner_id) {
+                file_owner_id
+            } else {
+                return;
+            }
+        }
+    };
 
     // Collect type names first (needs immutable borrow on base via extract_type_name_from_node),
     // then emit relationships/pending after (needs mutable borrow for add_pending_relationship).
@@ -97,15 +113,22 @@ pub(crate) fn extract_di_registration_relationships(
         }
     }
 
-    let from_id = containing_class.id.clone();
-
     // Now emit relationships — base borrow is no longer needed
     for type_name in type_names {
         // DI type arguments always refer to types, not constructors.
         // Prefer class/interface/struct matches to avoid hitting a same-named constructor.
         if let Some(target) = symbols
             .iter()
-            .find(|s| s.name == type_name && matches!(s.kind, SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct | SymbolKind::Type))
+            .find(|s| {
+                s.name == type_name
+                    && matches!(
+                        s.kind,
+                        SymbolKind::Class
+                            | SymbolKind::Interface
+                            | SymbolKind::Struct
+                            | SymbolKind::Type
+                    )
+            })
             .or_else(|| symbols.iter().find(|s| s.name == type_name))
         {
             relationships.push(Relationship {

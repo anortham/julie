@@ -119,20 +119,20 @@ pub trait EmbeddingProvider: Send + Sync {
 
 // Re-exports
 pub use factory::{
+    BackendResolverCapabilities, EmbeddingConfig, EmbeddingProviderFactory,
     fallback_backend_after_init_failure, parse_provider_preference, resolve_backend_preference,
     should_disable_for_strict_acceleration, strict_acceleration_enabled_from_env_value,
-    BackendResolverCapabilities, EmbeddingConfig, EmbeddingProviderFactory,
 };
 #[cfg(feature = "embeddings-ort")]
 pub use ort_provider::{
-    ort_execution_provider_policy_kinds, ort_runtime_signal, OrtEmbeddingProvider,
+    OrtEmbeddingProvider, ort_execution_provider_policy_kinds, ort_runtime_signal,
 };
 #[cfg(feature = "embeddings-sidecar")]
 pub use sidecar_protocol::{
-    validate_batch_response, validate_query_response, validate_response_envelope,
     EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, ProtocolError,
     RequestEnvelope, ResponseEnvelope, SIDECAR_EXPECTED_DIMS, SIDECAR_PROTOCOL_SCHEMA,
-    SIDECAR_PROTOCOL_VERSION,
+    SIDECAR_PROTOCOL_VERSION, validate_batch_response, validate_query_response,
+    validate_response_envelope,
 };
 #[cfg(feature = "embeddings-sidecar")]
 pub use sidecar_provider::SidecarEmbeddingProvider;

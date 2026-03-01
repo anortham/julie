@@ -95,7 +95,8 @@ async fn test_manage_workspace_stats_surfaces_embedding_runtime_status() {
         });
     }
 
-    let workspace_id = register_primary_workspace(&handler, &temp_dir.path().to_string_lossy()).await;
+    let workspace_id =
+        register_primary_workspace(&handler, &temp_dir.path().to_string_lossy()).await;
     let tool = ManageWorkspaceTool {
         operation: "stats".to_string(),
         path: None,
@@ -147,7 +148,8 @@ async fn test_manage_workspace_stats_reports_unavailable_when_provider_missing()
         });
     }
 
-    let workspace_id = register_primary_workspace(&handler, &temp_dir.path().to_string_lossy()).await;
+    let workspace_id =
+        register_primary_workspace(&handler, &temp_dir.path().to_string_lossy()).await;
     let tool = ManageWorkspaceTool {
         operation: "stats".to_string(),
         path: None,
@@ -181,7 +183,10 @@ async fn test_manage_workspace_stats_for_reference_workspace_uses_runtime_unavai
     let reference_dir = TempDir::new().unwrap();
     let handler = JulieServerHandler::new().await.unwrap();
     handler
-        .initialize_workspace_with_force(Some(primary_dir.path().to_string_lossy().to_string()), true)
+        .initialize_workspace_with_force(
+            Some(primary_dir.path().to_string_lossy().to_string()),
+            true,
+        )
         .await
         .unwrap();
 
@@ -247,7 +252,8 @@ async fn test_manage_workspace_stats_when_runtime_status_missing_reports_unresol
         ws.embedding_runtime_status = None;
     }
 
-    let workspace_id = register_primary_workspace(&handler, &temp_dir.path().to_string_lossy()).await;
+    let workspace_id =
+        register_primary_workspace(&handler, &temp_dir.path().to_string_lossy()).await;
     let tool = ManageWorkspaceTool {
         operation: "stats".to_string(),
         path: None,

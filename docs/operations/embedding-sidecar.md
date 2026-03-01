@@ -7,7 +7,9 @@ Julie defaults to a Python sidecar runtime for embeddings (`JULIE_EMBEDDING_PROV
 1. Workspace init builds embedding config from env (`JULIE_EMBEDDING_PROVIDER`, `JULIE_EMBEDDING_CACHE_DIR`).
 2. Backend resolver chooses `sidecar` first for `auto` when available.
 3. Sidecar launch config is resolved in this order:
-   - If `JULIE_EMBEDDING_SIDECAR_PROGRAM` is set, Julie launches that program directly.
+   - If `JULIE_EMBEDDING_SIDECAR_PROGRAM` is set, Julie launches that program override.
+     - Default override mode: Julie still applies Python-style entrypoint args (`JULIE_EMBEDDING_SIDECAR_SCRIPT` or `-m JULIE_EMBEDDING_SIDECAR_MODULE`) and may inject `PYTHONPATH`.
+     - Raw override mode (`JULIE_EMBEDDING_SIDECAR_RAW_PROGRAM=1|true|on`): Julie executes the program with no implicit args and no injected env.
    - Otherwise Julie uses a managed venv (`.../embeddings/sidecar/venv`) and launches its Python.
 4. Managed venv behavior:
    - If `uv` is available, creates venv with `uv venv --python 3.12` (handles uv's standalone Python builds correctly).
@@ -23,13 +25,13 @@ Operational caveat (release binaries): default sidecar root is derived from buil
   - Set `JULIE_EMBEDDING_SIDECAR_PROGRAM` to a Python interpreter or sidecar launcher available on the target host.
   - Optionally set `JULIE_EMBEDDING_SIDECAR_SCRIPT` (or `JULIE_EMBEDDING_SIDECAR_MODULE`) for explicit entrypoint control.
   - Or set `JULIE_EMBEDDING_SIDECAR_ROOT` to a valid deployed sidecar package root.
-- If sidecar bootstrap/init fails in `auto` mode and strict mode is off, Julie falls back to `ort`/`candle` when available.
+- If sidecar bootstrap/init fails in `auto` mode and strict mode is off, Julie falls back to `ort` when available.
 
 ## Environment Variables
 
 ### Core embedding controls
 
-- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort|candle` (default: `auto`).
+- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`).
 - `JULIE_EMBEDDING_STRICT_ACCEL`: `1|true|on` enables strict acceleration mode.
   - In strict mode, unaccelerated/degraded runtimes are disabled instead of used.
 - `JULIE_EMBEDDING_CACHE_DIR`: base cache dir.
@@ -41,17 +43,21 @@ Operational caveat (release binaries): default sidecar root is derived from buil
 - `JULIE_EMBEDDING_SIDECAR_ROOT`: sidecar package root (defaults to `python/embeddings_sidecar` in this repo).
 - `JULIE_EMBEDDING_SIDECAR_VENV`: managed venv path override.
 - `JULIE_EMBEDDING_SIDECAR_PROGRAM`: program to execute instead of managed venv Python.
+- `JULIE_EMBEDDING_SIDECAR_RAW_PROGRAM`: truthy flag (`1|true|on`) to run `JULIE_EMBEDDING_SIDECAR_PROGRAM` with no implicit args/env.
 - `JULIE_EMBEDDING_SIDECAR_SCRIPT`: script path to run (used instead of `-m <module>`).
 - `JULIE_EMBEDDING_SIDECAR_MODULE`: module for `-m` launch (default: `sidecar.main`).
 - `JULIE_EMBEDDING_SIDECAR_BOOTSTRAP_PYTHON`: interpreter for creating managed venv.
 - `JULIE_EMBEDDING_SIDECAR_TIMEOUT_MS`: per-request IPC timeout in milliseconds (default: `5000`).
+- `JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS`: health-probe/init timeout in milliseconds (default: `120000`).
+- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: sidecar model id override (default: `BAAI/bge-small-en-v1.5`).
+- `JULIE_EMBEDDING_SIDECAR_BATCH_SIZE`: embedding batch size override for sidecar runtime (default: `32`).
 
 ## Interpreting Health and Stats
 
 `manage_workspace(operation="health")` and `manage_workspace(operation="stats")` report:
 
 - `Runtime`: provider runtime identity.
-- `Backend`: resolved backend (`sidecar`, `ort`, `candle`, `unresolved`).
+- `Backend`: resolved backend (`sidecar`, `ort`, `unresolved`).
 - `Device`: provider device label.
 - `Accelerated`: runtime acceleration flag (`true|false`), and may be `unknown` in `stats` for non-primary workspaces.
 - `Degraded`: reason text if fallback/degraded/unavailable state exists.
@@ -71,9 +77,9 @@ Sidecar telemetry reports the actual device from the Python runtime (e.g., `Runt
 
 - `auto` preference:
   - Tries `sidecar` first.
-  - If sidecar initialization fails and strict mode is off, falls back to `ort` (then `candle` if available and applicable).
+  - If sidecar initialization fails and strict mode is off, falls back to `ort`.
   - Degraded reason includes sidecar failure context.
-- Explicit provider (`sidecar`, `ort`, `candle`): no automatic cross-backend fallback on init failure.
+- Explicit provider (`sidecar`, `ort`): no automatic cross-backend fallback on init failure.
 - Strict acceleration mode (`JULIE_EMBEDDING_STRICT_ACCEL` enabled):
   - Disables embeddings when runtime is unaccelerated/degraded.
   - Disables auto-fallback after init failures.
@@ -88,4 +94,4 @@ Sidecar telemetry reports the actual device from the Python runtime (e.g., `Runt
 | `timed out waiting for sidecar response ...` | Sidecar hung or too slow | Increase `JULIE_EMBEDDING_SIDECAR_TIMEOUT_MS`; inspect sidecar runtime load |
 | `Embedding Status: UNAVAILABLE` with strict acceleration reason | Strict mode rejected unaccelerated/degraded runtime | Disable strict mode or ensure accelerated backend is available |
 | `Backend: ort` with degraded reason mentioning sidecar | Auto sidecar failed and ORT fallback activated | Review degraded reason for root cause; fix sidecar bootstrap/runtime if sidecar is desired |
-| `Unknown embedding provider` | Invalid `JULIE_EMBEDDING_PROVIDER` value | Use one of `auto|sidecar|ort|candle` |
+| `Unknown embedding provider` | Invalid `JULIE_EMBEDDING_PROVIDER` value | Use one of `auto|sidecar|ort` |

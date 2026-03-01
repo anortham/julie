@@ -3,7 +3,6 @@
 #[cfg(test)]
 #[cfg(feature = "embeddings-sidecar")]
 mod tests {
-    use std::process::{Command, Stdio};
     use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
@@ -11,40 +10,26 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::embeddings::{EmbeddingProvider, SidecarEmbeddingProvider};
+    use crate::tests::integration::sidecar_test_helpers::test_python_interpreter;
 
-    fn test_python_interpreter() -> String {
-        if let Ok(override_value) = std::env::var("JULIE_TEST_PYTHON") {
-            let trimmed = override_value.trim();
-            if !trimmed.is_empty() {
-                return trimmed.to_string();
-            }
-        }
-
-        let candidates = if cfg!(target_os = "windows") {
-            vec!["python", "py", "python3"]
-        } else {
-            vec!["python3", "python"]
-        };
-
-        for candidate in candidates {
-            let available = Command::new(candidate)
-                .arg("--version")
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .is_ok_and(|status| status.success());
-            if available {
-                return candidate.to_string();
-            }
-        }
-
-        panic!("No Python interpreter found for tests; set JULIE_TEST_PYTHON");
+    fn build_test_sidecar_provider(
+        mode: &str,
+        dims: usize,
+        marker: Option<&str>,
+    ) -> SidecarEmbeddingProvider {
+        build_test_sidecar_provider_with_timeout(mode, dims, marker, Duration::from_secs(5))
     }
 
-    fn build_test_sidecar_provider(mode: &str, dims: usize, marker: Option<&str>) -> SidecarEmbeddingProvider {
+    fn build_test_sidecar_provider_with_timeout(
+        mode: &str,
+        dims: usize,
+        marker: Option<&str>,
+        timeout: Duration,
+    ) -> SidecarEmbeddingProvider {
         let script = r#"import json
+import os
 import sys
+import time
 
 mode = sys.argv[1]
 dims = int(sys.argv[2])
@@ -83,6 +68,10 @@ while True:
         }
         sys.stdout.write(json.dumps(resp) + "\n")
         sys.stdout.flush()
+        if mode == "exit_after_health_once" and marker and not os.path.exists(marker):
+            with open(marker, "w", encoding="utf-8") as f:
+                f.write("exit_after_health_once")
+            break
         continue
 
     if mode == "error_envelope" and method == "embed_query":
@@ -93,6 +82,31 @@ while True:
             "error": {"code": "boom", "message": "query failed"},
         }
         sys.stdout.write(json.dumps(resp) + "\n")
+        sys.stdout.flush()
+        continue
+
+    if mode == "timeout_once" and method == "embed_query" and marker and not os.path.exists(marker):
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write("timeout_once")
+        time.sleep(5.5)
+
+    if mode == "request_id_mismatch_once_with_stale" and method == "embed_query" and marker and not os.path.exists(marker):
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write("request_id_mismatch_once_with_stale")
+        wrong_resp = {
+            "schema": "julie.embedding.sidecar",
+            "version": 1,
+            "request_id": "wrong-id",
+            "result": {"dims": dims, "vector": [0.5] * dims},
+        }
+        stale_resp = {
+            "schema": "julie.embedding.sidecar",
+            "version": 1,
+            "request_id": req_id,
+            "result": {"dims": dims, "vector": [0.5] * dims},
+        }
+        sys.stdout.write(json.dumps(wrong_resp) + "\n")
+        sys.stdout.write(json.dumps(stale_resp) + "\n")
         sys.stdout.flush()
         continue
 
@@ -117,7 +131,7 @@ while True:
     sys.stdout.flush()
 "#;
 
-        SidecarEmbeddingProvider::try_new_for_command(
+        SidecarEmbeddingProvider::try_new_for_command_with_timeout(
             test_python_interpreter(),
             vec![
                 "-u".to_string(),
@@ -127,6 +141,7 @@ while True:
                 dims.to_string(),
                 marker.unwrap_or("").to_string(),
             ],
+            timeout,
         )
         .expect("test sidecar provider should initialize")
     }
@@ -181,6 +196,78 @@ while True:
             err.to_string().contains("request_id mismatch"),
             "expected request_id mismatch error, got: {err}"
         );
+    }
+
+    #[test]
+    fn test_sidecar_provider_timeout_forces_process_reset() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let marker = temp_dir.path().join("timeout-once.marker");
+        let marker_str = marker.to_string_lossy().to_string();
+        let provider = build_test_sidecar_provider_with_timeout(
+            "timeout_once",
+            384,
+            Some(&marker_str),
+            Duration::from_millis(120),
+        );
+
+        let err = provider
+            .embed_query("first")
+            .expect_err("first request should time out");
+        assert!(
+            err.to_string()
+                .contains("timed out waiting for sidecar response"),
+            "expected timeout error, got: {err}"
+        );
+
+        let embedding = provider
+            .embed_query("second")
+            .expect("provider should recover by resetting process after timeout");
+        assert_eq!(embedding.len(), 384);
+    }
+
+    #[test]
+    fn test_sidecar_provider_exit_before_first_embed_forces_process_reset() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let marker = temp_dir.path().join("exit-after-health-once.marker");
+        let marker_str = marker.to_string_lossy().to_string();
+        let provider =
+            build_test_sidecar_provider("exit_after_health_once", 384, Some(&marker_str));
+
+        let first = provider.embed_query("first");
+        assert!(
+            first.is_err(),
+            "first request should fail after sidecar exits post-health"
+        );
+
+        let embedding = provider
+            .embed_query("second")
+            .expect("provider should respawn sidecar after write-path failure");
+        assert_eq!(embedding.len(), 384);
+    }
+
+    #[test]
+    fn test_sidecar_provider_request_id_mismatch_forces_process_reset() {
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let marker = temp_dir.path().join("request-id-mismatch-once.marker");
+        let marker_str = marker.to_string_lossy().to_string();
+        let provider = build_test_sidecar_provider(
+            "request_id_mismatch_once_with_stale",
+            384,
+            Some(&marker_str),
+        );
+
+        let err = provider
+            .embed_query("first")
+            .expect_err("first request should fail with request_id mismatch");
+        assert!(
+            err.to_string().contains("request_id mismatch"),
+            "expected request_id mismatch error, got: {err}"
+        );
+
+        let embedding = provider
+            .embed_query("second")
+            .expect("provider should recover by resetting process after protocol mismatch");
+        assert_eq!(embedding.len(), 384);
     }
 
     #[test]

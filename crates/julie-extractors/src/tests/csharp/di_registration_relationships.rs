@@ -7,9 +7,9 @@
 //! `Instantiates` relationships from these registrations, we give DI-registered
 //! types the centrality they deserve in search rankings.
 
-use crate::ExtractionResults;
 use crate::base::{RelationshipKind, SymbolKind};
 use crate::factory::extract_symbols_and_relationships;
+use crate::ExtractionResults;
 use std::path::PathBuf;
 use tree_sitter::Parser;
 
@@ -74,11 +74,13 @@ public class Startup {
             None
         }
 
-        let invocation = find_node(root, "invocation_expression")
-            .expect("Should find invocation_expression");
+        let invocation =
+            find_node(root, "invocation_expression").expect("Should find invocation_expression");
 
         // First child should be member_access_expression
-        let member_access = invocation.child(0).expect("invocation should have children");
+        let member_access = invocation
+            .child(0)
+            .expect("invocation should have children");
         assert_eq!(
             member_access.kind(),
             "member_access_expression",
@@ -136,9 +138,7 @@ public class Startup {
         let instantiates: Vec<_> = results
             .relationships
             .iter()
-            .filter(|r| {
-                r.from_symbol_id == startup.id && r.kind == RelationshipKind::Instantiates
-            })
+            .filter(|r| r.from_symbol_id == startup.id && r.kind == RelationshipKind::Instantiates)
             .collect();
 
         let ifoo = results
@@ -155,12 +155,18 @@ public class Startup {
         assert!(
             instantiates.iter().any(|r| r.to_symbol_id == ifoo.id),
             "Should have Instantiates relationship to IFoo.\nFound: {:?}",
-            instantiates.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+            instantiates
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
         );
         assert!(
             instantiates.iter().any(|r| r.to_symbol_id == foo.id),
             "Should have Instantiates relationship to Foo.\nFound: {:?}",
-            instantiates.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+            instantiates
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -196,15 +202,16 @@ public class Startup {
         let instantiates: Vec<_> = results
             .relationships
             .iter()
-            .filter(|r| {
-                r.from_symbol_id == startup.id && r.kind == RelationshipKind::Instantiates
-            })
+            .filter(|r| r.from_symbol_id == startup.id && r.kind == RelationshipKind::Instantiates)
             .collect();
 
         assert!(
             instantiates.iter().any(|r| r.to_symbol_id == my_service.id),
             "Should have Instantiates relationship to MyService.\nFound: {:?}",
-            instantiates.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+            instantiates
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -240,15 +247,16 @@ public class Startup {
         let instantiates: Vec<_> = results
             .relationships
             .iter()
-            .filter(|r| {
-                r.from_symbol_id == startup.id && r.kind == RelationshipKind::Instantiates
-            })
+            .filter(|r| r.from_symbol_id == startup.id && r.kind == RelationshipKind::Instantiates)
             .collect();
 
         assert!(
             instantiates.iter().any(|r| r.to_symbol_id == worker.id),
             "Should have Instantiates relationship to BackgroundWorker.\nFound: {:?}",
-            instantiates.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+            instantiates
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -285,15 +293,16 @@ public class Program {
         let instantiates: Vec<_> = results
             .relationships
             .iter()
-            .filter(|r| {
-                r.from_symbol_id == program.id && r.kind == RelationshipKind::Instantiates
-            })
+            .filter(|r| r.from_symbol_id == program.id && r.kind == RelationshipKind::Instantiates)
             .collect();
 
         assert!(
             instantiates.iter().any(|r| r.to_symbol_id == my_service.id),
             "Chained access (builder.Services.AddScoped) should produce Instantiates.\nFound: {:?}",
-            instantiates.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+            instantiates
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -324,9 +333,7 @@ public class Startup {
         let pending_instantiates: Vec<_> = results
             .pending_relationships
             .iter()
-            .filter(|p| {
-                p.from_symbol_id == startup.id && p.kind == RelationshipKind::Instantiates
-            })
+            .filter(|p| p.from_symbol_id == startup.id && p.kind == RelationshipKind::Instantiates)
             .collect();
 
         assert!(
@@ -381,9 +388,7 @@ public class Startup {
         let instantiates: Vec<_> = results
             .relationships
             .iter()
-            .filter(|r| {
-                r.from_symbol_id == startup.id && r.kind == RelationshipKind::Instantiates
-            })
+            .filter(|r| r.from_symbol_id == startup.id && r.kind == RelationshipKind::Instantiates)
             .collect();
 
         for type_name in &["A", "B", "C"] {
@@ -432,9 +437,7 @@ public class Startup {
         let instantiates: Vec<_> = results
             .relationships
             .iter()
-            .filter(|r| {
-                r.from_symbol_id == startup.id && r.kind == RelationshipKind::Instantiates
-            })
+            .filter(|r| r.from_symbol_id == startup.id && r.kind == RelationshipKind::Instantiates)
             .collect();
 
         assert!(
@@ -450,9 +453,7 @@ public class Startup {
         let pending_instantiates: Vec<_> = results
             .pending_relationships
             .iter()
-            .filter(|p| {
-                p.from_symbol_id == startup.id && p.kind == RelationshipKind::Instantiates
-            })
+            .filter(|p| p.from_symbol_id == startup.id && p.kind == RelationshipKind::Instantiates)
             .collect();
 
         assert!(
@@ -575,6 +576,142 @@ public class Startup {
             assert!(
                 !instantiates.iter().any(|r| r.to_symbol_id == ctor.id),
                 "Instantiates should NOT target the constructor symbol"
+            );
+        }
+    }
+
+    // ========================================================================
+    // TEST 10: Top-level Program.cs registrations use file-level owner fallback
+    // ========================================================================
+
+    #[test]
+    fn test_top_level_program_registration_emits_instantiates() {
+        let code = r#"
+public class LocalService { }
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddScoped<LocalService>();
+builder.Services.AddScoped<IExternalService, ExternalService>();
+"#;
+        let results = extract_full("src/Program.cs", code);
+
+        let expected_from = "file::src/Program.cs";
+
+        let local_service = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "LocalService" && s.kind == SymbolKind::Class)
+            .expect("Should find LocalService class");
+
+        let symbol_ids: std::collections::HashSet<_> =
+            results.symbols.iter().map(|s| s.id.clone()).collect();
+
+        let direct_instantiates: Vec<_> = results
+            .relationships
+            .iter()
+            .filter(|r| {
+                r.kind == RelationshipKind::Instantiates
+                    && r.from_symbol_id == expected_from
+                    && r.to_symbol_id == local_service.id
+            })
+            .collect();
+
+        assert!(
+            !direct_instantiates.is_empty(),
+            "Top-level DI registration should emit direct Instantiates from file-level owner"
+        );
+
+        let pending_instantiates: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| {
+                p.kind == RelationshipKind::Instantiates && p.from_symbol_id == expected_from
+            })
+            .collect();
+
+        assert!(
+            pending_instantiates
+                .iter()
+                .any(|p| p.callee_name == "IExternalService"),
+            "Top-level DI registration should emit pending Instantiates for IExternalService"
+        );
+        assert!(
+            pending_instantiates
+                .iter()
+                .any(|p| p.callee_name == "ExternalService"),
+            "Top-level DI registration should emit pending Instantiates for ExternalService"
+        );
+
+        for rel in &direct_instantiates {
+            assert!(
+                symbol_ids.contains(&rel.from_symbol_id),
+                "Top-level DI direct Instantiates must reference an existing symbol id. from_symbol_id={}",
+                rel.from_symbol_id
+            );
+        }
+
+        for pending in &pending_instantiates {
+            if pending.callee_name == "IExternalService" || pending.callee_name == "ExternalService"
+            {
+                assert!(
+                    symbol_ids.contains(&pending.from_symbol_id),
+                    "Top-level DI pending Instantiates must reference an existing symbol id. from_symbol_id={}",
+                    pending.from_symbol_id
+                );
+            }
+        }
+
+        assert!(
+            results.symbols.iter().any(|s| s.id == expected_from),
+            "Top-level Program.cs should contain deterministic file-scope owner symbol with id {}",
+            expected_from
+        );
+    }
+
+    #[test]
+    fn test_top_level_program_registration_without_local_types_not_dropped() {
+        let code = r#"
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddScoped<IExternalService, ExternalService>();
+"#;
+        let results = extract_full("src/Program.cs", code);
+
+        let expected_from = "file::src/Program.cs";
+        let symbol_ids: std::collections::HashSet<_> =
+            results.symbols.iter().map(|s| s.id.clone()).collect();
+
+        let pending_instantiates: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| {
+                p.kind == RelationshipKind::Instantiates && p.from_symbol_id == expected_from
+            })
+            .collect();
+
+        assert!(
+            pending_instantiates
+                .iter()
+                .any(|p| p.callee_name == "IExternalService"),
+            "Top-level DI should emit pending Instantiates for IExternalService even without local type symbols"
+        );
+        assert!(
+            pending_instantiates
+                .iter()
+                .any(|p| p.callee_name == "ExternalService"),
+            "Top-level DI should emit pending Instantiates for ExternalService even without local type symbols"
+        );
+
+        assert!(
+            symbol_ids.contains(expected_from),
+            "Top-level Program.cs should contain deterministic file-scope owner symbol with id {}",
+            expected_from
+        );
+
+        for pending in pending_instantiates {
+            assert!(
+                symbol_ids.contains(&pending.from_symbol_id),
+                "Top-level DI pending Instantiates must reference existing symbol ids. from_symbol_id={}",
+                pending.from_symbol_id
             );
         }
     }

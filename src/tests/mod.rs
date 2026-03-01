@@ -25,8 +25,8 @@ pub mod core {
     pub mod embedding_deps; // Embedding dependency smoke tests (fastembed + sqlite-vec)
     pub mod embedding_metadata; // Symbol metadata formatting for embeddings
     pub mod embedding_provider; // EmbeddingProvider trait + OrtEmbeddingProvider tests
-    pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
     pub mod embedding_sidecar_protocol; // Sidecar protocol contracts + validation tests
+    pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
     pub mod handler; // MCP handler tests
     pub mod language; // Language detection and support tests
     pub mod tracing; // Tracing and logging tests
@@ -71,8 +71,8 @@ pub mod tools {
         pub mod mod_tests; // Workspace module functionality tests
         pub mod registry; // Workspace registry tests
         pub mod registry_service;
-        pub mod runtime_status_stats; // Stats output embedding runtime status tests
         pub mod resolver; // Cross-file relationship resolution tests
+        pub mod runtime_status_stats; // Stats output embedding runtime status tests
         pub mod utils; // Workspace utilities tests // Registry service tests
     }
 

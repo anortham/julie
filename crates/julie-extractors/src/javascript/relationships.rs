@@ -133,9 +133,9 @@ fn collect_heritage_data(
     node: Node,
     symbols: &[Symbol],
 ) -> Option<(String, Vec<(String, u32)>, String)> {
-    let parent = node.parent()?;
-    if parent.kind() != "class_declaration" {
-        return None;
+    let mut parent = node.parent()?;
+    while parent.kind() != "class_declaration" {
+        parent = parent.parent()?;
     }
 
     let class_name_node = parent.child_by_field_name("name")?;
@@ -145,13 +145,25 @@ fn collect_heritage_data(
         .find(|s| s.name == class_name && s.kind == SymbolKind::Class)?;
 
     let mut base_types = Vec::new();
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "identifier" || child.kind() == "type_identifier" {
-            let name = extractor.base().get_node_text(&child);
-            let line = (child.start_position().row + 1) as u32;
-            base_types.push((name, line));
+    match node.kind() {
+        "extends_clause" => collect_explicit_superclass_targets(extractor, node, &mut base_types),
+        "class_heritage" => {
+            let mut found_structured_clause = false;
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "extends_clause" {
+                    found_structured_clause = true;
+                }
+            }
+
+            if found_structured_clause {
+                return None;
+            }
+
+            // Direct equivalent: some grammars model class_heritage without nested extends_clause.
+            collect_explicit_superclass_targets(extractor, node, &mut base_types);
         }
+        _ => return None,
     }
 
     Some((
@@ -159,6 +171,59 @@ fn collect_heritage_data(
         base_types,
         extractor.base().file_path.clone(),
     ))
+}
+
+fn extract_terminal_heritage_identifier(
+    extractor: &JavaScriptExtractor,
+    node: Node,
+) -> Option<(String, u32)> {
+    match node.kind() {
+        "identifier" | "type_identifier" | "property_identifier" => {
+            let name = extractor.base().get_node_text(&node);
+            let line = (node.start_position().row + 1) as u32;
+            Some((name, line))
+        }
+        "member_expression" => {
+            let object = node
+                .child_by_field_name("object")
+                .or_else(|| node.child_by_field_name("left"))?;
+            let property = node
+                .child_by_field_name("property")
+                .or_else(|| node.child_by_field_name("right"))?;
+
+            // Restrict to explicit identifier/member chains.
+            extract_terminal_heritage_identifier(extractor, object)?;
+            extract_terminal_heritage_identifier(extractor, property)
+        }
+        "parenthesized_expression" => {
+            let expression = node.child_by_field_name("expression")?;
+            extract_terminal_heritage_identifier(extractor, expression)
+        }
+        "call_expression" | "new_expression" => None,
+        _ => {
+            let mut cursor = node.walk();
+            for child in node.named_children(&mut cursor) {
+                if let Some(candidate) = extract_terminal_heritage_identifier(extractor, child) {
+                    return Some(candidate);
+                }
+            }
+            None
+        }
+    }
+}
+
+fn collect_explicit_superclass_targets(
+    extractor: &JavaScriptExtractor,
+    node: Node,
+    base_types: &mut Vec<(String, u32)>,
+) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Some((name, line)) = extract_terminal_heritage_identifier(extractor, child) {
+            base_types.push((name, line));
+            break;
+        }
+    }
 }
 
 /// Helper to find the function that contains a given node

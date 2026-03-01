@@ -1,24 +1,28 @@
 use std::io::{BufRead, BufReader, Write};
+#[cfg(test)]
+use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::Mutex;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use super::sidecar_protocol::{
-    validate_batch_response, validate_query_response, validate_response_envelope,
     EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, RequestEnvelope,
     ResponseEnvelope, SIDECAR_EXPECTED_DIMS, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
+    validate_batch_response, validate_query_response, validate_response_envelope,
 };
-use super::sidecar_supervisor::build_sidecar_launch_config;
+use super::sidecar_supervisor::{SidecarLaunchConfig, build_sidecar_launch_config};
 use super::{DeviceInfo, EmbeddingProvider};
 
 pub struct SidecarEmbeddingProvider {
     process: Mutex<SidecarProcess>,
+    launch_config: SidecarLaunchConfig,
+    response_timeout: Duration,
     device: String,
     sidecar_runtime: String,
     model_id: String,
@@ -30,6 +34,7 @@ struct SidecarProcess {
     stdout_rx: Receiver<Result<String>>,
     request_seq: u64,
     response_timeout: Duration,
+    connection_fatal: bool,
 }
 
 const DEFAULT_SIDECAR_TIMEOUT_MS: u64 = 5000;
@@ -52,65 +57,107 @@ struct HealthResult {
 impl SidecarEmbeddingProvider {
     pub fn try_new() -> Result<Self> {
         let launch = build_sidecar_launch_config()?;
-        let mut command = Command::new(&launch.program);
-        command.args(launch.args);
-        for (key, value) in launch.env {
-            command.env(key, value);
-        }
-
-        Self::spawn_from_command(command)
+        Self::spawn_from_launch_config(launch, read_response_timeout())
     }
 
     #[cfg(test)]
     pub(crate) fn try_new_for_command(program: String, args: Vec<String>) -> Result<Self> {
-        let mut command = Command::new(program);
-        command.args(args);
-        Self::spawn_from_command(command)
+        Self::try_new_for_command_with_timeout(program, args, read_response_timeout())
     }
 
-    fn spawn_from_command(mut command: Command) -> Result<Self> {
-        command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
-
-        let mut child = command
-            .spawn()
-            .context("failed to spawn embedding sidecar")?;
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| anyhow!("sidecar stdin unavailable"))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow!("sidecar stdout unavailable"))?;
-        let stdout_rx = spawn_stdout_reader(stdout);
-        let response_timeout = read_response_timeout();
-
-        let mut process = SidecarProcess {
-            child,
-            stdin,
-            stdout_rx,
-            request_seq: 0,
-            response_timeout,
+    #[cfg(test)]
+    pub(crate) fn try_new_for_command_with_timeout(
+        program: String,
+        args: Vec<String>,
+        response_timeout: Duration,
+    ) -> Result<Self> {
+        let launch = SidecarLaunchConfig {
+            program: PathBuf::from(program),
+            args,
+            env: Vec::new(),
         };
+        Self::spawn_from_launch_config(launch, response_timeout)
+    }
 
-        let health = match process.probe_readiness() {
-            Ok(h) => h,
-            Err(err) => {
-                process.terminate();
-                return Err(err);
-            }
-        };
+    fn spawn_from_launch_config(
+        launch_config: SidecarLaunchConfig,
+        response_timeout: Duration,
+    ) -> Result<Self> {
+        let (process, health) = spawn_process(&launch_config, response_timeout)?;
 
         Ok(Self {
             process: Mutex::new(process),
+            launch_config,
+            response_timeout,
             device: health.device.unwrap_or_else(|| "unknown".to_string()),
-            sidecar_runtime: health.runtime.unwrap_or_else(|| "python-sidecar".to_string()),
-            model_id: health.model_id.unwrap_or_else(|| "BAAI/bge-small-en-v1.5".to_string()),
+            sidecar_runtime: health
+                .runtime
+                .unwrap_or_else(|| "python-sidecar".to_string()),
+            model_id: health
+                .model_id
+                .unwrap_or_else(|| "BAAI/bge-small-en-v1.5".to_string()),
         })
     }
+
+    fn reset_process_if_fatal(&self, process: &mut SidecarProcess) -> Result<()> {
+        if !process.take_connection_fatal() {
+            return Ok(());
+        }
+
+        process.terminate();
+        let (replacement, _) = spawn_process(&self.launch_config, self.response_timeout)
+            .context("failed to respawn sidecar process after connection-fatal error")?;
+        *process = replacement;
+        Ok(())
+    }
+}
+
+fn spawn_process(
+    launch_config: &SidecarLaunchConfig,
+    response_timeout: Duration,
+) -> Result<(SidecarProcess, HealthResult)> {
+    let mut command = Command::new(&launch_config.program);
+    command.args(&launch_config.args);
+    for (key, value) in &launch_config.env {
+        command.env(key, value);
+    }
+
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+
+    let mut child = command
+        .spawn()
+        .context("failed to spawn embedding sidecar")?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow!("sidecar stdin unavailable"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow!("sidecar stdout unavailable"))?;
+    let stdout_rx = spawn_stdout_reader(stdout);
+
+    let mut process = SidecarProcess {
+        child,
+        stdin,
+        stdout_rx,
+        request_seq: 0,
+        response_timeout,
+        connection_fatal: false,
+    };
+
+    let health = match process.probe_readiness() {
+        Ok(h) => h,
+        Err(err) => {
+            process.terminate();
+            return Err(err);
+        }
+    };
+
+    Ok((process, health))
 }
 
 impl EmbeddingProvider for SidecarEmbeddingProvider {
@@ -120,12 +167,18 @@ impl EmbeddingProvider for SidecarEmbeddingProvider {
             .lock()
             .map_err(|_| anyhow!("sidecar process lock poisoned"))?;
 
-        let result: EmbedQueryResult = process.send_request(
+        let result: EmbedQueryResult = match process.send_request(
             "embed_query",
             EmbedQueryRequest {
                 text: text.to_string(),
             },
-        )?;
+        ) {
+            Ok(result) => result,
+            Err(err) => {
+                self.reset_process_if_fatal(&mut process)?;
+                return Err(err);
+            }
+        };
         validate_query_response(&result)?;
         Ok(result.vector)
     }
@@ -140,12 +193,18 @@ impl EmbeddingProvider for SidecarEmbeddingProvider {
             .lock()
             .map_err(|_| anyhow!("sidecar process lock poisoned"))?;
 
-        let result: EmbedBatchResult = process.send_request(
+        let result: EmbedBatchResult = match process.send_request(
             "embed_batch",
             EmbedBatchRequest {
                 texts: texts.to_vec(),
             },
-        )?;
+        ) {
+            Ok(result) => result,
+            Err(err) => {
+                self.reset_process_if_fatal(&mut process)?;
+                return Err(err);
+            }
+        };
         validate_batch_response(&result, texts.len())?;
         Ok(result.vectors)
     }
@@ -177,6 +236,17 @@ impl Drop for SidecarEmbeddingProvider {
 }
 
 impl SidecarProcess {
+    fn mark_connection_fatal(&mut self) {
+        self.connection_fatal = true;
+        self.terminate();
+    }
+
+    fn take_connection_fatal(&mut self) -> bool {
+        let was_fatal = self.connection_fatal;
+        self.connection_fatal = false;
+        was_fatal
+    }
+
     fn next_request_id(&mut self) -> String {
         self.request_seq = self.request_seq.wrapping_add(1);
         format!("req-{}", self.request_seq)
@@ -200,6 +270,7 @@ impl SidecarProcess {
         Params: Serialize,
         Resp: DeserializeOwned,
     {
+        self.connection_fatal = false;
         let request_id = self.next_request_id();
         let envelope = RequestEnvelope {
             schema: SIDECAR_PROTOCOL_SCHEMA.to_string(),
@@ -209,14 +280,22 @@ impl SidecarProcess {
             params,
         };
 
-        serde_json::to_writer(&mut self.stdin, &envelope)
-            .with_context(|| format!("failed to encode sidecar request for method '{method}'"))?;
-        self.stdin
-            .write_all(b"\n")
-            .with_context(|| format!("failed to write sidecar request for method '{method}'"))?;
-        self.stdin
-            .flush()
-            .with_context(|| format!("failed to flush sidecar request for method '{method}'"))?;
+        if let Err(err) = serde_json::to_writer(&mut self.stdin, &envelope) {
+            self.mark_connection_fatal();
+            return Err(err).with_context(|| {
+                format!("failed to encode sidecar request for method '{method}'")
+            });
+        }
+        if let Err(err) = self.stdin.write_all(b"\n") {
+            self.mark_connection_fatal();
+            return Err(err)
+                .with_context(|| format!("failed to write sidecar request for method '{method}'"));
+        }
+        if let Err(err) = self.stdin.flush() {
+            self.mark_connection_fatal();
+            return Err(err)
+                .with_context(|| format!("failed to flush sidecar request for method '{method}'"));
+        }
 
         let line = match self.stdout_rx.recv_timeout(timeout) {
             Ok(Ok(line)) => line,
@@ -230,23 +309,39 @@ impl SidecarProcess {
                     Ok(None) => " (process still running)".to_string(),
                     Err(e) => format!(" (could not check exit status: {e})"),
                 };
+                self.mark_connection_fatal();
                 bail!("sidecar stream error while handling method '{method}': {err}{exit_info}");
             }
             Err(RecvTimeoutError::Timeout) => {
+                self.mark_connection_fatal();
                 bail!(
                     "timed out waiting for sidecar response for method '{method}' after {}ms",
                     timeout.as_millis()
                 );
             }
             Err(RecvTimeoutError::Disconnected) => {
+                self.mark_connection_fatal();
                 bail!("sidecar stdout reader disconnected while handling method '{method}'");
             }
         };
 
-        let envelope: ResponseEnvelope<Resp> = serde_json::from_str(line.trim())
-            .with_context(|| format!("failed to decode sidecar response for method '{method}'"))?;
-        validate_response_envelope(&envelope, &request_id)?;
+        let envelope: ResponseEnvelope<Resp> = match serde_json::from_str(line.trim()) {
+            Ok(envelope) => envelope,
+            Err(err) => {
+                self.mark_connection_fatal();
+                return Err(err).with_context(|| {
+                    format!("failed to decode sidecar response for method '{method}'")
+                });
+            }
+        };
+        if let Err(err) = validate_response_envelope(&envelope, &request_id) {
+            self.mark_connection_fatal();
+            return Err(err);
+        }
 
+        // Application-level error — the Python protocol loop survived and sent a
+        // well-formed error envelope, so the connection is healthy.  Do NOT mark
+        // connection_fatal here; only transport/desync failures warrant a reset.
         if let Some(err) = envelope.error {
             bail!(
                 "sidecar error for method '{method}': [{}] {}",

@@ -4,9 +4,9 @@
 #[cfg(feature = "embeddings-sidecar")]
 mod tests {
     use crate::embeddings::sidecar_protocol::{
-        validate_batch_response, validate_query_response, validate_response_envelope,
         EmbedBatchResult, EmbedQueryResult, ProtocolError, ResponseEnvelope, SIDECAR_EXPECTED_DIMS,
-        SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
+        SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION, validate_batch_response,
+        validate_query_response, validate_response_envelope,
     };
 
     fn ok_query() -> EmbedQueryResult {

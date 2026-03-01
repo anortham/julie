@@ -696,7 +696,10 @@ async fn test_delete_handler_skips_when_file_still_exists() {
 
     // DO NOT delete the file — simulate atomic save where file still exists
     // when we process the DELETE event
-    assert!(test_file.exists(), "File should still exist (atomic save simulation)");
+    assert!(
+        test_file.exists(),
+        "File should still exist (atomic save simulation)"
+    );
 
     // Call deletion handler with absolute path — file still on disk!
     handle_file_deleted_static(absolute_path, &db, &workspace_root)

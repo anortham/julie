@@ -75,6 +75,62 @@ def test_embed_batch_rejects_malformed_params_type() -> None:
     assert "params" in response["error"]["message"]
 
 
+def test_request_rejects_mismatched_schema() -> None:
+    runtime = FakeRuntime()
+    response = dispatch_request(
+        runtime,
+        {
+            "request_id": "schema-1",
+            "schema": "wrong.schema",
+            "version": SIDECAR_PROTOCOL_VERSION,
+            "method": "health",
+            "params": {},
+        },
+    )
+
+    assert response["request_id"] == "schema-1"
+    assert response["error"]["code"] == "invalid_request"
+    assert "schema" in response["error"]["message"]
+    assert SIDECAR_PROTOCOL_SCHEMA in response["error"]["message"]
+
+
+def test_request_rejects_unsupported_version() -> None:
+    runtime = FakeRuntime()
+    response = dispatch_request(
+        runtime,
+        {
+            "request_id": "version-1",
+            "schema": SIDECAR_PROTOCOL_SCHEMA,
+            "version": SIDECAR_PROTOCOL_VERSION + 1,
+            "method": "health",
+            "params": {},
+        },
+    )
+
+    assert response["request_id"] == "version-1"
+    assert response["error"]["code"] == "invalid_request"
+    assert "version" in response["error"]["message"]
+    assert str(SIDECAR_PROTOCOL_VERSION) in response["error"]["message"]
+
+
+def test_request_accepts_matching_schema_and_version() -> None:
+    runtime = FakeRuntime()
+    response = dispatch_request(
+        runtime,
+        {
+            "request_id": "ok-1",
+            "schema": SIDECAR_PROTOCOL_SCHEMA,
+            "version": SIDECAR_PROTOCOL_VERSION,
+            "method": "health",
+            "params": {},
+        },
+    )
+
+    assert response["request_id"] == "ok-1"
+    assert "result" in response
+    assert "error" not in response
+
+
 def test_loop_stops_after_shutdown() -> None:
     runtime = FakeRuntime()
     input_stream = io.StringIO(

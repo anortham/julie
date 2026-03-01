@@ -19,8 +19,8 @@
 use serial_test::serial;
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::pipeline::run_embedding_pipeline;
 use crate::embeddings::OrtEmbeddingProvider;
+use crate::embeddings::pipeline::run_embedding_pipeline;
 use crate::search::hybrid::hybrid_search;
 use crate::search::index::SearchFilter;
 use crate::tests::fixtures::julie_db::JulieTestFixture;

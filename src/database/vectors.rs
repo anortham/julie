@@ -189,8 +189,10 @@ impl SymbolDatabase {
             )",
             placeholders.join(", ")
         );
-        let params: Vec<&dyn rusqlite::types::ToSql> =
-            languages.iter().map(|l| l as &dyn rusqlite::types::ToSql).collect();
+        let params: Vec<&dyn rusqlite::types::ToSql> = languages
+            .iter()
+            .map(|l| l as &dyn rusqlite::types::ToSql)
+            .collect();
         let deleted = self.conn.execute(&sql, params.as_slice())?;
         if deleted > 0 {
             debug!("Purged {deleted} embeddings for non-code languages: {languages:?}");

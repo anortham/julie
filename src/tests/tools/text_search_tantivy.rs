@@ -4,7 +4,9 @@
 //! for both symbol and content searches.
 
 use anyhow::Result;
+use serial_test::serial;
 use std::fs;
+use std::sync::Arc;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
@@ -397,6 +399,130 @@ pub fn example() {
     assert!(
         !results.is_empty(),
         "Content search should find matching file"
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[serial(embedding_env)]
+async fn test_nl_definition_search_can_enable_hybrid_without_prior_index_embedding() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path().to_path_buf();
+
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+pub fn lookup_user_profile(id: u32) -> String {
+    format!("user-{id}")
+}
+"#,
+    )?;
+
+    let handler = JulieServerHandler::new().await?;
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await?;
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    {
+        let mut workspace_guard = handler.workspace.write().await;
+        let workspace = workspace_guard
+            .as_mut()
+            .expect("workspace should be initialized");
+        workspace.embedding_provider = None;
+        workspace.embedding_runtime_status = None;
+    }
+
+    let _ = crate::tools::search::text_search::take_nl_definition_embedding_init_attempts(
+        &workspace_path,
+    );
+
+    let query = "how should user profile lookups work".to_string();
+    let start_barrier = Arc::new(tokio::sync::Barrier::new(3));
+
+    let handler_a = handler.clone();
+    let query_a = query.clone();
+    let barrier_a = start_barrier.clone();
+    let task_a = tokio::spawn(async move {
+        barrier_a.wait().await;
+        crate::tools::search::text_search::text_search_impl(
+            &query_a,
+            &None,
+            &None,
+            10,
+            None,
+            "definitions",
+            None,
+            &handler_a,
+        )
+        .await
+    });
+
+    let handler_b = handler.clone();
+    let query_b = query;
+    let barrier_b = start_barrier.clone();
+    let task_b = tokio::spawn(async move {
+        barrier_b.wait().await;
+        crate::tools::search::text_search::text_search_impl(
+            &query_b,
+            &None,
+            &None,
+            10,
+            None,
+            "definitions",
+            None,
+            &handler_b,
+        )
+        .await
+    });
+
+    start_barrier.wait().await;
+
+    let (result_a, result_b) = tokio::join!(task_a, task_b);
+    let (results_a, _) = result_a??;
+    let (results_b, _) = result_b??;
+
+    assert!(
+        results_a
+            .iter()
+            .any(|symbol| symbol.name == "lookup_user_profile"),
+        "first NL definitions query should return symbol matches"
+    );
+    assert!(
+        results_b
+            .iter()
+            .any(|symbol| symbol.name == "lookup_user_profile"),
+        "second NL definitions query should return symbol matches"
+    );
+
+    let workspace_guard = handler.workspace.read().await;
+    let workspace = workspace_guard
+        .as_ref()
+        .expect("workspace should still be initialized");
+    assert!(
+        workspace.embedding_runtime_status.is_some(),
+        "NL definitions query should trigger deferred embedding init attempt"
+    );
+
+    let init_count = crate::tools::search::text_search::take_nl_definition_embedding_init_attempts(
+        &workspace_path,
+    );
+    assert_eq!(
+        init_count, 1,
+        "concurrent NL definition queries should share one lazy init attempt"
     );
 
     Ok(())

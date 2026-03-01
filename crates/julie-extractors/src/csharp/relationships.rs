@@ -1,11 +1,11 @@
 // C# Relationship Extraction
 
 use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
-use crate::csharp::CSharpExtractor;
 use crate::csharp::member_type_relationships::{
-    extract_field_type_relationships, extract_parameter_type_name, extract_property_type_relationships,
-    find_containing_class,
+    extract_field_type_relationships, extract_parameter_type_name,
+    extract_property_type_relationships, find_containing_class,
 };
+use crate::csharp::CSharpExtractor;
 use tree_sitter::Tree;
 
 /// Extract relationships from the tree
@@ -42,7 +42,10 @@ fn visit_relationships(
         }
         "invocation_expression" => {
             crate::csharp::di_relationships::extract_di_registration_relationships(
-                extractor, node, symbols, relationships,
+                extractor,
+                node,
+                symbols,
+                relationships,
             );
             extract_call_relationships(extractor, node, symbols, relationships);
         }
@@ -130,8 +133,10 @@ fn extract_inheritance_relationships(
             });
         } else {
             // Cross-file: base type is defined in another file.
-            // Use C# naming convention (IFoo = interface) to infer relationship kind.
-            let relationship_kind = if is_interface_name(&base_type_name) {
+            // Use terminal identifier with C# naming convention (IFoo = interface)
+            // so qualified names like Namespace.IFoo still infer Implements.
+            let inferred_name = terminal_identifier(&base_type_name);
+            let relationship_kind = if is_interface_name(inferred_name) {
                 RelationshipKind::Implements
             } else {
                 RelationshipKind::Extends
@@ -155,6 +160,10 @@ fn extract_inheritance_relationships(
 fn is_interface_name(name: &str) -> bool {
     let mut chars = name.chars();
     matches!((chars.next(), chars.next()), (Some('I'), Some(c)) if c.is_ascii_uppercase())
+}
+
+fn terminal_identifier(name: &str) -> &str {
+    name.rsplit('.').next().unwrap_or(name)
 }
 
 /// Extract constructor parameter type relationships (DI injection pattern)

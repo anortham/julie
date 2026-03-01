@@ -1929,7 +1929,11 @@ fn test_compute_reference_scores_propagates_interface_centrality_to_implementati
         .unwrap();
 
     // 3 consumers reference IService (constructor params / field types)
-    for (rel_id, from_id) in [("r1", "consumer1"), ("r2", "consumer2"), ("r3", "consumer3")] {
+    for (rel_id, from_id) in [
+        ("r1", "consumer1"),
+        ("r2", "consumer2"),
+        ("r3", "consumer3"),
+    ] {
         db.conn
             .execute(
                 "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)

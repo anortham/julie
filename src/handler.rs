@@ -333,7 +333,6 @@ impl JulieServerHandler {
             }
         }
     }
-
 }
 
 // Load agent instructions for server info

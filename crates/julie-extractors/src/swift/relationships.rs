@@ -26,7 +26,10 @@ impl SwiftExtractor {
         relationships: &mut Vec<Relationship>,
     ) {
         match node.kind() {
-            "class_declaration" | "struct_declaration" | "extension_declaration" => {
+            "class_declaration"
+            | "struct_declaration"
+            | "enum_declaration"
+            | "extension_declaration" => {
                 self.extract_inheritance_relationships(node, symbols, relationships);
             }
             "call_expression" => {
@@ -50,6 +53,8 @@ impl SwiftExtractor {
         relationships: &mut Vec<Relationship>,
     ) {
         if let Some(type_symbol) = self.find_type_symbol(node, symbols) {
+            let mut inheritance_entry_index = 0usize;
+
             // Try type_inheritance_clause first
             if let Some(inheritance) = node
                 .children(&mut node.walk())
@@ -61,10 +66,12 @@ impl SwiftExtractor {
                         self.add_inheritance_relationship(
                             &type_symbol,
                             &base_type_name,
+                            inheritance_entry_index,
                             symbols,
                             relationships,
                             node,
                         );
+                        inheritance_entry_index += 1;
                     }
                 }
             }
@@ -93,10 +100,12 @@ impl SwiftExtractor {
                     self.add_inheritance_relationship(
                         &type_symbol,
                         &base_type_name,
+                        inheritance_entry_index,
                         symbols,
                         relationships,
                         node,
                     );
+                    inheritance_entry_index += 1;
                 }
             }
         }
@@ -107,6 +116,7 @@ impl SwiftExtractor {
         &mut self,
         type_symbol: &Symbol,
         base_type_name: &str,
+        inheritance_entry_index: usize,
         symbols: &[Symbol],
         relationships: &mut Vec<Relationship>,
         node: Node,
@@ -148,12 +158,23 @@ impl SwiftExtractor {
                 metadata: Some(metadata),
             });
         } else {
-            // Cross-file: base type is defined in another file.
-            // Swift protocols don't have a naming convention, default to Extends.
+            let pending_kind = match type_symbol.kind {
+                SymbolKind::Interface => RelationshipKind::Extends,
+                SymbolKind::Struct | SymbolKind::Enum => RelationshipKind::Implements,
+                SymbolKind::Class => {
+                    if inheritance_entry_index == 0 {
+                        RelationshipKind::Extends
+                    } else {
+                        RelationshipKind::Implements
+                    }
+                }
+                _ => RelationshipKind::Extends,
+            };
+
             self.add_pending_relationship(PendingRelationship {
                 from_symbol_id: type_symbol.id.clone(),
                 callee_name: base_type_name.to_string(),
-                kind: RelationshipKind::Extends,
+                kind: pending_kind,
                 file_path: self.base.file_path.clone(),
                 line_number: (node.start_position().row + 1) as u32,
                 confidence: 0.9,
@@ -225,7 +246,10 @@ impl SwiftExtractor {
                     s.name == type_name
                         && matches!(
                             s.kind,
-                            SymbolKind::Class | SymbolKind::Struct | SymbolKind::Interface
+                            SymbolKind::Class
+                                | SymbolKind::Struct
+                                | SymbolKind::Interface
+                                | SymbolKind::Enum
                         )
                         && s.file_path == self.base.file_path
                 })

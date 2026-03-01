@@ -18,8 +18,8 @@
 use serial_test::serial;
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::pipeline::run_embedding_pipeline;
 use crate::embeddings::OrtEmbeddingProvider;
+use crate::embeddings::pipeline::run_embedding_pipeline;
 use crate::tests::fixtures::julie_db::JulieTestFixture;
 use crate::tools::deep_dive::data::{build_symbol_context, find_symbol};
 use std::sync::{Arc, Mutex};

@@ -383,7 +383,35 @@ class UserModel: Codable {
             .iter()
             .find(|s| s.name == "UserModel")
             .expect("Should extract UserModel class");
+        assert_eq!(codable_pending.unwrap().kind, RelationshipKind::Extends);
         assert_eq!(codable_pending.unwrap().from_symbol_id, user_model.id);
+    }
+
+    #[test]
+    fn test_cross_file_enum_conformance_creates_pending_relationship() {
+        let code = r#"
+enum SyncState: Codable {
+    case idle
+    case syncing
+}
+"#;
+
+        let results = extract_full("SyncState.swift", code);
+
+        let codable_pending = results
+            .pending_relationships
+            .iter()
+            .find(|p| p.callee_name == "Codable")
+            .expect("Should create pending relationship for cross-file Codable protocol");
+
+        assert_eq!(codable_pending.kind, RelationshipKind::Implements);
+
+        let sync_state = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "SyncState")
+            .expect("Should extract SyncState enum");
+        assert_eq!(codable_pending.from_symbol_id, sync_state.id);
     }
 
     #[test]
@@ -436,5 +464,30 @@ class Circle: Drawable {
             has_correct_rel,
             "Should have inheritance relationship from Circle to Drawable"
         );
+    }
+
+    #[test]
+    fn test_cross_file_class_clause_preserves_entry_kind_for_pending_relationships() {
+        let code = r#"
+class Foo: BaseModel, Codable {
+    var id: String = ""
+}
+"#;
+
+        let results = extract_full("Foo.swift", code);
+
+        let base_model_pending = results
+            .pending_relationships
+            .iter()
+            .find(|p| p.callee_name == "BaseModel")
+            .expect("Should create pending relationship for BaseModel");
+        assert_eq!(base_model_pending.kind, RelationshipKind::Extends);
+
+        let codable_pending = results
+            .pending_relationships
+            .iter()
+            .find(|p| p.callee_name == "Codable")
+            .expect("Should create pending relationship for Codable");
+        assert_eq!(codable_pending.kind, RelationshipKind::Implements);
     }
 }

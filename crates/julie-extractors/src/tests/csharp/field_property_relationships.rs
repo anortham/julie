@@ -8,9 +8,10 @@
 //! Without these relationships, important classes like `LuceneIndexService` get
 //! `ref_score: 0` while generic methods like `GetFileName` dominate centrality.
 
-use crate::ExtractionResults;
-use crate::base::{RelationshipKind, SymbolKind};
+use crate::base::{PendingRelationship, RelationshipKind, SymbolKind};
+use crate::csharp::CSharpExtractor;
 use crate::factory::extract_symbols_and_relationships;
+use crate::ExtractionResults;
 use std::path::PathBuf;
 use tree_sitter::Parser;
 
@@ -219,6 +220,58 @@ public class UserService {
     }
 
     // ========================================================================
+    // TEST: Tuple-typed members do not create bogus Uses/pending relationships
+    // ========================================================================
+
+    #[test]
+    fn test_tuple_typed_field_and_property_do_not_create_relationships() {
+        let code = r#"
+public class GeoPoint {
+    private (int a, int b) _coordinates;
+    public (int x, int y) Coordinates { get; set; }
+}
+"#;
+
+        let results = extract_full("src/GeoPoint.cs", code);
+
+        let geo_point = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "GeoPoint" && s.kind == SymbolKind::Class)
+            .expect("Should find GeoPoint class");
+
+        let uses_relationships: Vec<_> = results
+            .relationships
+            .iter()
+            .filter(|r| r.from_symbol_id == geo_point.id && r.kind == RelationshipKind::Uses)
+            .collect();
+
+        assert!(
+            uses_relationships.is_empty(),
+            "Tuple-typed members should not create Uses relationships. Found: {:?}",
+            uses_relationships
+                .iter()
+                .map(|r| format!("{} --{:?}--> {}", r.from_symbol_id, r.kind, r.to_symbol_id))
+                .collect::<Vec<_>>()
+        );
+
+        let pending_uses: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.from_symbol_id == geo_point.id && p.kind == RelationshipKind::Uses)
+            .collect();
+
+        assert!(
+            pending_uses.is_empty(),
+            "Tuple-typed members should not create pending Uses names. Found: {:?}",
+            pending_uses
+                .iter()
+                .map(|p| p.callee_name.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    // ========================================================================
     // TEST: No duplicate when field and constructor share same type
     // ========================================================================
 
@@ -359,6 +412,86 @@ public class OrderController {
                 .iter()
                 .any(|p| p.callee_name == "IPaymentGateway"),
             "Should have pending Uses for IPaymentGateway"
+        );
+    }
+
+    // ========================================================================
+    // TEST: Pending Calls with same callee does not suppress pending Uses
+    // ========================================================================
+
+    #[test]
+    fn test_pending_kind_collision_does_not_suppress_member_type_uses() {
+        let code = r#"
+public class MyService {
+    private ILogger _logger;
+}
+"#;
+
+        let filename = "src/MyService.cs";
+        let mut parser = init_csharp_parser();
+        let tree = parser.parse(code, None).expect("Failed to parse");
+        let workspace_root = PathBuf::from("/test/workspace");
+        let mut extractor = CSharpExtractor::new(
+            "csharp".to_string(),
+            filename.to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let my_service = symbols
+            .iter()
+            .find(|s| s.name == "MyService" && s.kind == SymbolKind::Class)
+            .expect("Should find MyService class");
+
+        extractor.add_pending_relationship(PendingRelationship {
+            from_symbol_id: my_service.id.clone(),
+            callee_name: "ILogger".to_string(),
+            kind: RelationshipKind::Calls,
+            file_path: filename.to_string(),
+            line_number: 2,
+            confidence: 0.7,
+        });
+
+        let relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_pending_relationships();
+
+        let pending_calls_to_ilogger: Vec<_> = pending
+            .iter()
+            .filter(|p| {
+                p.from_symbol_id == my_service.id
+                    && p.kind == RelationshipKind::Calls
+                    && p.callee_name == "ILogger"
+            })
+            .collect();
+
+        assert!(
+            !pending_calls_to_ilogger.is_empty(),
+            "Expected pending Calls relationship for ILogger"
+        );
+
+        let pending_uses_to_ilogger: Vec<_> = pending
+            .iter()
+            .filter(|p| {
+                p.from_symbol_id == my_service.id
+                    && p.kind == RelationshipKind::Uses
+                    && p.callee_name == "ILogger"
+            })
+            .collect();
+
+        assert_eq!(
+            pending_uses_to_ilogger.len(),
+            1,
+            "Pending Calls(ILogger) should not suppress member-type pending Uses(ILogger). Found pending: {:?}, relationships: {:?}",
+            pending
+                .iter()
+                .filter(|p| p.from_symbol_id == my_service.id)
+                .map(|p| (&p.kind, p.callee_name.as_str()))
+                .collect::<Vec<_>>(),
+            relationships
+                .iter()
+                .map(|r| (&r.from_symbol_id, &r.kind, &r.to_symbol_id))
+                .collect::<Vec<_>>()
         );
     }
 }

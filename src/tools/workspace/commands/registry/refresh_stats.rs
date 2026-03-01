@@ -317,11 +317,11 @@ impl ManageWorkspaceTool {
                     Device: {}\n\
                     Accelerated: {}\n\
                     Degraded: {}\n",
-                    device_info.runtime,
-                    runtime.resolved_backend.as_str(),
-                    device_info.device,
-                    runtime.accelerated,
-                    runtime.degraded_reason.as_deref().unwrap_or("none")
+                        device_info.runtime,
+                        runtime.resolved_backend.as_str(),
+                        device_info.device,
+                        runtime.accelerated,
+                        runtime.degraded_reason.as_deref().unwrap_or("none")
                     )
                 }
                 None => format!(

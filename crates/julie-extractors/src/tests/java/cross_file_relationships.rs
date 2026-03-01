@@ -333,9 +333,7 @@ public class Foo extends Bar {
             .filter(|p| p.kind == RelationshipKind::Extends)
             .collect();
 
-        let bar_pending = pending_extends
-            .iter()
-            .find(|p| p.callee_name == "Bar");
+        let bar_pending = pending_extends.iter().find(|p| p.callee_name == "Bar");
         assert!(
             bar_pending.is_some(),
             "Should create PendingRelationship(Extends) for cross-file Bar.\n\

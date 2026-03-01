@@ -41,12 +41,7 @@ mod tests {
     }
 
     /// Helper: create a test symbol with a specific language.
-    fn make_symbol_with_lang(
-        id: &str,
-        name: &str,
-        kind: SymbolKind,
-        language: &str,
-    ) -> Symbol {
+    fn make_symbol_with_lang(id: &str, name: &str, kind: SymbolKind, language: &str) -> Symbol {
         let mut sym = make_symbol(id, name, kind, None, None);
         sym.language = language.to_string();
         sym
@@ -59,15 +54,31 @@ mod tests {
     #[test]
     fn test_embeddable_languages() {
         let code_languages = [
-            "rust", "python", "csharp", "typescript", "javascript", "go", "java",
-            "kotlin", "swift", "cpp", "c", "php", "ruby", "lua", "dart", "zig",
-            "gdscript", "qml", "r", "vue", "bash", "powershell",
+            "rust",
+            "python",
+            "csharp",
+            "typescript",
+            "javascript",
+            "go",
+            "java",
+            "kotlin",
+            "swift",
+            "cpp",
+            "c",
+            "php",
+            "ruby",
+            "lua",
+            "dart",
+            "zig",
+            "gdscript",
+            "qml",
+            "r",
+            "vue",
+            "bash",
+            "powershell",
         ];
         for lang in &code_languages {
-            assert!(
-                is_embeddable_language(lang),
-                "{lang} should be embeddable"
-            );
+            assert!(is_embeddable_language(lang), "{lang} should be embeddable");
         }
     }
 
@@ -465,7 +476,9 @@ mod tests {
             "LuceneIndexService",
             SymbolKind::Class,
             Some("public class LuceneIndexService : ILuceneIndexService"),
-            Some("/// <summary>\n/// Thread-safe Lucene index service with centralized architecture support\n/// </summary>"),
+            Some(
+                "/// <summary>\n/// Thread-safe Lucene index service with centralized architecture support\n/// </summary>",
+            ),
         );
         let text = format_symbol_metadata(&sym);
         assert!(
@@ -486,7 +499,9 @@ mod tests {
             "ProcessPayment",
             SymbolKind::Method,
             None,
-            Some("/// Processes a <see cref=\"Payment\"/> using the <see cref=\"IPaymentGateway\"/> service."),
+            Some(
+                "/// Processes a <see cref=\"Payment\"/> using the <see cref=\"IPaymentGateway\"/> service.",
+            ),
         );
         let text = format_symbol_metadata(&sym);
         assert!(

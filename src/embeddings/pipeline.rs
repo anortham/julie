@@ -6,12 +6,12 @@
 
 use std::sync::{Arc, Mutex};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use tracing::{info, warn};
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::metadata::{prepare_batch_for_embedding, NON_EMBEDDABLE_LANGUAGES};
 use crate::embeddings::EmbeddingProvider;
+use crate::embeddings::metadata::{NON_EMBEDDABLE_LANGUAGES, prepare_batch_for_embedding};
 use crate::extractors::SymbolKind;
 
 /// Batch size for embedding generation (symbols per batch).
@@ -54,9 +54,7 @@ pub fn run_embedding_pipeline(
             .delete_embeddings_for_languages(NON_EMBEDDABLE_LANGUAGES)
             .context("Failed to purge non-code embeddings")?;
         if purged > 0 {
-            info!(
-                "Embedding pipeline: purged {purged} non-code embeddings (markdown, json, etc.)"
-            );
+            info!("Embedding pipeline: purged {purged} non-code embeddings (markdown, json, etc.)");
         }
     }
 
@@ -91,10 +89,7 @@ pub fn run_embedding_pipeline(
         .filter(|s| {
             matches!(
                 s.kind,
-                SymbolKind::Class
-                    | SymbolKind::Struct
-                    | SymbolKind::Interface
-                    | SymbolKind::Trait
+                SymbolKind::Class | SymbolKind::Struct | SymbolKind::Interface | SymbolKind::Trait
             )
         })
         .map(|s| s.id.as_str())
@@ -131,8 +126,7 @@ pub fn run_embedding_pipeline(
         // Generate embeddings — if a batch fails (e.g., DirectML RuntimeError),
         // log the error and stop. Successful batches are already persisted, and
         // the incremental filter will pick up missed symbols on the next run.
-        let total_batches =
-            (prepared.len() + EMBEDDING_BATCH_SIZE - 1) / EMBEDDING_BATCH_SIZE;
+        let total_batches = (prepared.len() + EMBEDDING_BATCH_SIZE - 1) / EMBEDDING_BATCH_SIZE;
         let vectors = match provider.embed_batch(&texts) {
             Ok(v) => v,
             Err(err) => {

@@ -139,11 +139,29 @@ pub(crate) fn find_containing_class<'a>(
             let mut p_cursor = p.walk();
             if let Some(name_node) = p.children(&mut p_cursor).find(|c| c.kind() == "identifier") {
                 let class_name = base.get_node_text(&name_node);
+                let declaration_start_line = p.start_position().row as u32 + 1;
+
+                let exact_match = symbols.iter().find(|s| {
+                    s.name == class_name
+                        && (s.kind == SymbolKind::Class
+                            || s.kind == SymbolKind::Struct
+                            || s.kind == SymbolKind::Type)
+                        && s.file_path == base.file_path
+                        && s.start_line == declaration_start_line
+                });
+
+                if exact_match.is_some() {
+                    return exact_match;
+                }
+
+                // Fallback for malformed/incomplete syntax trees where declaration positions
+                // can drift from extracted symbol spans.
                 return symbols.iter().find(|s| {
                     s.name == class_name
                         && (s.kind == SymbolKind::Class
                             || s.kind == SymbolKind::Struct
                             || s.kind == SymbolKind::Type)
+                        && s.file_path == base.file_path
                 });
             }
             break;
@@ -182,10 +200,11 @@ fn emit_uses_relationship(
     }
 
     // Also check pending relationships
-    let pending_exists = extractor
-        .get_pending_relationships()
-        .iter()
-        .any(|p| p.from_symbol_id == class_symbol_id && p.callee_name == type_name);
+    let pending_exists = extractor.get_pending_relationships().iter().any(|p| {
+        p.from_symbol_id == class_symbol_id
+            && p.kind == RelationshipKind::Uses
+            && p.callee_name == type_name
+    });
     if pending_exists {
         return;
     }
@@ -270,6 +289,7 @@ pub(crate) fn extract_parameter_type_name(
 /// - Nullable: `ILogger?` (nullable_type → unwraps inner)
 /// - Qualified: `Namespace.IType` (qualified_name → last identifier)
 /// - Array: `ILogger[]` (array_type → extracts base)
+/// - Tuple: `(int x, int y)` (tuple_type) → returns None (member tuple shapes are not type deps)
 /// - Predefined: `string`, `int`, `bool` → returns None (not interesting)
 ///
 /// Shared between constructor parameters, field declarations, and property declarations.
@@ -280,6 +300,9 @@ pub(crate) fn extract_type_name_from_node(
     match node.kind() {
         // Skip predefined types (string, int, bool, etc.)
         "predefined_type" => None,
+
+        // Skip tuple types: (int a, int b)
+        "tuple_type" => None,
 
         // Simple type: ILogger, MyClass
         "identifier" => Some(base.get_node_text(&node)),

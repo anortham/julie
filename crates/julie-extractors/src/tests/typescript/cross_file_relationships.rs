@@ -20,8 +20,8 @@ mod tests {
     fn init_typescript_parser() -> Parser {
         let mut parser = Parser::new();
         parser
-            .set_language(&tree_sitter_javascript::LANGUAGE.into())
-            .expect("Error loading JavaScript grammar");
+            .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+            .expect("Error loading TypeScript grammar");
         parser
     }
 
@@ -311,7 +311,7 @@ function caller(): number {
     fn test_cross_file_extends_creates_pending_relationship() {
         // BaseComponent is NOT defined in this file
         let code = r#"
-class MyComponent extends BaseComponent {
+class MyComponent extends Namespace.BaseComponent {
     render() {
         return "hello";
     }
@@ -331,7 +331,7 @@ class MyComponent extends BaseComponent {
             .find(|p| p.callee_name == "BaseComponent");
         assert!(
             base_pending.is_some(),
-            "Should create PendingRelationship(Extends) for cross-file BaseComponent.\n\
+            "Should create PendingRelationship(Extends) for cross-file Namespace.BaseComponent using terminal name BaseComponent.\n\
              Found pending: {:?}",
             pending_extends
                 .iter()
@@ -349,38 +349,69 @@ class MyComponent extends BaseComponent {
 
     #[test]
     fn test_cross_file_implements_creates_pending_relationship() {
-        // IService is NOT defined in this file (TypeScript uses implements keyword)
-        // Note: TypeScript tree-sitter may parse implements differently than extends
+        // IService is NOT defined in this file.
+        // Use qualified name to ensure we keep only the terminal identifier.
         let code = r#"
-class ServiceImpl extends BaseService {
+class ServiceImpl implements Api.IService<Response> {
     serve() { }
 }
 "#;
 
         let results = extract_full("src/service-impl.ts", code);
 
-        // At minimum, the extends should create a pending relationship
-        let pending: Vec<_> = results
+        let pending_implements: Vec<_> = results
             .pending_relationships
             .iter()
-            .filter(|p| {
-                p.kind == RelationshipKind::Extends || p.kind == RelationshipKind::Implements
-            })
+            .filter(|p| p.kind == RelationshipKind::Implements)
+            .collect();
+
+        let iface_pending = pending_implements
+            .iter()
+            .find(|p| p.callee_name == "IService");
+        assert!(
+            iface_pending.is_some(),
+            "Should create PendingRelationship(Implements) with terminal name IService for Api.IService. Found pending: {:?}",
+            results
+                .pending_relationships
+                .iter()
+                .map(|p| (&p.callee_name, &p.kind))
+                .collect::<Vec<_>>()
+        );
+
+        let response_pending = pending_implements
+            .iter()
+            .find(|p| p.callee_name == "Response");
+        assert!(
+            response_pending.is_none(),
+            "Should not extract type argument Response from Api.IService<Response>"
+        );
+    }
+
+    #[test]
+    fn test_cross_file_extends_with_generic_targets_base_only() {
+        let code = r#"
+class FancyWidget extends Base<T> {
+    render() {
+        return "ok";
+    }
+}
+"#;
+
+        let results = extract_full("src/fancy-widget.ts", code);
+
+        let pending_extends: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Extends)
             .collect();
 
         assert!(
-            !pending.is_empty(),
-            "Should create PendingRelationship for cross-file BaseService.\n\
-             Found {} pending inheritance relationships",
-            pending.len()
+            pending_extends.iter().any(|p| p.callee_name == "Base"),
+            "Should create pending extends relationship targeting Base"
         );
-
-        let base_pending = pending
-            .iter()
-            .find(|p| p.callee_name == "BaseService");
         assert!(
-            base_pending.is_some(),
-            "Should have pending relationship for BaseService"
+            pending_extends.iter().all(|p| p.callee_name != "T"),
+            "Should not extract generic type argument T from Base<T>"
         );
     }
 

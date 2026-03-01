@@ -8,7 +8,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sidecar.runtime import build_runtime, _patch_directml_inference_mode, _sanitize_texts
+from sidecar.runtime import (
+    build_runtime,
+    _patch_directml_inference_mode,
+    _sanitize_texts,
+)
 
 
 def _torch_stub(*, cuda: bool = False, mps: bool = False, mps_callable: bool = True):
@@ -155,12 +159,29 @@ def test_missing_torch_dependency_error_is_clear(
 
 
 def test_device_selection_prefers_directml_over_cpu() -> None:
+    captured_device = []
+
+    def _capture_factory(**kwargs):
+        captured_device.append(kwargs["device"])
+        return _GoodModel()
+
+    rt = build_runtime(
+        model_factory=_capture_factory,
+        torch_module=_torch_stub(cuda=False, mps=False),
+        dml_module=_dml_stub(available=True),
+    )
+    assert captured_device == ["privateuseone:0"]
+    assert rt.device == "directml:0"
+    assert rt.metadata()["device"] == "directml:0"
+
+
+def test_device_selection_normalizes_directml_label() -> None:
     rt = build_runtime(
         model_factory=lambda **_kwargs: _GoodModel(),
         torch_module=_torch_stub(cuda=False, mps=False),
         dml_module=_dml_stub(available=True),
     )
-    assert rt.device == "privateuseone:0"
+    assert rt.device.startswith("directml")
 
 
 def test_device_selection_prefers_cuda_over_directml() -> None:
@@ -229,15 +250,14 @@ def test_directml_inference_mode_patch_is_idempotent() -> None:
     assert fake_torch.inference_mode is first_patched
 
 
-def test_directml_patch_applied_before_model_load() -> None:
+def test_directml_patch_is_active_when_model_factory_runs() -> None:
     """When DirectML is selected, the inference_mode patch should be
     applied before the model factory is called."""
-    patch_was_active = []
+    patch_was_active_at_factory_call = []
 
-    def checking_factory(**kwargs):
-        # Record whether inference_mode was patched when factory runs
-        patch_was_active.append(
-            hasattr(kwargs.get("_torch_ref", _torch), "_original_inference_mode")
+    def checking_factory(**_kwargs):
+        patch_was_active_at_factory_call.append(
+            hasattr(_torch, "_original_inference_mode")
         )
         return _GoodModel()
 
@@ -248,11 +268,11 @@ def test_directml_patch_applied_before_model_load() -> None:
     _torch.enable_grad = lambda: None
 
     rt = build_runtime(
-        model_factory=lambda **_kwargs: _GoodModel(),
+        model_factory=checking_factory,
         torch_module=_torch,
         dml_module=_dml_stub(available=True),
     )
-    # The torch module should have been patched
+    assert patch_was_active_at_factory_call == [True]
     assert hasattr(_torch, "_original_inference_mode")
 
 
@@ -307,6 +327,7 @@ def test_embed_batch_binary_search_fallback() -> None:
             if len(texts) > 1:
                 raise TypeError("TextEncodeInput must be ...")
             import numpy as np
+
             return np.random.rand(1, 384).astype(np.float32)
 
     rt = build_runtime(

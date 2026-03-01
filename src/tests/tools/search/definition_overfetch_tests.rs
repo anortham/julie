@@ -190,7 +190,14 @@ mod tests {
     fn test_definition_kinds_all_promoted() {
         // All "definition-like" kinds should be in the top tier
         let definition_kinds = vec![
-            "class", "struct", "interface", "trait", "enum", "function", "method", "constructor",
+            "class",
+            "struct",
+            "interface",
+            "trait",
+            "enum",
+            "function",
+            "method",
+            "constructor",
         ];
 
         for def_kind in &definition_kinds {
@@ -215,23 +222,23 @@ mod tests {
         // Tier 2: exact name + non-definition kind
         // Tier 3: non-exact matches
         let mut results = vec![
-            make_result_with_kind("other_fn", "src/other.rs", 10.0, "function"),   // tier 3
-            make_result_with_kind("Config", "src/import1.rs", 8.0, "import"),      // tier 2
-            make_result_with_kind("Config", "src/config.rs", 3.0, "struct"),       // tier 1
+            make_result_with_kind("other_fn", "src/other.rs", 10.0, "function"), // tier 3
+            make_result_with_kind("Config", "src/import1.rs", 8.0, "import"),    // tier 2
+            make_result_with_kind("Config", "src/config.rs", 3.0, "struct"),     // tier 1
             make_result_with_kind("ConfigHelper", "src/helper.rs", 7.0, "function"), // tier 3
-            make_result_with_kind("Config", "src/import2.rs", 5.0, "import"),      // tier 2
-            make_result_with_kind("Config", "src/trait.rs", 2.0, "trait"),         // tier 1
+            make_result_with_kind("Config", "src/import2.rs", 5.0, "import"),    // tier 2
+            make_result_with_kind("Config", "src/trait.rs", 2.0, "trait"),       // tier 1
         ];
 
         promote_exact_name_matches(&mut results, "Config");
 
         // Tier 1: definitions, in original order
-        assert_eq!(results[0].file_path, "src/config.rs");    // struct
-        assert_eq!(results[1].file_path, "src/trait.rs");     // trait
+        assert_eq!(results[0].file_path, "src/config.rs"); // struct
+        assert_eq!(results[1].file_path, "src/trait.rs"); // trait
 
         // Tier 2: non-definition exact matches, in original order
-        assert_eq!(results[2].file_path, "src/import1.rs");   // import
-        assert_eq!(results[3].file_path, "src/import2.rs");   // import
+        assert_eq!(results[2].file_path, "src/import1.rs"); // import
+        assert_eq!(results[3].file_path, "src/import2.rs"); // import
 
         // Tier 3: non-matches, in original order
         assert_eq!(results[4].file_path, "src/other.rs");

@@ -62,6 +62,12 @@ def _patch_directml_inference_mode(torch_module: Any) -> None:
     )
 
 
+def _normalize_device_telemetry(device: str) -> str:
+    if device.startswith("privateuseone"):
+        return device.replace("privateuseone", "directml", 1)
+    return device
+
+
 def _sanitize_texts(texts: Sequence[Any]) -> list[str]:
     """Ensure every element is a non-empty string the tokenizer can handle.
 
@@ -226,23 +232,26 @@ def build_runtime(
         except ModuleNotFoundError:
             pass
 
-    device = _select_device(torch, dml_module)
+    backend_device = _select_device(torch, dml_module)
+    telemetry_device = _normalize_device_telemetry(backend_device)
 
     # DirectML crashes with torch.inference_mode() — patch before importing
     # sentence_transformers which uses it at import time in decorators.
-    if device not in ("cuda", "mps", "cpu"):
+    if telemetry_device not in ("cuda", "mps", "cpu"):
         _patch_directml_inference_mode(torch)
 
     if model_factory is not None:
-        model = model_factory(model_id=model_id, device=device)
+        model = model_factory(model_id=model_id, device=backend_device)
     else:
         sentence_transformers = _import_module("sentence_transformers")
-        model = sentence_transformers.SentenceTransformer(model_id, device=device)
+        model = sentence_transformers.SentenceTransformer(
+            model_id, device=backend_device
+        )
 
     return SentenceTransformerRuntime(
         model,
         model_id=model_id,
-        device=device,
+        device=telemetry_device,
         batch_size=batch_size,
     )
 

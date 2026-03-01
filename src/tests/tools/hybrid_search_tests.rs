@@ -7,8 +7,8 @@
 /// Formula: RRF(d) = Σ 1/(k + rank) where rank is 1-based position.
 #[cfg(test)]
 mod tests {
-    use crate::search::hybrid::rrf_merge;
     use crate::search::SymbolSearchResult;
+    use crate::search::hybrid::rrf_merge;
 
     /// Helper to build a minimal SymbolSearchResult for testing.
     fn make_result(id: &str, name: &str, score: f32) -> SymbolSearchResult {

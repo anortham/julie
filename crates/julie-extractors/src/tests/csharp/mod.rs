@@ -47,12 +47,12 @@ pub(crate) fn get_csharp_visibility(symbol: &Symbol) -> String {
 }
 
 pub mod constructor_relationships;
-pub mod field_property_relationships;
 pub mod core;
 pub mod cross_file_relationships;
+pub mod di_registration_relationships;
+pub mod field_property_relationships;
 pub mod identifier_extraction;
 pub mod language_features;
 pub mod metadata;
 pub mod runtime;
 mod types; // Phase 4: Type extraction verification tests
-pub mod di_registration_relationships;

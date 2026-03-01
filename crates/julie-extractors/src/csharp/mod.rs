@@ -12,17 +12,19 @@
 // - Inheritance and implementation relationships
 // - Modern C# features (nullable types, records, pattern matching)
 
-mod helpers;
-pub(crate) mod member_type_relationships;
 pub(crate) mod di_relationships;
+mod helpers;
 mod identifiers;
+pub(crate) mod member_type_relationships;
 mod members;
 mod operators;
 mod relationships;
 mod type_inference;
 mod types;
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
+};
 use std::collections::HashMap;
 use tree_sitter::Tree;
 
@@ -34,6 +36,55 @@ pub struct CSharpExtractor {
 }
 
 impl CSharpExtractor {
+    fn has_top_level_global_statement(root: tree_sitter::Node) -> bool {
+        // Global statements are always direct children of the compilation_unit root
+        // in C# — no need to recurse into classes or namespaces.
+        let mut cursor = root.walk();
+        root.children(&mut cursor)
+            .any(|c| c.kind() == "global_statement")
+    }
+
+    fn ensure_file_scope_symbol(&mut self, root: tree_sitter::Node, symbols: &mut Vec<Symbol>) {
+        if !Self::has_top_level_global_statement(root) {
+            return;
+        }
+
+        let file_symbol_id = format!("file::{}", self.base.file_path);
+        if symbols.iter().any(|s| s.id == file_symbol_id) {
+            return;
+        }
+
+        let start_pos = root.start_position();
+        let end_pos = root.end_position();
+        let file_symbol = Symbol {
+            id: file_symbol_id.clone(),
+            name: self.base.file_path.clone(),
+            kind: SymbolKind::Module,
+            language: self.base.language.clone(),
+            file_path: self.base.file_path.clone(),
+            start_line: (start_pos.row + 1) as u32,
+            start_column: start_pos.column as u32,
+            end_line: (end_pos.row + 1) as u32,
+            end_column: end_pos.column as u32,
+            start_byte: root.start_byte() as u32,
+            end_byte: root.end_byte() as u32,
+            signature: None,
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: Some(1.0),
+            code_context: None,
+            content_type: None,
+        };
+
+        self.base
+            .symbol_map
+            .insert(file_symbol_id, file_symbol.clone());
+        symbols.push(file_symbol);
+    }
+
     /// Create new C# extractor
     pub fn new(
         language: String,
@@ -65,7 +116,9 @@ impl CSharpExtractor {
     /// Extract symbols from C# code - port of extractSymbols method
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {
         let mut symbols = Vec::new();
-        self.walk_tree(tree.root_node(), &mut symbols, None);
+        let root = tree.root_node();
+        self.walk_tree(root, &mut symbols, None);
+        self.ensure_file_scope_symbol(root, &mut symbols);
         symbols
     }
 

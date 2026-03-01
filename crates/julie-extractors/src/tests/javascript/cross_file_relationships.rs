@@ -310,7 +310,7 @@ function caller() {
     fn test_cross_file_extends_creates_pending_relationship() {
         // BaseComponent is NOT defined in this file
         let code = r#"
-class MyWidget extends BaseComponent {
+class MyWidget extends Namespace.BaseComponent {
     render() {
         return "hello";
     }
@@ -330,7 +330,7 @@ class MyWidget extends BaseComponent {
             .find(|p| p.callee_name == "BaseComponent");
         assert!(
             base_pending.is_some(),
-            "Should create PendingRelationship(Extends) for cross-file BaseComponent.\n\
+            "Should create PendingRelationship(Extends) for cross-file Namespace.BaseComponent using terminal name BaseComponent.\n\
              Found pending: {:?}",
             pending_extends
                 .iter()
@@ -389,6 +389,34 @@ class Dog extends Animal {
         assert!(
             has_correct_rel,
             "Should have Extends relationship from Dog to Animal"
+        );
+    }
+
+    #[test]
+    fn test_cross_file_extends_with_mixin_call_skips_complex_superclass_expression() {
+        let code = r#"
+class FancyWidget extends mixin(BaseComponent) {
+    render() {
+        return "hello";
+    }
+}
+"#;
+
+        let results = extract_full("src/fancy-widget.js", code);
+
+        let pending_extends: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Extends)
+            .collect();
+
+        assert!(
+            pending_extends.is_empty(),
+            "Should skip complex superclass expression mixin(BaseComponent), not infer pending BaseComponent or mixin. Found pending: {:?}",
+            pending_extends
+                .iter()
+                .map(|p| (&p.callee_name, &p.kind))
+                .collect::<Vec<_>>()
         );
     }
 }
