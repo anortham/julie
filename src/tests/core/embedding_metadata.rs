@@ -1242,6 +1242,95 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_select_budgeted_variables_noise_penalty_no_double_dip_with_short_name() {
+        // Regression test: a known noise name like "i" is BOTH in NOISE_NAMES AND
+        // has len <= 2.  The old code applied BOTH penalties (0.50 + 0.15 = 0.65),
+        // but they should be mutually exclusive (just 0.50).
+        //
+        // With ref_score = 0.55:
+        //   Fixed code:  0.55 - 0.50 = 0.05  → beats baseline (0.0) → selected
+        //   Old code:    0.55 - 0.65 = -0.10  → loses to baseline  → NOT selected
+        let symbols = vec![
+            make_symbol(
+                "var_noise",
+                "i",
+                SymbolKind::Variable,
+                Some("let i = get_index();"), // non-default signature to avoid extra penalty
+                None,
+            ),
+            make_symbol(
+                "var_baseline",
+                "count",
+                SymbolKind::Variable,
+                Some("let count = tally();"),
+                None,
+            ),
+        ];
+
+        let reference_scores = HashMap::from([
+            ("var_noise".to_string(), 0.55_f64),
+            ("var_baseline".to_string(), 0.0_f64),
+        ]);
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 2, &policy);
+        // Both should be selected, but "i" must rank FIRST (higher score).
+        // Under the old double-dip bug, "i" would score -0.10 and rank below baseline.
+        assert_eq!(selected.len(), 2);
+        assert_eq!(
+            selected[0].0, "var_noise",
+            "Noise name 'i' with ref_score=0.55 should rank first (penalty=0.50, score=0.05); \
+             double-dip would give penalty=0.65, score=-0.10 and push it below baseline"
+        );
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_unknown_short_name_gets_smaller_penalty() {
+        // A 2-character name NOT in NOISE_NAMES should get the short-name penalty
+        // (0.20), not the noise-name penalty (0.50).
+        //
+        // "mx" with ref_score = 0.25:
+        //   Correct (0.20 penalty): 0.25 - 0.20 = 0.05  → beats baseline
+        //   Wrong (0.50 penalty):   0.25 - 0.50 = -0.25  → loses to baseline
+        let symbols = vec![
+            make_symbol(
+                "var_short",
+                "mx",
+                SymbolKind::Variable,
+                Some("let mx = compute_max();"),
+                None,
+            ),
+            make_symbol(
+                "var_baseline",
+                "total",
+                SymbolKind::Variable,
+                Some("let total = sum();"),
+                None,
+            ),
+        ];
+
+        let reference_scores = HashMap::from([
+            ("var_short".to_string(), 0.25_f64),
+            ("var_baseline".to_string(), 0.0_f64),
+        ]);
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0,
+        };
+
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 2, &policy);
+        assert_eq!(selected.len(), 2);
+        assert_eq!(
+            selected[0].0, "var_short",
+            "Unknown short name 'mx' should get -0.20 penalty (score=0.05), not -0.50 (score=-0.25); \
+             it should rank above the zero-score baseline"
+        );
+    }
+
     // ---- has_simple_default_literal unit tests ----
 
     #[test]
