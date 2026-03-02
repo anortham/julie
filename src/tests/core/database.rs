@@ -2116,3 +2116,29 @@ fn test_delete_embeddings_for_symbol_ids_only_removes_requested_rows() {
     assert!(!remaining.contains("sym_a"));
     assert!(!remaining.contains("sym_c"));
 }
+
+#[test]
+fn test_delete_embeddings_for_symbol_ids_batches_large_inputs() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let existing_ids: Vec<String> = (0..10).map(|i| format!("present_{i}")).collect();
+    let embeddings: Vec<(String, Vec<f32>)> = existing_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.clone(), vec![i as f32; 384]))
+        .collect();
+    db.store_embeddings(&embeddings).unwrap();
+    assert_eq!(db.embedding_count().unwrap(), 10);
+
+    let mut delete_ids: Vec<String> = (0..40_000).map(|i| format!("missing_{i}")).collect();
+    delete_ids.extend(existing_ids.iter().cloned());
+
+    let deleted = db.delete_embeddings_for_symbol_ids(&delete_ids).unwrap();
+    assert_eq!(deleted, existing_ids.len());
+    assert_eq!(db.embedding_count().unwrap(), 0);
+
+    let remaining_ids = db.get_embedded_symbol_ids().unwrap();
+    assert!(remaining_ids.is_empty());
+}

@@ -69,26 +69,31 @@ impl SymbolDatabase {
     ///
     /// Returns the number of deleted rows.
     pub fn delete_embeddings_for_symbol_ids(&mut self, symbol_ids: &[String]) -> Result<usize> {
+        const MAX_SQLITE_BIND_PARAMS_PER_DELETE: usize = 900;
+
         if symbol_ids.is_empty() {
             return Ok(0);
         }
 
-        let placeholders: Vec<&str> = symbol_ids.iter().map(|_| "?").collect();
-        let sql = format!(
-            "DELETE FROM symbol_vectors WHERE symbol_id IN ({})",
-            placeholders.join(", ")
-        );
-        let params: Vec<&dyn rusqlite::types::ToSql> = symbol_ids
-            .iter()
-            .map(|id| id as &dyn rusqlite::types::ToSql)
-            .collect();
-        let deleted = self.conn.execute(&sql, params.as_slice())?;
-
-        if deleted > 0 {
-            debug!("Deleted {deleted} embeddings for selected symbol IDs");
+        let mut total_deleted = 0;
+        for chunk in symbol_ids.chunks(MAX_SQLITE_BIND_PARAMS_PER_DELETE) {
+            let placeholders: Vec<&str> = chunk.iter().map(|_| "?").collect();
+            let sql = format!(
+                "DELETE FROM symbol_vectors WHERE symbol_id IN ({})",
+                placeholders.join(", ")
+            );
+            let params: Vec<&dyn rusqlite::types::ToSql> = chunk
+                .iter()
+                .map(|id| id as &dyn rusqlite::types::ToSql)
+                .collect();
+            total_deleted += self.conn.execute(&sql, params.as_slice())?;
         }
 
-        Ok(deleted)
+        if total_deleted > 0 {
+            debug!("Deleted {total_deleted} embeddings for selected symbol IDs");
+        }
+
+        Ok(total_deleted)
     }
 
     /// Delete embedding rows that no longer have a matching symbol.

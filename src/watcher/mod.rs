@@ -306,7 +306,7 @@ impl IncrementalIndexer {
                                 &embedding_provider,
                                 crate::utils::paths::to_relative_unix_style(&to, &workspace_root),
                             ) {
-                                if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(
+                                if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(
                                     &db,
                                     provider.as_ref(),
                                     &rel_to,
@@ -350,7 +350,7 @@ impl IncrementalIndexer {
                     } else if let (Some(provider), Some(rel)) =
                         (&self.embedding_provider, &rel_path)
                     {
-                        if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(
+                        if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(
                             &self.db,
                             provider.as_ref(),
                             rel,
@@ -406,7 +406,7 @@ impl IncrementalIndexer {
                         &self.embedding_provider,
                         crate::utils::paths::to_relative_unix_style(&to, &self.workspace_root),
                     ) {
-                        if let Err(e) = crate::embeddings::pipeline::embed_symbols_for_file(
+                        if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(
                             &self.db,
                             provider.as_ref(),
                             &rel_to,
