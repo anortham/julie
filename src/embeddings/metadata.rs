@@ -221,16 +221,17 @@ fn variable_noise_penalty(symbol: &Symbol) -> f64 {
     let mut penalty = 0.0;
     let lower = symbol.name.to_lowercase();
 
-    if lower.len() <= 2 {
-        penalty += 0.30;
-    }
+    // Noise-name and short-name penalties are mutually exclusive — no double-dipping.
+    // Known noise names get one consolidated penalty; unknown short names get a smaller one.
+    const NOISE_NAMES: &[&str] = &[
+        "i", "j", "k", "x", "y", "z", "n", "tmp", "temp", "var", "val", "obj", "data", "res",
+        "req",
+    ];
 
-    if [
-        "i", "j", "k", "x", "y", "z", "n", "tmp", "temp", "var", "val", "obj", "data", "res", "req",
-    ]
-    .contains(&lower.as_str())
-    {
-        penalty += 0.35;
+    if NOISE_NAMES.contains(&lower.as_str()) {
+        penalty += 0.50;
+    } else if lower.len() <= 2 {
+        penalty += 0.20;
     }
 
     if let Some(signature) = &symbol.signature {
