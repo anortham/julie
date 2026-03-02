@@ -2,12 +2,11 @@
 
 ## Open Items
 
-- [ ] **Re-evaluate variable kind exclusion from embeddings**
-  - Currently 4,521 variables excluded in LabHandbookV2 alone — includes Vue composables (`usePagesStore`), store exports, and other functionally important symbols
-  - Most variables ARE noise (locals, loop counters), so a blanket inclusion would hurt signal-to-noise
-  - Needs a smarter heuristic: e.g., only embed exported/public variables, or variables with high centrality scores
-  - Consider the JS/TS pattern where `const useXyz = () => { ... }` is functionally a module/class
-  - Trade-off: more embeddings = slower pipeline, but GPU sidecar mitigates this
+- [ ] **Re-evaluate variable kind exclusion from embeddings** (implementation landed, benchmark run pending)
+  - [x] Implemented budgeted variable embedding policy (deterministic ranking + `20%` cap)
+  - [x] Added stale variable vector cleanup and full/incremental policy parity
+  - [x] Added dogfood metrics scaffold (`Hit@k`, `MRR@10`, `OffTopic@5`, `CrossLangRecall@5`) + JSONL fixture loader
+  - [ ] Run baseline vs candidate benchmark on `LabHandbookV2` reference workspace and record quality/overhead deltas
 
 ## Recently Completed
 

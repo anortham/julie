@@ -195,6 +195,26 @@ Enable by default only after:
 | Incremental and full pipeline diverge | Non-reproducible behavior | Share policy logic between full and incremental paths |
 | Stale vectors remain after policy changes | Silent quality regression | Explicit variable-vector cleanup before store on full runs |
 
+## Implementation Status (2026-03-01)
+
+### Landed
+
+- Budgeted variable selection is implemented in `src/embeddings/metadata.rs` and integrated into full and incremental embedding flows in `src/embeddings/pipeline.rs`.
+- Stale variable vectors are explicitly removed when policy deselects them.
+- Dogfood evaluation scaffolding is implemented in `src/tests/tools/search_quality/labhandbook_dogfood.rs` with fixture seed data in `fixtures/benchmarks/labhandbookv2_dogfood_queries.jsonl`.
+
+### Fresh verification evidence
+
+- `cargo test --lib embedding_metadata -- --nocapture` -> `43 passed; 0 failed`
+- `cargo test --lib embedding_incremental -- --nocapture` -> `11 passed; 0 failed`
+- `cargo test --lib labhandbook_dogfood -- --nocapture` -> `13 passed; 0 failed; 1 ignored`
+- `cargo test --lib -- --skip search_quality` -> `894 passed; 0 failed; 23 ignored`
+
+### Pending for promotion decision
+
+- Run A/B benchmark on real `LabHandbookV2` dogfood queries with the reference workspace attached.
+- Record metric deltas (`Hit@k`, `MRR@10`, `OffTopic@5`, `CrossLangRecall@5`) and overhead deltas against the `+20%` gates.
+
 ## Exit Criteria
 
 - Dogfood query quality improves on primary metrics without off-topic regression.
