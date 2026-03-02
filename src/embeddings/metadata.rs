@@ -303,61 +303,32 @@ fn extend_tokens(text: &str, output: &mut HashSet<String>) {
     }
 }
 
-fn has_simple_default_literal(signature: &str) -> bool {
-    const DEFAULT_LITERALS: &[&str] = &["0", "1", "true", "false", "none", "null"];
-    let chars: Vec<char> = signature.chars().collect();
-    let len = chars.len();
-
-    let mut i = 0;
-    while i < len {
-        if chars[i] != '=' {
-            i += 1;
+pub(crate) fn has_simple_default_literal(signature: &str) -> bool {
+    const LITERALS: &[&str] = &[
+        "0", "1", "true", "false", "none", "null", "nil", "\"\"", "''", "{}", "[]",
+    ];
+    let bytes = signature.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b != b'=' {
             continue;
         }
-
-        let mut left = i;
-        while left > 0 && chars[left - 1].is_whitespace() {
-            left -= 1;
-        }
-
-        if left > 0 {
-            let prev = chars[left - 1];
-            if prev == '=' || prev == '!' || prev == '<' || prev == '>' {
-                i += 1;
-                continue;
-            }
-        }
-
-        let mut right = i + 1;
-        while right < len && chars[right].is_whitespace() {
-            right += 1;
-        }
-
-        if right >= len {
-            return false;
-        }
-
-        let start = right;
-        while right < len && chars[right].is_alphanumeric() {
-            right += 1;
-        }
-
-        if start == right {
-            i += 1;
+        // Skip comparison operators: ==, !=, >=, <=
+        if i + 1 < bytes.len() && bytes[i + 1] == b'=' {
             continue;
         }
-
-        let literal: String = chars[start..right]
-            .iter()
-            .collect::<String>()
-            .to_lowercase();
-        if DEFAULT_LITERALS.contains(&literal.as_str()) {
+        if i > 0 && matches!(bytes[i - 1], b'=' | b'!' | b'<' | b'>') {
+            continue;
+        }
+        let rhs = signature[i + 1..].trim_start();
+        let rhs_lower = rhs.to_lowercase();
+        if LITERALS.iter().any(|lit| {
+            rhs_lower.starts_with(lit)
+                && !rhs_lower[lit.len()..]
+                    .starts_with(|c: char| c.is_alphanumeric() || c == '_')
+        }) {
             return true;
         }
-
-        i += 1;
     }
-
     false
 }
 

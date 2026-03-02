@@ -5,8 +5,9 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::embeddings::metadata::{
-        format_symbol_metadata, is_embeddable_kind, is_embeddable_language,
-        prepare_batch_for_embedding, select_budgeted_variables, VariableEmbeddingPolicy,
+        format_symbol_metadata, has_simple_default_literal, is_embeddable_kind,
+        is_embeddable_language, prepare_batch_for_embedding, select_budgeted_variables,
+        VariableEmbeddingPolicy,
     };
     use crate::extractors::{Symbol, SymbolKind};
 
@@ -1216,5 +1217,48 @@ mod tests {
             selected[0].0, "var_no_default",
             "Mixed default styles should all receive the same penalty"
         );
+    }
+
+    // ---- has_simple_default_literal unit tests ----
+
+    #[test]
+    fn test_has_simple_default_literal_matches() {
+        // Numeric defaults
+        assert!(has_simple_default_literal("let x = 0"));
+        assert!(has_simple_default_literal("let x = 1"));
+        assert!(has_simple_default_literal("let x = 0;"));
+        // Boolean / null-ish defaults
+        assert!(has_simple_default_literal("x = true"));
+        assert!(has_simple_default_literal("x = false"));
+        assert!(has_simple_default_literal("x = None"));
+        assert!(has_simple_default_literal("x = null"));
+        assert!(has_simple_default_literal("x = nil"));
+        assert!(has_simple_default_literal("x = True"));
+        assert!(has_simple_default_literal("x = FALSE"));
+        // Empty collection / string defaults
+        assert!(has_simple_default_literal("x = \"\""));
+        assert!(has_simple_default_literal("x = ''"));
+        assert!(has_simple_default_literal("x = {}"));
+        assert!(has_simple_default_literal("x = []"));
+    }
+
+    #[test]
+    fn test_has_simple_default_literal_rejects_comparison_operators() {
+        assert!(!has_simple_default_literal("x == 0"));
+        assert!(!has_simple_default_literal("x != 0"));
+        assert!(!has_simple_default_literal("x >= 0"));
+        assert!(!has_simple_default_literal("x <= 0"));
+        assert!(!has_simple_default_literal("if x == true"));
+        assert!(!has_simple_default_literal("x != null"));
+    }
+
+    #[test]
+    fn test_has_simple_default_literal_rejects_non_defaults() {
+        assert!(!has_simple_default_literal("x = some_function()"));
+        assert!(!has_simple_default_literal("x = truthy"));
+        assert!(!has_simple_default_literal("x = none_value"));
+        assert!(!has_simple_default_literal("x = 0x1234"));
+        assert!(!has_simple_default_literal("x = 42"));
+        assert!(!has_simple_default_literal("no assignment here"));
     }
 }
