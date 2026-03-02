@@ -4,7 +4,7 @@
 //! Only "structural" symbol kinds are embedded — leaf nodes like variables,
 //! fields, and imports are too granular for semantic search.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::extractors::{Symbol, SymbolKind};
 
@@ -208,23 +208,13 @@ pub fn select_budgeted_variables(
 }
 
 fn variable_signal_boost(symbol: &Symbol) -> f64 {
-    const SIGNAL_TOKENS: &[&str] = &[
-        "request", "response", "payload", "body", "header", "token", "json", "api", "query",
-        "params",
-    ];
-
-    let mut score = 0.0;
-    let tokens = symbol_tokens(symbol);
-
-    if SIGNAL_TOKENS.iter().any(|needle| tokens.contains(*needle)) {
-        score += 0.25;
-    }
-
+    // Descriptive names (snake_case or long identifiers) get a small boost.
+    // Language-agnostic: works for any project, unlike domain-specific token lists.
     if symbol.name.contains('_') || symbol.name.len() >= 12 {
-        score += 0.10;
+        0.15
+    } else {
+        0.0
     }
-
-    score
 }
 
 fn variable_noise_penalty(symbol: &Symbol) -> f64 {
@@ -250,57 +240,6 @@ fn variable_noise_penalty(symbol: &Symbol) -> f64 {
     }
 
     penalty
-}
-
-fn symbol_tokens(symbol: &Symbol) -> HashSet<String> {
-    let mut tokens = HashSet::new();
-    extend_tokens(&symbol.name, &mut tokens);
-
-    if let Some(signature) = &symbol.signature {
-        extend_tokens(signature, &mut tokens);
-    }
-
-    if let Some(doc) = &symbol.doc_comment {
-        extend_tokens(doc, &mut tokens);
-    }
-
-    tokens
-}
-
-fn extend_tokens(text: &str, output: &mut HashSet<String>) {
-    let mut token = String::new();
-    let mut prev_is_lower = false;
-    let mut prev_is_digit = false;
-
-    for ch in text.chars() {
-        if ch.is_alphanumeric() {
-            let is_upper = ch.is_uppercase();
-            let is_digit = ch.is_ascii_digit();
-            let split_camel_case =
-                !token.is_empty() && is_upper && (prev_is_lower || prev_is_digit);
-
-            if split_camel_case {
-                output.insert(token.to_lowercase());
-                token.clear();
-            }
-
-            token.push(ch);
-            prev_is_lower = ch.is_lowercase();
-            prev_is_digit = is_digit;
-        } else if !token.is_empty() {
-            output.insert(token.to_lowercase());
-            token.clear();
-            prev_is_lower = false;
-            prev_is_digit = false;
-        } else {
-            prev_is_lower = false;
-            prev_is_digit = false;
-        }
-    }
-
-    if !token.is_empty() {
-        output.insert(token.to_lowercase());
-    }
 }
 
 pub(crate) fn has_simple_default_literal(signature: &str) -> bool {

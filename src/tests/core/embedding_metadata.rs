@@ -904,17 +904,19 @@ mod tests {
     }
 
     #[test]
-    fn test_select_budgeted_variables_boosts_api_surface_variables() {
+    fn test_select_budgeted_variables_boosts_descriptive_names() {
+        // Descriptive names (snake_case or length >= 12) get a +0.15 boost
+        // over short, non-descriptive identifiers.
         let symbols = vec![
             make_symbol(
-                "var_api",
-                "request_payload",
+                "var_descriptive",
+                "order_total",
                 SymbolKind::Variable,
-                Some("let request_payload = serde_json::from_str(body)?;"),
+                Some("let order_total = line_items.sum();"),
                 None,
             ),
             make_symbol(
-                "var_plain",
+                "var_short",
                 "state",
                 SymbolKind::Variable,
                 Some("let state = 0;"),
@@ -929,7 +931,10 @@ mod tests {
 
         let selected = select_budgeted_variables(&symbols, &HashMap::new(), 1, &policy);
         assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].0, "var_api");
+        assert_eq!(
+            selected[0].0, "var_descriptive",
+            "Snake_case name should receive descriptiveness boost over short name with default penalty"
+        );
     }
 
     #[test]
@@ -1059,17 +1064,19 @@ mod tests {
     }
 
     #[test]
-    fn test_select_budgeted_variables_uses_token_boundaries_not_substrings() {
+    fn test_select_budgeted_variables_descriptiveness_uses_name_structure() {
+        // The descriptiveness heuristic checks for `_` or length >= 12
+        // in the *name* — it doesn't inspect content or tokens.
         let symbols = vec![
             make_symbol(
-                "var_false_positive",
+                "var_short",
                 "rapidly",
                 SymbolKind::Variable,
                 Some("let rapidly = compute();"),
                 None,
             ),
             make_symbol(
-                "var_token_match",
+                "var_snake",
                 "state_value",
                 SymbolKind::Variable,
                 Some("let state_value = load_state();"),
@@ -1078,8 +1085,8 @@ mod tests {
         ];
 
         let reference_scores = HashMap::from([
-            ("var_false_positive".to_string(), 0.40_f64),
-            ("var_token_match".to_string(), 0.40_f64),
+            ("var_short".to_string(), 0.40_f64),
+            ("var_snake".to_string(), 0.40_f64),
         ]);
 
         let policy = VariableEmbeddingPolicy {
@@ -1090,26 +1097,35 @@ mod tests {
         let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
         assert_eq!(selected.len(), 1);
         assert_eq!(
-            selected[0].0, "var_token_match",
-            "Substring matches should not receive API-surface boost"
+            selected[0].0, "var_snake",
+            "Snake_case name gets descriptiveness boost; short single-word name does not"
         );
     }
 
     #[test]
-    fn test_select_budgeted_variables_treats_camel_and_snake_case_tokens_consistently() {
+    fn test_select_budgeted_variables_boosts_both_camel_and_snake_case_descriptive_names() {
+        // Both naming conventions qualify for the descriptiveness boost:
+        // camelCase via length >= 12, snake_case via `_` in name.
         let symbols = vec![
             make_symbol(
                 "var_camel",
-                "requestPayload",
+                "connectionPool",
                 SymbolKind::Variable,
-                Some("let requestPayload = build_payload();"),
+                Some("let connectionPool = create_pool();"),
                 None,
             ),
             make_symbol(
                 "var_snake",
-                "request_payload",
+                "connection_pool",
                 SymbolKind::Variable,
-                Some("let request_payload = build_payload();"),
+                Some("let connection_pool = create_pool();"),
+                None,
+            ),
+            make_symbol(
+                "var_short",
+                "pool",
+                SymbolKind::Variable,
+                Some("let pool = get();"),
                 None,
             ),
         ];
@@ -1117,6 +1133,7 @@ mod tests {
         let reference_scores = HashMap::from([
             ("var_camel".to_string(), 0.30_f64),
             ("var_snake".to_string(), 0.30_f64),
+            ("var_short".to_string(), 0.30_f64),
         ]);
 
         let policy = VariableEmbeddingPolicy {
@@ -1128,8 +1145,14 @@ mod tests {
         let selected_ids: Vec<&str> = selected.iter().map(|(id, _)| id.as_str()).collect();
 
         assert_eq!(selected_ids.len(), 2);
-        assert!(selected_ids.contains(&"var_camel"));
-        assert!(selected_ids.contains(&"var_snake"));
+        assert!(
+            selected_ids.contains(&"var_camel"),
+            "camelCase name (len>=12) should get descriptiveness boost"
+        );
+        assert!(
+            selected_ids.contains(&"var_snake"),
+            "snake_case name (has _) should get descriptiveness boost"
+        );
     }
 
     #[test]
