@@ -2142,3 +2142,66 @@ fn test_delete_embeddings_for_symbol_ids_batches_large_inputs() {
     let remaining_ids = db.get_embedded_symbol_ids().unwrap();
     assert!(remaining_ids.is_empty());
 }
+
+/// Verify get_reference_scores batches correctly with >900 IDs (SQLite bind param limit).
+#[test]
+fn test_get_reference_scores_large_batch() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Insert a file (foreign key requirement)
+    db.store_file_info(&FileInfo {
+        path: "test.rs".to_string(),
+        language: "rust".to_string(),
+        hash: "abc123".to_string(),
+        size: 100,
+        last_modified: 1234567890,
+        last_indexed: 0,
+        symbol_count: 0,
+        content: None,
+    })
+    .unwrap();
+
+    // Insert 1500 symbols — enough to require two batches (900 + 600).
+    let count = 1500usize;
+    for i in 0..count {
+        let id = format!("sym_{i}");
+        let score = (i % 50) as f64;
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, \
+                 start_line, end_line, start_col, end_col, start_byte, end_byte, \
+                 reference_score) \
+                 VALUES (?1, ?2, 'function', 'rust', 'test.rs', 1, 10, 0, 1, 0, 100, ?3)",
+                rusqlite::params![id, format!("fn_{i}"), score],
+            )
+            .unwrap();
+    }
+
+    // Query all 1500 IDs — this would fail pre-batching with SQLite bind limit.
+    let ids: Vec<String> = (0..count).map(|i| format!("sym_{i}")).collect();
+    let id_refs: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
+    let scores = db.get_reference_scores(&id_refs).unwrap();
+
+    assert_eq!(scores.len(), count);
+    for i in 0..count {
+        let expected = (i % 50) as f64;
+        let actual = scores[&format!("sym_{i}")];
+        assert!(
+            (actual - expected).abs() < f64::EPSILON,
+            "sym_{i}: expected {expected}, got {actual}"
+        );
+    }
+
+    // Also query with a mix of existing and non-existing IDs across batch boundaries.
+    let mut mixed_ids: Vec<String> = (0..900).map(|i| format!("sym_{i}")).collect();
+    mixed_ids.extend((0..600).map(|i| format!("nonexistent_{i}")));
+    mixed_ids.extend((900..count).map(|i| format!("sym_{i}")));
+    let mixed_refs: Vec<&str> = mixed_ids.iter().map(|s| s.as_str()).collect();
+    let mixed_scores = db.get_reference_scores(&mixed_refs).unwrap();
+
+    // Only the 1500 real symbols should be in the result, not the 600 fake ones.
+    assert_eq!(mixed_scores.len(), count);
+    assert!(!mixed_scores.contains_key("nonexistent_0"));
+}

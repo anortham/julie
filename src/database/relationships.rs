@@ -306,30 +306,36 @@ impl SymbolDatabase {
 
     /// Get reference_score for a batch of symbol IDs.
     /// Returns a HashMap of id -> score for efficient lookup during search scoring.
+    ///
+    /// Batches queries in chunks of 900 to stay within SQLite's bind parameter limit (~999).
     pub fn get_reference_scores(&self, ids: &[&str]) -> Result<HashMap<String, f64>> {
+        const MAX_BIND_PARAMS: usize = 900;
+
         if ids.is_empty() {
             return Ok(HashMap::new());
         }
 
-        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{}", i)).collect();
-        let sql = format!(
-            "SELECT id, reference_score FROM symbols WHERE id IN ({})",
-            placeholders.join(", ")
-        );
-
-        let mut stmt = self.conn.prepare(&sql)?;
-
-        let params: Vec<&dyn rusqlite::ToSql> =
-            ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
-
-        let rows = stmt.query_map(&params[..], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
-        })?;
-
         let mut scores = HashMap::new();
-        for row in rows {
-            let (id, score) = row?;
-            scores.insert(id, score);
+        for chunk in ids.chunks(MAX_BIND_PARAMS) {
+            let placeholders: Vec<&str> = chunk.iter().map(|_| "?").collect();
+            let sql = format!(
+                "SELECT id, reference_score FROM symbols WHERE id IN ({})",
+                placeholders.join(", ")
+            );
+
+            let mut stmt = self.conn.prepare(&sql)?;
+
+            let params: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+
+            let rows = stmt.query_map(&params[..], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+            })?;
+
+            for row in rows {
+                let (id, score) = row?;
+                scores.insert(id, score);
+            }
         }
         Ok(scores)
     }
