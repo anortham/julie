@@ -381,7 +381,7 @@ fast_search(
 ---
 
 **Last Updated:** 2026-03-01
-**Status:** Production Ready (v3.6.1)
+**Status:** Production Ready (v3.7.0)
 
 ---
 
