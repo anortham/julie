@@ -3,7 +3,7 @@ name: impact-analysis
 description: Analyze what would break if a symbol is changed — finds all callers, groups by risk level, and assesses change impact
 user-invocable: true
 arguments: "<symbol_name>"
-allowed-tools: mcp__julie__fast_refs, mcp__julie__deep_dive
+allowed-tools: mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__get_context
 ---
 
 # Impact Analysis
@@ -11,6 +11,16 @@ allowed-tools: mcp__julie__fast_refs, mcp__julie__deep_dive
 Analyze the impact of changing a symbol by finding all references and assessing risk. Use this BEFORE modifying widely-used symbols.
 
 ## Process
+
+### Step 0: Orient on the Area (Optional)
+
+Get a broad view of the symbol's neighborhood:
+
+```
+get_context(query="<symbol_name>")
+```
+
+This reveals the symbol's centrality (how well-connected it is) and surrounding context. High-centrality symbols in the pivot list are inherently higher risk — they're well-connected in the reference graph.
 
 ### Step 1: Find All References
 
@@ -25,6 +35,12 @@ deep_dive(symbol="<symbol>", depth="context")
 ```
 
 Understand what the symbol does, its signature, and what it depends on.
+
+If `deep_dive` returns the wrong symbol (common names like `new`, `result`, `config`), use `context_file` to disambiguate:
+
+```
+deep_dive(symbol="<symbol>", context_file="<partial_file_path>")
+```
 
 ### Step 3: Categorize References by Risk
 
@@ -56,6 +72,7 @@ For each high-risk file, `deep_dive` on the calling function to understand HOW t
 ```
 Impact Analysis: <symbol_name>
 Definition: <file>:<line> (<kind>)
+Centrality: <high/medium/low> (ref_score: N)
 
 Total: <N> references across <M> files
 
@@ -85,3 +102,4 @@ Recommendation:
 - **Always check test coverage** — high-risk changes with no test references are especially dangerous
 - **Type changes cascade** — if the symbol is a type/struct, any field change affects all users
 - **Trait changes are widest** — changing a trait method affects all implementors
+- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to all tool calls when analyzing a non-primary workspace

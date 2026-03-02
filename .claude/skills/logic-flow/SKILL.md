@@ -3,14 +3,24 @@ name: logic-flow
 description: Explain the logic flow of a function step-by-step by analyzing its implementation and call graph
 user-invocable: true
 arguments: "<function_name>"
-allowed-tools: mcp__julie__deep_dive
+allowed-tools: mcp__julie__deep_dive, mcp__julie__get_context
 ---
 
 # Logic Flow
 
-Explain the logic flow of a function by examining its implementation, control flow, and callees. This replaces the removed `fast_explore(mode="logic")` tool.
+Explain the logic flow of a function by examining its implementation, control flow, and callees.
 
 ## Process
+
+### Step 0: Orient (Optional)
+
+If the function is in an unfamiliar area, get context first:
+
+```
+get_context(query="<function_name or related concept>")
+```
+
+This shows the function's neighbors and where it fits in the broader architecture.
 
 ### Step 1: Deep Dive with Full Depth
 
@@ -19,6 +29,12 @@ deep_dive(symbol="<function>", depth="full")
 ```
 
 This returns the function's code body, callers, callees, and type information.
+
+If `deep_dive` returns the wrong symbol (common names), use `context_file` to disambiguate:
+
+```
+deep_dive(symbol="<function>", depth="full", context_file="<partial_file_path>")
+```
 
 ### Step 2: Analyze the Code
 
@@ -70,3 +86,4 @@ Returns: Result<CallToolResult> — MCP response with formatted search results
 - **Focus on the interesting parts** — skip boilerplate, highlight decisions
 - **For large functions (>100 lines)**: Summarize sections rather than explaining every line
 - **For trait methods**: Note which implementations exist and which is being analyzed
+- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to all tool calls when analyzing a non-primary workspace

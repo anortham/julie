@@ -3,12 +3,12 @@ name: type-flow
 description: Trace how types flow through a function — parameters, transformations, and return types
 user-invocable: true
 arguments: "<function_name>"
-allowed-tools: mcp__julie__deep_dive, mcp__julie__fast_refs
+allowed-tools: mcp__julie__deep_dive, mcp__julie__fast_refs, mcp__julie__fast_search
 ---
 
 # Type Flow
 
-Trace how types flow through a function by analyzing type signatures, transformations, and conversions. This replaces the removed `fast_explore(mode="types")` tool.
+Trace how types flow through a function by analyzing type signatures, transformations, and conversions.
 
 ## Process
 
@@ -19,6 +19,12 @@ deep_dive(symbol="<function>", depth="full")
 ```
 
 Extract the function signature, body, and type information.
+
+If `deep_dive` returns the wrong symbol, use `context_file` to disambiguate:
+
+```
+deep_dive(symbol="<function>", depth="full", context_file="<partial_file_path>")
+```
 
 ### Step 2: Map the Type Pipeline
 
@@ -34,13 +40,19 @@ Trace each type from input to output:
 
 ### Step 3: Find Type Definitions
 
-For any non-obvious type, look it up:
+For any non-obvious type, look it up with a quick definition search:
+
+```
+fast_search(query="<TypeName>", search_target="definitions")
+```
+
+Or for a deeper look at the type's structure:
 
 ```
 deep_dive(symbol="<TypeName>", depth="overview")
 ```
 
-Or for external references:
+To see how a type is used across the codebase:
 
 ```
 fast_refs(symbol="<TypeName>", reference_kind="type_usage", limit=10)
@@ -83,3 +95,4 @@ Type Flow:
 - **Generic types**: Note type parameters (e.g., `Vec<T>` where T matters)
 - **Trait objects**: `dyn Trait` or `impl Trait` — note what concrete types are used
 - **Closures**: Types of closure parameters are often inferred, state what they are
+- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to all tool calls when analyzing a non-primary workspace

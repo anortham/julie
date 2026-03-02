@@ -3,18 +3,38 @@ name: call-trace
 description: Trace the call path between two functions by iteratively following callers/callees using deep_dive and fast_refs
 user-invocable: true
 arguments: "<start_function> <end_function>"
-allowed-tools: mcp__julie__deep_dive, mcp__julie__fast_refs
+allowed-tools: mcp__julie__deep_dive, mcp__julie__fast_refs, mcp__julie__fast_search, mcp__julie__get_context
 ---
 
 # Call Trace
 
-Trace the call path from a starting function to an ending function. This replaces the removed `trace_call_path` tool with a more flexible skill-based approach.
+Trace the call path from a starting function to an ending function.
 
 ## Process
 
-### Step 1: Identify Start and End Symbols
+### Step 0: Resolve Symbol Names
 
-Parse the two function names from arguments. If ambiguous, use `deep_dive` on each to confirm they exist and get their file locations.
+If the symbol names are approximate or ambiguous, resolve them first:
+
+```
+fast_search(query="<name>", search_target="definitions")
+```
+
+If `deep_dive` returns the wrong symbol (e.g., a common name like `new` or `process`), use the `context_file` parameter to disambiguate:
+
+```
+deep_dive(symbol="process", context_file="handler")
+```
+
+### Step 1: Orient (Optional)
+
+If both symbols are in the same domain, get a broad view first:
+
+```
+get_context(query="<shared concept or module name>")
+```
+
+This may reveal the connection immediately from the pivots and neighbors.
 
 ### Step 2: Build Forward Call Graph (Start → End)
 
@@ -64,3 +84,4 @@ These don't overlap — the functions may not be connected.
 - **Track visited set** — avoid infinite loops from recursive calls
 - **Prefer shortest path** — if multiple paths exist, the first found (BFS-like) is usually most direct
 - **Generic names** (e.g., `new`, `from`, `into`) should be filtered — they create false connections
+- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to all tool calls when tracing in a non-primary workspace
