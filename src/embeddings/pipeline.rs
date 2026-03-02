@@ -25,49 +25,6 @@ const VARIABLE_EMBEDDING_POLICY: VariableEmbeddingPolicy = VariableEmbeddingPoli
     max_ratio: 0.20,
 };
 
-fn load_symbols_and_variable_reference_scores(
-    db: &Arc<Mutex<SymbolDatabase>>,
-) -> Result<(Vec<crate::extractors::Symbol>, HashMap<String, f64>)> {
-    let db_guard = db
-        .lock()
-        .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
-
-    let symbols = db_guard
-        .get_all_symbols()
-        .context("Failed to load symbols for variable policy")?;
-
-    let variable_ids: Vec<&str> = symbols
-        .iter()
-        .filter(|s| s.kind == SymbolKind::Variable)
-        .map(|s| s.id.as_str())
-        .collect();
-
-    let reference_scores = match db_guard.get_reference_scores(&variable_ids) {
-        Ok(scores) => scores,
-        Err(err) => {
-            warn!(
-                "Embedding pipeline: failed to load variable reference scores, using defaults: {err:#}"
-            );
-            HashMap::new()
-        }
-    };
-
-    Ok((symbols, reference_scores))
-}
-
-fn selected_variable_ids_for_policy(db: &Arc<Mutex<SymbolDatabase>>) -> Result<HashSet<String>> {
-    let (symbols, variable_reference_scores) = load_symbols_and_variable_reference_scores(db)?;
-    let base_prepared = prepare_batch_for_embedding(&symbols);
-    let selected_variables = select_budgeted_variables(
-        &symbols,
-        &variable_reference_scores,
-        base_prepared.len(),
-        &VARIABLE_EMBEDDING_POLICY,
-    );
-
-    Ok(selected_variables.into_iter().map(|(id, _)| id).collect())
-}
-
 /// Statistics from an embedding pipeline run.
 #[derive(Debug, Clone)]
 pub struct EmbeddingStats {
@@ -322,21 +279,10 @@ pub fn embed_symbols_for_file(
             .context("Failed to load symbols for file")?
     };
 
-    // Filter and format (base structural symbols + selected variables by global policy).
-    let selected_variable_ids = selected_variable_ids_for_policy(db)?;
-    let selected_file_variables: Vec<(String, String)> = symbols
-        .iter()
-        .filter(|s| s.kind == SymbolKind::Variable && selected_variable_ids.contains(&s.id))
-        .map(|s| {
-            (
-                s.id.clone(),
-                crate::embeddings::metadata::format_symbol_metadata(s),
-            )
-        })
-        .collect();
-
-    let mut prepared = prepare_batch_for_embedding(&symbols);
-    prepared.extend(selected_file_variables);
+    // Filter and format structural symbols only.
+    // Variable embedding is handled globally by `run_embedding_pipeline` at workspace init
+    // using budgeted selection. The incremental path skips variables to stay fast (<200ms).
+    let prepared = prepare_batch_for_embedding(&symbols);
     if prepared.is_empty() {
         return Ok(0);
     }

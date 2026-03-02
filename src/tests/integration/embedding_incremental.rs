@@ -452,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn test_reembed_symbols_for_file_preserves_budgeted_variable_embeddings() {
+    fn test_reembed_symbols_for_file_does_not_embed_variables() {
         let dir = tempfile::tempdir().unwrap();
         let db = setup_db_with_file(
             dir.path(),
@@ -477,15 +477,9 @@ mod tests {
                     [],
                 )
                 .unwrap();
-            db_guard
-                .conn
-                .execute(
-                    "UPDATE symbols SET reference_score = 0.0 WHERE id = 'var_skip'",
-                    [],
-                )
-                .unwrap();
         }
 
+        // Full pipeline embeds variables under budget policy.
         let provider = FixedBatchProvider;
         run_embedding_pipeline(&db, &provider).unwrap();
 
@@ -495,25 +489,26 @@ mod tests {
                 db_guard.get_embedding("var_keep").unwrap().is_some(),
                 "Full pipeline should embed the selected variable under budget"
             );
-            assert!(db_guard.get_embedding("var_skip").unwrap().is_none());
             assert_eq!(db_guard.embedding_count().unwrap(), 6);
         }
 
+        // Incremental re-embed only handles structural symbols — variables are
+        // managed globally by run_embedding_pipeline at workspace init.
         reembed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
 
         let db_guard = db.lock().unwrap();
         assert!(
-            db_guard.get_embedding("var_keep").unwrap().is_some(),
-            "Incremental re-embed should preserve selected variable embedding"
+            db_guard.get_embedding("var_keep").unwrap().is_none(),
+            "Incremental re-embed should NOT embed variables (handled by full pipeline only)"
         );
         assert!(
             db_guard.get_embedding("var_skip").unwrap().is_none(),
-            "Incremental re-embed should not embed variables outside policy budget"
+            "Incremental re-embed should not embed any variables"
         );
         assert_eq!(
             db_guard.embedding_count().unwrap(),
-            6,
-            "Incremental re-embed should keep file embedding count aligned with variable policy"
+            5,
+            "Incremental re-embed should only embed the 5 structural symbols, not variables"
         );
     }
 
