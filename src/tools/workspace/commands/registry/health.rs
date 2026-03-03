@@ -54,13 +54,6 @@ impl ManageWorkspaceTool {
         let overall_status = self.assess_overall_health(&primary_workspace).await?;
         health_report.push_str(&overall_status);
 
-        if detailed {
-            health_report.push_str("\nPerformance Recommendations\n");
-            health_report.push_str("• Use fast_search for lightning-fast code discovery\n");
-            health_report.push_str("• Use deep_dive to understand symbols before modifying them\n");
-            health_report.push_str("• Use fast_refs to understand code dependencies\n");
-            health_report.push_str("• Background indexing ensures minimal startup delay\n");
-        }
 
         Ok(CallToolResult::text_content(vec![Content::text(
             health_report,
@@ -154,11 +147,8 @@ impl ManageWorkspaceTool {
 
         if workspace.db.is_some() {
             status.push_str("Tantivy Status: READY\n");
-            status.push_str("Search Capabilities: Fast full-text search enabled\n");
-            status.push_str("Performance: <5ms query response time\n");
         } else {
-            status.push_str("Search Status: NOT AVAILABLE\n");
-            status.push_str("Database not initialized\n");
+            status.push_str("Tantivy Status: NOT AVAILABLE (database not initialized)\n");
         }
 
         Ok(status)
@@ -249,12 +239,8 @@ impl ManageWorkspaceTool {
             if db_ready { "READY" } else { "BUILDING" },
         ));
 
-        assessment.push_str("Recommended Actions:\n");
         if !db_ready {
-            assessment.push_str("• Run 'manage_workspace index' to initialize database\n");
-        } else {
-            assessment
-                .push_str("• System is fully operational - enjoy lightning-fast development!\n");
+            assessment.push_str("Action: Run 'manage_workspace index' to initialize database\n");
         }
 
         Ok(assessment)

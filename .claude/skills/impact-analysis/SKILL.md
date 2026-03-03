@@ -72,7 +72,7 @@ For each high-risk file, `deep_dive` on the calling function to understand HOW t
 ```
 Impact Analysis: <symbol_name>
 Definition: <file>:<line> (<kind>)
-Centrality: <high/medium/low> (ref_score: N)
+Centrality: <high/medium/low>
 
 Total: <N> references across <M> files
 

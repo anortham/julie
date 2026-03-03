@@ -1,75 +1,24 @@
 use serde::{Deserialize, Serialize};
 
-/// Token-optimized response wrapper with confidence-based limiting
-/// Inspired by codesearch's AIOptimizedResponse pattern
+/// Lean response wrapper for search results.
 ///
-/// Designed for structured MCP output - agents parse JSON, format for humans
+/// Only carries what the lean formatters actually use: the result list
+/// and the total count (for "showing X of Y" headers).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OptimizedResponse<T> {
-    /// Tool that generated this response (enables routing and schema detection)
-    /// Examples: "fast_search", "fast_refs", "deep_dive", "rename_symbol", "get_symbols"
-    pub tool: String,
-    /// The main results (will be limited based on confidence)
+    /// The search results.
     pub results: Vec<T>,
-    /// Confidence score 0.0-1.0 (higher = more confident)
-    pub confidence: f32,
-    /// Total results found before limiting
+    /// Total results found before limiting (may exceed results.len()).
     pub total_found: usize,
-    /// Key insights or patterns discovered
-    pub insights: Option<String>,
-    /// Suggested next actions for the user (enables tool chaining)
-    pub next_actions: Vec<String>,
 }
 
 impl<T> OptimizedResponse<T> {
-    pub fn new(tool: impl Into<String>, results: Vec<T>, confidence: f32) -> Self {
+    pub fn new(results: Vec<T>) -> Self {
         let total_found = results.len();
         Self {
-            tool: tool.into(),
             results,
-            confidence,
             total_found,
-            insights: None,
-            next_actions: Vec::new(),
         }
-    }
-
-    /// Limit results based on confidence and token constraints
-    pub fn optimize_for_tokens(&mut self, max_results: Option<usize>) {
-        let limit = if let Some(max) = max_results {
-            max
-        } else {
-            // Dynamic limiting based on confidence
-            if self.confidence > 0.9 {
-                3
-            }
-            // High confidence = fewer results needed
-            else if self.confidence > 0.7 {
-                5
-            }
-            // Medium confidence
-            else if self.confidence > 0.5 {
-                8
-            }
-            // Lower confidence
-            else {
-                12
-            } // Very low confidence = more results
-        };
-
-        if self.results.len() > limit {
-            self.results.truncate(limit);
-        }
-    }
-
-    pub fn with_insights(mut self, insights: String) -> Self {
-        self.insights = Some(insights);
-        self
-    }
-
-    pub fn with_next_actions(mut self, actions: Vec<String>) -> Self {
-        self.next_actions = actions;
-        self
     }
 }
 

@@ -212,8 +212,7 @@ impl ManageWorkspaceTool {
                         Database Impact:\n\
                         • {} symbols deleted\n\
                         • {} files deleted\n\
-                        • {} relationships deleted\n\n\
-                        Cleanup helps maintain optimal performance and storage usage.",
+                        • {} relationships deleted",
                         message_parts.join("\n"),
                         total_symbols,
                         total_files,

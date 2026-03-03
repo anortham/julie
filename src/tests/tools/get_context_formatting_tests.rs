@@ -671,10 +671,10 @@ mod formatting_tests {
         );
     }
 
-    // === Test 14: Ref score displayed as integer ===
+    // === Test 14: Centrality label only (no raw ref_score) ===
 
     #[test]
-    fn test_ref_score_displayed_as_integer() {
+    fn test_centrality_shown_as_label_only() {
         let data = ContextData {
             query: "test".to_string(),
             pivots: vec![make_pivot("fn_a", "src/a.rs", 1, 47.8, "fn fn_a() {}")],
@@ -684,8 +684,13 @@ mod formatting_tests {
 
         let output = format_context(&data);
         assert!(
-            output.contains("ref_score: 47"),
-            "ref_score should be displayed as integer, got:\n{}",
+            output.contains("Centrality: high"),
+            "ref_score 47.8 should show 'high' label, got:\n{}",
+            output
+        );
+        assert!(
+            !output.contains("ref_score"),
+            "raw ref_score should not appear in output, got:\n{}",
             output
         );
     }
@@ -720,7 +725,6 @@ mod formatting_tests {
         assert!(output.contains("Context \"payment processing\" | pivots=1 neighbors=1 files=2"));
         assert!(output.contains("PIVOT process_payment src/payment/processor.rs:42"));
         assert!(output.contains("NEIGHBOR validate_payment src/payment/validation.rs:10"));
-        assert!(output.contains("FILE src/payment/processor.rs | pivot: process_payment"));
         assert!(
             output.contains("callers=main"),
             "caller list should be deduplicated in compact mode"

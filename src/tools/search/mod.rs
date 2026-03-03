@@ -19,7 +19,6 @@ pub(crate) mod formatting; // Exposed for testing
 mod line_mode;
 pub(crate) mod query;
 pub mod query_preprocessor; // Public for testing
-mod scoring;
 pub mod text_search;
 mod types;
 
@@ -146,17 +145,8 @@ impl FastSearchTool {
 
         let symbols = formatting::truncate_code_context(symbols, self.context_lines);
 
-        let confidence = scoring::calculate_search_confidence(&self.query, &symbols);
-        let mut optimized = OptimizedResponse::new("fast_search", symbols, confidence);
-
-        if let Some(insights) = scoring::generate_search_insights(&optimized.results, confidence) {
-            optimized = optimized.with_insights(insights);
-        }
-
-        let next_actions = scoring::suggest_next_actions(&self.query, &optimized.results);
-        optimized = optimized.with_next_actions(next_actions);
-
-        optimized.optimize_for_tokens(Some(self.limit as usize));
+        let mut optimized = OptimizedResponse::new(symbols);
+        optimized.results.truncate(self.limit as usize);
 
         if optimized.results.is_empty() {
             let message = format!(

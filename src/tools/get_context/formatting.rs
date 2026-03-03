@@ -33,8 +33,8 @@ pub enum OutputFormat {
 impl OutputFormat {
     pub fn from_option(value: Option<&str>) -> Self {
         match value {
-            Some(v) if v.eq_ignore_ascii_case("compact") => Self::Compact,
-            _ => Self::Readable,
+            Some(v) if v.eq_ignore_ascii_case("readable") => Self::Readable,
+            _ => Self::Compact,
         }
     }
 }
@@ -137,7 +137,7 @@ fn format_context_readable(data: &ContextData) -> String {
     for pivot in &data.pivots {
         out.push('\n');
         out.push_str(&format!(
-            "\u{2500}\u{2500} Pivot: {} \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\n",
+            "\u{2500}\u{2500} Pivot: {} \u{2500}\u{2500}\u{2500}\n",
             pivot.name
         ));
         out.push_str(&format!(
@@ -145,10 +145,7 @@ fn format_context_readable(data: &ContextData) -> String {
             pivot.file_path, pivot.start_line, pivot.kind
         ));
         let label = centrality_label(pivot.reference_score);
-        out.push_str(&format!(
-            "  Centrality: {} (ref_score: {})\n",
-            label, pivot.reference_score as u32
-        ));
+        out.push_str(&format!("  Centrality: {}\n", label));
 
         // Code content
         out.push('\n');
@@ -180,7 +177,7 @@ fn format_context_readable(data: &ContextData) -> String {
     if !data.neighbors.is_empty() {
         out.push('\n');
         out.push_str(
-            "\u{2500}\u{2500} Neighbors \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\n",
+            "\u{2500}\u{2500} Neighbors \u{2500}\u{2500}\u{2500}\n",
         );
         for neighbor in &data.neighbors {
             format_neighbor(&mut out, neighbor, &data.allocation.neighbor_mode);
@@ -190,7 +187,7 @@ fn format_context_readable(data: &ContextData) -> String {
     // --- Files section ---
     out.push('\n');
     out.push_str(
-        "\u{2500}\u{2500} Files \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\n",
+        "\u{2500}\u{2500} Files \u{2500}\u{2500}\u{2500}\n",
     );
     let file_map = build_file_map(data);
     for (file_path, annotations) in &file_map {
@@ -218,13 +215,8 @@ fn format_context_compact(data: &ContextData) -> String {
     for pivot in &data.pivots {
         let label = centrality_label(pivot.reference_score);
         out.push_str(&format!(
-            "PIVOT {} {}:{} kind={} centrality={} ref={}\n",
-            pivot.name,
-            pivot.file_path,
-            pivot.start_line,
-            pivot.kind,
-            label,
-            pivot.reference_score as u32
+            "PIVOT {} {}:{} kind={} centrality={}\n",
+            pivot.name, pivot.file_path, pivot.start_line, pivot.kind, label
         ));
         for line in pivot.content.lines() {
             out.push_str("  ");
@@ -243,15 +235,6 @@ fn format_context_compact(data: &ContextData) -> String {
 
     for neighbor in &data.neighbors {
         format_neighbor_compact(&mut out, neighbor, &data.allocation.neighbor_mode);
-    }
-
-    let file_map = build_file_map(data);
-    for (file_path, annotations) in &file_map {
-        out.push_str(&format!(
-            "FILE {} | {}\n",
-            file_path,
-            annotations.join(", ")
-        ));
     }
 
     out

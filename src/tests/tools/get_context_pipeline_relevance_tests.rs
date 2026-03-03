@@ -167,23 +167,23 @@ mod tests {
         .unwrap();
 
         assert!(
-            output.contains("Pivot: resolve_workspace_routing"),
+            output.contains("PIVOT resolve_workspace_routing"),
             "expected resolver code symbol as pivot, got:\n{}",
             output
         );
         assert!(
-            output.contains("Pivot: validate_workspace_routing"),
+            output.contains("PIVOT validate_workspace_routing"),
             "expected validator code symbol as pivot, got:\n{}",
             output
         );
 
         assert!(
-            !output.contains("Pivot: workspace_routing_overview_docsdominanttoken"),
+            !output.contains("PIVOT workspace_routing_overview_docsdominanttoken"),
             "docs pivot should be dropped after code-first fallback, got:\n{}",
             output
         );
         assert!(
-            !output.contains("Pivot: workspace_routing_checkpoint_docsdominanttoken"),
+            !output.contains("PIVOT workspace_routing_checkpoint_docsdominanttoken"),
             "memory pivot should be dropped after code-first fallback, got:\n{}",
             output
         );

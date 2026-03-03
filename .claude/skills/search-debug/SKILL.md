@@ -56,7 +56,7 @@ deep_dive(symbol="<expected_symbol>", depth="context")
 ```
 
 Check:
-- **Centrality (ref_score)**: Low-centrality symbols get less boost in search results. A ref_score of 0 means nothing references this symbol — it won't benefit from centrality boosting.
+- **Centrality**: Low-centrality symbols get less boost in search results. Symbols with no references won't benefit from centrality boosting. Use `get_context` to see the centrality label (low/medium/high).
 - **Symbol kind**: Is it a function, struct, variable? Variables and constants may score differently.
 - **File path**: Is it in a test/docs/fixture path? These get a mild penalty from `NL_PATH_PENALTY` (0.95x).
 - **Visibility**: Public symbols with important patterns (e.g., `pub fn`) get a 1.5x boost from `IMPORTANT_PATTERN_BOOST`.
@@ -91,7 +91,7 @@ Current Results (top 5):
   ...
 
 Expected Symbol Analysis:
-  Centrality: ref_score <N> (<high/medium/low>)
+  Centrality: <high/medium/low>
   Kind: <function/struct/etc>
   Visibility: <pub/private>
   File path: <path> (production/test/docs)
@@ -101,7 +101,7 @@ Diagnosis:
    not indexed, wrong symbol kind, or genuinely correct ranking>
 
 Scoring Factors at Play:
-  - Centrality boost: <applies/doesn't apply> (ref_score: <N>)
+  - Centrality boost: <applies/doesn't apply>
   - Important pattern boost: <1.5x/none>
   - NL path prior: <boost/penalty/neutral>
   - Tokenization: query "<query>" → tokens [<tokens>], symbol "<name>" → tokens [<tokens>]

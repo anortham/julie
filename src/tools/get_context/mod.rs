@@ -45,7 +45,7 @@ pub struct GetContextTool {
     #[serde(default)]
     pub file_pattern: Option<String>,
 
-    /// Output format: "readable" (default) or "compact"
+    /// Output format: "compact" (default) or "readable"
     #[serde(default)]
     pub format: Option<String>,
 }

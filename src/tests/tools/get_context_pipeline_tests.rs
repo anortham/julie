@@ -222,10 +222,10 @@ mod pipeline_integration_tests {
         let result =
             run_pipeline("process_request", None, None, None, None, &db, &index, None).unwrap();
         assert!(result.contains("process_request"));
-        assert!(result.contains("Pivot:"));
+        assert!(result.contains("PIVOT"));
         assert!(result.contains("validate_input"));
         assert!(result.contains("src/handler.rs"));
-        assert!(result.contains("Context:"));
+        assert!(result.contains("Context"));
     }
 
     #[test]

@@ -67,7 +67,7 @@ mod tests {
             ),
         ];
 
-        let response = OptimizedResponse::new("fast_search", symbols, 0.9);
+        let response = OptimizedResponse::new(symbols);
         let output = format_definition_search_results("SearchIndex", &response);
 
         // Exact match should come first with "Definition found:" header
@@ -115,7 +115,7 @@ mod tests {
             ),
         ];
 
-        let response = OptimizedResponse::new("fast_search", symbols, 0.7);
+        let response = OptimizedResponse::new(symbols);
         let output = format_definition_search_results("SearchIndex", &response);
 
         // No exact match → standard format (no "Definition found:" header)
@@ -162,7 +162,7 @@ mod tests {
             ),
         ];
 
-        let response = OptimizedResponse::new("fast_search", symbols, 0.9);
+        let response = OptimizedResponse::new(symbols);
         let output = format_definition_search_results("SearchIndex", &response);
 
         // Case-insensitive: both "SearchIndex" and "searchindex" are exact matches
@@ -206,7 +206,7 @@ mod tests {
             ),
         ];
 
-        let response = OptimizedResponse::new("fast_search", symbols, 0.9);
+        let response = OptimizedResponse::new(symbols);
         let output = format_definition_search_results("Config", &response);
 
         // Both exact matches should appear in the promoted section
@@ -231,7 +231,7 @@ mod tests {
             Some("pub fn process_payment(order: &Order) -> Result<Receipt> { ... }"),
         )];
 
-        let response = OptimizedResponse::new("fast_search", symbols, 0.95);
+        let response = OptimizedResponse::new(symbols);
         let output = format_definition_search_results("process_payment", &response);
 
         assert!(output.contains("Definition found: process_payment"));
@@ -254,7 +254,7 @@ mod tests {
             Some("fn helper_fn() {}"),
         )];
 
-        let response = OptimizedResponse::new("fast_search", symbols, 0.9);
+        let response = OptimizedResponse::new(symbols);
         let output = format_definition_search_results("helper_fn", &response);
 
         assert!(output.contains("Definition found: helper_fn"));

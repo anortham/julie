@@ -45,12 +45,8 @@ mod tests {
         );
 
         let response = OptimizedResponse {
-            tool: "fast_search".to_string(),
             results: vec![symbol],
-            confidence: 0.9,
             total_found: 1,
-            insights: None,
-            next_actions: vec![],
         };
 
         let output = format_lean_search_results("main", &response);
@@ -76,12 +72,8 @@ mod tests {
         ];
 
         let response = OptimizedResponse {
-            tool: "fast_search".to_string(),
             results: symbols,
-            confidence: 0.8,
             total_found: 3,
-            insights: None,
-            next_actions: vec![],
         };
 
         let output = format_lean_search_results("fn", &response);
@@ -108,12 +100,8 @@ mod tests {
         ];
 
         let response = OptimizedResponse {
-            tool: "fast_search".to_string(),
             results: symbols,
-            confidence: 0.7,
             total_found: 100, // More results exist but not shown
-            insights: None,
-            next_actions: vec![],
         };
 
         let output = format_lean_search_results("fn", &response);
@@ -128,12 +116,8 @@ mod tests {
         symbol.code_context = None;
 
         let response = OptimizedResponse {
-            tool: "fast_search".to_string(),
             results: vec![symbol],
-            confidence: 0.5,
             total_found: 1,
-            insights: None,
-            next_actions: vec![],
         };
 
         let output = format_lean_search_results("test", &response);
@@ -159,12 +143,8 @@ mod tests {
         ];
 
         let response = OptimizedResponse {
-            tool: "fast_search".to_string(),
             results: symbols,
-            confidence: 0.85,
             total_found: 2,
-            insights: Some("Mostly Methods".to_string()),
-            next_actions: vec!["Use deep_dive".to_string()],
         };
 
         let lean_output = format_lean_search_results("call_tool", &response);
@@ -202,12 +182,8 @@ mod tests {
         );
 
         let response = OptimizedResponse {
-            tool: "fast_search".to_string(),
             results: vec![symbol],
-            confidence: 0.9,
             total_found: 1,
-            insights: None,
-            next_actions: vec![],
         };
 
         let output = format_lean_search_results("contains", &response);

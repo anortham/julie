@@ -88,10 +88,11 @@ Suggested Starting Point:
 
 ## Tips
 
-- **Use `format: "compact"` for leaner output** when you need to conserve tokens:
+- **Use `format: "readable"` for human-friendly output** with section separators and richer formatting:
   ```
-  get_context(query="...", format="compact")
+  get_context(query="...", format="readable")
   ```
+  The default format is compact (optimized for AI agent consumption).
 - **Use `max_tokens` to control budget** if the default is too much or too little:
   ```
   get_context(query="...", max_tokens=1000)
