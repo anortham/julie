@@ -32,7 +32,7 @@ pub struct SidecarLaunchConfig {
 }
 
 pub fn build_sidecar_launch_config() -> Result<SidecarLaunchConfig> {
-    let sidecar_root = sidecar_root_path();
+    let sidecar_root = sidecar_root_path()?;
     let script_override = std::env::var(SIDECAR_SCRIPT_ENV)
         .ok()
         .map(|value| value.trim().to_string())
@@ -72,14 +72,34 @@ pub fn build_sidecar_launch_config() -> Result<SidecarLaunchConfig> {
     })
 }
 
-pub fn sidecar_root_path() -> PathBuf {
+pub fn sidecar_root_path() -> Result<PathBuf> {
+    // Priority 1: Env var override
     if let Some(root_override) = std::env::var_os(SIDECAR_ROOT_ENV) {
-        return PathBuf::from(root_override);
+        return Ok(PathBuf::from(root_override));
     }
 
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    // Priority 2: Adjacent to binary (for packagers)
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let adjacent = exe_dir.join("python").join("embeddings_sidecar");
+            if adjacent.join("pyproject.toml").exists() {
+                return Ok(adjacent);
+            }
+        }
+    }
+
+    // Priority 3: Source checkout (dev mode)
+    let source_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("python")
-        .join("embeddings_sidecar")
+        .join("embeddings_sidecar");
+    if source_dir.join("pyproject.toml").exists() {
+        return Ok(source_dir);
+    }
+
+    // Priority 4: Extract embedded files to cache
+    let extracted = managed_sidecar_source_path();
+    extract_embedded_sidecar(&extracted)?;
+    Ok(extracted)
 }
 
 pub fn managed_venv_path() -> PathBuf {

@@ -123,10 +123,41 @@ mod tests {
 
     // =========================================================================
     // Task 3: sidecar_root_path fallback chain tests
-    // (Added after sidecar_root_path() returns Result<PathBuf>)
     // =========================================================================
 
-    // Task 3 tests will be uncommented when the signature changes.
-    // test_sidecar_root_path_env_override_wins
-    // test_sidecar_root_path_returns_ok
+    #[test]
+    fn test_sidecar_root_path_env_override_wins() {
+        use crate::embeddings::sidecar_supervisor::{sidecar_root_path, SIDECAR_ROOT_ENV};
+
+        let fake_path = "/tmp/julie-test-sidecar-override";
+
+        // Safety: we use a unique env var value; tests might run in parallel
+        // but this env var is unlikely to collide.
+        unsafe {
+            std::env::set_var(SIDECAR_ROOT_ENV, fake_path);
+        }
+        let result = sidecar_root_path();
+        unsafe {
+            std::env::remove_var(SIDECAR_ROOT_ENV);
+        }
+
+        let path = result.expect("sidecar_root_path should return Ok");
+        assert_eq!(
+            path,
+            std::path::PathBuf::from(fake_path),
+            "env override should win"
+        );
+    }
+
+    #[test]
+    fn test_sidecar_root_path_returns_ok() {
+        use crate::embeddings::sidecar_supervisor::sidecar_root_path;
+
+        // Running from source checkout, so priority 3 (CARGO_MANIFEST_DIR) should match
+        let result = sidecar_root_path();
+        assert!(
+            result.is_ok(),
+            "sidecar_root_path should succeed from source checkout"
+        );
+    }
 }
