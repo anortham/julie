@@ -20,6 +20,10 @@ pub mod sidecar_protocol;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_provider;
 #[cfg(feature = "embeddings-sidecar")]
+pub mod sidecar_bootstrap;
+#[cfg(feature = "embeddings-sidecar")]
+pub mod sidecar_embedded;
+#[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_supervisor;
 
 use anyhow::Result;
