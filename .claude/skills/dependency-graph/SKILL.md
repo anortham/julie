@@ -1,9 +1,9 @@
 ---
 name: dependency-graph
-description: Show module dependencies by analyzing imports, exports, and cross-references between files
+description: Show module dependencies by analyzing imports, exports, and cross-references between files. Use when the user asks what a file imports, what depends on a module, how modules are coupled, or wants to understand the dependency structure of any part of the codebase.
 user-invocable: true
 arguments: "<module_path>"
-allowed-tools: mcp__julie__get_symbols, mcp__julie__fast_refs, mcp__julie__get_context
+allowed-tools: mcp__julie__get_symbols, mcp__julie__fast_refs, mcp__julie__fast_search, mcp__julie__get_context
 ---
 
 # Dependency Graph
@@ -32,10 +32,10 @@ List all symbols (functions, structs, traits, imports) in the module.
 
 ### Step 3: Identify Imports (What This Module Depends On)
 
-From the symbol list, extract all `use` / `import` statements. Group by source:
-- **Internal crate**: `use crate::database::...`
-- **External crate**: `use tantivy::...`, `use serde::...`
-- **Standard library**: `use std::...`
+From the symbol list, extract all import/use statements. Group by source:
+- **Internal project**: Imports from other modules within the same project
+- **External libraries**: Third-party dependencies (crates, npm packages, pip packages, etc.)
+- **Standard library**: Language-provided standard library imports
 
 ### Step 4: Identify Exports (What Depends on This Module)
 
@@ -54,30 +54,28 @@ Module: <file_path>
 
 Imports (depends on):
   Internal:
-    - crate::database::SymbolDatabase (queries, storage)
-    - crate::search::SearchIndex (Tantivy search)
-    - crate::workspace::JulieWorkspace (workspace context)
+    - database/SymbolDatabase (queries, storage)
+    - search/SearchIndex (full-text search)
+    - workspace/JulieWorkspace (workspace context)
   External:
     - tantivy (full-text search engine)
     - serde (serialization)
-    - anyhow (error handling)
   Stdlib:
-    - std::collections::HashMap
-    - std::path::Path
+    - HashMap, Path
 
 Exports (depended on by):
   FastSearchTool → used by:
-    - src/handler.rs (tool registration + routing)
-    - src/tests/tools/search.rs (test suite)
+    - handler.rs (tool registration + routing)
+    - tests/tools/search.rs (test suite)
   SearchResult → used by:
-    - src/tools/deep_dive/mod.rs (result formatting)
+    - tools/deep_dive/mod.rs (result formatting)
 
 Internal Only (not exported):
   - build_query() — private helper
   - format_results() — private helper
 
 Summary:
-  Imports: 3 internal, 3 external, 2 stdlib
+  Imports: 3 internal, 2 external, 2 stdlib
   Exports: 2 public symbols used by 3 files
   Coupling: Medium (core handler depends on this)
 ```

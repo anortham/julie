@@ -1,6 +1,6 @@
 ---
 name: call-trace
-description: Trace the call path between two functions by iteratively following callers/callees using deep_dive and fast_refs
+description: Trace the call path between two functions by iteratively following callers/callees using deep_dive and fast_refs. Use when the user asks how function A reaches function B, wants to see the connection between two symbols, or asks "what calls what" between two points in the code.
 user-invocable: true
 arguments: "<start_function> <end_function>"
 allowed-tools: mcp__julie__deep_dive, mcp__julie__fast_refs, mcp__julie__fast_search, mcp__julie__get_context

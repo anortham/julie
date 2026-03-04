@@ -1,6 +1,6 @@
 ---
 name: explore-area
-description: Orient on a new area of the codebase using get_context for token-budgeted exploration with pivots and neighbors
+description: Orient on a new area of the codebase using get_context for token-budgeted exploration with pivots and neighbors. Use when the user asks "what does this module do", "I'm new to this code", "explain this part of the codebase", or wants to understand an unfamiliar area before making changes.
 user-invocable: true
 arguments: "<query or concept>"
 allowed-tools: mcp__julie__get_context, mcp__julie__deep_dive, mcp__julie__get_symbols

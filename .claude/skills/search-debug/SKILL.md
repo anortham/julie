@@ -1,6 +1,6 @@
 ---
 name: search-debug
-description: Diagnose why a search returns unexpected results — analyze scoring factors, tokenization, and index health for dogfooding Julie's search quality
+description: Diagnose why a search returns unexpected results — analyze scoring factors, tokenization, and index health for dogfooding Julie's search quality. Use when a Julie search misses an expected symbol, returns wrong results, ranks something surprisingly low, or when investigating search quality issues during development.
 user-invocable: true
 arguments: "<search_query> [expected_result]"
 allowed-tools: mcp__julie__fast_search, mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__manage_workspace

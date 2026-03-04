@@ -1,6 +1,6 @@
 ---
 name: impact-analysis
-description: Analyze what would break if a symbol is changed — finds all callers, groups by risk level, and assesses change impact
+description: Analyze what would break if a symbol is changed — finds all callers, groups by risk level, and assesses change impact. Use when the user asks about the blast radius of a change, wants to know who uses a symbol, or is planning a refactor and needs to understand downstream effects.
 user-invocable: true
 arguments: "<symbol_name>"
 allowed-tools: mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__get_context
@@ -47,17 +47,17 @@ deep_dive(symbol="<symbol>", context_file="<partial_file_path>")
 Group each reference by the file it appears in, then classify:
 
 **High Risk** — Changes here could cause cascading failures:
-- Core files (main.rs, handler.rs, mod.rs)
+- Entry points and core orchestration files (e.g., main entry, request handlers, routers)
 - Files with 10+ references to this symbol
 - Files that re-export or wrap this symbol
 
 **Medium Risk** — Changes need careful testing:
-- Tool implementation files
-- Database/search modules
+- Feature implementation files
+- Data access / storage modules
 - Files with 3-9 references
 
 **Low Risk** — Changes are isolated:
-- Test files (any file in tests/ or with `#[test]`)
+- Test files (paths containing `test`, `tests`, `spec`, `__tests__`, or test annotations)
 - Files with 1-2 references
 
 ### Step 4: Sample Deep Dives on High-Risk Callers
@@ -101,5 +101,5 @@ Recommendation:
 
 - **Always check test coverage** — high-risk changes with no test references are especially dangerous
 - **Type changes cascade** — if the symbol is a type/struct, any field change affects all users
-- **Trait changes are widest** — changing a trait method affects all implementors
+- **Interface/trait changes are widest** — changing an interface method, trait, or abstract class affects all implementors
 - **Reference workspaces**: Pass `workspace: "<workspace_id>"` to all tool calls when analyzing a non-primary workspace

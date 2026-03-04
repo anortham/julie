@@ -1,6 +1,6 @@
 ---
 name: type-flow
-description: Trace how types flow through a function — parameters, transformations, and return types
+description: Trace how types flow through a function — parameters, transformations, and return types. Use when the user asks what types a function accepts or returns, how data transforms through a pipeline, or wants to understand type conversions in a code path.
 user-invocable: true
 arguments: "<function_name>"
 allowed-tools: mcp__julie__deep_dive, mcp__julie__fast_refs, mcp__julie__fast_search
@@ -32,9 +32,9 @@ Trace each type from input to output:
 
 1. **Input types**: What are the parameter types?
 2. **Transformations**: Where does a type convert to another?
-   - `.into()`, `From::from()`, `as` casts
+   - Conversion methods (Rust: `.into()`, `From::from()`; JS/TS: type assertions; Python: constructors)
    - Method calls that return different types
-   - Destructuring / pattern matching
+   - Destructuring / pattern matching / spread operators
 3. **Intermediate types**: What types exist between input and output?
 4. **Output type**: What does the function return?
 
@@ -91,7 +91,7 @@ Type Flow:
 
 ## Important Notes
 
-- **Follow the `?` operator** — it unwraps Result/Option, changing the effective type
+- **Follow error propagation** — Rust's `?`, JS/TS `try/catch`, Python `raise` — these change the effective type in the success path
 - **Generic types**: Note type parameters (e.g., `Vec<T>` where T matters)
 - **Trait objects**: `dyn Trait` or `impl Trait` — note what concrete types are used
 - **Closures**: Types of closure parameters are often inferred, state what they are

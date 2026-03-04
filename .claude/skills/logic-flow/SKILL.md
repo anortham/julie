@@ -1,9 +1,9 @@
 ---
 name: logic-flow
-description: Explain the logic flow of a function step-by-step by analyzing its implementation and call graph
+description: Explain the logic flow of a function step-by-step by analyzing its implementation and call graph. Use when the user asks "how does this function work", "walk me through this", "step through this code", or wants to understand the control flow and decision points in a function.
 user-invocable: true
 arguments: "<function_name>"
-allowed-tools: mcp__julie__deep_dive, mcp__julie__get_context
+allowed-tools: mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__get_symbols
 ---
 
 # Logic Flow
