@@ -78,6 +78,7 @@ blake3 = "1.8"
 hex = "0.4"
 shellexpand = "3.1"
 sha2 = "0.10"
+include_dir = "0.7"  # Embed Python sidecar source into binary at compile time
 
 # Logging
 tracing = "0.1"
