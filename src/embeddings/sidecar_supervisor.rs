@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow, bail};
+use include_dir::{Dir, include_dir};
 use tracing::warn;
 
 const DEFAULT_SIDECAR_MODULE: &str = "sidecar.main";
-const SIDECAR_ROOT_ENV: &str = "JULIE_EMBEDDING_SIDECAR_ROOT";
+pub(crate) const SIDECAR_ROOT_ENV: &str = "JULIE_EMBEDDING_SIDECAR_ROOT";
 const SIDECAR_VENV_ENV: &str = "JULIE_EMBEDDING_SIDECAR_VENV";
 const SIDECAR_PROGRAM_ENV: &str = "JULIE_EMBEDDING_SIDECAR_PROGRAM";
 const SIDECAR_RAW_PROGRAM_ENV: &str = "JULIE_EMBEDDING_SIDECAR_RAW_PROGRAM";
@@ -15,10 +16,13 @@ const SIDECAR_MODULE_ENV: &str = "JULIE_EMBEDDING_SIDECAR_MODULE";
 const SIDECAR_BOOTSTRAP_PYTHON_ENV: &str = "JULIE_EMBEDDING_SIDECAR_BOOTSTRAP_PYTHON";
 const EMBEDDING_CACHE_DIR_ENV: &str = "JULIE_EMBEDDING_CACHE_DIR";
 const INSTALL_MARKER: &str = ".julie-sidecar-install-root";
-const INSTALL_MARKER_VERSION: &str = "v7-directml-simple";
+pub(crate) const INSTALL_MARKER_VERSION: &str = "v7-directml-simple";
 /// PyTorch publishes wheels for these minor versions (3.10 through 3.13).
 const SUPPORTED_PYTHON_MINORS: [u32; 4] = [12, 13, 11, 10];
 const RUNTIME_EDITABLE_REQUIREMENT: &str = ".[runtime]";
+
+static EMBEDDED_SIDECAR: Dir = include_dir!("$CARGO_MANIFEST_DIR/python/embeddings_sidecar");
+const EMBEDDED_VERSION_MARKER: &str = ".embedded-version";
 
 #[derive(Debug, Clone)]
 pub struct SidecarLaunchConfig {
@@ -111,6 +115,79 @@ fn managed_cache_base_dir() -> PathBuf {
     }
 
     std::env::temp_dir().join("julie")
+}
+
+fn managed_sidecar_source_path() -> PathBuf {
+    managed_cache_base_dir()
+        .join("embeddings")
+        .join("sidecar")
+        .join("source")
+}
+
+/// Extract the compile-time embedded sidecar source to `target_dir`.
+///
+/// Skips extraction if the version marker already matches [`INSTALL_MARKER_VERSION`].
+/// Directories named `tests` or `__pycache__` are excluded from extraction.
+pub fn extract_embedded_sidecar(target_dir: &Path) -> Result<()> {
+    let marker_path = target_dir.join(EMBEDDED_VERSION_MARKER);
+
+    // Check version marker — skip if up-to-date
+    if marker_path.is_file() {
+        if let Ok(contents) = std::fs::read_to_string(&marker_path) {
+            if contents.trim() == INSTALL_MARKER_VERSION {
+                return Ok(());
+            }
+        }
+    }
+
+    // Extract all files recursively, skipping test/cache directories
+    extract_dir_recursive(&EMBEDDED_SIDECAR, target_dir)
+        .context("extracting embedded sidecar source")?;
+
+    // Write version marker
+    std::fs::write(&marker_path, INSTALL_MARKER_VERSION)
+        .context("writing embedded version marker")?;
+
+    Ok(())
+}
+
+/// Recursively extract files from an embedded `Dir`, skipping `tests` and `__pycache__`.
+fn extract_dir_recursive(dir: &Dir, target: &Path) -> Result<()> {
+    for entry in dir.entries() {
+        match entry {
+            include_dir::DirEntry::Dir(sub_dir) => {
+                let dir_name = sub_dir
+                    .path()
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+
+                // Skip test and cache directories
+                if dir_name == "tests" || dir_name == "__pycache__" || dir_name == ".pytest_cache"
+                {
+                    continue;
+                }
+
+                let sub_target = target.join(sub_dir.path());
+                std::fs::create_dir_all(&sub_target).with_context(|| {
+                    format!("creating directory {}", sub_target.display())
+                })?;
+                extract_dir_recursive(sub_dir, target)?;
+            }
+            include_dir::DirEntry::File(file) => {
+                let file_target = target.join(file.path());
+                if let Some(parent) = file_target.parent() {
+                    std::fs::create_dir_all(parent).with_context(|| {
+                        format!("creating parent directory {}", parent.display())
+                    })?;
+                }
+                std::fs::write(&file_target, file.contents()).with_context(|| {
+                    format!("writing file {}", file_target.display())
+                })?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn managed_venv_python_path(venv_path: &Path) -> PathBuf {
