@@ -20,6 +20,10 @@ pub mod sidecar_protocol;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_provider;
 #[cfg(feature = "embeddings-sidecar")]
+pub mod sidecar_bootstrap;
+#[cfg(feature = "embeddings-sidecar")]
+pub mod sidecar_embedded;
+#[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_supervisor;
 
 use anyhow::Result;
@@ -138,6 +142,5 @@ pub use sidecar_protocol::{
 pub use sidecar_provider::SidecarEmbeddingProvider;
 #[cfg(feature = "embeddings-sidecar")]
 pub use sidecar_supervisor::{
-    SidecarLaunchConfig, build_sidecar_launch_config, extract_embedded_sidecar,
-    managed_venv_path, sidecar_root_path,
+    SidecarLaunchConfig, build_sidecar_launch_config, managed_venv_path, sidecar_root_path,
 };

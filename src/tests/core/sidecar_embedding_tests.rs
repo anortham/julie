@@ -5,12 +5,11 @@
 mod tests {
     use std::fs;
 
-    use crate::embeddings::sidecar_supervisor::{
-        extract_embedded_sidecar, INSTALL_MARKER_VERSION,
-    };
+    use crate::embeddings::sidecar_embedded::extract_embedded_sidecar;
+    use crate::embeddings::sidecar_supervisor::INSTALL_MARKER_VERSION;
 
     // =========================================================================
-    // Task 2: Extraction function tests
+    // Extraction function tests
     // =========================================================================
 
     #[test]
@@ -38,12 +37,13 @@ mod tests {
             ".embedded-version marker should be written"
         );
 
-        // Marker content should match the install marker version
+        // Marker content should match the install marker version exactly
         let marker = fs::read_to_string(target.join(".embedded-version"))
             .expect("read marker");
-        assert!(
-            marker.contains(INSTALL_MARKER_VERSION),
-            "marker should contain version: got {marker}"
+        assert_eq!(
+            marker.trim(),
+            INSTALL_MARKER_VERSION,
+            "marker should equal version: got {marker}"
         );
     }
 
@@ -95,8 +95,9 @@ mod tests {
 
         let marker = fs::read_to_string(target.join(".embedded-version"))
             .expect("read marker");
-        assert!(
-            marker.contains(INSTALL_MARKER_VERSION),
+        assert_eq!(
+            marker.trim(),
+            INSTALL_MARKER_VERSION,
             "marker should be updated to current version: got {marker}"
         );
     }
@@ -122,17 +123,16 @@ mod tests {
     }
 
     // =========================================================================
-    // Task 3: sidecar_root_path fallback chain tests
+    // sidecar_root_path fallback chain tests
     // =========================================================================
 
     #[test]
+    #[serial_test::serial]
     fn test_sidecar_root_path_env_override_wins() {
         use crate::embeddings::sidecar_supervisor::{sidecar_root_path, SIDECAR_ROOT_ENV};
 
         let fake_path = "/tmp/julie-test-sidecar-override";
 
-        // Safety: we use a unique env var value; tests might run in parallel
-        // but this env var is unlikely to collide.
         unsafe {
             std::env::set_var(SIDECAR_ROOT_ENV, fake_path);
         }
@@ -150,14 +150,15 @@ mod tests {
     }
 
     #[test]
-    fn test_sidecar_root_path_returns_ok() {
+    fn test_sidecar_root_path_succeeds_from_source_checkout() {
         use crate::embeddings::sidecar_supervisor::sidecar_root_path;
 
         // Running from source checkout, so priority 3 (CARGO_MANIFEST_DIR) should match
-        let result = sidecar_root_path();
+        let path = sidecar_root_path().expect("sidecar_root_path should succeed from source checkout");
+        let path_str = path.to_string_lossy();
         assert!(
-            result.is_ok(),
-            "sidecar_root_path should succeed from source checkout"
+            path_str.contains("python/embeddings_sidecar"),
+            "expected path to contain 'python/embeddings_sidecar', got: {path_str}"
         );
     }
 }

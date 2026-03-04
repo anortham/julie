@@ -33,6 +33,7 @@ pub mod core {
     pub mod vector_storage; // sqlite-vec vector storage CRUD tests
     pub mod workspace_init; // Workspace root detection and initialization tests
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
+    pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
 }
 
 // ============================================================================
