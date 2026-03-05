@@ -96,13 +96,6 @@ impl ManageWorkspaceTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         info!("🏗️ Managing workspace with operation: {}", self.operation);
 
-        #[cfg(test)]
-        {
-            assert!(
-                handler.tool_lock_is_free(),
-                "tool execution lock should remain free while executing tool logic"
-            );
-        }
 
         match self.operation.as_str() {
             "index" => {

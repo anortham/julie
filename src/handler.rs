@@ -63,12 +63,6 @@ pub struct JulieServerHandler {
     pub is_indexed: Arc<RwLock<bool>>,
     /// Tracks which indexes are ready for search operations
     pub indexing_status: Arc<IndexingStatus>,
-    /// Serializes tool execution to prevent stdout interleaving.
-    /// The MCP StdioTransport doesn't synchronize writes to stdout.
-    /// When multiple tool calls complete concurrently, their JSON responses can
-    /// interleave on stdout, causing client parsing errors.
-    /// This mutex ensures only one tool writes its response at a time.
-    tool_execution_lock: Arc<tokio::sync::Mutex<()>>,
     /// rmcp tool router for handling tool calls
     tool_router: ToolRouter<Self>,
 }
@@ -87,7 +81,6 @@ impl JulieServerHandler {
             workspace: Arc::new(RwLock::new(None)),
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
-            tool_execution_lock: Arc::new(tokio::sync::Mutex::new(())),
             tool_router: Self::tool_router(),
         })
     }
@@ -301,18 +294,6 @@ impl JulieServerHandler {
         Ok(())
     }
 
-    /// Check if the tool execution lock is currently free (used in tests)
-    #[allow(dead_code)]
-    pub(crate) fn tool_lock_is_free(&self) -> bool {
-        match self.tool_execution_lock.try_lock() {
-            Ok(guard) => {
-                drop(guard);
-                true
-            }
-            Err(_) => false,
-        }
-    }
-
     /// Run auto-indexing in background (called after MCP handshake)
     async fn run_auto_indexing(&self) {
         use crate::startup::check_if_indexing_needed;
@@ -398,7 +379,6 @@ impl JulieServerHandler {
         Parameters(params): Parameters<FastSearchTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast search: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
         params
             .call_tool(self)
             .await
@@ -421,7 +401,6 @@ impl JulieServerHandler {
         Parameters(params): Parameters<FastRefsTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast find references: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
         params
             .call_tool(self)
             .await
@@ -444,7 +423,6 @@ impl JulieServerHandler {
         Parameters(params): Parameters<GetSymbolsTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("📋 Get symbols for file: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
         params
             .call_tool(self)
             .await
@@ -467,7 +445,6 @@ impl JulieServerHandler {
         Parameters(params): Parameters<DeepDiveTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("🔍 Deep dive: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
         params
             .call_tool(self)
             .await
@@ -492,7 +469,6 @@ impl JulieServerHandler {
         Parameters(params): Parameters<GetContextTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("📦 Get context: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
         params
             .call_tool(self)
             .await
@@ -517,7 +493,6 @@ impl JulieServerHandler {
         Parameters(params): Parameters<RenameSymbolTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("✏️ Rename symbol: {:?}", params);
-        let _guard = self.tool_execution_lock.lock().await;
         params
             .call_tool(self)
             .await
@@ -542,7 +517,6 @@ impl JulieServerHandler {
         Parameters(params): Parameters<ManageWorkspaceTool>,
     ) -> Result<CallToolResult, McpError> {
         info!("🏗️ Managing workspace: {}", params.operation);
-        let _guard = self.tool_execution_lock.lock().await;
         params
             .call_tool(self)
             .await
