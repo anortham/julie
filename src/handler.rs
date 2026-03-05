@@ -305,7 +305,10 @@ impl JulieServerHandler {
             Ok(true) => {
                 info!("📚 Workspace needs indexing - starting auto-indexing...");
 
-                // Run indexing via manage_workspace tool
+                // Run indexing via manage_workspace tool, skipping embeddings.
+                // Embeddings are expensive and network-dependent — they can be
+                // triggered explicitly via `manage_workspace index` or lazily on
+                // first NL-definition search.
                 let index_tool = ManageWorkspaceTool {
                     operation: "index".to_string(),
                     path: None, // Use default workspace path
@@ -315,17 +318,13 @@ impl JulieServerHandler {
                     detailed: None,
                 };
 
-                if let Err(e) = index_tool.call_tool(self).await {
+                if let Err(e) = index_tool.call_tool_with_options(self, true).await {
                     warn!(
                         "⚠️ Background auto-indexing failed: {} (use manage_workspace tool to retry)",
                         e
                     );
                 } else {
                     info!("✅ Background auto-indexing completed successfully");
-
-                    // NOTE: embedding pipeline is spawned by the index command itself
-                    // (index.rs → spawn_workspace_embedding), so we do NOT spawn it
-                    // again here — that caused duplicate parallel pipelines.
                 }
             }
             Ok(false) => {

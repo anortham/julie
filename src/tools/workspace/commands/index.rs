@@ -23,6 +23,7 @@ impl ManageWorkspaceTool {
         handler: &JulieServerHandler,
         path: Option<String>,
         force: bool,
+        skip_embeddings: bool,
     ) -> Result<CallToolResult> {
         info!("📚 Starting workspace indexing...");
 
@@ -326,16 +327,20 @@ impl ManageWorkspaceTool {
                     files_total, symbols_total, relationships_total
                 );
                 if let Some(ws_id) = indexed_workspace_id {
-                    let embed_count =
-                        crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
-                            handler, ws_id,
-                        )
-                        .await;
-                    if embed_count > 0 {
-                        message.push_str(&format!(
-                            "\nEmbedding {} symbols in background...",
-                            embed_count
-                        ));
+                    if skip_embeddings {
+                        info!("Skipping embeddings in auto-index mode (use explicit `manage_workspace index` to embed)");
+                    } else {
+                        let embed_count =
+                            crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+                                handler, ws_id,
+                            )
+                            .await;
+                        if embed_count > 0 {
+                            message.push_str(&format!(
+                                "\nEmbedding {} symbols in background...",
+                                embed_count
+                            ));
+                        }
                     }
                 }
                 Ok(CallToolResult::text_content(vec![Content::text(message)]))

@@ -93,13 +93,34 @@ pub struct ManageWorkspaceTool {
 }
 
 impl ManageWorkspaceTool {
+    /// Call with `skip_embeddings: true` to suppress the embedding pipeline
+    /// (used by auto-indexing to avoid expensive sidecar startup on init).
+    pub async fn call_tool_with_options(
+        &self,
+        handler: &JulieServerHandler,
+        skip_embeddings: bool,
+    ) -> Result<CallToolResult> {
+        match self.operation.as_str() {
+            "index" => {
+                self.handle_index_command(
+                    handler,
+                    self.path.clone(),
+                    self.force.unwrap_or(false),
+                    skip_embeddings,
+                )
+                .await
+            }
+            _ => self.call_tool(handler).await,
+        }
+    }
+
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         info!("🏗️ Managing workspace with operation: {}", self.operation);
 
 
         match self.operation.as_str() {
             "index" => {
-                self.handle_index_command(handler, self.path.clone(), self.force.unwrap_or(false))
+                self.handle_index_command(handler, self.path.clone(), self.force.unwrap_or(false), false)
                     .await
             }
             "add" => {
