@@ -149,7 +149,7 @@ mod reference_workspace_tests {
         atomic_cleanup_julie_dir(&reference_path)?;
 
         // Initialize handler with primary fixture
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         // CRITICAL: Use force=true to prevent detect_and_load from walking up to parent .julie/
         handler
             .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
@@ -247,7 +247,7 @@ mod reference_workspace_tests {
         let workspace_path = get_fixture_path("tiny-primary");
         atomic_cleanup_julie_dir(&workspace_path)?;
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(
                 Some(workspace_path.to_string_lossy().to_string()),
@@ -300,7 +300,7 @@ mod reference_workspace_tests {
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         // CRITICAL: Use force=true to prevent detect_and_load from walking up to parent .julie/
         handler
             .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
@@ -392,7 +392,7 @@ mod reference_workspace_tests {
         let _ = std::fs::remove_dir_all(reference_path.join(".julie"));
 
         // Initialize handler with primary fixture
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
             .await?;

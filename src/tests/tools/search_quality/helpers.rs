@@ -220,7 +220,7 @@ pub async fn setup_handler_with_fixture() -> JulieServerHandler {
     assert_eq!(src_size, dest_size, "Database copy size mismatch!");
 
     // Create handler
-    let handler = JulieServerHandler::new()
+    let handler = JulieServerHandler::new_for_test()
         .await
         .expect("Failed to create handler");
 

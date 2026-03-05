@@ -427,7 +427,7 @@ async fn test_incremental_indexing_respects_env_var() {
     env::set_current_dir(different_cwd.path()).expect("Failed to change cwd");
 
     // Initialize handler and workspace
-    let handler = JulieServerHandler::new()
+    let handler = JulieServerHandler::new_for_test()
         .await
         .expect("Failed to create handler");
     handler
@@ -547,4 +547,129 @@ fn test_resolve_workspace_path_respects_env_var() {
             env::remove_var("JULIE_WORKSPACE");
         }
     }
+}
+
+/// Test: Handler uses provided workspace_root, not current_dir
+///
+/// Verifies the P1 fix: JulieServerHandler::new(workspace_root) stores the
+/// provided path and uses it as the fallback in initialize_workspace_with_force,
+/// instead of calling current_dir().
+///
+/// This prevents the bug where `julie-server --workspace /repo` launched from
+/// a different directory would index the wrong path.
+#[tokio::test]
+#[serial]
+async fn test_handler_uses_provided_workspace_root() {
+    use crate::handler::JulieServerHandler;
+
+    let intended_workspace = setup_test_workspace();
+    let different_cwd = setup_test_workspace();
+
+    // Save original cwd
+    let original_cwd = env::current_dir().expect("Failed to get cwd");
+
+    // Set cwd to a DIFFERENT directory than the workspace root we'll pass
+    env::set_current_dir(different_cwd.path()).expect("Failed to change cwd");
+
+    // Create handler with explicit workspace root (NOT current_dir)
+    let handler = JulieServerHandler::new(intended_workspace.path().to_path_buf())
+        .await
+        .expect("Failed to create handler");
+
+    // Verify the handler stored the correct workspace root
+    assert_eq!(
+        handler.workspace_root,
+        intended_workspace.path().to_path_buf(),
+        "Handler should store the workspace root passed to new(), not current_dir"
+    );
+
+    // Verify current_dir is different (precondition check)
+    let cwd = env::current_dir().expect("Failed to get cwd");
+    assert_ne!(
+        cwd.canonicalize().unwrap(),
+        intended_workspace.path().canonicalize().unwrap(),
+        "Test precondition: cwd should differ from intended workspace"
+    );
+
+    // Initialize workspace with None path - should use workspace_root as fallback
+    let result = handler.initialize_workspace(None).await;
+    assert!(
+        result.is_ok(),
+        "initialize_workspace(None) should succeed using workspace_root: {:?}",
+        result.err()
+    );
+
+    // Verify the workspace was initialized at the intended path, not cwd
+    let workspace = handler
+        .get_workspace()
+        .await
+        .expect("Failed to get workspace")
+        .expect("Workspace should be initialized");
+    assert_eq!(
+        workspace.root,
+        intended_workspace.path().to_path_buf(),
+        "Workspace should be initialized at the intended root, not cwd"
+    );
+
+    // Cleanup
+    let system_temp = std::env::temp_dir();
+    env::set_current_dir(&system_temp).expect("Failed to change to system temp");
+    drop(intended_workspace);
+    drop(different_cwd);
+    let _ = env::set_current_dir(&original_cwd);
+}
+
+/// Test: load_agent_instructions reads from workspace_root, not cwd
+///
+/// Verifies the P3 fix: JULIE_AGENT_INSTRUCTIONS.md is loaded relative to
+/// the handler's workspace_root, not the process's current working directory.
+#[tokio::test]
+#[serial]
+async fn test_load_agent_instructions_from_workspace_root() {
+    use crate::handler::JulieServerHandler;
+
+    let workspace_dir = setup_test_workspace();
+    let different_cwd = setup_test_workspace();
+
+    // Create JULIE_AGENT_INSTRUCTIONS.md in the workspace root
+    let instructions_content = "These are test agent instructions.";
+    fs::write(
+        workspace_dir.path().join("JULIE_AGENT_INSTRUCTIONS.md"),
+        instructions_content,
+    )
+    .expect("Failed to write instructions file");
+
+    // Save original cwd and change to a DIFFERENT directory
+    let original_cwd = env::current_dir().expect("Failed to get cwd");
+    env::set_current_dir(different_cwd.path()).expect("Failed to change cwd");
+
+    // Verify there's NO instructions file in cwd
+    assert!(
+        !different_cwd
+            .path()
+            .join("JULIE_AGENT_INSTRUCTIONS.md")
+            .exists(),
+        "Precondition: instructions file should NOT exist in cwd"
+    );
+
+    // Create handler with the workspace root
+    let handler = JulieServerHandler::new(workspace_dir.path().to_path_buf())
+        .await
+        .expect("Failed to create handler");
+
+    // get_info() calls load_agent_instructions() internally — verify via the public API
+    use rmcp::ServerHandler;
+    let info = handler.get_info();
+    assert_eq!(
+        info.instructions.as_deref(),
+        Some(instructions_content),
+        "get_info().instructions should contain instructions from workspace_root, not cwd"
+    );
+
+    // Cleanup
+    let system_temp = std::env::temp_dir();
+    env::set_current_dir(&system_temp).expect("Failed to change to system temp");
+    drop(workspace_dir);
+    drop(different_cwd);
+    let _ = env::set_current_dir(&original_cwd);
 }

@@ -72,7 +72,7 @@ pub fn reference_function() {
     )?;
 
     // Initialize handler with primary workspace
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
         .await?;
@@ -216,7 +216,7 @@ pub struct Another {
     )?;
 
     // Initialize handler with primary workspace
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
         .await?;

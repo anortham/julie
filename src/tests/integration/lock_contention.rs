@@ -38,7 +38,7 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
     )?;
 
     // Initialize handler and index workspace
-    let handler = Arc::new(JulieServerHandler::new().await?);
+    let handler = Arc::new(JulieServerHandler::new_for_test().await?);
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_str().unwrap().to_string()), true)
         .await?;
@@ -129,7 +129,7 @@ async fn test_force_reindex_no_lock_busy_errors() -> Result<()> {
         "pub fn greet() -> &'static str { \"hello\" }\npub fn farewell() -> &'static str { \"bye\" }\n",
     )?;
 
-    let handler = Arc::new(JulieServerHandler::new().await?);
+    let handler = Arc::new(JulieServerHandler::new_for_test().await?);
 
     // First initialization (simulates startup auto-index)
     handler

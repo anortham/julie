@@ -79,7 +79,7 @@ fn processPayment() {
         )?;
 
         // Initialize handler and index
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(
                 Some(workspace_path.to_string_lossy().to_string()),
@@ -158,7 +158,7 @@ fn processPayment() {
             "fn function_beta() { println!(\"beta_marker\"); }\n",
         )?;
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(
                 Some(workspace_path.to_string_lossy().to_string()),
@@ -244,7 +244,7 @@ fn processPayment() {
 "#,
         )?;
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(
                 Some(workspace_path.to_string_lossy().to_string()),
@@ -320,7 +320,7 @@ fn processPayment() {
 "#,
         )?;
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(
                 Some(workspace_path.to_string_lossy().to_string()),
@@ -406,7 +406,7 @@ def python_function():
 "#,
         )?;
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(
                 Some(workspace_path.to_string_lossy().to_string()),
@@ -501,7 +501,7 @@ def python_function():
         let test_file = tests_dir.join("test.rs");
         fs::write(&test_file, "// FIXME: add test case\n")?;
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(
                 Some(workspace_path.to_string_lossy().to_string()),
@@ -590,7 +590,7 @@ def python_function():
         let ts_file = src_dir.join("index.ts");
         fs::write(&ts_file, "// TODO: typescript implementation\n")?;
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(
                 Some(workspace_path.to_string_lossy().to_string()),

@@ -77,7 +77,7 @@ async fn test_manage_workspace_stats_surfaces_embedding_runtime_status() {
     }
 
     let temp_dir = TempDir::new().unwrap();
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await
@@ -130,7 +130,7 @@ async fn test_manage_workspace_stats_reports_unavailable_when_provider_missing()
     }
 
     let temp_dir = TempDir::new().unwrap();
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await
@@ -181,7 +181,7 @@ async fn test_manage_workspace_stats_for_reference_workspace_uses_runtime_unavai
 
     let primary_dir = TempDir::new().unwrap();
     let reference_dir = TempDir::new().unwrap();
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(
             Some(primary_dir.path().to_string_lossy().to_string()),
@@ -239,7 +239,7 @@ async fn test_manage_workspace_stats_when_runtime_status_missing_reports_unresol
     }
 
     let temp_dir = TempDir::new().unwrap();
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await

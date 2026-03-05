@@ -20,7 +20,7 @@ async fn test_rename_symbol_basic() -> Result<()> {
     let test_file = temp_dir.path().join("main.rs");
     fs::write(&test_file, "fn getUserData() { println!(\"test\"); }")?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
@@ -77,7 +77,7 @@ async fn test_rename_symbol_basic() -> Result<()> {
 #[tokio::test]
 async fn test_rename_symbol_validation_same_name() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
@@ -108,7 +108,7 @@ async fn test_rename_symbol_validation_same_name() -> Result<()> {
 #[tokio::test]
 async fn test_rename_symbol_validation_empty_names() -> Result<()> {
     let temp_dir = TempDir::new()?;
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
@@ -141,7 +141,7 @@ async fn test_rename_symbol_dry_run() -> Result<()> {
     let test_file = temp_dir.path().join("main.rs");
     fs::write(&test_file, "fn getUserData() {}")?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;
@@ -209,7 +209,7 @@ async fn test_rename_symbol_multiple_files() -> Result<()> {
         "use crate::getUserData; fn test() { getUserData(); }",
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await?;

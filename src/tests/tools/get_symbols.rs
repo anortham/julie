@@ -62,7 +62,7 @@ pub const MAX_USERS: usize = 100;
     )?;
 
     // Initialize handler and index the workspace
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -159,7 +159,7 @@ pub fn process_data(input: &str) -> String {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -216,7 +216,7 @@ async fn test_get_symbols_normalizes_various_path_formats() -> Result<()> {
     let test_file = src_dir.join("utils.rs");
     fs::write(&test_file, "pub fn helper() -> i32 { 42 }")?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -288,7 +288,7 @@ async fn test_get_symbols_with_limit_parameter() -> Result<()> {
     }
     fs::write(&test_file, content)?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -376,7 +376,7 @@ async fn test_get_symbols_file_not_found_error() -> Result<()> {
     let existing_file = src_dir.join("exists.rs");
     fs::write(&existing_file, "pub fn test() -> i32 { 42 }")?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -510,7 +510,7 @@ pub fn get_user(id: &str) -> User {
     )?;
 
     // Initialize handler and index the workspace
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;

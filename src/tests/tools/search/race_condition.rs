@@ -48,7 +48,7 @@ mod tests {
         )?;
 
         // Initialize handler (simulates MCP server start)
-        let handler = Arc::new(JulieServerHandler::new().await?);
+        let handler = Arc::new(JulieServerHandler::new_for_test().await?);
 
         // Start workspace initialization (triggers background indexing with WRITE lock)
         handler
@@ -108,7 +108,7 @@ mod tests {
             )?;
         }
 
-        let handler = Arc::new(JulieServerHandler::new().await?);
+        let handler = Arc::new(JulieServerHandler::new_for_test().await?);
         handler
             .initialize_workspace_with_force(
                 Some(workspace_path.to_string_lossy().to_string()),
@@ -163,7 +163,7 @@ mod tests {
             r#"pub fn target_function() {}"#,
         )?;
 
-        let handler = Arc::new(JulieServerHandler::new().await?);
+        let handler = Arc::new(JulieServerHandler::new_for_test().await?);
         handler
             .initialize_workspace_with_force(
                 Some(workspace_path.to_string_lossy().to_string()),
@@ -225,7 +225,7 @@ pub fn helper_function() {}
         let workspace_path_str = workspace_path.to_string_lossy().to_string();
 
         // Initialize handler and index workspace
-        let handler = Arc::new(JulieServerHandler::new().await?);
+        let handler = Arc::new(JulieServerHandler::new_for_test().await?);
         handler
             .initialize_workspace_with_force(Some(workspace_path_str.clone()), true)
             .await?;
@@ -334,7 +334,7 @@ pub fn embedding_vector_semantic() {}
 
         let workspace_path_str = workspace_path.to_string_lossy().to_string();
 
-        let handler = Arc::new(JulieServerHandler::new().await?);
+        let handler = Arc::new(JulieServerHandler::new_for_test().await?);
         handler
             .initialize_workspace_with_force(Some(workspace_path_str.clone()), true)
             .await?;
@@ -426,7 +426,7 @@ pub fn embedding_vector_semantic() {}
 
         // Initialize handler with primary workspace
         println!("🐛 TEST TRACE 1: Creating handler");
-        let handler = Arc::new(JulieServerHandler::new().await?);
+        let handler = Arc::new(JulieServerHandler::new_for_test().await?);
         println!("🐛 TEST TRACE 2: Initializing primary workspace");
         handler
             .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
@@ -556,7 +556,7 @@ pub fn embedding_vector_semantic() {}
             r#"pub fn reindex_target() { println!("reference"); }"#,
         )?;
 
-        let handler = Arc::new(JulieServerHandler::new().await?);
+        let handler = Arc::new(JulieServerHandler::new_for_test().await?);
         handler
             .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
             .await?;

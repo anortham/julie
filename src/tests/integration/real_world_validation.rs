@@ -914,7 +914,7 @@ mod real_world_refactoring_tests {
             return;
         }
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
 
         for file_path in ts_files {
             test_rename_symbol_on_real_file(&handler, &file_path, "typescript").await;
@@ -935,7 +935,7 @@ mod real_world_refactoring_tests {
             return;
         }
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
 
         for file_path in js_files {
             test_rename_symbol_on_real_file(&handler, &file_path, "javascript").await;
@@ -956,7 +956,7 @@ mod real_world_refactoring_tests {
             return;
         }
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
 
         for file_path in py_files {
             test_rename_symbol_on_real_file(&handler, &file_path, "python").await;

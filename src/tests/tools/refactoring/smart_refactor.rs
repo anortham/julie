@@ -78,7 +78,7 @@ function processUser() {
             workspace: None,
         };
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
@@ -117,7 +117,7 @@ class UserService {
             workspace: None,
         };
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
@@ -146,7 +146,7 @@ class UserService {
             workspace: None,
         };
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
@@ -163,7 +163,7 @@ class UserService {
             workspace: None,
         };
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
@@ -180,7 +180,7 @@ class UserService {
             workspace: None,
         };
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
@@ -263,7 +263,7 @@ export class UserValidator {
             workspace: None,
         };
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
@@ -342,7 +342,7 @@ export type ServiceFactory = () => UserService;
         let types_path = fixture.create_test_file("types.ts", types_content).unwrap();
 
         // Initialize Julie handler and workspace
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
 
         // Initialize workspace with the temp directory path
         let workspace_path = fixture.temp_dir.path().to_string_lossy().to_string();

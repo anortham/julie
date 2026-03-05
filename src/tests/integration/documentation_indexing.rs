@@ -425,7 +425,7 @@ async fn test_multiple_sections_from_single_file() -> Result<()> {
 // ============================================================================
 
 async fn create_test_handler(workspace_path: &std::path::Path) -> Result<JulieServerHandler> {
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;

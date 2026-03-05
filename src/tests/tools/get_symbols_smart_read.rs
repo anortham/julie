@@ -72,7 +72,7 @@ async fn test_default_behavior_strips_context() -> Result<()> {
     // Default: mode="structure" (default) -> should strip code_context
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
@@ -121,7 +121,7 @@ async fn test_structure_mode_strips_context() -> Result<()> {
     // Explicit mode="structure" -> should strip code_context
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
@@ -168,7 +168,7 @@ async fn test_mode_structure_always_strips() -> Result<()> {
     // mode="structure" should ALWAYS strip code_context
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
@@ -215,7 +215,7 @@ async fn test_mode_minimal_top_level_only() -> Result<()> {
     // mode="minimal" -> extract bodies for TOP-LEVEL symbols only
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
@@ -267,7 +267,7 @@ async fn test_mode_full_all_symbols() -> Result<()> {
     // mode="full" -> extract bodies for ALL symbols including nested
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
@@ -325,7 +325,7 @@ async fn test_target_with_minimal_mode() -> Result<()> {
     // Test that target filtering works with mode="minimal"
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;
@@ -378,7 +378,7 @@ async fn test_file_read_error_handling() -> Result<()> {
 
     // Don't create any files
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -431,7 +431,7 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
     // Test graceful handling of UTF-8 issues (using lossy conversion)
     let (_temp_dir, workspace_path) = create_test_rust_file()?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.clone()), true)
         .await?;

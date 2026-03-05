@@ -32,7 +32,7 @@ pub fn get_user(id: u32) -> User {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -102,7 +102,7 @@ export function process_data(data: string): string {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -177,7 +177,7 @@ pub fn helper() {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -238,7 +238,7 @@ pub fn get_user(id: u32) -> User {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -299,7 +299,7 @@ pub fn search_term_six() { }
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -354,7 +354,7 @@ pub fn example() {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     // initialize_workspace_with_force calls initialize_all_components() which
     // includes embedding init that may fail without ONNX model. Once embeddings
     // are removed (Task 11), this will be clean.
@@ -422,7 +422,7 @@ pub fn lookup_user_profile(id: u32) -> String {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;

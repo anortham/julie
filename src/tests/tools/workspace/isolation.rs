@@ -49,7 +49,7 @@ mod workspace_isolation {
         )?;
 
         // STEP 2: Initialize handler and set primary workspace
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(
                 Some(primary_workspace.path().to_string_lossy().to_string()),
@@ -204,7 +204,7 @@ mod workspace_isolation {
         }
 
         // STEP 2: Initialize handler and primary workspace
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         let primary_workspace = TempDir::new()?;
         fs::write(primary_workspace.path().join("main.rs"), "fn main() {}")?;
 

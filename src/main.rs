@@ -127,8 +127,8 @@ async fn main() -> anyhow::Result<()> {
     );
     info!("📂 Workspace root: {:?}", workspace_root);
 
-    // Create the Julie server handler
-    let handler = JulieServerHandler::new()
+    // Create the Julie server handler with the resolved workspace root
+    let handler = JulieServerHandler::new(workspace_root)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
 

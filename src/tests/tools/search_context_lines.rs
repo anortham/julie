@@ -86,7 +86,7 @@ pub fn process_user_data(input: &str) -> String {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -161,7 +161,7 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -240,7 +240,7 @@ pub fn validate_input(data: &str) -> bool {
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;
@@ -308,7 +308,7 @@ pub fn short_func() -> i32 { 42 }
 "#,
     )?;
 
-    let handler = JulieServerHandler::new().await?;
+    let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
         .await?;

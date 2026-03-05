@@ -7,6 +7,7 @@ use rmcp::{
     service::NotificationContext,
     tool, tool_handler, tool_router,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use tracing::{debug, info, warn};
@@ -53,6 +54,9 @@ impl Default for IndexingStatus {
 /// - Cross-language relationship detection
 #[derive(Clone)]
 pub struct JulieServerHandler {
+    /// Resolved workspace root path (single source of truth).
+    /// Set once at construction from CLI args / JULIE_WORKSPACE / cwd.
+    pub workspace_root: PathBuf,
     /// Workspace managing persistent storage
     pub workspace: Arc<RwLock<Option<JulieWorkspace>>>,
     /// Flag to track if workspace has been indexed
@@ -70,12 +74,16 @@ pub struct JulieServerHandler {
 }
 
 impl JulieServerHandler {
-    /// Create a new Julie server handler with all components initialized
-    pub async fn new() -> Result<Self> {
-        info!("🔧 Initializing Julie server handler");
+    /// Create a new Julie server handler with all components initialized.
+    ///
+    /// `workspace_root` is the resolved root path for this server session,
+    /// determined by the caller (main.rs) via CLI args / env var / cwd.
+    pub async fn new(workspace_root: PathBuf) -> Result<Self> {
+        info!("🔧 Initializing Julie server handler (workspace_root: {:?})", workspace_root);
         debug!("✓ Julie handler initialized - workspace initialization will provide storage");
 
         Ok(Self {
+            workspace_root,
             workspace: Arc::new(RwLock::new(None)),
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
@@ -84,9 +92,23 @@ impl JulieServerHandler {
         })
     }
 
-    /// Get the current working directory for workspace operations
-    fn get_workspace_path(&self) -> std::path::PathBuf {
-        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+    /// Test-only convenience: create handler using current_dir() as workspace root.
+    ///
+    /// Tests that explicitly call `initialize_workspace_with_force(Some(path), ...)`
+    /// override the workspace root anyway, so this is safe for existing test patterns.
+    #[cfg(test)]
+    pub async fn new_for_test() -> Result<Self> {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        Self::new(cwd).await
+    }
+
+    /// Get the workspace root path for workspace operations.
+    ///
+    /// Returns the resolved workspace root that was passed to `new()`.
+    /// This replaces the old `current_dir()` fallback, ensuring the handler
+    /// always uses the path determined by main.rs (CLI > env var > cwd).
+    fn get_workspace_path(&self) -> PathBuf {
+        self.workspace_root.clone()
     }
 
     /// Initialize or load workspace and update components to use persistent storage
@@ -335,11 +357,17 @@ impl JulieServerHandler {
     }
 }
 
-// Load agent instructions for server info
-fn load_agent_instructions() -> Option<String> {
-    match std::fs::read_to_string("JULIE_AGENT_INSTRUCTIONS.md") {
-        Ok(content) => Some(content),
-        Err(_) => None,
+impl JulieServerHandler {
+    /// Load agent instructions from the workspace root directory.
+    ///
+    /// Reads `JULIE_AGENT_INSTRUCTIONS.md` relative to `self.workspace_root`
+    /// instead of the process's current working directory.
+    fn load_agent_instructions(&self) -> Option<String> {
+        let path = self.workspace_root.join("JULIE_AGENT_INSTRUCTIONS.md");
+        match std::fs::read_to_string(&path) {
+            Ok(content) => Some(content),
+            Err(_) => None,
+        }
     }
 }
 
@@ -349,7 +377,7 @@ impl JulieServerHandler {
     pub fn new_router() -> Self {
         // This is used by rmcp to create the tool router
         // We need to provide a way to construct with proper state
-        panic!("Use JulieServerHandler::new() instead")
+        panic!("Use JulieServerHandler::new(workspace_root) instead")
     }
 
     // ========== Search & Navigation Tools ==========
@@ -536,7 +564,7 @@ impl ServerHandler for JulieServerHandler {
                 icons: None,
                 website_url: None,
             },
-            instructions: load_agent_instructions(),
+            instructions: self.load_agent_instructions(),
         }
     }
 

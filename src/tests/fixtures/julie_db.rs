@@ -50,7 +50,7 @@ impl JulieTestFixture {
         println!("🔨 Building Julie test fixture...");
 
         // Create handler and index Julie's codebase (matches dogfooding tests)
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
 
         // Use ManageWorkspaceTool to index (this handles workspace initialization)
         let index_tool = ManageWorkspaceTool {

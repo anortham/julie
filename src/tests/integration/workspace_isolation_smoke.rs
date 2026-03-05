@@ -58,7 +58,7 @@ mod workspace_isolation_smoke_tests {
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
             .await?;
@@ -181,7 +181,7 @@ mod workspace_isolation_smoke_tests {
         let primary_path = get_fixture_path("tiny-primary");
         let reference_path = get_fixture_path("tiny-reference");
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
             .await?;
@@ -299,7 +299,7 @@ mod workspace_isolation_smoke_tests {
     async fn test_invalid_workspace_id_returns_error() -> Result<()> {
         let primary_path = get_fixture_path("tiny-primary");
 
-        let handler = JulieServerHandler::new().await?;
+        let handler = JulieServerHandler::new_for_test().await?;
         handler
             .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
             .await?;

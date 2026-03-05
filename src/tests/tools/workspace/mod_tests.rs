@@ -197,7 +197,7 @@ async fn test_spawn_workspace_embedding_discards_init_result_after_workspace_swi
         .expect("workspace B initialization should succeed");
     let expected_root_b = workspace_b.root.clone();
 
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     {
         let mut ws_guard = handler.workspace.write().await;
         *ws_guard = Some(workspace_a);
@@ -272,7 +272,7 @@ async fn test_spawn_workspace_embedding_does_not_hold_write_lock_during_provider
         .await
         .expect("workspace initialization should succeed");
 
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     {
         let mut ws_guard = handler.workspace.write().await;
         *ws_guard = Some(workspace);
@@ -412,7 +412,7 @@ async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
     }
 
     let temp_dir = TempDir::new().unwrap();
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await
@@ -483,7 +483,7 @@ async fn test_manage_workspace_health_reports_unavailable_when_provider_missing(
     }
 
     let temp_dir = TempDir::new().unwrap();
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await
@@ -541,7 +541,7 @@ async fn test_manage_workspace_health_reports_not_initialized_when_runtime_statu
     }
 
     let temp_dir = TempDir::new().unwrap();
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await
@@ -588,7 +588,7 @@ async fn test_manage_workspace_health_reports_initialized_when_not_degraded() {
     }
 
     let temp_dir = TempDir::new().unwrap();
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await
@@ -645,7 +645,7 @@ async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
         .to_string();
 
     let run_index = |path: String| async move {
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
         let tool = ManageWorkspaceTool {
             operation: "index".to_string(),
             path: Some(path),
@@ -726,7 +726,7 @@ fn goodbye_world() {
         .unwrap();
 
     // Create handler (simulates the server context)
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(
             Some(primary_dir.path().to_str().unwrap().to_string()),
@@ -804,7 +804,7 @@ async fn test_primary_index_schedules_embedding_when_provider_available() {
     let test_file = temp_dir.path().join("main.rs");
     fs::write(&test_file, "fn alpha() {}\nfn beta() {}\n").unwrap();
 
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await
@@ -843,7 +843,7 @@ async fn test_primary_refresh_schedules_embedding_when_provider_available() {
     let test_file = temp_dir.path().join("lib.rs");
     fs::write(&test_file, "fn gamma() {}\nfn delta() {}\n").unwrap();
 
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_string_lossy().to_string()), true)
         .await
@@ -924,7 +924,7 @@ fn test_function() {
     .unwrap();
 
     // Initialize workspace and handler
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_str().unwrap().to_string()), true)
         .await
@@ -1025,7 +1025,7 @@ fn test_function() {
     .unwrap();
 
     // Initialize workspace and handler
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_str().unwrap().to_string()), true)
         .await
@@ -1102,7 +1102,7 @@ fn test_function() {
     .unwrap();
 
     // Initialize workspace and handler
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_str().unwrap().to_string()), true)
         .await
@@ -1196,7 +1196,7 @@ fn function_two() {
     .unwrap();
 
     // Initialize workspace and handler
-    let handler = JulieServerHandler::new().await.unwrap();
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
     handler
         .initialize_workspace_with_force(Some(temp_dir.path().to_str().unwrap().to_string()), true)
         .await

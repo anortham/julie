@@ -21,7 +21,7 @@ mod tests {
         // WHEN: Target filtering for a method name (child symbol)
         // THEN: Should show the parent struct WITH that method visible
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
 
         // Index the symbols.rs file itself (has GetSymbolsTool with methods)
         let index_tool = ManageWorkspaceTool {
@@ -90,7 +90,7 @@ mod tests {
         // WHEN: Target filtering for a top-level symbol name
         // THEN: Should show that symbol (existing behavior should still work)
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
 
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
@@ -150,7 +150,7 @@ mod tests {
         // WHEN: Target filtering with different case
         // THEN: Should match case-insensitively
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
 
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
@@ -202,7 +202,7 @@ mod tests {
         // WHEN: Target filtering with partial name
         // THEN: Should match substring
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
 
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
@@ -253,7 +253,7 @@ mod tests {
         // get their body stripped because parent_id.is_none() == false.
         // The fix: when target is set, all matched symbols should get bodies.
 
-        let handler = JulieServerHandler::new().await.unwrap();
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
 
         let index_tool = ManageWorkspaceTool {
             operation: "index".to_string(),
