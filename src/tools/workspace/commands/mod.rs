@@ -117,7 +117,6 @@ impl ManageWorkspaceTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         info!("🏗️ Managing workspace with operation: {}", self.operation);
 
-
         match self.operation.as_str() {
             "index" => {
                 self.handle_index_command(handler, self.path.clone(), self.force.unwrap_or(false), false)

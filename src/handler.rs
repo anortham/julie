@@ -56,7 +56,7 @@ impl Default for IndexingStatus {
 pub struct JulieServerHandler {
     /// Resolved workspace root path (single source of truth).
     /// Set once at construction from CLI args / JULIE_WORKSPACE / cwd.
-    pub workspace_root: PathBuf,
+    pub(crate) workspace_root: PathBuf,
     /// Workspace managing persistent storage
     pub workspace: Arc<RwLock<Option<JulieWorkspace>>>,
     /// Flag to track if workspace has been indexed
@@ -335,9 +335,7 @@ impl JulieServerHandler {
             }
         }
     }
-}
 
-impl JulieServerHandler {
     /// Load agent instructions from the workspace root directory.
     ///
     /// Reads `JULIE_AGENT_INSTRUCTIONS.md` relative to `self.workspace_root`
