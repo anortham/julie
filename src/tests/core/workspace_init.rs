@@ -513,7 +513,8 @@ fn test_resolve_workspace_path_respects_env_var() {
         detailed: None,
     };
 
-    let resolved = tool.resolve_workspace_path(None);
+    // Without handler_root, env var should be used (third priority)
+    let resolved = tool.resolve_workspace_path(None, None);
     assert!(
         resolved.is_ok(),
         "resolve_workspace_path should succeed: {:?}",
@@ -529,7 +530,19 @@ fn test_resolve_workspace_path_respects_env_var() {
     // The resolved path should be the target workspace, not current_dir
     assert_eq!(
         resolved_path, expected,
-        "resolve_workspace_path should use JULIE_WORKSPACE, not current_dir"
+        "resolve_workspace_path should use JULIE_WORKSPACE when no handler_root, not current_dir"
+    );
+
+    // With handler_root, it should take priority over env var
+    let handler_root_dir = setup_test_workspace();
+    fs::create_dir_all(handler_root_dir.path().join(".git")).expect("Failed to create .git");
+    let resolved_with_root =
+        tool.resolve_workspace_path(None, Some(handler_root_dir.path()));
+    assert!(resolved_with_root.is_ok());
+    assert_eq!(
+        resolved_with_root.unwrap(),
+        handler_root_dir.path().to_path_buf(),
+        "resolve_workspace_path should prefer handler_root over JULIE_WORKSPACE"
     );
 
     // Cleanup
@@ -619,57 +632,38 @@ async fn test_handler_uses_provided_workspace_root() {
     let _ = env::set_current_dir(&original_cwd);
 }
 
-/// Test: load_agent_instructions reads from workspace_root, not cwd
+/// Test: agent instructions are always available (embedded at compile time)
 ///
-/// Verifies the P3 fix: JULIE_AGENT_INSTRUCTIONS.md is loaded relative to
-/// the handler's workspace_root, not the process's current working directory.
+/// JULIE_AGENT_INSTRUCTIONS.md is product metadata embedded via include_str!,
+/// so instructions are available regardless of the workspace being indexed.
 #[tokio::test]
 #[serial]
-async fn test_load_agent_instructions_from_workspace_root() {
+async fn test_agent_instructions_always_available() {
     use crate::handler::JulieServerHandler;
 
-    let workspace_dir = setup_test_workspace();
-    let different_cwd = setup_test_workspace();
+    // Use an empty temp dir as workspace — no JULIE_AGENT_INSTRUCTIONS.md present
+    let empty_workspace = setup_test_workspace();
 
-    // Create JULIE_AGENT_INSTRUCTIONS.md in the workspace root
-    let instructions_content = "These are test agent instructions.";
-    fs::write(
-        workspace_dir.path().join("JULIE_AGENT_INSTRUCTIONS.md"),
-        instructions_content,
-    )
-    .expect("Failed to write instructions file");
-
-    // Save original cwd and change to a DIFFERENT directory
-    let original_cwd = env::current_dir().expect("Failed to get cwd");
-    env::set_current_dir(different_cwd.path()).expect("Failed to change cwd");
-
-    // Verify there's NO instructions file in cwd
-    assert!(
-        !different_cwd
-            .path()
-            .join("JULIE_AGENT_INSTRUCTIONS.md")
-            .exists(),
-        "Precondition: instructions file should NOT exist in cwd"
-    );
-
-    // Create handler with the workspace root
-    let handler = JulieServerHandler::new(workspace_dir.path().to_path_buf())
+    let handler = JulieServerHandler::new(empty_workspace.path().to_path_buf())
         .await
         .expect("Failed to create handler");
 
-    // get_info() calls load_agent_instructions() internally — verify via the public API
     use rmcp::ServerHandler;
     let info = handler.get_info();
-    assert_eq!(
-        info.instructions.as_deref(),
-        Some(instructions_content),
-        "get_info().instructions should contain instructions from workspace_root, not cwd"
+
+    // Instructions should always be present (embedded at compile time)
+    assert!(
+        info.instructions.is_some(),
+        "get_info().instructions should always be Some (embedded at compile time)"
     );
 
-    // Cleanup
-    let system_temp = std::env::temp_dir();
-    env::set_current_dir(&system_temp).expect("Failed to change to system temp");
-    drop(workspace_dir);
-    drop(different_cwd);
-    let _ = env::set_current_dir(&original_cwd);
+    let instructions = info.instructions.unwrap();
+    assert!(
+        instructions.contains("Critical Rules"),
+        "Embedded instructions should contain expected content"
+    );
+    assert!(
+        instructions.contains("fast_search"),
+        "Embedded instructions should reference Julie tools"
+    );
 }

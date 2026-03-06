@@ -47,10 +47,7 @@ mod tests {
         CrossLanguageTracer::new(db)
     }
 
-    #[cfg_attr(
-        not(feature = "network_models"),
-        ignore = "requires downloadable embedding model"
-    )]
+    #[ignore = "requires downloadable embedding model"]
     #[tokio::test]
     async fn test_revolutionary_cross_language_tracing() {
         let tracer = create_test_tracer().await;
@@ -104,10 +101,7 @@ mod tests {
         println!("🚀 SUCCESS: Cross-language tracing GREEN phase is working!");
     }
 
-    #[cfg_attr(
-        not(feature = "network_models"),
-        ignore = "requires downloadable embedding model"
-    )]
+    #[ignore = "requires downloadable embedding model"]
     #[tokio::test]
     async fn test_layer_detection() {
         let tracer = create_test_tracer().await;

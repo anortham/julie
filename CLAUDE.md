@@ -380,8 +380,8 @@ fast_search(
 
 ---
 
-**Last Updated:** 2026-03-01
-**Status:** Production Ready (v3.7.0)
+**Last Updated:** 2026-03-06
+**Status:** Production Ready (v3.9.0)
 
 ---
 

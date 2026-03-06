@@ -5,15 +5,24 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
 impl ManageWorkspaceTool {
-    pub(crate) fn resolve_workspace_path(&self, workspace_path: Option<String>) -> Result<PathBuf> {
+    /// Resolve the workspace path from an explicit path, handler root, env var, or cwd.
+    ///
+    /// Priority: explicit path > handler_root > JULIE_WORKSPACE env > current_dir()
+    pub(crate) fn resolve_workspace_path(
+        &self,
+        workspace_path: Option<String>,
+        handler_root: Option<&Path>,
+    ) -> Result<PathBuf> {
         let target_path = match workspace_path {
             Some(path) => {
                 let expanded_path = shellexpand::tilde(&path).to_string();
                 PathBuf::from(expanded_path)
             }
             None => {
-                // Respect JULIE_WORKSPACE env var (same priority as main.rs get_workspace_root())
-                if let Ok(path_str) = env::var("JULIE_WORKSPACE") {
+                // Priority: handler_root > JULIE_WORKSPACE env > current_dir
+                if let Some(root) = handler_root {
+                    root.to_path_buf()
+                } else if let Ok(path_str) = env::var("JULIE_WORKSPACE") {
                     let expanded = shellexpand::tilde(&path_str).to_string();
                     let path = PathBuf::from(expanded);
                     if path.exists() {

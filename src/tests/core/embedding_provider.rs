@@ -546,6 +546,38 @@ while True:
         }
     }
 
+    #[tokio::test]
+    #[serial(embedding_env)]
+    async fn test_provider_none_disables_embeddings_silently() {
+        unsafe {
+            std::env::set_var("JULIE_EMBEDDING_PROVIDER", "none");
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+        }
+
+        let temp_dir = TempDir::new().unwrap();
+        let mut workspace = JulieWorkspace::initialize(temp_dir.path().to_path_buf())
+            .await
+            .unwrap();
+        workspace.initialize_embedding_provider();
+
+        // Provider should be None (disabled, not failed)
+        assert!(
+            workspace.embedding_provider.is_none(),
+            "Embedding provider should be None when disabled"
+        );
+
+        // Runtime status should also be None — never attempted, not an error
+        assert!(
+            workspace.embedding_runtime_status.is_none(),
+            "Runtime status should be None when explicitly disabled"
+        );
+
+        unsafe {
+            std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
+            std::env::remove_var("JULIE_SKIP_SEARCH_INDEX");
+        }
+    }
+
     #[cfg(all(feature = "embeddings-sidecar", feature = "embeddings-ort"))]
     #[tokio::test]
     #[serial(embedding_env)]

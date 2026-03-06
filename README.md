@@ -66,7 +66,7 @@ Download the latest release for your platform from the [Releases page](https://g
 **Windows:**
 
 ```bash
-# Download julie-v1.5.0-x86_64-pc-windows-msvc.zip
+# Download julie-v3.9.0-x86_64-pc-windows-msvc.zip
 # Extract julie-server.exe
 # Add to MCP configuration (see below)
 ```
@@ -74,24 +74,24 @@ Download the latest release for your platform from the [Releases page](https://g
 **macOS (Intel):**
 
 ```bash
-# Download julie-v1.5.0-x86_64-apple-darwin.tar.gz
-tar -xzf julie-v1.5.0-x86_64-apple-darwin.tar.gz
+# Download julie-v3.9.0-x86_64-apple-darwin.tar.gz
+tar -xzf julie-v3.9.0-x86_64-apple-darwin.tar.gz
 # Add to MCP configuration (see below)
 ```
 
 **macOS (Apple Silicon):**
 
 ```bash
-# Download julie-v1.5.0-aarch64-apple-darwin.tar.gz
-tar -xzf julie-v1.5.0-aarch64-apple-darwin.tar.gz
+# Download julie-v3.9.0-aarch64-apple-darwin.tar.gz
+tar -xzf julie-v3.9.0-aarch64-apple-darwin.tar.gz
 # Add to MCP configuration (see below)
 ```
 
 **Linux:**
 
 ```bash
-# Download julie-v1.5.0-x86_64-unknown-linux-gnu.tar.gz
-tar -xzf julie-v1.5.0-x86_64-unknown-linux-gnu.tar.gz
+# Download julie-v3.9.0-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf julie-v3.9.0-x86_64-unknown-linux-gnu.tar.gz
 # Add to MCP configuration (see below)
 ```
 

@@ -702,6 +702,19 @@ impl JulieWorkspace {
             .ok()
             .map(std::path::PathBuf::from);
 
+        // Allow explicit disabling (e.g. CI, tests, offline environments)
+        if matches!(
+            config.provider.trim().to_ascii_lowercase().as_str(),
+            "none" | "disabled" | "off"
+        ) {
+            self.embedding_provider = None;
+            info!(
+                "Embedding disabled via JULIE_EMBEDDING_PROVIDER={}",
+                config.provider
+            );
+            return;
+        }
+
         let requested_backend = match parse_provider_preference(&config.provider) {
             Ok(backend) => backend,
             Err(err) => {

@@ -336,16 +336,13 @@ impl JulieServerHandler {
         }
     }
 
-    /// Load agent instructions from the workspace root directory.
+    /// Returns the agent instructions embedded at compile time.
     ///
-    /// Reads `JULIE_AGENT_INSTRUCTIONS.md` relative to `self.workspace_root`
-    /// instead of the process's current working directory.
+    /// `JULIE_AGENT_INSTRUCTIONS.md` is product metadata that ships with Julie,
+    /// not something found in user workspaces. Embedding via `include_str!`
+    /// guarantees instructions are always available regardless of deployment.
     fn load_agent_instructions(&self) -> Option<String> {
-        let path = self.workspace_root.join("JULIE_AGENT_INSTRUCTIONS.md");
-        match std::fs::read_to_string(&path) {
-            Ok(content) => Some(content),
-            Err(_) => None,
-        }
+        Some(include_str!("../JULIE_AGENT_INSTRUCTIONS.md").to_string())
     }
 }
 
