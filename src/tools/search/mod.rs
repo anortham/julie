@@ -51,10 +51,10 @@ pub struct FastSearchTool {
     #[serde(default)]
     pub file_pattern: Option<String>,
     /// Maximum results (default: 10, range: 1-500)
-    #[serde(default = "default_limit")]
+    #[serde(default = "default_limit", deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient")]
     pub limit: u32,
     /// Context lines before/after match (default: 1)
-    #[serde(default = "default_context_lines")]
+    #[serde(default = "default_context_lines", deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient")]
     pub context_lines: Option<u32>,
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]

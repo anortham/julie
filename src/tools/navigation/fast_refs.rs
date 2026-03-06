@@ -41,7 +41,7 @@ pub struct FastRefsTool {
     #[serde(default = "default_true")]
     pub include_definition: bool,
     /// Maximum references (default: 10, range: 1-500)
-    #[serde(default = "default_limit")]
+    #[serde(default = "default_limit", deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient")]
     pub limit: u32,
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default = "default_workspace")]

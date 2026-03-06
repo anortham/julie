@@ -182,6 +182,9 @@ pub mod paths;
 /// Shared file walker builder (wraps `ignore` crate for .gitignore + .julieignore support)
 pub mod walk;
 
+/// Lenient serde deserializers for MCP tool parameters (string-or-number u32)
+pub mod serde_lenient;
+
 /// Language detection utilities
 pub mod language {
     use std::path::Path;
