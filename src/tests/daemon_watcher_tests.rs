@@ -315,10 +315,7 @@ async fn test_remove_workspace_stops_watcher() {
     assert_eq!(active.len(), 1);
 
     // Remove workspace — should stop watcher
-    state.remove_workspace("to_remove");
-
-    // Give the spawned task a moment to complete
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    state.remove_workspace("to_remove").await;
 
     let active = state.watcher_manager.active_watchers().await;
     assert!(

@@ -276,17 +276,10 @@ impl DaemonState {
     /// Remove a workspace, its MCP service, and its file watcher.
     ///
     /// Called when a project is removed via the API.
-    /// The watcher is stopped asynchronously.
-    pub fn remove_workspace(&mut self, workspace_id: &str) {
+    pub async fn remove_workspace(&mut self, workspace_id: &str) {
         self.workspaces.remove(workspace_id);
         self.mcp_services.remove(workspace_id);
-
-        // Stop the file watcher in a background task (non-blocking)
-        let wm = self.watcher_manager.clone();
-        let id = workspace_id.to_string();
-        tokio::spawn(async move {
-            wm.stop_watching(&id).await;
-        });
+        self.watcher_manager.stop_watching(workspace_id).await;
     }
 
     /// Start file watchers for all `Ready` projects.

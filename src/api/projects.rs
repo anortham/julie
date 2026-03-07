@@ -192,7 +192,7 @@ pub async fn delete_project(
     // Clean up daemon state (workspace + MCP service)
     {
         let mut daemon_state = state.daemon_state.write().await;
-        daemon_state.remove_workspace(&id);
+        daemon_state.remove_workspace(&id).await;
     }
 
     StatusCode::NO_CONTENT

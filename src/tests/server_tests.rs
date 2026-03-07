@@ -518,7 +518,7 @@ async fn test_daemon_state_remove_workspace_cleans_up() {
     assert!(state.workspaces.contains_key("ws-remove"));
     assert!(state.mcp_services.contains_key("ws-remove"));
 
-    state.remove_workspace("ws-remove");
+    state.remove_workspace("ws-remove").await;
     assert!(!state.workspaces.contains_key("ws-remove"));
     assert!(!state.mcp_services.contains_key("ws-remove"));
 }
