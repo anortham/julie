@@ -156,3 +156,152 @@ pub fn format_definition_search_results(
 
     output.trim_end().to_string()
 }
+
+// ---------------------------------------------------------------------------
+// Federated (multi-project) formatting
+// ---------------------------------------------------------------------------
+
+/// Format federated search results with `[project: name]` tags.
+///
+/// Like `format_lean_search_results`, but each result line is prefixed with
+/// the project name so the caller can distinguish which workspace a result
+/// came from.
+///
+/// `project_names` must be the same length as `response.results`.
+pub fn format_federated_lean_results(
+    query: &str,
+    response: &OptimizedResponse<Symbol>,
+    project_names: &[String],
+) -> String {
+    let mut output = String::new();
+
+    let count = response.results.len();
+    let total = response.total_found;
+    if count == total {
+        output.push_str(&format!(
+            "{} matches for \"{}\" (across {} projects):\n\n",
+            count,
+            query,
+            count_unique(project_names),
+        ));
+    } else {
+        output.push_str(&format!(
+            "{} matches for \"{}\" (showing {} of {}, across {} projects):\n\n",
+            count,
+            query,
+            count,
+            total,
+            count_unique(project_names),
+        ));
+    }
+
+    for (i, symbol) in response.results.iter().enumerate() {
+        let project = project_names
+            .get(i)
+            .map(|s| s.as_str())
+            .unwrap_or("unknown");
+        output.push_str(&format!(
+            "[project: {}] {}:{}\n",
+            project, symbol.file_path, symbol.start_line
+        ));
+
+        if let Some(ctx) = &symbol.code_context {
+            for line in ctx.lines() {
+                output.push_str(&format!("  {}\n", line));
+            }
+        }
+        output.push('\n');
+    }
+
+    output.trim_end().to_string()
+}
+
+/// Format federated definition search results with project tags.
+///
+/// Combines exact-match promotion with `[project: name]` tagging.
+/// Falls back to `format_federated_lean_results` if no exact match exists.
+pub fn format_federated_definition_results(
+    query: &str,
+    response: &OptimizedResponse<Symbol>,
+    project_names: &[String],
+) -> String {
+    // Partition indices into exact matches and others
+    let mut exact_indices = Vec::new();
+    let mut other_indices = Vec::new();
+    for (i, s) in response.results.iter().enumerate() {
+        if s.name.eq_ignore_ascii_case(query) {
+            exact_indices.push(i);
+        } else {
+            other_indices.push(i);
+        }
+    }
+
+    if exact_indices.is_empty() {
+        return format_federated_lean_results(query, response, project_names);
+    }
+
+    let mut output = String::new();
+
+    // === Promoted section ===
+    output.push_str(&format!("Definition found: {}\n", query));
+
+    for idx in &exact_indices {
+        let symbol = &response.results[*idx];
+        let project = project_names
+            .get(*idx)
+            .map(|s| s.as_str())
+            .unwrap_or("unknown");
+        let kind = symbol.kind.to_string();
+        let vis = symbol
+            .visibility
+            .as_ref()
+            .map(|v| format!(", {}", v.to_string().to_lowercase()))
+            .unwrap_or_default();
+        output.push_str(&format!(
+            "  [project: {}] {}:{} ({}{})\n",
+            project, symbol.file_path, symbol.start_line, kind, vis
+        ));
+
+        if let Some(sig) = &symbol.signature {
+            output.push_str(&format!("  {}\n", sig));
+        } else if let Some(ctx) = &symbol.code_context {
+            if let Some(first_line) = ctx.lines().find(|l| !l.trim().is_empty()) {
+                output.push_str(&format!("  {}\n", first_line.trim()));
+            }
+        }
+    }
+
+    // === Other matches section ===
+    if !other_indices.is_empty() {
+        output.push_str("\nOther matches:\n\n");
+
+        for idx in &other_indices {
+            let symbol = &response.results[*idx];
+            let project = project_names
+                .get(*idx)
+                .map(|s| s.as_str())
+                .unwrap_or("unknown");
+            output.push_str(&format!(
+                "[project: {}] {}:{}\n",
+                project, symbol.file_path, symbol.start_line
+            ));
+            if let Some(ctx) = &symbol.code_context {
+                for line in ctx.lines() {
+                    output.push_str(&format!("  {}\n", line));
+                }
+            }
+            output.push('\n');
+        }
+    }
+
+    output.trim_end().to_string()
+}
+
+/// Count unique values in a slice.
+fn count_unique(names: &[String]) -> usize {
+    let mut seen = std::collections::HashSet::new();
+    for name in names {
+        seen.insert(name.as_str());
+    }
+    seen.len()
+}

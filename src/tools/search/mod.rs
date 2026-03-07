@@ -22,6 +22,8 @@ pub mod query_preprocessor; // Public for testing
 pub mod text_search;
 mod types;
 
+use std::sync::Arc;
+
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
 use schemars::JsonSchema;
@@ -30,6 +32,7 @@ use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 use crate::health::SystemStatus;
+use crate::search::index::SearchFilter;
 use crate::tools::navigation::resolution::WorkspaceTarget;
 use crate::tools::shared::OptimizedResponse;
 
@@ -85,12 +88,12 @@ impl FastSearchTool {
         // Resolve workspace target once (used for health check and search routing)
         let workspace_target = self.resolve_workspace_filter(handler).await?;
 
-        // Early exit for All — federation not yet wired
+        // --- Federated search: workspace="all" ---
         if matches!(workspace_target, WorkspaceTarget::All) {
-            return Err(anyhow::anyhow!(
-                "Cross-project search requires daemon mode — coming soon"
-            ));
+            return self.federated_search(handler).await;
         }
+
+        // --- Single-workspace search ---
 
         // Extract workspace ID for health check
         let target_workspace_id = match &workspace_target {
@@ -221,5 +224,159 @@ impl FastSearchTool {
             handler,
         )
         .await
+    }
+
+    /// Execute a federated search across all daemon-registered workspaces.
+    ///
+    /// Requires daemon mode (`handler.daemon_state` must be `Some`).
+    /// Collects all `Ready` workspaces, fans out the search in parallel,
+    /// and merges results with RRF. Output is tagged with `[project: name]`.
+    async fn federated_search(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
+        use crate::daemon_state::WorkspaceLoadStatus;
+        use crate::tools::federation::search::{
+            WorkspaceSearchEntry, federated_content_search, federated_symbol_search,
+        };
+
+        // Require daemon mode
+        let daemon_state = handler.daemon_state.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Cross-project search (workspace=\"all\") requires daemon mode.\n\
+                 In stdio mode, search one workspace at a time using 'primary' or a workspace ID."
+            )
+        })?;
+
+        // Read-lock DaemonState, collect Ready workspaces, then drop lock
+        let entries: Vec<WorkspaceSearchEntry> = {
+            let state = daemon_state.read().await;
+            state
+                .workspaces
+                .iter()
+                .filter(|(_, loaded)| loaded.status == WorkspaceLoadStatus::Ready)
+                .filter_map(|(ws_id, loaded)| {
+                    let search_index = loaded.workspace.search_index.as_ref()?;
+                    let project_name = loaded
+                        .path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(ws_id)
+                        .to_string();
+                    Some(WorkspaceSearchEntry {
+                        workspace_id: ws_id.clone(),
+                        project_name,
+                        search_index: Arc::clone(search_index),
+                    })
+                })
+                .collect()
+        };
+
+        if entries.is_empty() {
+            return Ok(CallToolResult::text_content(vec![Content::text(
+                "No ready workspaces available for cross-project search.\n\
+                 Register and index projects first using the daemon API.",
+            )]));
+        }
+
+        debug!(
+            "Federated search across {} workspaces: {:?}",
+            entries.len(),
+            entries.iter().map(|e| &e.project_name).collect::<Vec<_>>()
+        );
+
+        let filter = SearchFilter {
+            language: self.language.clone(),
+            file_pattern: self.file_pattern.clone(),
+            ..Default::default()
+        };
+        let limit = self.limit as usize;
+
+        let is_definition_search = self.search_target == "definitions";
+
+        if is_definition_search {
+            // --- Federated definition search ---
+            let federated_results =
+                federated_symbol_search(&self.query, &filter, limit, &entries).await?;
+
+            // Convert to (Symbol, project_name) pairs
+            let mut symbols = Vec::with_capacity(federated_results.len());
+            let mut project_names = Vec::with_capacity(federated_results.len());
+            for fr in federated_results {
+                symbols.push(text_search::tantivy_symbol_to_symbol(fr.result));
+                project_names.push(fr.project_name);
+            }
+
+            let symbols = formatting::truncate_code_context(symbols, self.context_lines);
+
+            let mut optimized = OptimizedResponse::new(symbols);
+            optimized.results.truncate(limit);
+            project_names.truncate(limit);
+
+            if optimized.results.is_empty() {
+                let message = format!(
+                    "No results found for: '{}' across all projects\n\
+                     Try a broader search term or different keywords",
+                    self.query
+                );
+                return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+            }
+
+            let lean_output = formatting::format_federated_definition_results(
+                &self.query,
+                &optimized,
+                &project_names,
+            );
+
+            debug!(
+                "Returning federated definition results ({} chars, {} results)",
+                lean_output.len(),
+                optimized.results.len(),
+            );
+            Ok(CallToolResult::text_content(vec![Content::text(
+                lean_output,
+            )]))
+        } else {
+            // --- Federated content search ---
+            let federated_results =
+                federated_content_search(&self.query, &filter, limit, &entries).await?;
+
+            let mut symbols = Vec::with_capacity(federated_results.len());
+            let mut project_names = Vec::with_capacity(federated_results.len());
+            for fr in federated_results {
+                symbols.push(text_search::content_result_to_symbol(fr.result));
+                project_names.push(fr.project_name);
+            }
+
+            let symbols = formatting::truncate_code_context(symbols, self.context_lines);
+
+            let mut optimized = OptimizedResponse::new(symbols);
+            optimized.results.truncate(limit);
+            project_names.truncate(limit);
+
+            if optimized.results.is_empty() {
+                let message = format!(
+                    "No results found for: '{}' across all projects\n\
+                     Try a broader search term or different keywords",
+                    self.query
+                );
+                return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+            }
+
+            let lean_output = formatting::format_federated_lean_results(
+                &self.query,
+                &optimized,
+                &project_names,
+            );
+
+            debug!(
+                "Returning federated content results ({} chars, {} results)",
+                lean_output.len(),
+                optimized.results.len(),
+            );
+            Ok(CallToolResult::text_content(vec![Content::text(
+                lean_output,
+            )]))
+        }
     }
 }

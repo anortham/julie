@@ -640,7 +640,7 @@ async fn maybe_initialize_embeddings_for_nl_definitions(
 }
 
 /// Convert a Tantivy SymbolSearchResult into an extractors Symbol.
-fn tantivy_symbol_to_symbol(result: crate::search::index::SymbolSearchResult) -> Symbol {
+pub(crate) fn tantivy_symbol_to_symbol(result: crate::search::index::SymbolSearchResult) -> Symbol {
     Symbol {
         id: result.id,
         name: result.name,
@@ -700,7 +700,7 @@ fn enrich_symbols_from_db(symbols: &mut [Symbol], db: &crate::database::SymbolDa
 }
 
 /// Convert a ContentSearchResult into a Symbol (file-level match).
-fn content_result_to_symbol(result: crate::search::index::ContentSearchResult) -> Symbol {
+pub(crate) fn content_result_to_symbol(result: crate::search::index::ContentSearchResult) -> Symbol {
     Symbol {
         id: format!("content_{}", result.file_path.replace(['/', '\\'], "_")),
         name: result.file_path.clone(),
