@@ -129,6 +129,8 @@ pub mod tools {
     pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
 
     pub mod workspace_target_tests; // WorkspaceTarget enum and resolve_workspace_filter tests
+
+    pub mod federated_refs_tests; // Federated fast_refs: cross-project reference search
 }
 
 // ============================================================================

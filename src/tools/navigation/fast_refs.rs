@@ -17,6 +17,7 @@ use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 use std::collections::{HashMap, HashSet};
 
+use super::federated_refs;
 use super::formatting::format_lean_refs_results;
 use super::reference_workspace;
 use super::resolution::{WorkspaceTarget, resolve_workspace_filter};
@@ -65,10 +66,26 @@ impl FastRefsTool {
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("🔗 Finding references for: {}", self.symbol);
+        debug!("Finding references for: {}", self.symbol);
 
-        // Find references (workspace resolution happens in find_references_and_definitions)
-        let (definitions, references) = self.find_references_and_definitions(handler).await?;
+        // Resolve workspace target first to dispatch between single and federated paths
+        let workspace_target =
+            resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+
+        if matches!(workspace_target, WorkspaceTarget::All) {
+            return federated_refs::find_refs_federated(
+                handler,
+                &self.symbol,
+                self.include_definition,
+                self.reference_kind.as_deref(),
+                self.limit,
+            )
+            .await;
+        }
+
+        // Find references (workspace resolution is handled by workspace_target)
+        let (definitions, references) =
+            self.find_references_and_definitions(handler, workspace_target).await?;
 
         if definitions.is_empty() && references.is_empty() {
             return self.create_result(vec![], vec![]);
@@ -87,25 +104,24 @@ impl FastRefsTool {
     async fn find_references_and_definitions(
         &self,
         handler: &JulieServerHandler,
+        workspace_target: WorkspaceTarget,
     ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
         debug!(
-            "🔍 Searching for references to '{}' using indexed search",
+            "Searching for references to '{}' using indexed search",
             self.symbol
         );
 
-        // Resolve workspace parameter
-        let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
-
         match workspace_target {
             WorkspaceTarget::Reference(ref_workspace_id) => {
-                debug!("🎯 Searching reference workspace: {}", ref_workspace_id);
+                debug!("Searching reference workspace: {}", ref_workspace_id);
                 return self
                     .database_find_references_in_reference(handler, ref_workspace_id)
                     .await;
             }
             WorkspaceTarget::All => {
+                // Handled by call_tool_federated — should not reach here
                 return Err(anyhow::anyhow!(
-                    "Cross-project search requires daemon mode — coming soon"
+                    "WorkspaceTarget::All should be handled by call_tool_federated"
                 ));
             }
             WorkspaceTarget::Primary => {
