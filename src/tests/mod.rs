@@ -20,6 +20,7 @@ pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
 // DAEMON TESTS - PID file management, process checking, start/stop/status
 // ============================================================================
 pub mod daemon_tests; // Daemon lifecycle tests
+pub mod daemon_watcher_tests; // Daemon cross-project file watcher tests
 
 // ============================================================================
 // SERVER TESTS - HTTP server and API endpoint tests

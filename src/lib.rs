@@ -7,6 +7,7 @@ pub mod api;
 pub mod cli;
 pub mod daemon;
 pub mod daemon_state;
+pub mod daemon_watcher;
 pub mod database;
 pub mod embeddings;
 pub mod extractors;

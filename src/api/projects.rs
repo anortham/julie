@@ -153,6 +153,14 @@ pub async fn create_project(
         );
     }
 
+    // Start file watcher if the workspace is Ready (has .julie/ with indexes)
+    {
+        let daemon_state = state.daemon_state.read().await;
+        daemon_state
+            .start_watcher_if_ready(&response.workspace_id)
+            .await;
+    }
+
     Ok((StatusCode::CREATED, Json(response)))
 }
 

@@ -76,6 +76,9 @@ pub async fn start_server(
         ready_count,
     );
 
+    // Start file watchers for all Ready projects
+    daemon_state.start_watchers_for_ready_projects().await;
+
     let daemon_state = Arc::new(RwLock::new(daemon_state));
 
     let state = Arc::new(AppState {
@@ -139,6 +142,12 @@ pub async fn start_server(
         .with_graceful_shutdown(shutdown_signal)
         .await
         .context("HTTP server error");
+
+    // Stop all file watchers on shutdown
+    {
+        let ds = daemon_state.read().await;
+        ds.watcher_manager.stop_all().await;
+    }
 
     // Cancel all active MCP sessions on shutdown
     ct_for_shutdown.cancel();
