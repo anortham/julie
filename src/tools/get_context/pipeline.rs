@@ -500,9 +500,10 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             Ok(result)
         }
         WorkspaceTarget::All => {
-            Err(anyhow::anyhow!(
-                "Cross-project search requires daemon mode — coming soon"
-            ))
+            let result = super::federated::run_federated(
+                query, max_tokens, language, file_pattern, format, handler,
+            ).await?;
+            Ok(result)
         }
         WorkspaceTarget::Primary => {
             // Primary workspace: use shared DB and SearchIndex via Arc<Mutex>

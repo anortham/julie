@@ -132,6 +132,7 @@ pub mod tools {
     pub mod workspace_target_tests; // WorkspaceTarget enum and resolve_workspace_filter tests
 
     pub mod federated_refs_tests; // Federated fast_refs: cross-project reference search
+    pub mod get_context_federation_tests; // Federated get_context (workspace="all") tests
 }
 
 // ============================================================================
