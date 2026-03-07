@@ -141,36 +141,45 @@ pub async fn start_server(
             port
         )
     })?;
-    tracing::info!("Julie daemon listening on http://{}", addr);
+
+    // Startup banner
+    let project_count = {
+        let reg = state.registry.read().await;
+        reg.projects.len()
+    };
+    tracing::info!("============================================================");
     tracing::info!(
-        "MCP Streamable HTTP endpoint: http://{}:{}/mcp",
-        addr.ip(),
-        addr.port()
+        "Julie v{} - Code Intelligence Server (daemon mode)",
+        env!("CARGO_PKG_VERSION")
     );
-    tracing::info!(
-        "Per-workspace MCP: http://{}:{}/mcp/{{workspace_id}}",
-        addr.ip(),
-        addr.port()
-    );
-    tracing::info!(
-        "Web UI: http://{}:{}/ui/",
-        addr.ip(),
-        addr.port()
-    );
+    tracing::info!("============================================================");
+    tracing::info!("Port:           {}", port);
+    tracing::info!("API:            http://localhost:{}/api", port);
+    tracing::info!("MCP:            http://localhost:{}/mcp", port);
+    tracing::info!("Per-project MCP: http://localhost:{}/mcp/{{workspace_id}}", port);
+    tracing::info!("Web UI:         http://localhost:{}/ui/", port);
+    tracing::info!("Projects:       {} registered ({} ready)", project_count, ready_count);
+    tracing::info!("============================================================");
 
     let result = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal)
         .await
         .context("HTTP server error");
 
+    // Shutdown sequence
+    tracing::info!("Shutting down Julie daemon...");
+
     // Stop all file watchers on shutdown
     {
         let ds = daemon_state.read().await;
         ds.watcher_manager.stop_all().await;
     }
+    tracing::info!("File watchers stopped");
 
     // Cancel all active MCP sessions on shutdown
     ct_for_shutdown.cancel();
+    tracing::info!("MCP sessions cancelled");
 
+    tracing::info!("Julie daemon shutdown complete");
     result
 }

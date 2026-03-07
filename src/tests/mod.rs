@@ -27,6 +27,7 @@ pub mod daemon_watcher_tests; // Daemon cross-project file watcher tests
 // SERVER TESTS - HTTP server and API endpoint tests
 // ============================================================================
 pub mod server_tests; // HTTP server, health endpoint, project endpoints
+pub mod daemon_integration_tests; // End-to-end daemon integration tests
 
 // ============================================================================
 // UI TESTS - Embedded web UI serving
