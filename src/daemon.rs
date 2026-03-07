@@ -185,11 +185,23 @@ pub async fn daemon_start(port: u16, workspace_root: PathBuf, foreground: bool) 
     fs::create_dir_all(&home)
         .with_context(|| format!("Failed to create Julie home directory {:?}", home))?;
 
+    // Load global registry (creates empty if missing)
+    let registry = crate::registry::GlobalRegistry::load(&home)
+        .with_context(|| format!("Failed to load global registry from {:?}", home))?;
+    tracing::info!("Loaded global registry: {} project(s)", registry.projects.len());
+
     write_pid_file(&pid_path, pid, port)?;
     println!("Julie daemon started (PID {}, port {})", pid, port);
 
     // Start the HTTP server — runs until a shutdown signal is received
-    let server_result = crate::server::start_server(port, workspace_root, shutdown_signal()).await;
+    let server_result = crate::server::start_server(
+        port,
+        workspace_root,
+        shutdown_signal(),
+        registry,
+        home.clone(),
+    )
+    .await;
 
     // Always clean up PID file on exit
     if let Err(e) = remove_pid_file(&pid_path) {

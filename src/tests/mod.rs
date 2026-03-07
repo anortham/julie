@@ -24,7 +24,12 @@ pub mod daemon_tests; // Daemon lifecycle tests
 // ============================================================================
 // SERVER TESTS - HTTP server and API endpoint tests
 // ============================================================================
-pub mod server_tests; // HTTP server, health endpoint, project stubs
+pub mod server_tests; // HTTP server, health endpoint, project endpoints
+
+// ============================================================================
+// REGISTRY TESTS - Global project registry (CRUD, persistence)
+// ============================================================================
+pub mod registry_tests; // Global project registry CRUD and persistence
 
 // ============================================================================
 // MAIN SERVER TESTS - Entry point error handling

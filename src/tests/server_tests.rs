@@ -10,12 +10,17 @@ use tokio_util::sync::CancellationToken;
 
 use crate::api;
 use crate::mcp_http;
+use crate::registry::GlobalRegistry;
 use crate::server::AppState;
 
 /// Build a test app with a fresh AppState (API routes only).
 fn test_app() -> axum::Router {
+    let temp_dir = std::env::temp_dir().join(format!("julie-test-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&temp_dir);
     let state = Arc::new(AppState {
         start_time: Instant::now(),
+        registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
+        julie_home: temp_dir,
     });
     axum::Router::new()
         .nest("/api", api::routes(state))
@@ -23,8 +28,12 @@ fn test_app() -> axum::Router {
 
 /// Build a test app with both API routes and MCP endpoint.
 fn test_app_with_mcp() -> axum::Router {
+    let temp_dir = std::env::temp_dir().join(format!("julie-test-mcp-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&temp_dir);
     let state = Arc::new(AppState {
         start_time: Instant::now(),
+        registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
+        julie_home: temp_dir,
     });
     let workspace_root = std::env::current_dir().unwrap();
     let mcp_service = mcp_http::create_mcp_service(workspace_root, CancellationToken::new());
@@ -88,7 +97,7 @@ async fn test_health_uptime_is_non_negative() {
 }
 
 // ============================================================================
-// PROJECTS ENDPOINT TESTS (STUBS)
+// PROJECTS ENDPOINT TESTS
 // ============================================================================
 
 #[tokio::test]
@@ -110,29 +119,140 @@ async fn test_list_projects_returns_empty_array() {
 }
 
 #[tokio::test]
-async fn test_create_project_returns_501() {
-    let app = test_app();
+async fn test_create_project_via_api() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let julie_home = temp_dir.path().join("julie-home");
+    std::fs::create_dir_all(&julie_home).unwrap();
+
+    // Create a fake project directory
+    let project_dir = temp_dir.path().join("my-project");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let state = Arc::new(AppState {
+        start_time: Instant::now(),
+        registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
+        julie_home: julie_home.clone(),
+    });
+    let app = axum::Router::new()
+        .nest("/api", api::routes(state));
+
+    let body = serde_json::json!({ "path": project_dir.to_string_lossy() });
     let req = Request::builder()
         .method("POST")
         .uri("/api/projects")
-        .body(Body::empty())
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
         .unwrap();
 
     let response = app.oneshot(req).await.unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["name"], "my-project");
+    assert_eq!(json["status"], "registered");
+    assert!(json["workspace_id"].is_string());
+
+    // Verify registry was persisted to disk
+    let registry_file = julie_home.join("registry.toml");
+    assert!(registry_file.exists(), "Registry file should be created on disk");
 }
 
 #[tokio::test]
-async fn test_delete_project_returns_501() {
+async fn test_create_project_bad_path() {
+    let app = test_app();
+    let body = serde_json::json!({ "path": "/nonexistent/path/xyzzy" });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/projects")
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_create_project_conflict() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let julie_home = temp_dir.path().join("julie-home");
+    std::fs::create_dir_all(&julie_home).unwrap();
+
+    let project_dir = temp_dir.path().join("my-project");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let state = Arc::new(AppState {
+        start_time: Instant::now(),
+        registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
+        julie_home: julie_home.clone(),
+    });
+
+    // Register once via the registry directly
+    {
+        let mut reg = state.registry.write().await;
+        reg.register_project(&project_dir).unwrap();
+    }
+
+    let app = axum::Router::new()
+        .nest("/api", api::routes(state));
+
+    // Try to register again via API
+    let body = serde_json::json!({ "path": project_dir.to_string_lossy() });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/projects")
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_delete_project_not_found() {
     let app = test_app();
     let req = Request::builder()
         .method("DELETE")
-        .uri("/api/projects/some-id")
+        .uri("/api/projects/nonexistent-id")
         .body(Body::empty())
         .unwrap();
 
     let response = app.oneshot(req).await.unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_delete_project_success() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let julie_home = temp_dir.path().join("julie-home");
+    std::fs::create_dir_all(&julie_home).unwrap();
+
+    let project_dir = temp_dir.path().join("my-project");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let mut registry = GlobalRegistry::new();
+    let workspace_id = registry.register_project(&project_dir).unwrap();
+
+    let state = Arc::new(AppState {
+        start_time: Instant::now(),
+        registry: tokio::sync::RwLock::new(registry),
+        julie_home,
+    });
+    let app = axum::Router::new()
+        .nest("/api", api::routes(state));
+
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(&format!("/api/projects/{}", workspace_id))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
 }
 
 // ============================================================================
@@ -163,7 +283,15 @@ async fn test_port_conflict_gives_clear_error_message() {
 
     // Try to start the server on the same port — should fail with a clear message
     let workspace_root = std::env::current_dir().unwrap();
-    let result = crate::server::start_server(port, workspace_root, std::future::pending()).await;
+    let julie_home = std::env::temp_dir().join("julie-test-port-conflict");
+    let result = crate::server::start_server(
+        port,
+        workspace_root,
+        std::future::pending(),
+        GlobalRegistry::new(),
+        julie_home,
+    )
+    .await;
     assert!(result.is_err());
 
     let err_msg = format!("{:#}", result.unwrap_err());

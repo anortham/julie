@@ -11,15 +11,21 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use axum::Router;
 use tokio::net::TcpListener;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use crate::api;
 use crate::mcp_http;
+use crate::registry::GlobalRegistry;
 
 /// Shared application state available to all request handlers.
 pub struct AppState {
     /// When the server started — used to compute uptime in the health endpoint.
     pub start_time: Instant,
+    /// Global project registry — tracks all known projects on this machine.
+    pub registry: RwLock<GlobalRegistry>,
+    /// Path to `~/.julie` (or platform equivalent) for persisting registry.
+    pub julie_home: PathBuf,
 }
 
 /// Start the HTTP server on the given port.
@@ -32,9 +38,13 @@ pub async fn start_server(
     port: u16,
     workspace_root: PathBuf,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
+    registry: GlobalRegistry,
+    julie_home: PathBuf,
 ) -> Result<()> {
     let state = Arc::new(AppState {
         start_time: Instant::now(),
+        registry: RwLock::new(registry),
+        julie_home,
     });
 
     // Create a cancellation token that will be cancelled when the server shuts down.
