@@ -30,6 +30,7 @@ use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 use crate::health::SystemStatus;
+use crate::tools::navigation::resolution::WorkspaceTarget;
 use crate::tools::shared::OptimizedResponse;
 
 //******************//
@@ -81,13 +82,20 @@ impl FastSearchTool {
             self.query, self.search_target
         );
 
-        // Determine target workspace for health check
-        let target_workspace_id = if self.workspace.is_some() {
-            self.resolve_workspace_filter(handler)
-                .await?
-                .and_then(|ids| ids.first().cloned())
-        } else {
-            None
+        // Resolve workspace target once (used for health check and search routing)
+        let workspace_target = self.resolve_workspace_filter(handler).await?;
+
+        // Early exit for All — federation not yet wired
+        if matches!(workspace_target, WorkspaceTarget::All) {
+            return Err(anyhow::anyhow!(
+                "Cross-project search requires daemon mode — coming soon"
+            ));
+        }
+
+        // Extract workspace ID for health check
+        let target_workspace_id = match &workspace_target {
+            WorkspaceTarget::Reference(id) => Some(id.clone()),
+            _ => None,
         };
 
         // Check system readiness
@@ -130,7 +138,26 @@ impl FastSearchTool {
         }
 
         // Definition search → Tantivy symbol mode
-        let workspace_ids = self.resolve_workspace_filter(handler).await?;
+        // Convert WorkspaceTarget to Option<Vec<String>> for text_search_impl
+        let workspace_ids = match workspace_target {
+            WorkspaceTarget::Primary => {
+                // Resolve the actual primary workspace ID for Tantivy filtering
+                if let Some(workspace) = handler.get_workspace().await? {
+                    let registry_service =
+                        crate::workspace::registry_service::WorkspaceRegistryService::new(
+                            workspace.root.clone(),
+                        );
+                    match registry_service.get_primary_workspace_id().await? {
+                        Some(id) => Some(vec![id]),
+                        None => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            WorkspaceTarget::Reference(id) => Some(vec![id]),
+            WorkspaceTarget::All => unreachable!("All handled above"),
+        };
         let (symbols, relaxed) = text_search::text_search_impl(
             &self.query,
             &self.language,
@@ -181,92 +208,18 @@ impl FastSearchTool {
         )]))
     }
 
-    /// Resolve workspace filtering parameter to a list of workspace IDs
+    /// Resolve workspace filtering parameter to a WorkspaceTarget.
+    ///
+    /// Delegates to the canonical `resolve_workspace_filter` in `resolution.rs`.
+    /// FastSearchTool keeps this as a convenience method since it accesses `self.workspace`.
     async fn resolve_workspace_filter(
         &self,
         handler: &JulieServerHandler,
-    ) -> Result<Option<Vec<String>>> {
-        let workspace_param = self.workspace.as_deref().unwrap_or("primary");
-
-        match workspace_param {
-            "all" => {
-                // Multi-workspace search is not supported - architectural decision
-                // Use ManageWorkspaceTool for listing/managing multiple workspaces
-                Err(anyhow::anyhow!(
-                    "Searching all workspaces is not supported. Search one workspace at a time.\n\
-                     Use 'primary' (default) or specify a specific workspace ID.\n\
-                     To list available workspaces, use ManageWorkspaceTool with operation='list'."
-                ))
-            }
-            "primary" => {
-                // Resolve primary workspace ID for precise workspace filtering
-                let workspace = handler.get_workspace().await?;
-                if let Some(workspace) = workspace {
-                    let registry_service =
-                        crate::workspace::registry_service::WorkspaceRegistryService::new(
-                            workspace.root.clone(),
-                        );
-                    match registry_service.get_primary_workspace_id().await? {
-                        Some(workspace_id) => {
-                            debug!("🔍 Resolved primary workspace to ID: {}", workspace_id);
-                            Ok(Some(vec![workspace_id]))
-                        }
-                        None => {
-                            debug!("🔍 No primary workspace ID found, using fallback search");
-                            Ok(None)
-                        }
-                    }
-                } else {
-                    debug!("🔍 No workspace available, using fallback search");
-                    Ok(None)
-                }
-            }
-            workspace_id => {
-                // Validate the workspace ID exists
-                if let Some(primary_workspace) = handler.get_workspace().await? {
-                    let registry_service =
-                        crate::workspace::registry_service::WorkspaceRegistryService::new(
-                            primary_workspace.root.clone(),
-                        );
-
-                    // Check if it's a valid workspace ID
-                    match registry_service.get_workspace(workspace_id).await? {
-                        Some(_) => Ok(Some(vec![workspace_id.to_string()])),
-                        None => {
-                            // Invalid workspace ID - provide fuzzy match suggestion
-                            let all_workspaces = registry_service.get_all_workspaces().await?;
-                            let workspace_ids: Vec<&str> =
-                                all_workspaces.iter().map(|w| w.id.as_str()).collect();
-
-                            if let Some((best_match, distance)) =
-                                crate::utils::string_similarity::find_closest_match(
-                                    workspace_id,
-                                    &workspace_ids,
-                                )
-                            {
-                                // Only suggest if the distance is reasonable (< 50% of query length)
-                                if distance < workspace_id.len() / 2 {
-                                    return Err(anyhow::anyhow!(
-                                        "Workspace '{}' not found. Did you mean '{}'?",
-                                        workspace_id,
-                                        best_match
-                                    ));
-                                }
-                            }
-
-                            // No close match found
-                            Err(anyhow::anyhow!(
-                                "Workspace '{}' not found. Use 'primary' or a valid workspace ID",
-                                workspace_id
-                            ))
-                        }
-                    }
-                } else {
-                    Err(anyhow::anyhow!(
-                        "No primary workspace found. Initialize workspace first."
-                    ))
-                }
-            }
-        }
+    ) -> Result<WorkspaceTarget> {
+        crate::tools::navigation::resolution::resolve_workspace_filter(
+            self.workspace.as_deref(),
+            handler,
+        )
+        .await
     }
 }

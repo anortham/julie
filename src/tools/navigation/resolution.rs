@@ -31,21 +31,34 @@ pub fn parse_qualified_name(symbol: &str) -> Option<(&str, &str)> {
     None
 }
 
-/// Resolve workspace parameter to specific workspace ID
+/// Workspace targeting for tool operations.
 ///
-/// Returns None for primary workspace (use handler.get_workspace().db)
-/// Returns Some(workspace_id) for reference workspaces (need to open separate DB)
+/// Replaces the previous `Option<String>` / `Option<Vec<String>>` return types
+/// from workspace resolution with an explicit enum that all tool callers match on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceTarget {
+    /// Use the primary workspace (handler.get_workspace().db)
+    Primary,
+    /// Use a specific reference workspace by ID
+    Reference(String),
+    /// Federated search across all daemon-registered workspaces
+    All,
+}
+
+/// Resolve workspace parameter to a WorkspaceTarget.
+///
+/// - `None` or `"primary"` → `WorkspaceTarget::Primary`
+/// - `"all"` → `WorkspaceTarget::All`
+/// - Any other string → validated as a reference workspace ID → `WorkspaceTarget::Reference(id)`
 pub async fn resolve_workspace_filter(
     workspace_param: Option<&str>,
     handler: &JulieServerHandler,
-) -> Result<Option<String>> {
+) -> Result<WorkspaceTarget> {
     let workspace_param = workspace_param.unwrap_or("primary");
 
     match workspace_param {
-        "primary" => {
-            // Primary workspace - use handler.get_workspace().db (already loaded)
-            Ok(None)
-        }
+        "primary" => Ok(WorkspaceTarget::Primary),
+        "all" => Ok(WorkspaceTarget::All),
         workspace_id => {
             // Reference workspace ID - validate it exists in registry
             if let Some(primary_workspace) = handler.get_workspace().await? {
@@ -54,7 +67,7 @@ pub async fn resolve_workspace_filter(
 
                 // Check if it's a valid workspace ID
                 match registry_service.get_workspace(workspace_id).await? {
-                    Some(_) => Ok(Some(workspace_id.to_string())),
+                    Some(_) => Ok(WorkspaceTarget::Reference(workspace_id.to_string())),
                     None => {
                         // Invalid workspace ID - provide fuzzy match suggestion
                         let all_workspaces = registry_service.get_all_workspaces().await?;

@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::handler::JulieServerHandler;
-use crate::tools::navigation::resolution::resolve_workspace_filter;
+use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
 
 fn default_max_depth() -> u32 {
     1
@@ -71,32 +71,39 @@ pub struct GetSymbolsTool {
 impl GetSymbolsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         // Resolve workspace parameter (primary vs reference workspace)
-        let workspace_filter = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+        let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
 
-        // If reference workspace is specified, handle it separately
-        if let Some(ref_workspace_id) = workspace_filter {
-            debug!("🎯 Querying reference workspace: {}", ref_workspace_id);
-            return reference::get_symbols_from_reference(
-                handler,
-                &self.file_path,
-                self.max_depth,
-                self.target.as_deref(),
-                self.limit,
-                self.mode.as_deref().unwrap_or("structure"),
-                ref_workspace_id,
-            )
-            .await;
+        match workspace_target {
+            WorkspaceTarget::Reference(ref_workspace_id) => {
+                debug!("🎯 Querying reference workspace: {}", ref_workspace_id);
+                reference::get_symbols_from_reference(
+                    handler,
+                    &self.file_path,
+                    self.max_depth,
+                    self.target.as_deref(),
+                    self.limit,
+                    self.mode.as_deref().unwrap_or("structure"),
+                    ref_workspace_id,
+                )
+                .await
+            }
+            WorkspaceTarget::All => {
+                Err(anyhow::anyhow!(
+                    "Cross-project search requires daemon mode — coming soon"
+                ))
+            }
+            WorkspaceTarget::Primary => {
+                // Primary workspace logic
+                primary::get_symbols_from_primary(
+                    handler,
+                    &self.file_path,
+                    self.max_depth,
+                    self.target.as_deref(),
+                    self.limit,
+                    self.mode.as_deref().unwrap_or("structure"),
+                )
+                .await
+            }
         }
-
-        // Primary workspace logic
-        primary::get_symbols_from_primary(
-            handler,
-            &self.file_path,
-            self.max_depth,
-            self.target.as_deref(),
-            self.limit,
-            self.mode.as_deref().unwrap_or("structure"),
-        )
-        .await
     }
 }

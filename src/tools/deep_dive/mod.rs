@@ -13,7 +13,7 @@ use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
-use crate::tools::navigation::resolution::resolve_workspace_filter;
+use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
 
 fn default_depth() -> String {
     "overview".to_string()
@@ -70,37 +70,47 @@ impl DeepDiveTool {
             }
         };
 
-        // Resolve workspace parameter: None = primary, Some(id) = reference
-        let workspace_filter = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+        // Resolve workspace parameter
+        let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
 
         let symbol_name = self.symbol.clone();
         let context_file = self.context_file.clone();
         let depth_owned = depth.to_string();
         let (incoming_cap, outgoing_cap) = ref_caps(depth);
 
-        if let Some(ref_workspace_id) = workspace_filter {
-            // Reference workspace: open separate database
-            let workspace = handler
-                .get_workspace()
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
-            let ref_db_path = workspace.workspace_db_path(&ref_workspace_id);
+        match workspace_target {
+            WorkspaceTarget::Reference(ref_workspace_id) => {
+                // Reference workspace: open separate database
+                let workspace = handler
+                    .get_workspace()
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+                let ref_db_path = workspace.workspace_db_path(&ref_workspace_id);
 
-            let result = tokio::task::spawn_blocking(move || -> Result<String> {
-                let db = crate::database::SymbolDatabase::new(ref_db_path)?;
-                deep_dive_query(
-                    &db,
-                    &symbol_name,
-                    context_file.as_deref(),
-                    &depth_owned,
-                    incoming_cap,
-                    outgoing_cap,
-                )
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
+                let result = tokio::task::spawn_blocking(move || -> Result<String> {
+                    let db = crate::database::SymbolDatabase::new(ref_db_path)?;
+                    deep_dive_query(
+                        &db,
+                        &symbol_name,
+                        context_file.as_deref(),
+                        &depth_owned,
+                        incoming_cap,
+                        outgoing_cap,
+                    )
+                })
+                .await
+                .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
 
-            return Ok(CallToolResult::text_content(vec![Content::text(result)]));
+                return Ok(CallToolResult::text_content(vec![Content::text(result)]));
+            }
+            WorkspaceTarget::All => {
+                return Err(anyhow::anyhow!(
+                    "Cross-project search requires daemon mode — coming soon"
+                ));
+            }
+            WorkspaceTarget::Primary => {
+                // Fall through to primary workspace logic below
+            }
         }
 
         // Primary workspace: use shared database via Arc<Mutex>

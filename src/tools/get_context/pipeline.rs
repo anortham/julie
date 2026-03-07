@@ -14,7 +14,7 @@ use tracing::debug;
 use crate::database::SymbolDatabase;
 use crate::extractors::base::{RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
-use crate::tools::navigation::resolution::resolve_workspace_filter;
+use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
 
 /// Direction of a neighbor relative to the pivot symbol.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -461,7 +461,7 @@ fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::
 /// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
 /// Supports both primary and reference workspaces.
 pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<String> {
-    let workspace_filter = resolve_workspace_filter(tool.workspace.as_deref(), handler).await?;
+    let workspace_target = resolve_workspace_filter(tool.workspace.as_deref(), handler).await?;
 
     let query = tool.query.clone();
     let max_tokens = tool.max_tokens;
@@ -469,71 +469,79 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
     let file_pattern = tool.file_pattern.clone();
     let format = tool.format.clone();
 
-    if let Some(ref_workspace_id) = workspace_filter {
-        // Reference workspace: open separate DB and SearchIndex
-        debug!(
-            "get_context: using reference workspace {}",
-            ref_workspace_id
-        );
-        let workspace = handler
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+    match workspace_target {
+        WorkspaceTarget::Reference(ref_workspace_id) => {
+            // Reference workspace: open separate DB and SearchIndex
+            debug!(
+                "get_context: using reference workspace {}",
+                ref_workspace_id
+            );
+            let workspace = handler
+                .get_workspace()
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
-        let ref_db_path = workspace.workspace_db_path(&ref_workspace_id);
-        let tantivy_path = workspace.workspace_tantivy_path(&ref_workspace_id);
-        let embedding_provider = workspace.embedding_provider.clone();
+            let ref_db_path = workspace.workspace_db_path(&ref_workspace_id);
+            let tantivy_path = workspace.workspace_tantivy_path(&ref_workspace_id);
+            let embedding_provider = workspace.embedding_provider.clone();
 
-        let result = tokio::task::spawn_blocking(move || -> Result<String> {
-            if !tantivy_path.join("meta.json").exists() {
-                anyhow::bail!("No search index for reference workspace. Run manage_workspace(operation=\"refresh\") first.");
-            }
-            let db = SymbolDatabase::new(ref_db_path)?;
-            let configs = crate::search::LanguageConfigs::load_embedded();
-            let index = crate::search::SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
-            run_pipeline(&query, max_tokens, language, file_pattern, format, &db, &index, embedding_provider.as_deref())
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
+            let result = tokio::task::spawn_blocking(move || -> Result<String> {
+                if !tantivy_path.join("meta.json").exists() {
+                    anyhow::bail!("No search index for reference workspace. Run manage_workspace(operation=\"refresh\") first.");
+                }
+                let db = SymbolDatabase::new(ref_db_path)?;
+                let configs = crate::search::LanguageConfigs::load_embedded();
+                let index = crate::search::SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+                run_pipeline(&query, max_tokens, language, file_pattern, format, &db, &index, embedding_provider.as_deref())
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
 
-        return Ok(result);
+            Ok(result)
+        }
+        WorkspaceTarget::All => {
+            Err(anyhow::anyhow!(
+                "Cross-project search requires daemon mode — coming soon"
+            ))
+        }
+        WorkspaceTarget::Primary => {
+            // Primary workspace: use shared DB and SearchIndex via Arc<Mutex>
+            let workspace = handler
+                .get_workspace()
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+
+            let search_index = workspace
+                .search_index
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Search index not initialized"))?
+                .clone();
+
+            let db = workspace
+                .db
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?
+                .clone();
+
+            let embedding_provider = workspace.embedding_provider.clone();
+
+            let result = tokio::task::spawn_blocking(move || -> Result<String> {
+                let index = search_index.lock().unwrap();
+                let db_guard = db.lock().unwrap();
+                run_pipeline(
+                    &query,
+                    max_tokens,
+                    language,
+                    file_pattern,
+                    format,
+                    &db_guard,
+                    &index,
+                    embedding_provider.as_deref(),
+                )
+            })
+            .await??;
+
+            Ok(result)
+        }
     }
-
-    // Primary workspace: use shared DB and SearchIndex via Arc<Mutex>
-    let workspace = handler
-        .get_workspace()
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
-
-    let search_index = workspace
-        .search_index
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Search index not initialized"))?
-        .clone();
-
-    let db = workspace
-        .db
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?
-        .clone();
-
-    let embedding_provider = workspace.embedding_provider.clone();
-
-    let result = tokio::task::spawn_blocking(move || -> Result<String> {
-        let index = search_index.lock().unwrap();
-        let db_guard = db.lock().unwrap();
-        run_pipeline(
-            &query,
-            max_tokens,
-            language,
-            file_pattern,
-            format,
-            &db_guard,
-            &index,
-            embedding_provider.as_deref(),
-        )
-    })
-    .await??;
-
-    Ok(result)
 }

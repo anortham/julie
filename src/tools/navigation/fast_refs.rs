@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::formatting::format_lean_refs_results;
 use super::reference_workspace;
-use super::resolution::resolve_workspace_filter;
+use super::resolution::{WorkspaceTarget, resolve_workspace_filter};
 
 fn default_true() -> bool {
     true
@@ -94,14 +94,23 @@ impl FastRefsTool {
         );
 
         // Resolve workspace parameter
-        let workspace_filter = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+        let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
 
-        // If reference workspace is specified, open that workspace's DB and search it
-        if let Some(ref_workspace_id) = workspace_filter {
-            debug!("🎯 Searching reference workspace: {}", ref_workspace_id);
-            return self
-                .database_find_references_in_reference(handler, ref_workspace_id)
-                .await;
+        match workspace_target {
+            WorkspaceTarget::Reference(ref_workspace_id) => {
+                debug!("🎯 Searching reference workspace: {}", ref_workspace_id);
+                return self
+                    .database_find_references_in_reference(handler, ref_workspace_id)
+                    .await;
+            }
+            WorkspaceTarget::All => {
+                return Err(anyhow::anyhow!(
+                    "Cross-project search requires daemon mode — coming soon"
+                ));
+            }
+            WorkspaceTarget::Primary => {
+                // Fall through to primary workspace search below
+            }
         }
 
         // Primary workspace search - use handler.get_workspace().db

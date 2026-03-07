@@ -122,6 +122,8 @@ pub mod tools {
     pub mod get_context_token_budget_tests; // get_context token truncation tests // get_context run_pipeline fallback relevance tests
 
     pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
+
+    pub mod workspace_target_tests; // WorkspaceTarget enum and resolve_workspace_filter tests
 }
 
 // ============================================================================
