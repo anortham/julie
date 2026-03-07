@@ -66,30 +66,40 @@ pub async fn start_server(
     let cancellation_token = CancellationToken::new();
     let ct_for_shutdown = cancellation_token.clone();
 
+    // Wrap DaemonState in Arc<RwLock<>> up front so that per-workspace MCP
+    // service factories can capture a reference to it. This lets tool handlers
+    // access all loaded workspaces for federated search (workspace="all").
+    let daemon_state = Arc::new(RwLock::new(DaemonState::new()));
+
     // Load workspaces for all registered projects (non-blocking -- only loads
     // existing indexes, doesn't trigger indexing).
-    let mut daemon_state = DaemonState::new();
-    daemon_state
-        .load_registered_projects(&registry, &cancellation_token)
+    let ready_count = {
+        let mut ds = daemon_state.write().await;
+        ds.load_registered_projects(
+            &registry,
+            &cancellation_token,
+            daemon_state.clone(),
+        )
         .await;
 
-    let loaded_count = daemon_state.workspaces.len();
-    let ready_count = daemon_state
-        .workspaces
-        .values()
-        .filter(|w| w.status == crate::daemon_state::WorkspaceLoadStatus::Ready)
-        .count();
-    tracing::info!(
-        "Loaded {}/{} project workspace(s) (Ready: {})",
-        loaded_count,
-        registry.projects.len(),
-        ready_count,
-    );
+        let loaded_count = ds.workspaces.len();
+        let ready_count = ds
+            .workspaces
+            .values()
+            .filter(|w| w.status == crate::daemon_state::WorkspaceLoadStatus::Ready)
+            .count();
+        tracing::info!(
+            "Loaded {}/{} project workspace(s) (Ready: {})",
+            loaded_count,
+            registry.projects.len(),
+            ready_count,
+        );
 
-    // Start file watchers for all Ready projects
-    daemon_state.start_watchers_for_ready_projects().await;
+        // Start file watchers for all Ready projects
+        ds.start_watchers_for_ready_projects().await;
 
-    let daemon_state = Arc::new(RwLock::new(daemon_state));
+        ready_count
+    };
     let registry_rw = Arc::new(RwLock::new(registry));
 
     // Spawn the background indexing worker — processes requests sequentially

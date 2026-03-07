@@ -153,6 +153,7 @@ pub async fn create_project(
             response.workspace_id.clone(),
             project_path,
             &state.cancellation_token,
+            state.daemon_state.clone(),
         );
     }
 

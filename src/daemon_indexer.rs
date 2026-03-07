@@ -193,6 +193,7 @@ async fn process_index_request(
                 let mcp_service = DaemonState::create_workspace_mcp_service(
                     request.project_path.clone(),
                     &ct,
+                    daemon_state.clone(),
                 );
                 ds.mcp_services
                     .insert(request.workspace_id.clone(), mcp_service);

@@ -352,6 +352,7 @@ async fn test_per_workspace_mcp_via_full_app() {
             "integration-ws".to_string(),
             project_dir,
             &state.cancellation_token,
+            state.daemon_state.clone(),
         );
     }
 

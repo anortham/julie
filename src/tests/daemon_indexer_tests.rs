@@ -186,11 +186,12 @@ fn test_registry_status_transition_to_error() {
 
 #[test]
 fn test_daemon_state_indexing_status_maps_to_project_status() {
+    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new()));
     let mut state = DaemonState::new();
     let ct = CancellationToken::new();
     let project_path = std::path::PathBuf::from("/tmp/project");
 
-    state.register_workspace("ws-1".to_string(), project_path, &ct);
+    state.register_workspace("ws-1".to_string(), project_path, &ct, daemon_state_arc);
 
     // Manually set status to Indexing
     if let Some(loaded) = state.workspaces.get_mut("ws-1") {
@@ -344,12 +345,15 @@ async fn test_get_status_reflects_indexing_state() {
     let ws_id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     let ct = CancellationToken::new();
-    let mut daemon_state = DaemonState::new();
-    daemon_state.register_workspace(ws_id.clone(), project_dir, &ct);
+    let daemon_state = Arc::new(tokio::sync::RwLock::new(DaemonState::new()));
+    {
+        let mut ds = daemon_state.write().await;
+        ds.register_workspace(ws_id.clone(), project_dir, &ct, daemon_state.clone());
 
-    // Manually set status to Indexing
-    if let Some(loaded) = daemon_state.workspaces.get_mut(&ws_id) {
-        loaded.status = WorkspaceLoadStatus::Indexing;
+        // Manually set status to Indexing
+        if let Some(loaded) = ds.workspaces.get_mut(&ws_id) {
+            loaded.status = WorkspaceLoadStatus::Indexing;
+        }
     }
 
     let (tx, _rx) = tokio::sync::mpsc::channel::<IndexRequest>(1);
@@ -357,7 +361,7 @@ async fn test_get_status_reflects_indexing_state() {
         start_time: Instant::now(),
         registry: Arc::new(tokio::sync::RwLock::new(registry)),
         julie_home,
-        daemon_state: Arc::new(tokio::sync::RwLock::new(daemon_state)),
+        daemon_state,
         cancellation_token: ct,
         indexing_sender: tx,
     });

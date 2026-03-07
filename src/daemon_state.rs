@@ -100,6 +100,7 @@ impl DaemonState {
         &mut self,
         registry: &GlobalRegistry,
         cancellation_token: &CancellationToken,
+        daemon_state: Arc<tokio::sync::RwLock<DaemonState>>,
     ) {
         for (workspace_id, entry) in &registry.projects {
             let project_path = &entry.path;
@@ -145,6 +146,7 @@ impl DaemonState {
                     let mcp_service = Self::create_workspace_mcp_service(
                         project_path.clone(),
                         cancellation_token,
+                        daemon_state.clone(),
                     );
 
                     self.workspaces.insert(
@@ -199,6 +201,7 @@ impl DaemonState {
     pub fn create_workspace_mcp_service(
         workspace_root: PathBuf,
         cancellation_token: &CancellationToken,
+        daemon_state: Arc<tokio::sync::RwLock<DaemonState>>,
     ) -> StreamableHttpService<JulieServerHandler> {
         let config = StreamableHttpServerConfig {
             cancellation_token: cancellation_token.clone(),
@@ -208,8 +211,11 @@ impl DaemonState {
 
         StreamableHttpService::new(
             move || {
-                JulieServerHandler::new_sync(workspace_root.clone())
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                JulieServerHandler::new_with_daemon_state(
+                    workspace_root.clone(),
+                    daemon_state.clone(),
+                )
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
             },
             session_manager,
             config,
@@ -239,6 +245,7 @@ impl DaemonState {
         workspace_id: String,
         project_path: PathBuf,
         cancellation_token: &CancellationToken,
+        daemon_state: Arc<tokio::sync::RwLock<DaemonState>>,
     ) {
         debug!(
             "Registering new workspace {} at {}",
@@ -269,6 +276,7 @@ impl DaemonState {
         let mcp_service = Self::create_workspace_mcp_service(
             project_path,
             cancellation_token,
+            daemon_state,
         );
         self.mcp_services.insert(workspace_id, mcp_service);
     }

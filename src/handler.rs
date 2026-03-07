@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use tracing::{debug, info, warn};
 
+use crate::daemon_state::DaemonState;
 use crate::workspace::JulieWorkspace;
 use tokio::sync::RwLock;
 
@@ -65,6 +66,12 @@ pub struct JulieServerHandler {
     pub indexing_status: Arc<IndexingStatus>,
     /// rmcp tool router for handling tool calls
     tool_router: ToolRouter<Self>,
+    /// Daemon-wide state for cross-project operations.
+    ///
+    /// `Some` in daemon mode (HTTP server) — gives tools access to all loaded
+    /// workspaces for federated search (`workspace="all"`).
+    /// `None` in stdio mode — single-workspace, no federation.
+    pub(crate) daemon_state: Option<Arc<RwLock<DaemonState>>>,
 }
 
 impl JulieServerHandler {
@@ -91,6 +98,28 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
             tool_router: Self::tool_router(),
+            daemon_state: None,
+        })
+    }
+
+    /// Synchronous constructor for daemon mode — injects shared `DaemonState`.
+    ///
+    /// Used by `create_workspace_mcp_service` so that tool handlers can access
+    /// all loaded workspaces for federated search (`workspace="all"`).
+    pub fn new_with_daemon_state(
+        workspace_root: PathBuf,
+        daemon_state: Arc<RwLock<DaemonState>>,
+    ) -> Result<Self> {
+        info!("🔧 Initializing Julie server handler with daemon state (workspace_root: {:?})", workspace_root);
+        debug!("✓ Julie handler initialized with daemon state — federation enabled");
+
+        Ok(Self {
+            workspace_root,
+            workspace: Arc::new(RwLock::new(None)),
+            is_indexed: Arc::new(RwLock::new(false)),
+            indexing_status: Arc::new(IndexingStatus::new()),
+            tool_router: Self::tool_router(),
+            daemon_state: Some(daemon_state),
         })
     }
 
