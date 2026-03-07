@@ -46,9 +46,15 @@ pub fn multi_rrf_merge<T: RrfItem>(lists: Vec<Vec<T>>, k: u32, limit: usize) -> 
         return Vec::new();
     }
 
-    // Fast path: single list — just truncate and return
+    // Fast path: single list — normalize to RRF scores for consistency
+    // (without this, single-list results keep BM25 scores while multi-list
+    // results get much smaller RRF scores, confusing downstream consumers)
     if lists.len() == 1 {
         let mut single = lists.into_iter().next().unwrap();
+        let k_f32 = k as f32;
+        for (i, item) in single.iter_mut().enumerate() {
+            item.set_score(1.0 / (k_f32 + (i + 1) as f32));
+        }
         single.truncate(limit);
         return single;
     }

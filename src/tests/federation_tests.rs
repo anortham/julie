@@ -75,10 +75,21 @@ fn test_rrf_single_list_passthrough() {
     ]];
     let result = multi_rrf_merge(lists, RRF_K, 10);
     assert_eq!(result.len(), 3);
-    // Single list: items keep their order
+    // Single list: items keep their order, scores normalized to RRF values
     assert_eq!(result[0].id, "a");
     assert_eq!(result[1].id, "b");
     assert_eq!(result[2].id, "c");
+    // Scores should be RRF: 1/(k+rank) for rank 1,2,3
+    let expected_scores = [1.0 / 61.0, 1.0 / 62.0, 1.0 / 63.0];
+    for (i, expected) in expected_scores.iter().enumerate() {
+        assert!(
+            (result[i].score - expected).abs() < 1e-6,
+            "Item {} expected score {}, got {}",
+            result[i].id,
+            expected,
+            result[i].score,
+        );
+    }
 }
 
 #[test]
@@ -687,4 +698,129 @@ async fn test_federated_search_with_filter() {
 
     // Should still find results (language matches)
     assert!(!results.is_empty());
+}
+
+// ===========================================================================
+// Graceful degradation tests
+// ===========================================================================
+
+/// Poison a mutex by panicking while holding it, then return the poisoned Arc.
+fn create_poisoned_search_index() -> Arc<Mutex<SearchIndex>> {
+    let dir = TempDir::new().unwrap();
+    let index_path = dir.path().join("tantivy");
+    std::fs::create_dir_all(&index_path).unwrap();
+    let search_index = SearchIndex::create(&index_path).unwrap();
+    let arc = Arc::new(Mutex::new(search_index));
+
+    // Poison the mutex by panicking while holding the lock
+    let arc_clone = Arc::clone(&arc);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = arc_clone.lock().unwrap();
+        panic!("intentional panic to poison mutex");
+    }));
+
+    // Verify it's actually poisoned
+    assert!(arc.lock().is_err(), "Mutex should be poisoned");
+
+    // Leak the TempDir so the index files persist while the Arc is alive.
+    // (The test is short-lived so this is fine.)
+    std::mem::forget(dir);
+
+    arc
+}
+
+#[tokio::test]
+async fn test_federated_symbol_search_skips_failed_workspace() {
+    // Workspace 1: healthy, has searchable symbols
+    let dir1 = TempDir::new().unwrap();
+    let healthy_index = create_test_search_index(
+        &dir1,
+        vec![
+            ("1", "search_handler", "function", "src/handler.rs"),
+        ],
+    );
+
+    // Workspace 2: poisoned mutex -- should fail gracefully
+    let poisoned_index = create_poisoned_search_index();
+
+    let workspaces = vec![
+        WorkspaceSearchEntry {
+            workspace_id: "healthy_ws".to_string(),
+            project_name: "healthy-project".to_string(),
+            search_index: healthy_index,
+        },
+        WorkspaceSearchEntry {
+            workspace_id: "broken_ws".to_string(),
+            project_name: "broken-project".to_string(),
+            search_index: poisoned_index,
+        },
+    ];
+
+    // Should NOT error -- the broken workspace is skipped
+    let results = federated_symbol_search(
+        "search",
+        &SearchFilter::default(),
+        10,
+        &workspaces,
+    )
+    .await
+    .unwrap();
+
+    // Should still get results from the healthy workspace
+    assert!(!results.is_empty(), "Expected results from healthy workspace");
+    assert_eq!(results[0].workspace_id, "healthy_ws");
+    assert_eq!(results[0].result.name, "search_handler");
+
+    // No results from the broken workspace
+    let broken_results: Vec<_> = results
+        .iter()
+        .filter(|r| r.workspace_id == "broken_ws")
+        .collect();
+    assert!(broken_results.is_empty(), "Broken workspace should have been skipped");
+}
+
+#[tokio::test]
+async fn test_federated_content_search_skips_failed_workspace() {
+    // Workspace 1: healthy
+    let dir1 = TempDir::new().unwrap();
+    let healthy_index = create_test_content_index(
+        &dir1,
+        vec![("src/main.rs", "rust", "fn main() { println!(\"hello\"); }")],
+    );
+
+    // Workspace 2: poisoned
+    let poisoned_index = create_poisoned_search_index();
+
+    let workspaces = vec![
+        WorkspaceSearchEntry {
+            workspace_id: "healthy_ws".to_string(),
+            project_name: "healthy-project".to_string(),
+            search_index: healthy_index,
+        },
+        WorkspaceSearchEntry {
+            workspace_id: "broken_ws".to_string(),
+            project_name: "broken-project".to_string(),
+            search_index: poisoned_index,
+        },
+    ];
+
+    let results = federated_content_search(
+        "main",
+        &SearchFilter::default(),
+        10,
+        &workspaces,
+    )
+    .await
+    .unwrap();
+
+    // Should still get results from the healthy workspace
+    assert!(!results.is_empty(), "Expected results from healthy workspace");
+    assert_eq!(results[0].workspace_id, "healthy_ws");
+
+    // No results from the broken workspace
+    let broken_results: Vec<_> = results
+        .iter()
+        .filter(|r| r.workspace_id == "broken_ws")
+        .collect();
+    assert!(broken_results.is_empty(), "Broken workspace should have been skipped");
 }
