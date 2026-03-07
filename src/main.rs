@@ -3,90 +3,25 @@
 // Use modules from the library crate
 // (imports are done directly where needed)
 
-use std::env;
 use std::fs;
-use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
+use clap::Parser;
+use julie::cli::{Cli, Commands, DaemonAction, resolve_workspace_root};
 use julie::handler::JulieServerHandler;
 use rmcp::{ServiceExt, transport::stdio};
 
-/// Determine the workspace root path from CLI args, environment, or current directory
-///
-/// Priority order:
-/// 1. --workspace <path> CLI argument
-/// 2. JULIE_WORKSPACE environment variable
-/// 3. Current working directory (fallback)
-///
-/// Paths are canonicalized to prevent duplicate workspace IDs for the same logical directory.
-/// Tilde expansion is performed for paths like "~/projects/foo".
-fn get_workspace_root() -> PathBuf {
-    // Check CLI arguments for --workspace flag
-    let args: Vec<String> = env::args().collect();
-    if let Some(pos) = args.iter().position(|a| a == "--workspace") {
-        if let Some(path_str) = args.get(pos + 1) {
-            // Expand tilde for paths like "~/projects/foo"
-            let expanded = shellexpand::tilde(path_str).to_string();
-            let path = PathBuf::from(expanded);
-
-            if path.exists() {
-                // Canonicalize to resolve symlinks and normalize path representation
-                let canonical = path.canonicalize().unwrap_or_else(|e| {
-                    eprintln!("⚠️ Warning: Could not canonicalize path {:?}: {}", path, e);
-                    path.clone()
-                });
-                eprintln!("📂 Using workspace from CLI argument: {:?}", canonical);
-                return canonical;
-            } else {
-                eprintln!("⚠️ Warning: --workspace path does not exist: {:?}", path);
-            }
-        }
-    }
-
-    // Check environment variable (e.g., JULIE_WORKSPACE set by VS Code)
-    if let Ok(path_str) = env::var("JULIE_WORKSPACE") {
-        // Expand tilde for paths like "~/projects/foo"
-        let expanded = shellexpand::tilde(&path_str).to_string();
-        let path = PathBuf::from(expanded);
-
-        if path.exists() {
-            // Canonicalize to resolve symlinks and normalize path representation
-            let canonical = path.canonicalize().unwrap_or_else(|e| {
-                eprintln!("⚠️ Warning: Could not canonicalize path {:?}: {}", path, e);
-                path.clone()
-            });
-            eprintln!(
-                "📂 Using workspace from JULIE_WORKSPACE env var: {:?}",
-                canonical
-            );
-            return canonical;
-        } else {
-            eprintln!(
-                "⚠️ Warning: JULIE_WORKSPACE path does not exist: {:?}",
-                path
-            );
-        }
-    }
-
-    // Fallback to current directory
-    let current = env::current_dir().unwrap_or_else(|e| {
-        eprintln!("⚠️ Warning: Could not determine current directory: {}", e);
-        eprintln!("Using fallback path '.'");
-        PathBuf::from(".")
-    });
-
-    // Canonicalize current directory as well for consistency
-    current.canonicalize().unwrap_or(current)
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // 🔧 CRITICAL: Determine workspace root BEFORE setting up logging
+    // Parse CLI arguments with clap
+    let cli = Cli::parse();
+
+    // Resolve workspace root BEFORE setting up logging
     // VS Code/MCP servers may start with arbitrary working directories
-    // We support multiple detection methods (see get_workspace_root())
-    let workspace_root = get_workspace_root();
+    // Priority: --workspace flag > JULIE_WORKSPACE env > current directory
+    let workspace_root = resolve_workspace_root(cli.workspace);
 
     // Initialize logging with both console and file output
     let filter = EnvFilter::try_from_default_env()
@@ -127,16 +62,47 @@ async fn main() -> anyhow::Result<()> {
     );
     info!("📂 Workspace root: {:?}", workspace_root);
 
+    // Branch on subcommand: None = stdio MCP mode (backward compatible), Some = daemon mode
+    match cli.command {
+        // Daemon mode (stubbed for now — Task 2 will implement lifecycle)
+        Some(Commands::Daemon { action }) => {
+            match action {
+                DaemonAction::Start { port, foreground } => {
+                    info!("Daemon start requested: port={}, foreground={}", port, foreground);
+                    eprintln!(
+                        "julie-server daemon start: not yet implemented (port={}, foreground={})",
+                        port, foreground
+                    );
+                }
+                DaemonAction::Stop => {
+                    info!("Daemon stop requested");
+                    eprintln!("julie-server daemon stop: not yet implemented");
+                }
+                DaemonAction::Status => {
+                    info!("Daemon status requested");
+                    eprintln!("julie-server daemon status: not yet implemented");
+                }
+            }
+            Ok(())
+        }
+
+        // No subcommand: stdio MCP mode (backward compatible — this is the default)
+        None => run_stdio_mode(workspace_root).await,
+    }
+}
+
+/// Run Julie in stdio MCP mode (the original and default behavior).
+///
+/// MCP clients (Claude Code, etc.) spawn `julie-server` with no subcommand
+/// and communicate over stdin/stdout using JSON-RPC.
+async fn run_stdio_mode(workspace_root: std::path::PathBuf) -> anyhow::Result<()> {
     // Create the Julie server handler with the resolved workspace root
     let handler = JulieServerHandler::new(workspace_root)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
 
-    info!("📋 Server configuration:");
-    info!("  Name: Julie");
-    info!("  Version: {}", env!("CARGO_PKG_VERSION"));
-
-    info!("🎯 Auto-indexing will run in background after MCP handshake completes");
+    info!("Server configuration: Julie v{}", env!("CARGO_PKG_VERSION"));
+    info!("Auto-indexing will run in background after MCP handshake completes");
 
     // Capture database reference for shutdown checkpoint
     let db_for_shutdown = if let Ok(Some(workspace)) = handler.get_workspace().await {
@@ -145,44 +111,43 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    info!("🎯 Julie server created and ready to start");
-    info!("🔥 Starting Julie MCP server...");
+    info!("Starting Julie MCP server (stdio mode)...");
 
     // Start the MCP server with stdio transport
     let service = match handler.serve(stdio()).await {
         Ok(s) => s,
         Err(e) => {
-            error!("❌ Server failed to start: {}", e);
+            error!("Server failed to start: {}", e);
             return Err(anyhow::anyhow!("Server failed to start: {}", e));
         }
     };
 
     // Wait for the server to complete
     if let Err(e) = service.waiting().await {
-        error!("❌ Server error: {}", e);
+        error!("Server error: {}", e);
         return Err(anyhow::anyhow!("Server error: {}", e));
     }
 
-    info!("🏁 Julie server stopped");
+    info!("Julie server stopped");
 
-    // 🧹 SHUTDOWN CLEANUP: Checkpoint WAL before exit
+    // Shutdown cleanup: checkpoint WAL before exit
     // This prevents unbounded WAL growth in long-running MCP server sessions
-    info!("🧹 Performing shutdown cleanup...");
+    info!("Performing shutdown cleanup...");
     if let Some(db_arc) = db_for_shutdown {
         match db_arc.lock() {
             Ok(mut db) => match db.checkpoint_wal() {
                 Ok((busy, log, checkpointed)) => {
                     info!(
-                        "✅ WAL checkpoint complete: busy={}, log={}, checkpointed={}",
+                        "WAL checkpoint complete: busy={}, log={}, checkpointed={}",
                         busy, log, checkpointed
                     );
                 }
                 Err(e) => {
-                    warn!("⚠️ WAL checkpoint failed: {}", e);
+                    warn!("WAL checkpoint failed: {}", e);
                 }
             },
             Err(e) => {
-                warn!("⚠️ Could not acquire database lock for checkpoint: {}", e);
+                warn!("Could not acquire database lock for checkpoint: {}", e);
             }
         }
     } else {

@@ -2048,6 +2048,7 @@ dependencies = [
  "blake3",
  "cargo-tarpaulin",
  "chrono",
+ "clap",
  "diff-match-patch-rs",
  "fastembed",
  "futures",

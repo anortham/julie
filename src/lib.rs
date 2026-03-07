@@ -3,6 +3,7 @@
 //! Julie provides code intelligence across 26+ programming languages using
 //! Tantivy search with code-aware tokenization (CamelCase/snake_case splitting).
 
+pub mod cli;
 pub mod database;
 pub mod embeddings;
 pub mod extractors;

@@ -12,6 +12,11 @@
 pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
 
 // ============================================================================
+// CLI TESTS - Argument parsing and workspace resolution
+// ============================================================================
+pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
+
+// ============================================================================
 // MAIN SERVER TESTS - Entry point error handling
 // ============================================================================
 pub mod main_error_handling; // MCP server initialization and runtime error handling
