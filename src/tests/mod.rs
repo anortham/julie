@@ -92,6 +92,7 @@ pub mod tools {
     pub mod editing; // EditingTransaction tests (used by rename_symbol)
 
     pub mod deep_dive_tests; // DeepDiveTool tests (formatting + data layer)
+    pub mod deep_dive_federation_tests; // Federated deep_dive (workspace="all") tests
     pub mod search; // Search tool tests (line mode, quality, race conditions)
     pub mod search_context_lines;
     pub mod search_quality; // Search quality dogfooding tests (regression suite) // FastSearchTool context_lines parameter tests (token optimization)
