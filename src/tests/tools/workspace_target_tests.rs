@@ -74,4 +74,32 @@ mod tests {
             WorkspaceTarget::Reference("b".to_string())
         );
     }
+
+    // =========================================================================
+    // resolve_workspace_filter function tests
+    // =========================================================================
+
+    use crate::handler::JulieServerHandler;
+    use crate::tools::navigation::resolution::resolve_workspace_filter;
+
+    #[tokio::test]
+    async fn test_resolve_workspace_filter_all_returns_all() {
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let result = resolve_workspace_filter(Some("all"), &handler).await.unwrap();
+        assert_eq!(result, WorkspaceTarget::All);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_workspace_filter_primary_returns_primary() {
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let result = resolve_workspace_filter(Some("primary"), &handler).await.unwrap();
+        assert_eq!(result, WorkspaceTarget::Primary);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_workspace_filter_none_defaults_to_primary() {
+        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let result = resolve_workspace_filter(None, &handler).await.unwrap();
+        assert_eq!(result, WorkspaceTarget::Primary);
+    }
 }
