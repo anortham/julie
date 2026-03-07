@@ -156,8 +156,8 @@ pub fn is_daemon_running(pid_path: &Path) -> Option<DaemonInfo> {
 /// 1. Rejects background mode (not yet implemented)
 /// 2. Checks for an already-running daemon (double-start detection)
 /// 3. Writes PID file
-/// 4. Sets up graceful shutdown handler (SIGTERM/SIGINT)
-/// 5. Waits for shutdown signal (placeholder — Task 3 will add the HTTP server here)
+/// 4. Starts HTTP server with graceful shutdown
+/// 5. When shutdown signal received, server stops gracefully
 /// 6. Cleans up PID file on exit
 pub async fn daemon_start(port: u16, foreground: bool) -> Result<()> {
     if !foreground {
@@ -188,9 +188,8 @@ pub async fn daemon_start(port: u16, foreground: bool) -> Result<()> {
     write_pid_file(&pid_path, pid, port)?;
     println!("Julie daemon started (PID {}, port {})", pid, port);
 
-    // Wait for shutdown signal — this is the placeholder loop.
-    // Task 3 will replace this with the actual HTTP server.
-    let shutdown_result = run_until_shutdown(port).await;
+    // Start the HTTP server — runs until a shutdown signal is received
+    let server_result = crate::server::start_server(port, shutdown_signal()).await;
 
     // Always clean up PID file on exit
     if let Err(e) = remove_pid_file(&pid_path) {
@@ -198,20 +197,7 @@ pub async fn daemon_start(port: u16, foreground: bool) -> Result<()> {
     }
     println!("Julie daemon stopped (PID {})", pid);
 
-    shutdown_result
-}
-
-/// Placeholder main loop that waits for a shutdown signal.
-///
-/// Task 3 will replace this with the actual axum HTTP server.
-async fn run_until_shutdown(port: u16) -> Result<()> {
-    println!("Daemon running on port {} (waiting for shutdown signal...)", port);
-
-    // Wait for ctrl-c (SIGINT) or SIGTERM
-    shutdown_signal().await;
-
-    println!("\nShutdown signal received");
-    Ok(())
+    server_result
 }
 
 /// Cross-platform shutdown signal handler.

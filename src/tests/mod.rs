@@ -22,6 +22,11 @@ pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
 pub mod daemon_tests; // Daemon lifecycle tests
 
 // ============================================================================
+// SERVER TESTS - HTTP server and API endpoint tests
+// ============================================================================
+pub mod server_tests; // HTTP server, health endpoint, project stubs
+
+// ============================================================================
 // MAIN SERVER TESTS - Entry point error handling
 // ============================================================================
 pub mod main_error_handling; // MCP server initialization and runtime error handling

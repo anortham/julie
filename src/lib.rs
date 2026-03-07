@@ -3,6 +3,7 @@
 //! Julie provides code intelligence across 26+ programming languages using
 //! Tantivy search with code-aware tokenization (CamelCase/snake_case splitting).
 
+pub mod api;
 pub mod cli;
 pub mod daemon;
 pub mod database;
@@ -13,6 +14,7 @@ pub mod health;
 pub mod language; // Shared language support (tree-sitter configuration)
 pub mod mcp_compat; // MCP compatibility layer for rmcp migration
 pub mod search;
+pub mod server;
 pub mod startup; // Startup utilities (indexing checks, staleness detection)
 pub mod tools;
 pub mod tracing;
