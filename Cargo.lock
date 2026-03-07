@@ -2058,6 +2058,7 @@ dependencies = [
  "ignore",
  "include_dir",
  "julie-extractors",
+ "libc",
  "md5",
  "notify",
  "ort",

@@ -10,6 +10,7 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 
 use clap::Parser;
 use julie::cli::{Cli, Commands, DaemonAction, resolve_workspace_root};
+use julie::daemon;
 use julie::handler::JulieServerHandler;
 use rmcp::{ServiceExt, transport::stdio};
 
@@ -64,23 +65,20 @@ async fn main() -> anyhow::Result<()> {
 
     // Branch on subcommand: None = stdio MCP mode (backward compatible), Some = daemon mode
     match cli.command {
-        // Daemon mode (stubbed for now — Task 2 will implement lifecycle)
+        // Daemon mode: start/stop/status lifecycle management
         Some(Commands::Daemon { action }) => {
             match action {
                 DaemonAction::Start { port, foreground } => {
                     info!("Daemon start requested: port={}, foreground={}", port, foreground);
-                    eprintln!(
-                        "julie-server daemon start: not yet implemented (port={}, foreground={})",
-                        port, foreground
-                    );
+                    daemon::daemon_start(port, foreground).await?;
                 }
                 DaemonAction::Stop => {
                     info!("Daemon stop requested");
-                    eprintln!("julie-server daemon stop: not yet implemented");
+                    daemon::daemon_stop()?;
                 }
                 DaemonAction::Status => {
                     info!("Daemon status requested");
-                    eprintln!("julie-server daemon status: not yet implemented");
+                    daemon::daemon_status()?;
                 }
             }
             Ok(())

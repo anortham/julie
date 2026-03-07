@@ -68,6 +68,10 @@ notify = "8.2"
 # CLI argument parsing
 clap = { version = "4.5", features = ["derive", "env"] }
 
+# Platform-specific process management (daemon lifecycle)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Utilities
 async-trait = "0.1"
 futures = "0.3"

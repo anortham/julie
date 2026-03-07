@@ -17,6 +17,11 @@ pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
 pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
 
 // ============================================================================
+// DAEMON TESTS - PID file management, process checking, start/stop/status
+// ============================================================================
+pub mod daemon_tests; // Daemon lifecycle tests
+
+// ============================================================================
 // MAIN SERVER TESTS - Entry point error handling
 // ============================================================================
 pub mod main_error_handling; // MCP server initialization and runtime error handling
