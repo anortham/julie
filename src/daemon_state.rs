@@ -29,6 +29,8 @@ pub enum WorkspaceLoadStatus {
     Ready,
     /// Project is registered but has no `.julie/` directory yet (needs first index).
     Registered,
+    /// Background indexing is in progress.
+    Indexing,
     /// Workspace exists but may be outdated.
     Stale,
     /// Failed to load — error message included.
@@ -194,7 +196,7 @@ impl DaemonState {
     /// The handler factory closure creates a `JulieServerHandler` pointing
     /// at the workspace's project root, so when the handler initializes,
     /// it loads the correct workspace.
-    fn create_workspace_mcp_service(
+    pub fn create_workspace_mcp_service(
         workspace_root: PathBuf,
         cancellation_token: &CancellationToken,
     ) -> StreamableHttpService<JulieServerHandler> {
@@ -221,6 +223,7 @@ impl DaemonState {
             Some(loaded) => match &loaded.status {
                 WorkspaceLoadStatus::Ready => ProjectStatus::Ready,
                 WorkspaceLoadStatus::Registered => ProjectStatus::Registered,
+                WorkspaceLoadStatus::Indexing => ProjectStatus::Indexing,
                 WorkspaceLoadStatus::Stale => ProjectStatus::Stale,
                 WorkspaceLoadStatus::Error(msg) => ProjectStatus::Error(msg.clone()),
             },

@@ -3,6 +3,8 @@
 //! - `GET /api/projects` — list all registered projects
 //! - `POST /api/projects` — register a new project by path
 //! - `DELETE /api/projects/:id` — remove a project by workspace ID
+//! - `GET /api/projects/:id/status` — get current project status
+//! - `POST /api/projects/:id/index` — trigger background indexing
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,6 +14,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
+use crate::daemon_indexer::IndexRequest;
 use crate::registry::ProjectStatus;
 use crate::server::AppState;
 
@@ -193,4 +196,106 @@ pub async fn delete_project(
     }
 
     StatusCode::NO_CONTENT
+}
+
+/// Response body for project status.
+#[derive(Debug, Serialize)]
+pub struct ProjectStatusResponse {
+    pub workspace_id: String,
+    pub status: String,
+    pub last_indexed: Option<String>,
+    pub symbol_count: Option<u64>,
+    pub file_count: Option<u64>,
+}
+
+/// `GET /api/projects/:id/status` -- get the current status of a project.
+///
+/// Returns the live status from daemon state (not just the static registry entry).
+/// Returns 404 if the project is not registered.
+pub async fn get_project_status(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ProjectStatusResponse>, StatusCode> {
+    let registry = state.registry.read().await;
+    let entry = registry.get_project(&id).ok_or(StatusCode::NOT_FOUND)?;
+    let daemon_state = state.daemon_state.read().await;
+    let live_status = daemon_state.project_status_for(&id);
+
+    Ok(Json(ProjectStatusResponse {
+        workspace_id: entry.workspace_id.clone(),
+        status: format_status(&live_status),
+        last_indexed: entry.last_indexed.clone(),
+        symbol_count: entry.symbol_count,
+        file_count: entry.file_count,
+    }))
+}
+
+/// Request body for `POST /api/projects/:id/index`.
+#[derive(Debug, Deserialize)]
+pub struct TriggerIndexRequest {
+    /// If true, force a full re-index even if indexes already exist.
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// Response body for `POST /api/projects/:id/index`.
+#[derive(Debug, Serialize)]
+pub struct TriggerIndexResponse {
+    pub workspace_id: String,
+    pub status: String,
+    pub message: String,
+}
+
+/// `POST /api/projects/:id/index` -- trigger background indexing for a project.
+///
+/// Queues the project for indexing in the background worker. Returns 202 Accepted
+/// immediately (does not wait for indexing to complete).
+///
+/// Accepts an optional JSON body: `{ "force": true }` to force re-indexing.
+/// If no body is provided, defaults to incremental indexing (force=false).
+///
+/// Returns 404 if the project is not registered.
+pub async fn trigger_index(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    body: Option<Json<TriggerIndexRequest>>,
+) -> Result<(StatusCode, Json<TriggerIndexResponse>), (StatusCode, String)> {
+    let force = body.map(|b| b.force).unwrap_or(false);
+
+    // Look up the project in the registry
+    let project_path = {
+        let registry = state.registry.read().await;
+        let entry = registry.get_project(&id).ok_or((
+            StatusCode::NOT_FOUND,
+            format!("Project not found: {}", id),
+        ))?;
+        entry.path.clone()
+    };
+
+    // Queue the indexing request
+    let request = IndexRequest {
+        workspace_id: id.clone(),
+        project_path,
+        force,
+    };
+
+    state.indexing_sender.send(request).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to queue indexing request: {}", e),
+        )
+    })?;
+
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(TriggerIndexResponse {
+            workspace_id: id,
+            status: "indexing".to_string(),
+            message: if force {
+                "Force re-indexing queued".to_string()
+            } else {
+                "Indexing queued".to_string()
+            },
+        }),
+    ))
 }

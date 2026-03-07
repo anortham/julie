@@ -16,6 +16,7 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use crate::api;
+use crate::daemon_indexer::{self, IndexingSender};
 use crate::daemon_state::DaemonState;
 use crate::mcp_http;
 use crate::registry::GlobalRegistry;
@@ -26,13 +27,22 @@ pub struct AppState {
     /// When the server started -- used to compute uptime in the health endpoint.
     pub start_time: Instant,
     /// Global project registry -- tracks all known projects on this machine.
-    pub registry: RwLock<GlobalRegistry>,
+    ///
+    /// Wrapped in `Arc` so the background indexing worker can share the same
+    /// registry instance for status updates.
+    pub registry: Arc<RwLock<GlobalRegistry>>,
     /// Path to `~/.julie` (or platform equivalent) for persisting registry.
     pub julie_home: PathBuf,
     /// Daemon-wide state: loaded workspaces and per-workspace MCP services.
     pub daemon_state: Arc<RwLock<DaemonState>>,
     /// Cancellation token for shutting down all MCP sessions.
     pub cancellation_token: CancellationToken,
+    /// Sender for the background indexing pipeline.
+    ///
+    /// API handlers, file watchers, and startup code submit `IndexRequest`
+    /// messages through this channel. The background worker processes them
+    /// sequentially (one project at a time).
+    pub indexing_sender: IndexingSender,
 }
 
 /// Start the HTTP server on the given port.
@@ -80,13 +90,23 @@ pub async fn start_server(
     daemon_state.start_watchers_for_ready_projects().await;
 
     let daemon_state = Arc::new(RwLock::new(daemon_state));
+    let registry_rw = Arc::new(RwLock::new(registry));
+
+    // Spawn the background indexing worker — processes requests sequentially
+    let indexing_sender = daemon_indexer::spawn_indexing_worker(
+        registry_rw.clone(),
+        daemon_state.clone(),
+        julie_home.clone(),
+        cancellation_token.clone(),
+    );
 
     let state = Arc::new(AppState {
         start_time: Instant::now(),
-        registry: RwLock::new(registry),
+        registry: registry_rw,
         julie_home,
         daemon_state: daemon_state.clone(),
         cancellation_token: cancellation_token.clone(),
+        indexing_sender,
     });
 
     // Create the default MCP service for backward compatibility.

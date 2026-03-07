@@ -15,5 +15,7 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/health", get(health::health_check))
         .route("/projects", get(projects::list_projects).post(projects::create_project))
         .route("/projects/{id}", axum::routing::delete(projects::delete_project))
+        .route("/projects/{id}/status", get(projects::get_project_status))
+        .route("/projects/{id}/index", axum::routing::post(projects::trigger_index))
         .with_state(state)
 }
