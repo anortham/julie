@@ -13,6 +13,9 @@ pub mod search;
 pub mod symbols; // Symbol overview tools
 pub mod workspace;
 
+// Cross-workspace federation (daemon mode only)
+pub mod federation;
+
 // Re-export all tools for external use
 pub use deep_dive::DeepDiveTool;
 pub use get_context::GetContextTool;

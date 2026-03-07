@@ -24,6 +24,11 @@ pub mod daemon_tests; // Daemon lifecycle tests
 pub mod daemon_watcher_tests; // Daemon cross-project file watcher tests
 
 // ============================================================================
+// FEDERATION TESTS - Cross-workspace RRF merge and parallel fan-out
+// ============================================================================
+pub mod federation_tests; // Federation module: RRF merge, federated search
+
+// ============================================================================
 // SERVER TESTS - HTTP server and API endpoint tests
 // ============================================================================
 pub mod server_tests; // HTTP server, health endpoint, project endpoints

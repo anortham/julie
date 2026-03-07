@@ -80,7 +80,7 @@ impl FileDocument {
 }
 
 /// Search filter for narrowing results.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct SearchFilter {
     pub language: Option<String>,
     pub kind: Option<String>,
@@ -109,6 +109,7 @@ pub struct SymbolSearchResults {
 }
 
 /// A file content search result with relevance score.
+#[derive(Clone)]
 pub struct ContentSearchResult {
     pub file_path: String,
     pub language: String,
