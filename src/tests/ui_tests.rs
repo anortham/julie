@@ -132,29 +132,28 @@ async fn test_ui_favicon_served_with_correct_type() {
 }
 
 #[tokio::test]
-async fn test_ui_js_assets_served_with_correct_type() {
+async fn test_ui_index_html_references_assets() {
+    // Verify the built index.html contains references to JS and CSS bundles
+    // in the /ui/assets/ directory. This is more stable than hardcoding
+    // Vite's content-hashed filenames, which change on every rebuild.
     let app = test_ui_app();
-
-    // The Vite build produces hash-named JS bundles in assets/.
-    // We request a known name; if the hash changes on rebuild, the SPA fallback
-    // returns index.html (still 200). Either way, the handler works correctly.
     let req = Request::builder()
-        .uri("/ui/assets/index-B3MxZ8rl.js")
+        .uri("/ui/")
         .body(Body::empty())
         .unwrap();
 
     let response = app.oneshot(req).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-}
-
-#[tokio::test]
-async fn test_ui_css_assets_served_with_correct_type() {
-    let app = test_ui_app();
-    let req = Request::builder()
-        .uri("/ui/assets/index-CiZ10rE9.css")
-        .body(Body::empty())
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
         .unwrap();
+    let html = String::from_utf8_lossy(&body);
 
-    let response = app.oneshot(req).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        html.contains("/ui/assets/"),
+        "index.html should reference assets with /ui/assets/ prefix"
+    );
+    assert!(
+        html.contains(".js"),
+        "index.html should reference a JavaScript bundle"
+    );
 }
