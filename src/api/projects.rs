@@ -127,42 +127,14 @@ pub async fn create_project(
 
     let mut registry = state.registry.write().await;
 
-    // Check if already registered (by resolving the workspace ID)
-    let canonical = project_path.canonicalize().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Failed to resolve path: {}", e),
-        )
-    })?;
-    let path_str = canonical.to_string_lossy();
-    let workspace_id =
-        crate::workspace::registry::generate_workspace_id(&path_str).map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to generate workspace ID: {}", e),
-            )
-        })?;
-
-    if registry.get_project(&workspace_id).is_some() {
-        let entry = registry.get_project(&workspace_id).unwrap();
-        return Ok((
-            StatusCode::CONFLICT,
-            Json(CreateProjectResponse {
-                workspace_id: entry.workspace_id.clone(),
-                name: entry.name.clone(),
-                path: entry.path.to_string_lossy().into_owned(),
-                status: format_status(&entry.status),
-            }),
-        ));
-    }
-
-    let workspace_id = registry.register_project(&project_path).map_err(|e| {
+    let result = registry.register_project(&project_path).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to register project: {}", e),
         )
     })?;
 
+    let workspace_id = result.workspace_id().to_string();
     let entry = registry.get_project(&workspace_id).unwrap();
     let response = CreateProjectResponse {
         workspace_id: entry.workspace_id.clone(),
@@ -170,6 +142,10 @@ pub async fn create_project(
         path: entry.path.to_string_lossy().into_owned(),
         status: format_status(&entry.status),
     };
+
+    if result.is_already_exists() {
+        return Ok((StatusCode::CONFLICT, Json(response)));
+    }
 
     // Persist to disk
     if let Err(e) = registry.save(&state.julie_home) {

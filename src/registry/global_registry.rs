@@ -42,6 +42,29 @@ pub enum ProjectStatus {
     Error(String),
 }
 
+/// Result of a `register_project` call — distinguishes new vs already-existed.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RegisterResult {
+    /// Project was newly registered.
+    Created(String),
+    /// Project was already registered (returned existing workspace ID).
+    AlreadyExists(String),
+}
+
+impl RegisterResult {
+    /// Get the workspace ID regardless of whether it was created or already existed.
+    pub fn workspace_id(&self) -> &str {
+        match self {
+            RegisterResult::Created(id) | RegisterResult::AlreadyExists(id) => id,
+        }
+    }
+
+    /// Returns true if the project was already registered.
+    pub fn is_already_exists(&self) -> bool {
+        matches!(self, RegisterResult::AlreadyExists(_))
+    }
+}
+
 const REGISTRY_VERSION: &str = "1";
 const REGISTRY_FILENAME: &str = "registry.toml";
 
@@ -94,18 +117,18 @@ impl GlobalRegistry {
         Ok(())
     }
 
-    /// Register a project by path. Returns the workspace ID.
+    /// Register a project by path.
     ///
-    /// If the project is already registered (same workspace ID), this is a no-op
-    /// and returns the existing workspace ID.
-    pub fn register_project(&mut self, project_path: &Path) -> Result<String> {
+    /// Returns `RegisterResult::Created` if newly registered, or
+    /// `RegisterResult::AlreadyExists` if the project was already known.
+    pub fn register_project(&mut self, project_path: &Path) -> Result<RegisterResult> {
         let canonical = project_path.canonicalize()
             .with_context(|| format!("Failed to resolve path {:?}", project_path))?;
         let path_str = canonical.to_string_lossy();
         let workspace_id = generate_workspace_id(&path_str)?;
 
         if self.projects.contains_key(&workspace_id) {
-            return Ok(workspace_id);
+            return Ok(RegisterResult::AlreadyExists(workspace_id));
         }
 
         let name = canonical
@@ -124,7 +147,7 @@ impl GlobalRegistry {
         };
 
         self.projects.insert(workspace_id.clone(), entry);
-        Ok(workspace_id)
+        Ok(RegisterResult::Created(workspace_id))
     }
 
     /// Remove a project by workspace ID. Returns true if it existed.

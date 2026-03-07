@@ -6,4 +6,4 @@
 
 pub mod global_registry;
 
-pub use global_registry::{GlobalRegistry, ProjectEntry, ProjectStatus};
+pub use global_registry::{GlobalRegistry, ProjectEntry, ProjectStatus, RegisterResult};

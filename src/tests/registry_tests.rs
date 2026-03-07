@@ -1,6 +1,6 @@
 //! Tests for the global project registry (CRUD, persistence, atomic writes).
 
-use crate::registry::{GlobalRegistry, ProjectStatus};
+use crate::registry::{GlobalRegistry, ProjectStatus, RegisterResult};
 
 // ============================================================================
 // BASIC CRUD
@@ -21,8 +21,10 @@ fn test_register_project() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let id = registry.register_project(&project_dir).unwrap();
+    let result = registry.register_project(&project_dir).unwrap();
 
+    assert!(matches!(&result, RegisterResult::Created(_)));
+    let id = result.workspace_id().to_string();
     assert!(!id.is_empty());
     assert!(id.contains("my-project"), "workspace ID should contain project name, got: {}", id);
     assert_eq!(registry.projects.len(), 1);
@@ -37,16 +39,18 @@ fn test_register_project() {
 }
 
 #[test]
-fn test_register_duplicate_is_noop() {
+fn test_register_duplicate_returns_already_exists() {
     let temp = tempfile::tempdir().unwrap();
     let project_dir = temp.path().join("my-project");
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let id1 = registry.register_project(&project_dir).unwrap();
-    let id2 = registry.register_project(&project_dir).unwrap();
+    let result1 = registry.register_project(&project_dir).unwrap();
+    let result2 = registry.register_project(&project_dir).unwrap();
 
-    assert_eq!(id1, id2);
+    assert!(matches!(&result1, RegisterResult::Created(_)));
+    assert!(matches!(&result2, RegisterResult::AlreadyExists(_)));
+    assert_eq!(result1.workspace_id(), result2.workspace_id());
     assert_eq!(registry.projects.len(), 1);
 }
 
@@ -57,7 +61,7 @@ fn test_remove_project() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let id = registry.register_project(&project_dir).unwrap();
+    let id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
     assert_eq!(registry.projects.len(), 1);
 
     let removed = registry.remove_project(&id);
@@ -105,7 +109,7 @@ fn test_mark_indexing() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let id = registry.register_project(&project_dir).unwrap();
+    let id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     assert!(registry.mark_indexing(&id));
     assert_eq!(registry.get_project(&id).unwrap().status, ProjectStatus::Indexing);
@@ -118,7 +122,7 @@ fn test_mark_ready_with_stats() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let id = registry.register_project(&project_dir).unwrap();
+    let id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     assert!(registry.mark_ready(&id, 1500, 42));
 
@@ -136,7 +140,7 @@ fn test_mark_error() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let id = registry.register_project(&project_dir).unwrap();
+    let id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     assert!(registry.mark_error(&id, "parse failure".to_string()));
     assert_eq!(
@@ -168,7 +172,7 @@ fn test_save_and_load_roundtrip() {
 
     // Create and save a registry
     let mut registry = GlobalRegistry::new();
-    let id = registry.register_project(&project_dir).unwrap();
+    let id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
     registry.mark_ready(&id, 500, 20);
     registry.save(&julie_home).unwrap();
 
@@ -258,7 +262,7 @@ fn test_workspace_id_matches_generate_workspace_id() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let id_from_registry = registry.register_project(&project_dir).unwrap();
+    let id_from_registry = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     // Should match the standalone function
     let canonical = project_dir.canonicalize().unwrap();

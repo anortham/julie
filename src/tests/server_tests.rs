@@ -26,24 +26,28 @@ fn test_state(julie_home: std::path::PathBuf) -> Arc<AppState> {
 }
 
 /// Build a test app with a fresh AppState (API routes only).
-fn test_app() -> axum::Router {
-    let temp_dir = std::env::temp_dir().join(format!("julie-test-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&temp_dir);
-    let state = test_state(temp_dir);
-    axum::Router::new()
-        .nest("/api", api::routes(state))
+///
+/// Returns (Router, TempDir) — hold the TempDir to prevent cleanup during the test.
+fn test_app() -> (axum::Router, tempfile::TempDir) {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let state = test_state(temp_dir.path().to_path_buf());
+    let router = axum::Router::new()
+        .nest("/api", api::routes(state));
+    (router, temp_dir)
 }
 
 /// Build a test app with both API routes and MCP endpoint.
-fn test_app_with_mcp() -> axum::Router {
-    let temp_dir = std::env::temp_dir().join(format!("julie-test-mcp-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&temp_dir);
-    let state = test_state(temp_dir);
+///
+/// Returns (Router, TempDir) — hold the TempDir to prevent cleanup during the test.
+fn test_app_with_mcp() -> (axum::Router, tempfile::TempDir) {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let state = test_state(temp_dir.path().to_path_buf());
     let workspace_root = std::env::current_dir().unwrap();
     let mcp_service = mcp_http::create_mcp_service(workspace_root, CancellationToken::new());
-    axum::Router::new()
+    let router = axum::Router::new()
         .nest("/api", api::routes(state))
-        .route_service("/mcp", mcp_service)
+        .route_service("/mcp", mcp_service);
+    (router, temp_dir)
 }
 
 // ============================================================================
@@ -52,7 +56,7 @@ fn test_app_with_mcp() -> axum::Router {
 
 #[tokio::test]
 async fn test_health_returns_200() {
-    let app = test_app();
+    let (app, _temp) = test_app();
     let req = Request::builder()
         .uri("/api/health")
         .body(Body::empty())
@@ -64,7 +68,7 @@ async fn test_health_returns_200() {
 
 #[tokio::test]
 async fn test_health_returns_correct_json_structure() {
-    let app = test_app();
+    let (app, _temp) = test_app();
     let req = Request::builder()
         .uri("/api/health")
         .body(Body::empty())
@@ -83,7 +87,7 @@ async fn test_health_returns_correct_json_structure() {
 
 #[tokio::test]
 async fn test_health_uptime_is_non_negative() {
-    let app = test_app();
+    let (app, _temp) = test_app();
     let req = Request::builder()
         .uri("/api/health")
         .body(Body::empty())
@@ -106,7 +110,7 @@ async fn test_health_uptime_is_non_negative() {
 
 #[tokio::test]
 async fn test_list_projects_returns_empty_array() {
-    let app = test_app();
+    let (app, _temp) = test_app();
     let req = Request::builder()
         .uri("/api/projects")
         .body(Body::empty())
@@ -168,7 +172,7 @@ async fn test_create_project_via_api() {
 
 #[tokio::test]
 async fn test_create_project_bad_path() {
-    let app = test_app();
+    let (app, _temp) = test_app();
     let body = serde_json::json!({ "path": "/nonexistent/path/xyzzy" });
     let req = Request::builder()
         .method("POST")
@@ -222,7 +226,7 @@ async fn test_create_project_conflict() {
 
 #[tokio::test]
 async fn test_delete_project_not_found() {
-    let app = test_app();
+    let (app, _temp) = test_app();
     let req = Request::builder()
         .method("DELETE")
         .uri("/api/projects/nonexistent-id")
@@ -243,7 +247,7 @@ async fn test_delete_project_success() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let workspace_id = registry.register_project(&project_dir).unwrap();
+    let workspace_id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     let state = Arc::new(AppState {
         start_time: Instant::now(),
@@ -271,7 +275,7 @@ async fn test_delete_project_success() {
 
 #[tokio::test]
 async fn test_unknown_route_returns_404() {
-    let app = test_app();
+    let (app, _temp) = test_app();
     let req = Request::builder()
         .uri("/api/nonexistent")
         .body(Body::empty())
@@ -293,13 +297,13 @@ async fn test_port_conflict_gives_clear_error_message() {
 
     // Try to start the server on the same port -- should fail with a clear message
     let workspace_root = std::env::current_dir().unwrap();
-    let julie_home = std::env::temp_dir().join("julie-test-port-conflict");
+    let temp_dir = tempfile::tempdir().unwrap();
     let result = crate::server::start_server(
         port,
         workspace_root,
         std::future::pending(),
         GlobalRegistry::new(),
-        julie_home,
+        temp_dir.path().to_path_buf(),
     )
     .await;
     assert!(result.is_err());
@@ -324,7 +328,7 @@ async fn test_port_conflict_gives_clear_error_message() {
 #[tokio::test]
 async fn test_mcp_endpoint_rejects_get_without_session() {
     // GET to /mcp without a session ID should be rejected (requires session in stateful mode)
-    let app = test_app_with_mcp();
+    let (app, _temp) = test_app_with_mcp();
     let req = Request::builder()
         .method("GET")
         .uri("/mcp")
@@ -340,7 +344,7 @@ async fn test_mcp_endpoint_rejects_get_without_session() {
 #[tokio::test]
 async fn test_mcp_endpoint_rejects_post_without_accept_header() {
     // POST to /mcp without proper Accept header should be rejected
-    let app = test_app_with_mcp();
+    let (app, _temp) = test_app_with_mcp();
     let req = Request::builder()
         .method("POST")
         .uri("/mcp")
@@ -356,7 +360,7 @@ async fn test_mcp_endpoint_rejects_post_without_accept_header() {
 #[tokio::test]
 async fn test_mcp_endpoint_rejects_post_without_content_type() {
     // POST to /mcp without Content-Type: application/json should be rejected
-    let app = test_app_with_mcp();
+    let (app, _temp) = test_app_with_mcp();
     let req = Request::builder()
         .method("POST")
         .uri("/mcp")
@@ -372,7 +376,7 @@ async fn test_mcp_endpoint_rejects_post_without_content_type() {
 #[tokio::test]
 async fn test_mcp_endpoint_initialize_returns_sse_response() {
     // POST a valid MCP initialize request -- should get an SSE response with session ID
-    let app = test_app_with_mcp();
+    let (app, _temp) = test_app_with_mcp();
 
     let init_request = serde_json::json!({
         "jsonrpc": "2.0",
@@ -426,7 +430,7 @@ async fn test_mcp_endpoint_initialize_returns_sse_response() {
 #[tokio::test]
 async fn test_mcp_endpoint_rejects_method_not_allowed() {
     // PUT to /mcp should be rejected
-    let app = test_app_with_mcp();
+    let (app, _temp) = test_app_with_mcp();
     let req = Request::builder()
         .method("PUT")
         .uri("/mcp")
@@ -440,7 +444,7 @@ async fn test_mcp_endpoint_rejects_method_not_allowed() {
 #[tokio::test]
 async fn test_api_routes_still_work_with_mcp_mounted() {
     // Verify that API routes still work when MCP is mounted alongside
-    let app = test_app_with_mcp();
+    let (app, _temp) = test_app_with_mcp();
     let req = Request::builder()
         .uri("/api/health")
         .body(Body::empty())
@@ -473,7 +477,7 @@ async fn test_daemon_state_project_without_julie_dir_is_registered() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let workspace_id = registry.register_project(&project_dir).unwrap();
+    let workspace_id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     let mut state = DaemonState::new();
     let ct = CancellationToken::new();
@@ -542,7 +546,7 @@ async fn test_list_projects_reflects_daemon_state_status() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let workspace_id = registry.register_project(&project_dir).unwrap();
+    let workspace_id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     // Load daemon state from registry (project has no .julie dir -> Registered)
     let mut daemon_state = DaemonState::new();
@@ -640,7 +644,7 @@ async fn test_delete_project_cleans_up_daemon_state() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let mut registry = GlobalRegistry::new();
-    let workspace_id = registry.register_project(&project_dir).unwrap();
+    let workspace_id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     let ct = CancellationToken::new();
     let mut daemon_state = DaemonState::new();
@@ -683,9 +687,8 @@ async fn test_delete_project_cleans_up_daemon_state() {
 
 #[tokio::test]
 async fn test_workspace_mcp_endpoint_returns_404_for_unknown_workspace() {
-    let temp_dir = std::env::temp_dir().join(format!("julie-test-ws-mcp-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&temp_dir);
-    let state = test_state(temp_dir);
+    let temp_dir = tempfile::tempdir().unwrap();
+    let state = test_state(temp_dir.path().to_path_buf());
 
     let app = axum::Router::new()
         .route(
