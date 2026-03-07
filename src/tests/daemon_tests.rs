@@ -13,7 +13,7 @@ use crate::daemon::{
 
 #[test]
 fn test_julie_home_returns_dot_julie_in_home_dir() {
-    let home = julie_home();
+    let home = julie_home().unwrap();
     // Should end with .julie (Unix) or julie (Windows)
     #[cfg(unix)]
     assert!(
@@ -31,7 +31,7 @@ fn test_julie_home_returns_dot_julie_in_home_dir() {
 
 #[test]
 fn test_julie_home_is_absolute() {
-    let home = julie_home();
+    let home = julie_home().unwrap();
     assert!(home.is_absolute(), "julie_home() should return an absolute path, got {:?}", home);
 }
 
@@ -41,8 +41,8 @@ fn test_julie_home_is_absolute() {
 
 #[test]
 fn test_pid_file_path_is_under_julie_home() {
-    let pid_path = pid_file_path();
-    let home = julie_home();
+    let pid_path = pid_file_path().unwrap();
+    let home = julie_home().unwrap();
     assert!(
         pid_path.starts_with(&home),
         "PID file path {:?} should be under julie_home {:?}",

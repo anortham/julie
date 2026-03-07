@@ -25,25 +25,29 @@ pub struct DaemonInfo {
 
 /// Returns the Julie home directory.
 ///
-/// - Unix: `~/.julie`
-/// - Windows: `%APPDATA%\julie`
-pub fn julie_home() -> PathBuf {
+/// - Unix: `$HOME/.julie`
+/// - Windows: `%APPDATA%\julie` (falls back to `%USERPROFILE%\julie`)
+///
+/// Returns an error if the home directory cannot be determined.
+pub fn julie_home() -> Result<PathBuf> {
     #[cfg(unix)]
     {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        PathBuf::from(home).join(".julie")
+        let home = std::env::var("HOME")
+            .context("Cannot determine Julie home directory: $HOME is not set")?;
+        Ok(PathBuf::from(home).join(".julie"))
     }
     #[cfg(windows)]
     {
-        let appdata = std::env::var("APPDATA")
-            .unwrap_or_else(|_| std::env::var("USERPROFILE").unwrap_or_else(|_| "C:\\".to_string()));
-        PathBuf::from(appdata).join("julie")
+        let base = std::env::var("APPDATA")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .context("Cannot determine Julie home directory: neither %APPDATA% nor %USERPROFILE% is set")?;
+        Ok(PathBuf::from(base).join("julie"))
     }
 }
 
 /// Returns the path to the PID file: `julie_home()/daemon.pid`
-pub fn pid_file_path() -> PathBuf {
-    julie_home().join("daemon.pid")
+pub fn pid_file_path() -> Result<PathBuf> {
+    Ok(julie_home()?.join("daemon.pid"))
 }
 
 // ============================================================================
@@ -144,15 +148,25 @@ pub fn is_daemon_running(pid_path: &Path) -> Option<DaemonInfo> {
 // DAEMON LIFECYCLE: START / STOP / STATUS
 // ============================================================================
 
-/// Start the daemon in foreground mode.
+/// Start the daemon.
 ///
-/// 1. Checks for an already-running daemon (double-start detection)
-/// 2. Writes PID file
-/// 3. Sets up graceful shutdown handler (SIGTERM/SIGINT)
-/// 4. Waits for shutdown signal (placeholder — Task 3 will add the HTTP server here)
-/// 5. Cleans up PID file on exit
-pub async fn daemon_start(port: u16, _foreground: bool) -> Result<()> {
-    let pid_path = pid_file_path();
+/// Currently only foreground mode is supported. Background daemonization is planned
+/// for a later phase — calling with `foreground == false` returns an error.
+///
+/// 1. Rejects background mode (not yet implemented)
+/// 2. Checks for an already-running daemon (double-start detection)
+/// 3. Writes PID file
+/// 4. Sets up graceful shutdown handler (SIGTERM/SIGINT)
+/// 5. Waits for shutdown signal (placeholder — Task 3 will add the HTTP server here)
+/// 6. Cleans up PID file on exit
+pub async fn daemon_start(port: u16, foreground: bool) -> Result<()> {
+    if !foreground {
+        bail!(
+            "Background daemon mode is not yet implemented. Use --foreground flag."
+        );
+    }
+
+    let pid_path = pid_file_path()?;
 
     // Double-start detection
     if let Some(info) = is_daemon_running(&pid_path) {
@@ -167,12 +181,12 @@ pub async fn daemon_start(port: u16, _foreground: bool) -> Result<()> {
     let pid = std::process::id();
 
     // Ensure julie_home directory exists
-    let home = julie_home();
+    let home = julie_home()?;
     fs::create_dir_all(&home)
         .with_context(|| format!("Failed to create Julie home directory {:?}", home))?;
 
     write_pid_file(&pid_path, pid, port)?;
-    eprintln!("Julie daemon started (PID {}, port {})", pid, port);
+    println!("Julie daemon started (PID {}, port {})", pid, port);
 
     // Wait for shutdown signal — this is the placeholder loop.
     // Task 3 will replace this with the actual HTTP server.
@@ -182,7 +196,7 @@ pub async fn daemon_start(port: u16, _foreground: bool) -> Result<()> {
     if let Err(e) = remove_pid_file(&pid_path) {
         eprintln!("Warning: failed to remove PID file: {}", e);
     }
-    eprintln!("Julie daemon stopped (PID {})", pid);
+    println!("Julie daemon stopped (PID {})", pid);
 
     shutdown_result
 }
@@ -191,12 +205,12 @@ pub async fn daemon_start(port: u16, _foreground: bool) -> Result<()> {
 ///
 /// Task 3 will replace this with the actual axum HTTP server.
 async fn run_until_shutdown(port: u16) -> Result<()> {
-    eprintln!("Daemon running on port {} (waiting for shutdown signal...)", port);
+    println!("Daemon running on port {} (waiting for shutdown signal...)", port);
 
     // Wait for ctrl-c (SIGINT) or SIGTERM
     shutdown_signal().await;
 
-    eprintln!("\nShutdown signal received");
+    println!("\nShutdown signal received");
     Ok(())
 }
 
@@ -233,17 +247,17 @@ async fn shutdown_signal() {
 /// Reads the PID file, sends a termination signal, waits for the process to exit,
 /// and removes the PID file.
 pub fn daemon_stop() -> Result<()> {
-    let pid_path = pid_file_path();
+    let pid_path = pid_file_path()?;
 
     let info = match is_daemon_running(&pid_path) {
         Some(info) => info,
         None => {
-            eprintln!("Julie daemon is not running.");
+            println!("Julie daemon is not running.");
             return Ok(());
         }
     };
 
-    eprintln!("Stopping Julie daemon (PID {})...", info.pid);
+    println!("Stopping Julie daemon (PID {})...", info.pid);
     send_terminate_signal(info.pid)?;
 
     // Wait for the process to exit (up to 5 seconds)
@@ -261,7 +275,7 @@ pub fn daemon_stop() -> Result<()> {
 
     // Clean up PID file
     remove_pid_file(&pid_path)?;
-    eprintln!("Julie daemon stopped.");
+    println!("Julie daemon stopped.");
     Ok(())
 }
 
@@ -295,16 +309,16 @@ fn send_terminate_signal(pid: u32) -> Result<()> {
 ///
 /// Reports whether the daemon is running, and if so, its PID and port.
 pub fn daemon_status() -> Result<()> {
-    let pid_path = pid_file_path();
+    let pid_path = pid_file_path()?;
 
     match is_daemon_running(&pid_path) {
         Some(info) => {
-            eprintln!("Julie daemon is running:");
-            eprintln!("  PID:  {}", info.pid);
-            eprintln!("  Port: {}", info.port);
+            println!("Julie daemon is running:");
+            println!("  PID:  {}", info.pid);
+            println!("  Port: {}", info.port);
         }
         None => {
-            eprintln!("Julie daemon is not running.");
+            println!("Julie daemon is not running.");
         }
     }
     Ok(())
