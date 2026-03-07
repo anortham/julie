@@ -1,0 +1,265 @@
+//! Daemon-wide shared state for multi-project workspace management.
+//!
+//! `DaemonState` holds the loaded workspaces for all registered projects,
+//! along with per-workspace MCP services. It is created on daemon startup
+//! and shared (via `Arc`) across all axum handlers and MCP sessions.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
+use rmcp::transport::streamable_http_server::{
+    StreamableHttpService,
+    StreamableHttpServerConfig,
+    session::local::LocalSessionManager,
+};
+use tokio_util::sync::CancellationToken;
+use tracing::{info, warn, debug};
+
+use crate::handler::JulieServerHandler;
+use crate::registry::{GlobalRegistry, ProjectStatus};
+use crate::workspace::JulieWorkspace;
+
+/// Status of a workspace in the daemon's loaded workspace pool.
+#[derive(Debug, Clone, PartialEq)]
+pub enum WorkspaceLoadStatus {
+    /// Workspace loaded successfully with database and search index.
+    Ready,
+    /// Project is registered but has no `.julie/` directory yet (needs first index).
+    Registered,
+    /// Workspace exists but may be outdated.
+    Stale,
+    /// Failed to load — error message included.
+    Error(String),
+}
+
+/// A loaded workspace entry in the daemon.
+#[derive(Clone)]
+pub struct LoadedWorkspace {
+    /// The loaded workspace with database and search index.
+    pub workspace: JulieWorkspace,
+    /// Current load status.
+    pub status: WorkspaceLoadStatus,
+    /// Project path on disk.
+    pub path: PathBuf,
+}
+
+/// Daemon-wide shared state.
+///
+/// Holds all loaded workspaces and per-workspace MCP services.
+/// Wrapped in `Arc<tokio::sync::RwLock<DaemonState>>` for shared access.
+pub struct DaemonState {
+    /// Map of workspace_id -> loaded workspace.
+    pub workspaces: HashMap<String, LoadedWorkspace>,
+
+    /// Per-workspace MCP services, keyed by workspace_id.
+    /// Each workspace gets its own `StreamableHttpService` so sessions
+    /// are isolated per-project.
+    pub mcp_services: HashMap<String, StreamableHttpService<JulieServerHandler>>,
+}
+
+impl DaemonState {
+    /// Create a new empty daemon state.
+    pub fn new() -> Self {
+        Self {
+            workspaces: HashMap::new(),
+            mcp_services: HashMap::new(),
+        }
+    }
+
+    /// Load workspaces for all registered projects.
+    ///
+    /// For each project in the registry:
+    /// - If it has a `.julie/` directory, try to load the workspace (detect_and_load).
+    /// - If loading succeeds, mark as Ready and create an MCP service for it.
+    /// - If it has no `.julie/` directory, mark as Registered.
+    /// - If loading fails, mark as Error with the failure message.
+    ///
+    /// This method does NOT block on indexing. It only loads existing indexes.
+    /// Projects that need indexing stay as `Registered` and can be indexed later
+    /// by the background indexing pipeline (Task 9).
+    pub async fn load_registered_projects(
+        &mut self,
+        registry: &GlobalRegistry,
+        cancellation_token: &CancellationToken,
+    ) {
+        for (workspace_id, entry) in &registry.projects {
+            let project_path = &entry.path;
+            info!(
+                "Loading workspace for project '{}' ({}): {}",
+                entry.name,
+                workspace_id,
+                project_path.display()
+            );
+
+            let julie_dir = project_path.join(".julie");
+            if !julie_dir.exists() || !julie_dir.is_dir() {
+                info!(
+                    "Project '{}' has no .julie directory — marking as Registered",
+                    entry.name
+                );
+                self.workspaces.insert(
+                    workspace_id.clone(),
+                    LoadedWorkspace {
+                        workspace: JulieWorkspace::empty_shell(project_path.clone()),
+                        status: WorkspaceLoadStatus::Registered,
+                        path: project_path.clone(),
+                    },
+                );
+                continue;
+            }
+
+            match Self::try_load_workspace(project_path).await {
+                Ok(workspace) => {
+                    info!(
+                        "Workspace for '{}' loaded successfully",
+                        entry.name
+                    );
+
+                    // Determine status: Ready if we have both db and search_index
+                    let status = if workspace.db.is_some() && workspace.search_index.is_some() {
+                        WorkspaceLoadStatus::Ready
+                    } else {
+                        WorkspaceLoadStatus::Stale
+                    };
+
+                    // Create an MCP service for this workspace
+                    let mcp_service = Self::create_workspace_mcp_service(
+                        project_path.clone(),
+                        cancellation_token,
+                    );
+
+                    self.workspaces.insert(
+                        workspace_id.clone(),
+                        LoadedWorkspace {
+                            workspace,
+                            status,
+                            path: project_path.clone(),
+                        },
+                    );
+                    self.mcp_services
+                        .insert(workspace_id.clone(), mcp_service);
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to load workspace for '{}': {}",
+                        entry.name, e
+                    );
+                    self.workspaces.insert(
+                        workspace_id.clone(),
+                        LoadedWorkspace {
+                            workspace: JulieWorkspace::empty_shell(project_path.clone()),
+                            status: WorkspaceLoadStatus::Error(e.to_string()),
+                            path: project_path.clone(),
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    /// Try to load an existing workspace from a project path.
+    ///
+    /// Uses `JulieWorkspace::detect_and_load` which searches for a `.julie`
+    /// directory and initializes database + search index.
+    async fn try_load_workspace(project_path: &Path) -> Result<JulieWorkspace> {
+        JulieWorkspace::detect_and_load(project_path.to_path_buf())
+            .await?
+            .with_context(|| {
+                format!(
+                    "No workspace found at {}",
+                    project_path.display()
+                )
+            })
+    }
+
+    /// Create an MCP service for a specific workspace.
+    ///
+    /// The handler factory closure creates a `JulieServerHandler` pointing
+    /// at the workspace's project root, so when the handler initializes,
+    /// it loads the correct workspace.
+    fn create_workspace_mcp_service(
+        workspace_root: PathBuf,
+        cancellation_token: &CancellationToken,
+    ) -> StreamableHttpService<JulieServerHandler> {
+        let config = StreamableHttpServerConfig {
+            cancellation_token: cancellation_token.clone(),
+            ..Default::default()
+        };
+        let session_manager = Arc::new(LocalSessionManager::default());
+
+        StreamableHttpService::new(
+            move || {
+                JulieServerHandler::new_sync(workspace_root.clone())
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            },
+            session_manager,
+            config,
+        )
+    }
+
+    /// Get the load status for a workspace, translated to a `ProjectStatus`
+    /// suitable for API responses.
+    pub fn project_status_for(&self, workspace_id: &str) -> ProjectStatus {
+        match self.workspaces.get(workspace_id) {
+            Some(loaded) => match &loaded.status {
+                WorkspaceLoadStatus::Ready => ProjectStatus::Ready,
+                WorkspaceLoadStatus::Registered => ProjectStatus::Registered,
+                WorkspaceLoadStatus::Stale => ProjectStatus::Stale,
+                WorkspaceLoadStatus::Error(msg) => ProjectStatus::Error(msg.clone()),
+            },
+            None => ProjectStatus::Registered,
+        }
+    }
+
+    /// Register a new workspace and create its MCP service.
+    ///
+    /// Called when a project is added via the API while the daemon is running.
+    pub fn register_workspace(
+        &mut self,
+        workspace_id: String,
+        project_path: PathBuf,
+        cancellation_token: &CancellationToken,
+    ) {
+        debug!(
+            "Registering new workspace {} at {}",
+            workspace_id,
+            project_path.display()
+        );
+
+        let julie_dir = project_path.join(".julie");
+        let status = if julie_dir.exists() && julie_dir.is_dir() {
+            // Has .julie dir but we haven't loaded it yet — mark stale
+            // (the background indexer will pick it up)
+            WorkspaceLoadStatus::Stale
+        } else {
+            WorkspaceLoadStatus::Registered
+        };
+
+        self.workspaces.insert(
+            workspace_id.clone(),
+            LoadedWorkspace {
+                workspace: JulieWorkspace::empty_shell(project_path.clone()),
+                status,
+                path: project_path.clone(),
+            },
+        );
+
+        // Always create an MCP service so the workspace is immediately
+        // connectable (the handler will create the workspace on first use).
+        let mcp_service = Self::create_workspace_mcp_service(
+            project_path,
+            cancellation_token,
+        );
+        self.mcp_services.insert(workspace_id, mcp_service);
+    }
+
+    /// Remove a workspace and its MCP service.
+    ///
+    /// Called when a project is removed via the API.
+    pub fn remove_workspace(&mut self, workspace_id: &str) {
+        self.workspaces.remove(workspace_id);
+        self.mcp_services.remove(workspace_id);
+    }
+}

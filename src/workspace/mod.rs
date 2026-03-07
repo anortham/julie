@@ -172,6 +172,25 @@ impl Default for WorkspaceConfig {
 }
 
 impl JulieWorkspace {
+    /// Create a minimal workspace shell without any initialized components.
+    ///
+    /// Used by the daemon for projects that are registered but don't have a
+    /// `.julie/` directory yet (status: Registered). No database, search index,
+    /// or file watcher is created.
+    pub fn empty_shell(root: PathBuf) -> Self {
+        let julie_dir = root.join(".julie");
+        Self {
+            root,
+            julie_dir,
+            db: None,
+            search_index: None,
+            watcher: None,
+            embedding_provider: None,
+            embedding_runtime_status: None,
+            config: WorkspaceConfig::default(),
+        }
+    }
+
     /// Initialize a new Julie workspace at the given root directory
     ///
     /// This creates the .julie folder structure and sets up initial configuration

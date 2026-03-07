@@ -9,19 +9,27 @@ use tower::ServiceExt; // for `oneshot`
 use tokio_util::sync::CancellationToken;
 
 use crate::api;
+use crate::daemon_state::DaemonState;
 use crate::mcp_http;
 use crate::registry::GlobalRegistry;
 use crate::server::AppState;
+
+/// Create a fresh AppState for testing.
+fn test_state(julie_home: std::path::PathBuf) -> Arc<AppState> {
+    Arc::new(AppState {
+        start_time: Instant::now(),
+        registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
+        julie_home,
+        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
+        cancellation_token: CancellationToken::new(),
+    })
+}
 
 /// Build a test app with a fresh AppState (API routes only).
 fn test_app() -> axum::Router {
     let temp_dir = std::env::temp_dir().join(format!("julie-test-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&temp_dir);
-    let state = Arc::new(AppState {
-        start_time: Instant::now(),
-        registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
-        julie_home: temp_dir,
-    });
+    let state = test_state(temp_dir);
     axum::Router::new()
         .nest("/api", api::routes(state))
 }
@@ -30,11 +38,7 @@ fn test_app() -> axum::Router {
 fn test_app_with_mcp() -> axum::Router {
     let temp_dir = std::env::temp_dir().join(format!("julie-test-mcp-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&temp_dir);
-    let state = Arc::new(AppState {
-        start_time: Instant::now(),
-        registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
-        julie_home: temp_dir,
-    });
+    let state = test_state(temp_dir);
     let workspace_root = std::env::current_dir().unwrap();
     let mcp_service = mcp_http::create_mcp_service(workspace_root, CancellationToken::new());
     axum::Router::new()
@@ -132,6 +136,8 @@ async fn test_create_project_via_api() {
         start_time: Instant::now(),
         registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
         julie_home: julie_home.clone(),
+        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
+        cancellation_token: CancellationToken::new(),
     });
     let app = axum::Router::new()
         .nest("/api", api::routes(state));
@@ -188,6 +194,8 @@ async fn test_create_project_conflict() {
         start_time: Instant::now(),
         registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
         julie_home: julie_home.clone(),
+        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
+        cancellation_token: CancellationToken::new(),
     });
 
     // Register once via the registry directly
@@ -241,6 +249,8 @@ async fn test_delete_project_success() {
         start_time: Instant::now(),
         registry: tokio::sync::RwLock::new(registry),
         julie_home,
+        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
+        cancellation_token: CancellationToken::new(),
     });
     let app = axum::Router::new()
         .nest("/api", api::routes(state));
@@ -281,7 +291,7 @@ async fn test_port_conflict_gives_clear_error_message() {
     let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
-    // Try to start the server on the same port — should fail with a clear message
+    // Try to start the server on the same port -- should fail with a clear message
     let workspace_root = std::env::current_dir().unwrap();
     let julie_home = std::env::temp_dir().join("julie-test-port-conflict");
     let result = crate::server::start_server(
@@ -361,7 +371,7 @@ async fn test_mcp_endpoint_rejects_post_without_content_type() {
 
 #[tokio::test]
 async fn test_mcp_endpoint_initialize_returns_sse_response() {
-    // POST a valid MCP initialize request — should get an SSE response with session ID
+    // POST a valid MCP initialize request -- should get an SSE response with session ID
     let app = test_app_with_mcp();
 
     let init_request = serde_json::json!({
@@ -438,4 +448,328 @@ async fn test_api_routes_still_work_with_mcp_mounted() {
 
     let response = app.oneshot(req).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+// ============================================================================
+// DAEMON STATE WORKSPACE LOADING TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_daemon_state_empty_registry_loads_nothing() {
+    let mut state = DaemonState::new();
+    let registry = GlobalRegistry::new();
+    let ct = CancellationToken::new();
+
+    state.load_registered_projects(&registry, &ct).await;
+
+    assert!(state.workspaces.is_empty());
+    assert!(state.mcp_services.is_empty());
+}
+
+#[tokio::test]
+async fn test_daemon_state_project_without_julie_dir_is_registered() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let project_dir = temp_dir.path().join("no-index-project");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let mut registry = GlobalRegistry::new();
+    let workspace_id = registry.register_project(&project_dir).unwrap();
+
+    let mut state = DaemonState::new();
+    let ct = CancellationToken::new();
+    state.load_registered_projects(&registry, &ct).await;
+
+    assert!(state.workspaces.contains_key(&workspace_id));
+    let loaded = &state.workspaces[&workspace_id];
+    assert_eq!(loaded.status, crate::daemon_state::WorkspaceLoadStatus::Registered);
+    // Registered projects don't get MCP services (no .julie dir)
+    assert!(!state.mcp_services.contains_key(&workspace_id));
+}
+
+#[tokio::test]
+async fn test_daemon_state_register_workspace_creates_mcp_service() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let project_dir = temp_dir.path().join("new-project");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let mut state = DaemonState::new();
+    let ct = CancellationToken::new();
+
+    state.register_workspace("test-ws-123".to_string(), project_dir.clone(), &ct);
+
+    assert!(state.workspaces.contains_key("test-ws-123"));
+    assert!(state.mcp_services.contains_key("test-ws-123"));
+    assert_eq!(
+        state.workspaces["test-ws-123"].status,
+        crate::daemon_state::WorkspaceLoadStatus::Registered,
+    );
+}
+
+#[tokio::test]
+async fn test_daemon_state_remove_workspace_cleans_up() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let project_dir = temp_dir.path().join("project-to-remove");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let mut state = DaemonState::new();
+    let ct = CancellationToken::new();
+
+    state.register_workspace("ws-remove".to_string(), project_dir.clone(), &ct);
+    assert!(state.workspaces.contains_key("ws-remove"));
+    assert!(state.mcp_services.contains_key("ws-remove"));
+
+    state.remove_workspace("ws-remove");
+    assert!(!state.workspaces.contains_key("ws-remove"));
+    assert!(!state.mcp_services.contains_key("ws-remove"));
+}
+
+#[tokio::test]
+async fn test_daemon_state_project_status_for_missing_returns_registered() {
+    let state = DaemonState::new();
+    let status = state.project_status_for("nonexistent");
+    assert_eq!(status, crate::registry::ProjectStatus::Registered);
+}
+
+#[tokio::test]
+async fn test_list_projects_reflects_daemon_state_status() {
+    // When daemon state says a project is "registered" (no .julie dir),
+    // the GET /api/projects endpoint should reflect that.
+    let temp_dir = tempfile::tempdir().unwrap();
+    let julie_home = temp_dir.path().join("julie-home");
+    std::fs::create_dir_all(&julie_home).unwrap();
+
+    let project_dir = temp_dir.path().join("my-project");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let mut registry = GlobalRegistry::new();
+    let workspace_id = registry.register_project(&project_dir).unwrap();
+
+    // Load daemon state from registry (project has no .julie dir -> Registered)
+    let mut daemon_state = DaemonState::new();
+    let ct = CancellationToken::new();
+    daemon_state.load_registered_projects(&registry, &ct).await;
+
+    let state = Arc::new(AppState {
+        start_time: Instant::now(),
+        registry: tokio::sync::RwLock::new(registry),
+        julie_home,
+        daemon_state: Arc::new(tokio::sync::RwLock::new(daemon_state)),
+        cancellation_token: ct,
+    });
+    let app = axum::Router::new().nest("/api", api::routes(state));
+
+    let req = Request::builder()
+        .uri("/api/projects")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json.as_array().unwrap().len(), 1);
+    assert_eq!(json[0]["workspace_id"], workspace_id);
+    assert_eq!(json[0]["status"], "registered");
+}
+
+#[tokio::test]
+async fn test_create_project_updates_daemon_state() {
+    // When POST /api/projects registers a new project, the daemon state
+    // should also be updated with the new workspace + MCP service.
+    let temp_dir = tempfile::tempdir().unwrap();
+    let julie_home = temp_dir.path().join("julie-home");
+    std::fs::create_dir_all(&julie_home).unwrap();
+
+    let project_dir = temp_dir.path().join("new-project");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let ct = CancellationToken::new();
+    let daemon_state = Arc::new(tokio::sync::RwLock::new(DaemonState::new()));
+
+    let state = Arc::new(AppState {
+        start_time: Instant::now(),
+        registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
+        julie_home,
+        daemon_state: daemon_state.clone(),
+        cancellation_token: ct,
+    });
+    let app = axum::Router::new().nest("/api", api::routes(state));
+
+    let body = serde_json::json!({ "path": project_dir.to_string_lossy() });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/projects")
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let workspace_id = json["workspace_id"].as_str().unwrap();
+
+    // Verify daemon state was updated
+    let ds = daemon_state.read().await;
+    assert!(
+        ds.workspaces.contains_key(workspace_id),
+        "Daemon state should contain the new workspace"
+    );
+    assert!(
+        ds.mcp_services.contains_key(workspace_id),
+        "Daemon state should have an MCP service for the new workspace"
+    );
+}
+
+#[tokio::test]
+async fn test_delete_project_cleans_up_daemon_state() {
+    // When DELETE /api/projects/:id removes a project, the daemon state
+    // should also be cleaned up.
+    let temp_dir = tempfile::tempdir().unwrap();
+    let julie_home = temp_dir.path().join("julie-home");
+    std::fs::create_dir_all(&julie_home).unwrap();
+
+    let project_dir = temp_dir.path().join("project-to-delete");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let mut registry = GlobalRegistry::new();
+    let workspace_id = registry.register_project(&project_dir).unwrap();
+
+    let ct = CancellationToken::new();
+    let mut daemon_state = DaemonState::new();
+    daemon_state.register_workspace(workspace_id.clone(), project_dir, &ct);
+    let daemon_state = Arc::new(tokio::sync::RwLock::new(daemon_state));
+
+    let state = Arc::new(AppState {
+        start_time: Instant::now(),
+        registry: tokio::sync::RwLock::new(registry),
+        julie_home,
+        daemon_state: daemon_state.clone(),
+        cancellation_token: ct,
+    });
+    let app = axum::Router::new().nest("/api", api::routes(state));
+
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(&format!("/api/projects/{}", workspace_id))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Verify daemon state was cleaned up
+    let ds = daemon_state.read().await;
+    assert!(
+        !ds.workspaces.contains_key(&workspace_id),
+        "Daemon state should not contain the removed workspace"
+    );
+    assert!(
+        !ds.mcp_services.contains_key(&workspace_id),
+        "Daemon state should not have MCP service for the removed workspace"
+    );
+}
+
+// ============================================================================
+// PER-WORKSPACE MCP ENDPOINT TESTS
+// ============================================================================
+
+#[tokio::test]
+async fn test_workspace_mcp_endpoint_returns_404_for_unknown_workspace() {
+    let temp_dir = std::env::temp_dir().join(format!("julie-test-ws-mcp-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&temp_dir);
+    let state = test_state(temp_dir);
+
+    let app = axum::Router::new()
+        .route(
+            "/mcp/{workspace_id}",
+            axum::routing::any(mcp_http::workspace_mcp_handler),
+        )
+        .with_state(state);
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/mcp/nonexistent-workspace-id")
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .body(Body::from("{}"))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_workspace_mcp_endpoint_routes_to_registered_workspace() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let project_dir = temp_dir.path().join("my-project");
+    std::fs::create_dir_all(&project_dir).unwrap();
+
+    let ct = CancellationToken::new();
+    let mut daemon_state = DaemonState::new();
+    daemon_state.register_workspace(
+        "test-workspace".to_string(),
+        project_dir,
+        &ct,
+    );
+
+    let state = Arc::new(AppState {
+        start_time: Instant::now(),
+        registry: tokio::sync::RwLock::new(GlobalRegistry::new()),
+        julie_home: temp_dir.path().to_path_buf(),
+        daemon_state: Arc::new(tokio::sync::RwLock::new(daemon_state)),
+        cancellation_token: ct,
+    });
+
+    let app = axum::Router::new()
+        .route(
+            "/mcp/{workspace_id}",
+            axum::routing::any(mcp_http::workspace_mcp_handler),
+        )
+        .with_state(state);
+
+    // Send an MCP initialize request to the workspace endpoint
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "TestClient",
+                "version": "1.0.0"
+            }
+        }
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/mcp/test-workspace")
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .body(Body::from(serde_json::to_string(&init_request).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+
+    // Should return 200 OK with SSE content type (MCP session created)
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Workspace MCP initialize should return 200, got {}",
+        response.status()
+    );
+
+    assert!(
+        response.headers().contains_key("mcp-session-id"),
+        "Response should contain mcp-session-id header"
+    );
 }

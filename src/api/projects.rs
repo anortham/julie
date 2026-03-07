@@ -66,15 +66,35 @@ pub struct CreateProjectResponse {
     pub status: String,
 }
 
-/// `GET /api/projects` — list all registered projects with status.
+/// `GET /api/projects` -- list all registered projects with live status.
+///
+/// The status is derived from the daemon's loaded workspace pool (DaemonState),
+/// not just the static registry entry. This means a project that was `Registered`
+/// in the TOML file will show as `Ready` if the daemon successfully loaded its
+/// workspace on startup.
 pub async fn list_projects(
     State(state): State<Arc<AppState>>,
 ) -> Json<Vec<ProjectResponse>> {
     let registry = state.registry.read().await;
+    let daemon_state = state.daemon_state.read().await;
+
     let projects: Vec<ProjectResponse> = registry
         .list_projects()
         .iter()
-        .map(|entry| ProjectResponse::from(*entry))
+        .map(|entry| {
+            // Use the live daemon state for status if available,
+            // otherwise fall back to the registry's static status.
+            let live_status = daemon_state.project_status_for(&entry.workspace_id);
+            ProjectResponse {
+                workspace_id: entry.workspace_id.clone(),
+                name: entry.name.clone(),
+                path: entry.path.to_string_lossy().into_owned(),
+                status: format_status(&live_status),
+                last_indexed: entry.last_indexed.clone(),
+                symbol_count: entry.symbol_count,
+                file_count: entry.file_count,
+            }
+        })
         .collect();
     Json(projects)
 }
@@ -154,13 +174,24 @@ pub async fn create_project(
     // Persist to disk
     if let Err(e) = registry.save(&state.julie_home) {
         tracing::error!("Failed to save registry after adding project: {}", e);
-        // Don't fail the request — project is registered in memory
+        // Don't fail the request -- project is registered in memory
+    }
+
+    // Register the workspace in daemon state so it gets an MCP service
+    // and shows correct live status immediately.
+    {
+        let mut daemon_state = state.daemon_state.write().await;
+        daemon_state.register_workspace(
+            response.workspace_id.clone(),
+            project_path,
+            &state.cancellation_token,
+        );
     }
 
     Ok((StatusCode::CREATED, Json(response)))
 }
 
-/// `DELETE /api/projects/:id` — remove a project by workspace ID.
+/// `DELETE /api/projects/:id` -- remove a project by workspace ID.
 ///
 /// Returns 204 No Content on success, 404 Not Found if the project doesn't exist.
 pub async fn delete_project(
@@ -176,7 +207,13 @@ pub async fn delete_project(
     // Persist to disk
     if let Err(e) = registry.save(&state.julie_home) {
         tracing::error!("Failed to save registry after removing project: {}", e);
-        // Don't fail the request — project is removed in memory
+        // Don't fail the request -- project is removed in memory
+    }
+
+    // Clean up daemon state (workspace + MCP service)
+    {
+        let mut daemon_state = state.daemon_state.write().await;
+        daemon_state.remove_workspace(&id);
     }
 
     StatusCode::NO_CONTENT
