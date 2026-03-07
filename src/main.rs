@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
             match action {
                 DaemonAction::Start { port, foreground } => {
                     info!("Daemon start requested: port={}, foreground={}", port, foreground);
-                    daemon::daemon_start(port, foreground).await?;
+                    daemon::daemon_start(port, workspace_root.clone(), foreground).await?;
                 }
                 DaemonAction::Stop => {
                     info!("Daemon stop requested");

@@ -159,7 +159,7 @@ pub fn is_daemon_running(pid_path: &Path) -> Option<DaemonInfo> {
 /// 4. Starts HTTP server with graceful shutdown
 /// 5. When shutdown signal received, server stops gracefully
 /// 6. Cleans up PID file on exit
-pub async fn daemon_start(port: u16, foreground: bool) -> Result<()> {
+pub async fn daemon_start(port: u16, workspace_root: PathBuf, foreground: bool) -> Result<()> {
     if !foreground {
         bail!(
             "Background daemon mode is not yet implemented. Use --foreground flag."
@@ -189,7 +189,7 @@ pub async fn daemon_start(port: u16, foreground: bool) -> Result<()> {
     println!("Julie daemon started (PID {}, port {})", pid, port);
 
     // Start the HTTP server — runs until a shutdown signal is received
-    let server_result = crate::server::start_server(port, shutdown_signal()).await;
+    let server_result = crate::server::start_server(port, workspace_root, shutdown_signal()).await;
 
     // Always clean up PID file on exit
     if let Err(e) = remove_pid_file(&pid_path) {

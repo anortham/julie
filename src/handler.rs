@@ -73,6 +73,15 @@ impl JulieServerHandler {
     /// `workspace_root` is the resolved root path for this server session,
     /// determined by the caller (main.rs) via CLI args / env var / cwd.
     pub async fn new(workspace_root: PathBuf) -> Result<Self> {
+        Self::new_sync(workspace_root)
+    }
+
+    /// Synchronous constructor for use in contexts where async is not available
+    /// (e.g., the MCP Streamable HTTP service factory closure).
+    ///
+    /// This is the actual implementation — `new()` delegates to it. The handler
+    /// construction is inherently synchronous (just creating Arcs and empty state).
+    pub fn new_sync(workspace_root: PathBuf) -> Result<Self> {
         info!("🔧 Initializing Julie server handler (workspace_root: {:?})", workspace_root);
         debug!("✓ Julie handler initialized - workspace initialization will provide storage");
 

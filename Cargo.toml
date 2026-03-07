@@ -34,7 +34,7 @@ embeddings-sidecar = []
 julie-extractors = { path = "crates/julie-extractors" }
 
 # MCP Server SDK - Official Anthropic SDK
-rmcp = { version = "0.12", features = ["server", "transport-io", "macros"] }
+rmcp = { version = "0.12", features = ["server", "transport-io", "transport-streamable-http-server", "macros"] }
 schemars = "1.0"  # For JsonSchema derives in tool parameters
 
 # Async recursion support
@@ -71,6 +71,7 @@ clap = { version = "4.5", features = ["derive", "env"] }
 # HTTP server (daemon mode)
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
+tokio-util = "0.7"
 
 # Platform-specific process management (daemon lifecycle)
 [target.'cfg(unix)'.dependencies]
