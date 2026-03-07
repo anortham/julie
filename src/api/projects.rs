@@ -12,7 +12,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use crate::registry::{ProjectEntry, ProjectStatus};
+use crate::registry::ProjectStatus;
 use crate::server::AppState;
 
 /// Response body for a single project.
@@ -25,20 +25,6 @@ pub struct ProjectResponse {
     pub last_indexed: Option<String>,
     pub symbol_count: Option<u64>,
     pub file_count: Option<u64>,
-}
-
-impl From<&ProjectEntry> for ProjectResponse {
-    fn from(entry: &ProjectEntry) -> Self {
-        Self {
-            workspace_id: entry.workspace_id.clone(),
-            name: entry.name.clone(),
-            path: entry.path.to_string_lossy().into_owned(),
-            status: format_status(&entry.status),
-            last_indexed: entry.last_indexed.clone(),
-            symbol_count: entry.symbol_count,
-            file_count: entry.file_count,
-        }
-    }
 }
 
 fn format_status(status: &ProjectStatus) -> String {
@@ -153,6 +139,9 @@ pub async fn create_project(
         // Don't fail the request -- project is registered in memory
     }
 
+    // Drop registry lock before acquiring daemon_state lock to minimize lock scope
+    drop(registry);
+
     // Register the workspace in daemon state so it gets an MCP service
     // and shows correct live status immediately.
     {
@@ -185,6 +174,9 @@ pub async fn delete_project(
         tracing::error!("Failed to save registry after removing project: {}", e);
         // Don't fail the request -- project is removed in memory
     }
+
+    // Drop registry lock before acquiring daemon_state lock to minimize lock scope
+    drop(registry);
 
     // Clean up daemon state (workspace + MCP service)
     {
