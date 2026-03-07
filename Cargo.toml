@@ -73,6 +73,10 @@ axum = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
 tokio-util = "0.7"
 
+# Embedded web UI assets
+rust-embed = { version = "8", features = ["debug-embed"] }
+mime_guess = "2"
+
 # Platform-specific process management (daemon lifecycle)
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

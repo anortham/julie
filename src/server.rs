@@ -19,6 +19,7 @@ use crate::api;
 use crate::daemon_state::DaemonState;
 use crate::mcp_http;
 use crate::registry::GlobalRegistry;
+use crate::ui;
 
 /// Shared application state available to all request handlers.
 pub struct AppState {
@@ -105,6 +106,9 @@ pub async fn start_server(
         .merge(workspace_mcp_router)
         // Default MCP endpoint at /mcp (backward compatible)
         .route_service("/mcp", default_mcp_service)
+        // Embedded Vue UI at /ui/
+        .route("/ui/", axum::routing::get(ui::ui_handler))
+        .route("/ui/{*path}", axum::routing::get(ui::ui_handler))
         .layer(tower_http::cors::CorsLayer::permissive());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -122,6 +126,11 @@ pub async fn start_server(
     );
     tracing::info!(
         "Per-workspace MCP: http://{}:{}/mcp/{{workspace_id}}",
+        addr.ip(),
+        addr.port()
+    );
+    tracing::info!(
+        "Web UI: http://{}:{}/ui/",
         addr.ip(),
         addr.port()
     );

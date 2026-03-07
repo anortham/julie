@@ -21,6 +21,7 @@ pub mod server;
 pub mod startup; // Startup utilities (indexing checks, staleness detection)
 pub mod tools;
 pub mod tracing;
+pub mod ui;
 pub mod utils;
 pub mod watcher;
 pub mod workspace;

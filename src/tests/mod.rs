@@ -27,6 +27,11 @@ pub mod daemon_tests; // Daemon lifecycle tests
 pub mod server_tests; // HTTP server, health endpoint, project endpoints
 
 // ============================================================================
+// UI TESTS - Embedded web UI serving
+// ============================================================================
+pub mod ui_tests; // Embedded Vue SPA serving, SPA fallback, asset content types
+
+// ============================================================================
 // REGISTRY TESTS - Global project registry (CRUD, persistence)
 // ============================================================================
 pub mod registry_tests; // Global project registry CRUD and persistence

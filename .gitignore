@@ -52,6 +52,10 @@ cache/
 poc_output.txt
 .worktrees/
 
+# Web UI build artifacts
+ui/dist/
+ui/node_modules/
+
 # Python
 __pycache__/
 *.pyc
