@@ -262,13 +262,26 @@ pub async fn trigger_index(
 ) -> Result<(StatusCode, Json<TriggerIndexResponse>), (StatusCode, String)> {
     let force = body.map(|b| b.force).unwrap_or(false);
 
-    // Look up the project in the registry
+    // Look up the project in the registry and check status
     let project_path = {
         let registry = state.registry.read().await;
         let entry = registry.get_project(&id).ok_or((
             StatusCode::NOT_FOUND,
             format!("Project not found: {}", id),
         ))?;
+
+        // Reject if already indexing (unless force re-index)
+        if !force && entry.status == crate::registry::ProjectStatus::Indexing {
+            return Ok((
+                StatusCode::CONFLICT,
+                Json(TriggerIndexResponse {
+                    workspace_id: id,
+                    status: "indexing".to_string(),
+                    message: "Already indexing. Use force=true to re-queue.".to_string(),
+                }),
+            ));
+        }
+
         entry.path.clone()
     };
 

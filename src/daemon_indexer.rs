@@ -87,25 +87,38 @@ async fn indexing_worker_loop(
 ) {
     info!("Background indexing worker started");
 
-    while let Some(request) = rx.recv().await {
-        info!(
-            "Processing index request: workspace_id={}, path={}, force={}",
-            request.workspace_id,
-            request.project_path.display(),
-            request.force,
-        );
+    loop {
+        tokio::select! {
+            _ = cancellation_token.cancelled() => {
+                info!("Background indexing worker cancelled by shutdown signal");
+                break;
+            }
+            request = rx.recv() => {
+                match request {
+                    Some(request) => {
+                        info!(
+                            "Processing index request: workspace_id={}, path={}, force={}",
+                            request.workspace_id,
+                            request.project_path.display(),
+                            request.force,
+                        );
 
-        process_index_request(
-            &request,
-            &registry,
-            &daemon_state,
-            &julie_home,
-            &cancellation_token,
-        )
-        .await;
+                        process_index_request(
+                            &request,
+                            &registry,
+                            &daemon_state,
+                            &julie_home,
+                        )
+                        .await;
+                    }
+                    None => {
+                        info!("Background indexing worker stopped (channel closed)");
+                        break;
+                    }
+                }
+            }
+        }
     }
-
-    info!("Background indexing worker stopped (channel closed)");
 }
 
 /// Process a single indexing request.
@@ -120,7 +133,6 @@ async fn process_index_request(
     registry: &Arc<RwLock<GlobalRegistry>>,
     daemon_state: &Arc<RwLock<DaemonState>>,
     julie_home: &PathBuf,
-    cancellation_token: &tokio_util::sync::CancellationToken,
 ) {
     // Step 1: Mark as Indexing
     {
@@ -177,9 +189,10 @@ async fn process_index_request(
                 );
 
                 // Create/replace MCP service for this workspace
+                let ct = tokio_util::sync::CancellationToken::new();
                 let mcp_service = DaemonState::create_workspace_mcp_service(
                     request.project_path.clone(),
-                    cancellation_token,
+                    &ct,
                 );
                 ds.mcp_services
                     .insert(request.workspace_id.clone(), mcp_service);
