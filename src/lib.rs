@@ -17,6 +17,7 @@ pub mod health;
 pub mod mcp_http;
 pub mod language; // Shared language support (tree-sitter configuration)
 pub mod mcp_compat; // MCP compatibility layer for rmcp migration
+pub mod memory;
 pub mod registry;
 pub mod search;
 pub mod server;

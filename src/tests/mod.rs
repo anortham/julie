@@ -71,6 +71,11 @@ pub mod core {
 }
 
 // ============================================================================
+// MEMORY TESTS - Checkpoint storage, recall, plans
+// ============================================================================
+pub mod memory_storage_tests; // YAML frontmatter storage layer (format, parse, round-trip)
+
+// ============================================================================
 // REGRESSION PREVENTION TESTS - Catch recurring bugs before they ship
 // ============================================================================
 pub mod regression_prevention_tests; // Tests for bugs that have regressed multiple times
