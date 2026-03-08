@@ -1,4 +1,5 @@
 use super::ManageWorkspaceTool;
+use crate::daemon_state::DaemonState;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::workspace::registry::WorkspaceType;
@@ -7,8 +8,80 @@ use anyhow::Result;
 use tracing::{debug, info, warn};
 
 impl ManageWorkspaceTool {
-    /// Handle add command - add reference workspace
+    /// Handle add command — register a workspace.
+    ///
+    /// **Daemon mode** (`handler.daemon_state` is `Some`): registers the project
+    /// with the central daemon via `DaemonState::register_project`, which handles
+    /// registry persistence, MCP service creation, and queues background indexing.
+    ///
+    /// **Stdio mode** (`handler.daemon_state` is `None`): uses the local
+    /// `WorkspaceRegistryService` to add a reference workspace and indexes it
+    /// inline (the original behavior).
     pub(crate) async fn handle_add_command(
+        &self,
+        handler: &JulieServerHandler,
+        path: &str,
+        name: Option<String>,
+    ) -> Result<CallToolResult> {
+        // Daemon mode: delegate to DaemonState::register_project
+        if let Some(daemon_state) = &handler.daemon_state {
+            return self
+                .handle_add_command_daemon(daemon_state, path, name)
+                .await;
+        }
+
+        // Stdio mode: original reference workspace behavior
+        self.handle_add_command_stdio(handler, path, name).await
+    }
+
+    /// Daemon mode: register project with the central daemon.
+    async fn handle_add_command_daemon(
+        &self,
+        daemon_state: &std::sync::Arc<tokio::sync::RwLock<DaemonState>>,
+        path: &str,
+        name: Option<String>,
+    ) -> Result<CallToolResult> {
+        info!("Adding project via daemon: {}", path);
+
+        let project_path = std::path::PathBuf::from(path);
+
+        match DaemonState::register_project(daemon_state, &project_path).await {
+            Ok(result) => {
+                let display_name = name.unwrap_or_else(|| result.name.clone());
+
+                let message = if result.already_existed {
+                    format!(
+                        "Project already registered.\n\
+                         Workspace ID: {}\n\
+                         Name: {}\n\
+                         Path: {}",
+                        result.workspace_id,
+                        display_name,
+                        result.path.display(),
+                    )
+                } else {
+                    format!(
+                        "Project registered with daemon — background indexing queued.\n\
+                         Workspace ID: {}\n\
+                         Name: {}\n\
+                         Path: {}",
+                        result.workspace_id,
+                        display_name,
+                        result.path.display(),
+                    )
+                };
+
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+            }
+            Err(e) => {
+                let message = format!("Failed to add project: {}", e);
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+            }
+        }
+    }
+
+    /// Stdio mode: add reference workspace using local WorkspaceRegistryService.
+    async fn handle_add_command_stdio(
         &self,
         handler: &JulieServerHandler,
         path: &str,

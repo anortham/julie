@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::daemon_indexer::IndexRequest;
+use crate::daemon_state::DaemonState;
 use crate::registry::ProjectStatus;
 use crate::server::AppState;
 
@@ -121,81 +122,41 @@ pub async fn create_project(
 ) -> Result<(StatusCode, Json<CreateProjectResponse>), (StatusCode, String)> {
     let project_path = PathBuf::from(&body.path);
 
-    // Validate the path exists and is a directory
-    if !project_path.exists() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!("Path does not exist: {}", body.path),
-        ));
-    }
-    if !project_path.is_dir() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!("Path is not a directory: {}", body.path),
-        ));
-    }
+    let result = DaemonState::register_project(&state.daemon_state, &project_path)
+        .await
+        .map_err(|e| {
+            // Map validation errors (path doesn't exist, not a dir) to 400,
+            // everything else to 500.
+            let msg = e.to_string();
+            if msg.starts_with("Path does not exist") || msg.starts_with("Path is not a directory")
+            {
+                (StatusCode::BAD_REQUEST, msg)
+            } else {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to register project: {}", msg),
+                )
+            }
+        })?;
 
-    let mut registry = state.registry.write().await;
+    // Look up the live status from the daemon state for the response
+    let status = {
+        let ds = state.daemon_state.read().await;
+        format_status(&ds.project_status_for(&result.workspace_id))
+    };
 
-    let result = registry.register_project(&project_path).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to register project: {}", e),
-        )
-    })?;
-
-    let workspace_id = result.workspace_id().to_string();
-    let entry = registry.get_project(&workspace_id).unwrap();
     let response = CreateProjectResponse {
-        workspace_id: entry.workspace_id.clone(),
-        name: entry.name.clone(),
-        path: entry.path.to_string_lossy().into_owned(),
-        status: format_status(&entry.status),
+        workspace_id: result.workspace_id.clone(),
+        name: result.name,
+        path: result.path.to_string_lossy().into_owned(),
+        status,
     };
 
-    if result.is_already_exists() {
-        return Ok((StatusCode::CONFLICT, Json(response)));
+    if result.already_existed {
+        Ok((StatusCode::CONFLICT, Json(response)))
+    } else {
+        Ok((StatusCode::CREATED, Json(response)))
     }
-
-    // Persist to disk
-    if let Err(e) = registry.save(&state.julie_home) {
-        tracing::error!("Failed to save registry after adding project: {}", e);
-        // Don't fail the request -- project is registered in memory
-    }
-
-    // Drop registry lock before acquiring daemon_state lock to minimize lock scope
-    drop(registry);
-
-    // Register the workspace in daemon state so it gets an MCP service
-    // and shows correct live status immediately.
-    {
-        let mut daemon_state = state.daemon_state.write().await;
-        daemon_state.register_workspace(
-            response.workspace_id.clone(),
-            project_path,
-            state.daemon_state.clone(),
-        );
-    }
-
-    // Start file watcher if the workspace is Ready (has .julie/ with indexes)
-    {
-        let daemon_state = state.daemon_state.read().await;
-        daemon_state
-            .start_watcher_if_ready(&response.workspace_id)
-            .await;
-    }
-
-    // Auto-trigger indexing for newly registered projects
-    let index_request = IndexRequest {
-        workspace_id: response.workspace_id.clone(),
-        project_path: PathBuf::from(&response.path),
-        force: false,
-    };
-    if let Err(e) = state.indexing_sender.send(index_request).await {
-        tracing::warn!("Failed to queue auto-indexing for new project: {}", e);
-    }
-
-    Ok((StatusCode::CREATED, Json(response)))
 }
 
 /// `DELETE /api/projects/:id` -- remove a project by workspace ID.

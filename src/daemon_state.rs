@@ -18,11 +18,24 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn, debug};
 
-use crate::daemon_indexer::IndexingSender;
+use crate::daemon_indexer::{IndexRequest, IndexingSender};
 use crate::daemon_watcher::DaemonWatcherManager;
 use crate::handler::JulieServerHandler;
 use crate::registry::{GlobalRegistry, ProjectStatus};
 use crate::workspace::JulieWorkspace;
+
+/// Result of a successful project registration via `DaemonState::register_project`.
+#[derive(Debug, Clone)]
+pub struct ProjectRegistrationResult {
+    /// The workspace ID (e.g. "myproject_a1b2c3d4").
+    pub workspace_id: String,
+    /// Human-readable project name (derived from directory name).
+    pub name: String,
+    /// Canonical absolute path to the project directory.
+    pub path: PathBuf,
+    /// Whether the project was already registered (true) or newly created (false).
+    pub already_existed: bool,
+}
 
 /// Status of a workspace in the daemon's loaded workspace pool.
 #[derive(Debug, Clone, PartialEq)]
@@ -127,6 +140,109 @@ impl DaemonState {
     /// through `DaemonState`.
     pub fn set_indexing_sender(&mut self, sender: IndexingSender) {
         self.indexing_sender = Some(sender);
+    }
+
+    /// Register a project with the daemon: validates the path, registers in the
+    /// global registry, creates a workspace + MCP service in DaemonState, persists
+    /// the registry to disk, starts a file watcher if applicable, and queues
+    /// background indexing.
+    ///
+    /// This is the single source of truth for project registration logic.
+    /// Both `POST /api/projects` and the MCP `manage_workspace add` tool call
+    /// this in daemon mode.
+    ///
+    /// Takes the `Arc<RwLock<DaemonState>>` so it can acquire/release locks as
+    /// needed without holding a write lock across async operations.
+    ///
+    /// Returns `Ok(ProjectRegistrationResult)` on success. If the project was
+    /// already registered, `already_existed` is `true` and no duplicate work
+    /// is done.
+    pub async fn register_project(
+        daemon_state: &Arc<RwLock<DaemonState>>,
+        path: &Path,
+    ) -> Result<ProjectRegistrationResult> {
+        // Step 1: Validate path exists and is a directory
+        if !path.exists() {
+            anyhow::bail!("Path does not exist: {}", path.display());
+        }
+        if !path.is_dir() {
+            anyhow::bail!("Path is not a directory: {}", path.display());
+        }
+
+        // Step 2: Register in GlobalRegistry (write lock on registry)
+        let (workspace_id, name, canonical_path, is_new) = {
+            let ds = daemon_state.read().await;
+            let mut registry = ds.registry.write().await;
+            let result = registry.register_project(path)?;
+            let wid = result.workspace_id().to_string();
+            let entry = registry.get_project(&wid).unwrap();
+            let name = entry.name.clone();
+            let cpath = entry.path.clone();
+            let is_new = !result.is_already_exists();
+
+            if is_new {
+                // Step 3: Persist registry to disk
+                let julie_home = ds.julie_home.clone();
+                if let Err(e) = registry.save(&julie_home) {
+                    tracing::error!("Failed to save registry after adding project: {}", e);
+                    // Don't fail — project is registered in memory
+                }
+            }
+
+            (wid, name, cpath, is_new)
+        };
+
+        if !is_new {
+            return Ok(ProjectRegistrationResult {
+                workspace_id,
+                name,
+                path: canonical_path,
+                already_existed: true,
+            });
+        }
+
+        // Step 4: Register workspace in DaemonState (creates handler + MCP service)
+        {
+            let mut ds = daemon_state.write().await;
+            ds.register_workspace(
+                workspace_id.clone(),
+                canonical_path.clone(),
+                daemon_state.clone(),
+            );
+        }
+
+        // Step 5: Start file watcher if ready (read lock only)
+        {
+            let ds = daemon_state.read().await;
+            ds.start_watcher_if_ready(&workspace_id).await;
+        }
+
+        // Step 6: Queue background indexing
+        {
+            let ds = daemon_state.read().await;
+            if let Some(sender) = &ds.indexing_sender {
+                let index_request = IndexRequest {
+                    workspace_id: workspace_id.clone(),
+                    project_path: canonical_path.clone(),
+                    force: false,
+                };
+                if let Err(e) = sender.send(index_request).await {
+                    tracing::warn!("Failed to queue auto-indexing for new project: {}", e);
+                }
+            } else {
+                tracing::warn!(
+                    "No indexing sender available — project '{}' registered but indexing not queued",
+                    workspace_id
+                );
+            }
+        }
+
+        Ok(ProjectRegistrationResult {
+            workspace_id,
+            name,
+            path: canonical_path,
+            already_existed: false,
+        })
     }
 
     /// Load workspaces for all registered projects.

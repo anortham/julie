@@ -75,15 +75,20 @@ fn test_setup() -> (
     let (indexing_sender, indexing_rx) = tokio::sync::mpsc::channel::<IndexRequest>(16);
     let registry = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
     let cancellation_token = CancellationToken::new();
+
+    let mut daemon = DaemonState::new(
+        registry.clone(),
+        julie_home.clone(),
+        cancellation_token.clone(),
+    );
+    // Wire the indexing sender into DaemonState so register_project can queue jobs
+    daemon.set_indexing_sender(indexing_sender.clone());
+
     let state = Arc::new(AppState {
         start_time: Instant::now(),
         registry: registry.clone(),
         julie_home: julie_home.clone(),
-        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new(
-            registry,
-            julie_home,
-            cancellation_token.clone(),
-        ))),
+        daemon_state: Arc::new(tokio::sync::RwLock::new(daemon)),
         cancellation_token,
         indexing_sender,
         dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),

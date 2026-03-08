@@ -189,10 +189,9 @@ async fn process_index_request(
                 );
 
                 // Create/replace MCP service for this workspace
-                let ct = tokio_util::sync::CancellationToken::new();
                 let mcp_service = DaemonState::create_workspace_mcp_service(
                     request.project_path.clone(),
-                    &ct,
+                    &ds.cancellation_token,
                     daemon_state.clone(),
                 );
                 ds.mcp_services
