@@ -186,6 +186,16 @@ pub async fn create_project(
             .await;
     }
 
+    // Auto-trigger indexing for newly registered projects
+    let index_request = IndexRequest {
+        workspace_id: response.workspace_id.clone(),
+        project_path: PathBuf::from(&response.path),
+        force: false,
+    };
+    if let Err(e) = state.indexing_sender.send(index_request).await {
+        tracing::warn!("Failed to queue auto-indexing for new project: {}", e);
+    }
+
     Ok((StatusCode::CREATED, Json(response)))
 }
 

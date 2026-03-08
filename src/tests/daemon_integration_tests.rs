@@ -160,7 +160,11 @@ async fn test_full_flow_register_index_status() {
     assert_eq!(json["status"], "indexing");
     assert_eq!(json["message"], "Indexing queued");
 
-    // Verify the indexing request was sent to the channel
+    // Drain auto-index request sent by create_project, then verify the explicit trigger
+    let auto_req = indexing_rx.try_recv().unwrap();
+    assert_eq!(auto_req.workspace_id, workspace_id);
+    assert!(!auto_req.force, "Auto-index should not be forced");
+
     let index_req = indexing_rx.try_recv().unwrap();
     assert_eq!(index_req.workspace_id, workspace_id);
     assert!(!index_req.force);
@@ -233,7 +237,11 @@ async fn test_full_flow_register_force_index() {
     let json = json_body(response).await;
     assert_eq!(json["message"], "Force re-indexing queued");
 
-    // Verify force flag was set
+    // Drain the auto-index request that create_project now sends
+    let auto_req = indexing_rx.try_recv().unwrap();
+    assert!(!auto_req.force, "Auto-index request should not be forced");
+
+    // Verify force flag was set on the explicit trigger
     let index_req = indexing_rx.try_recv().unwrap();
     assert!(index_req.force, "Force flag should be true");
 }

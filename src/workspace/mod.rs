@@ -358,7 +358,11 @@ impl JulieWorkspace {
         Ok(config)
     }
 
-    /// Find workspace root by searching up the directory tree
+    /// Find workspace root by searching up the directory tree.
+    ///
+    /// Stops at project boundary markers (`.git` file or directory) to prevent
+    /// walking past worktrees or sibling projects into unrelated `.julie/` dirs
+    /// (e.g. `~/.julie/` which is the daemon home, not a project workspace).
     fn find_workspace_root(start_path: &Path) -> Result<Option<PathBuf>> {
         let mut current = start_path.to_path_buf();
 
@@ -367,6 +371,19 @@ impl JulieWorkspace {
             if julie_dir.exists() && julie_dir.is_dir() {
                 debug!("Found .julie directory at: {}", julie_dir.display());
                 return Ok(Some(julie_dir));
+            }
+
+            // Treat .git (file or directory) as a project boundary.
+            // If this directory has .git but no .julie/, it's a project root
+            // that hasn't been indexed yet — stop here so the caller creates
+            // a new .julie/ instead of walking into an unrelated one (e.g. ~/.julie/).
+            let git_path = current.join(".git");
+            if git_path.exists() {
+                debug!(
+                    "Hit .git boundary at {} without finding .julie — stopping walk",
+                    current.display()
+                );
+                return Ok(None);
             }
 
             match current.parent() {
