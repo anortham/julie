@@ -26,6 +26,8 @@ pub struct DashboardStats {
     pub memories: MemoryStats,
     pub agents: AgentStats,
     pub backends: Vec<BackendStat>,
+    /// Number of active file watchers (one per watched project).
+    pub active_watchers: usize,
 }
 
 /// Breakdown of project counts by status.
@@ -162,11 +164,18 @@ pub async fn stats(
     // -- Backends --
     let backends: Vec<BackendStat> = state.backends.iter().map(BackendStat::from).collect();
 
+    // -- Active watchers --
+    let active_watchers = {
+        let ds = state.daemon_state.read().await;
+        ds.watcher_manager.active_watchers().await.len()
+    };
+
     Ok(Json(DashboardStats {
         projects: project_stats,
         memories: memory_stats,
         agents: agent_stats,
         backends,
+        active_watchers,
     }))
 }
 

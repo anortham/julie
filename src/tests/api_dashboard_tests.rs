@@ -205,6 +205,9 @@ async fn test_dashboard_stats_empty_state() {
     assert_eq!(json["backends"][1]["name"], "codex");
     assert_eq!(json["backends"][1]["available"], false);
     assert!(json["backends"][1]["version"].is_null());
+
+    // Active watchers: none in empty state
+    assert_eq!(json["active_watchers"], 0);
 }
 
 #[tokio::test]
@@ -369,4 +372,8 @@ async fn test_dashboard_stats_all_sections_present() {
     assert!(json.get("memories").is_some(), "missing 'memories' key");
     assert!(json.get("agents").is_some(), "missing 'agents' key");
     assert!(json.get("backends").is_some(), "missing 'backends' key");
+    assert!(
+        json.get("active_watchers").is_some(),
+        "missing 'active_watchers' key"
+    );
 }
