@@ -3,11 +3,8 @@
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
-use super::EXPECTED_EMBEDDING_DIMENSIONS;
-
 pub const SIDECAR_PROTOCOL_SCHEMA: &str = "julie.embedding.sidecar";
 pub const SIDECAR_PROTOCOL_VERSION: u32 = 1;
-pub const SIDECAR_EXPECTED_DIMS: usize = EXPECTED_EMBEDDING_DIMENSIONS;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RequestEnvelope<T> {
@@ -96,19 +93,19 @@ pub fn validate_response_envelope<T>(
     Ok(())
 }
 
-pub fn validate_query_response(resp: &EmbedQueryResult) -> Result<()> {
-    if resp.dims != SIDECAR_EXPECTED_DIMS {
+pub fn validate_query_response(resp: &EmbedQueryResult, expected_dims: usize) -> Result<()> {
+    if resp.dims != expected_dims {
         bail!(
             "sidecar query embedding dimension mismatch: expected {}, got {}",
-            SIDECAR_EXPECTED_DIMS,
+            expected_dims,
             resp.dims
         );
     }
 
-    if resp.vector.len() != SIDECAR_EXPECTED_DIMS {
+    if resp.vector.len() != expected_dims {
         bail!(
             "sidecar query embedding vector length mismatch: expected {}, got {}",
-            SIDECAR_EXPECTED_DIMS,
+            expected_dims,
             resp.vector.len()
         );
     }
@@ -116,11 +113,15 @@ pub fn validate_query_response(resp: &EmbedQueryResult) -> Result<()> {
     Ok(())
 }
 
-pub fn validate_batch_response(resp: &EmbedBatchResult, expected_count: usize) -> Result<()> {
-    if resp.dims != SIDECAR_EXPECTED_DIMS {
+pub fn validate_batch_response(
+    resp: &EmbedBatchResult,
+    expected_count: usize,
+    expected_dims: usize,
+) -> Result<()> {
+    if resp.dims != expected_dims {
         bail!(
             "sidecar batch embedding dimension mismatch: expected {}, got {}",
-            SIDECAR_EXPECTED_DIMS,
+            expected_dims,
             resp.dims
         );
     }
@@ -134,12 +135,12 @@ pub fn validate_batch_response(resp: &EmbedBatchResult, expected_count: usize) -
     }
 
     if let Some((index, actual)) = resp.vectors.iter().enumerate().find_map(|(idx, vector)| {
-        (vector.len() != SIDECAR_EXPECTED_DIMS).then_some((idx, vector.len()))
+        (vector.len() != expected_dims).then_some((idx, vector.len()))
     }) {
         bail!(
             "sidecar batch embedding vector length mismatch at index {}: expected {}, got {}",
             index,
-            SIDECAR_EXPECTED_DIMS,
+            expected_dims,
             actual
         );
     }

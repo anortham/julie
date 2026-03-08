@@ -4,22 +4,25 @@
 #[cfg(feature = "embeddings-sidecar")]
 mod tests {
     use crate::embeddings::sidecar_protocol::{
-        EmbedBatchResult, EmbedQueryResult, ProtocolError, ResponseEnvelope, SIDECAR_EXPECTED_DIMS,
+        EmbedBatchResult, EmbedQueryResult, ProtocolError, ResponseEnvelope,
         SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION, validate_batch_response,
         validate_query_response, validate_response_envelope,
     };
 
+    /// Test dimension value — matches BGE-small default but is just a test constant.
+    const TEST_DIMS: usize = 384;
+
     fn ok_query() -> EmbedQueryResult {
         EmbedQueryResult {
-            dims: SIDECAR_EXPECTED_DIMS,
-            vector: vec![0.0; SIDECAR_EXPECTED_DIMS],
+            dims: TEST_DIMS,
+            vector: vec![0.0; TEST_DIMS],
         }
     }
 
     fn ok_batch(count: usize) -> EmbedBatchResult {
         EmbedBatchResult {
-            dims: SIDECAR_EXPECTED_DIMS,
-            vectors: vec![vec![0.0; SIDECAR_EXPECTED_DIMS]; count],
+            dims: TEST_DIMS,
+            vectors: vec![vec![0.0; TEST_DIMS]; count],
         }
     }
 
@@ -36,17 +39,17 @@ mod tests {
     #[test]
     fn test_validate_query_response_accepts_expected_shape() {
         let resp = ok_query();
-        assert!(validate_query_response(&resp).is_ok());
+        assert!(validate_query_response(&resp, TEST_DIMS).is_ok());
     }
 
     #[test]
     fn test_validate_query_response_rejects_vector_length_mismatch_with_clear_error() {
         let resp = EmbedQueryResult {
-            dims: SIDECAR_EXPECTED_DIMS,
-            vector: vec![0.0; SIDECAR_EXPECTED_DIMS - 1],
+            dims: TEST_DIMS,
+            vector: vec![0.0; TEST_DIMS - 1],
         };
 
-        let err = validate_query_response(&resp).unwrap_err();
+        let err = validate_query_response(&resp, TEST_DIMS).unwrap_err();
         let message = err.to_string();
         assert!(
             message.contains("vector length mismatch") && message.contains("expected"),
@@ -57,11 +60,11 @@ mod tests {
     #[test]
     fn test_validate_query_response_rejects_dimension_mismatch_with_clear_error() {
         let resp = EmbedQueryResult {
-            dims: SIDECAR_EXPECTED_DIMS + 1,
-            vector: vec![0.0; SIDECAR_EXPECTED_DIMS],
+            dims: TEST_DIMS + 1,
+            vector: vec![0.0; TEST_DIMS],
         };
 
-        let err = validate_query_response(&resp).unwrap_err();
+        let err = validate_query_response(&resp, TEST_DIMS).unwrap_err();
         let message = err.to_string();
         assert!(
             message.contains("dimension mismatch") && message.contains("expected"),
@@ -72,7 +75,7 @@ mod tests {
     #[test]
     fn test_validate_batch_response_accepts_expected_shape() {
         let resp = ok_batch(2);
-        assert!(validate_batch_response(&resp, 2).is_ok());
+        assert!(validate_batch_response(&resp, 2, TEST_DIMS).is_ok());
     }
 
     #[test]
@@ -82,7 +85,7 @@ mod tests {
             vectors: vec![vec![0.0; 768]],
         };
 
-        let err = validate_batch_response(&resp, 1).unwrap_err();
+        let err = validate_batch_response(&resp, 1, TEST_DIMS).unwrap_err();
         let message = err.to_string();
         assert!(
             message.contains("dimension mismatch") && message.contains("expected"),
@@ -93,11 +96,11 @@ mod tests {
     #[test]
     fn test_embed_batch_response_rejects_count_mismatch() {
         let resp = EmbedBatchResult {
-            dims: SIDECAR_EXPECTED_DIMS,
+            dims: TEST_DIMS,
             vectors: vec![],
         };
 
-        let err = validate_batch_response(&resp, 1).unwrap_err();
+        let err = validate_batch_response(&resp, 1, TEST_DIMS).unwrap_err();
         let message = err.to_string();
         assert!(
             message.contains("count mismatch") && message.contains("expected 1"),
@@ -108,11 +111,11 @@ mod tests {
     #[test]
     fn test_validate_batch_response_rejects_vector_length_mismatch_with_clear_error() {
         let resp = EmbedBatchResult {
-            dims: SIDECAR_EXPECTED_DIMS,
-            vectors: vec![vec![0.0; SIDECAR_EXPECTED_DIMS - 1]],
+            dims: TEST_DIMS,
+            vectors: vec![vec![0.0; TEST_DIMS - 1]],
         };
 
-        let err = validate_batch_response(&resp, 1).unwrap_err();
+        let err = validate_batch_response(&resp, 1, TEST_DIMS).unwrap_err();
         let message = err.to_string();
         assert!(
             message.contains("vector length mismatch") && message.contains("index 0"),

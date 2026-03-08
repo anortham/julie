@@ -18,6 +18,7 @@
 
 pub mod checkpoint;
 mod date_filter;
+pub mod embedding;
 pub mod git;
 pub mod index;
 pub mod plan;

@@ -3,6 +3,7 @@
 //! Code-aware full-text search using custom tokenization that understands
 //! CamelCase, snake_case, and language-specific operators.
 
+pub mod content_type;
 pub mod debug;
 mod error;
 pub mod expansion;
@@ -13,6 +14,8 @@ pub mod query;
 pub mod schema;
 pub mod scoring;
 pub mod tokenizer;
+pub mod unified;
+pub mod weights;
 
 pub use error::{Result, SearchError};
 pub use index::{

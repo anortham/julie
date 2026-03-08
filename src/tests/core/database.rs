@@ -2205,3 +2205,51 @@ fn test_get_reference_scores_large_batch() {
     assert_eq!(mixed_scores.len(), count);
     assert!(!mixed_scores.contains_key("nonexistent_0"));
 }
+
+// ============================================================================
+// Migration 011: Embedding Config (Phase 5, Task 1)
+// ============================================================================
+
+#[test]
+fn test_migration_011_creates_embedding_config_table() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Verify embedding_config table exists
+    let table_exists: bool = db
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='embedding_config'",
+            [],
+            |row| row.get::<_, i32>(0).map(|c| c > 0),
+        )
+        .unwrap();
+    assert!(
+        table_exists,
+        "embedding_config table should exist after migration 011"
+    );
+}
+
+#[test]
+fn test_migration_011_is_idempotent() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+
+    // Create database (runs all migrations including 011)
+    {
+        let _db = SymbolDatabase::new(&db_path).unwrap();
+    }
+
+    // Re-open — should not error
+    #[allow(unused_mut)]
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let version = db.get_schema_version().unwrap();
+    assert_eq!(version, LATEST_SCHEMA_VERSION);
+
+    // Config should still have defaults
+    let (model, dims) = db.get_embedding_config().unwrap();
+    assert_eq!(model, "bge-small-en-v1.5");
+    assert_eq!(dims, 384);
+}

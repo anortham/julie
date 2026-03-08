@@ -88,7 +88,7 @@ pub struct SearchFilter {
 }
 
 /// A symbol search result with relevance score.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SymbolSearchResult {
     pub id: String,
     pub name: String,

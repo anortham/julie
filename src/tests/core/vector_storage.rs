@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::database::SymbolDatabase;
+    use crate::database::{SymbolDatabase, LATEST_SCHEMA_VERSION};
     use tempfile::TempDir;
 
     /// Helper: create a fresh SymbolDatabase in a temp directory.
@@ -316,7 +316,7 @@ mod tests {
 
         // Verify schema version was bumped
         let version = db.get_schema_version().unwrap();
-        assert_eq!(version, 10, "Schema version should be 10");
+        assert_eq!(version, LATEST_SCHEMA_VERSION, "Schema version should be latest");
     }
 
     #[test]
@@ -374,5 +374,79 @@ mod tests {
             2,
             "Only rust + csharp should remain"
         );
+    }
+
+    // ========================================================================
+    // Embedding Config Tests (Phase 5, Task 1: Dynamic Dimensions)
+    // ========================================================================
+
+    #[test]
+    fn test_get_embedding_config_returns_defaults() {
+        let (db, _dir) = create_test_db();
+
+        // Migration 011 should set defaults: model="bge-small-en-v1.5", dimensions=384
+        let (model, dims) = db.get_embedding_config().unwrap();
+        assert_eq!(model, "bge-small-en-v1.5");
+        assert_eq!(dims, 384);
+    }
+
+    #[test]
+    fn test_set_embedding_config_updates_values() {
+        let (mut db, _dir) = create_test_db();
+
+        db.set_embedding_config("nomic-embed-text-v1.5", 768)
+            .unwrap();
+
+        let (model, dims) = db.get_embedding_config().unwrap();
+        assert_eq!(model, "nomic-embed-text-v1.5");
+        assert_eq!(dims, 768);
+    }
+
+    #[test]
+    fn test_recreate_vectors_table_changes_dimensions() {
+        let (mut db, _dir) = create_test_db();
+
+        // Store a 384-dim embedding
+        insert_test_symbol(&mut db, "s1", "test_fn", "src/lib.rs");
+        db.store_embeddings(&[("s1".to_string(), vec![0.1_f32; 384])])
+            .unwrap();
+        assert_eq!(db.embedding_count().unwrap(), 1);
+
+        // Recreate with 768 dimensions
+        db.recreate_vectors_table(768).unwrap();
+
+        // Old embeddings should be gone (table was dropped and recreated)
+        assert_eq!(db.embedding_count().unwrap(), 0);
+
+        // New 768-dim embeddings should work
+        insert_test_symbol(&mut db, "s2", "test_fn2", "src/lib.rs");
+        db.store_embeddings(&[("s2".to_string(), vec![0.2_f32; 768])])
+            .unwrap();
+        assert_eq!(db.embedding_count().unwrap(), 1);
+
+        // KNN search should work with 768-dim query
+        let results = db.knn_search(&vec![0.2_f32; 768], 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "s2");
+    }
+
+    #[test]
+    fn test_recreate_vectors_clears_existing_embeddings() {
+        let (mut db, _dir) = create_test_db();
+
+        // Store several embeddings
+        insert_test_symbol(&mut db, "s1", "fn1", "src/a.rs");
+        insert_test_symbol(&mut db, "s2", "fn2", "src/b.rs");
+        insert_test_symbol(&mut db, "s3", "fn3", "src/c.rs");
+        let embeddings: Vec<_> = ["s1", "s2", "s3"]
+            .iter()
+            .map(|id| (id.to_string(), vec![0.5_f32; 384]))
+            .collect();
+        db.store_embeddings(&embeddings).unwrap();
+        assert_eq!(db.embedding_count().unwrap(), 3);
+
+        // Recreate with same dimensions — should still clear embeddings
+        db.recreate_vectors_table(384).unwrap();
+        assert_eq!(db.embedding_count().unwrap(), 0);
     }
 }

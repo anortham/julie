@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::sidecar_protocol::{
     EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, RequestEnvelope,
-    ResponseEnvelope, SIDECAR_EXPECTED_DIMS, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
+    ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
     validate_batch_response, validate_query_response, validate_response_envelope,
 };
 use super::sidecar_supervisor::{SidecarLaunchConfig, build_sidecar_launch_config};
@@ -26,6 +26,7 @@ pub struct SidecarEmbeddingProvider {
     device: String,
     sidecar_runtime: String,
     model_id: String,
+    expected_dims: usize,
 }
 
 struct SidecarProcess {
@@ -85,6 +86,8 @@ impl SidecarEmbeddingProvider {
     ) -> Result<Self> {
         let (process, health) = spawn_process(&launch_config, response_timeout)?;
 
+        let expected_dims = health.dims.unwrap_or(384);
+
         Ok(Self {
             process: Mutex::new(process),
             launch_config,
@@ -96,6 +99,7 @@ impl SidecarEmbeddingProvider {
             model_id: health
                 .model_id
                 .unwrap_or_else(|| "BAAI/bge-small-en-v1.5".to_string()),
+            expected_dims,
         })
     }
 
@@ -179,7 +183,7 @@ impl EmbeddingProvider for SidecarEmbeddingProvider {
                 return Err(err);
             }
         };
-        validate_query_response(&result)?;
+        validate_query_response(&result, self.expected_dims)?;
         Ok(result.vector)
     }
 
@@ -205,12 +209,12 @@ impl EmbeddingProvider for SidecarEmbeddingProvider {
                 return Err(err);
             }
         };
-        validate_batch_response(&result, texts.len())?;
+        validate_batch_response(&result, texts.len(), self.expected_dims)?;
         Ok(result.vectors)
     }
 
     fn dimensions(&self) -> usize {
-        SIDECAR_EXPECTED_DIMS
+        self.expected_dims
     }
 
     fn device_info(&self) -> DeviceInfo {
@@ -218,7 +222,7 @@ impl EmbeddingProvider for SidecarEmbeddingProvider {
             runtime: format!("python-sidecar ({})", self.sidecar_runtime),
             device: self.device.clone(),
             model_name: self.model_id.clone(),
-            dimensions: SIDECAR_EXPECTED_DIMS,
+            dimensions: self.expected_dims,
         }
     }
 }
@@ -363,15 +367,9 @@ impl SidecarProcess {
             bail!("sidecar reported not ready in health probe");
         }
 
-        if let Some(dims) = health.dims {
-            if dims != SIDECAR_EXPECTED_DIMS {
-                bail!(
-                    "sidecar health dimension mismatch: expected {}, got {}",
-                    SIDECAR_EXPECTED_DIMS,
-                    dims
-                );
-            }
-        }
+        // Dimensions are validated post-construction by comparing provider.dimensions()
+        // with the stored embedding config. The sidecar reports its dims here; we just
+        // store them rather than validating against a hardcoded constant.
 
         Ok(health)
     }

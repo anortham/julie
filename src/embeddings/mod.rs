@@ -28,7 +28,6 @@ pub mod sidecar_supervisor;
 
 use anyhow::Result;
 
-pub const EXPECTED_EMBEDDING_DIMENSIONS: usize = 384;
 pub const SIDECAR_BACKEND_COMPILED: bool = cfg!(feature = "embeddings-sidecar");
 
 /// Supported embedding backends.
@@ -134,7 +133,7 @@ pub use ort_provider::{
 #[cfg(feature = "embeddings-sidecar")]
 pub use sidecar_protocol::{
     EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, ProtocolError,
-    RequestEnvelope, ResponseEnvelope, SIDECAR_EXPECTED_DIMS, SIDECAR_PROTOCOL_SCHEMA,
+    RequestEnvelope, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA,
     SIDECAR_PROTOCOL_VERSION, validate_batch_response, validate_query_response,
     validate_response_envelope,
 };

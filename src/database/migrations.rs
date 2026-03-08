@@ -6,7 +6,7 @@ use rusqlite::params;
 use tracing::{debug, info, warn};
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 10;
+pub const LATEST_SCHEMA_VERSION: i32 = 12;
 
 impl SymbolDatabase {
     // ============================================================
@@ -99,6 +99,8 @@ impl SymbolDatabase {
             8 => self.migration_008_drop_embedding_tables()?,
             9 => self.migration_009_add_reference_score()?,
             10 => self.migration_010_add_symbol_vectors()?,
+            11 => self.migration_011_add_embedding_config()?,
+            12 => self.migration_012_add_memory_vectors()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -618,6 +620,83 @@ impl SymbolDatabase {
         )?;
 
         info!("✅ symbol_vectors virtual table created (384-dim float vectors)");
+        Ok(())
+    }
+
+    /// Migration 011: Add embedding_config table for dynamic embedding dimensions.
+    ///
+    /// Stores the active model name and dimensionality so Julie can detect
+    /// model swaps and recreate vector tables with the correct dimensions.
+    fn migration_011_add_embedding_config(&self) -> Result<()> {
+        info!("Running migration 011: Add embedding_config table");
+
+        let table_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='embedding_config'",
+            [],
+            |row| row.get::<_, i32>(0).map(|c| c > 0),
+        )?;
+
+        if table_exists {
+            debug!("embedding_config table already exists, skipping migration 011");
+            return Ok(());
+        }
+
+        self.conn.execute(
+            "CREATE TABLE embedding_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                model_name TEXT NOT NULL,
+                dimensions INTEGER NOT NULL
+            )",
+            [],
+        )?;
+
+        // Seed with current defaults (BGE-small-en-v1.5, 384 dims)
+        self.conn.execute(
+            "INSERT INTO embedding_config (id, model_name, dimensions) VALUES (1, 'bge-small-en-v1.5', 384)",
+            [],
+        )?;
+
+        info!("✅ embedding_config table created with defaults (bge-small-en-v1.5, 384-dim)");
+        Ok(())
+    }
+
+    fn migration_012_add_memory_vectors(&self) -> Result<()> {
+        info!("Running migration 012: Add memory_vectors virtual table");
+
+        // Check if table already exists (idempotency)
+        let table_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memory_vectors'",
+            [],
+            |row| row.get::<_, i32>(0).map(|c| c > 0),
+        )?;
+
+        if table_exists {
+            debug!("memory_vectors table already exists, skipping migration 012");
+            return Ok(());
+        }
+
+        // Read dimensions from embedding_config (set by migration 011).
+        // Fall back to 384 if config doesn't exist yet (shouldn't happen in normal flow).
+        let dims: usize = self
+            .conn
+            .query_row(
+                "SELECT dimensions FROM embedding_config WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(384);
+
+        self.conn.execute(
+            &format!(
+                "CREATE VIRTUAL TABLE memory_vectors USING vec0(
+                    checkpoint_id TEXT PRIMARY KEY,
+                    embedding float[{dims}]
+                )"
+            ),
+            [],
+        )?;
+
+        info!("✅ memory_vectors virtual table created ({dims}-dim float vectors)");
         Ok(())
     }
 }

@@ -5,11 +5,12 @@
 //!
 //! # Vector Format
 //!
-//! Vectors are stored as 384-dimensional float arrays. The `zerocopy::AsBytes` trait
-//! is used for zero-copy serialization of `Vec<f32>` → `&[u8]` when passing to sqlite-vec.
+//! Vectors are stored as N-dimensional float arrays (dimension configured via
+//! `embedding_config` table). The `zerocopy::AsBytes` trait is used for zero-copy
+//! serialization of `Vec<f32>` → `&[u8]` when passing to sqlite-vec.
 
 use anyhow::{Context, Result};
-use tracing::debug;
+use tracing::{debug, info};
 use zerocopy::AsBytes;
 
 use super::SymbolDatabase;
@@ -235,6 +236,66 @@ impl SymbolDatabase {
     pub fn clear_all_embeddings(&mut self) -> Result<()> {
         self.conn.execute("DELETE FROM symbol_vectors", [])?;
         debug!("Cleared all embeddings from symbol_vectors");
+        Ok(())
+    }
+
+    // ========================================================================
+    // Embedding Config (Dynamic Dimensions)
+    // ========================================================================
+
+    /// Read the current embedding model name and dimensions from the config table.
+    pub fn get_embedding_config(&self) -> Result<(String, usize)> {
+        let (model, dims) = self.conn.query_row(
+            "SELECT model_name, dimensions FROM embedding_config WHERE id = 1",
+            [],
+            |row| {
+                let model: String = row.get(0)?;
+                let dims: i32 = row.get(1)?;
+                Ok((model, dims as usize))
+            },
+        )?;
+        Ok((model, dims))
+    }
+
+    /// Update the embedding config with a new model name and dimensions.
+    pub fn set_embedding_config(&mut self, model_name: &str, dimensions: usize) -> Result<()> {
+        self.conn.execute(
+            "UPDATE embedding_config SET model_name = ?1, dimensions = ?2 WHERE id = 1",
+            rusqlite::params![model_name, dimensions as i32],
+        )?;
+        debug!(
+            "Updated embedding config: model={}, dimensions={}",
+            model_name, dimensions
+        );
+        Ok(())
+    }
+
+    /// Drop and recreate the symbol_vectors table with new dimensions.
+    ///
+    /// This clears ALL existing embeddings — the embedding pipeline will
+    /// regenerate them on next run. Call this when the provider's dimensions
+    /// don't match the stored config (i.e., model swap).
+    pub fn recreate_vectors_table(&mut self, dimensions: usize) -> Result<()> {
+        info!(
+            "Recreating symbol_vectors table with {} dimensions",
+            dimensions
+        );
+
+        self.conn
+            .execute("DROP TABLE IF EXISTS symbol_vectors", [])?;
+
+        let create_sql = format!(
+            "CREATE VIRTUAL TABLE symbol_vectors USING vec0(
+                symbol_id TEXT PRIMARY KEY,
+                embedding float[{dimensions}]
+            )"
+        );
+        self.conn.execute(&create_sql, [])?;
+
+        info!(
+            "✅ symbol_vectors table recreated with {}-dim float vectors",
+            dimensions
+        );
         Ok(())
     }
 }

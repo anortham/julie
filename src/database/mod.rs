@@ -16,6 +16,7 @@ mod bulk_operations;
 mod files;
 mod helpers;
 mod identifiers;
+mod memory_vectors;
 mod migrations;
 mod relationships;
 mod schema;
