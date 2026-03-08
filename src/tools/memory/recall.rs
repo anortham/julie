@@ -13,42 +13,49 @@ use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::memory::RecallOptions;
 
 #[derive(Debug, Deserialize, JsonSchema)]
-/// Retrieve prior context from developer memory. Returns recent checkpoints
-/// and the active plan.
+/// Retrieve prior context from developer memory. Returns recent checkpoints and the active plan.
 pub struct RecallTool {
-    /// Max checkpoints to return (default: 5, 0 = active plan only)
+    /// Max checkpoints to return (default: 5). Set to 0 for active plan only.
+    /// Higher values give more history but cost more tokens.
     #[serde(default)]
     pub limit: Option<u32>,
 
-    /// Time filter: "2h", "30m", "3d", "1w", or ISO timestamp
+    /// Time filter: relative spans ("2h", "30m", "3d", "1w") or ISO timestamp.
+    /// Useful for scoping recall to recent work. Combines with search for targeted queries.
     #[serde(default)]
     pub since: Option<String>,
 
-    /// Look back N days
+    /// Look back N days from now. Simpler alternative to "since" for day-level granularity.
     #[serde(default)]
     pub days: Option<u32>,
 
-    /// Date range start (YYYY-MM-DD or ISO timestamp)
+    /// Date range start (YYYY-MM-DD or ISO timestamp). Use with "to" for bounded queries
+    /// like "what happened last week?" (from: "2026-03-01", to: "2026-03-07").
     #[serde(default)]
     pub from: Option<String>,
 
-    /// Date range end (YYYY-MM-DD or ISO timestamp)
+    /// Date range end (YYYY-MM-DD or ISO timestamp). Used with "from" for bounded date ranges.
     #[serde(default)]
     pub to: Option<String>,
 
-    /// Search query (BM25 full-text search over memories)
+    /// BM25 full-text search query across all checkpoint text, tags, and symbols.
+    /// Use natural language or keywords: "auth refactor decision", "why did we choose postgres".
     #[serde(default)]
     pub search: Option<String>,
 
-    /// Return full descriptions + git metadata (default: false)
+    /// Return full checkpoint descriptions + git metadata (default: false).
+    /// Summaries are compact; set true when you need the complete picture.
     #[serde(default)]
     pub full: Option<bool>,
 
-    /// Workspace scope: "current" (default) or "all" (cross-project, daemon mode only)
+    /// Workspace scope: "current" (default) or "all". Cross-project recall
+    /// (workspace: "all") only works in daemon mode — returns checkpoints from all
+    /// registered workspaces, useful for standup reports and cross-project awareness.
     #[serde(default)]
     pub workspace: Option<String>,
 
-    /// Filter to checkpoints under a specific plan
+    /// Filter to checkpoints associated with a specific plan ID.
+    /// Use to see all progress on a particular plan.
     #[serde(default, rename = "planId")]
     pub plan_id: Option<String>,
 }

@@ -13,53 +13,67 @@ use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::memory::{CheckpointInput, CheckpointType};
 
 #[derive(Debug, Deserialize, JsonSchema)]
-/// Save a development milestone to memory. Creates a searchable checkpoint with
-/// git context, tags, and optional structured fields (decision, impact, etc.).
+/// Save a milestone checkpoint to developer memory with automatic git context capture.
 pub struct CheckpointTool {
-    /// Markdown description of the milestone
+    /// Markdown description of the milestone. Write with structure (headers, bullets).
+    /// Include WHAT was done, WHY it matters, HOW it works, and IMPACT on the codebase.
+    /// This powers BM25 search — make it findable by future sessions.
     pub description: String,
 
-    /// Checkpoint type: "checkpoint" (default), "decision", "incident", "learning"
+    /// Checkpoint type: "checkpoint" (default), "decision", "incident", "learning".
+    /// Use "decision" for architectural choices, "incident" for bugs/outages,
+    /// "learning" for non-obvious discoveries. Affects how the checkpoint is presented.
     #[serde(default, rename = "type")]
     pub checkpoint_type: Option<String>,
 
-    /// Tags for categorization
+    /// Tags for search and categorization. Think about discoverability — include
+    /// synonyms and related terms (e.g. ["auth", "authentication", "jwt", "security"]).
+    /// Powers BM25 full-text search across memories.
     #[serde(default)]
     pub tags: Option<Vec<String>>,
 
-    /// Related code symbols
+    /// Code symbols touched or affected (e.g. ["AuthMiddleware.handle", "refreshToken"]).
+    /// Connects checkpoints to code for future reference lookups.
     #[serde(default)]
     pub symbols: Option<Vec<String>>,
 
-    /// Decision statement (for type: "decision")
+    /// Decision statement (for type: "decision"). The actual decision made,
+    /// stated clearly so future sessions know what to follow.
     #[serde(default)]
     pub decision: Option<String>,
 
-    /// Alternatives considered (for type: "decision")
+    /// Alternatives that were considered and rejected (for type: "decision").
+    /// Future sessions need to know what NOT to try again.
     #[serde(default)]
     pub alternatives: Option<Vec<String>>,
 
-    /// Impact description
+    /// Impact description — what changed as a result of this work.
+    /// Include scope (files, modules, APIs affected) and severity.
     #[serde(default)]
     pub impact: Option<String>,
 
-    /// Context information
+    /// Additional context that doesn't fit in description — background info,
+    /// constraints, or environmental factors that influenced the work.
     #[serde(default)]
     pub context: Option<String>,
 
-    /// Evidence or references
+    /// Evidence or references — links, log snippets, error messages, benchmarks.
+    /// Anything that supports the checkpoint's claims.
     #[serde(default)]
     pub evidence: Option<Vec<String>>,
 
-    /// Open questions or unknowns
+    /// Open questions or unknowns that remain after this milestone.
+    /// Future sessions should investigate these.
     #[serde(default)]
     pub unknowns: Option<Vec<String>>,
 
-    /// Next steps
+    /// Recommended next steps — what should happen after this milestone.
+    /// Guides the next session's starting point.
     #[serde(default)]
     pub next: Option<String>,
 
-    /// Confidence level (1-5)
+    /// Confidence level (1-5). How confident are you in this work?
+    /// 1 = exploratory/uncertain, 3 = solid but untested edge cases, 5 = bulletproof.
     #[serde(default)]
     pub confidence: Option<u8>,
 }

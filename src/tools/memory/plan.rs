@@ -12,33 +12,42 @@ use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::memory::{PlanInput, PlanUpdate};
 
 #[derive(Debug, Deserialize, JsonSchema)]
-/// Manage persistent development plans. Plans track multi-session work
-/// and associate checkpoints with goals.
+/// Manage persistent development plans that survive context compaction and guide multi-session work.
 pub struct PlanTool {
-    /// Action: "save", "get", "list", "activate", "update", "complete"
+    /// Action to perform: "save" (create new plan), "get" (retrieve by ID),
+    /// "list" (all plans, optionally filtered by status), "activate" (set as current),
+    /// "update" (modify fields), "complete" (mark done).
     pub action: String,
 
-    /// Plan ID (required for get/activate/update/complete; auto-generated for save)
+    /// Plan ID. Required for get/activate/update/complete. Auto-generated for save
+    /// unless you want to overwrite an existing plan (pass its ID).
     #[serde(default)]
     pub id: Option<String>,
 
-    /// Plan title (required for save)
+    /// Plan title (required for save). Keep concise — this appears in recall output
+    /// and plan listings. Describes the strategic goal, not individual tasks.
     #[serde(default)]
     pub title: Option<String>,
 
-    /// Plan content (markdown)
+    /// Plan content in markdown. Structure with phases, tasks, acceptance criteria.
+    /// This is your strategic roadmap — include enough detail that a fresh session
+    /// can pick up where you left off without additional context.
     #[serde(default)]
     pub content: Option<String>,
 
-    /// Tags for categorization
+    /// Tags for search and categorization. Include the feature area, tech stack,
+    /// and related concepts so the plan is discoverable via recall search.
     #[serde(default)]
     pub tags: Option<Vec<String>>,
 
-    /// Whether to activate plan after saving (default: false)
+    /// Whether to activate this plan after saving. ALWAYS set to true unless you
+    /// have a specific reason not to — an inactive plan is invisible to future
+    /// sessions via recall(). Only one plan can be active per workspace.
     #[serde(default)]
     pub activate: Option<bool>,
 
-    /// Plan status for update action
+    /// Plan status for update action: "active", "paused", "blocked", "completed".
+    /// Use "paused" for plans temporarily on hold, "blocked" for external dependencies.
     #[serde(default)]
     pub status: Option<String>,
 }
