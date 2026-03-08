@@ -10,6 +10,7 @@
 // AGENT TESTS - Agent dispatch backend, context assembly
 // ============================================================================
 pub mod agent_backend_tests; // Agent backend trait, ClaudeBackend, DispatchManager, context assembly
+pub mod api_agents_tests; // Agent dispatch REST API + SSE streaming
 
 // ============================================================================
 // TEST FIXTURES - Pre-indexed databases and test data

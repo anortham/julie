@@ -15,6 +15,9 @@ use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
+use crate::agent;
+use crate::agent::backend::BackendInfo;
+use crate::agent::dispatch::DispatchManager;
 use crate::api;
 use crate::daemon_indexer::{self, IndexingSender};
 use crate::daemon_state::DaemonState;
@@ -43,6 +46,10 @@ pub struct AppState {
     /// messages through this channel. The background worker processes them
     /// sequentially (one project at a time).
     pub indexing_sender: IndexingSender,
+    /// Agent dispatch manager — tracks active and completed dispatches.
+    pub dispatch_manager: Arc<RwLock<DispatchManager>>,
+    /// Detected agent backends (cached at startup for fast lookup).
+    pub backends: Vec<BackendInfo>,
 }
 
 /// Start the HTTP server on the given port.
@@ -110,6 +117,9 @@ pub async fn start_server(
         cancellation_token.clone(),
     );
 
+    let backends = agent::backend::detect_backends();
+    let dispatch_manager = Arc::new(RwLock::new(DispatchManager::with_backends(backends.clone())));
+
     let state = Arc::new(AppState {
         start_time: Instant::now(),
         registry: registry_rw,
@@ -117,6 +127,8 @@ pub async fn start_server(
         daemon_state: daemon_state.clone(),
         cancellation_token: cancellation_token.clone(),
         indexing_sender,
+        dispatch_manager,
+        backends,
     });
 
     // Create the default MCP service for backward compatibility.

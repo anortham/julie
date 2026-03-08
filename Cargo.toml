@@ -73,6 +73,7 @@ clap = { version = "4.5", features = ["derive", "env"] }
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
 tokio-util = "0.7"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # Embedded web UI assets
 rust-embed = { version = "8", features = ["debug-embed"] }

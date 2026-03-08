@@ -34,6 +34,8 @@ fn test_state(julie_home: std::path::PathBuf) -> Arc<AppState> {
         daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
         cancellation_token: CancellationToken::new(),
         indexing_sender,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     })
 }
 

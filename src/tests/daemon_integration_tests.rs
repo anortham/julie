@@ -80,6 +80,8 @@ fn test_setup() -> (
         daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
         cancellation_token: CancellationToken::new(),
         indexing_sender,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     });
     (state, temp_dir, indexing_rx)
 }

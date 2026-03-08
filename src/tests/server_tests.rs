@@ -30,6 +30,8 @@ fn test_state(julie_home: std::path::PathBuf) -> Arc<AppState> {
         daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
         cancellation_token: CancellationToken::new(),
         indexing_sender,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     })
 }
 
@@ -253,6 +255,8 @@ async fn test_delete_project_success() {
         daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
         cancellation_token: CancellationToken::new(),
         indexing_sender,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     });
     let app = axum::Router::new()
         .nest("/api", api::routes(state));
@@ -566,6 +570,8 @@ async fn test_list_projects_reflects_daemon_state_status() {
         daemon_state,
         cancellation_token: ct,
         indexing_sender,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     });
     let app = axum::Router::new().nest("/api", api::routes(state));
 
@@ -609,6 +615,8 @@ async fn test_create_project_updates_daemon_state() {
         daemon_state: daemon_state.clone(),
         cancellation_token: ct,
         indexing_sender,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     });
     let app = axum::Router::new().nest("/api", api::routes(state));
 
@@ -670,6 +678,8 @@ async fn test_delete_project_cleans_up_daemon_state() {
         daemon_state: daemon_state.clone(),
         cancellation_token: ct,
         indexing_sender,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     });
     let app = axum::Router::new().nest("/api", api::routes(state));
 
@@ -748,6 +758,8 @@ async fn test_workspace_mcp_endpoint_routes_to_registered_workspace() {
         daemon_state,
         cancellation_token: ct,
         indexing_sender,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     });
 
     let app = axum::Router::new()

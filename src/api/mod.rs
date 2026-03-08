@@ -1,5 +1,6 @@
 //! API route definitions for the Julie daemon HTTP server.
 
+pub mod agents;
 pub mod common;
 pub mod health;
 pub mod memories;
@@ -8,7 +9,7 @@ pub mod search;
 
 use std::sync::Arc;
 
-use axum::{Router, routing::get};
+use axum::{Router, routing::{get, post}};
 
 use crate::server::AppState;
 
@@ -22,6 +23,12 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/projects/{id}/index", axum::routing::post(projects::trigger_index))
         .route("/search", axum::routing::post(search::search))
         .route("/search/debug", axum::routing::post(search::search_debug))
+        // Agent dispatch routes (note: /agents/history and /agents/backends BEFORE /agents/{id})
+        .route("/agents/dispatch", post(agents::dispatch_agent))
+        .route("/agents/history", get(agents::list_dispatches))
+        .route("/agents/backends", get(agents::list_backends))
+        .route("/agents/{id}/stream", get(agents::stream_dispatch))
+        .route("/agents/{id}", get(agents::get_dispatch))
         // Memory + plan routes (note: /plans/active BEFORE /plans/{id})
         .route("/memories", get(memories::list_memories))
         .route("/memories/{id}", get(memories::get_memory))

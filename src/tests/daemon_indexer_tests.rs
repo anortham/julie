@@ -36,6 +36,8 @@ fn test_state_with_indexer(
         daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
         cancellation_token: CancellationToken::new(),
         indexing_sender: tx,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     });
     (state, rx)
 }
@@ -55,6 +57,8 @@ fn test_state_with_registry(
         daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
         cancellation_token: CancellationToken::new(),
         indexing_sender: tx,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     });
     (state, rx)
 }
@@ -364,6 +368,8 @@ async fn test_get_status_reflects_indexing_state() {
         daemon_state,
         cancellation_token: ct,
         indexing_sender: tx,
+        dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
+        backends: vec![],
     });
     let app = axum::Router::new().nest("/api", api::routes(state));
 

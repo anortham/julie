@@ -171,6 +171,14 @@ impl DispatchManager {
             .map(|d| d.broadcast_tx.subscribe())
     }
 
+    /// Get a clone of the dispatch's broadcast sender.
+    ///
+    /// Used by the dispatch handler to pass the sender to the agent backend,
+    /// so output lines are broadcast to SSE subscribers in real time.
+    pub fn get_broadcast_tx(&self, id: &str) -> Option<broadcast::Sender<String>> {
+        self.dispatches.get(id).map(|d| d.broadcast_tx.clone())
+    }
+
     /// List all dispatches (both active and completed), sorted by `started_at` descending.
     pub fn list_dispatches(&self) -> Vec<&AgentDispatch> {
         let mut dispatches: Vec<&AgentDispatch> = self.dispatches.values().collect();
