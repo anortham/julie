@@ -523,3 +523,76 @@ async fn test_search_memory_no_memory_index_graceful() {
 
     assert_eq!(json["count"], 0);
 }
+
+// ---------------------------------------------------------------------------
+// Tests: input validation
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_search_invalid_content_type_returns_400() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let state = test_state(temp_dir.path().to_path_buf());
+    setup_workspace_code_only(&state, &temp_dir).await;
+
+    let app = test_app(state);
+    let body = serde_json::json!({
+        "query": "anything",
+        "content_type": "garbage",
+        "limit": 10
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/search")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Invalid content_type should return 400, not silently expand scope"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Tests: search_target in unified path
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_search_unified_forces_definitions_search_target() {
+    // Even if request says search_target="content", the unified path
+    // always searches definitions, so the response should say "definitions"
+    let temp_dir = tempfile::tempdir().unwrap();
+    let state = test_state(temp_dir.path().to_path_buf());
+    setup_workspace_with_code_and_memories(&state, &temp_dir).await;
+
+    let app = test_app(state);
+    let body = serde_json::json!({
+        "query": "search",
+        "content_type": "all",
+        "search_target": "content",
+        "limit": 10
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/search")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        json["search_target"], "definitions",
+        "Unified path should force search_target to 'definitions'"
+    );
+}

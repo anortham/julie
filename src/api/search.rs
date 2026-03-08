@@ -61,14 +61,29 @@ fn default_search_target() -> String {
     "definitions".to_string()
 }
 
-/// Parse the `content_type` request field into a `ContentType` filter.
-/// Returns `None` for "all" (meaning: search all content types).
-/// Returns `Some(ContentType::Code)` when no content_type is specified (default).
-pub fn parse_content_type(content_type: &Option<String>) -> Option<ContentType> {
+/// Parse the `content_type` request field into a validated `ContentType` filter.
+///
+/// Returns:
+/// - `Ok(Some(Code))` for `None` (default) or `"code"`
+/// - `Ok(None)` for `"all"` (search everything)
+/// - `Ok(Some(Memory))` for `"memory"` / `"memories"`
+/// - `Err(400)` for unrecognized values
+pub fn parse_content_type(
+    content_type: &Option<String>,
+) -> Result<Option<ContentType>, (StatusCode, String)> {
     match content_type.as_deref() {
-        None | Some("code") => Some(ContentType::Code),
-        Some("all") => None,
-        Some(s) => ContentType::from_str_loose(s),
+        None | Some("code") => Ok(Some(ContentType::Code)),
+        Some("all") => Ok(None),
+        Some(s) => match ContentType::from_str_loose(s) {
+            Some(ct) => Ok(Some(ct)),
+            None => Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Invalid content_type: '{}'. Valid values: \"code\", \"memory\", \"all\"",
+                    s
+                ),
+            )),
+        },
     }
 }
 
@@ -172,7 +187,7 @@ pub async fn search(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SearchRequest>,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
-    let content_type_filter = parse_content_type(&body.content_type);
+    let content_type_filter = parse_content_type(&body.content_type)?;
 
     // Code-only: use the fast path (no unified search overhead)
     if content_type_filter == Some(ContentType::Code) {
