@@ -16,6 +16,7 @@
 //!     └── .active-plan      # Contains active plan ID
 //! ```
 
+pub mod git;
 pub mod storage;
 
 use serde::{Deserialize, Serialize};

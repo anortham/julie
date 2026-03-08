@@ -73,6 +73,7 @@ pub mod core {
 // ============================================================================
 // MEMORY TESTS - Checkpoint storage, recall, plans
 // ============================================================================
+pub mod memory_git_tests; // Git context capture (branch, commit, changed/untracked files)
 pub mod memory_storage_tests; // YAML frontmatter storage layer (format, parse, round-trip)
 
 // ============================================================================
