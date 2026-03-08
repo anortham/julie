@@ -1,0 +1,36 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Use the mcp__julie__recall tool to restore context from previous sessions. Call recall() with default parameters. If there's an active plan or recent checkpoints, briefly summarize them so the user knows you have context. If nothing is found, continue without comment."
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Your conversation is about to be compacted. Use the mcp__julie__checkpoint tool NOW to save your current progress. Include: what you were working on, current state, decisions made, and planned next steps. Do NOT ask permission — just checkpoint immediately."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "A plan was just approved. Save it to Julie for cross-session persistence using the mcp__julie__plan tool with action 'save'. Extract the plan title and content from the plan file that was written. Set activate to true so the plan appears in future recall() responses."
+          }
+        ]
+      }
+    ]
+  }
+}
