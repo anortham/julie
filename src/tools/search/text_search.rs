@@ -121,6 +121,7 @@ pub async fn text_search_impl(
                     debug!("🔍 NL query on reference workspace, using hybrid search");
 
                     let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
+                    let profile = crate::search::weights::SearchWeightProfile::fast_search();
                     let mut hybrid_results = crate::search::hybrid::hybrid_search(
                         &query_clone,
                         &filter,
@@ -128,6 +129,7 @@ pub async fn text_search_impl(
                         &index,
                         &ref_db,
                         ref_embedding_provider.as_deref(),
+                        Some(profile),
                     )?;
                     let relaxed = hybrid_results.relaxed;
 
@@ -339,6 +341,7 @@ pub async fn text_search_impl(
                     }
                 };
 
+                let profile = crate::search::weights::SearchWeightProfile::fast_search();
                 let mut hybrid_results = crate::search::hybrid::hybrid_search(
                     &query_clone,
                     &filter,
@@ -346,6 +349,7 @@ pub async fn text_search_impl(
                     &index,
                     &db_lock,
                     embedding_provider.as_deref(),
+                    Some(profile),
                 )?;
                 let relaxed = hybrid_results.relaxed;
 

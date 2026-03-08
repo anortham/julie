@@ -362,6 +362,7 @@ mod orchestrator_tests {
             &index,
             &db,
             None, // No embedding provider
+            None, // No weight profile
         )
         .unwrap();
 
@@ -381,6 +382,7 @@ mod orchestrator_tests {
             &index,
             &db,
             Some(&failing),
+            None, // No weight profile
         )
         .unwrap(); // Must NOT fail despite provider error
 
@@ -401,6 +403,7 @@ mod orchestrator_tests {
             10,
             &index,
             &db,
+            None,
             None,
         )
         .unwrap();
@@ -453,7 +456,7 @@ mod orchestrator_tests {
 
         let provider = StaticProvider;
         let results =
-            hybrid_search("process_data", &filter, 10, &index, &db, Some(&provider)).unwrap();
+            hybrid_search("process_data", &filter, 10, &index, &db, Some(&provider), None).unwrap();
 
         assert!(!results.results.is_empty(), "expected at least one result");
         assert!(
@@ -482,6 +485,7 @@ mod orchestrator_tests {
                 &index,
                 &db,
                 Some(&timeout),
+                None,
             )
         });
         let results = results.unwrap();
@@ -494,6 +498,325 @@ mod orchestrator_tests {
         assert!(
             logs.contains("Semantic search failed, falling back to keyword-only"),
             "expected fallback warning log, got: {logs}"
+        );
+    }
+}
+
+/// Weighted RRF merge tests (Phase 5, Task 2).
+///
+/// Verifies that per-source weighting correctly biases the merge:
+/// - Equal weights = same output as uniform merge
+/// - Higher weight = more influence on ranking
+/// - Zero weight = effectively excluded
+#[cfg(test)]
+mod weighted_rrf_tests {
+    use crate::search::SymbolSearchResult;
+    use crate::search::hybrid::{rrf_merge, weighted_rrf_merge};
+    use crate::search::weights::SearchWeightProfile;
+
+    fn make_result(id: &str, name: &str, score: f32) -> SymbolSearchResult {
+        SymbolSearchResult {
+            id: id.to_string(),
+            name: name.to_string(),
+            signature: String::new(),
+            doc_comment: String::new(),
+            file_path: "test.rs".to_string(),
+            kind: "function".to_string(),
+            language: "rust".to_string(),
+            start_line: 1,
+            score,
+        }
+    }
+
+    #[test]
+    fn test_weighted_equal_weights_matches_uniform() {
+        let tantivy = vec![
+            make_result("a", "alpha", 10.0),
+            make_result("b", "beta", 8.0),
+        ];
+        let semantic = vec![
+            make_result("b", "beta", 0.9),
+            make_result("c", "gamma", 0.8),
+        ];
+
+        let tantivy_clone = tantivy.clone();
+        let semantic_clone = semantic.clone();
+
+        let uniform = rrf_merge(tantivy, semantic, 60, 10);
+        let weighted = weighted_rrf_merge(tantivy_clone, semantic_clone, 60, 10, 1.0, 1.0);
+
+        assert_eq!(uniform.len(), weighted.len());
+        for (u, w) in uniform.iter().zip(weighted.iter()) {
+            assert_eq!(u.id, w.id, "same order expected");
+            assert!(
+                (u.score - w.score).abs() < 1e-6,
+                "scores should match: {} vs {}",
+                u.score,
+                w.score
+            );
+        }
+    }
+
+    #[test]
+    fn test_weighted_higher_weight_increases_contribution() {
+        // Two disjoint lists, each with one item
+        let tantivy = vec![make_result("a", "alpha", 10.0)];
+        let semantic = vec![make_result("b", "beta", 0.9)];
+
+        // Heavy keyword weight
+        let results =
+            weighted_rrf_merge(tantivy.clone(), semantic.clone(), 60, 10, 2.0, 1.0);
+
+        // "a" should rank higher because keyword weight is 2x
+        assert_eq!(results[0].id, "a", "keyword result should rank first with 2x weight");
+
+        // Now flip: heavy semantic weight
+        let results2 =
+            weighted_rrf_merge(tantivy, semantic, 60, 10, 1.0, 2.0);
+        assert_eq!(results2[0].id, "b", "semantic result should rank first with 2x weight");
+    }
+
+    #[test]
+    fn test_weighted_zero_weight_excludes_source() {
+        let tantivy = vec![
+            make_result("a", "alpha", 10.0),
+            make_result("b", "beta", 8.0),
+        ];
+        let semantic = vec![
+            make_result("c", "gamma", 0.9),
+        ];
+
+        // Zero semantic weight — only keyword results should have nonzero scores
+        let results = weighted_rrf_merge(tantivy, semantic, 60, 10, 1.0, 0.0);
+
+        // "c" only appeared in semantic with weight 0, so its score should be 0
+        let gamma = results.iter().find(|r| r.id == "c").unwrap();
+        assert!(
+            gamma.score < 1e-10,
+            "zero-weighted source items should have ~0 score, got {}",
+            gamma.score
+        );
+    }
+
+    #[test]
+    fn test_search_weight_presets_have_expected_values() {
+        let code = SearchWeightProfile::fast_search();
+        assert!(code.keyword_weight >= 1.0, "fast_search should weight keywords strongly");
+        assert!(code.semantic_weight > 0.0, "fast_search should still use semantic");
+
+        let recall = SearchWeightProfile::recall();
+        assert!(recall.keyword_weight > 0.0, "recall should use keywords");
+        assert!(recall.semantic_weight >= 0.8, "recall should weight semantic strongly");
+
+        let balanced = SearchWeightProfile::get_context();
+        assert!(balanced.keyword_weight > 0.0);
+        assert!(balanced.semantic_weight > 0.0);
+    }
+}
+
+/// Weight profile wiring tests (Phase 5, Task 6).
+///
+/// Verifies that `hybrid_search` uses `weighted_rrf_merge` when a
+/// `SearchWeightProfile` is provided, and falls back to uniform `rrf_merge`
+/// when `None` is passed.
+#[cfg(test)]
+mod weight_profile_wiring_tests {
+    use anyhow::Result;
+
+    use crate::database::SymbolDatabase;
+    use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+    use crate::search::hybrid::hybrid_search;
+    use crate::search::index::{SearchFilter, SearchIndex, SymbolDocument};
+    use crate::search::weights::SearchWeightProfile;
+    use tempfile::TempDir;
+
+    /// Mock embedding provider that returns a deterministic vector.
+    struct StaticProvider;
+
+    impl EmbeddingProvider for StaticProvider {
+        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+            Ok(vec![1.0_f32; 384])
+        }
+
+        fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+            Ok(texts.iter().map(|_| vec![1.0_f32; 384]).collect())
+        }
+
+        fn dimensions(&self) -> usize {
+            384
+        }
+
+        fn device_info(&self) -> DeviceInfo {
+            DeviceInfo {
+                runtime: "test".into(),
+                device: "cpu".into(),
+                model_name: "static-mock".into(),
+                dimensions: 384,
+            }
+        }
+    }
+
+    /// Helper: create a SearchIndex + SymbolDatabase with test symbols + embeddings.
+    fn setup_index_and_db_with_embeddings() -> (SearchIndex, SymbolDatabase, TempDir, TempDir) {
+        let idx_dir = tempfile::tempdir().unwrap();
+        let db_dir = tempfile::tempdir().unwrap();
+
+        let index = SearchIndex::create(idx_dir.path()).unwrap();
+        let mut db = SymbolDatabase::new(&db_dir.path().join("test.db")).unwrap();
+
+        // Insert a file record for the foreign key constraint
+        db.conn
+            .execute(
+                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
+                 VALUES ('src/lib.rs', 'rust', 'abc123', 100, 0, 0)",
+                [],
+            )
+            .unwrap();
+
+        // Insert symbol into DB
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, file_path, language,
+                 start_line, start_col, end_line, end_col, start_byte, end_byte,
+                 reference_score, signature, doc_comment)
+                 VALUES ('sym1', 'process_data', 'function', 'src/lib.rs', 'rust',
+                 10, 0, 20, 0, 0, 200, 0.0,
+                 'fn process_data(input: &str) -> Result<()>',
+                 'Processes input data.')",
+                [],
+            )
+            .unwrap();
+
+        // Add symbol to Tantivy index
+        index
+            .add_symbol(&SymbolDocument {
+                id: "sym1".into(),
+                name: "process_data".into(),
+                signature: "fn process_data(input: &str) -> Result<()>".into(),
+                doc_comment: "Processes input data.".into(),
+                code_body: "fn process_data(input: &str) -> Result<()> { Ok(()) }".into(),
+                file_path: "src/lib.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 10,
+            })
+            .unwrap();
+        index.commit().unwrap();
+
+        // Seed embeddings so KNN returns results
+        db.store_embeddings(&[("sym1".to_string(), vec![0.95_f32; 384])])
+            .unwrap();
+
+        (index, db, idx_dir, db_dir)
+    }
+
+    #[test]
+    fn test_hybrid_search_with_weight_profile_uses_weighted_merge() {
+        let (index, db, _idx_dir, _db_dir) = setup_index_and_db_with_embeddings();
+        let provider = StaticProvider;
+        let profile = SearchWeightProfile::fast_search();
+
+        let results = hybrid_search(
+            "process_data",
+            &SearchFilter::default(),
+            10,
+            &index,
+            &db,
+            Some(&provider),
+            Some(profile),
+        )
+        .unwrap();
+
+        assert!(
+            !results.results.is_empty(),
+            "should return results with weight profile"
+        );
+        assert_eq!(results.results[0].name, "process_data");
+    }
+
+    #[test]
+    fn test_hybrid_search_none_profile_uses_uniform_merge() {
+        let (index, db, _idx_dir, _db_dir) = setup_index_and_db_with_embeddings();
+        let provider = StaticProvider;
+
+        // None profile should still work (backward compat)
+        let results = hybrid_search(
+            "process_data",
+            &SearchFilter::default(),
+            10,
+            &index,
+            &db,
+            Some(&provider),
+            None,
+        )
+        .unwrap();
+
+        assert!(
+            !results.results.is_empty(),
+            "should return results with None profile"
+        );
+    }
+
+    #[test]
+    fn test_hybrid_search_weight_profile_keyword_only_graceful() {
+        // When no embedding provider but profile is given, should still work
+        let idx_dir = tempfile::tempdir().unwrap();
+        let db_dir = tempfile::tempdir().unwrap();
+
+        let index = SearchIndex::create(idx_dir.path()).unwrap();
+        let db = SymbolDatabase::new(&db_dir.path().join("test.db")).unwrap();
+
+        db.conn
+            .execute(
+                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
+                 VALUES ('src/lib.rs', 'rust', 'abc123', 100, 0, 0)",
+                [],
+            )
+            .unwrap();
+
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, file_path, language,
+                 start_line, start_col, end_line, end_col, start_byte, end_byte,
+                 reference_score, signature, doc_comment)
+                 VALUES ('sym1', 'process_data', 'function', 'src/lib.rs', 'rust',
+                 10, 0, 20, 0, 0, 200, 0.0,
+                 'fn process_data(input: &str) -> Result<()>',
+                 'Processes input data.')",
+                [],
+            )
+            .unwrap();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "sym1".into(),
+                name: "process_data".into(),
+                signature: "fn process_data(input: &str) -> Result<()>".into(),
+                doc_comment: "Processes input data.".into(),
+                code_body: "fn process_data(input: &str) -> Result<()> { Ok(()) }".into(),
+                file_path: "src/lib.rs".into(),
+                kind: "function".into(),
+                language: "rust".into(),
+                start_line: 10,
+            })
+            .unwrap();
+        index.commit().unwrap();
+
+        let profile = SearchWeightProfile::get_context();
+        let results = hybrid_search(
+            "process_data",
+            &SearchFilter::default(),
+            10,
+            &index,
+            &db,
+            None, // No embedding provider
+            Some(profile),
+        )
+        .unwrap();
+
+        assert!(
+            !results.results.is_empty(),
+            "keyword-only should still work with a weight profile"
         );
     }
 }

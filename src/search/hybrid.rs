@@ -16,6 +16,7 @@ use tracing::{debug, info, warn};
 
 use super::SymbolSearchResult;
 use super::index::{SearchFilter, SearchIndex, SymbolSearchResults};
+use super::weights::SearchWeightProfile;
 use crate::database::SymbolDatabase;
 use crate::embeddings::EmbeddingProvider;
 use crate::tools::search::query::matches_glob_pattern;
@@ -92,6 +93,76 @@ pub fn rrf_merge(
     merged
 }
 
+/// Weighted variant of `rrf_merge` — applies per-source weights to the RRF formula.
+///
+/// Formula: `score(d) = keyword_weight * 1/(k + rank_keyword(d)) + semantic_weight * 1/(k + rank_semantic(d))`
+///
+/// When both weights are 1.0, this produces identical results to `rrf_merge`.
+pub fn weighted_rrf_merge(
+    tantivy_results: Vec<SymbolSearchResult>,
+    semantic_results: Vec<SymbolSearchResult>,
+    k: u32,
+    limit: usize,
+    keyword_weight: f32,
+    semantic_weight: f32,
+) -> Vec<SymbolSearchResult> {
+    // Fast path: if one list is empty, return the other (weighted but still RRF-scored)
+    if semantic_results.is_empty() {
+        let mut results = tantivy_results;
+        let k_f32 = k as f32;
+        for (i, result) in results.iter_mut().enumerate() {
+            result.score = keyword_weight * (1.0 / (k_f32 + (i + 1) as f32));
+        }
+        results.truncate(limit);
+        return results;
+    }
+    if tantivy_results.is_empty() {
+        let mut results = semantic_results;
+        let k_f32 = k as f32;
+        for (i, result) in results.iter_mut().enumerate() {
+            result.score = semantic_weight * (1.0 / (k_f32 + (i + 1) as f32));
+        }
+        results.truncate(limit);
+        return results;
+    }
+
+    let k_f32 = k as f32;
+
+    let mut scores: HashMap<String, f32> = HashMap::new();
+    let mut results_by_id: HashMap<String, SymbolSearchResult> = HashMap::new();
+
+    for (i, result) in tantivy_results.into_iter().enumerate() {
+        let rank = (i + 1) as f32;
+        let rrf_score = keyword_weight * (1.0 / (k_f32 + rank));
+        *scores.entry(result.id.clone()).or_insert(0.0) += rrf_score;
+        results_by_id.entry(result.id.clone()).or_insert(result);
+    }
+
+    for (i, result) in semantic_results.into_iter().enumerate() {
+        let rank = (i + 1) as f32;
+        let rrf_score = semantic_weight * (1.0 / (k_f32 + rank));
+        *scores.entry(result.id.clone()).or_insert(0.0) += rrf_score;
+        results_by_id.entry(result.id.clone()).or_insert(result);
+    }
+
+    let mut merged: Vec<SymbolSearchResult> = results_by_id
+        .into_values()
+        .map(|mut result| {
+            result.score = scores[&result.id];
+            result
+        })
+        .collect();
+
+    merged.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    merged.truncate(limit);
+
+    merged
+}
+
 /// Convert KNN search results (symbol_id, distance) into `SymbolSearchResult` objects.
 ///
 /// Batch-fetches symbol metadata from the database and maps each KNN result to a
@@ -139,6 +210,9 @@ pub fn knn_to_search_results(
 
 /// Run hybrid search: Tantivy keyword + KNN semantic, merged via RRF.
 ///
+/// When `weight_profile` is `Some`, uses `weighted_rrf_merge` with the profile's
+/// keyword/semantic weights. When `None`, falls back to uniform `rrf_merge`.
+///
 /// Graceful degradation:
 /// - If `embedding_provider` is `None`, returns Tantivy results directly (keyword-only).
 /// - If embedding or KNN search fails, logs the error and falls back to keyword-only.
@@ -153,6 +227,7 @@ pub fn hybrid_search(
     search_index: &SearchIndex,
     db: &SymbolDatabase,
     embedding_provider: Option<&dyn EmbeddingProvider>,
+    weight_profile: Option<SearchWeightProfile>,
 ) -> Result<SymbolSearchResults> {
     // Over-fetch when we'll merge; exact limit when keyword-only
     let tantivy_limit = if embedding_provider.is_some() {
@@ -185,11 +260,16 @@ pub fn hybrid_search(
         .filter(|result| matches_filter(result, filter))
         .collect();
 
-    // Step 4: Merge via RRF (k=60)
+    // Step 4: Merge via RRF (k=60), optionally weighted
     info!(
-        "Hybrid merge: {} keyword + {} semantic results → RRF merge (limit {})",
+        "Hybrid merge: {} keyword + {} semantic results → {} (limit {})",
         tantivy_results.results.len(),
         semantic_results.len(),
+        if weight_profile.is_some() {
+            "weighted RRF"
+        } else {
+            "uniform RRF"
+        },
         limit
     );
 
@@ -211,7 +291,23 @@ pub fn hybrid_search(
         debug!("  semantic top-10: [{}]", sem_top.join(", "));
     }
 
-    let merged = rrf_merge(tantivy_results.results, semantic_results, 60, limit);
+    let merged = match weight_profile {
+        Some(profile) => {
+            debug!(
+                "  weight profile: keyword={:.2}, semantic={:.2}",
+                profile.keyword_weight, profile.semantic_weight
+            );
+            weighted_rrf_merge(
+                tantivy_results.results,
+                semantic_results,
+                60,
+                limit,
+                profile.keyword_weight,
+                profile.semantic_weight,
+            )
+        }
+        None => rrf_merge(tantivy_results.results, semantic_results, 60, limit),
+    };
 
     Ok(SymbolSearchResults {
         results: merged,

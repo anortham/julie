@@ -144,6 +144,7 @@ pub fn run_pipeline(
         kind: None,
         file_pattern,
     };
+    let profile = crate::search::weights::SearchWeightProfile::get_context();
     let search_results = crate::search::hybrid::hybrid_search(
         query,
         &filter,
@@ -151,6 +152,7 @@ pub fn run_pipeline(
         search_index,
         db,
         embedding_provider,
+        Some(profile),
     )?;
 
     if search_results.results.is_empty() {
