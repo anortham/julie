@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,17 +75,15 @@ const backends = ref<Backend[]>([])
 const availableBackends = computed(() => backends.value.filter((b) => b.available))
 const unavailableBackends = computed(() => backends.value.filter((b) => !b.available))
 
-const statusBadgeClass = computed(() => {
-  return (status: string) => {
-    const map: Record<string, string> = {
-      running: 'badge-running',
-      completed: 'badge-completed',
-      failed: 'badge-failed',
-      queued: 'badge-queued',
-    }
-    return map[status] ?? 'badge-default'
+function statusBadgeClass(status: string): string {
+  const map: Record<string, string> = {
+    running: 'badge-running',
+    completed: 'badge-completed',
+    failed: 'badge-failed',
+    queued: 'badge-queued',
   }
-})
+  return map[status] ?? 'badge-default'
+}
 
 // ---------------------------------------------------------------------------
 // Fetch helpers
@@ -429,7 +427,7 @@ onUnmounted(() => {
         <div class="output-waiting">Loading output...</div>
       </div>
       <div v-else class="output-terminal">
-        <div v-if="selectedDispatch.output" class="output-line">{{ selectedDispatch.output }}</div>
+        <div v-if="selectedDispatch.output" v-for="(line, i) in selectedDispatch.output.split('\n')" :key="i" class="output-line">{{ line }}</div>
         <div v-else class="output-waiting">No output recorded.</div>
       </div>
       <div v-if="selectedDispatch.error" class="detail-error">
