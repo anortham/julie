@@ -18,8 +18,8 @@ use tokio::sync::RwLock;
 
 // Import tool parameter types
 use crate::tools::{
-    DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
-    ManageWorkspaceTool, RenameSymbolTool,
+    CheckpointTool, DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
+    ManageWorkspaceTool, PlanTool, RecallTool, RenameSymbolTool,
 };
 
 /// Tracks which indexes are ready for search operations
@@ -553,6 +553,74 @@ impl JulieServerHandler {
             .call_tool(self)
             .await
             .map_err(|e| McpError::internal_error(format!("manage_workspace failed: {}", e), None))
+    }
+
+    // ========== Memory Tools ==========
+
+    #[tool(
+        name = "checkpoint",
+        description = "Save a development milestone to memory. Creates a searchable checkpoint with git context, tags, and optional structured fields (decision, impact, etc.).",
+        annotations(
+            title = "Save Checkpoint",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn checkpoint(
+        &self,
+        Parameters(params): Parameters<CheckpointTool>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("Checkpoint: {:?}", params.description);
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("checkpoint failed: {}", e), None))
+    }
+
+    #[tool(
+        name = "recall",
+        description = "Retrieve prior context from developer memory. Returns recent checkpoints and the active plan.",
+        annotations(
+            title = "Recall Memory",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn recall(
+        &self,
+        Parameters(params): Parameters<RecallTool>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("Recall: limit={:?}, search={:?}", params.limit, params.search);
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("recall failed: {}", e), None))
+    }
+
+    #[tool(
+        name = "plan",
+        description = "Manage persistent development plans. Plans track multi-session work and associate checkpoints with goals.",
+        annotations(
+            title = "Manage Plan",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn plan(
+        &self,
+        Parameters(params): Parameters<PlanTool>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("Plan action: {}", params.action);
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("plan failed: {}", e), None))
     }
 }
 
