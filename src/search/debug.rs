@@ -9,9 +9,12 @@ use std::collections::HashMap;
 use serde::Serialize;
 
 use crate::search::index::{
-    ContentSearchResults, SearchFilter, SearchIndex, SymbolSearchResult, SymbolSearchResults,
+    ContentSearchResults, SearchFilter, SearchIndex, SymbolSearchResult,
 };
-use crate::search::scoring::{self, CENTRALITY_WEIGHT};
+use crate::search::scoring::{
+    self, CENTRALITY_WEIGHT, NL_PATH_BOOST_SRC, NL_PATH_PENALTY_DOCS, NL_PATH_PENALTY_FIXTURES,
+    NL_PATH_PENALTY_TESTS,
+};
 
 /// A symbol search result enriched with scoring breakdown.
 #[derive(Debug, Clone, Serialize)]
@@ -65,43 +68,6 @@ pub struct ContentDebugResults {
     pub results: Vec<ContentDebugResult>,
     pub relaxed: bool,
     pub query_tokens: Vec<String>,
-}
-
-/// Run a symbol search with debug scoring breakdown.
-///
-/// Strategy (option 3 from task description): run the normal search, then
-/// enrich each result with additional data. We look up centrality from the
-/// reference_scores map, compute what boost each scoring stage would have
-/// applied, and build a human-readable explanation string.
-///
-/// The raw BM25 score is the score *before* any post-Tantivy boosts.
-/// We reconstruct it by dividing out the known boost factors.
-pub fn search_symbols_debug(
-    search_index: &SearchIndex,
-    query_str: &str,
-    filter: &SearchFilter,
-    limit: usize,
-    reference_scores: &HashMap<String, f64>,
-) -> crate::search::Result<SymbolDebugResults> {
-    let query_tokens = search_index.tokenize_query_public(query_str);
-
-    // Run normal search — this applies all boosts (important_patterns, nl_path_prior)
-    let SymbolSearchResults { results, relaxed } =
-        search_index.search_symbols(query_str, filter, limit)?;
-
-    let total_candidates = results.len();
-
-    let debug_results: Vec<SymbolDebugResult> = results
-        .into_iter()
-        .map(|r| enrich_symbol_result(r, query_str, reference_scores, &query_tokens, relaxed))
-        .collect();
-
-    Ok(SymbolDebugResults {
-        results: debug_results,
-        relaxed,
-        query_tokens,
-        total_candidates,
-    })
 }
 
 /// Run a content search with debug scoring breakdown.
@@ -231,13 +197,13 @@ fn compute_nl_path_boost(query_str: &str, file_path: &str) -> f32 {
     }
 
     if scoring::is_test_path(file_path) {
-        0.95
+        NL_PATH_PENALTY_TESTS
     } else if scoring::is_docs_path(file_path) {
-        0.95
+        NL_PATH_PENALTY_DOCS
     } else if scoring::is_fixture_path(file_path) {
-        0.95
+        NL_PATH_PENALTY_FIXTURES
     } else {
-        1.08
+        NL_PATH_BOOST_SRC
     }
 }
 

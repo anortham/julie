@@ -19,10 +19,10 @@ pub const CENTRALITY_WEIGHT: f32 = 0.3;
 ///
 /// The intent is to gently prefer production code over docs/tests/fixtures when
 /// the query looks like natural language, without overwhelming text relevance.
-const NL_PATH_BOOST_SRC: f32 = 1.08;
-const NL_PATH_PENALTY_DOCS: f32 = 0.95;
-const NL_PATH_PENALTY_TESTS: f32 = 0.95;
-const NL_PATH_PENALTY_FIXTURES: f32 = 0.95;
+pub(crate) const NL_PATH_BOOST_SRC: f32 = 1.08;
+pub(crate) const NL_PATH_PENALTY_DOCS: f32 = 0.95;
+pub(crate) const NL_PATH_PENALTY_TESTS: f32 = 0.95;
+pub(crate) const NL_PATH_PENALTY_FIXTURES: f32 = 0.95;
 
 /// Symbol names that are too ubiquitous to benefit from centrality scoring.
 ///

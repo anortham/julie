@@ -1,5 +1,6 @@
 //! API route definitions for the Julie daemon HTTP server.
 
+pub mod common;
 pub mod health;
 pub mod projects;
 pub mod search;

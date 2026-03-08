@@ -11,7 +11,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use crate::daemon_state::WorkspaceLoadStatus;
+use crate::api::common::{MAX_RESULT_LIMIT, resolve_workspace};
 use crate::search::debug::{ContentDebugResults, SymbolDebugResults, search_content_debug};
 use crate::search::index::SearchFilter;
 use crate::server::AppState;
@@ -31,7 +31,7 @@ pub struct SearchRequest {
     /// Optional file pattern filter (glob syntax, e.g. "src/**/*.rs").
     #[serde(default)]
     pub file_pattern: Option<String>,
-    /// Maximum number of results (default: 20).
+    /// Maximum number of results (default: 20, max: 500).
     #[serde(default = "default_limit")]
     pub limit: usize,
     /// Search target: "definitions" (default) or "content".
@@ -80,7 +80,7 @@ pub struct ContentResultResponse {
 pub struct SearchResponse {
     /// "definitions" or "content"
     pub search_target: String,
-    /// True if AND→OR fallback was used
+    /// True if AND->OR fallback was used
     pub relaxed: bool,
     /// Number of results
     pub count: usize,
@@ -138,7 +138,7 @@ pub async fn search(
     drop(daemon_state);
 
     let query = body.query.clone();
-    let limit = body.limit;
+    let limit = body.limit.min(MAX_RESULT_LIMIT);
     let search_target = body.search_target.clone();
 
     let result = tokio::task::spawn_blocking(move || {
@@ -251,7 +251,7 @@ pub async fn search_debug(
     drop(daemon_state);
 
     let query = body.query.clone();
-    let limit = body.limit;
+    let limit = body.limit.min(MAX_RESULT_LIMIT);
     let search_target = body.search_target.clone();
 
     let result = tokio::task::spawn_blocking(move || {
@@ -353,35 +353,4 @@ pub async fn search_debug(
     })??;
 
     Ok(Json(result))
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Resolve a workspace from the daemon state.
-///
-/// If `project` is Some, looks up that specific workspace ID.
-/// Otherwise, returns the first Ready workspace.
-fn resolve_workspace<'a>(
-    daemon_state: &'a crate::daemon_state::DaemonState,
-    project: Option<&str>,
-) -> Result<&'a crate::daemon_state::LoadedWorkspace, (StatusCode, String)> {
-    match project {
-        Some(id) => daemon_state.workspaces.get(id).ok_or((
-            StatusCode::NOT_FOUND,
-            format!("Workspace not found: {}", id),
-        )),
-        None => {
-            // Find the first Ready workspace
-            daemon_state
-                .workspaces
-                .values()
-                .find(|ws| ws.status == WorkspaceLoadStatus::Ready)
-                .ok_or((
-                    StatusCode::NOT_FOUND,
-                    "No ready workspace available".to_string(),
-                ))
-        }
-    }
 }

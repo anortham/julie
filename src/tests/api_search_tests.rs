@@ -638,3 +638,133 @@ async fn test_debug_search_boost_explanation_format() {
         explanation
     );
 }
+
+// ---------------------------------------------------------------------------
+// Workspace status checks (I-1)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_search_non_ready_workspace_returns_400() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let state = test_state(temp_dir.path().to_path_buf());
+
+    // Register a workspace that is Indexing (not Ready)
+    let loaded_ws = LoadedWorkspace {
+        workspace: JulieWorkspace {
+            root: std::path::PathBuf::from("/fake/project"),
+            julie_dir: temp_dir.path().to_path_buf(),
+            db: None,
+            search_index: None,
+            watcher: None,
+            embedding_provider: None,
+            embedding_runtime_status: None,
+            config: Default::default(),
+        },
+        status: WorkspaceLoadStatus::Indexing,
+        path: std::path::PathBuf::from("/fake/project"),
+    };
+
+    {
+        let mut ds = state.daemon_state.write().await;
+        ds.workspaces
+            .insert("indexing-ws".to_string(), loaded_ws);
+    }
+
+    let app = test_app(state);
+    let body = serde_json::json!({
+        "query": "anything",
+        "project": "indexing-ws",
+        "limit": 10
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/search")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Searching a non-Ready workspace should return 400"
+    );
+}
+
+#[tokio::test]
+async fn test_search_registered_workspace_returns_400() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let state = test_state(temp_dir.path().to_path_buf());
+
+    let loaded_ws = LoadedWorkspace {
+        workspace: JulieWorkspace {
+            root: std::path::PathBuf::from("/fake/project"),
+            julie_dir: temp_dir.path().to_path_buf(),
+            db: None,
+            search_index: None,
+            watcher: None,
+            embedding_provider: None,
+            embedding_runtime_status: None,
+            config: Default::default(),
+        },
+        status: WorkspaceLoadStatus::Registered,
+        path: std::path::PathBuf::from("/fake/project"),
+    };
+
+    {
+        let mut ds = state.daemon_state.write().await;
+        ds.workspaces
+            .insert("registered-ws".to_string(), loaded_ws);
+    }
+
+    let app = test_app(state);
+    let body = serde_json::json!({
+        "query": "anything",
+        "project": "registered-ws",
+        "limit": 10
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/search")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Searching a Registered (not Ready) workspace should return 400"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Limit capping (S-6)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_search_limit_capped_at_500() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let state = test_state(temp_dir.path().to_path_buf());
+    setup_workspace_with_symbols(&state, &temp_dir).await;
+
+    let app = test_app(state);
+    // Request an absurdly high limit — should be silently capped to 500
+    let body = serde_json::json!({
+        "query": "SearchIndex",
+        "limit": 99999
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/search")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&body).unwrap()))
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    // Should succeed (the cap is applied internally, not rejected)
+    assert_eq!(response.status(), StatusCode::OK);
+}
