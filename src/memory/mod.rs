@@ -18,6 +18,7 @@
 
 pub mod checkpoint;
 pub mod git;
+pub mod index;
 pub mod plan;
 pub mod recall;
 pub mod storage;
@@ -318,4 +319,19 @@ pub struct WorkspaceSummary {
     /// ISO 8601 UTC timestamp of most recent checkpoint
     #[serde(rename = "lastActivity", skip_serializing_if = "Option::is_none")]
     pub last_activity: Option<String>,
+}
+
+/// A search result from the memory Tantivy index.
+#[derive(Debug, Clone)]
+pub struct MemorySearchResult {
+    pub id: String,
+    pub body: String,
+    pub tags: String,
+    pub symbols: String,
+    pub decision: String,
+    pub impact: String,
+    pub branch: String,
+    pub timestamp: String,
+    pub file_path: String,
+    pub score: f32,
 }
