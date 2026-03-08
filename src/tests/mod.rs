@@ -80,6 +80,7 @@ pub mod memory_plan_tests; // Plan CRUD (save, get, list, activate, update, comp
 pub mod memory_recall_tests; // Recall filesystem mode (last N, date filtering, planId, full flag)
 pub mod memory_storage_tests; // YAML frontmatter storage layer (format, parse, round-trip)
 pub mod memory_tool_tests; // MCP tool wrappers (CheckpointTool, RecallTool, PlanTool)
+pub mod memory_integration_tests; // End-to-end: checkpoint→recall round trip, plan workflow, Goldfish compat
 
 // ============================================================================
 // REGRESSION PREVENTION TESTS - Catch recurring bugs before they ship
