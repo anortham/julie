@@ -1,4 +1,4 @@
-//! Recall — filesystem and search modes.
+//! Recall — filesystem, search, and cross-project modes.
 //!
 //! **Filesystem mode** (no search query): walks `.memories/` date directories,
 //! loads checkpoints, sorts by date (newest first), and applies filtering
@@ -7,26 +7,22 @@
 //! **Search mode** (`options.search` is `Some`): queries the Tantivy memory
 //! index using BM25. Lazily rebuilds the index on first use if empty. Applies
 //! post-search date and planId filtering.
+//!
+//! **Cross-project mode**: aggregates checkpoints from multiple workspaces,
+//! tags each with its source project name, and builds workspace summaries.
 
-use std::path::Path;
-use std::sync::LazyLock;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, NaiveDate, Utc};
-use regex::Regex;
 
-/// Matches human-friendly duration strings: "30m", "2h", "3d", "1w".
-static SINCE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^(\d+)([mhdw])$").expect("valid regex"));
-
-/// Matches YYYY-MM-DD directory names.
-static DATE_DIR_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}$").expect("valid regex"));
-
+use super::date_filter::{DateFilter, DATE_DIR_RE};
 use super::index::MemoryIndex;
 use super::plan::get_active_plan;
 use super::storage::parse_checkpoint;
 use super::{Checkpoint, RecallOptions, RecallResult};
+
+// Re-export parse_since for use by tests and other modules.
+pub use super::date_filter::parse_since;
 
 /// Default number of checkpoints to return.
 const DEFAULT_LIMIT: usize = 5;
@@ -122,6 +118,108 @@ pub fn recall(workspace_root: &Path, options: RecallOptions) -> Result<RecallRes
         checkpoints,
         active_plan,
         workspaces: None,
+    })
+}
+
+// ============================================================================
+// Cross-project recall (daemon mode)
+// ============================================================================
+
+/// Aggregate checkpoints across multiple workspaces.
+///
+/// Iterates each workspace, calls `recall()` per workspace, merges results
+/// sorted by timestamp (newest first), tags each checkpoint's summary with
+/// its source project name, builds `WorkspaceSummary` entries, and applies
+/// a global limit.
+///
+/// The `active_plan` field is always `None` for cross-project results
+/// (plans are per-workspace, not cross-project).
+pub fn recall_cross_project(
+    workspaces: Vec<(String, PathBuf)>,
+    options: RecallOptions,
+) -> Result<RecallResult> {
+    let global_limit = options.limit.unwrap_or(DEFAULT_LIMIT);
+    let full = options.full.unwrap_or(false);
+
+    let mut all_checkpoints: Vec<Checkpoint> = Vec::new();
+    let mut workspace_summaries: Vec<super::WorkspaceSummary> = Vec::new();
+
+    for (project_name, workspace_root) in &workspaces {
+        // Build per-workspace options: no limit (we apply global limit after merge),
+        // keep full=true so we preserve git context for now (strip at the end).
+        let per_ws_options = RecallOptions {
+            workspace: None,
+            since: options.since.clone(),
+            days: options.days,
+            from: options.from.clone(),
+            to: options.to.clone(),
+            search: options.search.clone(),
+            limit: None, // no per-workspace limit
+            full: Some(true), // keep git context for now
+            plan_id: options.plan_id.clone(),
+        };
+
+        let ws_result = match recall(workspace_root, per_ws_options) {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(
+                    "Cross-project recall: failed to recall from '{}' at {}: {}",
+                    project_name,
+                    workspace_root.display(),
+                    e
+                );
+                // Build an empty summary for this workspace and continue
+                workspace_summaries.push(super::WorkspaceSummary {
+                    name: project_name.clone(),
+                    path: workspace_root.to_string_lossy().to_string(),
+                    checkpoint_count: 0,
+                    last_activity: None,
+                });
+                continue;
+            }
+        };
+
+        // Build workspace summary
+        let checkpoint_count = ws_result.checkpoints.len();
+        let last_activity = ws_result
+            .checkpoints
+            .first()
+            .map(|cp| cp.timestamp.clone());
+
+        workspace_summaries.push(super::WorkspaceSummary {
+            name: project_name.clone(),
+            path: workspace_root.to_string_lossy().to_string(),
+            checkpoint_count,
+            last_activity,
+        });
+
+        // Tag each checkpoint with the source project name
+        let mut tagged = ws_result.checkpoints;
+        for cp in &mut tagged {
+            let original = cp.summary.take().unwrap_or_default();
+            cp.summary = Some(format!("[{}] {}", project_name, original));
+        }
+
+        all_checkpoints.extend(tagged);
+    }
+
+    // Sort all checkpoints by timestamp descending (newest first)
+    all_checkpoints.sort_unstable_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+    // Apply global limit
+    all_checkpoints.truncate(global_limit);
+
+    // Strip git context if !full
+    if !full {
+        for cp in &mut all_checkpoints {
+            cp.git = None;
+        }
+    }
+
+    Ok(RecallResult {
+        checkpoints: all_checkpoints,
+        active_plan: None,
+        workspaces: Some(workspace_summaries),
     })
 }
 
@@ -224,173 +322,6 @@ fn recall_search_mode(
         active_plan,
         workspaces: None,
     })
-}
-
-// ============================================================================
-// Date filtering
-// ============================================================================
-
-/// Computed date/time boundaries for checkpoint filtering.
-struct DateFilter {
-    /// Earliest allowed timestamp (inclusive). None = no lower bound.
-    from: Option<DateTime<Utc>>,
-    /// Latest allowed timestamp (inclusive end of day). None = no upper bound.
-    to: Option<DateTime<Utc>>,
-}
-
-impl DateFilter {
-    /// Build a DateFilter from RecallOptions.
-    ///
-    /// Priority: `since` > `days` > `from`/`to` (matching Goldfish behavior).
-    fn from_options(options: &RecallOptions) -> Option<Self> {
-        // `since` takes priority
-        if let Some(ref since) = options.since {
-            if let Some(dt) = parse_since(since) {
-                return Some(DateFilter {
-                    from: Some(dt),
-                    to: None,
-                });
-            }
-        }
-
-        // `days` is next
-        if let Some(days) = options.days {
-            let from = Utc::now() - chrono::Duration::days(days as i64);
-            return Some(DateFilter {
-                from: Some(from),
-                to: None,
-            });
-        }
-
-        // `from`/`to` explicit range
-        let from_dt = options.from.as_ref().and_then(|s| parse_date_boundary(s, false));
-        let to_dt = options.to.as_ref().and_then(|s| parse_date_boundary(s, true));
-
-        if from_dt.is_some() || to_dt.is_some() {
-            return Some(DateFilter {
-                from: from_dt,
-                to: to_dt,
-            });
-        }
-
-        None
-    }
-
-    /// Quick check: can we skip an entire date directory?
-    ///
-    /// Uses date-level granularity to avoid reading files in dirs
-    /// that are entirely outside the filter range.
-    fn skip_date(&self, date_str: &str) -> bool {
-        let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") else {
-            return false; // Don't skip unparseable — let file-level filter handle it
-        };
-
-        // If the entire day is before our `from` boundary, skip it
-        if let Some(ref from) = self.from {
-            let end_of_day = date
-                .and_hms_opt(23, 59, 59)
-                .unwrap()
-                .and_utc();
-            if end_of_day < *from {
-                return true;
-            }
-        }
-
-        // If the entire day is after our `to` boundary, skip it
-        if let Some(ref to) = self.to {
-            let start_of_day = date
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_utc();
-            if start_of_day > *to {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    /// Check if a specific checkpoint timestamp is within the filter range.
-    fn matches_timestamp(&self, timestamp: &str) -> bool {
-        let Ok(ts) = DateTime::parse_from_rfc3339(timestamp) else {
-            // Try a more lenient parse for non-standard timestamps
-            return true; // Don't filter out unparseable timestamps
-        };
-        let ts = ts.with_timezone(&Utc);
-
-        if let Some(ref from) = self.from {
-            if ts < *from {
-                return false;
-            }
-        }
-
-        if let Some(ref to) = self.to {
-            if ts > *to {
-                return false;
-            }
-        }
-
-        true
-    }
-}
-
-/// Parse a `since` value into a UTC datetime.
-///
-/// Supports Goldfish-compatible duration strings:
-/// - "2h" -> 2 hours ago
-/// - "30m" -> 30 minutes ago
-/// - "3d" -> 3 days ago
-/// - "1w" -> 1 week ago
-/// - ISO 8601 timestamp -> parse directly
-pub fn parse_since(since: &str) -> Option<DateTime<Utc>> {
-    let since = since.trim();
-    if since.is_empty() {
-        return None;
-    }
-
-    // Try duration format: <number><unit>
-    if let Some(caps) = SINCE_RE.captures(since) {
-        let amount: i64 = caps[1].parse().ok()?;
-        let duration = match &caps[2] {
-            "m" => chrono::Duration::minutes(amount),
-            "h" => chrono::Duration::hours(amount),
-            "d" => chrono::Duration::days(amount),
-            "w" => chrono::Duration::weeks(amount),
-            _ => return None,
-        };
-        return Some(Utc::now() - duration);
-    }
-
-    // Try ISO 8601 timestamp
-    DateTime::parse_from_rfc3339(since)
-        .map(|dt| dt.with_timezone(&Utc))
-        .ok()
-}
-
-/// Parse a date boundary string into a UTC datetime.
-///
-/// Accepts:
-/// - "YYYY-MM-DD" date string (start or end of day depending on `end_of_day`)
-/// - ISO 8601 timestamp (used directly)
-fn parse_date_boundary(s: &str, end_of_day: bool) -> Option<DateTime<Utc>> {
-    let s = s.trim();
-
-    // Try as ISO 8601 timestamp first
-    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
-        return Some(dt.with_timezone(&Utc));
-    }
-
-    // Try as YYYY-MM-DD date
-    if let Ok(date) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
-        let time = if end_of_day {
-            date.and_hms_opt(23, 59, 59)?.and_utc()
-        } else {
-            date.and_hms_opt(0, 0, 0)?.and_utc()
-        };
-        return Some(time);
-    }
-
-    None
 }
 
 // ============================================================================

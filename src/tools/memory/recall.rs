@@ -55,7 +55,7 @@ pub struct RecallTool {
 
 impl RecallTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
-        debug!("Recall: limit={:?}, search={:?}", self.limit, self.search);
+        debug!("Recall: limit={:?}, search={:?}, workspace={:?}", self.limit, self.search, self.workspace);
 
         // Build RecallOptions from tool parameters
         let options = RecallOptions {
@@ -70,10 +70,72 @@ impl RecallTool {
             plan_id: self.plan_id.clone(),
         };
 
-        // Call recall
+        // Check for cross-project recall (workspace="all")
+        if self.workspace.as_deref() == Some("all") {
+            return self.call_cross_project(handler, options).await;
+        }
+
+        // Single-workspace recall
         let result = crate::memory::recall::recall(&handler.workspace_root, options)?;
 
         // Format output
+        let output = format_recall_result(&result);
+
+        Ok(CallToolResult::text_content(vec![Content::text(output)]))
+    }
+
+    /// Cross-project recall: aggregate checkpoints from all daemon workspaces.
+    ///
+    /// Requires daemon mode (`handler.daemon_state` is `Some`). Returns an
+    /// error in stdio mode.
+    async fn call_cross_project(
+        &self,
+        handler: &JulieServerHandler,
+        options: RecallOptions,
+    ) -> Result<CallToolResult> {
+        use crate::daemon_state::WorkspaceLoadStatus;
+
+        // Require daemon mode
+        let daemon_state = handler.daemon_state.as_ref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Cross-project recall (workspace=\"all\") requires daemon mode.\n\
+                 In stdio mode, recall retrieves checkpoints from the current workspace only."
+            )
+        })?;
+
+        // Read-lock DaemonState, extract Ready workspace paths, then drop lock
+        let workspaces: Vec<(String, std::path::PathBuf)> = {
+            let state = daemon_state.read().await;
+            state
+                .workspaces
+                .iter()
+                .filter(|(_, loaded)| loaded.status == WorkspaceLoadStatus::Ready)
+                .map(|(ws_id, loaded)| {
+                    let project_name = loaded
+                        .path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(ws_id)
+                        .to_string();
+                    (project_name, loaded.path.clone())
+                })
+                .collect()
+        };
+
+        if workspaces.is_empty() {
+            return Ok(CallToolResult::text_content(vec![Content::text(
+                "No ready workspaces available for cross-project recall.\n\
+                 Register and index projects first using the daemon API.",
+            )]));
+        }
+
+        debug!(
+            "Cross-project recall across {} workspaces",
+            workspaces.len()
+        );
+
+        let result = crate::memory::recall::recall_cross_project(workspaces, options)?;
+
         let output = format_recall_result(&result);
 
         Ok(CallToolResult::text_content(vec![Content::text(output)]))
@@ -132,6 +194,24 @@ pub(crate) fn format_recall_result(result: &crate::memory::RecallResult) -> Stri
         output.push('\n');
         output.push_str(&plan.content);
         output.push('\n');
+    }
+
+    // Workspace summaries section (cross-project recall)
+    if let Some(ref workspaces) = result.workspaces {
+        output.push_str(&format!(
+            "\n## Workspaces ({} projects)\n\n",
+            workspaces.len()
+        ));
+        for ws in workspaces {
+            let activity = ws
+                .last_activity
+                .as_deref()
+                .unwrap_or("no activity");
+            output.push_str(&format!(
+                "- **{}** — {} checkpoints, last active: {}\n",
+                ws.name, ws.checkpoint_count, activity
+            ));
+        }
     }
 
     output
