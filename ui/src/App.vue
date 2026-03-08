@@ -18,6 +18,10 @@ import { RouterLink, RouterView } from 'vue-router'
           <span class="pi pi-folder"></span>
           Projects
         </RouterLink>
+        <RouterLink to="/search" class="nav-link">
+          <span class="pi pi-search"></span>
+          Search
+        </RouterLink>
       </nav>
     </header>
     <main class="app-main">
