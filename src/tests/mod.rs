@@ -7,6 +7,11 @@
 // toolset redesign (2026-02-07). Only EditingTransaction remains (used by rename_symbol).
 
 // ============================================================================
+// AGENT TESTS - Agent dispatch backend, context assembly
+// ============================================================================
+pub mod agent_backend_tests; // Agent backend trait, ClaudeBackend, DispatchManager, context assembly
+
+// ============================================================================
 // TEST FIXTURES - Pre-indexed databases and test data
 // ============================================================================
 pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
