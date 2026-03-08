@@ -349,7 +349,7 @@ pub fn parse_checkpoint(content: &str) -> Result<Checkpoint> {
 // ============================================================================
 
 /// Split content into (yaml_content, body) at the frontmatter delimiters.
-fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
+pub(super) fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
     // Must start with "---\n"
     let content = content.strip_prefix("---\n")?;
 
@@ -367,7 +367,7 @@ fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
 }
 
 /// Extract a string value from a YAML mapping.
-fn get_string(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
+pub(super) fn get_string(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
     map.get(key).and_then(|v| match v {
         serde_yaml::Value::String(s) => Some(s.clone()),
         serde_yaml::Value::Number(n) => Some(n.to_string()),
@@ -377,7 +377,7 @@ fn get_string(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
 }
 
 /// Extract a string array from a YAML mapping.
-fn get_string_array(map: &serde_yaml::Mapping, key: &str) -> Option<Vec<String>> {
+pub(super) fn get_string_array(map: &serde_yaml::Mapping, key: &str) -> Option<Vec<String>> {
     map.get(key).and_then(|v| {
         if let serde_yaml::Value::Sequence(seq) = v {
             let items: Vec<String> = seq
@@ -418,6 +418,10 @@ fn get_confidence(map: &serde_yaml::Mapping) -> Option<u8> {
     if (1..=5).contains(&num) {
         Some(num as u8)
     } else {
+        tracing::warn!(
+            "Confidence value {} is outside valid range 1-5, ignoring",
+            num
+        );
         None
     }
 }

@@ -134,12 +134,15 @@ impl MemoryIndex {
     }
 
     /// Open an existing memory index or create a new one if it doesn't exist.
+    ///
+    /// If an existing index has a mismatched schema (e.g., missing fields from
+    /// a schema change), it is deleted and recreated to prevent silent data
+    /// corruption.
     pub fn open_or_create(path: &Path) -> Result<Self> {
         let schema = create_memory_schema();
-        let fields = MemorySchemaFields::new(&schema);
 
         let index = Index::builder()
-            .schema(schema)
+            .schema(schema.clone())
             .create_in_dir(path)
             .or_else(|_| Index::open_in_dir(path))
             .with_context(|| {
@@ -148,6 +151,32 @@ impl MemoryIndex {
                     path.display()
                 )
             })?;
+
+        // Validate that the opened index has all expected fields.
+        // If schema changed since the index was created, delete and recreate.
+        if !validate_schema(&index.schema()) {
+            tracing::warn!(
+                "Memory index at {} has outdated schema, recreating",
+                path.display()
+            );
+            // Drop the index before removing the directory
+            drop(index);
+            std::fs::remove_dir_all(path).with_context(|| {
+                format!(
+                    "Failed to remove outdated memory index at {}",
+                    path.display()
+                )
+            })?;
+            std::fs::create_dir_all(path).with_context(|| {
+                format!(
+                    "Failed to recreate memory index directory at {}",
+                    path.display()
+                )
+            })?;
+            return Self::create(path);
+        }
+
+        let fields = MemorySchemaFields::new(&index.schema());
 
         let reader = index
             .reader()
@@ -419,6 +448,25 @@ impl MemoryIndex {
             })
             .unwrap_or_default()
     }
+}
+
+/// Validate that a schema contains all expected memory index fields.
+///
+/// Returns `false` if any expected field is missing, indicating the index
+/// was created with an older schema version and should be recreated.
+fn validate_schema(schema: &Schema) -> bool {
+    let expected = [
+        fields::ID,
+        fields::BODY,
+        fields::TAGS,
+        fields::SYMBOLS,
+        fields::DECISION,
+        fields::IMPACT,
+        fields::BRANCH,
+        fields::TIMESTAMP,
+        fields::FILE_PATH,
+    ];
+    expected.iter().all(|name| schema.get_field(name).is_ok())
 }
 
 /// Check if a directory name matches YYYY-MM-DD format.

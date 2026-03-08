@@ -727,6 +727,38 @@ mod tests {
     }
 
     // ========================================================================
+    // RecallTool — workspace="all" requires daemon mode
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_recall_tool_workspace_all_errors_in_stdio_mode() {
+        let dir = TempDir::new().unwrap();
+        // new_sync creates a handler WITHOUT daemon_state (stdio mode)
+        let handler = create_test_handler(dir.path());
+
+        let tool = RecallTool {
+            limit: None,
+            since: None,
+            days: None,
+            from: None,
+            to: None,
+            search: None,
+            full: None,
+            workspace: Some("all".to_string()),
+            plan_id: None,
+        };
+
+        let result = tool.call_tool(&handler).await;
+        assert!(result.is_err(), "workspace='all' should fail in stdio mode");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("daemon mode"),
+            "Error should mention daemon mode, got: {}",
+            err_msg
+        );
+    }
+
+    // ========================================================================
     // End-to-end: checkpoint linked to plan
     // ========================================================================
 

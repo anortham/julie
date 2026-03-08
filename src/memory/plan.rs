@@ -25,6 +25,7 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 
+use super::storage::{get_string, get_string_array, split_frontmatter};
 use super::{Plan, PlanInput, PlanUpdate};
 
 // ============================================================================
@@ -363,53 +364,3 @@ fn parse_plan(content: &str) -> Result<Plan> {
     })
 }
 
-/// Split content into (yaml_content, body) at the frontmatter delimiters.
-fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
-    let content = content.strip_prefix("---\n")?;
-    let end_pos = content.find("\n---\n")?;
-    let yaml = &content[..end_pos];
-    let body = &content[end_pos + 5..]; // skip "\n---\n"
-    let body = body.strip_prefix('\n').unwrap_or(body);
-    let body = body.trim_end();
-    Some((yaml, body))
-}
-
-/// Extract a string value from a YAML mapping.
-fn get_string(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
-    map.get(key).and_then(|v| match v {
-        serde_yaml::Value::String(s) => Some(s.clone()),
-        serde_yaml::Value::Number(n) => Some(n.to_string()),
-        serde_yaml::Value::Bool(b) => Some(b.to_string()),
-        _ => None,
-    })
-}
-
-/// Extract a string array from a YAML mapping.
-fn get_string_array(map: &serde_yaml::Mapping, key: &str) -> Option<Vec<String>> {
-    map.get(key).and_then(|v| {
-        if let serde_yaml::Value::Sequence(seq) = v {
-            let items: Vec<String> = seq
-                .iter()
-                .filter_map(|item| match item {
-                    serde_yaml::Value::String(s) => {
-                        let trimmed = s.trim();
-                        if trimmed.is_empty() {
-                            None
-                        } else {
-                            Some(trimmed.to_string())
-                        }
-                    }
-                    serde_yaml::Value::Number(n) => Some(n.to_string()),
-                    _ => None,
-                })
-                .collect();
-            if items.is_empty() {
-                None
-            } else {
-                Some(items)
-            }
-        } else {
-            None
-        }
-    })
-}

@@ -77,6 +77,7 @@ pub mod memory_checkpoint_tests; // Checkpoint save (directory creation, file wr
 pub mod memory_git_tests; // Git context capture (branch, commit, changed/untracked files)
 pub mod memory_index_tests; // Memory Tantivy index (BM25 search, rebuild from files)
 pub mod memory_plan_tests; // Plan CRUD (save, get, list, activate, update, complete)
+pub mod memory_cross_project_tests; // Cross-project recall (recall_cross_project, daemon mode)
 pub mod memory_recall_tests; // Recall filesystem mode (last N, date filtering, planId, full flag)
 pub mod memory_storage_tests; // YAML frontmatter storage layer (format, parse, round-trip)
 pub mod memory_tool_tests; // MCP tool wrappers (CheckpointTool, RecallTool, PlanTool)
