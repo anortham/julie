@@ -22,6 +22,10 @@ import { RouterLink, RouterView } from 'vue-router'
           <span class="pi pi-search"></span>
           Search
         </RouterLink>
+        <RouterLink to="/memories" class="nav-link">
+          <span class="pi pi-clock"></span>
+          Memories
+        </RouterLink>
       </nav>
     </header>
     <main class="app-main">
