@@ -6,6 +6,7 @@
 //! - `GET /api/plans/:id` — get a single plan by ID
 //! - `GET /api/plans/active` — get the currently active plan (404 if none)
 
+use std::cmp::Reverse;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -33,9 +34,6 @@ pub struct MemoriesQuery {
     /// Filter by plan ID.
     #[serde(rename = "planId")]
     pub plan_id: Option<String>,
-    /// Checkpoint type filter.
-    #[serde(rename = "type")]
-    pub checkpoint_type: Option<String>,
     /// Workspace/project ID (defaults to first Ready workspace).
     pub project: Option<String>,
 }
@@ -154,14 +152,14 @@ fn find_checkpoint_by_id(
         .filter_map(|e| e.ok())
         .filter(|e| {
             e.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
-                && e.file_name().to_str().map_or(false, |n| {
-                    n.len() == 10 && n.chars().nth(4) == Some('-')
-                })
+                && e.file_name()
+                    .to_str()
+                    .is_some_and(|n| n.len() == 10 && n.chars().nth(4) == Some('-'))
         })
         .collect();
 
     // Sort newest first for faster hit on recent checkpoints
-    date_dirs.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+    date_dirs.sort_by_key(|e| Reverse(e.file_name()));
 
     // Normalize the query: strip "checkpoint_" prefix if present
     let hash_query = query.strip_prefix("checkpoint_").unwrap_or(query);
