@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import SearchFilters from '../components/SearchFilters.vue'
+import MemoryResults from '../components/MemoryResults.vue'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface SymbolResult {
+  content_type?: string
   id: string
   name: string
   signature: string
@@ -23,15 +26,31 @@ interface ContentResult {
   score: number
 }
 
+interface MemoryResult {
+  content_type: string
+  id: string
+  body: string
+  tags?: string
+  symbols?: string
+  decision?: string
+  impact?: string
+  branch?: string
+  timestamp?: string
+  file_path?: string
+  score: number
+}
+
 interface SearchResponse {
   search_target: string
   relaxed: boolean
   count: number
   symbols?: SymbolResult[]
   content?: ContentResult[]
+  memories?: MemoryResult[]
 }
 
 interface SymbolDebugResult {
+  content_type?: string
   id: string
   name: string
   signature: string
@@ -66,6 +85,7 @@ interface DebugSearchResponse {
   relaxed: boolean
   count: number
   query_tokens: string[]
+  hybrid_mode: boolean
   symbols?: {
     results: SymbolDebugResult[]
     relaxed: boolean
@@ -89,6 +109,8 @@ const filePattern = ref('')
 const searchTarget = ref<'definitions' | 'content'>('definitions')
 const debugMode = ref(false)
 const limit = ref(20)
+const contentType = ref<'code' | 'memory' | 'all'>('code')
+const hybrid = ref(false)
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -127,6 +149,11 @@ const queryTokens = computed(() => {
   return []
 })
 
+const isHybridMode = computed(() => {
+  if (debugMode.value && debugResponse.value) return debugResponse.value.hybrid_mode
+  return false
+})
+
 const searched = ref(false)
 
 // ---------------------------------------------------------------------------
@@ -151,6 +178,8 @@ async function doSearch() {
   }
   if (language.value) body.language = language.value
   if (filePattern.value.trim()) body.file_pattern = filePattern.value.trim()
+  if (contentType.value !== 'code') body.content_type = contentType.value
+  if (hybrid.value) body.hybrid = true
 
   try {
     const res = await fetch(endpoint, {
@@ -207,6 +236,11 @@ function kindColor(kind: string): string {
 function formatScore(n: number): string {
   return n.toFixed(4)
 }
+
+function contentTypeBadgeClass(ct?: string): string {
+  if (ct === 'memory') return 'ct-badge ct-badge-memory'
+  return 'ct-badge ct-badge-code'
+}
 </script>
 
 <template>
@@ -234,79 +268,17 @@ function formatScore(n: number): string {
         </button>
       </div>
 
-      <!-- Filters row -->
-      <div class="filters-row">
-        <div class="filter-group">
-          <label class="filter-label">Target</label>
-          <div class="radio-group">
-            <label class="radio-item" :class="{ active: searchTarget === 'definitions' }">
-              <input
-                v-model="searchTarget"
-                type="radio"
-                value="definitions"
-                class="radio-input"
-              />
-              Definitions
-            </label>
-            <label class="radio-item" :class="{ active: searchTarget === 'content' }">
-              <input
-                v-model="searchTarget"
-                type="radio"
-                value="content"
-                class="radio-input"
-              />
-              Content
-            </label>
-          </div>
-        </div>
-
-        <div class="filter-group">
-          <label class="filter-label" for="lang-select">Language</label>
-          <select id="lang-select" v-model="language" class="form-select">
-            <option value="">All languages</option>
-            <option v-for="lang in languages.filter(l => l)" :key="lang" :value="lang">
-              {{ lang }}
-            </option>
-          </select>
-        </div>
-
-        <div class="filter-group">
-          <label class="filter-label" for="pattern-input">File pattern</label>
-          <input
-            id="pattern-input"
-            v-model="filePattern"
-            type="text"
-            placeholder="e.g. src/**/*.rs"
-            class="form-input form-input-sm"
-          />
-        </div>
-
-        <div class="filter-group">
-          <label class="filter-label" for="limit-input">Limit</label>
-          <input
-            id="limit-input"
-            v-model.number="limit"
-            type="number"
-            min="1"
-            max="500"
-            class="form-input form-input-num"
-          />
-        </div>
-
-        <div class="filter-group filter-toggle">
-          <label class="toggle-label">
-            <input
-              v-model="debugMode"
-              type="checkbox"
-              class="toggle-input"
-            />
-            <span class="toggle-track">
-              <span class="toggle-thumb"></span>
-            </span>
-            <span class="toggle-text">Debug</span>
-          </label>
-        </div>
-      </div>
+      <!-- Filters (extracted component) -->
+      <SearchFilters
+        v-model:search-target="searchTarget"
+        v-model:language="language"
+        v-model:file-pattern="filePattern"
+        v-model:limit="limit"
+        v-model:debug-mode="debugMode"
+        v-model:content-type="contentType"
+        v-model:hybrid="hybrid"
+        :languages="languages"
+      />
     </div>
 
     <!-- Error -->
@@ -320,12 +292,25 @@ function formatScore(n: number): string {
       <span class="pi pi-spin pi-spinner"></span> Searching...
     </div>
 
-    <!-- Token breakdown (debug mode) -->
-    <div v-if="debugMode && queryTokens.length > 0" class="token-breakdown">
-      <span class="token-label">Query tokens:</span>
-      <code class="token-raw">{{ query }}</code>
-      <span class="pi pi-arrow-right token-arrow"></span>
-      <span v-for="(token, i) in queryTokens" :key="i" class="token-chip">{{ token }}</span>
+    <!-- Token breakdown + debug badges -->
+    <div v-if="debugMode && searched && !loading && !error" class="debug-header">
+      <div v-if="queryTokens.length > 0" class="token-breakdown">
+        <span class="token-label">Query tokens:</span>
+        <code class="token-raw">{{ query }}</code>
+        <span class="pi pi-arrow-right token-arrow"></span>
+        <span v-for="(token, i) in queryTokens" :key="i" class="token-chip">{{ token }}</span>
+      </div>
+      <div class="debug-badges">
+        <span
+          class="mode-badge"
+          :class="isHybridMode ? 'mode-badge-hybrid' : 'mode-badge-keyword'"
+        >
+          {{ isHybridMode ? 'Hybrid' : 'Keyword Only' }}
+        </span>
+        <span v-if="contentType !== 'code'" class="mode-badge mode-badge-content">
+          {{ contentType === 'all' ? 'Code + Memories' : 'Memories Only' }}
+        </span>
+      </div>
     </div>
 
     <!-- Results meta -->
@@ -350,6 +335,12 @@ function formatScore(n: number): string {
     >
       <div v-for="sym in standardResponse.symbols" :key="sym.id" class="result-card">
         <div class="result-header">
+          <span
+            v-if="contentType !== 'code'"
+            :class="contentTypeBadgeClass(sym.content_type)"
+          >
+            {{ sym.content_type ?? 'code' }}
+          </span>
           <span class="kind-badge" :style="{ background: kindColor(sym.kind) }">
             {{ sym.kind }}
           </span>
@@ -382,6 +373,12 @@ function formatScore(n: number): string {
       </div>
     </div>
 
+    <!-- STANDARD MODE: Memory results -->
+    <MemoryResults
+      v-if="!debugMode && standardResponse?.memories && standardResponse.memories.length > 0"
+      :memories="standardResponse.memories"
+    />
+
     <!-- ================================================================= -->
     <!-- DEBUG MODE: Definition results with expandable scoring              -->
     <!-- ================================================================= -->
@@ -400,6 +397,12 @@ function formatScore(n: number): string {
             class="pi expand-icon"
             :class="expandedRows.has(sym.id) ? 'pi-chevron-down' : 'pi-chevron-right'"
           ></span>
+          <span
+            v-if="contentType !== 'code'"
+            :class="contentTypeBadgeClass(sym.content_type)"
+          >
+            {{ sym.content_type ?? 'code' }}
+          </span>
           <span class="kind-badge" :style="{ background: kindColor(sym.kind) }">
             {{ sym.kind }}
           </span>
@@ -517,32 +520,11 @@ function formatScore(n: number): string {
 .search-row {
   display: flex;
   gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .search-input {
   flex: 1;
-}
-
-.filters-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 0.75rem;
-  align-items: flex-end;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.filter-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-  font-weight: 600;
 }
 
 /* Form inputs */
@@ -559,115 +541,6 @@ function formatScore(n: number): string {
   outline: none;
   border-color: #6366f1;
   box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-}
-
-.form-input-sm {
-  width: 160px;
-}
-
-.form-input-num {
-  width: 72px;
-  font-variant-numeric: tabular-nums;
-}
-
-.form-select {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  background: white;
-  cursor: pointer;
-  min-width: 140px;
-}
-
-.form-select:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-}
-
-/* Radio group */
-.radio-group {
-  display: flex;
-  gap: 0;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.radio-item {
-  padding: 0.4rem 0.75rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-  user-select: none;
-  border-right: 1px solid var(--border-color);
-  transition: background 0.15s, color 0.15s;
-  color: var(--text-secondary);
-}
-
-.radio-item:last-child {
-  border-right: none;
-}
-
-.radio-item.active {
-  background: #6366f1;
-  color: white;
-}
-
-.radio-input {
-  display: none;
-}
-
-/* Toggle switch */
-.filter-toggle {
-  justify-content: flex-end;
-}
-
-.toggle-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  user-select: none;
-}
-
-.toggle-input {
-  display: none;
-}
-
-.toggle-track {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  background: #cbd5e1;
-  border-radius: 10px;
-  transition: background 0.2s;
-}
-
-.toggle-input:checked + .toggle-track {
-  background: #6366f1;
-}
-
-.toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  background: white;
-  border-radius: 50%;
-  transition: transform 0.2s;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
-}
-
-.toggle-input:checked + .toggle-track .toggle-thumb {
-  transform: translateX(16px);
-}
-
-.toggle-text {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
 }
 
 /* Button */
@@ -717,6 +590,14 @@ function formatScore(n: number): string {
   background: #fef2f2;
 }
 
+/* Debug header — tokens + mode badges */
+.debug-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
 /* Token breakdown */
 .token-breakdown {
   display: flex;
@@ -727,7 +608,6 @@ function formatScore(n: number): string {
   background: #f0f0ff;
   border: 1px solid #c7d2fe;
   border-radius: 8px;
-  margin-bottom: 1rem;
   font-size: 0.85rem;
 }
 
@@ -761,6 +641,39 @@ function formatScore(n: number): string {
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 0.8rem;
   font-weight: 500;
+}
+
+/* Debug mode badges */
+.debug-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.mode-badge-hybrid {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.mode-badge-keyword {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.mode-badge-content {
+  background: #f3e8ff;
+  color: #7c3aed;
 }
 
 /* Results meta */
@@ -854,6 +767,28 @@ function formatScore(n: number): string {
   color: white;
   text-transform: lowercase;
   flex-shrink: 0;
+}
+
+/* Content-type badges for mixed results */
+.ct-badge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.ct-badge-code {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.ct-badge-memory {
+  background: #f3e8ff;
+  color: #7c3aed;
 }
 
 .result-name {
