@@ -11,9 +11,45 @@ pub mod search_unified;
 
 use std::sync::Arc;
 
-use axum::{Router, routing::{get, post}};
+use axum::{Json, Router, routing::{get, post}};
+use utoipa::OpenApi;
+use utoipa_scalar::{Scalar, Servable};
 
 use crate::server::AppState;
+
+/// OpenAPI documentation aggregator.
+///
+/// Collects all annotated paths and schemas into a single OpenAPI 3.1 spec.
+/// Tasks 11-12 will add the remaining endpoint annotations.
+#[derive(OpenApi)]
+#[openapi(
+    info(
+        title = "Julie API",
+        description = "Julie Code Intelligence Server — REST API for projects, search, memories, agents, and dashboard.",
+        version = "4.0.0",
+        license(name = "MIT")
+    ),
+    paths(
+        health::health_check,
+    ),
+    components(
+        schemas(health::HealthResponse)
+    ),
+    tags(
+        (name = "health", description = "Server health"),
+        (name = "projects", description = "Project management and indexing"),
+        (name = "search", description = "Code search and unified search"),
+        (name = "memories", description = "Checkpoints, recall, and plans"),
+        (name = "agents", description = "Agent dispatch and management"),
+        (name = "dashboard", description = "Dashboard statistics")
+    )
+)]
+pub struct ApiDoc;
+
+/// `GET /api/openapi.json` — returns the OpenAPI specification as JSON.
+async fn openapi_spec() -> Json<utoipa::openapi::OpenApi> {
+    Json(ApiDoc::openapi())
+}
 
 /// Build the `/api` router with all sub-routes.
 pub fn routes(state: Arc<AppState>) -> Router {
@@ -39,5 +75,8 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/plans/{id}", get(memories::get_plan))
         // Dashboard
         .route("/dashboard/stats", get(dashboard::stats))
+        // OpenAPI spec + interactive docs
+        .route("/openapi.json", get(openapi_spec))
+        .merge(Scalar::with_url("/docs", ApiDoc::openapi()))
         .with_state(state)
 }

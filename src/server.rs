@@ -177,6 +177,7 @@ pub async fn start_server(
     tracing::info!("============================================================");
     tracing::info!("Port:           {}", port);
     tracing::info!("API:            http://localhost:{}/api", port);
+    tracing::info!("API Docs:       http://localhost:{}/api/docs", port);
     tracing::info!("MCP:            http://localhost:{}/mcp", port);
     tracing::info!("Per-project MCP: http://localhost:{}/mcp/{{workspace_id}}", port);
     tracing::info!("Web UI:         http://localhost:{}/ui/", port);
