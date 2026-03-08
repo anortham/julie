@@ -18,7 +18,7 @@
     "julie": {
       "_comment": "Option A: Daemon mode (recommended)",
       "type": "http",
-      "url": "http://localhost:3141/mcp"
+      "url": "http://localhost:7890/mcp"
     },
 
     "julie-stdio": {

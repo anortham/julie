@@ -41,7 +41,7 @@ Default connection to daemon mode:
   "mcpServers": {
     "julie": {
       "type": "http",
-      "url": "http://localhost:3141/mcp"
+      "url": "http://localhost:7890/mcp"
     }
   }
 }
@@ -198,7 +198,7 @@ Items triaged out of 4.0:
 
 ### Plugin
 - [ ] Plugin directory structure created with plugin.json manifest
-- [ ] .mcp.json connects to daemon at localhost:3141
+- [ ] .mcp.json connects to daemon at localhost:7890
 - [ ] 3 hooks implemented (SessionStart, PreCompact, ExitPlanMode)
 - [ ] 5 skills implemented (checkpoint, recall, plan, plan-status, standup)
 - [ ] Julie MCP tool descriptions enhanced with detailed usage guidance

@@ -80,6 +80,7 @@ src/database/
 - **Language**: Rust (native performance, cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
 - **Architecture**: Tantivy full-text search + SQLite structured storage
+- **Modes**: Daemon (persistent HTTP server on port 7890) with `connect` command (auto-start daemon + stdio bridge), web dashboard at `/ui/`, OpenAPI docs at `/api/docs`
 - **Origin**: Native Rust implementation for true cross-platform compatibility
 - **Crown Jewels**: 30 tree-sitter extractors with comprehensive test suites
 
@@ -380,8 +381,8 @@ fast_search(
 
 ---
 
-**Last Updated:** 2026-03-06
-**Status:** Production Ready (v3.9.0)
+**Last Updated:** 2026-03-08
+**Status:** Production Ready (v4.0.0)
 
 ---
 

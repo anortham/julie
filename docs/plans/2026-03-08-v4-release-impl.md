@@ -18,7 +18,7 @@
 - Create: `julie-plugin/.claude-plugin/plugin.json`
 - Create: `julie-plugin/README.md`
 
-**What to build:** The plugin directory structure with manifest. The manifest includes `mcpServers` inline (pointing to `http://localhost:3141/mcp` for daemon mode), metadata, and keywords. README covers installation (binary + plugin), daemon startup, and verification.
+**What to build:** The plugin directory structure with manifest. The manifest includes `mcpServers` inline (pointing to `http://localhost:7890/mcp` for daemon mode), metadata, and keywords. README covers installation (binary + plugin), daemon startup, and verification.
 
 **Approach:** Follow goldfish's pattern — `mcpServers` inline in `plugin.json` rather than a separate `.mcp.json`. Use `"type": "http"` for the MCP server connection since we're connecting to the daemon. Plugin name is `"julie"`.
 

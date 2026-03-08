@@ -19,7 +19,7 @@
   "mcpServers": {
     "julie": {
       "type": "http",
-      "url": "http://localhost:3141/mcp"
+      "url": "http://localhost:7890/mcp"
     }
   }
 }

@@ -1,13 +1,13 @@
 ---
 id: sidecar-binary-distribution
 title: Sidecar Binary Distribution
-status: active
+status: completed
 created: 2026-03-04T21:45:29.810Z
-updated: 2026-03-04T21:45:29.810Z
+updated: 2026-03-08T22:01:33.521Z
 tags:
-  - sidecar
-  - distribution
-  - embeddings
+- sidecar
+- distribution
+- embeddings
 ---
 
 # Sidecar Binary Distribution
@@ -36,4 +36,3 @@ Use `include_dir` crate to embed `python/embeddings_sidecar/` at compile time. E
 
 ## Implementation Plan
 `docs/plans/2026-03-04-sidecar-binary-distribution-impl.md`
-

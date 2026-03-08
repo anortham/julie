@@ -154,6 +154,8 @@ pub async fn start_server(
         // Embedded Vue UI at /ui/
         .route("/ui/", axum::routing::get(ui::ui_handler))
         .route("/ui/{*path}", axum::routing::get(ui::ui_handler))
+        // Root redirect → dashboard
+        .route("/", axum::routing::get(|| async { axum::response::Redirect::temporary("/ui/") }))
         .layer(tower_http::cors::CorsLayer::permissive());
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));

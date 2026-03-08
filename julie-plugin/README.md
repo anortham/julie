@@ -62,7 +62,7 @@ The plugin connects to Julie via HTTP, so the daemon must be running before you 
 julie daemon start
 ```
 
-The daemon listens on `http://localhost:3141` by default. It runs in the background and serves all your projects.
+The daemon listens on `http://localhost:7890` by default. It runs in the background and serves all your projects.
 
 To check daemon status:
 
@@ -98,7 +98,7 @@ After installing the binary, starting the daemon, and adding the plugin:
    julie daemon status
    ```
 
-   You should see output indicating the daemon is active on port 3141.
+   You should see output indicating the daemon is active on port 7890.
 
 2. **Confirm the plugin is loaded in Claude Code:**
 
@@ -123,7 +123,7 @@ Unlike stdio-based MCP servers, Julie runs as a persistent daemon. This architec
 - **Shared index**: One daemon serves all your Claude Code sessions and projects
 - **Background indexing**: File changes are picked up automatically
 - **Cross-project search**: Search across related codebases
-- **Dashboard**: Web UI at `http://localhost:3141` for monitoring and exploration
+- **Dashboard**: Web UI at `http://localhost:7890` for monitoring and exploration
 
 The plugin simply points Claude Code at the daemon's HTTP endpoint — no binary spawning, no per-session startup cost.
 
@@ -140,7 +140,7 @@ Add to `.cursor/mcp.json` in your project (daemon mode):
   "mcpServers": {
     "julie": {
       "type": "http",
-      "url": "http://localhost:3141/mcp"
+      "url": "http://localhost:7890/mcp"
     }
   }
 }
@@ -203,4 +203,4 @@ The daemon isn't running. Start it with `julie daemon start`.
 Re-add the plugin with `claude plugin add /path/to/julie-plugin`.
 
 **No results from searches:**
-Julie may still be indexing your project. Check `julie daemon status` or the dashboard at `http://localhost:3141` for indexing progress.
+Julie may still be indexing your project. Check `julie daemon status` or the dashboard at `http://localhost:7890` for indexing progress.
