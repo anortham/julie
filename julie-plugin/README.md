@@ -127,6 +127,73 @@ Unlike stdio-based MCP servers, Julie runs as a persistent daemon. This architec
 
 The plugin simply points Claude Code at the daemon's HTTP endpoint — no binary spawning, no per-session startup cost.
 
+## Other AI Coding Tools
+
+Julie's MCP server works with any MCP-compatible tool — not just Claude Code. The plugin (hooks, slash commands) is Claude Code-specific, but all of Julie's core tools are available to any agent that speaks MCP.
+
+### Cursor
+
+Add to `.cursor/mcp.json` in your project (daemon mode):
+
+```json
+{
+  "mcpServers": {
+    "julie": {
+      "type": "http",
+      "url": "http://localhost:3141/mcp"
+    }
+  }
+}
+```
+
+Or stdio mode (no daemon required):
+
+```json
+{
+  "mcpServers": {
+    "julie": {
+      "command": "julie",
+      "args": [],
+      "env": {
+        "JULIE_WORKSPACE": "/path/to/your/project"
+      }
+    }
+  }
+}
+```
+
+### Windsurf / Other MCP-Compatible Tools
+
+Most tools use a `.mcp.json` or similar config file. Copy the appropriate config from [`mcp.json.example`](../mcp.json.example) at the repository root. Daemon mode (`type: http`) is recommended for the full experience; stdio mode works for single-project use.
+
+### What Works Everywhere (Any MCP Client)
+
+All Julie tools work via the MCP protocol regardless of client:
+
+- **Search** — `fast_search` for definitions and content across 31 languages
+- **Navigation** — `fast_refs` for finding references and call sites
+- **Context** — `get_context` for token-budgeted code retrieval
+- **Investigation** — `deep_dive` for progressive-depth symbol exploration
+- **Symbols** — `get_symbols` for file-level symbol listing
+- **Refactoring** — `rename_symbol` for cross-file renames
+- **Memory** — `checkpoint`, `recall`, `plan` for cross-session persistence
+- **Workspace** — `manage_workspace` for adding reference projects
+
+Tool descriptions and server instructions are served via the MCP protocol itself, so agents see usage guidance regardless of which client they're running in.
+
+### What's Claude Code-Only (Requires the Plugin)
+
+These features depend on Claude Code's plugin hooks and skills system:
+
+- **Automatic recall** on session start (`SessionStart` hook)
+- **Automatic checkpoint** before context compaction (`PreCompact` hook)
+- **Automatic plan save** after plan approval (`PostToolUse` → `ExitPlanMode` hook)
+- **Slash commands** — `/checkpoint`, `/recall`, `/standup`, `/plan`, `/plan-status`
+
+### For Agents Without Hooks
+
+Without the plugin hooks, memory features still work — they just aren't automatic. Julie's tool descriptions explain when to checkpoint and recall, so agents that read tool descriptions will naturally use them at appropriate times. The difference is that Claude Code's hooks *guarantee* it happens at key moments (session start, before compaction, after plan approval) rather than relying on agent initiative.
+
 ## Troubleshooting
 
 **"Connection refused" errors:**
