@@ -111,10 +111,16 @@ fn spawn_daemon(port: u16) -> Result<()> {
     std::fs::create_dir_all(&logs_dir)
         .with_context(|| format!("Failed to create logs directory {:?}", logs_dir))?;
 
-    let stdout_log = std::fs::File::create(logs_dir.join("daemon-stdout.log"))
-        .context("Failed to create daemon stdout log")?;
-    let stderr_log = std::fs::File::create(logs_dir.join("daemon-stderr.log"))
-        .context("Failed to create daemon stderr log")?;
+    let stdout_log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(logs_dir.join("daemon-stdout.log"))
+        .context("Failed to open daemon stdout log")?;
+    let stderr_log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(logs_dir.join("daemon-stderr.log"))
+        .context("Failed to open daemon stderr log")?;
 
     let child = std::process::Command::new(exe)
         .args(["daemon", "start", "--port", &port.to_string(), "--foreground"])
@@ -177,7 +183,7 @@ async fn wait_for_daemon_health(port: u16) -> Result<()> {
 /// Returns the workspace_id from the daemon's response.
 /// This is idempotent — if the workspace is already registered, the daemon
 /// returns 409 Conflict with the existing project info.
-pub(crate) async fn register_workspace(port: u16, workspace_root: &PathBuf) -> Result<String> {
+pub(crate) async fn register_workspace(port: u16, workspace_root: &std::path::Path) -> Result<String> {
     let url = format!("http://localhost:{}/api/projects", port);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -311,6 +317,11 @@ async fn run_stdio_bridge(mcp_url: &str) -> Result<()> {
                 continue;
             }
         };
+
+        // Log non-2xx responses for debugging
+        if !resp.status().is_success() {
+            warn!("Daemon returned HTTP {} for bridge request", resp.status());
+        }
 
         // Capture session ID from response headers
         if session_id.is_none() {
