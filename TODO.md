@@ -85,3 +85,18 @@
 - [x] **Filewatcher validation**: Validated watcher keeps index fresh with Tantivy + embeddings sidecar. Incremental pipeline confirmed (52 new / 19,899 skipped on restart). (2026-02-28)
 - [x] **CPU usage at idle**: Fixed — 0.0% CPU at idle with new sidecar setup. (2026-02-28)
 - [x] **Search-layer relevance for natural-language queries**: Shipped deterministic NL query expansion (original/alias/normalized groups), weighted query builders, and conservative NL-only `src/` path prior with regression coverage for identifier-query stability.
+
+**Post Platform Tasks**
+1. check goldfish skills, we'll need a refocused version of those for the memory tools. Also check goldfish server instructions and tool descriptions, they are effective at agent adoption and we need that too.
+2. what kind of project stats/insights make sense for the project view in the dashboard? git status? index stats? language stats? dependencies? test counts? julie is codebase intelligence, we probably have a lot of data we could actually surface in a project view in the dashboard.
+3. with tantivy and embeddings available to memories now, what advanced memory features does that open up? Could we link memories? Could we link memories to code? To git commits?
+4. Can the dashboard also talk to a projects repo on gh or devops? what can we build with that?
+5. Project registration: auto on startup with julie installed, add from dashboard
+6. Can we tell the agent how to use the dashboard? Can the agent open the browser to a dashboard view as part of a tool call? Like /standup ?
+7. With the advanced javascript libs available for things like graphs and diagrams, what code intelligence from julie can we surface visually?
+8. filewatcher: I don't think we need a filewatcher running in every project all the time, I'm not sure what the overhead of that would be. we should discuss
+9. we need good documentation of the http api so other tools can integrate
+10. validate functionality in a parallel scenario like multiple worktrees
+11. we should leverage gh pages to better showcase the dashboard functionality rather than just readme mentions
+12. project view in dashboard should have info to help quickly get into a project in a devs preferred tools too. quick copy of path, maybe a button to launch an agent in the path, maybe open in vs code button, maybe make all that optional and configurable so it supports many tool options
+13. what's our most effective token optimization approach across tools? can we apply that approach to other tools?
