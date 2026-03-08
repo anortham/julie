@@ -32,12 +32,18 @@ use crate::workspace::JulieWorkspace;
 /// Create a fresh AppState for memory API tests.
 fn test_state(julie_home: std::path::PathBuf) -> Arc<AppState> {
     let (indexing_sender, _rx) = tokio::sync::mpsc::channel::<IndexRequest>(1);
+    let registry = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
+    let cancellation_token = CancellationToken::new();
     Arc::new(AppState {
         start_time: Instant::now(),
-        registry: Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new())),
-        julie_home,
-        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
-        cancellation_token: CancellationToken::new(),
+        registry: registry.clone(),
+        julie_home: julie_home.clone(),
+        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+            registry,
+            julie_home,
+            cancellation_token.clone(),
+        ))),
+        cancellation_token,
         indexing_sender,
         dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
         backends: vec![],

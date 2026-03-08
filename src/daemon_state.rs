@@ -14,9 +14,11 @@ use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig,
     session::local::LocalSessionManager,
 };
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn, debug};
 
+use crate::daemon_indexer::IndexingSender;
 use crate::daemon_watcher::DaemonWatcherManager;
 use crate::handler::JulieServerHandler;
 use crate::registry::{GlobalRegistry, ProjectStatus};
@@ -50,7 +52,10 @@ pub struct LoadedWorkspace {
 
 /// Daemon-wide shared state.
 ///
-/// Holds all loaded workspaces and per-workspace MCP services.
+/// Holds all loaded workspaces and per-workspace MCP services, plus
+/// daemon-level resources (registry, julie_home, indexing pipeline,
+/// cancellation token) so MCP tool handlers can access them directly.
+///
 /// Wrapped in `Arc<tokio::sync::RwLock<DaemonState>>` for shared access.
 pub struct DaemonState {
     /// Map of workspace_id -> loaded workspace.
@@ -66,14 +71,41 @@ pub struct DaemonState {
     /// Manages one `notify::RecommendedWatcher` per `Ready` project so the
     /// daemon detects file changes and triggers incremental re-indexing.
     pub watcher_manager: Arc<DaemonWatcherManager>,
+
+    /// Global project registry — tracks all known projects on this machine.
+    ///
+    /// Shared with `AppState` so both have the same view of registered projects.
+    pub registry: Arc<RwLock<GlobalRegistry>>,
+
+    /// Path to `~/.julie` (or platform equivalent) for persisting registry.
+    pub julie_home: PathBuf,
+
+    /// Sender for the background indexing pipeline.
+    ///
+    /// `None` during construction (chicken-and-egg: the indexing worker needs
+    /// `DaemonState` Arc, but DaemonState needs the sender). Set via
+    /// `set_indexing_sender` after spawning the worker.
+    pub indexing_sender: Option<IndexingSender>,
+
+    /// Cancellation token for shutting down all MCP sessions and background work.
+    pub cancellation_token: CancellationToken,
 }
 
 impl DaemonState {
-    /// Create a new empty daemon state.
+    /// Create a new empty daemon state with daemon-level resources.
+    ///
+    /// The `indexing_sender` is initially `None` because of a chicken-and-egg
+    /// dependency: the indexing worker needs the `DaemonState` Arc, but
+    /// `DaemonState` needs the sender. Call `set_indexing_sender` after
+    /// spawning the indexing worker.
     ///
     /// Initializes the cross-project file watcher manager. This should not fail
     /// unless the glob patterns in `watcher::filtering` are invalid (a bug).
-    pub fn new() -> Self {
+    pub fn new(
+        registry: Arc<RwLock<GlobalRegistry>>,
+        julie_home: PathBuf,
+        cancellation_token: CancellationToken,
+    ) -> Self {
         let watcher_manager = Arc::new(
             DaemonWatcherManager::new().expect("Failed to build watcher ignore patterns (bug)")
         );
@@ -82,7 +114,19 @@ impl DaemonState {
             workspaces: HashMap::new(),
             mcp_services: HashMap::new(),
             watcher_manager,
+            registry,
+            julie_home,
+            indexing_sender: None,
+            cancellation_token,
         }
+    }
+
+    /// Set the indexing sender after the indexing worker has been spawned.
+    ///
+    /// Must be called before any code that needs to submit index requests
+    /// through `DaemonState`.
+    pub fn set_indexing_sender(&mut self, sender: IndexingSender) {
+        self.indexing_sender = Some(sender);
     }
 
     /// Load workspaces for all registered projects.
@@ -99,8 +143,7 @@ impl DaemonState {
     pub async fn load_registered_projects(
         &mut self,
         registry: &GlobalRegistry,
-        cancellation_token: &CancellationToken,
-        daemon_state: Arc<tokio::sync::RwLock<DaemonState>>,
+        daemon_state: Arc<RwLock<DaemonState>>,
     ) {
         for (workspace_id, entry) in &registry.projects {
             let project_path = &entry.path;
@@ -145,7 +188,7 @@ impl DaemonState {
                     // Create an MCP service for this workspace
                     let mcp_service = Self::create_workspace_mcp_service(
                         project_path.clone(),
-                        cancellation_token,
+                        &self.cancellation_token,
                         daemon_state.clone(),
                     );
 
@@ -201,7 +244,7 @@ impl DaemonState {
     pub fn create_workspace_mcp_service(
         workspace_root: PathBuf,
         cancellation_token: &CancellationToken,
-        daemon_state: Arc<tokio::sync::RwLock<DaemonState>>,
+        daemon_state: Arc<RwLock<DaemonState>>,
     ) -> StreamableHttpService<JulieServerHandler> {
         let config = StreamableHttpServerConfig {
             cancellation_token: cancellation_token.clone(),
@@ -244,8 +287,7 @@ impl DaemonState {
         &mut self,
         workspace_id: String,
         project_path: PathBuf,
-        cancellation_token: &CancellationToken,
-        daemon_state: Arc<tokio::sync::RwLock<DaemonState>>,
+        daemon_state: Arc<RwLock<DaemonState>>,
     ) {
         debug!(
             "Registering new workspace {} at {}",
@@ -275,7 +317,7 @@ impl DaemonState {
         // connectable (the handler will create the workspace on first use).
         let mcp_service = Self::create_workspace_mcp_service(
             project_path,
-            cancellation_token,
+            &self.cancellation_token,
             daemon_state,
         );
         self.mcp_services.insert(workspace_id, mcp_service);

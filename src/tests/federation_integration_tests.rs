@@ -12,12 +12,15 @@ mod tests {
 
     use tokio::sync::RwLock;
 
+    use tokio_util::sync::CancellationToken;
+
     use crate::daemon_state::{DaemonState, LoadedWorkspace, WorkspaceLoadStatus};
     use crate::database::types::FileInfo;
     use crate::database::SymbolDatabase;
     use crate::extractors::base::SymbolKind;
     use crate::extractors::Symbol;
     use crate::handler::JulieServerHandler;
+    use crate::registry::GlobalRegistry;
     use crate::mcp_compat::CallToolResult;
     use crate::search::index::{SearchIndex, SymbolDocument};
     use crate::workspace::JulieWorkspace;
@@ -153,7 +156,10 @@ mod tests {
     async fn build_handler_with_workspaces(
         workspaces: Vec<(String, JulieWorkspace, PathBuf)>,
     ) -> JulieServerHandler {
-        let ds = Arc::new(RwLock::new(DaemonState::new()));
+        let registry = Arc::new(RwLock::new(GlobalRegistry::new()));
+        let ct = CancellationToken::new();
+        let julie_home = PathBuf::from("/tmp/test-julie-home");
+        let ds = Arc::new(RwLock::new(DaemonState::new(registry, julie_home, ct)));
         {
             let mut state = ds.write().await;
             for (ws_id, workspace, path) in workspaces {

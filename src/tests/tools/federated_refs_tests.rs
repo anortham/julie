@@ -13,11 +13,22 @@ mod tests {
 
     use tokio::sync::RwLock;
 
+    use tokio_util::sync::CancellationToken;
+
     use crate::daemon_state::{DaemonState, LoadedWorkspace, WorkspaceLoadStatus};
     use crate::database::FileInfo;
     use crate::extractors::base::{RelationshipKind, SymbolKind};
     use crate::extractors::{Relationship, Symbol};
     use crate::handler::JulieServerHandler;
+    use crate::registry::GlobalRegistry;
+
+    /// Create a test DaemonState wrapped in Arc<RwLock<>>.
+    fn test_daemon_state() -> Arc<RwLock<DaemonState>> {
+        let registry = Arc::new(RwLock::new(GlobalRegistry::new()));
+        let ct = CancellationToken::new();
+        let julie_home = PathBuf::from("/tmp/test-julie-home");
+        Arc::new(RwLock::new(DaemonState::new(registry, julie_home, ct)))
+    }
     use crate::mcp_compat::CallToolResult;
     use crate::tools::navigation::formatting::{
         format_federated_refs_results, ProjectTaggedResult,
@@ -309,7 +320,7 @@ mod tests {
     #[tokio::test]
     async fn test_federated_refs_empty_daemon_returns_no_results() {
         // Create a handler with an empty daemon state (no workspaces).
-        let ds = Arc::new(RwLock::new(DaemonState::new()));
+        let ds = test_daemon_state();
         let handler =
             JulieServerHandler::new_with_daemon_state(PathBuf::from("/tmp/test"), ds).unwrap();
 
@@ -339,7 +350,7 @@ mod tests {
     async fn test_federated_refs_skips_non_ready_workspaces() {
         use crate::workspace::JulieWorkspace;
 
-        let ds = Arc::new(RwLock::new(DaemonState::new()));
+        let ds = test_daemon_state();
 
         // Add a Registered workspace (no DB, not Ready)
         {
@@ -407,7 +418,7 @@ mod tests {
         workspace.db = Some(Arc::new(Mutex::new(db)));
 
         // Set up daemon state with a Ready workspace
-        let ds = Arc::new(RwLock::new(DaemonState::new()));
+        let ds = test_daemon_state();
         {
             let mut state = ds.write().await;
             state.workspaces.insert(
@@ -504,7 +515,7 @@ mod tests {
         ws_b.db = Some(Arc::new(Mutex::new(db_b)));
 
         // Set up daemon state with both workspaces
-        let ds = Arc::new(RwLock::new(DaemonState::new()));
+        let ds = test_daemon_state();
         {
             let mut state = ds.write().await;
             state.workspaces.insert(
@@ -590,7 +601,7 @@ mod tests {
         let mut workspace = JulieWorkspace::empty_shell(tmp.path().to_path_buf());
         workspace.db = Some(Arc::new(Mutex::new(db)));
 
-        let ds = Arc::new(RwLock::new(DaemonState::new()));
+        let ds = test_daemon_state();
         {
             let mut state = ds.write().await;
             state.workspaces.insert(

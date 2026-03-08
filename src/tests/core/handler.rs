@@ -5,9 +5,20 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
+use tokio_util::sync::CancellationToken;
+
 use crate::daemon_state::DaemonState;
 use crate::handler::JulieServerHandler;
+use crate::registry::GlobalRegistry;
 use anyhow::Result;
+
+/// Create a test DaemonState wrapped in Arc<RwLock<>>.
+fn test_daemon_state() -> Arc<RwLock<DaemonState>> {
+    let registry = Arc::new(RwLock::new(GlobalRegistry::new()));
+    let ct = CancellationToken::new();
+    let julie_home = PathBuf::from("/tmp/test-julie-home");
+    Arc::new(RwLock::new(DaemonState::new(registry, julie_home, ct)))
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn handler_construction_sets_workspace_root() -> Result<()> {
@@ -37,7 +48,7 @@ fn new_sync_sets_daemon_state_to_none() {
 #[test]
 fn new_with_daemon_state_sets_daemon_state_to_some() {
     // In daemon mode, daemon_state should be Some(...).
-    let ds = Arc::new(RwLock::new(DaemonState::new()));
+    let ds = test_daemon_state();
     let handler =
         JulieServerHandler::new_with_daemon_state(PathBuf::from("/tmp/test"), ds.clone()).unwrap();
 
@@ -51,7 +62,7 @@ fn new_with_daemon_state_sets_daemon_state_to_some() {
 fn daemon_state_is_shared_across_cloned_handlers() {
     // The handler is Clone (required by rmcp). Cloning should share the
     // same Arc<RwLock<DaemonState>>, not create a separate copy.
-    let ds = Arc::new(RwLock::new(DaemonState::new()));
+    let ds = test_daemon_state();
     let handler =
         JulieServerHandler::new_with_daemon_state(PathBuf::from("/tmp/test"), ds.clone()).unwrap();
     let cloned = handler.clone();
@@ -68,7 +79,7 @@ fn daemon_state_is_shared_across_cloned_handlers() {
 #[tokio::test]
 async fn daemon_state_provides_access_to_workspaces() {
     // Verify that a handler with daemon_state can read the workspaces map.
-    let ds = Arc::new(RwLock::new(DaemonState::new()));
+    let ds = test_daemon_state();
     let handler =
         JulieServerHandler::new_with_daemon_state(PathBuf::from("/tmp/test"), ds.clone()).unwrap();
 

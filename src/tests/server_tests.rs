@@ -23,12 +23,18 @@ use crate::server::AppState;
 /// which is fine for tests that don't exercise the indexing pipeline.
 fn test_state(julie_home: std::path::PathBuf) -> Arc<AppState> {
     let (indexing_sender, _rx) = tokio::sync::mpsc::channel::<IndexRequest>(1);
+    let registry = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
+    let cancellation_token = CancellationToken::new();
     Arc::new(AppState {
         start_time: Instant::now(),
-        registry: Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new())),
-        julie_home,
-        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
-        cancellation_token: CancellationToken::new(),
+        registry: registry.clone(),
+        julie_home: julie_home.clone(),
+        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+            registry,
+            julie_home,
+            cancellation_token.clone(),
+        ))),
+        cancellation_token,
         indexing_sender,
         dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
         backends: vec![],
@@ -248,12 +254,18 @@ async fn test_delete_project_success() {
     let workspace_id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     let (indexing_sender, _rx) = tokio::sync::mpsc::channel::<IndexRequest>(1);
+    let registry_rw = Arc::new(tokio::sync::RwLock::new(registry));
+    let cancellation_token = CancellationToken::new();
     let state = Arc::new(AppState {
         start_time: Instant::now(),
-        registry: Arc::new(tokio::sync::RwLock::new(registry)),
-        julie_home,
-        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
-        cancellation_token: CancellationToken::new(),
+        registry: registry_rw.clone(),
+        julie_home: julie_home.clone(),
+        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+            registry_rw,
+            julie_home,
+            cancellation_token.clone(),
+        ))),
+        cancellation_token,
         indexing_sender,
         dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
         backends: vec![],
@@ -462,12 +474,14 @@ async fn test_api_routes_still_work_with_mcp_mounted() {
 
 #[tokio::test]
 async fn test_daemon_state_empty_registry_loads_nothing() {
-    let daemon_state = Arc::new(RwLock::new(DaemonState::new()));
-    let registry = GlobalRegistry::new();
+    let registry = Arc::new(RwLock::new(GlobalRegistry::new()));
     let ct = CancellationToken::new();
+    let julie_home = std::path::PathBuf::from("/tmp/test-julie-home");
+    let daemon_state = Arc::new(RwLock::new(DaemonState::new(registry.clone(), julie_home, ct)));
 
+    let reg = registry.read().await;
     let mut state = daemon_state.write().await;
-    state.load_registered_projects(&registry, &ct, daemon_state.clone()).await;
+    state.load_registered_projects(&reg, daemon_state.clone()).await;
 
     assert!(state.workspaces.is_empty());
     assert!(state.mcp_services.is_empty());
@@ -482,10 +496,13 @@ async fn test_daemon_state_project_without_julie_dir_is_registered() {
     let mut registry = GlobalRegistry::new();
     let workspace_id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
-    let daemon_state = Arc::new(RwLock::new(DaemonState::new()));
+    let registry_rw = Arc::new(RwLock::new(registry));
     let ct = CancellationToken::new();
+    let julie_home = std::path::PathBuf::from("/tmp/test-julie-home");
+    let daemon_state = Arc::new(RwLock::new(DaemonState::new(registry_rw.clone(), julie_home, ct)));
+    let reg = registry_rw.read().await;
     let mut state = daemon_state.write().await;
-    state.load_registered_projects(&registry, &ct, daemon_state.clone()).await;
+    state.load_registered_projects(&reg, daemon_state.clone()).await;
 
     assert!(state.workspaces.contains_key(&workspace_id));
     let loaded = &state.workspaces[&workspace_id];
@@ -500,11 +517,13 @@ async fn test_daemon_state_register_workspace_creates_mcp_service() {
     let project_dir = temp_dir.path().join("new-project");
     std::fs::create_dir_all(&project_dir).unwrap();
 
-    let daemon_state = Arc::new(RwLock::new(DaemonState::new()));
+    let registry = Arc::new(RwLock::new(GlobalRegistry::new()));
     let ct = CancellationToken::new();
+    let julie_home = temp_dir.path().to_path_buf();
+    let daemon_state = Arc::new(RwLock::new(DaemonState::new(registry, julie_home, ct)));
 
     let mut state = daemon_state.write().await;
-    state.register_workspace("test-ws-123".to_string(), project_dir.clone(), &ct, daemon_state.clone());
+    state.register_workspace("test-ws-123".to_string(), project_dir.clone(), daemon_state.clone());
 
     assert!(state.workspaces.contains_key("test-ws-123"));
     assert!(state.mcp_services.contains_key("test-ws-123"));
@@ -520,11 +539,13 @@ async fn test_daemon_state_remove_workspace_cleans_up() {
     let project_dir = temp_dir.path().join("project-to-remove");
     std::fs::create_dir_all(&project_dir).unwrap();
 
-    let daemon_state = Arc::new(RwLock::new(DaemonState::new()));
+    let registry = Arc::new(RwLock::new(GlobalRegistry::new()));
     let ct = CancellationToken::new();
+    let julie_home = temp_dir.path().to_path_buf();
+    let daemon_state = Arc::new(RwLock::new(DaemonState::new(registry, julie_home, ct)));
 
     let mut state = daemon_state.write().await;
-    state.register_workspace("ws-remove".to_string(), project_dir.clone(), &ct, daemon_state.clone());
+    state.register_workspace("ws-remove".to_string(), project_dir.clone(), daemon_state.clone());
     assert!(state.workspaces.contains_key("ws-remove"));
     assert!(state.mcp_services.contains_key("ws-remove"));
 
@@ -535,7 +556,10 @@ async fn test_daemon_state_remove_workspace_cleans_up() {
 
 #[tokio::test]
 async fn test_daemon_state_project_status_for_missing_returns_registered() {
-    let state = DaemonState::new();
+    let registry = Arc::new(RwLock::new(GlobalRegistry::new()));
+    let ct = CancellationToken::new();
+    let julie_home = std::path::PathBuf::from("/tmp/test-julie-home");
+    let state = DaemonState::new(registry, julie_home, ct);
     let status = state.project_status_for("nonexistent");
     assert_eq!(status, crate::registry::ProjectStatus::Registered);
 }
@@ -555,17 +579,23 @@ async fn test_list_projects_reflects_daemon_state_status() {
     let workspace_id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     // Load daemon state from registry (project has no .julie dir -> Registered)
-    let daemon_state = Arc::new(RwLock::new(DaemonState::new()));
+    let registry_rw = Arc::new(RwLock::new(registry));
     let ct = CancellationToken::new();
+    let daemon_state = Arc::new(RwLock::new(DaemonState::new(
+        registry_rw.clone(),
+        julie_home.clone(),
+        ct.clone(),
+    )));
     {
+        let reg = registry_rw.read().await;
         let mut ds = daemon_state.write().await;
-        ds.load_registered_projects(&registry, &ct, daemon_state.clone()).await;
+        ds.load_registered_projects(&reg, daemon_state.clone()).await;
     }
 
     let (indexing_sender, _rx) = tokio::sync::mpsc::channel::<IndexRequest>(1);
     let state = Arc::new(AppState {
         start_time: Instant::now(),
-        registry: Arc::new(tokio::sync::RwLock::new(registry)),
+        registry: registry_rw,
         julie_home,
         daemon_state,
         cancellation_token: ct,
@@ -605,12 +635,17 @@ async fn test_create_project_updates_daemon_state() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let ct = CancellationToken::new();
-    let daemon_state = Arc::new(tokio::sync::RwLock::new(DaemonState::new()));
+    let registry_rw = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
+    let daemon_state = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+        registry_rw.clone(),
+        julie_home.clone(),
+        ct.clone(),
+    )));
 
     let (indexing_sender, _rx) = tokio::sync::mpsc::channel::<IndexRequest>(1);
     let state = Arc::new(AppState {
         start_time: Instant::now(),
-        registry: Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new())),
+        registry: registry_rw,
         julie_home,
         daemon_state: daemon_state.clone(),
         cancellation_token: ct,
@@ -664,16 +699,21 @@ async fn test_delete_project_cleans_up_daemon_state() {
     let workspace_id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     let ct = CancellationToken::new();
-    let daemon_state = Arc::new(RwLock::new(DaemonState::new()));
+    let registry_rw = Arc::new(RwLock::new(registry));
+    let daemon_state = Arc::new(RwLock::new(DaemonState::new(
+        registry_rw.clone(),
+        julie_home.clone(),
+        ct.clone(),
+    )));
     {
         let mut ds = daemon_state.write().await;
-        ds.register_workspace(workspace_id.clone(), project_dir, &ct, daemon_state.clone());
+        ds.register_workspace(workspace_id.clone(), project_dir, daemon_state.clone());
     }
 
     let (indexing_sender, _rx) = tokio::sync::mpsc::channel::<IndexRequest>(1);
     let state = Arc::new(AppState {
         start_time: Instant::now(),
-        registry: Arc::new(tokio::sync::RwLock::new(registry)),
+        registry: registry_rw,
         julie_home,
         daemon_state: daemon_state.clone(),
         cancellation_token: ct,
@@ -739,13 +779,18 @@ async fn test_workspace_mcp_endpoint_routes_to_registered_workspace() {
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let ct = CancellationToken::new();
-    let daemon_state = Arc::new(RwLock::new(DaemonState::new()));
+    let registry_rw = Arc::new(RwLock::new(GlobalRegistry::new()));
+    let julie_home = temp_dir.path().to_path_buf();
+    let daemon_state = Arc::new(RwLock::new(DaemonState::new(
+        registry_rw.clone(),
+        julie_home.clone(),
+        ct.clone(),
+    )));
     {
         let mut ds = daemon_state.write().await;
         ds.register_workspace(
             "test-workspace".to_string(),
             project_dir,
-            &ct,
             daemon_state.clone(),
         );
     }
@@ -753,8 +798,8 @@ async fn test_workspace_mcp_endpoint_routes_to_registered_workspace() {
     let (indexing_sender, _rx) = tokio::sync::mpsc::channel::<IndexRequest>(1);
     let state = Arc::new(AppState {
         start_time: Instant::now(),
-        registry: Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new())),
-        julie_home: temp_dir.path().to_path_buf(),
+        registry: registry_rw,
+        julie_home,
         daemon_state,
         cancellation_token: ct,
         indexing_sender,

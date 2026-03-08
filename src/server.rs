@@ -73,18 +73,26 @@ pub async fn start_server(
     let cancellation_token = CancellationToken::new();
     let ct_for_shutdown = cancellation_token.clone();
 
+    // Create the shared registry Arc BEFORE DaemonState so both DaemonState
+    // and AppState share the same Arc<RwLock<GlobalRegistry>>.
+    let registry_rw = Arc::new(RwLock::new(registry));
+
     // Wrap DaemonState in Arc<RwLock<>> up front so that per-workspace MCP
     // service factories can capture a reference to it. This lets tool handlers
     // access all loaded workspaces for federated search (workspace="all").
-    let daemon_state = Arc::new(RwLock::new(DaemonState::new()));
+    let daemon_state = Arc::new(RwLock::new(DaemonState::new(
+        registry_rw.clone(),
+        julie_home.clone(),
+        cancellation_token.clone(),
+    )));
 
     // Load workspaces for all registered projects (non-blocking -- only loads
     // existing indexes, doesn't trigger indexing).
     let ready_count = {
+        let registry = registry_rw.read().await;
         let mut ds = daemon_state.write().await;
         ds.load_registered_projects(
             &registry,
-            &cancellation_token,
             daemon_state.clone(),
         )
         .await;
@@ -107,7 +115,6 @@ pub async fn start_server(
 
         ready_count
     };
-    let registry_rw = Arc::new(RwLock::new(registry));
 
     // Spawn the background indexing worker — processes requests sequentially
     let indexing_sender = daemon_indexer::spawn_indexing_worker(
@@ -116,6 +123,12 @@ pub async fn start_server(
         julie_home.clone(),
         cancellation_token.clone(),
     );
+
+    // Set the indexing sender on DaemonState now that the worker is spawned
+    {
+        let mut ds = daemon_state.write().await;
+        ds.set_indexing_sender(indexing_sender.clone());
+    }
 
     let backends = agent::backend::detect_backends();
     let dispatch_manager = Arc::new(RwLock::new(DispatchManager::with_backends(backends.clone())));

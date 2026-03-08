@@ -228,10 +228,17 @@ fn test_shared_filtering_infrastructure() {
 /// Registered or Error ones.
 #[tokio::test]
 async fn test_daemon_state_start_watchers_for_ready_projects() {
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+    use tokio_util::sync::CancellationToken;
     use crate::daemon_state::{DaemonState, LoadedWorkspace, WorkspaceLoadStatus};
+    use crate::registry::GlobalRegistry;
     use crate::workspace::JulieWorkspace;
 
-    let mut state = DaemonState::new();
+    let registry = Arc::new(RwLock::new(GlobalRegistry::new()));
+    let ct = CancellationToken::new();
+    let julie_home = PathBuf::from("/tmp/test-julie-home");
+    let mut state = DaemonState::new(registry, julie_home, ct);
 
     // Create a "Ready" workspace with real db
     let (temp_dir, db) = create_test_workspace_with_db();
@@ -290,10 +297,17 @@ async fn test_daemon_state_start_watchers_for_ready_projects() {
 /// Test that remove_workspace stops the watcher.
 #[tokio::test]
 async fn test_remove_workspace_stops_watcher() {
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+    use tokio_util::sync::CancellationToken;
     use crate::daemon_state::{DaemonState, LoadedWorkspace, WorkspaceLoadStatus};
+    use crate::registry::GlobalRegistry;
     use crate::workspace::JulieWorkspace;
 
-    let mut state = DaemonState::new();
+    let registry = Arc::new(RwLock::new(GlobalRegistry::new()));
+    let ct = CancellationToken::new();
+    let julie_home = PathBuf::from("/tmp/test-julie-home");
+    let mut state = DaemonState::new(registry, julie_home, ct);
 
     // Create a Ready workspace
     let (temp_dir, db) = create_test_workspace_with_db();

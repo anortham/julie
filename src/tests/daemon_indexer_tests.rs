@@ -29,12 +29,18 @@ fn test_state_with_indexer(
     julie_home: std::path::PathBuf,
 ) -> (Arc<AppState>, tokio::sync::mpsc::Receiver<IndexRequest>) {
     let (tx, rx) = tokio::sync::mpsc::channel::<IndexRequest>(64);
+    let registry = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
+    let cancellation_token = CancellationToken::new();
     let state = Arc::new(AppState {
         start_time: Instant::now(),
-        registry: Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new())),
-        julie_home,
-        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
-        cancellation_token: CancellationToken::new(),
+        registry: registry.clone(),
+        julie_home: julie_home.clone(),
+        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+            registry,
+            julie_home,
+            cancellation_token.clone(),
+        ))),
+        cancellation_token,
         indexing_sender: tx,
         dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
         backends: vec![],
@@ -50,12 +56,18 @@ fn test_state_with_registry(
     registry: GlobalRegistry,
 ) -> (Arc<AppState>, tokio::sync::mpsc::Receiver<IndexRequest>) {
     let (tx, rx) = tokio::sync::mpsc::channel::<IndexRequest>(64);
+    let registry_rw = Arc::new(tokio::sync::RwLock::new(registry));
+    let cancellation_token = CancellationToken::new();
     let state = Arc::new(AppState {
         start_time: Instant::now(),
-        registry: Arc::new(tokio::sync::RwLock::new(registry)),
-        julie_home,
-        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new())),
-        cancellation_token: CancellationToken::new(),
+        registry: registry_rw.clone(),
+        julie_home: julie_home.clone(),
+        daemon_state: Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+            registry_rw,
+            julie_home,
+            cancellation_token.clone(),
+        ))),
+        cancellation_token,
         indexing_sender: tx,
         dispatch_manager: Arc::new(tokio::sync::RwLock::new(crate::agent::dispatch::DispatchManager::new())),
         backends: vec![],
@@ -190,12 +202,16 @@ fn test_registry_status_transition_to_error() {
 
 #[test]
 fn test_daemon_state_indexing_status_maps_to_project_status() {
-    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new()));
-    let mut state = DaemonState::new();
+    let registry = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
     let ct = CancellationToken::new();
+    let julie_home = std::path::PathBuf::from("/tmp/test-julie-home");
+    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+        registry.clone(), julie_home.clone(), ct.clone(),
+    )));
+    let mut state = DaemonState::new(registry, julie_home, ct);
     let project_path = std::path::PathBuf::from("/tmp/project");
 
-    state.register_workspace("ws-1".to_string(), project_path, &ct, daemon_state_arc);
+    state.register_workspace("ws-1".to_string(), project_path, daemon_state_arc);
 
     // Manually set status to Indexing
     if let Some(loaded) = state.workspaces.get_mut("ws-1") {
@@ -349,10 +365,15 @@ async fn test_get_status_reflects_indexing_state() {
     let ws_id = registry.register_project(&project_dir).unwrap().workspace_id().to_string();
 
     let ct = CancellationToken::new();
-    let daemon_state = Arc::new(tokio::sync::RwLock::new(DaemonState::new()));
+    let registry_rw = Arc::new(tokio::sync::RwLock::new(registry));
+    let daemon_state = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+        registry_rw.clone(),
+        julie_home.clone(),
+        ct.clone(),
+    )));
     {
         let mut ds = daemon_state.write().await;
-        ds.register_workspace(ws_id.clone(), project_dir, &ct, daemon_state.clone());
+        ds.register_workspace(ws_id.clone(), project_dir, daemon_state.clone());
 
         // Manually set status to Indexing
         if let Some(loaded) = ds.workspaces.get_mut(&ws_id) {
@@ -363,7 +384,7 @@ async fn test_get_status_reflects_indexing_state() {
     let (tx, _rx) = tokio::sync::mpsc::channel::<IndexRequest>(1);
     let state = Arc::new(AppState {
         start_time: Instant::now(),
-        registry: Arc::new(tokio::sync::RwLock::new(registry)),
+        registry: registry_rw,
         julie_home,
         daemon_state,
         cancellation_token: ct,
@@ -412,8 +433,12 @@ async fn test_worker_marks_indexing_then_processes() {
         .to_string();
 
     let registry_arc = Arc::new(tokio::sync::RwLock::new(registry));
-    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new()));
     let ct = CancellationToken::new();
+    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+        registry_arc.clone(),
+        julie_home.clone(),
+        ct.clone(),
+    )));
 
     let tx = crate::daemon_indexer::spawn_indexing_worker(
         registry_arc.clone(),
@@ -483,8 +508,12 @@ async fn test_worker_updates_daemon_state_on_success() {
         .to_string();
 
     let registry_arc = Arc::new(tokio::sync::RwLock::new(registry));
-    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new()));
     let ct = CancellationToken::new();
+    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+        registry_arc.clone(),
+        julie_home.clone(),
+        ct.clone(),
+    )));
 
     let tx = crate::daemon_indexer::spawn_indexing_worker(
         registry_arc.clone(),
@@ -586,8 +615,12 @@ async fn test_worker_processes_multiple_requests_sequentially() {
     }
 
     let registry_arc = Arc::new(tokio::sync::RwLock::new(registry));
-    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new()));
     let ct = CancellationToken::new();
+    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+        registry_arc.clone(),
+        julie_home.clone(),
+        ct.clone(),
+    )));
 
     let tx = crate::daemon_indexer::spawn_indexing_worker(
         registry_arc.clone(),
@@ -649,8 +682,12 @@ async fn test_worker_handles_force_reindex() {
         .to_string();
 
     let registry_arc = Arc::new(tokio::sync::RwLock::new(registry));
-    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new()));
     let ct = CancellationToken::new();
+    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+        registry_arc.clone(),
+        julie_home.clone(),
+        ct.clone(),
+    )));
 
     let tx = crate::daemon_indexer::spawn_indexing_worker(
         registry_arc.clone(),
