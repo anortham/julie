@@ -23,7 +23,7 @@ use crate::server::AppState;
 // ---------------------------------------------------------------------------
 
 /// Query params for `GET /api/memories`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct MemoriesQuery {
     /// Max checkpoints to return.
     pub limit: Option<usize>,
@@ -39,7 +39,7 @@ pub struct MemoriesQuery {
 }
 
 /// Query params for `GET /api/plans`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct PlansQuery {
     /// Filter by status ("active", "completed", "archived").
     pub status: Option<String>,
@@ -48,7 +48,7 @@ pub struct PlansQuery {
 }
 
 /// Query params for plan endpoints that only need project routing.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ProjectQuery {
     /// Workspace/project ID (defaults to first Ready workspace).
     pub project: Option<String>,
@@ -59,6 +59,15 @@ pub struct ProjectQuery {
 // ---------------------------------------------------------------------------
 
 /// List or search checkpoints. Delegates to `memory::recall::recall()`.
+#[utoipa::path(
+    get,
+    path = "/api/memories",
+    tag = "memories",
+    params(MemoriesQuery),
+    responses(
+        (status = 200, description = "List of checkpoints", body = RecallResult)
+    )
+)]
 pub async fn list_memories(
     State(state): State<Arc<AppState>>,
     Query(params): Query<MemoriesQuery>,
@@ -106,6 +115,19 @@ pub async fn list_memories(
 /// 1. Full ID match (e.g., `checkpoint_abcd1234`)
 /// 2. Hash prefix from filename (4-char prefix in filename like `174414_abcd.md`)
 /// 3. Prefix match against parsed checkpoint IDs
+#[utoipa::path(
+    get,
+    path = "/api/memories/{id}",
+    tag = "memories",
+    params(
+        ("id" = String, Path, description = "Checkpoint ID or ID prefix"),
+        ProjectQuery,
+    ),
+    responses(
+        (status = 200, description = "Checkpoint found", body = Checkpoint),
+        (status = 404, description = "Checkpoint not found")
+    )
+)]
 pub async fn get_memory(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -228,6 +250,15 @@ fn find_checkpoint_by_id(
 // ---------------------------------------------------------------------------
 
 /// List plans, optionally filtered by status.
+#[utoipa::path(
+    get,
+    path = "/api/plans",
+    tag = "memories",
+    params(PlansQuery),
+    responses(
+        (status = 200, description = "List of plans", body = Vec<Plan>)
+    )
+)]
 pub async fn list_plans(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PlansQuery>,
@@ -263,6 +294,19 @@ pub async fn list_plans(
 // ---------------------------------------------------------------------------
 
 /// Get a single plan by ID.
+#[utoipa::path(
+    get,
+    path = "/api/plans/{id}",
+    tag = "memories",
+    params(
+        ("id" = String, Path, description = "Plan ID"),
+        ProjectQuery,
+    ),
+    responses(
+        (status = 200, description = "Plan found", body = Plan),
+        (status = 404, description = "Plan not found")
+    )
+)]
 pub async fn get_plan(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -301,6 +345,16 @@ pub async fn get_plan(
 // ---------------------------------------------------------------------------
 
 /// Get the currently active plan, or 404 if none.
+#[utoipa::path(
+    get,
+    path = "/api/plans/active",
+    tag = "memories",
+    params(ProjectQuery),
+    responses(
+        (status = 200, description = "Active plan found", body = Plan),
+        (status = 404, description = "No active plan")
+    )
+)]
 pub async fn get_active_plan(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ProjectQuery>,

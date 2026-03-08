@@ -29,7 +29,7 @@ use crate::server::AppState;
 // ---------------------------------------------------------------------------
 
 /// Request body for `POST /api/agents/dispatch`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct DispatchRequest {
     /// The task description to dispatch to the agent.
     pub task: String,
@@ -42,7 +42,7 @@ pub struct DispatchRequest {
 }
 
 /// Optional hints for context assembly (mirrors `ContextHints`).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct HintsInput {
     /// Specific files to include context from.
     #[serde(default)]
@@ -56,14 +56,14 @@ pub struct HintsInput {
 }
 
 /// Response for `POST /api/agents/dispatch`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct DispatchResponse {
     pub id: String,
     pub status: String,
 }
 
 /// Query params for `GET /api/agents/history`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct HistoryQuery {
     /// Maximum number of dispatches to return.
     pub limit: Option<usize>,
@@ -72,13 +72,13 @@ pub struct HistoryQuery {
 }
 
 /// Response for `GET /api/agents/history`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct HistoryResponse {
     pub dispatches: Vec<DispatchSummary>,
 }
 
 /// Summary of a dispatch for list endpoints.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct DispatchSummary {
     pub id: String,
     pub task: String,
@@ -92,7 +92,7 @@ pub struct DispatchSummary {
 }
 
 /// Response for `GET /api/agents/:id`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct DispatchDetail {
     pub id: String,
     pub task: String,
@@ -107,7 +107,7 @@ pub struct DispatchDetail {
 }
 
 /// Response for `GET /api/agents/backends`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct BackendsResponse {
     pub backends: Vec<BackendInfo>,
 }
@@ -117,6 +117,14 @@ pub struct BackendsResponse {
 // ---------------------------------------------------------------------------
 
 /// `GET /api/agents/backends` — list detected agent backends with availability.
+#[utoipa::path(
+    get,
+    path = "/api/agents/backends",
+    tag = "agents",
+    responses(
+        (status = 200, description = "List of agent backends", body = BackendsResponse)
+    )
+)]
 pub async fn list_backends(
     State(state): State<Arc<AppState>>,
 ) -> Json<BackendsResponse> {
@@ -126,6 +134,15 @@ pub async fn list_backends(
 }
 
 /// `GET /api/agents/history` — list past dispatches with optional filters.
+#[utoipa::path(
+    get,
+    path = "/api/agents/history",
+    tag = "agents",
+    params(HistoryQuery),
+    responses(
+        (status = 200, description = "List of dispatches", body = HistoryResponse)
+    )
+)]
 pub async fn list_dispatches(
     State(state): State<Arc<AppState>>,
     Query(params): Query<HistoryQuery>,
@@ -163,6 +180,16 @@ pub async fn list_dispatches(
 }
 
 /// `GET /api/agents/:id` — get a single dispatch's detail.
+#[utoipa::path(
+    get,
+    path = "/api/agents/{id}",
+    tag = "agents",
+    params(("id" = String, Path, description = "Dispatch ID")),
+    responses(
+        (status = 200, description = "Dispatch detail", body = DispatchDetail),
+        (status = 404, description = "Dispatch not found")
+    )
+)]
 pub async fn get_dispatch(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -186,6 +213,16 @@ pub async fn get_dispatch(
 }
 
 /// `GET /api/agents/:id/stream` — SSE stream of dispatch output lines.
+#[utoipa::path(
+    get,
+    path = "/api/agents/{id}/stream",
+    tag = "agents",
+    params(("id" = String, Path, description = "Dispatch ID")),
+    responses(
+        (status = 200, description = "SSE event stream", content_type = "text/event-stream"),
+        (status = 404, description = "Dispatch not found")
+    )
+)]
 pub async fn stream_dispatch(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -244,6 +281,16 @@ pub async fn stream_dispatch(
 /// `POST /api/agents/dispatch` — dispatch a task to an agent backend.
 ///
 /// Spawns the agent in the background and returns immediately with the dispatch ID.
+#[utoipa::path(
+    post,
+    path = "/api/agents/dispatch",
+    tag = "agents",
+    request_body = DispatchRequest,
+    responses(
+        (status = 200, description = "Dispatch started", body = DispatchResponse),
+        (status = 503, description = "No available agent backend")
+    )
+)]
 pub async fn dispatch_agent(
     State(state): State<Arc<AppState>>,
     Json(body): Json<DispatchRequest>,

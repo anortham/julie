@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 /// Type classification for a checkpoint.
 ///
 /// Maps to Goldfish's `type?: 'checkpoint' | 'decision' | 'incident' | 'learning'`
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CheckpointType {
     Checkpoint,
@@ -46,7 +46,7 @@ pub enum CheckpointType {
 /// Git context captured at checkpoint time.
 ///
 /// Maps to Goldfish's `GitContext` interface.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct GitContext {
     /// Current branch name
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -66,7 +66,7 @@ pub struct GitContext {
 /// Maps to Goldfish's `Checkpoint` interface. Field names use serde rename
 /// attributes to match the Goldfish JSON/YAML format exactly (camelCase where
 /// the TypeScript interface uses camelCase).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Checkpoint {
     /// Unique identifier: `checkpoint_{SHA256(timestamp:description)[..8]}`
     pub id: String,
@@ -180,7 +180,7 @@ pub struct CheckpointInput {
 /// A development plan with status tracking.
 ///
 /// Maps to Goldfish's `Plan` interface.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct Plan {
     /// Plan identifier (slug from title)
     pub id: String,
@@ -289,7 +289,7 @@ pub struct RecallOptions {
 /// Result from a recall operation.
 ///
 /// Maps to Goldfish's `RecallResult` interface.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct RecallResult {
     /// Retrieved checkpoints
     pub checkpoints: Vec<Checkpoint>,
@@ -306,7 +306,7 @@ pub struct RecallResult {
 /// Summary of checkpoint activity in a workspace (for cross-project recall).
 ///
 /// Maps to Goldfish's `WorkspaceSummary` interface.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct WorkspaceSummary {
     /// Workspace name
     pub name: String,

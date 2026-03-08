@@ -35,7 +35,7 @@ pub trait AgentBackend: Send + Sync {
 }
 
 /// Information about a detected backend.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct BackendInfo {
     pub name: String,
     pub available: bool,

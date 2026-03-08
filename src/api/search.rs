@@ -24,7 +24,7 @@ use crate::server::AppState;
 // ---------------------------------------------------------------------------
 
 /// Request body for `POST /api/search` and `POST /api/search/debug`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct SearchRequest {
     /// The search query string.
     pub query: String,
@@ -90,7 +90,7 @@ pub fn parse_content_type(
 // -- Standard search response -----------------------------------------------
 
 /// A single symbol result in the standard search response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SymbolResultResponse {
     pub content_type: String,
     pub id: String,
@@ -106,7 +106,7 @@ pub struct SymbolResultResponse {
 }
 
 /// A single content result in the standard search response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ContentResultResponse {
     pub file_path: String,
     pub language: String,
@@ -114,7 +114,7 @@ pub struct ContentResultResponse {
 }
 
 /// A single memory result in the standard search response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct MemoryResultResponse {
     pub content_type: String,
     pub id: String,
@@ -137,7 +137,7 @@ pub struct MemoryResultResponse {
 }
 
 /// Response body for `POST /api/search`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct SearchResponse {
     /// "definitions" or "content"
     pub search_target: String,
@@ -157,7 +157,7 @@ pub struct SearchResponse {
 }
 
 /// Response body for `POST /api/search/debug`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct DebugSearchResponse {
     pub search_target: String,
     pub relaxed: bool,
@@ -183,6 +183,15 @@ pub struct DebugSearchResponse {
 /// - `"code"` (default): search code symbols only (backward compatible)
 /// - `"memory"`: search memories only
 /// - `"all"`: search both code and memories, merged via RRF
+#[utoipa::path(
+    post,
+    path = "/api/search",
+    tag = "search",
+    request_body = SearchRequest,
+    responses(
+        (status = 200, description = "Search results", body = SearchResponse)
+    )
+)]
 pub async fn search(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SearchRequest>,
@@ -312,6 +321,15 @@ async fn search_code_only(
 }
 
 /// `POST /api/search/debug` — run a search with scoring breakdown.
+#[utoipa::path(
+    post,
+    path = "/api/search/debug",
+    tag = "search",
+    request_body = SearchRequest,
+    responses(
+        (status = 200, description = "Search results with debug scoring breakdown", body = DebugSearchResponse)
+    )
+)]
 pub async fn search_debug(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SearchRequest>,

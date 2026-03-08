@@ -37,6 +37,21 @@ use crate::server::AppState;
         projects::get_project_status,
         projects::trigger_index,
         dashboard::stats,
+        // memories
+        memories::list_memories,
+        memories::get_memory,
+        memories::list_plans,
+        memories::get_plan,
+        memories::get_active_plan,
+        // search
+        search::search,
+        search::search_debug,
+        // agents
+        agents::list_backends,
+        agents::list_dispatches,
+        agents::get_dispatch,
+        agents::stream_dispatch,
+        agents::dispatch_agent,
     ),
     components(
         schemas(
@@ -52,6 +67,33 @@ use crate::server::AppState;
             dashboard::MemoryStats,
             dashboard::AgentStats,
             dashboard::BackendStat,
+            // memories
+            crate::memory::Checkpoint,
+            crate::memory::Plan,
+            crate::memory::RecallResult,
+            crate::memory::CheckpointType,
+            crate::memory::GitContext,
+            crate::memory::WorkspaceSummary,
+            // search
+            search::SearchRequest,
+            search::SearchResponse,
+            search::SymbolResultResponse,
+            search::ContentResultResponse,
+            search::MemoryResultResponse,
+            search::DebugSearchResponse,
+            crate::search::debug::SymbolDebugResults,
+            crate::search::debug::SymbolDebugResult,
+            crate::search::debug::ContentDebugResults,
+            crate::search::debug::ContentDebugResult,
+            // agents
+            agents::DispatchRequest,
+            agents::HintsInput,
+            agents::DispatchResponse,
+            agents::HistoryResponse,
+            agents::DispatchSummary,
+            agents::DispatchDetail,
+            agents::BackendsResponse,
+            crate::agent::backend::BackendInfo,
         )
     ),
     tags(
