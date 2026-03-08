@@ -39,58 +39,7 @@ pub fn rrf_merge(
     k: u32,
     limit: usize,
 ) -> Vec<SymbolSearchResult> {
-    // Fast path: if one list is empty, return the other (capped at limit)
-    if semantic_results.is_empty() {
-        let mut results = tantivy_results;
-        results.truncate(limit);
-        return results;
-    }
-    if tantivy_results.is_empty() {
-        let mut results = semantic_results;
-        results.truncate(limit);
-        return results;
-    }
-
-    let k_f32 = k as f32;
-
-    // Accumulate RRF scores keyed by symbol id
-    let mut scores: HashMap<String, f32> = HashMap::new();
-    // Keep one representative SymbolSearchResult per id (first seen wins)
-    let mut results_by_id: HashMap<String, SymbolSearchResult> = HashMap::new();
-
-    // Score tantivy results (1-based rank)
-    for (i, result) in tantivy_results.into_iter().enumerate() {
-        let rank = (i + 1) as f32;
-        let rrf_score = 1.0 / (k_f32 + rank);
-        *scores.entry(result.id.clone()).or_insert(0.0) += rrf_score;
-        results_by_id.entry(result.id.clone()).or_insert(result);
-    }
-
-    // Score semantic results (1-based rank)
-    for (i, result) in semantic_results.into_iter().enumerate() {
-        let rank = (i + 1) as f32;
-        let rrf_score = 1.0 / (k_f32 + rank);
-        *scores.entry(result.id.clone()).or_insert(0.0) += rrf_score;
-        results_by_id.entry(result.id.clone()).or_insert(result);
-    }
-
-    // Collect, sort by RRF score descending, and truncate
-    let mut merged: Vec<SymbolSearchResult> = results_by_id
-        .into_values()
-        .map(|mut result| {
-            result.score = scores[&result.id];
-            result
-        })
-        .collect();
-
-    merged.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    merged.truncate(limit);
-
-    merged
+    weighted_rrf_merge(tantivy_results, semantic_results, k, limit, 1.0, 1.0)
 }
 
 /// Weighted variant of `rrf_merge` — applies per-source weights to the RRF formula.
