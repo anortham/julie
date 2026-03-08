@@ -223,7 +223,13 @@ impl ManageWorkspaceTool {
         }
     }
 
-    /// Handle remove command - remove workspace by ID
+    /// Handle remove command - remove workspace by ID.
+    ///
+    /// **Daemon mode**: uses `DaemonState::deregister_project` to remove from
+    /// DaemonState + GlobalRegistry. Does NOT delete the project's `.julie/` directory.
+    ///
+    /// **Stdio mode**: uses local `WorkspaceRegistryService` and deletes the
+    /// workspace index directory.
     pub(crate) async fn handle_remove_command(
         &self,
         handler: &JulieServerHandler,
@@ -231,6 +237,53 @@ impl ManageWorkspaceTool {
     ) -> Result<CallToolResult> {
         info!("Removing workspace: {}", workspace_id);
 
+        // Daemon mode: delegate to DaemonState::deregister_project
+        if let Some(daemon_state) = &handler.daemon_state {
+            return self
+                .handle_remove_command_daemon(daemon_state, workspace_id)
+                .await;
+        }
+
+        // Stdio mode: original behavior
+        self.handle_remove_command_stdio(handler, workspace_id).await
+    }
+
+    /// Daemon mode: deregister project from DaemonState + GlobalRegistry.
+    async fn handle_remove_command_daemon(
+        &self,
+        daemon_state: &std::sync::Arc<tokio::sync::RwLock<DaemonState>>,
+        workspace_id: &str,
+    ) -> Result<CallToolResult> {
+        match DaemonState::deregister_project(daemon_state, workspace_id).await {
+            Ok(Some(result)) => {
+                let message = format!(
+                    "Project Removed Successfully\n\
+                     Workspace: {} ({})\n\
+                     Path: {}\n\
+                     Removed from daemon registry. Project files are untouched.",
+                    result.name,
+                    result.workspace_id,
+                    result.path.display(),
+                );
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+            }
+            Ok(None) => {
+                let message = format!("Workspace not found: {}", workspace_id);
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+            }
+            Err(e) => {
+                let message = format!("Failed to remove project: {}", e);
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+            }
+        }
+    }
+
+    /// Stdio mode: remove workspace using local WorkspaceRegistryService.
+    async fn handle_remove_command_stdio(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_id: &str,
+    ) -> Result<CallToolResult> {
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {

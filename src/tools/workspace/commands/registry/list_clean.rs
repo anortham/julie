@@ -1,4 +1,5 @@
 use super::ManageWorkspaceTool;
+use crate::daemon_state::{DaemonState, WorkspaceLoadStatus};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use crate::utils::progressive_reduction::ProgressiveReducer;
@@ -8,13 +9,153 @@ use anyhow::Result;
 use tracing::info;
 
 impl ManageWorkspaceTool {
-    /// Handle list command - show all workspaces
+    /// Handle list command - show all workspaces.
+    ///
+    /// **Daemon mode**: reads from `DaemonState.workspaces` for live status.
+    /// **Stdio mode**: reads from local `WorkspaceRegistryService`.
     pub(crate) async fn handle_list_command(
         &self,
         handler: &JulieServerHandler,
     ) -> Result<CallToolResult> {
         info!("Listing all workspaces");
 
+        // Daemon mode: list from DaemonState
+        if let Some(daemon_state) = &handler.daemon_state {
+            return self
+                .handle_list_command_daemon(daemon_state, handler)
+                .await;
+        }
+
+        // Stdio mode: original behavior
+        self.handle_list_command_stdio(handler).await
+    }
+
+    /// Daemon mode: list all projects from DaemonState with live status.
+    async fn handle_list_command_daemon(
+        &self,
+        daemon_state: &std::sync::Arc<tokio::sync::RwLock<DaemonState>>,
+        handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
+        let ds = daemon_state.read().await;
+
+        if ds.workspaces.is_empty() {
+            let message = "No projects registered with daemon.";
+            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+        }
+
+        // Collect workspace info for formatting
+        let current_root = handler.workspace_root.canonicalize().ok();
+
+        #[derive(Clone)]
+        struct WorkspaceInfo {
+            workspace_id: String,
+            name: String,
+            path: String,
+            status: String,
+            symbol_count: Option<u64>,
+            is_current: bool,
+        }
+
+        let mut entries: Vec<WorkspaceInfo> = Vec::new();
+
+        // Also read registry for symbol/file counts
+        let registry = ds.registry.read().await;
+
+        for (workspace_id, loaded) in &ds.workspaces {
+            let name = loaded
+                .path
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| workspace_id.clone());
+
+            let status = match &loaded.status {
+                WorkspaceLoadStatus::Ready => "Ready".to_string(),
+                WorkspaceLoadStatus::Indexing => "Indexing".to_string(),
+                WorkspaceLoadStatus::Registered => "Registered".to_string(),
+                WorkspaceLoadStatus::Stale => "Stale".to_string(),
+                WorkspaceLoadStatus::Error(msg) => format!("Error: {}", msg),
+            };
+
+            let symbol_count = registry
+                .get_project(workspace_id)
+                .and_then(|e| e.symbol_count);
+
+            let is_current = current_root
+                .as_ref()
+                .and_then(|cr| loaded.path.canonicalize().ok().map(|lp| lp == *cr))
+                .unwrap_or(false);
+
+            entries.push(WorkspaceInfo {
+                workspace_id: workspace_id.clone(),
+                name,
+                path: loaded.path.to_string_lossy().into_owned(),
+                status,
+                symbol_count,
+                is_current,
+            });
+        }
+
+        // Drop locks before formatting
+        drop(registry);
+        drop(ds);
+
+        // Sort by name for consistent output
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+
+        // Apply token optimization using ProgressiveReducer
+        let token_estimator = TokenEstimator::new();
+        let reducer = ProgressiveReducer::new();
+        let target_tokens = 10000;
+
+        let estimate_entries = |subset: &[WorkspaceInfo]| {
+            let mut test_output = String::from("Daemon Projects:\n\n");
+            for entry in subset {
+                let current_marker = if entry.is_current { " (current)" } else { "" };
+                let symbols = entry
+                    .symbol_count
+                    .map(|c| format!("{} symbols", c))
+                    .unwrap_or_else(|| "no index".to_string());
+                test_output.push_str(&format!(
+                    "{}{} ({})\n  Path: {}\n  Status: {} | {}\n\n",
+                    entry.name, current_marker, entry.workspace_id, entry.path, entry.status, symbols,
+                ));
+            }
+            token_estimator.estimate_string(&test_output)
+        };
+
+        let total_count = entries.len();
+        let optimized = reducer.reduce(&entries, target_tokens, estimate_entries);
+        let shown_count = optimized.len();
+
+        let mut output = String::from("Daemon Projects:\n\n");
+
+        for entry in &optimized {
+            let current_marker = if entry.is_current { " (current)" } else { "" };
+            let symbols = entry
+                .symbol_count
+                .map(|c| format!("{} symbols", c))
+                .unwrap_or_else(|| "no index".to_string());
+            output.push_str(&format!(
+                "{}{} ({})\n  Path: {}\n  Status: {} | {}\n\n",
+                entry.name, current_marker, entry.workspace_id, entry.path, entry.status, symbols,
+            ));
+        }
+
+        if shown_count < total_count {
+            output.push_str(&format!(
+                "Showing {} of {} total projects (token limit applied)\n",
+                shown_count, total_count
+            ));
+        }
+
+        Ok(CallToolResult::text_content(vec![Content::text(output)]))
+    }
+
+    /// Stdio mode: list workspaces from local WorkspaceRegistryService.
+    async fn handle_list_command_stdio(
+        &self,
+        handler: &JulieServerHandler,
+    ) -> Result<CallToolResult> {
         let primary_workspace = match handler.get_workspace().await? {
             Some(ws) => ws,
             None => {

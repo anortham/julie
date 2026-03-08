@@ -63,57 +63,29 @@ pub struct LoadedWorkspace {
     pub path: PathBuf,
 }
 
-/// Daemon-wide shared state.
-///
-/// Holds all loaded workspaces and per-workspace MCP services, plus
-/// daemon-level resources (registry, julie_home, indexing pipeline,
-/// cancellation token) so MCP tool handlers can access them directly.
-///
-/// Wrapped in `Arc<tokio::sync::RwLock<DaemonState>>` for shared access.
+/// Daemon-wide shared state: loaded workspaces, MCP services, and daemon-level
+/// resources. Wrapped in `Arc<tokio::sync::RwLock<DaemonState>>` for shared access.
 pub struct DaemonState {
     /// Map of workspace_id -> loaded workspace.
     pub workspaces: HashMap<String, LoadedWorkspace>,
-
-    /// Per-workspace MCP services, keyed by workspace_id.
-    /// Each workspace gets its own `StreamableHttpService` so sessions
-    /// are isolated per-project.
+    /// Per-workspace MCP services (isolated per-project sessions).
     pub mcp_services: HashMap<String, StreamableHttpService<JulieServerHandler>>,
-
-    /// Cross-project file watcher manager.
-    ///
-    /// Manages one `notify::RecommendedWatcher` per `Ready` project so the
-    /// daemon detects file changes and triggers incremental re-indexing.
+    /// Cross-project file watcher manager (one watcher per Ready project).
     pub watcher_manager: Arc<DaemonWatcherManager>,
-
-    /// Global project registry — tracks all known projects on this machine.
-    ///
-    /// Shared with `AppState` so both have the same view of registered projects.
+    /// Global project registry — shared with `AppState`.
     pub registry: Arc<RwLock<GlobalRegistry>>,
-
-    /// Path to `~/.julie` (or platform equivalent) for persisting registry.
+    /// Path to `~/.julie` for persisting registry.
     pub julie_home: PathBuf,
-
-    /// Sender for the background indexing pipeline.
-    ///
-    /// `None` during construction (chicken-and-egg: the indexing worker needs
-    /// `DaemonState` Arc, but DaemonState needs the sender). Set via
-    /// `set_indexing_sender` after spawning the worker.
+    /// Sender for background indexing pipeline (`None` during construction;
+    /// set via `set_indexing_sender` after spawning the worker).
     pub indexing_sender: Option<IndexingSender>,
-
     /// Cancellation token for shutting down all MCP sessions and background work.
     pub cancellation_token: CancellationToken,
 }
 
 impl DaemonState {
-    /// Create a new empty daemon state with daemon-level resources.
-    ///
-    /// The `indexing_sender` is initially `None` because of a chicken-and-egg
-    /// dependency: the indexing worker needs the `DaemonState` Arc, but
-    /// `DaemonState` needs the sender. Call `set_indexing_sender` after
-    /// spawning the indexing worker.
-    ///
-    /// Initializes the cross-project file watcher manager. This should not fail
-    /// unless the glob patterns in `watcher::filtering` are invalid (a bug).
+    /// Create a new empty daemon state. Call `set_indexing_sender` after
+    /// spawning the indexing worker (chicken-and-egg dependency).
     pub fn new(
         registry: Arc<RwLock<GlobalRegistry>>,
         julie_home: PathBuf,
@@ -135,28 +107,15 @@ impl DaemonState {
     }
 
     /// Set the indexing sender after the indexing worker has been spawned.
-    ///
-    /// Must be called before any code that needs to submit index requests
-    /// through `DaemonState`.
     pub fn set_indexing_sender(&mut self, sender: IndexingSender) {
         self.indexing_sender = Some(sender);
     }
 
-    /// Register a project with the daemon: validates the path, registers in the
-    /// global registry, creates a workspace + MCP service in DaemonState, persists
-    /// the registry to disk, starts a file watcher if applicable, and queues
-    /// background indexing.
+    /// Register a project: validate path, register in GlobalRegistry, create
+    /// workspace + MCP service, persist registry, start watcher, queue indexing.
     ///
-    /// This is the single source of truth for project registration logic.
-    /// Both `POST /api/projects` and the MCP `manage_workspace add` tool call
-    /// this in daemon mode.
-    ///
-    /// Takes the `Arc<RwLock<DaemonState>>` so it can acquire/release locks as
-    /// needed without holding a write lock across async operations.
-    ///
-    /// Returns `Ok(ProjectRegistrationResult)` on success. If the project was
-    /// already registered, `already_existed` is `true` and no duplicate work
-    /// is done.
+    /// Single source of truth for registration (used by both API and MCP tool).
+    /// Returns `already_existed: true` if the project was already registered.
     pub async fn register_project(
         daemon_state: &Arc<RwLock<DaemonState>>,
         path: &Path,
@@ -441,78 +400,93 @@ impl DaemonState {
 
     /// Remove a workspace, its MCP service, and its file watcher.
     ///
-    /// Called when a project is removed via the API.
+    /// Low-level removal — called by `deregister_project`. Prefer that method
+    /// for full deregistration (which also handles GlobalRegistry + disk persist).
     pub async fn remove_workspace(&mut self, workspace_id: &str) {
         self.workspaces.remove(workspace_id);
         self.mcp_services.remove(workspace_id);
         self.watcher_manager.stop_watching(workspace_id).await;
     }
 
-    /// Start file watchers for all `Ready` projects.
-    ///
-    /// Called after `load_registered_projects` on daemon startup.
-    /// Only starts watchers for workspaces that have both a database and
-    /// search index loaded (status == Ready).
-    pub async fn start_watchers_for_ready_projects(&self) {
-        let mut started = 0u32;
-        for (workspace_id, loaded) in &self.workspaces {
-            if loaded.status != WorkspaceLoadStatus::Ready {
-                continue;
-            }
+    // NOTE: Watcher methods (`start_watchers_for_ready_projects`,
+    // `start_watcher_if_ready`) are in `daemon_state_watchers.rs` to keep
+    // this file under the 500-line limit.
+}
 
-            let (db, search_index) = match (&loaded.workspace.db, &loaded.workspace.search_index) {
-                (Some(db), si) => (db.clone(), si.clone()),
-                _ => {
-                    debug!(
-                        "Skipping watcher for '{}': no database loaded",
-                        workspace_id
+/// Result of a successful project deregistration via `DaemonState::deregister_project`.
+#[derive(Debug, Clone)]
+pub struct DeregistrationResult {
+    /// The workspace ID that was removed.
+    pub workspace_id: String,
+    /// Human-readable project name (derived from directory name).
+    pub name: String,
+    /// Path to the project directory.
+    pub path: PathBuf,
+}
+
+impl DaemonState {
+    /// Deregister a project from the daemon: stops file watcher, removes from
+    /// DaemonState (workspaces + mcp_services), deregisters from GlobalRegistry,
+    /// and persists the registry to disk.
+    ///
+    /// This is the single source of truth for project deregistration logic.
+    /// Both `DELETE /api/projects/:id` and the MCP `manage_workspace remove` tool
+    /// call this in daemon mode.
+    ///
+    /// Takes the `Arc<RwLock<DaemonState>>` so it can acquire/release locks
+    /// with correct ordering (DaemonState before registry).
+    ///
+    /// Returns `Ok(Some(DeregistrationResult))` on success, or `Ok(None)` if the
+    /// workspace_id was not found in the registry.
+    pub async fn deregister_project(
+        daemon_state: &Arc<RwLock<DaemonState>>,
+        workspace_id: &str,
+    ) -> Result<Option<DeregistrationResult>> {
+        // Step 1: Acquire DaemonState write lock, then registry write lock
+        // (correct ordering: DaemonState before registry).
+        let result = {
+            let mut ds = daemon_state.write().await;
+
+            // Check if the project exists in the registry
+            let (name, path) = {
+                let mut registry = ds.registry.write().await;
+
+                let entry = match registry.get_project(workspace_id) {
+                    Some(e) => e,
+                    None => return Ok(None),
+                };
+                let name = entry.name.clone();
+                let path = entry.path.clone();
+
+                // Remove from GlobalRegistry
+                registry.remove_project(workspace_id);
+
+                // Persist registry to disk
+                let julie_home = ds.julie_home.clone();
+                if let Err(e) = registry.save(&julie_home) {
+                    tracing::error!(
+                        "Failed to save registry after removing project '{}': {}",
+                        workspace_id,
+                        e
                     );
-                    continue;
+                    // Don't fail — project is removed in memory
                 }
+
+                (name, path)
             };
+            // Registry lock dropped here
 
-            self.watcher_manager
-                .start_watching(
-                    workspace_id.clone(),
-                    loaded.path.clone(),
-                    db,
-                    search_index,
-                )
-                .await;
-            started += 1;
-        }
-        info!("Started file watchers for {} Ready project(s)", started);
-    }
+            // Step 2: Remove from DaemonState (workspace + MCP service + watcher)
+            ds.remove_workspace(workspace_id).await;
 
-    /// Start a file watcher for a single workspace if it's Ready.
-    ///
-    /// Called after registering a new project via the API.
-    pub async fn start_watcher_if_ready(&self, workspace_id: &str) {
-        let loaded = match self.workspaces.get(workspace_id) {
-            Some(lw) => lw,
-            None => return,
+            DeregistrationResult {
+                workspace_id: workspace_id.to_string(),
+                name,
+                path,
+            }
         };
+        // DaemonState lock dropped here
 
-        if loaded.status != WorkspaceLoadStatus::Ready {
-            debug!(
-                "Not starting watcher for '{}': status is {:?}",
-                workspace_id, loaded.status
-            );
-            return;
-        }
-
-        let (db, search_index) = match (&loaded.workspace.db, &loaded.workspace.search_index) {
-            (Some(db), si) => (db.clone(), si.clone()),
-            _ => return,
-        };
-
-        self.watcher_manager
-            .start_watching(
-                workspace_id.to_string(),
-                loaded.path.clone(),
-                db,
-                search_index,
-            )
-            .await;
+        Ok(Some(result))
     }
 }

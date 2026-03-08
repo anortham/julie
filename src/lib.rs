@@ -10,6 +10,7 @@ pub mod connect;
 pub mod daemon;
 pub mod daemon_indexer;
 pub mod daemon_state;
+pub mod daemon_state_watchers;
 pub mod daemon_watcher;
 pub mod database;
 pub mod embeddings;

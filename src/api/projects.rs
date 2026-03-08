@@ -178,28 +178,18 @@ pub async fn delete_project(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> StatusCode {
-    let mut registry = state.registry.write().await;
-
-    if !registry.remove_project(&id) {
-        return StatusCode::NOT_FOUND;
+    // Use the shared deregister_project method which handles:
+    // 1. Correct lock ordering (DaemonState before registry)
+    // 2. Removing from GlobalRegistry + persisting to disk
+    // 3. Removing from DaemonState (workspace + MCP service + watcher)
+    match DaemonState::deregister_project(&state.daemon_state, &id).await {
+        Ok(Some(_)) => StatusCode::NO_CONTENT,
+        Ok(None) => StatusCode::NOT_FOUND,
+        Err(e) => {
+            tracing::error!("Failed to deregister project '{}': {}", id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     }
-
-    // Persist to disk
-    if let Err(e) = registry.save(&state.julie_home) {
-        tracing::error!("Failed to save registry after removing project: {}", e);
-        // Don't fail the request -- project is removed in memory
-    }
-
-    // Drop registry lock before acquiring daemon_state lock to minimize lock scope
-    drop(registry);
-
-    // Clean up daemon state (workspace + MCP service)
-    {
-        let mut daemon_state = state.daemon_state.write().await;
-        daemon_state.remove_workspace(&id).await;
-    }
-
-    StatusCode::NO_CONTENT
 }
 
 /// Response body for project status.
