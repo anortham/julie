@@ -47,7 +47,7 @@ pub struct DeepDiveTool {
     #[serde(default)]
     pub context_file: Option<String>,
 
-    /// Workspace filter: "primary" (default) or workspace ID
+    /// Workspace filter: "primary" (default), workspace ID, or "all" (daemon mode: search all projects)
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }

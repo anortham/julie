@@ -44,7 +44,7 @@ pub struct FastRefsTool {
     /// Maximum references (default: 10, range: 1-500)
     #[serde(default = "default_limit", deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient")]
     pub limit: u32,
-    /// Workspace filter: "primary" (default) or workspace ID
+    /// Workspace filter: "primary" (default), workspace ID, or "all" (daemon mode: search all projects)
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
     /// Reference kind filter: "call", "variable_ref", "type_usage", "member_access", "import"

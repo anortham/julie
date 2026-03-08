@@ -33,6 +33,7 @@ pub mod federation_tests; // Federation module: RRF merge, federated search
 // ============================================================================
 pub mod server_tests; // HTTP server, health endpoint, project endpoints
 pub mod daemon_integration_tests; // End-to-end daemon integration tests
+pub mod federation_integration_tests; // Cross-project federation end-to-end tests
 
 // ============================================================================
 // UI TESTS - Embedded web UI serving

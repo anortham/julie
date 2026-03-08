@@ -34,7 +34,7 @@ pub struct GetContextTool {
     #[serde(default, deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient")]
     pub max_tokens: Option<u32>,
 
-    /// Workspace filter: "primary" (default) or workspace ID
+    /// Workspace filter: "primary" (default), workspace ID, or "all" (daemon mode: search all projects)
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 
