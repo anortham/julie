@@ -6,11 +6,12 @@
 //! - `assemble_context()` prompt assembly from search + memories
 //! - `DispatchManager` lifecycle (create, update, list, history)
 //! - Broadcast channel mechanism for streaming output
+//! - `save_result_as_checkpoint()` persistence
 
 use crate::agent::backend::{AgentBackend, BackendInfo};
 use crate::agent::claude_backend::ClaudeBackend;
 use crate::agent::context_assembly::{assemble_context, ContextHints};
-use crate::agent::dispatch::{DispatchManager, DispatchStatus};
+use crate::agent::dispatch::{save_result_as_checkpoint, DispatchManager, DispatchStatus};
 
 // ============================================================================
 // AgentBackend trait + ClaudeBackend
@@ -50,6 +51,19 @@ fn test_backend_info_fields() {
     assert_eq!(info.name, "test-backend");
     assert!(info.available);
     assert_eq!(info.version.as_deref(), Some("1.0.0"));
+}
+
+#[test]
+fn test_backend_info_serializable() {
+    let info = BackendInfo {
+        name: "claude".to_string(),
+        available: true,
+        version: Some("1.2.3".to_string()),
+    };
+    let json = serde_json::to_value(&info).expect("BackendInfo should serialize");
+    assert_eq!(json["name"], "claude");
+    assert_eq!(json["available"], true);
+    assert_eq!(json["version"], "1.2.3");
 }
 
 // ============================================================================
@@ -130,18 +144,26 @@ async fn test_dispatch_manager_fail_dispatch() {
 }
 
 #[tokio::test]
-async fn test_dispatch_manager_list_dispatches() {
+async fn test_dispatch_manager_list_dispatches_sorted() {
     let mut manager = DispatchManager::new();
+    // Start dispatches with slight time differences (same millisecond is possible,
+    // so we just verify count and that the sort doesn't crash)
     let id1 = manager.start_dispatch("task 1".to_string(), "proj".to_string());
     let id2 = manager.start_dispatch("task 2".to_string(), "proj".to_string());
 
     let dispatches = manager.list_dispatches();
     assert_eq!(dispatches.len(), 2);
 
-    // Both should be present (order not guaranteed by HashMap)
+    // Both should be present
     let ids: Vec<&str> = dispatches.iter().map(|d| d.id.as_str()).collect();
     assert!(ids.contains(&id1.as_str()));
     assert!(ids.contains(&id2.as_str()));
+
+    // Sorted by started_at descending — newest first
+    assert!(
+        dispatches[0].started_at >= dispatches[1].started_at,
+        "list_dispatches should return newest first"
+    );
 }
 
 #[tokio::test]
@@ -197,15 +219,39 @@ fn test_dispatch_status_display() {
     assert_eq!(DispatchStatus::Failed.as_str(), "failed");
 }
 
+#[test]
+fn test_dispatch_status_serializable() {
+    let json = serde_json::to_value(DispatchStatus::Running).unwrap();
+    assert_eq!(json, "running");
+    let json = serde_json::to_value(DispatchStatus::Completed).unwrap();
+    assert_eq!(json, "completed");
+    let json = serde_json::to_value(DispatchStatus::Failed).unwrap();
+    assert_eq!(json, "failed");
+}
+
+#[test]
+fn test_agent_dispatch_serializable() {
+    let mut manager = DispatchManager::new();
+    let id = manager.start_dispatch("my task".to_string(), "proj".to_string());
+    let dispatch = manager.get_dispatch(&id).unwrap();
+    let json = serde_json::to_value(dispatch).expect("AgentDispatch should serialize");
+    assert_eq!(json["task"], "my task");
+    assert_eq!(json["project"], "proj");
+    assert_eq!(json["status"], "running");
+    // broadcast_tx should be skipped
+    assert!(json.get("broadcast_tx").is_none());
+}
+
 // ============================================================================
 // Context Assembly
 // ============================================================================
 
 #[tokio::test]
 async fn test_assemble_context_with_no_workspace() {
-    // When no workspace path is provided, context should still include the task
+    // When no workspace/search_index is provided, context should still include the task
     let context = assemble_context(
         None, // no workspace root
+        None, // no search index
         "Implement the new feature",
         None,
     )
@@ -221,7 +267,7 @@ async fn test_assemble_context_with_no_workspace() {
 
 #[tokio::test]
 async fn test_assemble_context_includes_task_section() {
-    let context = assemble_context(None, "Fix the parser bug", None)
+    let context = assemble_context(None, None, "Fix the parser bug", None)
         .await
         .unwrap();
 
@@ -238,7 +284,7 @@ async fn test_assemble_context_with_hints() {
         extra_context: Some("This is a Rust project using Tantivy".to_string()),
     };
 
-    let context = assemble_context(None, "Optimize search", Some(hints))
+    let context = assemble_context(None, None, "Optimize search", Some(hints))
         .await
         .unwrap();
 
@@ -254,7 +300,57 @@ async fn test_assemble_context_with_hints() {
 }
 
 #[tokio::test]
-async fn test_assemble_context_with_workspace() {
+async fn test_assemble_context_with_search_index() {
+    use crate::search::{LanguageConfigs, SearchIndex, SymbolDocument};
+    use std::sync::{Arc, Mutex};
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let tantivy_dir = temp_dir.path().join("tantivy");
+    std::fs::create_dir_all(&tantivy_dir).unwrap();
+
+    let configs = LanguageConfigs::load_embedded();
+    let search_index =
+        SearchIndex::create_with_language_configs(&tantivy_dir, &configs).unwrap();
+
+    // Add a test symbol
+    search_index
+        .add_symbol(&SymbolDocument {
+            id: "sym-1".to_string(),
+            name: "parse_expression".to_string(),
+            signature: "fn parse_expression(input: &str) -> Expr".to_string(),
+            doc_comment: "Parse an expression from string input.".to_string(),
+            file_path: "src/parser.rs".to_string(),
+            kind: "function".to_string(),
+            language: "rust".to_string(),
+            start_line: 42,
+            code_body: "fn parse_expression(input: &str) -> Expr { todo!() }".to_string(),
+        })
+        .unwrap();
+    search_index.commit().unwrap();
+
+    let index = Arc::new(Mutex::new(search_index));
+
+    let context = assemble_context(
+        None,
+        Some(&index),
+        "Fix the parser expression handling",
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert!(context.contains("# Task"));
+    assert!(context.contains("Fix the parser expression handling"));
+    // Should find the symbol via search
+    assert!(
+        context.contains("parse_expression"),
+        "should include search results from the provided SearchIndex"
+    );
+    assert!(context.contains("## Relevant Code"));
+}
+
+#[tokio::test]
+async fn test_assemble_context_with_workspace_memories() {
     // Create a temp workspace with .memories for recall
     let temp_dir = tempfile::tempdir().unwrap();
     let workspace_root = temp_dir.path();
@@ -278,6 +374,7 @@ The parser was failing on empty input. Added a guard clause.
 
     let context = assemble_context(
         Some(workspace_root),
+        None, // no search index
         "Review the parser changes",
         None,
     )
@@ -286,13 +383,12 @@ The parser was failing on empty input. Added a guard clause.
 
     assert!(context.contains("# Task"));
     assert!(context.contains("Review the parser changes"));
-    // Should attempt to include memories (may or may not find them depending on recall)
     // The key thing is it doesn't crash with a real workspace path
 }
 
 #[tokio::test]
 async fn test_assemble_context_format_structure() {
-    let context = assemble_context(None, "My task", None).await.unwrap();
+    let context = assemble_context(None, None, "My task", None).await.unwrap();
 
     // Verify the output has the expected structure
     let lines: Vec<&str> = context.lines().collect();
@@ -304,6 +400,64 @@ async fn test_assemble_context_format_structure() {
         lines.iter().any(|l| l.starts_with("# Task")),
         "should have Task header"
     );
+}
+
+// ============================================================================
+// save_result_as_checkpoint
+// ============================================================================
+
+#[tokio::test]
+async fn test_save_result_as_checkpoint_completed() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let workspace_root = temp_dir.path();
+
+    let mut manager = DispatchManager::new();
+    let id = manager.start_dispatch(
+        "Refactor the parser".to_string(),
+        "julie".to_string(),
+    );
+    manager.append_output(&id, "Done. Refactored 3 files.\n");
+    manager.complete_dispatch(&id);
+
+    let dispatch = manager.get_dispatch(&id).unwrap();
+    let checkpoint = save_result_as_checkpoint(workspace_root, dispatch, "claude")
+        .await
+        .expect("should save checkpoint");
+
+    assert!(checkpoint.id.starts_with("checkpoint_"));
+    assert!(checkpoint.description.contains("Refactor the parser"));
+    assert!(checkpoint.description.contains("Done. Refactored 3 files."));
+
+    let tags = checkpoint.tags.expect("should have tags");
+    assert!(tags.contains(&"agent_result".to_string()));
+    assert!(tags.contains(&"claude".to_string()));
+    assert!(tags.contains(&"julie".to_string()));
+
+    assert_eq!(
+        checkpoint.impact.as_deref(),
+        Some("Agent task completed successfully")
+    );
+    assert_eq!(
+        checkpoint.context.as_deref(),
+        Some("Dispatched to claude backend")
+    );
+}
+
+#[tokio::test]
+async fn test_save_result_as_checkpoint_failed() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let workspace_root = temp_dir.path();
+
+    let mut manager = DispatchManager::new();
+    let id = manager.start_dispatch("Bad task".to_string(), "proj".to_string());
+    manager.fail_dispatch(&id, "Backend crashed");
+
+    let dispatch = manager.get_dispatch(&id).unwrap();
+    let checkpoint = save_result_as_checkpoint(workspace_root, dispatch, "claude")
+        .await
+        .expect("should save checkpoint even for failures");
+
+    assert_eq!(checkpoint.impact.as_deref(), Some("Backend crashed"));
 }
 
 // ============================================================================

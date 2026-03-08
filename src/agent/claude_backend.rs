@@ -88,8 +88,10 @@ impl AgentBackend for ClaudeBackend {
         let mut child = tokio::process::Command::new("claude")
             .arg("-p")
             .arg(prompt)
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
             .spawn()
             .context("Failed to spawn claude CLI process")?;
 

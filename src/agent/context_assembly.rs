@@ -10,11 +10,12 @@
 //! 4. Format everything into a structured prompt
 
 use std::path::Path;
+use std::sync::Arc;
 
 use anyhow::Result;
 
 use crate::memory::{self, RecallOptions};
-use crate::search::{LanguageConfigs, SearchFilter, SearchIndex};
+use crate::search::{SearchFilter, SearchIndex};
 
 /// Hints to guide context assembly.
 ///
@@ -31,9 +32,13 @@ pub struct ContextHints {
 
 /// Assemble context from a workspace into a structured prompt string.
 ///
-/// If `workspace_root` is `Some`, searches the workspace's Tantivy index
-/// for relevant symbols and recalls relevant memories. If `None`, produces
-/// a minimal prompt with just the task and any provided hints.
+/// Code search uses the caller-provided `SearchIndex` (via `search_index`),
+/// which avoids the wrong-path bug of trying to reconstruct the Tantivy path.
+/// The caller (API layer) has access to the workspace's `SearchIndex` via
+/// `LoadedWorkspace.workspace.search_index`.
+///
+/// Memory recall uses `workspace_root` directly since `.memories/` lives
+/// at the workspace root.
 ///
 /// # Sections
 ///
@@ -55,6 +60,7 @@ pub struct ContextHints {
 /// ```
 pub async fn assemble_context(
     workspace_root: Option<&Path>,
+    search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
     task: &str,
     hints: Option<ContextHints>,
 ) -> Result<String> {
@@ -63,9 +69,9 @@ pub async fn assemble_context(
     sections.push("# Context (assembled by Julie)".to_string());
     sections.push(String::new());
 
-    // 1. Search for relevant code symbols
-    if let Some(root) = workspace_root {
-        let code_section = assemble_code_context(root, task).await;
+    // 1. Search for relevant code symbols (using caller-provided SearchIndex)
+    if let Some(index) = search_index {
+        let code_section = assemble_code_context(index, task);
         if !code_section.is_empty() {
             sections.push("## Relevant Code".to_string());
             sections.push(String::new());
@@ -74,7 +80,7 @@ pub async fn assemble_context(
         }
     }
 
-    // 2. Recall relevant memories
+    // 2. Recall relevant memories (uses workspace_root for .memories/ path)
     if let Some(root) = workspace_root {
         let memory_section = assemble_memory_context(root, task);
         if !memory_section.is_empty() {
@@ -107,26 +113,15 @@ pub async fn assemble_context(
 
 /// Search the workspace's Tantivy index for symbols relevant to the task.
 ///
-/// Returns a formatted string with top search results (signatures + doc comments).
-async fn assemble_code_context(workspace_root: &Path, task: &str) -> String {
-    let tantivy_dir = workspace_root
-        .join(".julie")
-        .join("indexes")
-        .join("tantivy");
-
-    // Try to open an existing Tantivy index
-    let index = if tantivy_dir.exists() {
-        let configs = LanguageConfigs::load_embedded();
-        match SearchIndex::open_with_language_configs(&tantivy_dir, &configs) {
-            Ok(idx) => Some(idx),
-            Err(_) => None,
-        }
-    } else {
-        None
-    };
-
-    let Some(index) = index else {
-        return String::new();
+/// Uses the caller-provided `SearchIndex` (already correctly routed to the
+/// workspace's `{workspace_id}/tantivy/` directory).
+fn assemble_code_context(
+    search_index: &Arc<std::sync::Mutex<SearchIndex>>,
+    task: &str,
+) -> String {
+    let index = match search_index.lock() {
+        Ok(idx) => idx,
+        Err(_) => return String::new(),
     };
 
     let filter = SearchFilter::default();
@@ -134,6 +129,8 @@ async fn assemble_code_context(workspace_root: &Path, task: &str) -> String {
         Ok(r) => r,
         Err(_) => return String::new(),
     };
+
+    drop(index); // release lock early
 
     if results.results.is_empty() {
         return String::new();

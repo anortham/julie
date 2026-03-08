@@ -6,14 +6,6 @@
 use anyhow::Result;
 use tokio::sync::broadcast;
 
-/// A stream of string chunks from an agent process.
-///
-/// Wraps a broadcast receiver so multiple consumers (e.g. SSE endpoints)
-/// can subscribe to the same output stream.
-pub struct AgentStream {
-    pub receiver: broadcast::Receiver<String>,
-}
-
 /// Trait for agent CLI backends.
 ///
 /// Each backend represents a CLI tool that can be dispatched with a prompt
@@ -43,7 +35,7 @@ pub trait AgentBackend: Send + Sync {
 }
 
 /// Information about a detected backend.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct BackendInfo {
     pub name: String,
     pub available: bool,
