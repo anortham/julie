@@ -1,8 +1,11 @@
-//! Tests for the search REST API endpoints.
+//! Tests for the search REST API endpoints (code-only paths).
 //!
 //! Tests both `POST /api/search` and `POST /api/search/debug` endpoints,
 //! covering definition search, content search, debug scoring breakdown,
 //! workspace resolution, and error cases.
+//!
+//! Unified cross-content search tests (content_type, hybrid mode, memory
+//! results) live in `api_search_unified_tests.rs`.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -770,3 +773,4 @@ async fn test_search_limit_capped_at_500() {
     // Should succeed (the cap is applied internally, not rejected)
     assert_eq!(response.status(), StatusCode::OK);
 }
+

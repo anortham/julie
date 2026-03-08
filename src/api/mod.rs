@@ -7,6 +7,7 @@ pub mod health;
 pub mod memories;
 pub mod projects;
 pub mod search;
+pub mod search_unified;
 
 use std::sync::Arc;
 

@@ -40,6 +40,7 @@ pub mod federation_tests; // Federation module: RRF merge, federated search
 pub mod api_dashboard_tests; // Dashboard stats endpoint (GET /api/dashboard/stats)
 pub mod api_memories_tests; // Memories & plans API endpoints (GET /api/memories, GET /api/plans)
 pub mod api_search_tests; // Search API endpoints (POST /api/search, POST /api/search/debug)
+pub mod api_search_unified_tests; // Unified cross-content search API (content_type, hybrid, memory results)
 pub mod server_tests; // HTTP server, health endpoint, project endpoints
 pub mod daemon_integration_tests; // End-to-end daemon integration tests
 pub mod federation_integration_tests; // Cross-project federation end-to-end tests
@@ -75,6 +76,7 @@ pub mod core {
     pub mod language; // Language detection and support tests
     pub mod tracing; // Tracing and logging tests
     pub mod vector_storage; // sqlite-vec vector storage CRUD tests
+    pub mod memory_vectors; // Memory embedding vector storage (migration 012 + CRUD + KNN)
     pub mod workspace_init; // Workspace root detection and initialization tests
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
     pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
@@ -88,8 +90,10 @@ pub mod memory_git_tests; // Git context capture (branch, commit, changed/untrac
 pub mod memory_index_tests; // Memory Tantivy index (BM25 search, rebuild from files)
 pub mod memory_plan_tests; // Plan CRUD (save, get, list, activate, update, complete)
 pub mod memory_cross_project_tests; // Cross-project recall (recall_cross_project, daemon mode)
+pub mod memory_embedding_tests; // Memory checkpoint embedding (format, store, hybrid search)
 pub mod memory_recall_tests; // Recall filesystem mode (last N, date filtering, planId, full flag)
 pub mod memory_storage_tests; // YAML frontmatter storage layer (format, parse, round-trip)
+pub mod unified_search_tests; // Unified cross-content search (code + memories)
 pub mod memory_tool_tests; // MCP tool wrappers (CheckpointTool, RecallTool, PlanTool)
 pub mod memory_integration_tests; // End-to-end: checkpoint→recall round trip, plan workflow, Goldfish compat
 

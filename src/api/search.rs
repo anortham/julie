@@ -1,6 +1,7 @@
 //! Search endpoints for the Julie daemon HTTP server.
 //!
-//! - `POST /api/search` — standard search (definitions or content)
+//! - `POST /api/search` — standard search (definitions or content), with optional
+//!   cross-content filtering via `content_type` (code/memory/all)
 //! - `POST /api/search/debug` — search with scoring breakdown
 
 use std::collections::HashMap;
@@ -12,6 +13,8 @@ use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use crate::api::common::{MAX_RESULT_LIMIT, resolve_workspace};
+use crate::api::search_unified;
+use crate::search::content_type::ContentType;
 use crate::search::debug::{ContentDebugResults, SymbolDebugResults, search_content_debug};
 use crate::search::index::SearchFilter;
 use crate::server::AppState;
@@ -40,6 +43,14 @@ pub struct SearchRequest {
     /// Workspace ID to search. If omitted, uses the first Ready workspace.
     #[serde(default)]
     pub project: Option<String>,
+    /// Content type filter: "code" (default), "memory", or "all".
+    /// When set to "memory" or "all", searches the memory index alongside code.
+    #[serde(default)]
+    pub content_type: Option<String>,
+    /// When true, forces hybrid (BM25 + semantic) search for memories,
+    /// even for queries that look like code identifiers.
+    #[serde(default)]
+    pub hybrid: Option<bool>,
 }
 
 fn default_limit() -> usize {
@@ -50,11 +61,23 @@ fn default_search_target() -> String {
     "definitions".to_string()
 }
 
+/// Parse the `content_type` request field into a `ContentType` filter.
+/// Returns `None` for "all" (meaning: search all content types).
+/// Returns `Some(ContentType::Code)` when no content_type is specified (default).
+pub fn parse_content_type(content_type: &Option<String>) -> Option<ContentType> {
+    match content_type.as_deref() {
+        None | Some("code") => Some(ContentType::Code),
+        Some("all") => None,
+        Some(s) => ContentType::from_str_loose(s),
+    }
+}
+
 // -- Standard search response -----------------------------------------------
 
 /// A single symbol result in the standard search response.
 #[derive(Debug, Serialize)]
 pub struct SymbolResultResponse {
+    pub content_type: String,
     pub id: String,
     pub name: String,
     pub signature: String,
@@ -75,6 +98,29 @@ pub struct ContentResultResponse {
     pub score: f32,
 }
 
+/// A single memory result in the standard search response.
+#[derive(Debug, Serialize)]
+pub struct MemoryResultResponse {
+    pub content_type: String,
+    pub id: String,
+    pub body: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub tags: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub symbols: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub decision: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub impact: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub branch: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub timestamp: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub file_path: String,
+    pub score: f32,
+}
+
 /// Response body for `POST /api/search`.
 #[derive(Debug, Serialize)]
 pub struct SearchResponse {
@@ -90,6 +136,9 @@ pub struct SearchResponse {
     /// Content results (present when search_target = "content")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<Vec<ContentResultResponse>>,
+    /// Memory results (present when content_type includes memories)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memories: Option<Vec<MemoryResultResponse>>,
 }
 
 /// Response body for `POST /api/search/debug`.
@@ -99,6 +148,8 @@ pub struct DebugSearchResponse {
     pub relaxed: bool,
     pub count: usize,
     pub query_tokens: Vec<String>,
+    /// Whether hybrid (BM25 + semantic) memory search was requested.
+    pub hybrid_mode: bool,
     /// Symbol debug results (present when search_target = "definitions")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbols: Option<SymbolDebugResults>,
@@ -112,9 +163,31 @@ pub struct DebugSearchResponse {
 // ---------------------------------------------------------------------------
 
 /// `POST /api/search` — run a standard search.
+///
+/// Supports cross-content search via the `content_type` parameter:
+/// - `"code"` (default): search code symbols only (backward compatible)
+/// - `"memory"`: search memories only
+/// - `"all"`: search both code and memories, merged via RRF
 pub async fn search(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SearchRequest>,
+) -> Result<Json<SearchResponse>, (StatusCode, String)> {
+    let content_type_filter = parse_content_type(&body.content_type);
+
+    // Code-only: use the fast path (no unified search overhead)
+    if content_type_filter == Some(ContentType::Code) {
+        return search_code_only(state, body).await;
+    }
+
+    // Unified search path: content_type is "memory" or "all"
+    search_unified::search_unified(state, body, content_type_filter).await
+}
+
+/// Fast path for code-only search (no unified search overhead).
+/// This preserves the original behavior for backward compatibility.
+async fn search_code_only(
+    state: Arc<AppState>,
+    body: SearchRequest,
 ) -> Result<Json<SearchResponse>, (StatusCode, String)> {
     let filter = SearchFilter {
         language: body.language.clone(),
@@ -134,7 +207,6 @@ pub async fn search(
         ))?
         .clone();
 
-    // Drop daemon_state lock before blocking search
     drop(daemon_state);
 
     let query = body.query.clone();
@@ -173,6 +245,7 @@ pub async fn search(
                         })
                         .collect(),
                 ),
+                memories: None,
             })
         } else {
             let results =
@@ -194,6 +267,7 @@ pub async fn search(
                         .results
                         .into_iter()
                         .map(|r| SymbolResultResponse {
+                            content_type: "code".to_string(),
                             id: r.id,
                             name: r.name,
                             signature: r.signature,
@@ -207,6 +281,7 @@ pub async fn search(
                         .collect(),
                 ),
                 content: None,
+                memories: None,
             })
         }
     })
@@ -231,6 +306,8 @@ pub async fn search_debug(
         file_pattern: body.file_pattern.clone(),
         ..Default::default()
     };
+
+    let hybrid_mode = body.hybrid.unwrap_or(false);
 
     let daemon_state = state.daemon_state.read().await;
     let loaded_ws = resolve_workspace(&daemon_state, body.project.as_deref())?;
@@ -277,6 +354,7 @@ pub async fn search_debug(
                 relaxed: results.relaxed,
                 count,
                 query_tokens,
+                hybrid_mode,
                 symbols: None,
                 content: Some(results),
             })
@@ -334,6 +412,7 @@ pub async fn search_debug(
                 relaxed,
                 count,
                 query_tokens: qt,
+                hybrid_mode,
                 symbols: Some(SymbolDebugResults {
                     results: debug_results,
                     relaxed,
