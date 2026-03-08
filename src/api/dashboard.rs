@@ -113,15 +113,26 @@ pub async fn stats(
 
     // -- Memories --
     // Find first Ready workspace and gather memory stats from its filesystem.
+    // Clone the path and drop the read lock before awaiting spawn_blocking.
     let memory_stats = {
         let ds = state.daemon_state.read().await;
-        let ready_ws = ds
+        let workspace_path = ds
             .workspaces
             .values()
-            .find(|ws| ws.status == WorkspaceLoadStatus::Ready);
+            .find(|ws| ws.status == WorkspaceLoadStatus::Ready)
+            .map(|ws| ws.path.clone());
+        drop(ds);
 
-        match ready_ws {
-            Some(ws) => gather_memory_stats(&ws.path),
+        match workspace_path {
+            Some(path) => {
+                tokio::task::spawn_blocking(move || gather_memory_stats(&path))
+                    .await
+                    .unwrap_or(MemoryStats {
+                        total_checkpoints: 0,
+                        active_plan: None,
+                        last_checkpoint: None,
+                    })
+            }
             None => MemoryStats {
                 total_checkpoints: 0,
                 active_plan: None,
