@@ -37,6 +37,7 @@ pub mod federation_tests; // Federation module: RRF merge, federated search
 // ============================================================================
 // SERVER TESTS - HTTP server and API endpoint tests
 // ============================================================================
+pub mod api_dashboard_tests; // Dashboard stats endpoint (GET /api/dashboard/stats)
 pub mod api_memories_tests; // Memories & plans API endpoints (GET /api/memories, GET /api/plans)
 pub mod api_search_tests; // Search API endpoints (POST /api/search, POST /api/search/debug)
 pub mod server_tests; // HTTP server, health endpoint, project endpoints

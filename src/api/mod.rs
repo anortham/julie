@@ -2,6 +2,7 @@
 
 pub mod agents;
 pub mod common;
+pub mod dashboard;
 pub mod health;
 pub mod memories;
 pub mod projects;
@@ -35,5 +36,7 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/plans", get(memories::list_plans))
         .route("/plans/active", get(memories::get_active_plan))
         .route("/plans/{id}", get(memories::get_plan))
+        // Dashboard
+        .route("/dashboard/stats", get(dashboard::stats))
         .with_state(state)
 }
