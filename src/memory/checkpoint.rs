@@ -10,8 +10,12 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 
 use super::git::get_git_context;
+use super::index::MemoryIndex;
 use super::storage::{format_checkpoint, generate_checkpoint_id, get_checkpoint_filename};
 use super::{Checkpoint, CheckpointInput};
+
+/// Memory index location relative to workspace root.
+const MEMORY_INDEX_REL: &str = ".julie/indexes/memories/tantivy";
 
 /// Save a checkpoint to `.memories/{YYYY-MM-DD}/{HHMMSS}_{hash}.md`.
 ///
@@ -75,6 +79,12 @@ pub async fn save_checkpoint(workspace_root: &Path, input: CheckpointInput) -> R
     std::fs::write(&file_path, &content)
         .with_context(|| format!("Failed to write checkpoint file: {}", file_path.display()))?;
 
+    // 10. Index in Tantivy (best-effort — file is already safely written)
+    let rel_path = format!("{}/{}", date, filename);
+    if let Err(e) = index_checkpoint_in_tantivy(workspace_root, &checkpoint, &rel_path) {
+        tracing::warn!("Failed to index checkpoint in Tantivy (file is saved): {}", e);
+    }
+
     Ok(checkpoint)
 }
 
@@ -117,4 +127,24 @@ pub(crate) fn extract_summary(description: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Index a checkpoint into the Tantivy memory index.
+///
+/// Opens or creates the index, adds the document, and commits.
+/// This is called after the checkpoint file is already written to disk,
+/// so failures here are non-fatal (logged as warnings by the caller).
+fn index_checkpoint_in_tantivy(
+    workspace_root: &Path,
+    checkpoint: &Checkpoint,
+    rel_path: &str,
+) -> Result<()> {
+    let index_path = workspace_root.join(MEMORY_INDEX_REL);
+    std::fs::create_dir_all(&index_path)?;
+
+    let index = MemoryIndex::open_or_create(&index_path)?;
+    index.add_checkpoint(checkpoint, Some(rel_path))?;
+    index.commit()?;
+
+    Ok(())
 }

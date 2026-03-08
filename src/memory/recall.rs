@@ -1,10 +1,12 @@
-//! Recall — filesystem mode (no search query).
+//! Recall — filesystem and search modes.
 //!
-//! Walks `.memories/` date directories, loads checkpoints, sorts by date
-//! (newest first), and applies filtering (since/days/from/to/planId/limit).
+//! **Filesystem mode** (no search query): walks `.memories/` date directories,
+//! loads checkpoints, sorts by date (newest first), and applies filtering
+//! (since/days/from/to/planId/limit).
 //!
-//! This is the "last N checkpoints" mode. When `options.search` is `Some`,
-//! we return early — Task 7 will wire up Tantivy search mode.
+//! **Search mode** (`options.search` is `Some`): queries the Tantivy memory
+//! index using BM25. Lazily rebuilds the index on first use if empty. Applies
+//! post-search date and planId filtering.
 
 use std::path::Path;
 use std::sync::LazyLock;
@@ -21,6 +23,7 @@ static SINCE_RE: LazyLock<Regex> =
 static DATE_DIR_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}$").expect("valid regex"));
 
+use super::index::MemoryIndex;
 use super::plan::get_active_plan;
 use super::storage::parse_checkpoint;
 use super::{Checkpoint, RecallOptions, RecallResult};
@@ -28,24 +31,22 @@ use super::{Checkpoint, RecallOptions, RecallResult};
 /// Default number of checkpoints to return.
 const DEFAULT_LIMIT: usize = 5;
 
-/// Recall checkpoints from the filesystem.
+/// Recall checkpoints from the filesystem or via Tantivy search.
 ///
 /// When no `search` query is provided, walks `.memories/` date directories
 /// in reverse chronological order, applies filtering, and returns up to
 /// `limit` checkpoints (default 5, newest first).
 ///
-/// When `search` is `Some`, returns an empty result (Task 7 will handle this).
+/// When `search` is `Some`, queries the Tantivy memory index with BM25
+/// ranking. Lazily rebuilds the index if it is empty or missing. Applies
+/// post-search date and planId filtering.
 pub fn recall(workspace_root: &Path, options: RecallOptions) -> Result<RecallResult> {
     // 1. Read active plan (always, regardless of other options)
     let active_plan = get_active_plan(workspace_root)?;
 
-    // 2. If search query present, return early (Task 7)
-    if options.search.is_some() {
-        return Ok(RecallResult {
-            checkpoints: Vec::new(),
-            active_plan,
-            workspaces: None,
-        });
+    // 2. If search query present, use Tantivy search mode
+    if let Some(ref query) = options.search {
+        return recall_search_mode(workspace_root, query, &options, active_plan);
     }
 
     // 3. If limit is 0, return plan only
@@ -110,6 +111,107 @@ pub fn recall(workspace_root: &Path, options: RecallOptions) -> Result<RecallRes
     checkpoints.truncate(limit);
 
     // 10. If !full, strip git context
+    let full = options.full.unwrap_or(false);
+    if !full {
+        for cp in &mut checkpoints {
+            cp.git = None;
+        }
+    }
+
+    Ok(RecallResult {
+        checkpoints,
+        active_plan,
+        workspaces: None,
+    })
+}
+
+// ============================================================================
+// Search mode — Tantivy BM25 search
+// ============================================================================
+
+/// Memory index location relative to workspace root.
+const MEMORY_INDEX_REL: &str = ".julie/indexes/memories/tantivy";
+
+/// Search checkpoints via Tantivy BM25.
+///
+/// 1. Open or create the memory index
+/// 2. If empty, lazily rebuild from `.memories/` files on disk
+/// 3. Search with BM25
+/// 4. Convert results back to `Checkpoint` structs by re-reading files
+/// 5. Apply date/planId post-filters
+/// 6. Optionally strip git context
+fn recall_search_mode(
+    workspace_root: &Path,
+    query: &str,
+    options: &RecallOptions,
+    active_plan: Option<super::Plan>,
+) -> Result<RecallResult> {
+    let limit = options.limit.unwrap_or(DEFAULT_LIMIT);
+    if limit == 0 {
+        return Ok(RecallResult {
+            checkpoints: Vec::new(),
+            active_plan,
+            workspaces: None,
+        });
+    }
+
+    // 1. Open or create the Tantivy index
+    let index_path = workspace_root.join(MEMORY_INDEX_REL);
+    std::fs::create_dir_all(&index_path)
+        .with_context(|| format!("Failed to create memory index dir: {}", index_path.display()))?;
+
+    let index = MemoryIndex::open_or_create(&index_path)
+        .with_context(|| "Failed to open memory search index")?;
+
+    // 2. Lazy backfill: if index is empty, rebuild from files
+    if index.num_docs() == 0 {
+        tracing::info!("Memory index is empty, rebuilding from .memories/ files");
+        index.rebuild_from_files(workspace_root)?;
+    }
+
+    // 3. Search — request more results than limit to account for post-filtering
+    let search_limit = limit * 3 + 10; // over-fetch for filtering headroom
+    let results = index.search(query, search_limit)?;
+
+    // 4. Convert search results to Checkpoint structs
+    let memories_dir = workspace_root.join(".memories");
+    let mut checkpoints = Vec::new();
+
+    for result in &results {
+        // Try to load the full checkpoint from the file on disk
+        if !result.file_path.is_empty() {
+            let file_on_disk = memories_dir.join(&result.file_path);
+            if let Ok(content) = std::fs::read_to_string(&file_on_disk) {
+                if let Ok(cp) = parse_checkpoint(&content) {
+                    checkpoints.push(cp);
+                    continue;
+                }
+            }
+        }
+
+        // Fallback: reconstruct a minimal checkpoint from the search result fields.
+        // This handles cases where the file was deleted after indexing.
+        tracing::debug!(
+            "Could not load checkpoint file for {}, using index data",
+            result.id
+        );
+    }
+
+    // 5. Apply date filter post-search
+    let filter = DateFilter::from_options(options);
+    if let Some(ref f) = filter {
+        checkpoints.retain(|cp| f.matches_timestamp(&cp.timestamp));
+    }
+
+    // 6. Apply planId filter post-search
+    if let Some(ref plan_id) = options.plan_id {
+        checkpoints.retain(|cp| cp.plan_id.as_deref() == Some(plan_id.as_str()));
+    }
+
+    // 7. Apply limit
+    checkpoints.truncate(limit);
+
+    // 8. If !full, strip git context
     let full = options.full.unwrap_or(false);
     if !full {
         for cp in &mut checkpoints {

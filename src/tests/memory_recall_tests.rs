@@ -1,8 +1,8 @@
-//! Tests for recall — filesystem mode (`src/memory/recall.rs`).
+//! Tests for recall — filesystem mode and search mode (`src/memory/recall.rs`).
 //!
 //! Covers: `recall()` — last N checkpoints, date filtering (since/days/from/to),
 //! limit, full flag (git stripping), planId filtering, active plan inclusion,
-//! and `parse_since()` helper.
+//! `parse_since()` helper, and Tantivy BM25 search mode.
 
 #[cfg(test)]
 mod tests {
@@ -530,28 +530,359 @@ mod tests {
     }
 
     // ========================================================================
-    // recall() — search returns early (placeholder for Task 7)
+    // recall() — search mode (Tantivy BM25)
     // ========================================================================
 
     #[test]
-    fn test_recall_search_returns_empty_for_now() {
+    fn test_recall_search_returns_matching_checkpoints() {
         let dir = TempDir::new().unwrap();
         let root = dir.path();
 
-        let cp = make_checkpoint("2026-03-07T10:00:00.000Z", "Some checkpoint");
-        write_checkpoint(root, &cp);
+        let cp1 = make_checkpoint(
+            "2026-03-07T10:00:00.000Z",
+            "Refactored authentication module to use JWT tokens",
+        );
+        let cp2 = make_checkpoint(
+            "2026-03-07T11:00:00.000Z",
+            "Fixed database connection pooling issue",
+        );
+        let cp3 = make_checkpoint(
+            "2026-03-07T12:00:00.000Z",
+            "Updated authentication tests for OAuth2 flow",
+        );
+
+        write_checkpoint(root, &cp1);
+        write_checkpoint(root, &cp2);
+        write_checkpoint(root, &cp3);
 
         let result = recall(
             root,
             RecallOptions {
-                search: Some("something".to_string()),
+                search: Some("authentication".to_string()),
+                limit: Some(10),
                 ..Default::default()
             },
         )
         .unwrap();
 
-        // Task 7 will handle search — for now, return empty result with plan
+        // Should find the two auth-related checkpoints
+        assert!(
+            result.checkpoints.len() >= 2,
+            "Should find at least 2 auth checkpoints, got {}",
+            result.checkpoints.len()
+        );
+        assert!(
+            result
+                .checkpoints
+                .iter()
+                .all(|cp| cp.description.contains("auth") || cp.description.contains("Auth")),
+            "All results should be auth-related"
+        );
+    }
+
+    #[test]
+    fn test_recall_search_auto_rebuilds_index() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Write checkpoint files WITHOUT indexing them (simulating a fresh start)
+        let cp = make_checkpoint(
+            "2026-03-07T10:00:00.000Z",
+            "Implemented caching layer for API responses",
+        );
+        write_checkpoint(root, &cp);
+
+        // No Tantivy index exists yet — recall should auto-rebuild
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("caching API".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.checkpoints.len(), 1);
+        assert!(result.checkpoints[0].description.contains("caching"));
+    }
+
+    #[test]
+    fn test_recall_search_with_date_filter() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        let cp_old = make_checkpoint(
+            "2026-03-05T10:00:00.000Z",
+            "Old deployment configuration change",
+        );
+        let cp_new = make_checkpoint(
+            "2026-03-07T10:00:00.000Z",
+            "New deployment pipeline setup",
+        );
+
+        write_checkpoint(root, &cp_old);
+        write_checkpoint(root, &cp_new);
+
+        // Search for "deployment" but filter to only recent dates
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("deployment".to_string()),
+                since: Some("2026-03-06T00:00:00.000Z".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.checkpoints.len(),
+            1,
+            "Only the newer deployment checkpoint should match"
+        );
+        assert!(result.checkpoints[0].description.contains("New deployment"));
+    }
+
+    #[test]
+    fn test_recall_search_with_plan_id_filter() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        let cp1 = make_checkpoint_with_plan(
+            "2026-03-07T10:00:00.000Z",
+            "Database migration for plan alpha",
+            "alpha",
+        );
+        let cp2 = make_checkpoint_with_plan(
+            "2026-03-07T11:00:00.000Z",
+            "Database schema update for plan beta",
+            "beta",
+        );
+
+        write_checkpoint(root, &cp1);
+        write_checkpoint(root, &cp2);
+
+        // Search "database" but filter to plan "alpha"
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("database".to_string()),
+                plan_id: Some("alpha".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.checkpoints.len(), 1);
+        assert_eq!(result.checkpoints[0].plan_id, Some("alpha".to_string()));
+    }
+
+    #[test]
+    fn test_recall_search_respects_limit() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        for i in 0..5 {
+            let ts = format!("2026-03-07T{:02}:00:00.000Z", 10 + i);
+            let cp = make_checkpoint(&ts, &format!("Server configuration update number {}", i));
+            write_checkpoint(root, &cp);
+        }
+
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("server configuration".to_string()),
+                limit: Some(2),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.checkpoints.len(),
+            2,
+            "Should respect limit even in search mode"
+        );
+    }
+
+    #[test]
+    fn test_recall_search_strips_git_when_not_full() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        let cp = make_checkpoint_with_git(
+            "2026-03-07T10:00:00.000Z",
+            "Commit with git context for search test",
+        );
+        write_checkpoint(root, &cp);
+
+        // Default full=None (false)
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("commit git context".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.checkpoints.len(), 1);
+        assert!(
+            result.checkpoints[0].git.is_none(),
+            "full=false should strip git context in search mode too"
+        );
+    }
+
+    #[test]
+    fn test_recall_search_preserves_git_when_full() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        let cp = make_checkpoint_with_git(
+            "2026-03-07T10:00:00.000Z",
+            "Commit with git context preserved in full mode",
+        );
+        write_checkpoint(root, &cp);
+
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("git context preserved".to_string()),
+                full: Some(true),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.checkpoints.len(), 1);
+        assert!(
+            result.checkpoints[0].git.is_some(),
+            "full=true should preserve git context in search mode"
+        );
+    }
+
+    #[test]
+    fn test_recall_search_includes_active_plan() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        let cp = make_checkpoint("2026-03-07T10:00:00.000Z", "Checkpoint for plan test");
+        write_checkpoint(root, &cp);
+        write_active_plan(root, "search-plan", "Search Plan", "Plan for search tests");
+
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("checkpoint plan".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(
+            result.active_plan.is_some(),
+            "Search mode should still include active plan"
+        );
+        assert_eq!(result.active_plan.unwrap().id, "search-plan");
+    }
+
+    #[test]
+    fn test_recall_search_no_results() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        let cp = make_checkpoint(
+            "2026-03-07T10:00:00.000Z",
+            "Fixed CSS layout bug in sidebar",
+        );
+        write_checkpoint(root, &cp);
+
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("kubernetes deployment cluster".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.checkpoints.len(),
+            0,
+            "Should return empty when no results match"
+        );
+    }
+
+    #[test]
+    fn test_recall_search_limit_zero_returns_plan_only() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        let cp = make_checkpoint("2026-03-07T10:00:00.000Z", "Some content");
+        write_checkpoint(root, &cp);
+        write_active_plan(root, "my-plan", "My Plan", "Plan content");
+
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("content".to_string()),
+                limit: Some(0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
         assert_eq!(result.checkpoints.len(), 0);
+        assert!(result.active_plan.is_some());
+    }
+
+    #[test]
+    fn test_recall_search_ranked_by_relevance() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // cp1: "database" only in passing
+        let cp1 = make_checkpoint(
+            "2026-03-07T10:00:00.000Z",
+            "General cleanup of the codebase, including minor database typo fix",
+        );
+        // cp2: "database" is the core topic — should rank higher
+        let cp2 = make_checkpoint(
+            "2026-03-07T11:00:00.000Z",
+            "Database migration from PostgreSQL to SQLite for local development database",
+        );
+
+        write_checkpoint(root, &cp1);
+        write_checkpoint(root, &cp2);
+
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("database migration".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(
+            !result.checkpoints.is_empty(),
+            "Should find database-related checkpoints"
+        );
+        // The more relevant one (cp2) should be first
+        assert!(
+            result.checkpoints[0]
+                .description
+                .contains("Database migration"),
+            "Most relevant result should be first, got: {}",
+            result.checkpoints[0].description
+        );
     }
 
     // ========================================================================

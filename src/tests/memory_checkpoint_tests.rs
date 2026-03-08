@@ -7,8 +7,9 @@
 #[cfg(test)]
 mod tests {
     use crate::memory::checkpoint::{extract_summary, read_active_plan, save_checkpoint};
+    use crate::memory::recall::recall;
     use crate::memory::storage::{generate_checkpoint_id, parse_checkpoint};
-    use crate::memory::{CheckpointInput, CheckpointType};
+    use crate::memory::{CheckpointInput, CheckpointType, RecallOptions};
     use std::path::Path;
     use tempfile::TempDir;
 
@@ -554,6 +555,103 @@ mod tests {
         std::fs::create_dir_all(&memories).unwrap();
         std::fs::write(memories.join(".active-plan"), "").unwrap();
         assert_eq!(read_active_plan(dir.path()), None);
+    }
+
+    // ========================================================================
+    // save_checkpoint() — Tantivy indexing on save
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_save_checkpoint_indexes_in_tantivy() {
+        // Save a checkpoint to a non-git dir (faster, no git overhead)
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        let input = CheckpointInput {
+            description: "Refactored authentication middleware to support OAuth2 tokens".into(),
+            tags: Some(vec!["auth".into(), "middleware".into()]),
+            ..Default::default()
+        };
+
+        save_checkpoint(root, input).await.unwrap();
+
+        // Now search for it via recall — should find it WITHOUT needing rebuild
+        // because save_checkpoint indexed it immediately
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("authentication OAuth2".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.checkpoints.len(),
+            1,
+            "save_checkpoint should index in Tantivy so search finds it immediately"
+        );
+        assert!(result.checkpoints[0]
+            .description
+            .contains("authentication middleware"));
+    }
+
+    #[tokio::test]
+    async fn test_save_multiple_checkpoints_all_searchable() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+
+        // Save two checkpoints with different topics
+        save_checkpoint(
+            root,
+            CheckpointInput {
+                description: "Implemented Redis caching layer for session storage".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        save_checkpoint(
+            root,
+            CheckpointInput {
+                description: "Fixed PostgreSQL connection timeout in health check".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        // Search for caching — should find only the first one
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("Redis caching session".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.checkpoints.len(), 1);
+        assert!(result.checkpoints[0].description.contains("Redis caching"));
+
+        // Search for PostgreSQL — should find only the second one
+        let result = recall(
+            root,
+            RecallOptions {
+                search: Some("PostgreSQL connection timeout".to_string()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.checkpoints.len(), 1);
+        assert!(result.checkpoints[0]
+            .description
+            .contains("PostgreSQL connection timeout"));
     }
 
     // ========================================================================
