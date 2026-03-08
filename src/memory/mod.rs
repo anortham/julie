@@ -19,6 +19,7 @@
 pub mod checkpoint;
 pub mod git;
 pub mod plan;
+pub mod recall;
 pub mod storage;
 
 use serde::{Deserialize, Serialize};
