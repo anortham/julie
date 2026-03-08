@@ -75,6 +75,7 @@ pub mod core {
 // ============================================================================
 pub mod memory_checkpoint_tests; // Checkpoint save (directory creation, file writing, git context, plan ID)
 pub mod memory_git_tests; // Git context capture (branch, commit, changed/untracked files)
+pub mod memory_plan_tests; // Plan CRUD (save, get, list, activate, update, complete)
 pub mod memory_storage_tests; // YAML frontmatter storage layer (format, parse, round-trip)
 
 // ============================================================================

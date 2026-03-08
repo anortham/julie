@@ -18,6 +18,7 @@
 
 pub mod checkpoint;
 pub mod git;
+pub mod plan;
 pub mod storage;
 
 use serde::{Deserialize, Serialize};
@@ -197,6 +198,46 @@ pub struct Plan {
 
     /// Categorization tags
     pub tags: Vec<String>,
+}
+
+/// Input for creating a new plan.
+///
+/// Used by `plan::save_plan()`. If `id` is `None`, it is auto-generated
+/// by slugifying the `title` (e.g., "My Feature Plan" -> "my-feature-plan").
+#[derive(Debug, Clone)]
+pub struct PlanInput {
+    /// Explicit plan ID (auto-generated from title if None)
+    pub id: Option<String>,
+
+    /// Human-readable title (required)
+    pub title: String,
+
+    /// Markdown body content (required)
+    pub content: String,
+
+    /// Categorization tags
+    pub tags: Option<Vec<String>>,
+
+    /// Whether to activate this plan after saving
+    pub activate: Option<bool>,
+}
+
+/// Partial update for an existing plan.
+///
+/// Used by `plan::update_plan()`. Only `Some` fields are applied.
+#[derive(Debug, Clone, Default)]
+pub struct PlanUpdate {
+    /// New title
+    pub title: Option<String>,
+
+    /// New markdown content
+    pub content: Option<String>,
+
+    /// New status ("active", "completed", "archived")
+    pub status: Option<String>,
+
+    /// New tags (replaces existing)
+    pub tags: Option<Vec<String>>,
 }
 
 /// Options for recalling checkpoints.
