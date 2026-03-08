@@ -31,9 +31,28 @@ use crate::server::AppState;
     ),
     paths(
         health::health_check,
+        projects::list_projects,
+        projects::create_project,
+        projects::delete_project,
+        projects::get_project_status,
+        projects::trigger_index,
+        dashboard::stats,
     ),
     components(
-        schemas(health::HealthResponse)
+        schemas(
+            health::HealthResponse,
+            projects::ProjectResponse,
+            projects::CreateProjectRequest,
+            projects::CreateProjectResponse,
+            projects::ProjectStatusResponse,
+            projects::TriggerIndexRequest,
+            projects::TriggerIndexResponse,
+            dashboard::DashboardStats,
+            dashboard::ProjectStats,
+            dashboard::MemoryStats,
+            dashboard::AgentStats,
+            dashboard::BackendStat,
+        )
     ),
     tags(
         (name = "health", description = "Server health"),

@@ -13,13 +13,14 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::daemon_indexer::IndexRequest;
 use crate::registry::ProjectStatus;
 use crate::server::AppState;
 
 /// Response body for a single project.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ProjectResponse {
     pub workspace_id: String,
     pub name: String,
@@ -41,13 +42,13 @@ fn format_status(status: &ProjectStatus) -> String {
 }
 
 /// Request body for `POST /api/projects`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateProjectRequest {
     pub path: String,
 }
 
 /// Response body for `POST /api/projects`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CreateProjectResponse {
     pub workspace_id: String,
     pub name: String,
@@ -61,6 +62,14 @@ pub struct CreateProjectResponse {
 /// not just the static registry entry. This means a project that was `Registered`
 /// in the TOML file will show as `Ready` if the daemon successfully loaded its
 /// workspace on startup.
+#[utoipa::path(
+    get,
+    path = "/api/projects",
+    tag = "projects",
+    responses(
+        (status = 200, description = "List of all registered projects", body = Vec<ProjectResponse>)
+    )
+)]
 pub async fn list_projects(
     State(state): State<Arc<AppState>>,
 ) -> Json<Vec<ProjectResponse>> {
@@ -94,6 +103,18 @@ pub async fn list_projects(
 ///
 /// Returns 201 Created with the project info, or 409 Conflict if already registered.
 /// Returns 400 Bad Request if the path doesn't exist or isn't a directory.
+#[utoipa::path(
+    post,
+    path = "/api/projects",
+    tag = "projects",
+    request_body = CreateProjectRequest,
+    responses(
+        (status = 201, description = "Project registered successfully", body = CreateProjectResponse),
+        (status = 400, description = "Invalid path (does not exist or not a directory)"),
+        (status = 409, description = "Project already registered", body = CreateProjectResponse),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn create_project(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateProjectRequest>,
@@ -171,6 +192,18 @@ pub async fn create_project(
 /// `DELETE /api/projects/:id` -- remove a project by workspace ID.
 ///
 /// Returns 204 No Content on success, 404 Not Found if the project doesn't exist.
+#[utoipa::path(
+    delete,
+    path = "/api/projects/{id}",
+    tag = "projects",
+    params(
+        ("id" = String, Path, description = "Workspace ID of the project to remove")
+    ),
+    responses(
+        (status = 204, description = "Project removed successfully"),
+        (status = 404, description = "Project not found")
+    )
+)]
 pub async fn delete_project(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -200,7 +233,7 @@ pub async fn delete_project(
 }
 
 /// Response body for project status.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ProjectStatusResponse {
     pub workspace_id: String,
     pub status: String,
@@ -213,6 +246,18 @@ pub struct ProjectStatusResponse {
 ///
 /// Returns the live status from daemon state (not just the static registry entry).
 /// Returns 404 if the project is not registered.
+#[utoipa::path(
+    get,
+    path = "/api/projects/{id}/status",
+    tag = "projects",
+    params(
+        ("id" = String, Path, description = "Workspace ID of the project")
+    ),
+    responses(
+        (status = 200, description = "Project status", body = ProjectStatusResponse),
+        (status = 404, description = "Project not found")
+    )
+)]
 pub async fn get_project_status(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -232,7 +277,7 @@ pub async fn get_project_status(
 }
 
 /// Request body for `POST /api/projects/:id/index`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TriggerIndexRequest {
     /// If true, force a full re-index even if indexes already exist.
     #[serde(default)]
@@ -240,7 +285,7 @@ pub struct TriggerIndexRequest {
 }
 
 /// Response body for `POST /api/projects/:id/index`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TriggerIndexResponse {
     pub workspace_id: String,
     pub status: String,
@@ -256,6 +301,21 @@ pub struct TriggerIndexResponse {
 /// If no body is provided, defaults to incremental indexing (force=false).
 ///
 /// Returns 404 if the project is not registered.
+#[utoipa::path(
+    post,
+    path = "/api/projects/{id}/index",
+    tag = "projects",
+    params(
+        ("id" = String, Path, description = "Workspace ID of the project to index")
+    ),
+    request_body(content = TriggerIndexRequest, description = "Optional indexing options", content_type = "application/json"),
+    responses(
+        (status = 202, description = "Indexing queued", body = TriggerIndexResponse),
+        (status = 404, description = "Project not found"),
+        (status = 409, description = "Already indexing", body = TriggerIndexResponse),
+        (status = 500, description = "Failed to queue indexing request")
+    )
+)]
 pub async fn trigger_index(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,

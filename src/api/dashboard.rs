@@ -9,6 +9,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::agent::backend::BackendInfo;
 use crate::daemon_state::WorkspaceLoadStatus;
@@ -20,7 +21,7 @@ use crate::server::AppState;
 // ---------------------------------------------------------------------------
 
 /// Top-level dashboard stats response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DashboardStats {
     pub projects: ProjectStats,
     pub memories: MemoryStats,
@@ -31,7 +32,7 @@ pub struct DashboardStats {
 }
 
 /// Breakdown of project counts by status.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ProjectStats {
     pub total: usize,
     pub ready: usize,
@@ -42,7 +43,7 @@ pub struct ProjectStats {
 }
 
 /// Memory system summary.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MemoryStats {
     pub total_checkpoints: usize,
     pub active_plan: Option<String>,
@@ -50,14 +51,14 @@ pub struct MemoryStats {
 }
 
 /// Agent dispatch summary.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AgentStats {
     pub total_dispatches: usize,
     pub last_dispatch: Option<String>,
 }
 
 /// Single backend status entry.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct BackendStat {
     pub name: String,
     pub available: bool,
@@ -81,6 +82,15 @@ impl From<&BackendInfo> for BackendStat {
 /// `GET /api/dashboard/stats`
 ///
 /// Aggregates stats from all subsystems into a single response.
+#[utoipa::path(
+    get,
+    path = "/api/dashboard/stats",
+    tag = "dashboard",
+    responses(
+        (status = 200, description = "Aggregated dashboard statistics", body = DashboardStats),
+        (status = 500, description = "Internal server error")
+    )
+)]
 pub async fn stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<DashboardStats>, (StatusCode, String)> {
