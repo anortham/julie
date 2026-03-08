@@ -25,6 +25,7 @@ pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
 // ============================================================================
 // DAEMON TESTS - PID file management, process checking, start/stop/status
 // ============================================================================
+pub mod connect_tests; // Connect command: daemon-ensure logic, workspace registration, CLI parsing
 pub mod daemon_indexer_tests; // Background indexing pipeline tests
 pub mod daemon_tests; // Daemon lifecycle tests
 pub mod daemon_watcher_tests; // Daemon cross-project file watcher tests

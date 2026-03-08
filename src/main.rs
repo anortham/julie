@@ -4,15 +4,13 @@
 // (imports are done directly where needed)
 
 use std::fs;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use clap::Parser;
 use julie::cli::{Cli, Commands, DaemonAction, resolve_workspace_root};
 use julie::daemon;
-use julie::handler::JulieServerHandler;
-use rmcp::{ServiceExt, transport::stdio};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -63,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
     );
     info!("📂 Workspace root: {:?}", workspace_root);
 
-    // Branch on subcommand: None = stdio MCP mode (backward compatible), Some = daemon mode
+    // Branch on subcommand: None = stdio MCP mode (backward compatible), Some = daemon/connect mode
     match cli.command {
         // Daemon mode: start/stop/status lifecycle management
         Some(Commands::Daemon { action }) => {
@@ -84,76 +82,17 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
 
+        // Connect mode: auto-start daemon + stdio↔HTTP bridge
+        Some(Commands::Connect { port }) => {
+            info!("Connect mode requested: port={}", port);
+            julie::connect::run_connect(port, workspace_root).await
+        }
+
         // No subcommand: stdio MCP mode (backward compatible — this is the default)
-        None => run_stdio_mode(workspace_root).await,
+        None => julie::stdio::run_stdio_mode(workspace_root).await,
     }
 }
 
-/// Run Julie in stdio MCP mode (the original and default behavior).
-///
-/// MCP clients (Claude Code, etc.) spawn `julie-server` with no subcommand
-/// and communicate over stdin/stdout using JSON-RPC.
-async fn run_stdio_mode(workspace_root: std::path::PathBuf) -> anyhow::Result<()> {
-    // Create the Julie server handler with the resolved workspace root
-    let handler = JulieServerHandler::new(workspace_root)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
-
-    info!("Server configuration: Julie v{}", env!("CARGO_PKG_VERSION"));
-    info!("Auto-indexing will run in background after MCP handshake completes");
-
-    // Capture database reference for shutdown checkpoint
-    let db_for_shutdown = if let Ok(Some(workspace)) = handler.get_workspace().await {
-        workspace.db.clone()
-    } else {
-        None
-    };
-
-    info!("Starting Julie MCP server (stdio mode)...");
-
-    // Start the MCP server with stdio transport
-    let service = match handler.serve(stdio()).await {
-        Ok(s) => s,
-        Err(e) => {
-            error!("Server failed to start: {}", e);
-            return Err(anyhow::anyhow!("Server failed to start: {}", e));
-        }
-    };
-
-    // Wait for the server to complete
-    if let Err(e) = service.waiting().await {
-        error!("Server error: {}", e);
-        return Err(anyhow::anyhow!("Server error: {}", e));
-    }
-
-    info!("Julie server stopped");
-
-    // Shutdown cleanup: checkpoint WAL before exit
-    // This prevents unbounded WAL growth in long-running MCP server sessions
-    info!("Performing shutdown cleanup...");
-    if let Some(db_arc) = db_for_shutdown {
-        match db_arc.lock() {
-            Ok(mut db) => match db.checkpoint_wal() {
-                Ok((busy, log, checkpointed)) => {
-                    info!(
-                        "WAL checkpoint complete: busy={}, log={}, checkpointed={}",
-                        busy, log, checkpointed
-                    );
-                }
-                Err(e) => {
-                    warn!("WAL checkpoint failed: {}", e);
-                }
-            },
-            Err(e) => {
-                warn!("Could not acquire database lock for checkpoint: {}", e);
-            }
-        }
-    } else {
-        debug!("No database available for shutdown checkpoint (workspace not initialized)");
-    }
-
-    Ok(())
-}
 // AUTO-INDEXING MOVED: Now handled in handler.rs on_initialized() callback
 // This ensures MCP handshake completes immediately before indexing begins
 //

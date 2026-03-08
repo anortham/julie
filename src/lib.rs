@@ -6,6 +6,7 @@
 pub mod agent;
 pub mod api;
 pub mod cli;
+pub mod connect;
 pub mod daemon;
 pub mod daemon_indexer;
 pub mod daemon_state;
@@ -23,6 +24,7 @@ pub mod registry;
 pub mod search;
 pub mod server;
 pub mod startup; // Startup utilities (indexing checks, staleness detection)
+pub mod stdio; // Stdio MCP transport (default mode + connect fallback)
 pub mod tools;
 pub mod tracing;
 pub mod ui;

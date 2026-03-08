@@ -75,6 +75,9 @@ tower-http = { version = "0.6", features = ["cors"] }
 tokio-util = "0.7"
 tokio-stream = { version = "0.1", features = ["sync"] }
 
+# HTTP client (connect command: stdio↔HTTP bridge)
+reqwest = { version = "0.12", features = ["json"] }
+
 # Embedded web UI assets
 rust-embed = { version = "8", features = ["debug-embed"] }
 mime_guess = "2"

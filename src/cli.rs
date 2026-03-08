@@ -19,6 +19,12 @@ pub enum Commands {
         #[command(subcommand)]
         action: DaemonAction,
     },
+    /// Connect to daemon (auto-starts if needed), bridging stdio ↔ HTTP
+    Connect {
+        /// Port for the daemon HTTP server
+        #[arg(long, default_value = "7890", env = "JULIE_PORT")]
+        port: u16,
+    },
 }
 
 #[derive(Subcommand)]
