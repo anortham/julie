@@ -2,6 +2,7 @@
 
 pub mod common;
 pub mod health;
+pub mod memories;
 pub mod projects;
 pub mod search;
 
@@ -21,5 +22,11 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/projects/{id}/index", axum::routing::post(projects::trigger_index))
         .route("/search", axum::routing::post(search::search))
         .route("/search/debug", axum::routing::post(search::search_debug))
+        // Memory + plan routes (note: /plans/active BEFORE /plans/{id})
+        .route("/memories", get(memories::list_memories))
+        .route("/memories/{id}", get(memories::get_memory))
+        .route("/plans", get(memories::list_plans))
+        .route("/plans/active", get(memories::get_active_plan))
+        .route("/plans/{id}", get(memories::get_plan))
         .with_state(state)
 }
