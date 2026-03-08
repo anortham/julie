@@ -45,6 +45,7 @@ pub mod server_tests; // HTTP server, health endpoint, project endpoints
 pub mod daemon_integration_tests; // End-to-end daemon integration tests
 pub mod federation_integration_tests; // Cross-project federation end-to-end tests
 pub mod phase4_integration_tests; // Phase 4: Full REST API integration tests (search, memories, plans, dashboard, agents)
+pub mod phase5_search_enhancement; // Phase 5: Search enhancement integration tests (dimensions, embeddings, RRF, unified, API)
 
 // ============================================================================
 // UI TESTS - Embedded web UI serving
