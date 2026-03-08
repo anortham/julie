@@ -316,7 +316,6 @@ async fn search_symbols_in_workspace(
     let filter = filter.clone();
     let search_index = Arc::clone(&ws.search_index);
     let workspace_id = ws.workspace_id.clone();
-    let project_name = ws.project_name.clone();
 
     let search_results = tokio::task::spawn_blocking(move || -> Result<SymbolSearchResults> {
         let index = search_index.lock().map_err(|e| {
@@ -348,7 +347,6 @@ async fn search_content_in_workspace(
     let filter = filter.clone();
     let search_index = Arc::clone(&ws.search_index);
     let workspace_id = ws.workspace_id.clone();
-    let project_name = ws.project_name.clone();
 
     let search_results = tokio::task::spawn_blocking(move || -> Result<ContentSearchResults> {
         let index = search_index.lock().map_err(|e| {

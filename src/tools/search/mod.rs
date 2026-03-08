@@ -296,6 +296,7 @@ impl FastSearchTool {
 
         if is_definition_search {
             // --- Federated definition search ---
+            // TODO: Apply per-project centrality boost before RRF merge (same as single-workspace path)
             let federated_results =
                 federated_symbol_search(&self.query, &filter, limit, &entries).await?;
 
@@ -338,6 +339,7 @@ impl FastSearchTool {
             )]))
         } else {
             // --- Federated content search ---
+            // TODO: Add false-positive elimination for federated content search (verify file exists)
             let federated_results =
                 federated_content_search(&self.query, &filter, limit, &entries).await?;
 

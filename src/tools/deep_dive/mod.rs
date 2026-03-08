@@ -188,9 +188,10 @@ impl DeepDiveTool {
                 .collect()
         };
         if workspace_entries.is_empty() {
-            return Err(anyhow::anyhow!(
-                "No Ready workspaces found in daemon. Register and index projects first."
-            ));
+            return Ok(CallToolResult::text_content(vec![Content::text(
+                "No Ready workspaces available for cross-project deep dive.\n\
+                 Register and index projects first using the daemon API.",
+            )]));
         }
 
         debug!(
