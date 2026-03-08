@@ -3,6 +3,7 @@ import Dashboard from '@/views/Dashboard.vue'
 import Projects from '@/views/Projects.vue'
 import Search from '@/views/Search.vue'
 import Memories from '@/views/Memories.vue'
+import Agents from '@/views/Agents.vue'
 
 const router = createRouter({
   history: createWebHistory('/ui/'),
@@ -26,6 +27,11 @@ const router = createRouter({
       path: '/memories',
       name: 'memories',
       component: Memories,
+    },
+    {
+      path: '/agents',
+      name: 'agents',
+      component: Agents,
     },
   ],
 })

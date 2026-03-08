@@ -26,6 +26,10 @@ import { RouterLink, RouterView } from 'vue-router'
           <span class="pi pi-clock"></span>
           Memories
         </RouterLink>
+        <RouterLink to="/agents" class="nav-link">
+          <span class="pi pi-bolt"></span>
+          Agents
+        </RouterLink>
       </nav>
     </header>
     <main class="app-main">
