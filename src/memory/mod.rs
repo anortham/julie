@@ -16,6 +16,7 @@
 //!     └── .active-plan      # Contains active plan ID
 //! ```
 
+pub mod checkpoint;
 pub mod git;
 pub mod storage;
 
@@ -126,6 +127,49 @@ pub struct Checkpoint {
     /// ID of active plan when checkpoint was created
     #[serde(rename = "planId", skip_serializing_if = "Option::is_none")]
     pub plan_id: Option<String>,
+}
+
+/// Input for creating a new checkpoint.
+///
+/// This is what callers pass to `checkpoint::save_checkpoint()`. All fields
+/// except `description` are optional and default to `None`.
+#[derive(Debug, Clone, Default)]
+pub struct CheckpointInput {
+    /// Markdown body content (required)
+    pub description: String,
+
+    /// Classification type (defaults to Checkpoint if None)
+    pub checkpoint_type: Option<CheckpointType>,
+
+    /// Categorization tags
+    pub tags: Option<Vec<String>>,
+
+    /// Key symbols touched/affected
+    pub symbols: Option<Vec<String>>,
+
+    /// The chosen approach (one sentence)
+    pub decision: Option<String>,
+
+    /// Rejected alternatives and why
+    pub alternatives: Option<Vec<String>>,
+
+    /// What changed, improved, or unblocked
+    pub impact: Option<String>,
+
+    /// What problem/state triggered this work
+    pub context: Option<String>,
+
+    /// Verification evidence (tests, metrics, logs)
+    pub evidence: Option<Vec<String>>,
+
+    /// Unresolved uncertainties or risks
+    pub unknowns: Option<Vec<String>>,
+
+    /// Follow-up action or open question
+    pub next: Option<String>,
+
+    /// Confidence score (1-5)
+    pub confidence: Option<u8>,
 }
 
 /// A development plan with status tracking.
