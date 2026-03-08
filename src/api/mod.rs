@@ -2,6 +2,7 @@
 
 pub mod health;
 pub mod projects;
+pub mod search;
 
 use std::sync::Arc;
 
@@ -17,5 +18,7 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/projects/{id}", axum::routing::delete(projects::delete_project))
         .route("/projects/{id}/status", get(projects::get_project_status))
         .route("/projects/{id}/index", axum::routing::post(projects::trigger_index))
+        .route("/search", axum::routing::post(search::search))
+        .route("/search/debug", axum::routing::post(search::search_debug))
         .with_state(state)
 }

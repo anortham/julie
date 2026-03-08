@@ -3,6 +3,7 @@
 //! Code-aware full-text search using custom tokenization that understands
 //! CamelCase, snake_case, and language-specific operators.
 
+pub mod debug;
 mod error;
 pub mod expansion;
 pub mod hybrid;

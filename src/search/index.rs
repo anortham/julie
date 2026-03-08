@@ -637,6 +637,14 @@ impl SearchIndex {
         terms
     }
 
+    /// Public wrapper around `tokenize_query` for the debug search module.
+    ///
+    /// Shows how the CodeTokenizer splits a query string into individual
+    /// search terms (CamelCase splitting, snake_case splitting, stemming, etc.).
+    pub fn tokenize_query_public(&self, query_str: &str) -> Vec<String> {
+        self.tokenize_query(query_str)
+    }
+
     fn tokenize_terms(&self, terms: &[String]) -> Vec<String> {
         use std::collections::HashSet;
 

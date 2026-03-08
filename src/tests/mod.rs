@@ -31,6 +31,7 @@ pub mod federation_tests; // Federation module: RRF merge, federated search
 // ============================================================================
 // SERVER TESTS - HTTP server and API endpoint tests
 // ============================================================================
+pub mod api_search_tests; // Search API endpoints (POST /api/search, POST /api/search/debug)
 pub mod server_tests; // HTTP server, health endpoint, project endpoints
 pub mod daemon_integration_tests; // End-to-end daemon integration tests
 pub mod federation_integration_tests; // Cross-project federation end-to-end tests
