@@ -1,0 +1,25 @@
+{
+  "name": "julie",
+  "description": "Cross-platform code intelligence server — fast search, navigation, refactoring, and developer memory across 31 languages",
+  "version": "4.0.0",
+  "author": {
+    "name": "Alan Northam"
+  },
+  "repository": "https://github.com/anortham/julie",
+  "license": "MIT",
+  "keywords": [
+    "code-intelligence",
+    "search",
+    "navigation",
+    "refactoring",
+    "tree-sitter",
+    "mcp",
+    "developer-tools"
+  ],
+  "mcpServers": {
+    "julie": {
+      "type": "http",
+      "url": "http://localhost:3141/mcp"
+    }
+  }
+}
