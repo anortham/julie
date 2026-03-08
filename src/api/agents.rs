@@ -15,7 +15,7 @@ use axum::response::sse::{Event, Sse};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::StreamExt;
+use tokio_stream::StreamExt as _;
 
 use crate::agent::backend::{AgentBackend, BackendInfo};
 use crate::agent::claude_backend::ClaudeBackend;
@@ -223,14 +223,19 @@ pub async fn stream_dispatch(
     drop(dm);
 
     let stream = BroadcastStream::new(rx)
-        .map(|msg| match msg {
-            Ok(data) => Ok(Event::default().data(data)),
-            Err(_) => Ok(Event::default().event("done").data("completed")),
+        .filter_map(|msg| match msg {
+            Ok(data) => Some(Ok(Event::default().data(data))),
+            Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                // Subscriber fell behind — send a comment so the client knows,
+                // but do NOT terminate the stream.
+                tracing::warn!("SSE subscriber lagged, skipped {} messages", n);
+                Some(Ok(Event::default().comment(format!("lagged: skipped {} messages", n))))
+            }
         })
-        // BroadcastStream ends when the sender is dropped, which signals completion.
-        // After the stream ends, append a "done" event.
+        // BroadcastStream ends when all senders are dropped (Critical 1 fix
+        // drops the sender on complete/fail). Append a "done" sentinel.
         .chain(tokio_stream::once(Ok::<_, Infallible>(
-            Event::default().event("done").data("stream_ended"),
+            Event::default().event("done").data("completed"),
         )));
 
     Ok(Sse::new(Box::pin(stream)))
@@ -331,16 +336,31 @@ pub async fn dispatch_agent(
         // Await the result
         match handle.await {
             Ok(Ok(output)) => {
-                let mut dm_write = dm.write().await;
-                // Store the accumulated output (backend already broadcasted lines)
-                dm_write.append_output(&id, &output);
-                dm_write.complete_dispatch(&id);
+                // Store output and mark complete under the write lock, then
+                // release before doing checkpoint I/O.
+                let checkpoint_data = {
+                    let mut dm_write = dm.write().await;
+                    // Use set_final_output (not append_output) -- the backend
+                    // already broadcasted each line; re-broadcasting the full
+                    // accumulated output would duplicate every line to SSE clients.
+                    dm_write.set_final_output(&id, output);
+                    dm_write.complete_dispatch(&id);
 
-                // Save result as checkpoint
-                if let Some(d) = dm_write.get_dispatch(&id) {
+                    // Clone what we need for the checkpoint before dropping the lock.
+                    dm_write.get_dispatch(&id).map(|d| {
+                        (d.task.clone(), d.output.clone(), d.project.clone(),
+                         d.status.clone(), d.error.clone())
+                    })
+                };
+                // Lock released here -- checkpoint I/O runs without blocking
+                // other DispatchManager readers/writers.
+                if let Some((task, output, project, status, error)) = checkpoint_data {
+                    let proxy = dispatch::DispatchSnapshot {
+                        task, output, project, status, error,
+                    };
                     let _ = dispatch::save_result_as_checkpoint(
                         &workspace_root,
-                        d,
+                        &proxy,
                         &backend_name,
                     )
                     .await;

@@ -11,7 +11,9 @@
 use crate::agent::backend::{AgentBackend, BackendInfo};
 use crate::agent::claude_backend::ClaudeBackend;
 use crate::agent::context_assembly::{assemble_context, ContextHints};
-use crate::agent::dispatch::{save_result_as_checkpoint, DispatchManager, DispatchStatus};
+use crate::agent::dispatch::{
+    save_result_as_checkpoint, DispatchManager, DispatchSnapshot, DispatchStatus,
+};
 
 // ============================================================================
 // AgentBackend trait + ClaudeBackend
@@ -420,7 +422,8 @@ async fn test_save_result_as_checkpoint_completed() {
     manager.complete_dispatch(&id);
 
     let dispatch = manager.get_dispatch(&id).unwrap();
-    let checkpoint = save_result_as_checkpoint(workspace_root, dispatch, "claude")
+    let snapshot = DispatchSnapshot::from(dispatch);
+    let checkpoint = save_result_as_checkpoint(workspace_root, &snapshot, "claude")
         .await
         .expect("should save checkpoint");
 
@@ -453,7 +456,8 @@ async fn test_save_result_as_checkpoint_failed() {
     manager.fail_dispatch(&id, "Backend crashed");
 
     let dispatch = manager.get_dispatch(&id).unwrap();
-    let checkpoint = save_result_as_checkpoint(workspace_root, dispatch, "claude")
+    let snapshot = DispatchSnapshot::from(dispatch);
+    let checkpoint = save_result_as_checkpoint(workspace_root, &snapshot, "claude")
         .await
         .expect("should save checkpoint even for failures");
 

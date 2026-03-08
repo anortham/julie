@@ -60,8 +60,11 @@ pub struct AgentDispatch {
     /// Error message if the dispatch failed.
     pub error: Option<String>,
     /// Broadcast sender for streaming output to SSE subscribers.
+    ///
+    /// Set to `None` when the dispatch completes or fails, which drops the
+    /// sender and causes `BroadcastStream` subscribers to terminate.
     #[serde(skip)]
-    broadcast_tx: broadcast::Sender<String>,
+    broadcast_tx: Option<broadcast::Sender<String>>,
 }
 
 /// Default broadcast channel capacity (lines buffered for late subscribers).
@@ -117,7 +120,7 @@ impl DispatchManager {
             completed_at: None,
             output: String::new(),
             error: None,
-            broadcast_tx,
+            broadcast_tx: Some(broadcast_tx),
         };
 
         self.dispatches.insert(id.clone(), dispatch);
@@ -137,46 +140,71 @@ impl DispatchManager {
             if dispatch.status == DispatchStatus::Running {
                 dispatch.output.push_str(output);
                 // Broadcast to subscribers (ignore errors — no subscribers is fine)
-                let _ = dispatch.broadcast_tx.send(output.to_string());
+                if let Some(ref tx) = dispatch.broadcast_tx {
+                    let _ = tx.send(output.to_string());
+                }
             }
         }
     }
 
-    /// Mark a dispatch as completed.
+    /// Set the final accumulated output without broadcasting.
+    ///
+    /// Used when the agent backend has already streamed output via the
+    /// broadcast channel and we just need to store the full result.
+    /// Unlike `append_output`, this does NOT broadcast to SSE subscribers
+    /// (avoiding duplicate delivery).
+    pub fn set_final_output(&mut self, id: &str, output: String) {
+        if let Some(dispatch) = self.dispatches.get_mut(id) {
+            dispatch.output = output;
+        }
+    }
+
+    /// Mark a dispatch as completed and drop the broadcast sender.
+    ///
+    /// Dropping the sender terminates any SSE `BroadcastStream` subscribers,
+    /// allowing them to emit the final "done" event and close.
     pub fn complete_dispatch(&mut self, id: &str) {
         if let Some(dispatch) = self.dispatches.get_mut(id) {
             dispatch.status = DispatchStatus::Completed;
             dispatch.completed_at =
                 Some(Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+            dispatch.broadcast_tx = None;
         }
     }
 
-    /// Mark a dispatch as failed with an error message.
+    /// Mark a dispatch as failed with an error message and drop the broadcast sender.
+    ///
+    /// Dropping the sender terminates any SSE `BroadcastStream` subscribers.
     pub fn fail_dispatch(&mut self, id: &str, error: &str) {
         if let Some(dispatch) = self.dispatches.get_mut(id) {
             dispatch.status = DispatchStatus::Failed;
             dispatch.error = Some(error.to_string());
             dispatch.completed_at =
                 Some(Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+            dispatch.broadcast_tx = None;
         }
     }
 
     /// Subscribe to a dispatch's output broadcast channel.
     ///
     /// Returns a receiver that yields output lines as they arrive.
-    /// Returns `None` if the dispatch doesn't exist.
+    /// Returns `None` if the dispatch doesn't exist or has already completed
+    /// (broadcast sender dropped).
     pub fn subscribe(&self, id: &str) -> Option<broadcast::Receiver<String>> {
         self.dispatches
             .get(id)
-            .map(|d| d.broadcast_tx.subscribe())
+            .and_then(|d| d.broadcast_tx.as_ref().map(|tx| tx.subscribe()))
     }
 
     /// Get a clone of the dispatch's broadcast sender.
     ///
     /// Used by the dispatch handler to pass the sender to the agent backend,
     /// so output lines are broadcast to SSE subscribers in real time.
+    /// Returns `None` if the dispatch doesn't exist or has already completed.
     pub fn get_broadcast_tx(&self, id: &str) -> Option<broadcast::Sender<String>> {
-        self.dispatches.get(id).map(|d| d.broadcast_tx.clone())
+        self.dispatches
+            .get(id)
+            .and_then(|d| d.broadcast_tx.clone())
     }
 
     /// List all dispatches (both active and completed), sorted by `started_at` descending.
@@ -193,14 +221,39 @@ impl Default for DispatchManager {
     }
 }
 
+/// Lightweight snapshot of dispatch data for checkpoint saving.
+///
+/// Used to avoid holding the `DispatchManager` write lock during filesystem I/O.
+pub struct DispatchSnapshot {
+    pub task: String,
+    pub output: String,
+    pub project: String,
+    pub status: DispatchStatus,
+    pub error: Option<String>,
+}
+
+impl From<&AgentDispatch> for DispatchSnapshot {
+    fn from(d: &AgentDispatch) -> Self {
+        Self {
+            task: d.task.clone(),
+            output: d.output.clone(),
+            project: d.project.clone(),
+            status: d.status.clone(),
+            error: d.error.clone(),
+        }
+    }
+}
+
 /// Save a completed dispatch's output as a checkpoint in the memory system.
 ///
 /// The checkpoint is tagged with `agent_result`, the backend name, and the project
 /// so it can be recalled later. Uses `CheckpointType::Checkpoint` (the default)
 /// since `agent_result` is not a Goldfish checkpoint type variant.
+///
+/// Accepts a `DispatchSnapshot` so callers can release locks before calling.
 pub async fn save_result_as_checkpoint(
     workspace_root: &Path,
-    dispatch: &AgentDispatch,
+    dispatch: &DispatchSnapshot,
     backend_name: &str,
 ) -> Result<memory::Checkpoint> {
     let description = format!(
