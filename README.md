@@ -22,7 +22,11 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - **Fast symbol search** with code-aware tokenization
 - **Cross-language code navigation** (go-to-definition, find-references)
 - **AST-aware refactoring** with workspace-wide rename
-- **Multi-workspace support** for indexing and searching related codebases (one workspace at a time)
+- **Multi-workspace support** for indexing and searching related codebases
+- **Persistent daemon mode** with HTTP API and web dashboard at `/ui/`
+- **Developer memory** — checkpoint progress, recall context across sessions, manage persistent plans
+- **Auto-start daemon** via `julie-server connect` (stdio bridge with automatic daemon lifecycle)
+- **OpenAPI documentation** with interactive Scalar docs at `/api/docs`
 
 ### Performance Characteristics
 
@@ -66,7 +70,7 @@ Download the latest release for your platform from the [Releases page](https://g
 **Windows:**
 
 ```bash
-# Download julie-v3.9.0-x86_64-pc-windows-msvc.zip
+# Download julie-v4.0.0-x86_64-pc-windows-msvc.zip
 # Extract julie-server.exe
 # Add to MCP configuration (see below)
 ```
@@ -74,24 +78,24 @@ Download the latest release for your platform from the [Releases page](https://g
 **macOS (Intel):**
 
 ```bash
-# Download julie-v3.9.0-x86_64-apple-darwin.tar.gz
-tar -xzf julie-v3.9.0-x86_64-apple-darwin.tar.gz
+# Download julie-v4.0.0-x86_64-apple-darwin.tar.gz
+tar -xzf julie-v4.0.0-x86_64-apple-darwin.tar.gz
 # Add to MCP configuration (see below)
 ```
 
 **macOS (Apple Silicon):**
 
 ```bash
-# Download julie-v3.9.0-aarch64-apple-darwin.tar.gz
-tar -xzf julie-v3.9.0-aarch64-apple-darwin.tar.gz
+# Download julie-v4.0.0-aarch64-apple-darwin.tar.gz
+tar -xzf julie-v4.0.0-aarch64-apple-darwin.tar.gz
 # Add to MCP configuration (see below)
 ```
 
 **Linux:**
 
 ```bash
-# Download julie-v3.9.0-x86_64-unknown-linux-gnu.tar.gz
-tar -xzf julie-v3.9.0-x86_64-unknown-linux-gnu.tar.gz
+# Download julie-v4.0.0-x86_64-unknown-linux-gnu.tar.gz
+tar -xzf julie-v4.0.0-x86_64-unknown-linux-gnu.tar.gz
 # Add to MCP configuration (see below)
 ```
 
@@ -102,14 +106,20 @@ Once downloaded, add Julie to your MCP client:
 **Claude Code (Recommended):**
 
 ```bash
-# Windows
-claude mcp add julie C:\path\to\julie-server.exe
+# macOS/Linux — auto-starts daemon, bridges stdio↔HTTP
+claude mcp add julie -- /path/to/julie-server connect
 
-# macOS/Linux
-claude mcp add julie /path/to/julie-server
+# Windows
+claude mcp add julie -- C:\path\to\julie-server.exe connect
 ```
 
-Claude Code automatically detects your workspace and creates `.julie/` folders in the correct location.
+The `connect` command auto-starts a persistent daemon on first use, registers your workspace, and bridges stdio↔HTTP. The daemon survives session exits, so subsequent sessions connect instantly. A web dashboard is available at `http://localhost:7890/ui/` and API docs at `http://localhost:7890/api/docs`.
+
+If you prefer direct stdio mode (no daemon), omit the `connect` argument:
+
+```bash
+claude mcp add julie /path/to/julie-server
+```
 
 **VS Code with GitHub Copilot:**
 
@@ -187,7 +197,7 @@ cargo build --release
 # Binary will be at: target/release/julie-server[.exe]
 ```
 
-## Tools (7)
+## Tools (10)
 
 ### Search & Navigation
 
@@ -217,6 +227,12 @@ cargo build --release
 - `rename_symbol` - Rename symbols across entire workspace
   - Updates all references atomically
   - Preview mode with dry_run parameter
+
+### Developer Memory
+
+- `checkpoint` - Save development milestones with git context, tags, and structured fields
+- `recall` - Restore context from previous sessions with BM25 full-text search
+- `plan` - Manage persistent plans that survive context compaction and guide multi-session work
 
 ### Workspace Management
 
@@ -252,7 +268,10 @@ Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patter
 - **Graph centrality ranking** using pre-computed reference scores from the relationship graph
 - **SQLite storage** for symbols, identifiers, relationships, types, and file metadata
 - **Per-workspace isolation** with separate databases and indexes
-- **MCP protocol** for AI agent integration
+- **MCP protocol** for AI agent integration (stdio and Streamable HTTP transports)
+- **Persistent daemon** with HTTP API, file watchers, and background indexing
+- **Web dashboard** (Vue/TypeScript SPA) for project monitoring and search exploration
+- **OpenAPI 3.1** spec with interactive Scalar docs
 
 ## Development
 
@@ -295,20 +314,28 @@ cargo tarpaulin
 
 ```
 src/
+├── main.rs          # CLI entry point (stdio / daemon / connect dispatch)
+├── connect.rs       # Auto-start daemon + stdio↔HTTP bridge
+├── daemon.rs        # Daemon lifecycle (start/stop/status, PID file)
+├── server.rs        # HTTP server (axum router, startup, shutdown)
+├── api/             # REST API modules (health, projects, search, memories, agents, dashboard)
 ├── extractors/      # Language-specific symbol extraction (31 languages)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer
 ├── embeddings/      # Embedding pipeline, sidecar supervisor and protocol
 ├── tools/           # MCP tool implementations
 │   ├── deep_dive/   # Progressive-depth symbol investigation
+│   ├── get_context/ # Token-budgeted context retrieval
+│   ├── memory/      # checkpoint, recall, plan
 │   ├── navigation/  # fast_refs
 │   ├── refactoring/ # rename_symbol
 │   ├── search/      # fast_search
 │   ├── symbols/     # get_symbols
-│   └── workspace/   # Workspace management
+│   └── workspace/   # Workspace management and indexing
 ├── workspace/       # Multi-workspace management
 └── tests/           # Test infrastructure
 
+ui/                  # Vue/TypeScript dashboard (built assets embedded in binary)
 python/
 └── embeddings_sidecar/  # GPU-accelerated embedding sidecar (PyTorch + sentence-transformers)
 
