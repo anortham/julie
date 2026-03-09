@@ -68,7 +68,7 @@ pub async fn save_checkpoint(workspace_root: &Path, input: CheckpointInput) -> R
     let content = format_checkpoint(&checkpoint);
 
     // 8. Create date directory .memories/{YYYY-MM-DD}/
-    let date = &checkpoint.timestamp[..10]; // "YYYY-MM-DD"
+    let date = checkpoint.timestamp.get(..10).unwrap_or(&checkpoint.timestamp); // "YYYY-MM-DD"
     let date_dir = workspace_root.join(".memories").join(date);
     std::fs::create_dir_all(&date_dir)
         .with_context(|| format!("Failed to create memories directory: {}", date_dir.display()))?;
@@ -134,11 +134,21 @@ pub(crate) fn extract_summary(description: &str) -> Option<String> {
 /// Opens or creates the index, adds the document, and commits.
 /// This is called after the checkpoint file is already written to disk,
 /// so failures here are non-fatal (logged as warnings by the caller).
+///
+/// Uses a process-level mutex to prevent concurrent Tantivy writers
+/// (Tantivy only supports one writer at a time per index directory).
 fn index_checkpoint_in_tantivy(
     workspace_root: &Path,
     checkpoint: &Checkpoint,
     rel_path: &str,
 ) -> Result<()> {
+    // Serialize memory index writes across all concurrent checkpoint saves.
+    // Tantivy allows only one IndexWriter at a time per directory; concurrent
+    // opens will get LockBusy errors. The write itself is fast (single doc +
+    // commit) so contention is negligible.
+    static WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
     let index_path = workspace_root.join(MEMORY_INDEX_REL);
     std::fs::create_dir_all(&index_path)?;
 

@@ -128,10 +128,19 @@ impl DaemonState {
             anyhow::bail!("Path is not a directory: {}", path.display());
         }
 
-        // Step 2: Register in GlobalRegistry (write lock on registry)
-        let (workspace_id, name, canonical_path, is_new) = {
+        // Step 2: Register in GlobalRegistry
+        //
+        // LOCK ORDERING: We must NOT hold DaemonState while acquiring Registry,
+        // because daemon_indexer acquires Registry then DaemonState (ABBA deadlock).
+        // Instead: read DaemonState briefly to get the registry Arc, drop the
+        // DaemonState lock, then acquire registry independently.
+        let (registry_arc, julie_home) = {
             let ds = daemon_state.read().await;
-            let mut registry = ds.registry.write().await;
+            (ds.registry.clone(), ds.julie_home.clone())
+        };
+        // DaemonState lock is now released — safe to acquire registry
+        let (workspace_id, name, canonical_path, is_new) = {
+            let mut registry = registry_arc.write().await;
             let result = registry.register_project(path)?;
             let wid = result.workspace_id().to_string();
             let entry = registry.get_project(&wid).unwrap();
@@ -141,7 +150,6 @@ impl DaemonState {
 
             if is_new {
                 // Step 3: Persist registry to disk
-                let julie_home = ds.julie_home.clone();
                 if let Err(e) = registry.save(&julie_home) {
                     tracing::error!("Failed to save registry after adding project: {}", e);
                     // Don't fail — project is registered in memory

@@ -103,11 +103,21 @@ impl DispatchManager {
         &self.backends
     }
 
+    /// Maximum number of dispatches kept in memory. When exceeded, the oldest
+    /// completed dispatches are evicted to bound memory usage.
+    const MAX_DISPATCHES: usize = 100;
+
     /// Start a new dispatch and return its ID.
     ///
     /// Creates a dispatch record in `Running` status with a broadcast
-    /// channel for output streaming.
+    /// channel for output streaming. Evicts oldest completed dispatches
+    /// if the map exceeds `MAX_DISPATCHES`.
     pub fn start_dispatch(&mut self, task: String, project: String, backend: String) -> String {
+        // Evict oldest completed dispatches if we're at capacity
+        if self.dispatches.len() >= Self::MAX_DISPATCHES {
+            self.evict_oldest_completed();
+        }
+
         let timestamp = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let id = generate_dispatch_id(&timestamp, &task);
 
@@ -128,6 +138,26 @@ impl DispatchManager {
 
         self.dispatches.insert(id.clone(), dispatch);
         id
+    }
+
+    /// Evict the oldest completed/failed dispatches to stay under `MAX_DISPATCHES`.
+    fn evict_oldest_completed(&mut self) {
+        let target = Self::MAX_DISPATCHES / 2; // evict down to half capacity
+        let mut completed: Vec<(String, String)> = self
+            .dispatches
+            .iter()
+            .filter(|(_, d)| d.status != DispatchStatus::Running)
+            .map(|(id, d)| (id.clone(), d.started_at.clone()))
+            .collect();
+
+        // Sort oldest first
+        completed.sort_by(|a, b| a.1.cmp(&b.1));
+
+        // Remove enough to get under target
+        let to_remove = self.dispatches.len().saturating_sub(target);
+        for (id, _) in completed.into_iter().take(to_remove) {
+            self.dispatches.remove(&id);
+        }
     }
 
     /// Get a dispatch by ID.

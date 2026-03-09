@@ -305,6 +305,18 @@ async fn daemon_watcher_loop(
                     break;
                 }
 
+                // Periodically clean stale entries from the dedup map to prevent
+                // unbounded growth in long-running daemons
+                {
+                    let now = SystemTime::now();
+                    let mut lp = last_processed.lock().await;
+                    lp.retain(|_, t| {
+                        now.duration_since(*t)
+                            .map(|d| d.as_secs() < 10)
+                            .unwrap_or(true)
+                    });
+                }
+
                 process_queued_events(
                     &ctx.workspace_id,
                     &ctx.workspace_root,

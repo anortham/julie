@@ -19,7 +19,7 @@ use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::api::common::resolve_workspace;
+use crate::api::common::{display_path, resolve_workspace};
 use crate::daemon_indexer::IndexRequest;
 use crate::daemon_state::{DaemonState, WorkspaceLoadStatus};
 use crate::registry::ProjectStatus;
@@ -121,7 +121,7 @@ pub async fn list_projects(
             ProjectResponse {
                 workspace_id: entry.workspace_id.clone(),
                 name: entry.name.clone(),
-                path: entry.path.to_string_lossy().into_owned(),
+                path: display_path(&entry.path),
                 status: format_status(&live_status),
                 last_indexed: entry.last_indexed.clone(),
                 symbol_count: entry.symbol_count,
@@ -183,7 +183,7 @@ pub async fn create_project(
     let response = CreateProjectResponse {
         workspace_id: result.workspace_id.clone(),
         name: result.name,
-        path: result.path.to_string_lossy().into_owned(),
+        path: display_path(&result.path),
         status,
     };
 
@@ -519,6 +519,30 @@ pub struct LaunchResponse {
 pub async fn launch_editor(
     Json(body): Json<LaunchEditorRequest>,
 ) -> Result<Json<LaunchResponse>, (StatusCode, String)> {
+    // Allowlist of known editors to prevent arbitrary command execution
+    const ALLOWED_EDITORS: &[&str] = &[
+        "code", "code-insiders", "cursor", "zed", "vim", "nvim", "neovim",
+        "emacs", "emacsclient", "subl", "sublime_text",
+        "idea", "goland", "pycharm", "webstorm", "rustrover", "clion", "rider",
+        "atom", "lapce", "helix", "hx", "kate", "gedit", "nano",
+    ];
+
+    let editor_name = std::path::Path::new(&body.editor)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&body.editor);
+
+    if !ALLOWED_EDITORS.contains(&editor_name) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Unknown editor '{}'. Allowed: {}",
+                editor_name,
+                ALLOWED_EDITORS.join(", ")
+            ),
+        ));
+    }
+
     let path = PathBuf::from(&body.path);
     if !path.exists() {
         return Err((StatusCode::BAD_REQUEST, format!("Path does not exist: {}", body.path)));
@@ -561,6 +585,8 @@ pub async fn launch_terminal(
 
     let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "macos") {
         ("open", vec!["-a", "Terminal", &body.path])
+    } else if cfg!(target_os = "windows") {
+        ("cmd", vec!["/c", "start", "cmd", "/k", "cd", "/d", &body.path])
     } else {
         ("xdg-terminal-emulator", vec!["--working-directory", &body.path])
     };

@@ -55,7 +55,9 @@ pub fn format_checkpoint_for_embedding(checkpoint: &Checkpoint) -> String {
 
     // Description — truncated to leave room for structured fields
     let desc = if checkpoint.description.len() > 512 {
-        &checkpoint.description[..512]
+        // Use floor_char_boundary to avoid panicking on multi-byte UTF-8
+        let boundary = checkpoint.description.floor_char_boundary(512);
+        &checkpoint.description[..boundary]
     } else {
         &checkpoint.description
     };

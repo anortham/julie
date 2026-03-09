@@ -305,8 +305,8 @@ async fn test_unknown_route_returns_404() {
 
 #[tokio::test]
 async fn test_port_conflict_gives_clear_error_message() {
-    // Bind to 0.0.0.0 (same as start_server uses) so the port is actually occupied
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await.unwrap();
+    // Bind to 127.0.0.1 (same as start_server uses) so the port is actually occupied
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
     // Try to start the server on the same port -- should fail with a clear message

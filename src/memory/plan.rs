@@ -73,8 +73,29 @@ pub fn slugify(title: &str) -> String {
 /// - Creates the plans directory if it doesn't exist
 /// - If `input.activate` is true, also writes `.memories/.active-plan`
 /// - Default status is "active"
+/// Validate a plan ID to prevent path traversal and invalid filenames.
+fn validate_plan_id(id: &str) -> Result<()> {
+    if id.is_empty() {
+        bail!("Plan ID cannot be empty");
+    }
+    if id.contains("..") || id.contains('/') || id.contains('\\') || id.contains('\0') {
+        bail!(
+            "Invalid plan ID '{}': must not contain path separators or traversal sequences",
+            id
+        );
+    }
+    // Reject IDs that would be problematic filenames on Windows
+    if id.contains(':') || id.contains('*') || id.contains('?') || id.contains('"')
+        || id.contains('<') || id.contains('>') || id.contains('|')
+    {
+        bail!("Invalid plan ID '{}': contains characters not allowed in filenames", id);
+    }
+    Ok(())
+}
+
 pub fn save_plan(workspace_root: &Path, input: PlanInput) -> Result<Plan> {
     let id = input.id.unwrap_or_else(|| slugify(&input.title));
+    validate_plan_id(&id)?;
     let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     let plan = Plan {
@@ -110,6 +131,7 @@ pub fn save_plan(workspace_root: &Path, input: PlanInput) -> Result<Plan> {
 ///
 /// Returns `Ok(None)` if the plan file doesn't exist.
 pub fn get_plan(workspace_root: &Path, id: &str) -> Result<Option<Plan>> {
+    validate_plan_id(id)?;
     let file_path = workspace_root
         .join(".memories")
         .join("plans")
@@ -179,6 +201,7 @@ pub fn list_plans(workspace_root: &Path, status_filter: Option<&str>) -> Result<
 ///
 /// The plan must exist; returns an error if it doesn't.
 pub fn activate_plan(workspace_root: &Path, id: &str) -> Result<()> {
+    validate_plan_id(id)?;
     // Verify the plan exists
     let plan_file = workspace_root
         .join(".memories")
@@ -197,6 +220,7 @@ pub fn activate_plan(workspace_root: &Path, id: &str) -> Result<()> {
 /// Only `Some` fields in the update are applied. The `updated` timestamp
 /// is always refreshed. Returns the updated plan.
 pub fn update_plan(workspace_root: &Path, id: &str, updates: PlanUpdate) -> Result<Plan> {
+    validate_plan_id(id)?;
     let mut plan = get_plan(workspace_root, id)?
         .with_context(|| format!("Plan '{}' not found", id))?;
 
@@ -233,14 +257,25 @@ pub fn update_plan(workspace_root: &Path, id: &str, updates: PlanUpdate) -> Resu
 ///
 /// Shorthand for `update_plan()` with status = "completed".
 pub fn complete_plan(workspace_root: &Path, id: &str) -> Result<Plan> {
-    update_plan(
+    let plan = update_plan(
         workspace_root,
         id,
         PlanUpdate {
             status: Some("completed".to_string()),
             ..Default::default()
         },
-    )
+    )?;
+
+    // If this was the active plan, clear .active-plan so recall doesn't show
+    // a completed plan as active
+    let active_path = workspace_root.join(".memories").join(".active-plan");
+    if let Ok(active_id) = std::fs::read_to_string(&active_path) {
+        if active_id.trim() == id {
+            let _ = std::fs::remove_file(&active_path);
+        }
+    }
+
+    Ok(plan)
 }
 
 /// Get the currently active plan.

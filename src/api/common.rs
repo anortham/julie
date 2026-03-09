@@ -6,6 +6,9 @@ use axum::http::StatusCode;
 
 use crate::daemon_state::{DaemonState, LoadedWorkspace, WorkspaceLoadStatus};
 
+// Re-export from utils for API consumers
+pub use crate::utils::paths::display_path;
+
 /// Maximum number of results any search/list endpoint will return.
 pub const MAX_RESULT_LIMIT: usize = 500;
 

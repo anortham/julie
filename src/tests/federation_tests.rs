@@ -456,6 +456,7 @@ async fn test_federated_symbol_search_single_workspace() {
         workspace_id: "ws1".to_string(),
         project_name: "my-project".to_string(),
         search_index,
+        db: None,
     }];
 
     let results = federated_symbol_search(
@@ -499,11 +500,13 @@ async fn test_federated_symbol_search_two_workspaces() {
             workspace_id: "ws_alpha".to_string(),
             project_name: "alpha-project".to_string(),
             search_index: index1,
+            db: None,
         },
         WorkspaceSearchEntry {
             workspace_id: "ws_beta".to_string(),
             project_name: "beta-project".to_string(),
             search_index: index2,
+            db: None,
         },
     ];
 
@@ -588,11 +591,13 @@ async fn test_federated_content_search_two_workspaces() {
             workspace_id: "ws1".to_string(),
             project_name: "project-one".to_string(),
             search_index: index1,
+            db: None,
         },
         WorkspaceSearchEntry {
             workspace_id: "ws2".to_string(),
             project_name: "project-two".to_string(),
             search_index: index2,
+            db: None,
         },
     ];
 
@@ -640,11 +645,13 @@ async fn test_federated_symbol_search_respects_limit() {
             workspace_id: "ws1".to_string(),
             project_name: "project-1".to_string(),
             search_index: index1,
+            db: None,
         },
         WorkspaceSearchEntry {
             workspace_id: "ws2".to_string(),
             project_name: "project-2".to_string(),
             search_index: index2,
+            db: None,
         },
     ];
 
@@ -679,6 +686,7 @@ async fn test_federated_search_with_filter() {
         workspace_id: "ws1".to_string(),
         project_name: "test-project".to_string(),
         search_index,
+        db: None,
     }];
 
     // Filter by language
@@ -748,11 +756,13 @@ async fn test_federated_symbol_search_skips_failed_workspace() {
             workspace_id: "healthy_ws".to_string(),
             project_name: "healthy-project".to_string(),
             search_index: healthy_index,
+            db: None,
         },
         WorkspaceSearchEntry {
             workspace_id: "broken_ws".to_string(),
             project_name: "broken-project".to_string(),
             search_index: poisoned_index,
+            db: None,
         },
     ];
 
@@ -796,11 +806,13 @@ async fn test_federated_content_search_skips_failed_workspace() {
             workspace_id: "healthy_ws".to_string(),
             project_name: "healthy-project".to_string(),
             search_index: healthy_index,
+            db: None,
         },
         WorkspaceSearchEntry {
             workspace_id: "broken_ws".to_string(),
             project_name: "broken-project".to_string(),
             search_index: poisoned_index,
+            db: None,
         },
     ];
 

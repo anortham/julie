@@ -1,5 +1,46 @@
 # TODO
 
+## v4.0 Pre-Release Code Review Fixes
+
+### CRITICAL (Must fix before release)
+
+- [x] **C1.** Server binds to `0.0.0.0` — bind to `127.0.0.1` by default (`src/server.rs:174`)
+- [x] **C2.** `launch_editor` accepts arbitrary executables — add allowlist (`src/api/projects.rs:519-538`)
+- [x] **C3.** Permissive CORS allows cross-origin API access — restrict to localhost (`src/server.rs:172`)
+- [x] **C4.** Path traversal in plan IDs — validate IDs reject `..`, `/`, `\`, null bytes (`src/memory/plan.rs:113-116`)
+- [x] **C5.** Lock ordering inconsistency → potential deadlock (`src/daemon_state.rs:131-152` vs `src/daemon_indexer.rs`)
+
+### IMPORTANT (Should fix before release)
+
+- [x] **I6.** Concurrent Tantivy writer corruption in memory system — use file lock or singleton (`src/memory/checkpoint.rs:137-150`)
+- [x] **I7.** `launch_terminal` has no Windows support (`src/api/projects.rs:562-566`)
+- [x] **I8.** `DispatchManager` unbounded memory growth — add LRU eviction (`src/agent/dispatch.rs`)
+- [x] **I9.** Agent stderr leaked to API consumers — sanitize errors (`src/agent/backend.rs:128-143`)
+- [x] **I10.** `last_processed` HashMap grows unboundedly — periodic eviction (`src/daemon_watcher.rs:265-266`)
+- [x] **I11.** Unsafe string slicing on timestamps — use `.get()` with fallback (`src/memory/storage.rs:48`, `src/memory/checkpoint.rs:71`)
+- [x] **I12.** Multi-byte truncation panic in embedding text — use `floor_char_boundary` (`src/memory/embedding.rs:57-59`)
+- [x] **I13.** Missing centrality boost in federated definition search (`src/tools/federation/search.rs`)
+- [x] **I14.** Missing content verification in federated content search (`src/tools/federation/search.rs`)
+- [x] **I15.** PID cast truncation — add bounds check (`src/daemon.rs:105,284`)
+- [x] **I16.** UNC prefix leaking on Windows — create `display_path()` utility (`src/utils/paths.rs`, `src/api/common.rs`)
+- [x] **I17.** Active plan not cleared on complete (`src/memory/plan.rs:235-244`)
+
+### SUGGESTIONS (Nice to have, post-release OK)
+
+- [ ] **S1.** `DaemonState` fields are all `pub` — make `pub(crate)` (`daemon_state.rs`)
+- [ ] **S2.** No retry/reconnect when daemon crashes mid-bridge session (`connect.rs:378`)
+- [ ] **S3.** SSE parsing is hand-rolled and fragile (`connect.rs:427`)
+- [ ] **S4.** Test fixtures use `/tmp/project-N` — won't work on Windows (`daemon_indexer_tests.rs`)
+- [ ] **S5.** `text_search.rs` is 731 lines — 46% over 500-line limit (`text_search.rs`)
+- [ ] **S6.** Inline tests in `formatting.rs` violate project test organization rules (`navigation/formatting.rs:268`)
+- [ ] **S7.** `get_symbols` returns error instead of stub for `workspace="all"` (`symbols/mod.rs:90`)
+- [ ] **S8.** No rate limiting on dispatch endpoint (`api/agents.rs`)
+- [ ] **S9.** `serde_yaml::to_string().unwrap_or_default()` silences errors (`memory/storage.rs:267`)
+- [ ] **S10.** Duplicated test helpers across memory test files (`memory_recall_tests.rs`, `memory_cross_project_tests.rs`)
+- [ ] **S11.** No confidence (1-5) or plan status validation in MCP tool layer (`tools/memory/checkpoint.rs:78`, `memory/plan.rs:210`)
+
+---
+
 ## Open Items
 
 - [x] **Dashboard memories tab needs project selector** (2026-03-09)

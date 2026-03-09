@@ -13,6 +13,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::utils::paths::display_path;
+
 use anyhow::{Context, Result};
 
 use super::date_filter::{DateFilter, DATE_DIR_RE};
@@ -171,7 +173,7 @@ pub fn recall_cross_project(
                 // Build an empty summary for this workspace and continue
                 workspace_summaries.push(super::WorkspaceSummary {
                     name: project_name.clone(),
-                    path: workspace_root.to_string_lossy().to_string(),
+                    path: display_path(&workspace_root),
                     checkpoint_count: 0,
                     last_activity: None,
                 });
@@ -188,7 +190,7 @@ pub fn recall_cross_project(
 
         workspace_summaries.push(super::WorkspaceSummary {
             name: project_name.clone(),
-            path: workspace_root.to_string_lossy().to_string(),
+            path: display_path(&workspace_root),
             checkpoint_count,
             last_activity,
         });

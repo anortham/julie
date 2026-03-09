@@ -169,9 +169,19 @@ pub async fn start_server(
         .route("/ui/{*path}", axum::routing::get(ui::ui_handler))
         // Root redirect → dashboard
         .route("/", axum::routing::get(|| async { axum::response::Redirect::temporary("/ui/") }))
-        .layer(tower_http::cors::CorsLayer::permissive());
+        .layer({
+            use tower_http::cors::{AllowOrigin, CorsLayer};
+            use axum::http::{Method, header};
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::predicate(|origin, _| {
+                    let s = origin.as_bytes();
+                    s.starts_with(b"http://localhost:") || s.starts_with(b"http://127.0.0.1:")
+                }))
+                .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+                .allow_headers([header::CONTENT_TYPE, header::ACCEPT, header::AUTHORIZATION])
+        });
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = TcpListener::bind(addr).await.with_context(|| {
         format!(
             "Port {} is already in use. Use --port or JULIE_PORT to specify a different port.",

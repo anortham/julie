@@ -45,7 +45,7 @@ pub fn generate_checkpoint_id(timestamp: &str, description: &str) -> String {
 /// This matches Goldfish's `getCheckpointFilename()` exactly.
 pub fn get_checkpoint_filename(timestamp: &str, id: &str) -> String {
     // Extract HH:MM:SS from ISO timestamp (chars 11..19)
-    let time_part = &timestamp[11..19]; // "HH:MM:SS"
+    let time_part = timestamp.get(11..19).unwrap_or("000000"); // "HH:MM:SS"
     let hhmmss = time_part.replace(':', "");
 
     // Extract first 4 chars of the hash portion of the ID

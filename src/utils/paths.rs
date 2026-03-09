@@ -6,6 +6,21 @@
 use anyhow::{Context, Result};
 use std::path::{MAIN_SEPARATOR, Path, PathBuf};
 
+/// Convert a path to a user-friendly display string.
+///
+/// On Windows, `std::fs::canonicalize()` returns paths with the `\\?\` UNC
+/// extended-length prefix (e.g. `\\?\C:\Users\alice\project`). This prefix is
+/// functionally correct but confusing in API responses and UI. This helper
+/// strips it for user-facing output.
+pub fn display_path(path: &Path) -> String {
+    let s = path.to_string_lossy();
+    if let Some(stripped) = s.strip_prefix(r"\\?\") {
+        stripped.to_string()
+    } else {
+        s.into_owned()
+    }
+}
+
 /// Convert an absolute path to a relative Unix-style path (with `/` separators)
 ///
 /// This function strips the workspace root prefix and converts all path separators

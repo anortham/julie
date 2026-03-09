@@ -6,6 +6,7 @@
 use anyhow::{Context, Result};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::sync::broadcast;
+use tracing;
 
 /// Trait for agent CLI backends.
 ///
@@ -132,15 +133,16 @@ pub fn spawn_and_stream(
             let _ = stderr_reader.read_to_string(&mut stderr_buf).await;
             let stderr_msg = stderr_buf.trim();
 
-            if stderr_msg.is_empty() {
-                anyhow::bail!(
-                    "{} process exited with status: {}",
-                    name,
-                    status.code().unwrap_or(-1)
-                );
-            } else {
-                anyhow::bail!("{} error: {}", name, stderr_msg);
+            // Log full stderr server-side for debugging, but don't expose it
+            // in API responses (stderr may contain API keys, tokens, or config)
+            if !stderr_msg.is_empty() {
+                tracing::error!("{} stderr: {}", name, stderr_msg);
             }
+            anyhow::bail!(
+                "{} process exited with status {} (check server logs for details)",
+                name,
+                status.code().unwrap_or(-1)
+            );
         }
 
         Ok(accumulated)

@@ -100,6 +100,11 @@ pub fn remove_pid_file(path: &Path) -> Result<()> {
 /// Check if a process with the given PID exists.
 #[cfg(unix)]
 fn process_exists(pid: u32) -> bool {
+    // Guard: PIDs above i32::MAX would wrap negative, causing kill() to target
+    // a process group instead of a single process — that's never what we want.
+    if pid > i32::MAX as u32 {
+        return false;
+    }
     // SAFETY: kill with signal 0 doesn't send a signal, just checks process existence.
     // Returns 0 if the process exists and we have permission to signal it.
     unsafe { libc::kill(pid as i32, 0) == 0 }
@@ -280,7 +285,10 @@ pub fn daemon_stop() -> Result<()> {
 /// Send a termination signal to the process.
 #[cfg(unix)]
 fn send_terminate_signal(pid: u32) -> Result<()> {
-    // SAFETY: Sending SIGTERM to a known PID
+    if pid > i32::MAX as u32 {
+        bail!("PID {} exceeds safe range for kill()", pid);
+    }
+    // SAFETY: Sending SIGTERM to a known PID within i32 range
     let result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
     if result != 0 {
         let err = std::io::Error::last_os_error();
