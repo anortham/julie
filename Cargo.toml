@@ -82,10 +82,6 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 rust-embed = { version = "8", features = ["debug-embed"] }
 mime_guess = "2"
 
-# Platform-specific process management (daemon lifecycle)
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
-
 # OpenAPI documentation
 utoipa = { version = "5.4", features = ["axum_extras"] }
 utoipa-axum = "0.2"
@@ -123,6 +119,10 @@ fastembed = { version = "5", optional = true }
 ort = { version = "2.0.0-rc.10", optional = true }
 sqlite-vec = "0.1"
 zerocopy = { version = "0.7", features = ["derive"] }
+
+# Platform-specific process management (daemon lifecycle)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3.13"
