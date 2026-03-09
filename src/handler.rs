@@ -789,7 +789,27 @@ impl ServerHandler for JulieServerHandler {
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
         info!("🔗 MCP connection established - client initialized");
 
-        // Run auto-indexing in background task after handshake completes
+        // Daemon mode: pre-populate workspace from daemon state.
+        // The daemon already manages indexing and file watching — creating
+        // a duplicate workspace here would spawn competing SearchIndex
+        // writers and file watchers on the same directory.
+        if let Some(ref daemon_state) = self.daemon_state {
+            let ds = daemon_state.read().await;
+            for loaded in ds.workspaces.values() {
+                if loaded.path == self.workspace_root {
+                    let mut ws_guard = self.workspace.write().await;
+                    *ws_guard = Some(loaded.workspace.clone());
+                    *self.is_indexed.write().await = true;
+                    info!("📦 Using daemon's pre-loaded workspace");
+                    return;
+                }
+            }
+            // Workspace not in daemon state (still indexing or just registered)
+            // — skip auto-indexing, the daemon indexer will handle it.
+            return;
+        }
+
+        // Stdio mode: run auto-indexing in background task
         let handler = self.clone();
         tokio::spawn(async move {
             handler.run_auto_indexing().await;
