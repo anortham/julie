@@ -113,6 +113,20 @@ pub async fn find_refs_federated(
     // Sort by project name for stable output
     per_project.sort_by(|a, b| a.0.cmp(&b.0));
 
+    // Apply global limit: per-workspace limit was applied during query, but the
+    // merged total can exceed the requested limit. Truncate references across
+    // projects to stay within bounds (definitions are kept — they're typically 0-1).
+    let global_limit = limit as usize;
+    let mut total_refs = 0usize;
+    for (_, _, refs) in &mut per_project {
+        let remaining = global_limit.saturating_sub(total_refs);
+        if refs.len() > remaining {
+            refs.truncate(remaining);
+        }
+        total_refs += refs.len();
+    }
+    per_project.retain(|(_, defs, refs)| !defs.is_empty() || !refs.is_empty());
+
     // Build tagged results for formatting
     let tagged: Vec<ProjectTaggedResult<'_>> = per_project
         .iter()

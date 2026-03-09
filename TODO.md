@@ -244,3 +244,23 @@ All support subscription-based auth (OAuth/browser login) — no API key require
   - Memories filters: full-width stacking at ≤600px (fixed clipped Project dropdown)
   - Main padding: reduced to 1rem at ≤600px
   - Verified at 320px, 375px, and 1280px — no horizontal page scrollbar, no regressions
+
+## 4.0 Release Readiness Review (since `v3.9.1`)
+
+### Fixed
+
+- [x] **R2.** `launch_editor` allowlist bypass — execute validated basename, not user-supplied path (`src/api/projects.rs`)
+- [x] **R4.** Stale `Mcp-Session-Id` after daemon restart — clear session on error, always re-capture from headers (`src/connect.rs`)
+- [x] **R5.** SSE stream `done` event hardcoded as "completed" — now queries actual dispatch status (`src/api/agents.rs`)
+- [x] **R6.** Cross-project recall per-workspace limit=5 — changed to 1000, global limit applied after merge (`src/memory/recall.rs`)
+- [x] **R10.** Dispatches recorded as fake "default" project — now resolves actual workspace ID (`src/api/agents.rs`)
+- [x] **R11.** Federated `fast_refs` no post-merge truncation — added global limit enforcement (`src/tools/navigation/federated_refs.rs`)
+
+### Dismissed (not bugs / by design / low severity)
+
+- **R1.** Memory search BM25-only — **by design**: embeddings require GPU sidecar, BM25 is primary path, graceful fallback works correctly
+- **R3.** PID file reuse — **standard Unix daemon pattern**: connect does health checks, risk is theoretical
+- **R7.** Unified search ignores filters for memory content — **partially real** but only affects dashboard "All" content type, not MCP tools (post-release)
+- **R8.** Debug endpoint ignores content_type — **real but irrelevant**: debug is a developer diagnostic, not user-facing (post-release)
+- **R9.** Re-index TOCTOU race — **real but harmless**: indexing is idempotent, worst case is redundant work (post-release)
+- **R12.** Timestamp normalization to "now" — **defensive**: only triggers for hand-edited files with corrupt YAML, normal saves always valid (post-release)

@@ -548,7 +548,10 @@ pub async fn launch_editor(
         return Err((StatusCode::BAD_REQUEST, format!("Path does not exist: {}", body.path)));
     }
 
-    tokio::process::Command::new(&body.editor)
+    // Execute the validated basename, not the user-supplied path.
+    // This prevents bypasses like `/tmp/code` where the basename passes
+    // the allowlist but the full path points to a malicious binary.
+    tokio::process::Command::new(editor_name)
         .arg(&body.path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())

@@ -401,14 +401,21 @@ async fn run_stdio_bridge(mcp_url: &str) -> Result<()> {
             warn!("Daemon returned HTTP {} for bridge request", resp.status());
         }
 
-        // Capture session ID from response headers
-        if session_id.is_none() {
-            if let Some(sid) = resp.headers().get("mcp-session-id") {
-                if let Ok(sid_str) = sid.to_str() {
+        // Update session ID from response headers.
+        // Always check (not just first time) so we pick up a new session after
+        // daemon restart instead of wedging on a stale ID.
+        if let Some(sid) = resp.headers().get("mcp-session-id") {
+            if let Ok(sid_str) = sid.to_str() {
+                if session_id.as_deref() != Some(sid_str) {
+                    debug!("Updated MCP session ID: {}", sid_str);
                     session_id = Some(sid_str.to_string());
-                    debug!("Captured MCP session ID: {}", sid_str);
                 }
             }
+        } else if !resp.status().is_success() && session_id.is_some() {
+            // Error without session header — session likely invalid (daemon restarted).
+            // Clear so next request goes without a stale ID and gets a fresh session.
+            warn!("Non-success response without session header — clearing stale session ID");
+            session_id = None;
         }
 
         let content_type = resp

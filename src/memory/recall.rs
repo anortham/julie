@@ -156,7 +156,7 @@ pub fn recall_cross_project(
             from: options.from.clone(),
             to: options.to.clone(),
             search: options.search.clone(),
-            limit: None, // no per-workspace limit
+            limit: Some(1000), // generous: global limit applied after merge
             full: Some(true), // keep git context for now
             plan_id: options.plan_id.clone(),
         };

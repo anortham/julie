@@ -10,6 +10,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
+use futures::stream;
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::Json;
@@ -266,6 +267,10 @@ pub async fn stream_dispatch(
     ))?;
     drop(dm);
 
+    // Clone state for the done sentinel — needs to query actual status after broadcast ends
+    let dm_for_done = state.dispatch_manager.clone();
+    let id_for_done = id.clone();
+
     let stream = BroadcastStream::new(rx)
         .filter_map(|msg| match msg {
             Ok(data) => Some(Ok(Event::default().data(data))),
@@ -276,11 +281,16 @@ pub async fn stream_dispatch(
                 Some(Ok(Event::default().comment(format!("lagged: skipped {} messages", n))))
             }
         })
-        // BroadcastStream ends when all senders are dropped (Critical 1 fix
-        // drops the sender on complete/fail). Append a "done" sentinel.
-        .chain(tokio_stream::once(Ok::<_, Infallible>(
-            Event::default().event("done").data("completed"),
-        )));
+        // BroadcastStream ends when all senders are dropped (complete/fail drops
+        // the sender). Query the actual dispatch status instead of hardcoding "completed".
+        .chain(stream::once(async move {
+            let dm = dm_for_done.read().await;
+            let status = dm
+                .get_dispatch(&id_for_done)
+                .map(|d| d.status.as_str().to_string())
+                .unwrap_or_else(|| "completed".to_string());
+            Ok::<_, Infallible>(Event::default().event("done").data(status))
+        }));
 
     Ok(Sse::new(Box::pin(stream)))
 }
@@ -363,9 +373,19 @@ pub async fn dispatch_agent(
     };
 
     // 4. Start dispatch in the manager (creates broadcast channel)
-    let project_name = body
-        .project
-        .unwrap_or_else(|| "default".to_string());
+    // Use the resolved workspace ID, not the raw user input (which may be None → "default")
+    let project_name = if let Some(ref id) = body.project {
+        id.clone()
+    } else {
+        // resolve_workspace(None) found the first Ready workspace — find its ID
+        let daemon_state = state.daemon_state.read().await;
+        daemon_state
+            .workspaces
+            .iter()
+            .find(|(_, ws)| ws.status == crate::daemon_state::WorkspaceLoadStatus::Ready)
+            .map(|(id, _)| id.clone())
+            .unwrap_or_else(|| "default".to_string())
+    };
     let dispatch_id = {
         let mut dm = state.dispatch_manager.write().await;
         dm.start_dispatch(body.task.clone(), project_name.clone(), backend_name.clone())
