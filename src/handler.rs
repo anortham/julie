@@ -13,6 +13,8 @@ use std::sync::atomic::AtomicBool;
 use tracing::{debug, info, warn};
 
 use crate::daemon_state::DaemonState;
+use crate::database::SymbolDatabase;
+use crate::search::SearchIndex;
 use crate::workspace::JulieWorkspace;
 use tokio::sync::RwLock;
 
@@ -371,6 +373,152 @@ impl JulieServerHandler {
             Err(e) => {
                 warn!("⚠️ Failed to check indexing status: {}", e);
             }
+        }
+    }
+
+    // ========== Workspace Access Helpers ==========
+    //
+    // These helpers abstract daemon-vs-stdio workspace access for non-primary
+    // workspaces. In daemon mode they return the shared Arc from DaemonState
+    // (no re-opening). In stdio mode they open local reference workspace files
+    // (current behavior).
+
+    /// Get the database for a specific workspace by ID.
+    ///
+    /// **Daemon mode**: returns the shared `Arc<Mutex<SymbolDatabase>>` from
+    /// `DaemonState.workspaces` (no re-opening per request).
+    ///
+    /// **Stdio mode**: opens the reference workspace's SQLite database from
+    /// the primary workspace's `.julie/indexes/{workspace_id}/db/symbols.db`.
+    pub async fn get_database_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
+        if let Some(ref daemon_state) = self.daemon_state {
+            // Daemon mode: look up the loaded workspace
+            let state = daemon_state.read().await;
+            let loaded = state.workspaces.get(workspace_id).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Workspace '{}' not found in daemon state",
+                    workspace_id
+                )
+            })?;
+            loaded.workspace.db.clone().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Workspace '{}' is not ready (status: {:?}) — database not initialized",
+                    workspace_id,
+                    loaded.status
+                )
+            })
+        } else {
+            // Stdio mode: open from the primary workspace's index directory
+            let primary = self
+                .get_workspace()
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
+
+            let db_path = primary.workspace_db_path(workspace_id);
+            if !db_path.exists() {
+                return Err(anyhow::anyhow!(
+                    "Database not found for workspace '{}' at {}",
+                    workspace_id,
+                    db_path.display()
+                ));
+            }
+
+            tokio::task::spawn_blocking(move || {
+                let db = SymbolDatabase::new(&db_path)?;
+                Ok(Arc::new(std::sync::Mutex::new(db)))
+            })
+            .await?
+        }
+    }
+
+    /// Get the search index for a specific workspace by ID.
+    ///
+    /// **Daemon mode**: returns the shared `Arc<Mutex<SearchIndex>>` from
+    /// `DaemonState.workspaces` (already `Option` — `None` if not yet built).
+    ///
+    /// **Stdio mode**: opens the reference workspace's Tantivy index from
+    /// the primary workspace's `.julie/indexes/{workspace_id}/tantivy/`.
+    /// Returns `Ok(None)` if the index directory doesn't exist yet.
+    pub async fn get_search_index_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Option<Arc<std::sync::Mutex<SearchIndex>>>> {
+        if let Some(ref daemon_state) = self.daemon_state {
+            // Daemon mode: look up the loaded workspace
+            let state = daemon_state.read().await;
+            let loaded = state.workspaces.get(workspace_id).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Workspace '{}' not found in daemon state",
+                    workspace_id
+                )
+            })?;
+            Ok(loaded.workspace.search_index.clone())
+        } else {
+            // Stdio mode: open from the primary workspace's index directory
+            let primary = self
+                .get_workspace()
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
+
+            let tantivy_path = primary.workspace_tantivy_path(workspace_id);
+            if !tantivy_path.join("meta.json").exists() {
+                return Ok(None);
+            }
+
+            tokio::task::spawn_blocking(move || {
+                let configs = crate::search::LanguageConfigs::load_embedded();
+                let index =
+                    SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+                Ok(Some(Arc::new(std::sync::Mutex::new(index))))
+            })
+            .await?
+        }
+    }
+
+    /// Get the root path on disk for a specific workspace by ID.
+    ///
+    /// **Daemon mode**: returns `LoadedWorkspace.path` from `DaemonState`.
+    ///
+    /// **Stdio mode**: looks up the workspace entry in the primary workspace's
+    /// registry and returns `WorkspaceEntry.original_path`.
+    pub async fn get_workspace_root_for_target(
+        &self,
+        workspace_id: &str,
+    ) -> Result<PathBuf> {
+        if let Some(ref daemon_state) = self.daemon_state {
+            // Daemon mode: return the path from the loaded workspace
+            let state = daemon_state.read().await;
+            let loaded = state.workspaces.get(workspace_id).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Workspace '{}' not found in daemon state",
+                    workspace_id
+                )
+            })?;
+            Ok(loaded.path.clone())
+        } else {
+            // Stdio mode: look up in the primary workspace's registry
+            let primary = self
+                .get_workspace()
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
+
+            let registry_service =
+                crate::workspace::registry_service::WorkspaceRegistryService::new(
+                    primary.root.clone(),
+                );
+            let entry = registry_service
+                .get_workspace(workspace_id)
+                .await?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Workspace '{}' not found in workspace registry",
+                        workspace_id
+                    )
+                })?;
+            Ok(PathBuf::from(entry.original_path))
         }
     }
 
