@@ -541,12 +541,12 @@ onUnmounted(() => {
 
 .backend-available {
   background: #dcfce7;
-  color: #16a34a;
+  color: var(--color-success);
 }
 
 .backend-unavailable {
   background: #fee2e2;
-  color: #dc2626;
+  color: var(--color-error);
 }
 
 .backend-icon {
@@ -586,24 +586,6 @@ onUnmounted(() => {
   margin-bottom: 0.25rem;
 }
 
-.form-textarea {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  resize: vertical;
-  background: white;
-  line-height: 1.5;
-}
-
-.form-textarea:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-}
-
 .form-textarea-sm {
   font-size: 0.8rem;
 }
@@ -620,22 +602,6 @@ onUnmounted(() => {
 
 .form-group-hints {
   flex: 1;
-}
-
-.form-select {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  background: white;
-  cursor: pointer;
-}
-
-.form-select:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
 .form-actions {
@@ -664,12 +630,12 @@ onUnmounted(() => {
 }
 
 .btn-primary {
-  background: #6366f1;
+  background: var(--color-primary);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #4f46e5;
+  background: var(--color-primary-hover);
 }
 
 .btn-text {
@@ -680,7 +646,7 @@ onUnmounted(() => {
 
 .btn-text:hover:not(:disabled) {
   color: var(--text-primary);
-  background: #f1f5f9;
+  background: var(--hover-bg);
 }
 
 .btn-icon {
@@ -694,7 +660,7 @@ onUnmounted(() => {
 }
 
 .btn-icon:hover {
-  background: #f1f5f9;
+  background: var(--hover-bg);
   color: var(--text-primary);
 }
 
@@ -712,8 +678,8 @@ onUnmounted(() => {
 }
 
 .status-error {
-  border-color: #fca5a5;
-  color: #dc2626;
+  border-color: var(--color-error-border);
+  color: var(--color-error);
   background: #fef2f2;
 }
 
@@ -732,7 +698,7 @@ onUnmounted(() => {
   gap: 0.5rem;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-color);
-  background: #f8fafc;
+  background: var(--hover-bg);
 }
 
 .output-title {
@@ -750,7 +716,7 @@ onUnmounted(() => {
 
 .output-terminal {
   background: #1e1e1e;
-  color: #d4d4d4;
+  color: var(--text-muted);
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
   font-size: 0.8rem;
   line-height: 1.6;
@@ -762,7 +728,7 @@ onUnmounted(() => {
 }
 
 .output-waiting {
-  color: #808080;
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -776,18 +742,18 @@ onUnmounted(() => {
   gap: 1rem;
   padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--border-color);
-  background: #fafbfc;
+  background: var(--hover-bg);
 }
 
 .detail-error {
   padding: 0.6rem 1rem;
-  color: #dc2626;
+  color: var(--color-error);
   font-size: 0.8rem;
   display: flex;
   align-items: center;
   gap: 0.4rem;
   background: #fef2f2;
-  border-top: 1px solid #fca5a5;
+  border-top: 1px solid var(--color-error-border);
 }
 
 /* Badges */
@@ -809,26 +775,26 @@ onUnmounted(() => {
 
 .badge-running {
   background: #fef3c7;
-  color: #d97706;
+  color: var(--color-warning);
 }
 
 .badge-completed {
   background: #dcfce7;
-  color: #16a34a;
+  color: var(--color-success);
 }
 
 .badge-failed {
   background: #fee2e2;
-  color: #dc2626;
+  color: var(--color-error);
 }
 
 .badge-queued {
   background: #e0e7ff;
-  color: #4f46e5;
+  color: var(--color-primary-hover);
 }
 
 .badge-default {
-  background: #f1f5f9;
+  background: var(--hover-bg);
   color: var(--text-secondary);
 }
 
@@ -873,7 +839,7 @@ onUnmounted(() => {
 }
 
 .history-card:hover {
-  border-color: #c7d2fe;
+  border-color: var(--color-primary-border);
 }
 
 .history-header {
@@ -916,7 +882,7 @@ onUnmounted(() => {
 }
 
 .meta-error {
-  color: #dc2626;
+  color: var(--color-error);
 }
 
 /* Empty state */

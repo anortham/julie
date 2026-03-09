@@ -160,15 +160,15 @@ function truncateBody(body: string, maxLen = 200): string {
   padding: 0.75rem 1rem;
   cursor: pointer;
   transition: border-color 0.15s;
-  border-left: 3px solid #a855f7;
+  border-left: 3px solid var(--color-purple);
 }
 
 .memory-card:hover {
-  border-color: #d8b4fe;
+  border-color: var(--color-purple-border);
 }
 
 .memory-card.expanded {
-  border-color: #a855f7;
+  border-color: var(--color-purple);
 }
 
 .memory-header {
@@ -189,7 +189,7 @@ function truncateBody(body: string, maxLen = 200): string {
 }
 
 .content-type-memory {
-  background: #a855f7;
+  background: var(--color-purple);
 }
 
 .memory-time {
@@ -226,8 +226,8 @@ function truncateBody(body: string, maxLen = 200): string {
   border-radius: 9999px;
   font-size: 0.65rem;
   font-weight: 600;
-  background: #f3e8ff;
-  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.1);
+  color: var(--color-purple);
 }
 
 .memory-symbols {
@@ -241,9 +241,9 @@ function truncateBody(body: string, maxLen = 200): string {
   padding: 0.15rem 0.45rem;
   border-radius: 4px;
   font-size: 0.75rem;
-  background: #f1f5f9;
-  color: #6366f1;
-  border: 1px solid #e2e8f0;
+  background: var(--hover-bg);
+  color: var(--color-primary);
+  border: 1px solid var(--border-color);
 }
 
 /* Expanded detail */
@@ -288,7 +288,7 @@ function truncateBody(body: string, maxLen = 200): string {
   font-family: 'SF Mono', 'Fira Code', monospace;
   color: var(--text-secondary);
   padding: 0.15rem 0.4rem;
-  background: #f8fafc;
+  background: var(--hover-bg);
   border-radius: 4px;
 }
 
@@ -304,7 +304,7 @@ function truncateBody(body: string, maxLen = 200): string {
 .detail-id,
 .detail-timestamp {
   font-size: 0.7rem;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .detail-id {

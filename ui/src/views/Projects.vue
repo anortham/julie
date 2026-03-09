@@ -190,21 +190,21 @@ onMounted(() => {
 }
 
 .btn-primary {
-  background: #6366f1;
+  background: var(--color-primary);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #4f46e5;
+  background: var(--color-primary-hover);
 }
 
 .btn-secondary {
-  background: #e2e8f0;
+  background: var(--hover-bg);
   color: var(--text-primary);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #cbd5e1;
+  background: var(--border-color);
 }
 
 /* Register form */
@@ -221,24 +221,14 @@ onMounted(() => {
   gap: 0.5rem;
 }
 
-.form-input {
+.form-row .form-input {
   flex: 1;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.875rem;
   font-family: 'SF Mono', 'Fira Code', monospace;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
 .form-error {
   margin-top: 0.5rem;
-  color: #dc2626;
+  color: var(--color-error);
   font-size: 0.8rem;
   display: flex;
   align-items: center;
@@ -258,9 +248,9 @@ onMounted(() => {
 }
 
 .status-error {
-  border-color: #fca5a5;
-  color: #dc2626;
-  background: #fef2f2;
+  border-color: var(--color-error-border);
+  color: var(--color-error);
+  background: var(--color-error-bg);
 }
 
 /* Empty state */
@@ -298,7 +288,7 @@ onMounted(() => {
 .projects-table th {
   text-align: left;
   padding: 0.75rem 1rem;
-  background: #f8fafc;
+  background: var(--hover-bg);
   border-bottom: 1px solid var(--border-color);
   font-weight: 600;
   font-size: 0.8rem;
@@ -317,7 +307,7 @@ onMounted(() => {
 }
 
 .projects-table tr:hover td {
-  background: #f8fafc;
+  background: var(--hover-bg);
 }
 
 .cell-name {
@@ -355,27 +345,27 @@ onMounted(() => {
 }
 
 .badge-ready {
-  background: #dcfce7;
-  color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+  color: var(--color-success);
 }
 
 .badge-indexing {
-  background: #fef3c7;
-  color: #d97706;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
 .badge-registered {
-  background: #e0e7ff;
-  color: #4f46e5;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--color-primary-hover);
 }
 
 .badge-error {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--color-error-bg);
+  color: var(--color-error);
 }
 
 .badge-default {
-  background: #f1f5f9;
+  background: var(--hover-bg);
   color: var(--text-secondary);
 }
 </style>

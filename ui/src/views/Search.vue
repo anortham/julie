@@ -527,22 +527,6 @@ function contentTypeBadgeClass(ct?: string): string {
   flex: 1;
 }
 
-/* Form inputs */
-.form-input {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  background: white;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-}
-
 /* Button */
 .btn {
   display: inline-flex;
@@ -563,12 +547,12 @@ function contentTypeBadgeClass(ct?: string): string {
 }
 
 .btn-primary {
-  background: #6366f1;
+  background: var(--color-primary);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #4f46e5;
+  background: var(--color-primary-hover);
 }
 
 /* Status messages */
@@ -585,8 +569,8 @@ function contentTypeBadgeClass(ct?: string): string {
 }
 
 .status-error {
-  border-color: #fca5a5;
-  color: #dc2626;
+  border-color: var(--color-error-border);
+  color: var(--color-error);
   background: #fef2f2;
 }
 
@@ -606,7 +590,7 @@ function contentTypeBadgeClass(ct?: string): string {
   gap: 0.4rem;
   padding: 0.75rem 1rem;
   background: #f0f0ff;
-  border: 1px solid #c7d2fe;
+  border: 1px solid var(--color-primary-border);
   border-radius: 8px;
   font-size: 0.85rem;
 }
@@ -620,7 +604,7 @@ function contentTypeBadgeClass(ct?: string): string {
 }
 
 .token-raw {
-  background: white;
+  background: var(--card-bg);
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
   font-family: 'SF Mono', 'Fira Code', monospace;
@@ -634,7 +618,7 @@ function contentTypeBadgeClass(ct?: string): string {
 }
 
 .token-chip {
-  background: #6366f1;
+  background: var(--color-primary);
   color: white;
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
@@ -663,17 +647,17 @@ function contentTypeBadgeClass(ct?: string): string {
 
 .mode-badge-hybrid {
   background: #dcfce7;
-  color: #16a34a;
+  color: var(--color-success);
 }
 
 .mode-badge-keyword {
   background: #f1f5f9;
-  color: #64748b;
+  color: var(--text-secondary);
 }
 
 .mode-badge-content {
   background: #f3e8ff;
-  color: #7c3aed;
+  color: var(--color-purple);
 }
 
 /* Results meta */
@@ -697,7 +681,7 @@ function contentTypeBadgeClass(ct?: string): string {
   font-size: 0.7rem;
   font-weight: 600;
   background: #fef3c7;
-  color: #d97706;
+  color: var(--color-warning);
 }
 
 /* Empty state */
@@ -734,11 +718,11 @@ function contentTypeBadgeClass(ct?: string): string {
 }
 
 .result-card:hover {
-  border-color: #c7d2fe;
+  border-color: var(--color-primary-border);
 }
 
 .result-card-debug.expanded {
-  border-color: #818cf8;
+  border-color: var(--brand-color);
 }
 
 .result-header {
@@ -783,12 +767,12 @@ function contentTypeBadgeClass(ct?: string): string {
 
 .ct-badge-code {
   background: #dbeafe;
-  color: #2563eb;
+  color: var(--color-info);
 }
 
 .ct-badge-memory {
   background: #f3e8ff;
-  color: #7c3aed;
+  color: var(--color-purple);
 }
 
 .result-name {
@@ -831,7 +815,7 @@ function contentTypeBadgeClass(ct?: string): string {
 }
 
 .result-line {
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .result-lang {
@@ -839,7 +823,7 @@ function contentTypeBadgeClass(ct?: string): string {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-weight: 600;
 }
 
@@ -880,7 +864,7 @@ function contentTypeBadgeClass(ct?: string): string {
 }
 
 .debug-value-final {
-  color: #6366f1;
+  color: var(--color-primary);
 }
 
 .debug-section {
@@ -898,7 +882,7 @@ function contentTypeBadgeClass(ct?: string): string {
   font-size: 0.75rem;
   font-weight: 500;
   background: #dcfce7;
-  color: #16a34a;
+  color: var(--color-success);
 }
 
 .debug-explanation {

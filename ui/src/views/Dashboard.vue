@@ -306,15 +306,15 @@ onMounted(async () => {
 }
 
 .status-error {
-  border-color: #fca5a5;
-  color: #dc2626;
-  background: #fef2f2;
+  border-color: var(--color-error-border);
+  color: var(--color-error);
+  background: var(--color-error-bg);
 }
 
 .status-warn {
-  border-color: #fde68a;
-  color: #d97706;
-  background: #fffbeb;
+  border-color: var(--color-warning-border);
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
   margin-top: 1rem;
 }
 
@@ -343,8 +343,8 @@ onMounted(async () => {
 }
 
 .card-link:hover {
-  border-color: #c7d2fe;
-  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.1);
+  border-color: var(--color-primary-border);
+  box-shadow: 0 1px 4px var(--focus-ring);
 }
 
 .card-header {
@@ -390,7 +390,7 @@ onMounted(async () => {
 }
 
 .status-ok {
-  color: #16a34a;
+  color: var(--color-success);
 }
 
 /* Breakdown items (project status indicators) */
@@ -431,23 +431,23 @@ onMounted(async () => {
 }
 
 .dot-ready {
-  background: #16a34a;
+  background: var(--color-success);
 }
 
 .dot-indexing {
-  background: #d97706;
+  background: var(--color-warning);
 }
 
 .dot-error {
-  background: #dc2626;
+  background: var(--color-error);
 }
 
 .dot-registered {
-  background: #6366f1;
+  background: var(--color-primary);
 }
 
 .dot-stale {
-  background: #94a3b8;
+  background: var(--text-muted);
 }
 
 /* Card detail rows (memory/agent extra info) */
@@ -511,11 +511,11 @@ onMounted(async () => {
 }
 
 .dot-available {
-  background: #16a34a;
+  background: var(--color-success);
 }
 
 .dot-unavailable {
-  background: #dc2626;
+  background: var(--color-error);
 }
 
 .backend-name {

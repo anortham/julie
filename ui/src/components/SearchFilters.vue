@@ -162,22 +162,6 @@ const contentTypeOptions = [
   font-weight: 600;
 }
 
-/* Form inputs */
-.form-input {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  background: white;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-}
-
 .form-input-sm {
   width: 160px;
 }
@@ -185,22 +169,6 @@ const contentTypeOptions = [
 .form-input-num {
   width: 72px;
   font-variant-numeric: tabular-nums;
-}
-
-.form-select {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  background: white;
-  cursor: pointer;
-  min-width: 140px;
-}
-
-.form-select:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
 /* Radio group */
@@ -227,7 +195,7 @@ const contentTypeOptions = [
 }
 
 .radio-item.active {
-  background: #6366f1;
+  background: var(--color-primary);
   color: white;
 }
 
@@ -256,13 +224,13 @@ const contentTypeOptions = [
   position: relative;
   width: 36px;
   height: 20px;
-  background: #cbd5e1;
+  background: var(--border-color);
   border-radius: 10px;
   transition: background 0.2s;
 }
 
 .toggle-input:checked + .toggle-track {
-  background: #6366f1;
+  background: var(--color-primary);
 }
 
 .toggle-thumb {
@@ -271,7 +239,7 @@ const contentTypeOptions = [
   left: 2px;
   width: 16px;
   height: 16px;
-  background: white;
+  background: var(--card-bg);
   border-radius: 50%;
   transition: transform 0.2s;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
