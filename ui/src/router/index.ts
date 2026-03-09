@@ -4,6 +4,7 @@ import Projects from '@/views/Projects.vue'
 import Search from '@/views/Search.vue'
 import Memories from '@/views/Memories.vue'
 import Agents from '@/views/Agents.vue'
+import Standup from '@/views/Standup.vue'
 
 const router = createRouter({
   history: createWebHistory('/ui/'),
@@ -32,6 +33,11 @@ const router = createRouter({
       path: '/agents',
       name: 'agents',
       component: Agents,
+    },
+    {
+      path: '/standup',
+      name: 'standup',
+      component: Standup,
     },
   ],
 })
