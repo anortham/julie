@@ -14,7 +14,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use tracing::{debug, error, info, warn};
 
-use crate::daemon::{is_daemon_running, julie_home, pid_file_path};
+use crate::daemon::{daemon_stop, is_daemon_running, julie_home, pid_file_path};
 
 // Backoff schedule for polling daemon health (total ~5s)
 pub(crate) const BACKOFF_MS: &[u64] = &[50, 100, 200, 400, 800, 1600, 2000];
@@ -85,17 +85,95 @@ pub(crate) async fn ensure_daemon_running(requested_port: u16) -> Result<u16> {
             "Daemon already running (PID {}, port {})",
             info.pid, info.port
         );
-        return Ok(info.port);
+
+        // Check if the binary has been rebuilt since the daemon started
+        if is_binary_newer_than_daemon(info.port).await {
+            info!("Binary is newer than running daemon — restarting");
+            eprintln!("Julie: binary is newer than running daemon, restarting...");
+            daemon_stop()?;
+        } else {
+            return Ok(info.port);
+        }
     }
 
-    // Not running — spawn it
-    info!("Daemon not running, spawning on port {}", requested_port);
+    // Not running (or just stopped for restart) — spawn it
+    info!("Spawning daemon on port {}", requested_port);
     spawn_daemon(requested_port)?;
 
     // Poll health endpoint until ready
     wait_for_daemon_health(requested_port).await?;
 
     Ok(requested_port)
+}
+
+/// Check if the current binary is newer than the running daemon.
+///
+/// Queries the daemon's health endpoint for uptime, then compares the binary's
+/// file modification time against when the daemon started. Returns `true` if
+/// the binary was modified after the daemon started (indicating a rebuild).
+///
+/// Defaults to `false` on any error (fail-safe: don't restart unless certain).
+async fn is_binary_newer_than_daemon(port: u16) -> bool {
+    let exe_path = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            debug!("Could not determine executable path: {}", e);
+            return false;
+        }
+    };
+
+    let exe_mtime = match std::fs::metadata(&exe_path).and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(e) => {
+            debug!("Could not get executable mtime: {}", e);
+            return false;
+        }
+    };
+
+    // Query health endpoint for uptime
+    let url = format!("http://localhost:{}/api/health", port);
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    let resp = match client.get(&url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        _ => return false,
+    };
+
+    let body: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            debug!("Could not parse health response: {}", e);
+            return false;
+        }
+    };
+
+    let uptime_seconds = match body["uptime_seconds"].as_u64() {
+        Some(u) => u,
+        None => {
+            debug!("Health response missing uptime_seconds");
+            return false;
+        }
+    };
+
+    // Calculate when the daemon started: now - uptime
+    let now = std::time::SystemTime::now();
+    let daemon_start = now - Duration::from_secs(uptime_seconds);
+
+    if exe_mtime > daemon_start {
+        info!(
+            "Binary is newer than running daemon (daemon started ~{}s ago)",
+            uptime_seconds
+        );
+        true
+    } else {
+        false
+    }
 }
 
 /// Spawn the daemon as a detached background child process.
