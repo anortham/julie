@@ -8,7 +8,7 @@ use anyhow::Result;
 use tracing::{debug, warn};
 
 use crate::handler::JulieServerHandler;
-use crate::search::{SearchFilter, SearchIndex};
+use crate::search::SearchFilter;
 
 use super::query::{line_match_strategy, line_matches, matches_glob_pattern};
 use super::types::{LineMatch, LineMatchStrategy};
@@ -149,22 +149,30 @@ pub async fn line_mode_search(
         })
         .await??
     } else {
-        // Search reference workspace with isolated Tantivy index + DB for content
-        let tantivy_path = workspace_struct.workspace_tantivy_path(&target_workspace_id);
-        let ref_db_path = workspace_struct.workspace_db_path(&target_workspace_id);
+        // Search reference workspace using handler helpers for DB + SearchIndex access
+        let db_arc = handler
+            .get_database_for_workspace(&target_workspace_id)
+            .await?;
+        let si_arc = handler
+            .get_search_index_for_workspace(&target_workspace_id)
+            .await?;
+
         let query_clone = query.to_string();
         let strategy = match_strategy.clone();
         let ref_file_pattern = file_pattern.clone();
         let ref_language = language.clone();
 
         tokio::task::spawn_blocking(move || -> Result<Vec<LineMatch>> {
-            if !tantivy_path.join("meta.json").exists() {
-                debug!("No Tantivy index for reference workspace, skipping");
-                return Ok(Vec::new());
-            }
-
-            let configs = crate::search::LanguageConfigs::load_embedded();
-            let ref_index = SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+            let si_arc = match si_arc {
+                Some(si) => si,
+                None => {
+                    debug!("No search index for reference workspace, skipping");
+                    return Ok(Vec::new());
+                }
+            };
+            let ref_index = si_arc.lock().map_err(|e| {
+                anyhow::anyhow!("Search index lock error: {}", e)
+            })?;
             let ref_filter = SearchFilter {
                 language: ref_language.clone(),
                 kind: None,
@@ -173,12 +181,15 @@ pub async fn line_mode_search(
             let file_results = ref_index
                 .search_content(&query_clone, &ref_filter, fetch_limit)?
                 .results;
+            drop(ref_index);
 
-            if file_results.is_empty() || !ref_db_path.exists() {
+            if file_results.is_empty() {
                 return Ok(Vec::new());
             }
 
-            let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
+            let ref_db = db_arc.lock().map_err(|e| {
+                anyhow::anyhow!("Database lock error: {}", e)
+            })?;
             let mut matches = Vec::new();
             for file_result in file_results {
                 if matches.len() >= base_limit {

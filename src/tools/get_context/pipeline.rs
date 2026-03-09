@@ -473,27 +473,37 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
 
     match workspace_target {
         WorkspaceTarget::Reference(ref_workspace_id) => {
-            // Reference workspace: open separate DB and SearchIndex
+            // Reference workspace: use handler helpers for DB + SearchIndex access
             debug!(
                 "get_context: using reference workspace {}",
                 ref_workspace_id
             );
-            let workspace = handler
-                .get_workspace()
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
 
-            let ref_db_path = workspace.workspace_db_path(&ref_workspace_id);
-            let tantivy_path = workspace.workspace_tantivy_path(&ref_workspace_id);
-            let embedding_provider = workspace.embedding_provider.clone();
+            // Get Arcs first (fast in daemon mode — just Arc clones)
+            let db_arc = handler
+                .get_database_for_workspace(&ref_workspace_id)
+                .await?;
+            let si_arc = handler
+                .get_search_index_for_workspace(&ref_workspace_id)
+                .await?;
+
+            // Get embedding provider from primary workspace (no handler helper for this yet)
+            let embedding_provider = if let Some(workspace) = handler.get_workspace().await? {
+                workspace.embedding_provider.clone()
+            } else {
+                None
+            };
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
-                if !tantivy_path.join("meta.json").exists() {
-                    anyhow::bail!("No search index for reference workspace. Run manage_workspace(operation=\"refresh\") first.");
-                }
-                let db = SymbolDatabase::new(ref_db_path)?;
-                let configs = crate::search::LanguageConfigs::load_embedded();
-                let index = crate::search::SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+                let si = si_arc.ok_or_else(|| {
+                    anyhow::anyhow!("No search index for reference workspace. Run manage_workspace(operation=\"refresh\") first.")
+                })?;
+                let db = db_arc
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
+                let index = si
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
                 run_pipeline(&query, max_tokens, language, file_pattern, format, &db, &index, embedding_provider.as_deref())
             })
             .await

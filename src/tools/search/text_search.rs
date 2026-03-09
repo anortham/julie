@@ -8,7 +8,7 @@ use super::query::matches_glob_pattern;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::search::scoring::{apply_centrality_boost, promote_exact_name_matches};
-use crate::search::{SearchFilter, SearchIndex};
+use crate::search::SearchFilter;
 
 static NL_DEFINITION_EMBEDDING_INIT_SINGLE_FLIGHT: LazyLock<tokio::sync::Mutex<()>> =
     LazyLock::new(|| tokio::sync::Mutex::new(()));
@@ -97,20 +97,26 @@ pub async fn text_search_impl(
     let limit_usize = limit as usize;
     let search_target_clone = search_target.to_string();
 
-    // Reference workspace: open isolated Tantivy index + SQLite DB
+    // Reference workspace: use handler helpers for DB + SearchIndex access
     if let Some(ref_id) = ref_workspace_id {
-        let tantivy_path = workspace.workspace_tantivy_path(&ref_id);
-        let ref_db_path = workspace.workspace_db_path(&ref_id);
         let ref_embedding_provider = workspace.embedding_provider.clone();
 
-        let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool)> {
-            if !tantivy_path.join("meta.json").exists() {
-                debug!("No Tantivy index for reference workspace, returning empty");
-                return Ok((Vec::new(), false));
-            }
+        // Get Arcs via handler helpers (fast in daemon mode — just Arc clones;
+        // opens from disk in stdio mode — same as the old direct path approach)
+        let db_arc = handler.get_database_for_workspace(&ref_id).await?;
+        let si_arc = handler.get_search_index_for_workspace(&ref_id).await?;
 
-            let configs = crate::search::LanguageConfigs::load_embedded();
-            let index = SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+        let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool)> {
+            let si_arc = match si_arc {
+                Some(si) => si,
+                None => {
+                    debug!("No search index for reference workspace, returning empty");
+                    return Ok((Vec::new(), false));
+                }
+            };
+            let index = si_arc.lock().map_err(|e| {
+                anyhow::anyhow!("Search index lock error: {}", e)
+            })?;
 
             if search_target_clone == "definitions" {
                 // Check if this is an NL query and we have embeddings available
@@ -120,7 +126,9 @@ pub async fn text_search_impl(
                 if use_hybrid {
                     debug!("🔍 NL query on reference workspace, using hybrid search");
 
-                    let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
+                    let ref_db = db_arc.lock().map_err(|e| {
+                        anyhow::anyhow!("Database lock error: {}", e)
+                    })?;
                     let profile = crate::search::weights::SearchWeightProfile::fast_search();
                     let mut hybrid_results = crate::search::hybrid::hybrid_search(
                         &query_clone,
@@ -176,15 +184,13 @@ pub async fn text_search_impl(
                             search.results
                         };
 
-                    // Open reference workspace DB once for both centrality boost and enrichment
-                    let ref_db_opt = if ref_db_path.exists() {
-                        crate::database::SymbolDatabase::new(&ref_db_path).ok()
-                    } else {
-                        None
-                    };
+                    // Lock reference workspace DB for centrality boost and enrichment
+                    let ref_db = db_arc.lock().map_err(|e| {
+                        anyhow::anyhow!("Database lock error: {}", e)
+                    })?;
 
                     // Apply centrality boost for reference workspace
-                    if let Some(ref ref_db) = ref_db_opt {
+                    {
                         let symbol_ids: Vec<&str> =
                             filtered_results.iter().map(|r| r.id.as_str()).collect();
                         if let Ok(ref_scores) = ref_db.get_reference_scores(&symbol_ids) {
@@ -204,9 +210,7 @@ pub async fn text_search_impl(
                         .collect();
 
                     // Enrich with code_context from reference workspace's SQLite
-                    if let Some(ref ref_db) = ref_db_opt {
-                        enrich_symbols_from_db(&mut symbols, &ref_db);
-                    }
+                    enrich_symbols_from_db(&mut symbols, &ref_db);
 
                     Ok((symbols, relaxed))
                 }
@@ -229,39 +233,34 @@ pub async fn text_search_impl(
 
                 let mut verified_symbols = Vec::with_capacity(limit_usize);
 
-                if ref_db_path.exists() {
-                    if let Ok(ref_db) = crate::database::SymbolDatabase::new(&ref_db_path) {
-                        for result in search_results {
-                            if verified_symbols.len() >= limit_usize {
-                                break;
-                            }
+                let ref_db = db_arc.lock().map_err(|e| {
+                    anyhow::anyhow!("Database lock error: {}", e)
+                })?;
+                for result in search_results {
+                    if verified_symbols.len() >= limit_usize {
+                        break;
+                    }
 
-                            // Apply file_pattern filter BEFORE content verification
-                            if let Some(ref pattern) = filter.file_pattern {
-                                if !matches_glob_pattern(&result.file_path, pattern) {
-                                    continue;
-                                }
-                            }
-
-                            match ref_db.get_file_content(&result.file_path) {
-                                Ok(Some(content)) => {
-                                    let content_lower = content.to_lowercase();
-                                    if query_words
-                                        .iter()
-                                        .all(|word| content_lower.contains(word.as_str()))
-                                    {
-                                        verified_symbols.push(content_result_to_symbol(result));
-                                    }
-                                }
-                                _ => {
-                                    verified_symbols.push(content_result_to_symbol(result));
-                                }
-                            }
+                    // Apply file_pattern filter BEFORE content verification
+                    if let Some(ref pattern) = filter.file_pattern {
+                        if !matches_glob_pattern(&result.file_path, pattern) {
+                            continue;
                         }
                     }
-                } else {
-                    for result in search_results.into_iter().take(limit_usize) {
-                        verified_symbols.push(content_result_to_symbol(result));
+
+                    match ref_db.get_file_content(&result.file_path) {
+                        Ok(Some(content)) => {
+                            let content_lower = content.to_lowercase();
+                            if query_words
+                                .iter()
+                                .all(|word| content_lower.contains(word.as_str()))
+                            {
+                                verified_symbols.push(content_result_to_symbol(result));
+                            }
+                        }
+                        _ => {
+                            verified_symbols.push(content_result_to_symbol(result));
+                        }
                     }
                 }
 

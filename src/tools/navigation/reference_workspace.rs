@@ -10,38 +10,35 @@ use crate::extractors::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
-/// Find references in a reference workspace by opening its separate database
+/// Find references in a reference workspace using handler helpers for DB access
 ///
-/// Reference workspaces have separate DB files at indexes/{workspace_id}/db/symbols.db
-/// The old code incorrectly queried primary workspace DB with workspace_id filtering
+/// In daemon mode, uses the shared loaded workspace DB (no re-opening).
+/// In stdio mode, opens the reference workspace's SQLite database from disk.
 pub async fn find_references_in_reference_workspace(
     handler: &JulieServerHandler,
     ref_workspace_id: String,
     symbol: &str,
 ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
-    // Get primary workspace to access workspace_db_path() helper
-    let primary_workspace = handler
-        .get_workspace()
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+    // Use handler helper for DB access (shared in daemon mode, opens fresh in stdio mode)
+    let db_arc = handler
+        .get_database_for_workspace(&ref_workspace_id)
+        .await?;
 
-    // Get path to reference workspace's separate database file
-    let ref_db_path = primary_workspace.workspace_db_path(&ref_workspace_id);
+    debug!(
+        "Querying reference workspace DB via handler helper: {}",
+        ref_workspace_id
+    );
 
-    debug!("Opening reference workspace DB: {}", ref_db_path.display());
+    let symbol_owned = symbol.to_string();
 
-    // CRITICAL FIX: Wrap blocking file I/O in spawn_blocking
-    // Opening SQLite database involves blocking filesystem operations
-    let ref_db =
-        tokio::task::spawn_blocking(move || crate::database::SymbolDatabase::new(ref_db_path))
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to spawn database open task: {}", e))??;
+    // All DB work in spawn_blocking (SQLite is synchronous)
+    let (definitions, mut references) = tokio::task::spawn_blocking(move || -> Result<_> {
+        let ref_db = db_arc
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
 
-    // Query the reference workspace database (not primary!)
-    // NO MUTEX: ref_db is owned (not Arc<Mutex<>>), so we can call directly
-    let (definitions, mut references) = {
         // Strategy 1: Find exact matches by name
-        let mut defs = ref_db.get_symbols_by_name(symbol)?;
+        let mut defs = ref_db.get_symbols_by_name(&symbol_owned)?;
 
         debug!(
             "Reference workspace search found {} exact matches",
@@ -49,11 +46,11 @@ pub async fn find_references_in_reference_workspace(
         );
 
         // Strategy 2: Cross-language Intelligence Layer - naming convention variants
-        let variants = generate_naming_variants(symbol);
+        let variants = generate_naming_variants(&symbol_owned);
         debug!("Cross-language search variants: {:?}", variants);
 
         for variant in variants {
-            if variant != symbol {
+            if variant != symbol_owned {
                 if let Ok(variant_symbols) = ref_db.get_symbols_by_name(&variant) {
                     for sym in variant_symbols {
                         if sym.name == variant {
@@ -83,8 +80,10 @@ pub async fn find_references_in_reference_workspace(
             refs.extend(symbol_references);
         }
 
-        Ok::<(Vec<Symbol>, Vec<Relationship>), anyhow::Error>((defs, refs))
-    }?;
+        Ok((defs, refs))
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("spawn_blocking error: {}", e))??;
 
     // Sort references by confidence and location
     references.sort_by(|a, b| {

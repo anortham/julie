@@ -86,15 +86,13 @@ impl DeepDiveTool {
 
         match workspace_target {
             WorkspaceTarget::Reference(ref_workspace_id) => {
-                // Reference workspace: open separate database
-                let workspace = handler
-                    .get_workspace()
-                    .await?
-                    .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
-                let ref_db_path = workspace.workspace_db_path(&ref_workspace_id);
+                // Reference workspace: use handler helper for DB access
+                let db_arc = handler.get_database_for_workspace(&ref_workspace_id).await?;
 
                 let result = tokio::task::spawn_blocking(move || -> Result<String> {
-                    let db = crate::database::SymbolDatabase::new(ref_db_path)?;
+                    let db = db_arc
+                        .lock()
+                        .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
                     deep_dive_query(
                         &db,
                         &symbol_name,
