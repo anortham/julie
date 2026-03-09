@@ -498,12 +498,13 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
                 let si = si_arc.ok_or_else(|| {
                     anyhow::anyhow!("No search index for reference workspace. Run manage_workspace(operation=\"refresh\") first.")
                 })?;
-                let db = db_arc
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
+                // Lock order: SearchIndex first, then DB (matches text_search.rs and Primary arm)
                 let index = si
                     .lock()
                     .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+                let db = db_arc
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
                 run_pipeline(&query, max_tokens, language, file_pattern, format, &db, &index, embedding_provider.as_deref())
             })
             .await

@@ -171,6 +171,7 @@ pub async fn text_search_impl(
                     };
                     let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
                     let relaxed = search.relaxed;
+                    drop(index); // Release SearchIndex lock — not needed past this point
 
                     // Apply file_pattern filter BEFORE symbol conversion + enrichment
                     let mut filtered_results: Vec<_> =
@@ -224,6 +225,7 @@ pub async fn text_search_impl(
                 let content_search = index.search_content(&query_clone, &filter, fetch_limit)?;
                 let content_relaxed = content_search.relaxed;
                 let search_results = content_search.results;
+                drop(index); // Release SearchIndex lock — not needed past this point
 
                 let query_words: Vec<String> = query_clone
                     .split(|c: char| !c.is_alphanumeric())
