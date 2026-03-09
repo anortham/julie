@@ -99,7 +99,7 @@
 
 **Post Platform Tasks**
 1. ~~check goldfish skills, we'll need a refocused version of those for the memory tools. Also check goldfish server instructions and tool descriptions, they are effective at agent adoption and we need that too.~~ **DONE** — Julie plugin shipped with 5 skills, 3 hooks, enhanced tool descriptions
-2. [ ] **Promoted to 4.0** — Project stats/insights for dashboard project view (language breakdown, symbol counts by kind, index health)
+2. [x] **Promoted to 4.0** — Project stats/insights for dashboard project view (language breakdown, symbol counts by kind, index health)
 3. [ ] *(Deferred to 4.1)* with tantivy and embeddings available to memories now, what advanced memory features does that open up? Could we link memories to code/commits?
 4. [ ] *(Deferred to 4.1)* Can the dashboard also talk to a projects repo on gh or devops? what can we build with that?
 5. ~~Project registration: auto on startup with julie installed, add from dashboard~~ **DONE** — auto-registration on startup + dashboard registration
@@ -109,10 +109,10 @@
 9. ~~we need good documentation of the http api so other tools can integrate~~ **DONE** — OpenAPI 3.0 spec at `/api/docs` via utoipa
 10. ~~validate functionality in a parallel scenario like multiple worktrees~~ **DONE** — worktree isolation validated and fixed (Task 13)
 11. [ ] *(Deferred to 4.1)* we should leverage gh pages to better showcase the dashboard functionality
-12. [ ] **Promoted to 4.0** — Project view quick-launch (copy path button, open in terminal link)
+12. [x] **Promoted to 4.0** — Project view quick-launch (copy path, open in editor, open in terminal)
 13. ~~what's our most effective token optimization approach across tools? can we apply that approach to other tools?~~ **DONE** — evaluated, each tool already uses appropriate limiting; no action needed
-14. ~~We need to update CLAUDE.md and README.md to properly reflect the big changes that have been made.~~ **IN PROGRESS** — CLAUDE.md updated for v4.0.0
-15. [ ] **Promoted to 4.0** — ORT dependency decision: drop it or keep as sidecar fallback? Document sidecar Python deps in README. We should keep ORT for fallback but we should add status of the embedding model to the dashboard main page that way if python isn't available and we fallback to ort we can document that problem and how to fix it on the dashboard. Also we need to verify that we are handling fallback properly so that we can document the problem while continuing to work.
+14. ~~We need to update CLAUDE.md and README.md to properly reflect the big changes that have been made.~~ **DONE** — README.md and CLAUDE.md updated for v4.0.0
+15. [x] **Promoted to 4.0** — ORT kept as sidecar fallback + embedding status dashboard card with Check Status button for on-demand initialization
 16. [x] **Promoted to 4.0** — Multi-agent dispatch: support Codex, Gemini CLI, Copilot CLI alongside Claude Code
 17. [ ] **Bug** — Projects page Embeddings column always shows "--" because `embedding_runtime_status` is `None` until lazy init. Either eagerly init on daemon startup or rethink how we surface embedding status (e.g. query SQLite `symbol_vectors` count directly).
 

@@ -74,7 +74,7 @@ src/database/
 
 ## Project Overview
 
-**Julie** is a cross-platform code intelligence server built in Rust with production-grade architecture. Julie provides LSP-quality features across 30 programming languages using tree-sitter parsers, Tantivy full-text search with code-aware tokenization, and instant search availability.
+**Julie** is a cross-platform code intelligence server built in Rust. LSP-quality features across 31 languages via tree-sitter, Tantivy full-text search, and instant search availability.
 
 ### Key Project Facts
 - **Language**: Rust (native performance, cross-platform)
@@ -82,7 +82,7 @@ src/database/
 - **Architecture**: Tantivy full-text search + SQLite structured storage
 - **Modes**: Daemon (persistent HTTP server on port 7890) with `connect` command (auto-start daemon + stdio bridge), web dashboard at `/ui/`, OpenAPI docs at `/api/docs`
 - **Origin**: Native Rust implementation for true cross-platform compatibility
-- **Crown Jewels**: 30 tree-sitter extractors with comprehensive test suites
+- **Crown Jewels**: 31 tree-sitter extractors with comprehensive test suites
 
 ### 🏆 Current Language Support (31 - Complete)
 
@@ -110,22 +110,6 @@ This project **MUST** follow Test-Driven Development:
 4. **Fix the bug** with minimal changes
 5. **Verify the test passes** (confirms bug fixed)
 6. **Ensure no regressions** (all other tests still pass)
-
-### Test-First Example
-```rust
-// ✅ CORRECT: Test first, then implement
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_extract_typescript_functions() {
-        let code = "function getUserData() { return data; }";
-        let symbols = extract_symbols(code);
-        assert_eq!(symbols.len(), 1);
-        assert_eq!(symbols[0].name, "getUserData");
-        // This WILL FAIL initially - that's the point!
-    }
-}
-```
 
 See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CONTROL methodology.
 
@@ -287,86 +271,16 @@ ls -lh ~/.julie/logs/
 
 For detailed architecture info, see: **docs/SEARCH_FLOW.md** and **docs/ARCHITECTURE.md**
 
-### Module Structure (Brief)
-```
-src/
-├── main.rs              # MCP server entry point
-├── extractors/          # Language-specific symbol extraction (31 languages)
-├── search/              # Tantivy search engine, tokenizer, centrality scoring
-├── database/            # SQLite structured storage
-├── embeddings/          # Embedding pipeline, sidecar supervisor, protocol
-├── tools/               # MCP tool implementations
-│   ├── get_context/     # Token-budgeted context retrieval (search → rank → expand → allocate → format)
-│   ├── deep_dive/       # Progressive-depth symbol investigation
-│   ├── search/          # fast_search (definitions + content)
-│   ├── navigation/      # fast_refs
-│   ├── refactoring/     # rename_symbol
-│   ├── symbols/         # get_symbols
-│   └── workspace/       # manage_workspace
-├── workspace/           # Multi-workspace registry
-└── tests/               # Comprehensive test infrastructure
+---
 
-python/embeddings_sidecar/  # Python sidecar for GPU-accelerated embeddings
-├── sidecar/
-│   ├── main.py          # Entry point (model loading, fd redirect)
-│   ├── runtime.py       # PyTorch runtime, device selection (CUDA/MPS/DirectML/CPU)
-│   └── protocol.py      # JSON-over-stdio IPC protocol
-└── pyproject.toml       # Dependencies: torch, sentence-transformers, torch-directml (Windows)
-```
+## 📚 Documentation
+
+Use Julie's code intelligence tools to find detailed docs on-demand: `fast_search(query="...", file_pattern="docs/**")`
+
+Key docs: `WORKSPACE_ARCHITECTURE.md`, `TESTING_GUIDE.md`, `SEARCH_FLOW.md`, `ARCHITECTURE.md`, `INTELLIGENCE_LAYER.md`, `DEVELOPMENT.md`, `PERFORMANCE.md`, `DEPENDENCIES.md`
 
 ---
 
-## 📚 For Detailed Documentation
+**Last Updated:** 2026-03-09 | **Status:** Production Ready (v4.0.0)
 
-**This file contains only the essentials for daily development.**
-
-For detailed information on any topic, **use Julie's code intelligence tools**:
-
-```rust
-// Ask conceptual questions
-fast_search(
-    query="How does workspace routing work?",
-    search_target="definitions",
-    file_pattern="docs/**"
-)
-
-// Find specific documentation
-fast_search(
-    query="SOURCE/CONTROL testing methodology",
-    search_target="content",
-    file_pattern="docs/*.md"
-)
-```
-
-### Documentation Index
-
-- **docs/WORKSPACE_ARCHITECTURE.md** - Detailed workspace routing, storage, isolation
-- **docs/TESTING_GUIDE.md** - SOURCE/CONTROL methodology, test coverage, running tests
-- **docs/DEVELOPMENT.md** - Daily commands, debugging, release process
-- **docs/PERFORMANCE.md** - Performance targets and benchmarking
-- **docs/DEPENDENCIES.md** - Tree-sitter versions, dependency management
-- **docs/SEARCH_FLOW.md** - Tantivy search architecture (OR-fallback, centrality, stemming)
-- **docs/ARCHITECTURE.md** - Token optimization strategies
-- **docs/INTELLIGENCE_LAYER.md** - Cross-language intelligence and graph centrality
-
-### Query Examples
-
-**Architecture questions:**
-- *"How does Tantivy search work?"*
-- *"What is workspace isolation?"*
-
-**Implementation questions:**
-- *"What is SOURCE/CONTROL testing?"*
-- *"How do I run performance tests?"*
-
-**Julie will return targeted documentation sections (355-525 tokens) instead of full files (2,000-9,000 tokens), achieving 83-94% token reduction while maintaining complete context quality.**
-
----
-
-**Last Updated:** 2026-03-08
-**Status:** Production Ready (v4.0.0)
-
----
-
-*Use Julie's code intelligence tools to access detailed documentation on-demand. Save 85-95% of context tokens.*
-- you CANNOT build the release build while we're running the server in session!
+- You CANNOT build the release build while we're running the server in session!

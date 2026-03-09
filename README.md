@@ -19,11 +19,13 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 
 ## Features
 
-- **Fast symbol search** with code-aware tokenization
-- **Cross-language code navigation** (go-to-definition, find-references)
-- **AST-aware refactoring** with workspace-wide rename
+- **Fast symbol search** with code-aware tokenization (CamelCase/snake_case splitting, stemming, <5ms)
+- **Cross-language code navigation** (go-to-definition, find-references) across 31 languages
+- **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Multi-workspace support** for indexing and searching related codebases
 - **Persistent daemon mode** with HTTP API and web dashboard at `/ui/`
+- **Multi-agent dispatch** — run tasks through Claude Code, Codex, Gemini CLI, or Copilot CLI from the dashboard
+- **Web dashboard** — project management, search exploration, agent dispatch, memory browser, embedding status
 - **Developer memory** — checkpoint progress, recall context across sessions, manage persistent plans
 - **Auto-start daemon** via `julie-server connect` (stdio bridge with automatic daemon lifecycle)
 - **OpenAPI documentation** with interactive Scalar docs at `/api/docs`
@@ -63,59 +65,52 @@ Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings (BGE
 
 ## Installation
 
-### Download Pre-built Binaries (Recommended)
+### Step 1: Install the Binary
 
 Download the latest release for your platform from the [Releases page](https://github.com/anortham/julie/releases):
 
-**Windows:**
+| Platform | Archive |
+|----------|---------|
+| macOS (Apple Silicon) | `julie-v4.0.0-aarch64-apple-darwin.tar.gz` |
+| macOS (Intel) | `julie-v4.0.0-x86_64-apple-darwin.tar.gz` |
+| Linux (x86_64) | `julie-v4.0.0-x86_64-unknown-linux-gnu.tar.gz` |
+| Windows (x86_64) | `julie-v4.0.0-x86_64-pc-windows-msvc.zip` |
 
 ```bash
-# Download julie-v4.0.0-x86_64-pc-windows-msvc.zip
-# Extract julie-server.exe
-# Add to MCP configuration (see below)
-```
-
-**macOS (Intel):**
-
-```bash
-# Download julie-v4.0.0-x86_64-apple-darwin.tar.gz
-tar -xzf julie-v4.0.0-x86_64-apple-darwin.tar.gz
-# Add to MCP configuration (see below)
-```
-
-**macOS (Apple Silicon):**
-
-```bash
-# Download julie-v4.0.0-aarch64-apple-darwin.tar.gz
+# Example: macOS Apple Silicon
 tar -xzf julie-v4.0.0-aarch64-apple-darwin.tar.gz
-# Add to MCP configuration (see below)
+sudo mv julie-server /usr/local/bin/
 ```
 
-**Linux:**
+### Step 2: Configure as MCP Server
+
+**Claude Code — Plugin (Recommended):**
+
+The Julie plugin gives you the full experience: MCP tools + skills (`/checkpoint`, `/recall`, `/plan`, `/standup`, `/plan-status`) + hooks (auto-recall on session start, auto-checkpoint before compaction, auto-save plans).
 
 ```bash
-# Download julie-v4.0.0-x86_64-unknown-linux-gnu.tar.gz
-tar -xzf julie-v4.0.0-x86_64-unknown-linux-gnu.tar.gz
-# Add to MCP configuration (see below)
+# Start the daemon
+julie-server daemon start
+
+# Install the plugin
+/plugin marketplace add anortham/julie
+/plugin install julie@julie
 ```
 
-### Configure as MCP Server
+The plugin connects to the Julie daemon via HTTP. A web dashboard is available at `http://localhost:7890/ui/` and API docs at `http://localhost:7890/api/docs`.
 
-Once downloaded, add Julie to your MCP client:
+**Claude Code — Standalone MCP (No Plugin):**
 
-**Claude Code (Recommended):**
+If you prefer a simpler setup without hooks and skills:
 
 ```bash
-# macOS/Linux — auto-starts daemon, bridges stdio↔HTTP
+# Auto-starts daemon, bridges stdio↔HTTP
 claude mcp add julie -- /path/to/julie-server connect
-
-# Windows
-claude mcp add julie -- C:\path\to\julie-server.exe connect
 ```
 
-The `connect` command auto-starts a persistent daemon on first use, registers your workspace, and bridges stdio↔HTTP. The daemon survives session exits, so subsequent sessions connect instantly. A web dashboard is available at `http://localhost:7890/ui/` and API docs at `http://localhost:7890/api/docs`.
+The `connect` command auto-starts a persistent daemon on first use, registers your workspace, and bridges stdio↔HTTP. The daemon survives session exits, so subsequent sessions connect instantly.
 
-If you prefer direct stdio mode (no daemon), omit the `connect` argument:
+For direct stdio mode (no daemon), omit the `connect` argument:
 
 ```bash
 claude mcp add julie /path/to/julie-server
@@ -142,9 +137,22 @@ Create a workspace-level `.vscode/mcp.json` file in your project:
 
 **Important:** The `JULIE_WORKSPACE` environment variable is **required** for VS Code to ensure Julie creates its `.julie` folder in your workspace directory (not your home directory). VS Code automatically substitutes `${workspaceFolder}` with the actual workspace path.
 
-**Other MCP Clients:**
+**Cursor / Other MCP Clients:**
 
-Add to your MCP client settings (e.g., `claude_desktop_config.json`):
+Daemon mode (recommended — shared index, background indexing, dashboard):
+
+```json
+{
+  "mcpServers": {
+    "julie": {
+      "type": "http",
+      "url": "http://localhost:7890/mcp"
+    }
+  }
+}
+```
+
+Stdio mode (no daemon required):
 
 ```json
 {
@@ -159,8 +167,6 @@ Add to your MCP client settings (e.g., `claude_desktop_config.json`):
   }
 }
 ```
-
-If your MCP client doesn't support environment variables, Julie will use the current working directory as the workspace root.
 
 **First Use:**
 
@@ -261,6 +267,18 @@ third-party/
 
 Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patterns cover 99% of use cases - only use `.julieignore` for project-specific needs.
 
+## Web Dashboard
+
+The daemon serves a built-in web dashboard at `http://localhost:7890/ui/` with:
+
+- **Dashboard** — project health, memory stats, agent activity, backend availability, embedding status with on-demand initialization
+- **Projects** — register/remove projects, view stats (language breakdown, symbol counts by kind), quick-launch actions (copy path, open in editor, open in terminal)
+- **Search** — interactive search with debug mode for inspecting scoring and tokenization
+- **Agents** — dispatch tasks to any detected CLI agent (Claude Code, Codex, Gemini CLI, Copilot CLI), view dispatch history with streaming output
+- **Memories** — browse checkpoints and plans across projects, filter by type and tags
+
+All features work in both light and dark mode, with responsive layouts for mobile.
+
 ## Architecture
 
 - **Tree-sitter parsers** for accurate symbol extraction across all languages
@@ -270,7 +288,9 @@ Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patter
 - **Per-workspace isolation** with separate databases and indexes
 - **MCP protocol** for AI agent integration (stdio and Streamable HTTP transports)
 - **Persistent daemon** with HTTP API, file watchers, and background indexing
-- **Web dashboard** (Vue/TypeScript SPA) for project monitoring and search exploration
+- **Web dashboard** (Vue/TypeScript SPA) embedded in binary via rust-embed
+- **Multi-agent dispatch** with backend auto-detection and streaming output parsing
+- **Embedding pipeline** with GPU-accelerated Python sidecar + ORT CPU fallback
 - **OpenAPI 3.1** spec with interactive Scalar docs
 
 ## Development
