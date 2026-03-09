@@ -2,6 +2,11 @@
 
 ## Open Items
 
+- [ ] **Daemon log location is confusing for multi-project setups**
+  - All daemon logs go to the primary workspace's `.julie/logs/` — users expect logs in each project's `.julie/logs/`
+  - Options: (a) centralize logs under `~/.julie/logs/` (daemon-level, not project-level), (b) symlink per-project, (c) per-project log files in each `.julie/logs/` with routing by workspace_id
+  - Related: CLAUDE.md documents the log location but only for the primary workspace
+
 - [ ] **Re-evaluate variable kind exclusion from embeddings** (implementation landed, benchmark run pending)
   - [x] Implemented budgeted variable embedding policy (deterministic ranking + `20%` cap)
   - [x] Added stale variable vector cleanup and full/incremental policy parity
