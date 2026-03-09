@@ -65,81 +65,60 @@ Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings (BGE
 
 ## Installation
 
-### Step 1: Install the Binary
+### Step 1: Install Julie
 
-Download the latest release for your platform from the [Releases page](https://github.com/anortham/julie/releases):
-
-| Platform | Archive |
-|----------|---------|
-| macOS (Apple Silicon) | `julie-v4.0.0-aarch64-apple-darwin.tar.gz` |
-| macOS (Intel) | `julie-v4.0.0-x86_64-apple-darwin.tar.gz` |
-| Linux (x86_64) | `julie-v4.0.0-x86_64-unknown-linux-gnu.tar.gz` |
-| Windows (x86_64) | `julie-v4.0.0-x86_64-pc-windows-msvc.zip` |
+Download the latest release for your platform from the [Releases page](https://github.com/anortham/julie/releases), extract it, then run:
 
 ```bash
-# Example: macOS Apple Silicon
-tar -xzf julie-v4.0.0-aarch64-apple-darwin.tar.gz
-sudo mv julie-server /usr/local/bin/
+# macOS / Linux
+tar -xzf julie-v*.tar.gz
+./julie-server install
+
+# Windows (PowerShell)
+Expand-Archive julie-v*.zip
+.\julie-server.exe install
 ```
 
-### Step 2: Configure as MCP Server
+This installs the binary to `~/.julie/bin/`, registers Julie as a system service that auto-starts on login, and starts the daemon immediately.
 
-**Claude Code — Plugin (Recommended):**
+- **Dashboard:** http://localhost:7890/ui/
+- **API docs:** http://localhost:7890/api/docs
+
+To uninstall: `~/.julie/bin/julie-server uninstall` (preserves your data).
+
+### Step 2: Connect Your AI Tool
+
+**Claude Code (recommended):**
 
 The Julie plugin gives you the full experience: MCP tools + skills (`/checkpoint`, `/recall`, `/plan`, `/standup`, `/plan-status`) + hooks (auto-recall on session start, auto-checkpoint before compaction, auto-save plans).
 
 ```bash
-# Start the daemon
-julie-server daemon start
-
-# Install the plugin
 /plugin marketplace add anortham/julie
 /plugin install julie@julie
 ```
 
-The plugin connects to the Julie daemon via HTTP. A web dashboard is available at `http://localhost:7890/ui/` and API docs at `http://localhost:7890/api/docs`.
-
-**Claude Code — Standalone MCP (No Plugin):**
-
-If you prefer a simpler setup without hooks and skills:
+**Claude Code — Standalone MCP (no plugin):**
 
 ```bash
-# Auto-starts daemon, bridges stdio↔HTTP
-claude mcp add julie -- /path/to/julie-server connect
-```
-
-The `connect` command auto-starts a persistent daemon on first use, registers your workspace, and bridges stdio↔HTTP. The daemon survives session exits, so subsequent sessions connect instantly.
-
-For direct stdio mode (no daemon), omit the `connect` argument:
-
-```bash
-claude mcp add julie /path/to/julie-server
+claude mcp add julie -- ~/.julie/bin/julie-server connect
 ```
 
 **VS Code with GitHub Copilot:**
 
-Create a workspace-level `.vscode/mcp.json` file in your project:
+Create a `.vscode/mcp.json` file in your project:
 
 ```json
 {
   "servers": {
     "Julie": {
-      "type": "stdio",
-      "command": "/path/to/julie-server",
-      "args": [],
-      "env": {
-        "JULIE_WORKSPACE": "${workspaceFolder}"
-      }
+      "type": "http",
+      "url": "http://localhost:7890/mcp"
     }
   }
 }
 ```
 
-**Important:** The `JULIE_WORKSPACE` environment variable is **required** for VS Code to ensure Julie creates its `.julie` folder in your workspace directory (not your home directory). VS Code automatically substitutes `${workspaceFolder}` with the actual workspace path.
-
-**Cursor / Other MCP Clients:**
-
-Daemon mode (recommended — shared index, background indexing, dashboard):
+**Cursor / Windsurf / Other MCP Clients:**
 
 ```json
 {
@@ -152,45 +131,9 @@ Daemon mode (recommended — shared index, background indexing, dashboard):
 }
 ```
 
-Stdio mode (no daemon required):
-
-```json
-{
-  "mcpServers": {
-    "julie": {
-      "command": "/path/to/julie-server",
-      "args": [],
-      "env": {
-        "JULIE_WORKSPACE": "/path/to/your/workspace"
-      }
-    }
-  }
-}
-```
-
 **First Use:**
 
-Julie indexes your workspace automatically on first connection:
-
-1. **Indexing (~2-5s)**: Extracts symbols via tree-sitter, stores in SQLite, builds Tantivy search index
-   - All search capabilities available immediately after indexing completes
-   - Duration scales with workspace size (10K files ≈ 2-5s)
-
-**To check indexing status:**
-
-```
-manage_workspace(operation="health", detailed=true)
-```
-
-**Workspace Detection:**
-
-Julie determines where to create the `.julie/` folder using this priority order:
-
-1. **CLI argument** (if passed): `--workspace /path/to/workspace`
-2. **JULIE_WORKSPACE environment variable** (VS Code `${workspaceFolder}`)
-3. **Current working directory** (fallback for Claude Code and other clients)
-
-If you see a `.julie/` folder in an unexpected location, check your `JULIE_WORKSPACE` environment variable setting.
+Julie indexes your workspace automatically on first connection (~2-5s for most projects). All search capabilities are available immediately after indexing completes.
 
 ### Build from Source
 

@@ -25,6 +25,14 @@ pub enum Commands {
         #[arg(long, default_value = "7890", env = "JULIE_PORT")]
         port: u16,
     },
+    /// Install Julie as a system service (auto-starts on login)
+    Install {
+        /// Port for the daemon HTTP server
+        #[arg(long, default_value = "7890", env = "JULIE_PORT")]
+        port: u16,
+    },
+    /// Uninstall Julie system service (preserves data)
+    Uninstall,
 }
 
 #[derive(Subcommand)]

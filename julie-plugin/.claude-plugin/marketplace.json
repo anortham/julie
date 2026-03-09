@@ -11,7 +11,7 @@
       "name": "julie",
       "source": "./",
       "description": "Code intelligence with token-budgeted context, graph-aware navigation, and persistent developer memory — powers longer, more productive AI coding sessions",
-      "version": "4.0.0",
+      "version": "4.0.1",
       "category": "developer-tools"
     }
   ]

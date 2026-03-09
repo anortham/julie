@@ -95,6 +95,18 @@ async fn main() -> anyhow::Result<()> {
             julie::connect::run_connect(port, workspace_root).await
         }
 
+        // Install: set up as system service
+        Some(Commands::Install { port }) => {
+            info!("Install requested: port={}", port);
+            julie::install::install(port)
+        }
+
+        // Uninstall: remove system service
+        Some(Commands::Uninstall) => {
+            info!("Uninstall requested");
+            julie::install::uninstall()
+        }
+
         // No subcommand: stdio MCP mode (backward compatible — this is the default)
         None => julie::stdio::run_stdio_mode(workspace_root).await,
     }
