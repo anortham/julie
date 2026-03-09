@@ -46,6 +46,19 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Build web UI
+        run: |
+          cd ui
+          npm ci
+          npm run build
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
