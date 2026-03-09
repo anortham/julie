@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import SearchFilters from '../components/SearchFilters.vue'
 import MemoryResults from '../components/MemoryResults.vue'
 
@@ -103,6 +103,13 @@ interface DebugSearchResponse {
 // State
 // ---------------------------------------------------------------------------
 
+interface Project {
+  workspace_id: string
+  name: string
+  path: string
+  status: string
+}
+
 const query = ref('')
 const language = ref('')
 const filePattern = ref('')
@@ -111,6 +118,8 @@ const debugMode = ref(false)
 const limit = ref(20)
 const contentType = ref<'code' | 'memory' | 'all'>('code')
 const hybrid = ref(false)
+const projectFilter = ref('')
+const projects = ref<Project[]>([])
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -160,6 +169,71 @@ const searched = ref(false)
 // Actions
 // ---------------------------------------------------------------------------
 
+async function fetchProjects() {
+  try {
+    const res = await fetch('/api/projects')
+    if (!res.ok) return
+    const all: Project[] = await res.json()
+    projects.value = all.filter((p) => p.status === 'ready')
+  } catch {
+    // Non-critical — selector just won't appear
+  }
+}
+
+onMounted(fetchProjects)
+
+function buildSearchBody(): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    query: query.value.trim(),
+    search_target: searchTarget.value,
+    limit: limit.value,
+  }
+  if (language.value) body.language = language.value
+  if (filePattern.value.trim()) body.file_pattern = filePattern.value.trim()
+  if (contentType.value !== 'code') body.content_type = contentType.value
+  if (hybrid.value) body.hybrid = true
+  return body
+}
+
+async function fetchSearchFromProject(
+  endpoint: string,
+  body: Record<string, unknown>,
+  workspaceId?: string,
+): Promise<Response> {
+  const reqBody = workspaceId ? { ...body, project: workspaceId } : body
+  return fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(reqBody),
+  })
+}
+
+function mergeStandardResponses(responses: SearchResponse[]): SearchResponse {
+  const merged: SearchResponse = {
+    search_target: responses[0]?.search_target ?? 'definitions',
+    relaxed: responses.some((r) => r.relaxed),
+    count: 0,
+    symbols: undefined,
+    content: undefined,
+    memories: undefined,
+  }
+  const allSymbols = responses.flatMap((r) => r.symbols ?? [])
+  const allContent = responses.flatMap((r) => r.content ?? [])
+  const allMemories = responses.flatMap((r) => r.memories ?? [])
+
+  if (allSymbols.length > 0) {
+    merged.symbols = allSymbols.sort((a, b) => b.score - a.score).slice(0, limit.value)
+  }
+  if (allContent.length > 0) {
+    merged.content = allContent.sort((a, b) => b.score - a.score).slice(0, limit.value)
+  }
+  if (allMemories.length > 0) {
+    merged.memories = allMemories.sort((a, b) => b.score - a.score).slice(0, limit.value)
+  }
+  merged.count = (merged.symbols?.length ?? 0) + (merged.content?.length ?? 0) + (merged.memories?.length ?? 0)
+  return merged
+}
+
 async function doSearch() {
   if (!query.value.trim()) return
 
@@ -171,30 +245,44 @@ async function doSearch() {
   searched.value = true
 
   const endpoint = debugMode.value ? '/api/search/debug' : '/api/search'
-  const body: Record<string, unknown> = {
-    query: query.value.trim(),
-    search_target: searchTarget.value,
-    limit: limit.value,
-  }
-  if (language.value) body.language = language.value
-  if (filePattern.value.trim()) body.file_pattern = filePattern.value.trim()
-  if (contentType.value !== 'code') body.content_type = contentType.value
-  if (hybrid.value) body.hybrid = true
+  const body = buildSearchBody()
 
   try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(text || `HTTP ${res.status}`)
-    }
-    if (debugMode.value) {
-      debugResponse.value = await res.json()
+    // Specific project selected or only one project — single request
+    if (projectFilter.value || projects.value.length <= 1) {
+      const res = await fetchSearchFromProject(endpoint, body, projectFilter.value || undefined)
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      if (debugMode.value) {
+        debugResponse.value = await res.json()
+      } else {
+        standardResponse.value = await res.json()
+      }
     } else {
-      standardResponse.value = await res.json()
+      // "All projects" — fetch from each in parallel, merge by score
+      if (debugMode.value) {
+        // Debug mode doesn't support multi-project merge (scores aren't comparable across indices)
+        // Just search the primary workspace
+        const res = await fetchSearchFromProject(endpoint, body)
+        if (!res.ok) {
+          const text = await res.text()
+          throw new Error(text || `HTTP ${res.status}`)
+        }
+        debugResponse.value = await res.json()
+      } else {
+        const responses = await Promise.all(
+          projects.value.map(async (p) => {
+            const res = await fetchSearchFromProject(endpoint, body, p.workspace_id)
+            if (!res.ok) return null
+            return res.json() as Promise<SearchResponse>
+          }),
+        )
+        const valid = responses.filter((r): r is SearchResponse => r !== null)
+        if (valid.length === 0) throw new Error('All project searches failed')
+        standardResponse.value = mergeStandardResponses(valid)
+      }
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Search failed'
@@ -277,8 +365,19 @@ function contentTypeBadgeClass(ct?: string): string {
         v-model:debug-mode="debugMode"
         v-model:content-type="contentType"
         v-model:hybrid="hybrid"
+        v-model:project="projectFilter"
         :languages="languages"
+        :projects="projects"
       />
+    </div>
+
+    <!-- Debug + All projects warning -->
+    <div
+      v-if="debugMode && !projectFilter && projects.length > 1"
+      class="status-message status-warning"
+    >
+      <span class="pi pi-info-circle"></span>
+      Debug mode searches only the primary workspace. Select a specific project for accurate debug results.
     </div>
 
     <!-- Error -->
@@ -571,7 +670,13 @@ function contentTypeBadgeClass(ct?: string): string {
 .status-error {
   border-color: var(--color-error-border);
   color: var(--color-error);
-  background: #fef2f2;
+  background: var(--color-error-bg);
+}
+
+.status-warning {
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
 }
 
 /* Debug header — tokens + mode badges */
@@ -589,7 +694,7 @@ function contentTypeBadgeClass(ct?: string): string {
   flex-wrap: wrap;
   gap: 0.4rem;
   padding: 0.75rem 1rem;
-  background: #f0f0ff;
+  background: var(--color-primary-bg);
   border: 1px solid var(--color-primary-border);
   border-radius: 8px;
   font-size: 0.85rem;
@@ -646,17 +751,17 @@ function contentTypeBadgeClass(ct?: string): string {
 }
 
 .mode-badge-hybrid {
-  background: #dcfce7;
+  background: rgba(74, 222, 128, 0.15);
   color: var(--color-success);
 }
 
 .mode-badge-keyword {
-  background: #f1f5f9;
+  background: var(--hover-bg);
   color: var(--text-secondary);
 }
 
 .mode-badge-content {
-  background: #f3e8ff;
+  background: rgba(167, 139, 250, 0.15);
   color: var(--color-purple);
 }
 
@@ -680,7 +785,7 @@ function contentTypeBadgeClass(ct?: string): string {
   border-radius: 9999px;
   font-size: 0.7rem;
   font-weight: 600;
-  background: #fef3c7;
+  background: var(--color-warning-bg);
   color: var(--color-warning);
 }
 
@@ -766,12 +871,12 @@ function contentTypeBadgeClass(ct?: string): string {
 }
 
 .ct-badge-code {
-  background: #dbeafe;
+  background: var(--color-primary-bg);
   color: var(--color-info);
 }
 
 .ct-badge-memory {
-  background: #f3e8ff;
+  background: rgba(167, 139, 250, 0.15);
   color: var(--color-purple);
 }
 
@@ -845,7 +950,7 @@ function contentTypeBadgeClass(ct?: string): string {
   flex-direction: column;
   gap: 0.1rem;
   padding: 0.4rem 0.6rem;
-  background: #f8fafc;
+  background: var(--code-bg);
   border-radius: 6px;
 }
 
@@ -881,14 +986,14 @@ function contentTypeBadgeClass(ct?: string): string {
   border-radius: 4px;
   font-size: 0.75rem;
   font-weight: 500;
-  background: #dcfce7;
+  background: rgba(74, 222, 128, 0.15);
   color: var(--color-success);
 }
 
 .debug-explanation {
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 0.75rem;
-  background: #f8fafc;
+  background: var(--code-bg);
   padding: 0.3rem 0.5rem;
   border-radius: 4px;
   color: var(--text-primary);

@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::daemon_indexer::IndexRequest;
-use crate::daemon_state::DaemonState;
+use crate::daemon_state::{DaemonState, WorkspaceLoadStatus};
 use crate::registry::ProjectStatus;
 use crate::server::AppState;
 
@@ -30,6 +30,19 @@ pub struct ProjectResponse {
     pub last_indexed: Option<String>,
     pub symbol_count: Option<u64>,
     pub file_count: Option<u64>,
+    pub embedding_status: Option<EmbeddingStatusResponse>,
+}
+
+/// Embedding runtime status for a project.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EmbeddingStatusResponse {
+    /// Resolved backend: "sidecar", "ort", "unresolved", etc.
+    pub backend: String,
+    /// Whether the backend has GPU/hardware acceleration.
+    pub accelerated: bool,
+    /// If the backend fell back from a preferred option, explains why.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
 }
 
 fn format_status(status: &ProjectStatus) -> String {
@@ -84,6 +97,22 @@ pub async fn list_projects(
             // Use the live daemon state for status if available,
             // otherwise fall back to the registry's static status.
             let live_status = daemon_state.project_status_for(&entry.workspace_id);
+
+            // Extract embedding runtime status from loaded workspace.
+            let embedding_status = daemon_state
+                .workspaces
+                .get(&entry.workspace_id)
+                .filter(|ws| ws.status == WorkspaceLoadStatus::Ready)
+                .and_then(|ws| {
+                    ws.workspace.embedding_runtime_status.as_ref().map(|ers| {
+                        EmbeddingStatusResponse {
+                            backend: ers.resolved_backend.as_str().to_string(),
+                            accelerated: ers.accelerated,
+                            degraded_reason: ers.degraded_reason.clone(),
+                        }
+                    })
+                });
+
             ProjectResponse {
                 workspace_id: entry.workspace_id.clone(),
                 name: entry.name.clone(),
@@ -92,6 +121,7 @@ pub async fn list_projects(
                 last_indexed: entry.last_indexed.clone(),
                 symbol_count: entry.symbol_count,
                 file_count: entry.file_count,
+                embedding_status,
             }
         })
         .collect();

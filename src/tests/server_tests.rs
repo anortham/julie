@@ -59,7 +59,7 @@ fn test_app_with_mcp() -> (axum::Router, tempfile::TempDir) {
     let temp_dir = tempfile::tempdir().unwrap();
     let state = test_state(temp_dir.path().to_path_buf());
     let workspace_root = std::env::current_dir().unwrap();
-    let mcp_service = mcp_http::create_mcp_service(workspace_root, CancellationToken::new());
+    let mcp_service = mcp_http::create_mcp_service(workspace_root, CancellationToken::new(), None);
     let router = axum::Router::new()
         .nest("/api", api::routes(state))
         .route_service("/mcp", mcp_service);
@@ -507,8 +507,9 @@ async fn test_daemon_state_project_without_julie_dir_is_registered() {
     assert!(state.workspaces.contains_key(&workspace_id));
     let loaded = &state.workspaces[&workspace_id];
     assert_eq!(loaded.status, crate::daemon_state::WorkspaceLoadStatus::Registered);
-    // Registered projects don't get MCP services (no .julie dir)
-    assert!(!state.mcp_services.contains_key(&workspace_id));
+    // Registered projects still get MCP services so /mcp/{id} is reachable —
+    // the handler defers workspace initialization to first use.
+    assert!(state.mcp_services.contains_key(&workspace_id));
 }
 
 #[tokio::test]

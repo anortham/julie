@@ -93,7 +93,8 @@ async function fetchProjects() {
   try {
     const res = await fetch('/api/projects')
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    projects.value = await res.json()
+    const all = await res.json()
+    projects.value = all.filter((p: { status: string }) => p.status === 'ready')
   } catch (e) {
     console.warn('Failed to fetch projects:', e)
   }
@@ -330,7 +331,7 @@ onUnmounted(() => {
             :disabled="dispatching"
           >
             <option value="">Default / auto-detect</option>
-            <option v-for="p in projects" :key="p.workspace_id" :value="p.name">
+            <option v-for="p in projects" :key="p.workspace_id" :value="p.workspace_id">
               {{ p.name }}
             </option>
           </select>

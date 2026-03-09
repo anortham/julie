@@ -243,6 +243,15 @@ impl DaemonState {
                         path: project_path.clone(),
                     },
                 );
+                // Always create MCP service so /mcp/{workspace_id} is reachable.
+                // The handler will initialize the workspace on first use.
+                let mcp_service = Self::create_workspace_mcp_service(
+                    project_path.clone(),
+                    &self.cancellation_token,
+                    daemon_state.clone(),
+                );
+                self.mcp_services
+                    .insert(workspace_id.clone(), mcp_service);
                 continue;
             }
 
@@ -291,6 +300,15 @@ impl DaemonState {
                             path: project_path.clone(),
                         },
                     );
+                    // Create MCP service even on error so the workspace is
+                    // reachable — handler can retry initialization on connect.
+                    let mcp_service = Self::create_workspace_mcp_service(
+                        project_path.clone(),
+                        &self.cancellation_token,
+                        daemon_state.clone(),
+                    );
+                    self.mcp_services
+                        .insert(workspace_id.clone(), mcp_service);
                 }
             }
         }

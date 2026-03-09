@@ -14,7 +14,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
 
-use crate::api::common::resolve_workspace;
+use crate::api::common::resolve_workspace_any;
 use crate::memory::{self, Checkpoint, Plan, RecallOptions, RecallResult};
 use crate::server::AppState;
 
@@ -73,7 +73,7 @@ pub async fn list_memories(
     Query(params): Query<MemoriesQuery>,
 ) -> Result<Json<RecallResult>, (StatusCode, String)> {
     let daemon_state = state.daemon_state.read().await;
-    let loaded_ws = resolve_workspace(&daemon_state, params.project.as_deref())?;
+    let loaded_ws = resolve_workspace_any(&daemon_state, params.project.as_deref())?;
     let workspace_root = loaded_ws.path.clone();
     drop(daemon_state);
 
@@ -134,7 +134,7 @@ pub async fn get_memory(
     Query(params): Query<ProjectQuery>,
 ) -> Result<Json<Checkpoint>, (StatusCode, String)> {
     let daemon_state = state.daemon_state.read().await;
-    let loaded_ws = resolve_workspace(&daemon_state, params.project.as_deref())?;
+    let loaded_ws = resolve_workspace_any(&daemon_state, params.project.as_deref())?;
     let workspace_root = loaded_ws.path.clone();
     drop(daemon_state);
 
@@ -264,7 +264,7 @@ pub async fn list_plans(
     Query(params): Query<PlansQuery>,
 ) -> Result<Json<Vec<Plan>>, (StatusCode, String)> {
     let daemon_state = state.daemon_state.read().await;
-    let loaded_ws = resolve_workspace(&daemon_state, params.project.as_deref())?;
+    let loaded_ws = resolve_workspace_any(&daemon_state, params.project.as_deref())?;
     let workspace_root = loaded_ws.path.clone();
     drop(daemon_state);
 
@@ -313,7 +313,7 @@ pub async fn get_plan(
     Query(params): Query<ProjectQuery>,
 ) -> Result<Json<Plan>, (StatusCode, String)> {
     let daemon_state = state.daemon_state.read().await;
-    let loaded_ws = resolve_workspace(&daemon_state, params.project.as_deref())?;
+    let loaded_ws = resolve_workspace_any(&daemon_state, params.project.as_deref())?;
     let workspace_root = loaded_ws.path.clone();
     drop(daemon_state);
 
@@ -360,7 +360,7 @@ pub async fn get_active_plan(
     Query(params): Query<ProjectQuery>,
 ) -> Result<Json<Plan>, (StatusCode, String)> {
     let daemon_state = state.daemon_state.read().await;
-    let loaded_ws = resolve_workspace(&daemon_state, params.project.as_deref())?;
+    let loaded_ws = resolve_workspace_any(&daemon_state, params.project.as_deref())?;
     let workspace_root = loaded_ws.path.clone();
     drop(daemon_state);
 

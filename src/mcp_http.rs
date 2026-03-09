@@ -21,8 +21,10 @@ use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService,
     session::local::LocalSessionManager,
 };
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
+use crate::daemon_state::DaemonState;
 use crate::handler::JulieServerHandler;
 use crate::server::AppState;
 
@@ -36,9 +38,11 @@ use crate::server::AppState;
 /// # Arguments
 /// * `workspace_root` - Path to the workspace root for handler initialization
 /// * `cancellation_token` - Token to signal shutdown of all active MCP sessions
+/// * `daemon_state` - Optional shared daemon state for federated features (workspace="all")
 pub fn create_mcp_service(
     workspace_root: PathBuf,
     cancellation_token: CancellationToken,
+    daemon_state: Option<Arc<RwLock<DaemonState>>>,
 ) -> StreamableHttpService<JulieServerHandler> {
     let config = StreamableHttpServerConfig {
         cancellation_token,
@@ -51,8 +55,11 @@ pub fn create_mcp_service(
             // The service_factory closure must be sync (Fn() -> Result<S, io::Error>).
             // JulieServerHandler construction is synchronous in practice -- it only
             // creates Arcs and empty state. We use the sync constructor here.
-            JulieServerHandler::new_sync(workspace_root.clone())
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            let handler = match daemon_state.clone() {
+                Some(ds) => JulieServerHandler::new_with_daemon_state(workspace_root.clone(), ds),
+                None => JulieServerHandler::new_sync(workspace_root.clone()),
+            };
+            handler.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
         },
         session_manager,
         config,

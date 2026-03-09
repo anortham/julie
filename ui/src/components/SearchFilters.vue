@@ -12,6 +12,11 @@
  * - Debug mode toggle
  */
 
+interface Project {
+  workspace_id: string
+  name: string
+}
+
 const searchTarget = defineModel<'definitions' | 'content'>('searchTarget', { required: true })
 const language = defineModel<string>('language', { required: true })
 const filePattern = defineModel<string>('filePattern', { required: true })
@@ -19,9 +24,11 @@ const limit = defineModel<number>('limit', { required: true })
 const debugMode = defineModel<boolean>('debugMode', { required: true })
 const contentType = defineModel<'code' | 'memory' | 'all'>('contentType', { required: true })
 const hybrid = defineModel<boolean>('hybrid', { required: true })
+const project = defineModel<string>('project', { default: '' })
 
 defineProps<{
   languages: string[]
+  projects: Project[]
 }>()
 
 const contentTypeOptions = [
@@ -75,6 +82,16 @@ const contentTypeOptions = [
           {{ opt.label }}
         </label>
       </div>
+    </div>
+
+    <div v-if="projects.length > 1" class="filter-group">
+      <label class="filter-label" for="project-select">Project</label>
+      <select id="project-select" v-model="project" class="form-select">
+        <option value="">All projects</option>
+        <option v-for="p in projects" :key="p.workspace_id" :value="p.workspace_id">
+          {{ p.name }}
+        </option>
+      </select>
     </div>
 
     <div class="filter-group">

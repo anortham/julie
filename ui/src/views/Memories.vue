@@ -124,7 +124,8 @@ async function fetchProjects() {
     const res = await fetch('/api/projects')
     if (!res.ok) return
     const all: Project[] = await res.json()
-    projects.value = all.filter((p) => p.status === 'ready')
+    // Show all registered projects — memories don't require a ready index
+    projects.value = all
   } catch {
     // Non-critical — selector just won't appear
   }
@@ -211,7 +212,8 @@ async function loadData() {
 async function applyFilters() {
   loading.value = true
   error.value = null
-  await fetchCheckpoints()
+  activePlanId.value = null
+  await Promise.all([fetchCheckpoints(), fetchPlans()])
   loading.value = false
 }
 

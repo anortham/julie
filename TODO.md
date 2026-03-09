@@ -112,3 +112,48 @@
 12. [ ] *(Deferred to 4.1)* project view in dashboard should have info to help quickly get into a project in a devs preferred tools
 13. ~~what's our most effective token optimization approach across tools? can we apply that approach to other tools?~~ **DONE** — evaluated, each tool already uses appropriate limiting; no action needed
 14. ~~We need to update CLAUDE.md and README.md to properly reflect the big changes that have been made.~~ **IN PROGRESS** — CLAUDE.md updated for v4.0.0
+15. Do we still need ORT? Is that too much of a dependency to tack on just for a fallback in case the sidecar fails? Do we have the python dependencies for the sidecar properly documented in the README?
+
+## Pre-4.0 Release Review
+
+- [x] **Fix full test suite flake / order-dependent failure in embedding scheduling test** (2026-03-09)
+  - Added `#[serial_test::serial(embedding_env)]` to both scheduling tests to prevent env var pollution from parallel health tests
+
+- [x] **Fix daemon restart + `connect` regression for already-registered projects** (2026-03-09)
+  - `load_registered_projects()` now creates MCP services for ALL restored workspaces (Registered, Error, Ready)
+  - Previously only the success path created services; now `/mcp/{workspace_id}` is always reachable after restart
+
+- [x] **Make default daemon HTTP MCP endpoint daemon-aware** (2026-03-09)
+  - `create_mcp_service()` now accepts `Option<DaemonState>`; production path passes `Some(daemon_state)`
+  - Default `/mcp` endpoint now supports federated features (workspace="all", cross-project recall)
+
+- [x] **Fix Agents UI project selector to send workspace IDs, not names** (2026-03-09)
+  - Changed `:value="p.name"` → `:value="p.workspace_id"` + filter to ready-only projects
+
+- [x] **Make cross-project memory features work for more than just Ready workspaces** (2026-03-09)
+  - Added `resolve_workspace_any()` in common.rs for memory endpoints; Memories UI shows all registered projects
+
+- [x] **Fix dashboard memory stats to reflect multi-project daemon mode correctly** (2026-03-09)
+  - Dashboard stats now aggregate memory counts across ALL workspaces, not just the first Ready one
+
+- [x] **Fix Memories page stale plans/active-plan state when switching projects** (2026-03-09)
+  - `applyFilters()` now refetches both checkpoints AND plans, clears `activePlanId` before loading
+
+- [x] **Clarify or fix Search debug mode behavior for "All projects"** (2026-03-09)
+  - Added visible warning banner when debug mode + "All projects" are combined
+
+- [ ] **Fix `get_symbols` target+minimal mode returning empty results for Vue files** (2026-03-09)
+  - `get_symbols(file_path="*.vue", mode="structure")` correctly finds all symbols (functions, variables, CSS properties)
+  - `get_symbols(file_path="*.vue", target="fetchProjects", mode="minimal")` returns empty — code body extraction fails
+  - Likely cause: Vue SFC `<script setup>` block has a byte offset that the code body extractor doesn't account for
+  - Structure mode works because it only needs symbol names/signatures from the index, not file content
+  - Impact: agents using Julie can't inspect specific Vue symbols without falling back to Read
+
+- [x] **Show embeddings status on the Projects page** (2026-03-09)
+  - Added `EmbeddingStatusResponse` to `ProjectResponse` API with backend, accelerated, degraded_reason
+  - Projects table shows new Embeddings column with backend badge, GPU bolt icon, degraded warning
+
+- [ ] **Improve mobile/responsive polish in the management UI** (2026-03-09)
+  - The top nav has no collapse/wrap behavior and is likely to overflow on narrow screens
+  - The projects table clips content instead of allowing horizontal scroll
+  - Do a quick responsive pass across Dashboard, Projects, Memories, Search, and Agents before tagging

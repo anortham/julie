@@ -144,10 +144,10 @@ pub async fn start_server(
         backends,
     });
 
-    // Create the default MCP service for backward compatibility.
-    // This serves the workspace_root passed on the command line (or cwd).
+    // Create the default MCP service with daemon state so federated features
+    // (workspace="all") work even on the /mcp endpoint.
     let default_mcp_service =
-        mcp_http::create_mcp_service(workspace_root, cancellation_token.clone());
+        mcp_http::create_mcp_service(workspace_root, cancellation_token.clone(), Some(daemon_state.clone()));
 
     // Build the router. The per-workspace MCP handler needs AppState,
     // so we add it with `.with_state()` before merging the default MCP

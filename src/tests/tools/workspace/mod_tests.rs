@@ -799,6 +799,7 @@ fn goodbye_world() {
 }
 
 #[tokio::test]
+#[serial_test::serial(embedding_env)]
 async fn test_primary_index_schedules_embedding_when_provider_available() {
     let temp_dir = TempDir::new().unwrap();
     let test_file = temp_dir.path().join("main.rs");
@@ -836,6 +837,7 @@ async fn test_primary_index_schedules_embedding_when_provider_available() {
 }
 
 #[tokio::test]
+#[serial_test::serial(embedding_env)]
 async fn test_primary_refresh_schedules_embedding_when_provider_available() {
     use crate::workspace::registry_service::WorkspaceRegistryService;
 

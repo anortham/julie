@@ -40,7 +40,7 @@ fn full_app(state: Arc<AppState>) -> Router {
     let workspace_root = std::env::current_dir().unwrap();
     let ct = state.cancellation_token.clone();
 
-    let default_mcp_service = mcp_http::create_mcp_service(workspace_root, ct.clone());
+    let default_mcp_service = mcp_http::create_mcp_service(workspace_root, ct.clone(), Some(state.daemon_state.clone()));
 
     let workspace_mcp_router = Router::new()
         .route(

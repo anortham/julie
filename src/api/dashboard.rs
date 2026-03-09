@@ -124,33 +124,48 @@ pub async fn stats(
     };
 
     // -- Memories --
-    // Find first Ready workspace and gather memory stats from its filesystem.
-    // Clone the path and drop the read lock before awaiting spawn_blocking.
+    // Aggregate memory stats across ALL workspaces (not just Ready ones —
+    // .memories/ doesn't require an active code index).
     let memory_stats = {
         let ds = state.daemon_state.read().await;
-        let workspace_path = ds
-            .workspaces
-            .values()
-            .find(|ws| ws.status == WorkspaceLoadStatus::Ready)
-            .map(|ws| ws.path.clone());
+        let workspace_paths: Vec<std::path::PathBuf> =
+            ds.workspaces.values().map(|ws| ws.path.clone()).collect();
         drop(ds);
 
-        match workspace_path {
-            Some(path) => {
-                tokio::task::spawn_blocking(move || gather_memory_stats(&path))
-                    .await
-                    .unwrap_or(MemoryStats {
-                        total_checkpoints: 0,
-                        active_plan: None,
-                        last_checkpoint: None,
-                    })
+        tokio::task::spawn_blocking(move || {
+            let mut total_checkpoints = 0usize;
+            let mut active_plan: Option<String> = None;
+            let mut last_checkpoint: Option<String> = None;
+
+            for path in &workspace_paths {
+                let per_ws = gather_memory_stats(path);
+                total_checkpoints += per_ws.total_checkpoints;
+                // Keep the most recent active plan (prefer first found)
+                if active_plan.is_none() {
+                    active_plan = per_ws.active_plan;
+                }
+                // Keep the most recent checkpoint timestamp across all projects
+                match (&last_checkpoint, &per_ws.last_checkpoint) {
+                    (None, Some(_)) => last_checkpoint = per_ws.last_checkpoint,
+                    (Some(existing), Some(new)) if new > existing => {
+                        last_checkpoint = per_ws.last_checkpoint;
+                    }
+                    _ => {}
+                }
             }
-            None => MemoryStats {
-                total_checkpoints: 0,
-                active_plan: None,
-                last_checkpoint: None,
-            },
-        }
+
+            MemoryStats {
+                total_checkpoints,
+                active_plan,
+                last_checkpoint,
+            }
+        })
+        .await
+        .unwrap_or(MemoryStats {
+            total_checkpoints: 0,
+            active_plan: None,
+            last_checkpoint: None,
+        })
     };
 
     // -- Agents --

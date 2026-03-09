@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 
+interface EmbeddingStatus {
+  backend: string
+  accelerated: boolean
+  degraded_reason?: string
+}
+
 interface Project {
   workspace_id: string
   name: string
@@ -9,6 +15,7 @@ interface Project {
   last_indexed: string | null
   symbol_count: number | null
   file_count: number | null
+  embedding_status: EmbeddingStatus | null
 }
 
 const projects = ref<Project[]>([])
@@ -133,6 +140,7 @@ onMounted(() => {
             <th>Name</th>
             <th>Path</th>
             <th>Status</th>
+            <th>Embeddings</th>
             <th>Symbols</th>
             <th>Files</th>
             <th>Last Indexed</th>
@@ -146,6 +154,20 @@ onMounted(() => {
               <span class="badge" :class="statusClass(p.status)">
                 {{ p.status }}
               </span>
+            </td>
+            <td>
+              <template v-if="p.embedding_status">
+                <span
+                  class="badge"
+                  :class="p.embedding_status.degraded_reason ? 'badge-warning' : 'badge-ready'"
+                  :title="p.embedding_status.degraded_reason ?? undefined"
+                >
+                  {{ p.embedding_status.backend }}
+                  <span v-if="p.embedding_status.accelerated" class="accel-icon" title="GPU accelerated">&#9889;</span>
+                  <span v-if="p.embedding_status.degraded_reason" class="pi pi-exclamation-triangle degrade-icon"></span>
+                </span>
+              </template>
+              <span v-else class="text-muted">--</span>
             </td>
             <td class="cell-num">{{ p.symbol_count?.toLocaleString() ?? '--' }}</td>
             <td class="cell-num">{{ p.file_count?.toLocaleString() ?? '--' }}</td>
@@ -367,5 +389,25 @@ onMounted(() => {
 .badge-default {
   background: var(--hover-bg);
   color: var(--text-secondary);
+}
+
+.badge-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.text-muted {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.accel-icon {
+  font-size: 0.7rem;
+  margin-left: 0.15rem;
+}
+
+.degrade-icon {
+  font-size: 0.6rem;
+  margin-left: 0.2rem;
 }
 </style>
