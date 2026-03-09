@@ -151,6 +151,35 @@ async fn process_index_request(
         }
     }
 
+    // Step 1.5: Release existing Tantivy file lock before indexing.
+    //
+    // run_indexing_pipeline creates a temporary JulieServerHandler with its own
+    // SearchIndex on the same Tantivy directory. If the existing workspace's
+    // SearchIndex still holds a writer (created by the watcher), the new instance
+    // will get LockBusy errors. Fix: stop the watcher, then shut down the writer.
+    {
+        let ds = daemon_state.read().await;
+
+        // Stop the file watcher (it holds an Arc to the existing SearchIndex)
+        ds.watcher_manager
+            .stop_watching(&request.workspace_id)
+            .await;
+
+        // Shut down the existing SearchIndex to release the Tantivy file lock.
+        // Reads (searches) continue to work; only writes are blocked.
+        if let Some(loaded) = ds.workspaces.get(&request.workspace_id) {
+            if let Some(ref search_index) = loaded.workspace.search_index {
+                let idx = search_index.lock().unwrap_or_else(|p| p.into_inner());
+                if let Err(e) = idx.shutdown() {
+                    warn!(
+                        "Failed to shut down search index before re-indexing '{}': {}",
+                        request.workspace_id, e
+                    );
+                }
+            }
+        }
+    }
+
     // Step 2: Create a handler and run indexing
     let result = run_indexing_pipeline(&request.project_path, request.force).await;
 
@@ -270,9 +299,7 @@ async fn run_indexing_pipeline(
         detailed: None,
     };
 
-    // Use call_tool_with_options with skip_embeddings=true (daemon context,
-    // embeddings can be triggered separately)
-    index_tool.call_tool_with_options(&handler, true).await?;
+    index_tool.call_tool_with_options(&handler, false).await?;
 
     // Extract the workspace from the handler
     let workspace = handler
