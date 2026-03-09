@@ -540,13 +540,15 @@ onUnmounted(() => {
 }
 
 .backend-available {
-  background: #dcfce7;
+  background: rgba(74, 222, 128, 0.15);
   color: var(--color-success);
+  border: 1px solid var(--color-success);
 }
 
 .backend-unavailable {
-  background: #fee2e2;
+  background: var(--color-error-bg);
   color: var(--color-error);
+  border: 1px solid var(--color-error-border);
 }
 
 .backend-icon {
@@ -598,6 +600,10 @@ onUnmounted(() => {
 
 .form-group-project {
   flex: 0 0 220px;
+}
+
+.form-group-project .form-select {
+  width: 100%;
 }
 
 .form-group-hints {
