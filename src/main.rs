@@ -27,8 +27,15 @@ async fn main() -> anyhow::Result<()> {
         .or_else(|_| EnvFilter::try_new("julie=info"))
         .map_err(|e| anyhow::anyhow!("Failed to initialize logging filter: {}", e))?;
 
-    // Ensure .julie/logs directory exists in the workspace root
-    let logs_dir = workspace_root.join(".julie").join("logs");
+    // Daemon/connect modes log to ~/.julie/logs/ (global, since the daemon
+    // serves multiple projects). Stdio mode logs to {workspace}/.julie/logs/.
+    let logs_dir = if matches!(cli.command, Some(Commands::Daemon { .. }) | Some(Commands::Connect { .. })) {
+        daemon::julie_home()
+            .map(|h| h.join("logs"))
+            .unwrap_or_else(|_| workspace_root.join(".julie").join("logs"))
+    } else {
+        workspace_root.join(".julie").join("logs")
+    };
     fs::create_dir_all(&logs_dir).unwrap_or_else(|e| {
         eprintln!("Failed to create logs directory at {:?}: {}", logs_dir, e);
     });

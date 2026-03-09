@@ -221,43 +221,25 @@ cargo test --lib build_julie_fixture -- --ignored --nocapture
 
 ## 🐛 Debugging & Monitoring
 
-### 🚨 LOG LOCATION (STOP LOOKING IN THE WRONG PLACE!)
+### 🚨 LOG LOCATION
 
-**Logs are PROJECT-LEVEL, not user-level!**
+**Daemon/connect modes** log to the global `~/.julie/logs/` directory (the daemon serves multiple projects, so logs are centralized).
 
-**CORRECT log location:**
-```
-/Users/murphy/source/julie/.julie/logs/julie.log.2025-11-13
-```
-
-**WRONG** (don't look here):
-```
-~/.julie/logs/  ← THIS DOES NOT EXIST!
-~/Library/Logs/ ← System logs only (crash reports)
-~/.config/Julie/ ← Wrong location
-```
+**Stdio mode** logs to the project-level `.julie/logs/` directory.
 
 **When checking logs, ALWAYS use:**
 ```bash
-# Primary workspace logs (use date for current day)
-tail -f .julie/logs/julie.log.$(date +%Y-%m-%d)
+# Daemon logs (most common — Claude Code uses connect mode)
+tail -f ~/.julie/logs/julie.log.$(date +%Y-%m-%d)
 
 # Check indexing progress
-tail -50 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -E "Tantivy|indexing|Background"
+tail -50 ~/.julie/logs/julie.log.$(date +%Y-%m-%d) | grep -E "Tantivy|indexing|Background"
 
 # View recent errors
-tail -100 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i error
+tail -100 ~/.julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i error
 
 # List all log files
-ls -lh .julie/logs/
-```
-
-**Directory Structure:**
-```
-.julie/logs/
-├── julie.log.2025-11-13    # Current day (dated files)
-├── julie.log.2025-11-12    # Previous day
-└── julie.log.2025-11-11    # Older logs
+ls -lh ~/.julie/logs/
 ```
 
 ---

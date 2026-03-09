@@ -46,6 +46,13 @@ interface RecallResult {
   activePlan?: Plan
 }
 
+interface Project {
+  workspace_id: string
+  name: string
+  path: string
+  status: string
+}
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -55,6 +62,7 @@ const error = ref<string | null>(null)
 const checkpoints = ref<Checkpoint[]>([])
 const plans = ref<Plan[]>([])
 const activePlanId = ref<string | null>(null)
+const projects = ref<Project[]>([])
 
 // Filters
 const searchQuery = ref('')
@@ -62,6 +70,7 @@ const sinceFilter = ref('')
 const typeFilter = ref('')
 const planFilter = ref('')
 const tagFilter = ref<string[]>([])
+const projectFilter = ref('')
 
 // UI state
 const expandedCheckpoints = ref<Set<string>>(new Set())
@@ -110,21 +119,54 @@ const filteredCheckpoints = computed(() => {
 // Fetch helpers
 // ---------------------------------------------------------------------------
 
-async function fetchCheckpoints() {
+async function fetchProjects() {
+  try {
+    const res = await fetch('/api/projects')
+    if (!res.ok) return
+    const all: Project[] = await res.json()
+    projects.value = all.filter((p) => p.status === 'ready')
+  } catch {
+    // Non-critical — selector just won't appear
+  }
+}
+
+function buildMemoryParams(projectId?: string): URLSearchParams {
   const params = new URLSearchParams()
   params.set('limit', '100')
-
   if (sinceFilter.value) params.set('since', sinceFilter.value)
   if (searchQuery.value.trim()) params.set('search', searchQuery.value.trim())
   if (planFilter.value) params.set('planId', planFilter.value)
+  if (projectId) params.set('project', projectId)
+  return params
+}
 
+async function fetchCheckpoints() {
   try {
-    const res = await fetch(`/api/memories?${params}`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const data: RecallResult = await res.json()
-    checkpoints.value = data.checkpoints
-    if (data.activePlan) {
-      activePlanId.value = data.activePlan.id
+    if (projectFilter.value === '' && projects.value.length > 1) {
+      // "All projects" — fetch from each and merge
+      const results = await Promise.all(
+        projects.value.map(async (p) => {
+          const params = buildMemoryParams(p.workspace_id)
+          const res = await fetch(`/api/memories?${params}`)
+          if (!res.ok) return { checkpoints: [] as Checkpoint[], activePlan: undefined }
+          return (await res.json()) as RecallResult
+        }),
+      )
+      const merged: Checkpoint[] = []
+      for (const r of results) {
+        merged.push(...r.checkpoints)
+        if (r.activePlan) activePlanId.value = r.activePlan.id
+      }
+      merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      checkpoints.value = merged.slice(0, 200)
+    } else {
+      // Specific project (or single-project setup)
+      const params = buildMemoryParams(projectFilter.value || undefined)
+      const res = await fetch(`/api/memories?${params}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: RecallResult = await res.json()
+      checkpoints.value = data.checkpoints
+      if (data.activePlan) activePlanId.value = data.activePlan.id
     }
     error.value = null
   } catch (e) {
@@ -134,11 +176,26 @@ async function fetchCheckpoints() {
 
 async function fetchPlans() {
   try {
-    const res = await fetch('/api/plans')
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    plans.value = await res.json()
+    if (projectFilter.value === '' && projects.value.length > 1) {
+      const results = await Promise.all(
+        projects.value.map(async (p) => {
+          const res = await fetch(`/api/plans?project=${p.workspace_id}`)
+          if (!res.ok) return [] as Plan[]
+          return (await res.json()) as Plan[]
+        }),
+      )
+      plans.value = results.flat().sort((a, b) =>
+        new Date(b.updated).getTime() - new Date(a.updated).getTime(),
+      )
+    } else {
+      const url = projectFilter.value
+        ? `/api/plans?project=${projectFilter.value}`
+        : '/api/plans'
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      plans.value = await res.json()
+    }
   } catch (e) {
-    // Plans are supplementary; don't block on error
     console.warn('Failed to fetch plans:', e)
   }
 }
@@ -146,6 +203,7 @@ async function fetchPlans() {
 async function loadData() {
   loading.value = true
   error.value = null
+  await fetchProjects()
   await Promise.all([fetchCheckpoints(), fetchPlans()])
   loading.value = false
 }
@@ -201,6 +259,7 @@ function clearFilters() {
   sinceFilter.value = ''
   typeFilter.value = ''
   planFilter.value = ''
+  projectFilter.value = ''
   tagFilter.value = []
   applyFilters()
 }
@@ -261,6 +320,7 @@ const hasActiveFilters = computed(() => {
     sinceFilter.value !== '' ||
     typeFilter.value !== '' ||
     planFilter.value !== '' ||
+    projectFilter.value !== '' ||
     tagFilter.value.length > 0
   )
 })
@@ -304,6 +364,21 @@ onMounted(() => {
                   <span v-else class="pi pi-search"></span>
                 </button>
               </div>
+            </div>
+
+            <div v-if="projects.length > 1" class="filter-group">
+              <label class="filter-label" for="project-select">Project</label>
+              <select
+                id="project-select"
+                v-model="projectFilter"
+                class="form-select"
+                @change="applyFilters"
+              >
+                <option value="">All projects</option>
+                <option v-for="p in projects" :key="p.workspace_id" :value="p.workspace_id">
+                  {{ p.name }}
+                </option>
+              </select>
             </div>
 
             <div class="filter-group">

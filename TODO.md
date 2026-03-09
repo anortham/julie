@@ -2,10 +2,16 @@
 
 ## Open Items
 
-- [ ] **Daemon log location is confusing for multi-project setups**
-  - All daemon logs go to the primary workspace's `.julie/logs/` — users expect logs in each project's `.julie/logs/`
-  - Options: (a) centralize logs under `~/.julie/logs/` (daemon-level, not project-level), (b) symlink per-project, (c) per-project log files in each `.julie/logs/` with routing by workspace_id
-  - Related: CLAUDE.md documents the log location but only for the primary workspace
+- [x] **Dashboard memories tab needs project selector** (2026-03-09)
+  - Added project selector dropdown with "All projects" default to the memories tab
+  - "All" fetches from each project in parallel and merges results by timestamp
+  - Dropdown only appears when 2+ projects are registered (single-project setups unaffected)
+  - Plans sidebar also project-aware
+
+- [x] **Daemon log location centralized to `~/.julie/logs/`** (2026-03-09)
+  - Daemon and connect modes now log to `~/.julie/logs/` (global, since daemon serves multiple projects)
+  - Stdio mode still logs to `{workspace}/.julie/logs/` (single-project, backward compatible)
+  - Updated CLAUDE.md documentation to reflect new log location
 
 - [ ] **Re-evaluate variable kind exclusion from embeddings** (implementation landed, benchmark run pending)
   - [x] Implemented budgeted variable embedding policy (deterministic ranking + `20%` cap)
