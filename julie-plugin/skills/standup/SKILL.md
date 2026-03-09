@@ -74,60 +74,79 @@ Use the format below. Do NOT ask the user what to include — just generate the 
 
 ### Multi-project format
 
-Use when checkpoints span more than one workspace.
+When checkpoints span multiple projects, group by project with bullets for accomplishments, blockquotes for next/blocked, and plan references:
 
 ```markdown
-# Standup — {date}
+## Standup — Feb 14, 2026
 
-## {Project A}
-- Completed X — {brief context}
-- Fixed Y — {root cause in one line}
+### project-alpha
+- Implemented 4 skill files with behavioral language patterns
+- Converted tool handlers from JSON to markdown output
+> Next: Test skills with live agent sessions
+> Plan: v5.1 skills refresh — 2/4 tasks complete (docs/plans/2026-02-16-v5.1-implementation.md)
 
-## {Project B}
-- Shipped Z feature — {what it does}
-- Investigated flaky test — {outcome}
-
-> **Up next:** {highest priority item across projects}
-> **Blocked:** {blockers, if any — omit section if none}
+### api-gateway
+- Fixed rate limiter race condition in Redis cluster mode
+- Added integration tests for multi-node scenarios
+> Next: Deploy to staging, run load tests
+> Blocked: Waiting on DevOps for staging Redis cluster
 ```
 
 ### Single-project format
 
-Use when all activity is within one workspace.
+When all checkpoints are from a single project, drop the project grouping and use section headers:
 
 ```markdown
-# Standup — {date}
+## Standup — Feb 14, 2026
 
-## Done
-- {completed item with brief context}
-- {completed item with brief context}
+### Done
+- Implemented 4 skill files with behavioral language patterns
+- Converted tool handlers from JSON to markdown output
 
-## Up Next
-- {next priority}
+### Up Next
+- Test skills with live agent sessions
+- v5.1 skills refresh: workspace env var implementation (2/4 tasks complete)
 
-## Blocked
-- {blocker} — {who/what is needed to unblock}
+### Blocked
+- Nothing currently blocked
 ```
-
-Omit the Blocked section entirely if there are no blockers.
 
 ## Synthesis Rules
 
-- **Be concise** — standup length, not essay length. One line per item.
-- **Group by theme** — if three checkpoints are about the same feature, merge them into one bullet.
-- **Highlight blockers** — these are the most important thing in a standup.
-- **Skip noise** — routine test runs, minor formatting fixes, and trivial commits are not standup material.
-- **Use past tense** for completed work, present tense for blockers and next items.
-- **Surface decisions** — if a checkpoint has `type: "decision"`, call it out. Decisions are standup gold.
-- **Include plan progress** — "Phase 2 tasks 3-5 complete, 6-7 remaining" is more useful than listing each task.
-- **Include dates** — especially for multi-day ranges. "Monday: ..., Tuesday: ..." helps orient the reader.
+- **Be concise.** A standup is 2 minutes, not 20. One line per accomplishment.
+- **Lead with impact, not activity.** "Shipped auth refresh tokens" not "Worked on auth."
+- **Group by theme.** Five checkpoints about "auth" become one bullet: "Implemented auth token refresh with rotation."
+- **Highlight blockers prominently.** These are the most actionable items in a standup.
+- **Skip noise.** Minor refactors, formatting changes, and config tweaks don't need individual mentions unless they were the main work.
+- **Use past tense for accomplishments.** "Shipped," "Fixed," "Implemented" — not "Working on" for done items.
+- **Surface decisions.** If a checkpoint captured an architectural decision, mention it briefly — the team may need to know.
+- **Include plan progress.** When active plans exist, include a brief progress summary (e.g., "3/5 tasks complete") in the Up Next section.
+- **Abbreviated month names** in headers. `Feb 14` not `February 14`.
+- **Date range in header** when covering multiple days (`Feb 12–14, 2026`).
+
+## Handling Edge Cases
+
+### No checkpoints found
+Report honestly: "No activity recorded in the requested period." Don't fabricate.
+
+### Single project only
+Use the single-project format above (Done / Up Next / Blocked sections).
+
+### Too many checkpoints (20+)
+Be more aggressive about grouping. Summarize by theme rather than listing individual items. A standup with 15 bullet points defeats the purpose.
+
+### No plans found
+That's fine — just skip the plan progress lines. Not every project has active plans.
+
+### Plans in docs/plans/ but no Julie plan
+Include them in the forward-looking section. Plans don't need to be in Julie to be useful for standup.
 
 ## Critical Rules
 
-- Do NOT ask the user what to include — generate the report from checkpoint evidence
-- Do NOT fabricate activity — if recall returns nothing, say "no checkpoints found for this period"
-- Keep it standup-length — if you're writing more than ~15 lines of bullets, you're over-explaining
-- Include dates when covering multiple days
-- Check BOTH plan sources (Julie plans AND docs/plans/*.md)
-- Infer plan status from checkpoint evidence, don't just parrot the status field
-- Cross-project recall requires daemon mode — fall back to current workspace if `workspace: "all"` fails
+- **Do NOT ask the user what to include.** Recall gives you everything. Synthesize it yourself.
+- **Do NOT fabricate activity.** Only report what checkpoints actually show.
+- **Keep it standup-length.** If your report is more than a screenful, you're being too verbose.
+- **Include dates** when covering multi-day ranges so the reader knows the timeline.
+- **Check BOTH plan sources.** `.memories/plans/` (via recall) AND `docs/plans/` (via file reading). Missing one source means an incomplete forward-looking view.
+- **Infer plan status from evidence.** Don't trust stale Status headers — verify against checkpoint activity.
+- **Cross-project recall requires daemon mode** — fall back to current workspace if `workspace: "all"` fails.
