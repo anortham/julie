@@ -59,6 +59,38 @@ impl HealthChecker {
             })
             .unwrap_or_else(|| primary_workspace_id.clone());
 
+        // Daemon mode: check daemon's loaded workspace for non-primary workspaces.
+        // Each daemon workspace has its own DB under its own project root, not under
+        // the handler's root. Without this, the health check would look for the DB at
+        // the wrong path and always return NotReady.
+        if target_workspace_id != primary_workspace_id {
+            if let Some(daemon_state) = &handler.daemon_state {
+                let ds = daemon_state.read().await;
+                if let Some(loaded) = ds.workspaces.get(&target_workspace_id) {
+                    if let Some(ref db_arc) = loaded.workspace.db {
+                        let symbol_count = match db_arc.try_lock() {
+                            Ok(db_lock) => {
+                                db_lock.get_symbol_count_for_workspace().unwrap_or(0)
+                            }
+                            Err(_busy) => {
+                                debug!("Daemon workspace DB busy during readiness check; assuming data present");
+                                1
+                            }
+                        };
+
+                        if symbol_count == 0 {
+                            debug!("❌ Health check failed: symbol_count is 0 for daemon workspace '{}'", target_workspace_id);
+                            return Ok(SystemStatus::NotReady);
+                        }
+
+                        return Ok(SystemStatus::FullyReady { symbol_count });
+                    }
+                }
+                debug!("❌ Daemon workspace '{}' not loaded", target_workspace_id);
+                return Ok(SystemStatus::NotReady);
+            }
+        }
+
         if target_workspace_id == primary_workspace_id {
             let db = match &workspace.db {
                 Some(db_arc) => db_arc,
@@ -86,6 +118,7 @@ impl HealthChecker {
             // With Tantivy as the search engine, if symbols are indexed we're fully ready
             Ok(SystemStatus::FullyReady { symbol_count })
         } else {
+            // Stdio mode: reference workspaces stored under handler's root
             let ref_db_path = workspace.workspace_db_path(&target_workspace_id);
             if !ref_db_path.exists() {
                 return Ok(SystemStatus::NotReady);

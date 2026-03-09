@@ -41,9 +41,10 @@ impl ManageWorkspaceTool {
         path: &str,
         name: Option<String>,
     ) -> Result<CallToolResult> {
+        let path = shellexpand::tilde(path);
         info!("Adding project via daemon: {}", path);
 
-        let project_path = std::path::PathBuf::from(path);
+        let project_path = std::path::PathBuf::from(path.as_ref());
 
         match DaemonState::register_project(daemon_state, &project_path).await {
             Ok(result) => {
