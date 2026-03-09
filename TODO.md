@@ -99,7 +99,7 @@
 
 **Post Platform Tasks**
 1. ~~check goldfish skills, we'll need a refocused version of those for the memory tools. Also check goldfish server instructions and tool descriptions, they are effective at agent adoption and we need that too.~~ **DONE** — Julie plugin shipped with 5 skills, 3 hooks, enhanced tool descriptions
-2. [ ] *(Deferred to 4.1)* what kind of project stats/insights make sense for the project view in the dashboard? git status? index stats? language stats? dependencies? test counts?
+2. [ ] **Promoted to 4.0** — Project stats/insights for dashboard project view (language breakdown, symbol counts by kind, index health)
 3. [ ] *(Deferred to 4.1)* with tantivy and embeddings available to memories now, what advanced memory features does that open up? Could we link memories to code/commits?
 4. [ ] *(Deferred to 4.1)* Can the dashboard also talk to a projects repo on gh or devops? what can we build with that?
 5. ~~Project registration: auto on startup with julie installed, add from dashboard~~ **DONE** — auto-registration on startup + dashboard registration
@@ -109,10 +109,52 @@
 9. ~~we need good documentation of the http api so other tools can integrate~~ **DONE** — OpenAPI 3.0 spec at `/api/docs` via utoipa
 10. ~~validate functionality in a parallel scenario like multiple worktrees~~ **DONE** — worktree isolation validated and fixed (Task 13)
 11. [ ] *(Deferred to 4.1)* we should leverage gh pages to better showcase the dashboard functionality
-12. [ ] *(Deferred to 4.1)* project view in dashboard should have info to help quickly get into a project in a devs preferred tools
+12. [ ] **Promoted to 4.0** — Project view quick-launch (copy path button, open in terminal link)
 13. ~~what's our most effective token optimization approach across tools? can we apply that approach to other tools?~~ **DONE** — evaluated, each tool already uses appropriate limiting; no action needed
 14. ~~We need to update CLAUDE.md and README.md to properly reflect the big changes that have been made.~~ **IN PROGRESS** — CLAUDE.md updated for v4.0.0
-15. Do we still need ORT? Is that too much of a dependency to tack on just for a fallback in case the sidecar fails? Do we have the python dependencies for the sidecar properly documented in the README?
+15. [ ] **Promoted to 4.0** — ORT dependency decision: drop it or keep as sidecar fallback? Document sidecar Python deps in README. We should keep ORT for fallback but we should add status of the embedding model to the dashboard main page that way if python isn't available and we fallback to ort we can document that problem and how to fix it on the dashboard. Also we need to verify that we are handling fallback properly so that we can document the problem while continuing to work.
+16. [x] **Promoted to 4.0** — Multi-agent dispatch: support Codex, Gemini CLI, Copilot CLI alongside Claude Code
+17. [ ] **Bug** — Projects page Embeddings column always shows "--" because `embedding_runtime_status` is `None` until lazy init. Either eagerly init on daemon startup or rethink how we surface embedding status (e.g. query SQLite `symbol_vectors` count directly).
+
+
+### Multi-Agent Dispatch — CLI Research (2026-03-09)
+
+All four CLI agents support non-interactive/headless mode with structured output.
+All support subscription-based auth (OAuth/browser login) — no API key required if user has already logged in.
+
+| Agent | Package | Headless Command | Output Flag | Streaming | Auth |
+|-------|---------|-----------------|-------------|-----------|------|
+| **Claude Code** | `claude` (npm: `@anthropic-ai/claude-code`) | `claude -p "prompt"` | `--output-format stream-json\|json\|text` | stream-json (JSONL) | OAuth (subscription) or `ANTHROPIC_API_KEY` |
+| **Codex** | `codex` (npm: `@openai/codex`) | `codex exec "prompt"` | `--json` (JSONL events) | JSONL events | OAuth via `codex login` (subscription) or API key via `--with-api-key` |
+| **Gemini CLI** | `gemini` (npm: `@google/gemini-cli`) | `gemini -p "prompt"` | `--output-format json` | stdout | Google auth (subscription) |
+| **Copilot CLI** | `copilot` (npm: `@github/copilot`) | `copilot -p "prompt"` | text to stdout | `--autopilot` | GitHub auth via `gh` (subscription) |
+
+**Key flags for full headless dispatch:**
+- **Claude**: `claude -p "prompt" --output-format stream-json --allowedTools Read,Write,Bash --max-turns 10`
+- **Codex**: `codex exec "prompt" --json --full-auto` (sets workspace-write sandbox + on-request approvals)
+- **Gemini**: `gemini -p "prompt" --output-format json`
+- **Copilot**: `copilot -p "prompt" --autopilot --allow-all-tools --max-autopilot-continues 10`
+
+**Codex extra capabilities** (from official docs):
+- `--sandbox read-only|workspace-write|danger-full-access` — file access policy
+- `--ask-for-approval untrusted|on-request|never` — approval timing
+- `--full-auto` — preset: workspace-write + on-request (recommended for headless)
+- `--ephemeral` — skip session persistence
+- `--output-last-message <path>` — write final response to file
+- `--output-schema <path>` — validate response against JSON Schema
+- `codex exec resume --last` — resume most recent session
+- `codex cloud` — execute tasks on Codex Cloud
+
+**Detection**: `which claude`, `which codex`, `which gemini`, `which copilot`
+**Auth check**: `codex login status` (exit 0 = authenticated), `claude auth status`, `gh auth status`
+
+**Design approach (Option B — full):**
+- Backend registry with command templates, output parsers, detection logic
+- Per-backend streaming output parsing (stream-json, JSONL, plain text)
+- Auth detection: check if CLI is authenticated before showing in backend selector
+- Status tracking + history with backend labels
+- Session resume support (at least for Codex which has built-in `resume`)
+- UI: backend selector in dispatch form (already shows discovered backends on Dashboard)
 
 ## Pre-4.0 Release Review
 
@@ -142,18 +184,22 @@
 - [x] **Clarify or fix Search debug mode behavior for "All projects"** (2026-03-09)
   - Added visible warning banner when debug mode + "All projects" are combined
 
-- [ ] **Fix `get_symbols` target+minimal mode returning empty results for Vue files** (2026-03-09)
-  - `get_symbols(file_path="*.vue", mode="structure")` correctly finds all symbols (functions, variables, CSS properties)
-  - `get_symbols(file_path="*.vue", target="fetchProjects", mode="minimal")` returns empty — code body extraction fails
-  - Likely cause: Vue SFC `<script setup>` block has a byte offset that the code body extractor doesn't account for
-  - Structure mode works because it only needs symbol names/signatures from the index, not file content
-  - Impact: agents using Julie can't inspect specific Vue symbols without falling back to Read
+- [x] **Fix `get_symbols` target+minimal mode returning empty results for Vue files** (2026-03-09)
+  - Root cause: `create_symbol_manual` (Vue extractor) sets `start_byte=0, end_byte=0` — no tree-sitter node available
+  - `extract_code_bodies` then sliced `source[0..0]` = empty string, producing `Some("")` code_context
+  - Fix: Added line-based fallback in `body_extraction.rs` — when byte offsets are both 0, extracts by `start_line`/`end_line`
+  - Fallback is generic: works for ANY extractor that lacks byte offsets, not just Vue
+  - TDD: new test `test_vue_target_minimal_extracts_code_body`, 1541 tests pass
 
 - [x] **Show embeddings status on the Projects page** (2026-03-09)
   - Added `EmbeddingStatusResponse` to `ProjectResponse` API with backend, accelerated, degraded_reason
   - Projects table shows new Embeddings column with backend badge, GPU bolt icon, degraded warning
 
-- [ ] **Improve mobile/responsive polish in the management UI** (2026-03-09)
-  - The top nav has no collapse/wrap behavior and is likely to overflow on narrow screens
-  - The projects table clips content instead of allowing horizontal scroll
-  - Do a quick responsive pass across Dashboard, Projects, Memories, Search, and Agents before tagging
+- [x] **Improve mobile/responsive polish in the management UI** (2026-03-09)
+  - Nav: icon-only mode at ≤768px (hide text labels and brand name, keep icons)
+  - Projects table: `overflow-x: auto` + `min-width: 700px` for horizontal scroll
+  - Projects page header + register form: stack at ≤600px
+  - Search form: input + button stack at ≤600px
+  - Memories filters: full-width stacking at ≤600px (fixed clipped Project dropdown)
+  - Main padding: reduced to 1rem at ≤600px
+  - Verified at 320px, 375px, and 1280px — no horizontal page scrollbar, no regressions

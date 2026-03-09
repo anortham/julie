@@ -140,8 +140,8 @@ async fn test_list_dispatches_with_entries() {
     // Manually insert some dispatches
     {
         let mut dm = state.dispatch_manager.write().await;
-        dm.start_dispatch("task one".to_string(), "project-a".to_string());
-        dm.start_dispatch("task two".to_string(), "project-b".to_string());
+        dm.start_dispatch("task one".to_string(), "project-a".to_string(), "claude".to_string());
+        dm.start_dispatch("task two".to_string(), "project-b".to_string(), "claude".to_string());
     }
 
     let app = test_app(state);
@@ -179,9 +179,9 @@ async fn test_list_dispatches_with_limit() {
 
     {
         let mut dm = state.dispatch_manager.write().await;
-        dm.start_dispatch("task one".to_string(), "project-a".to_string());
-        dm.start_dispatch("task two".to_string(), "project-b".to_string());
-        dm.start_dispatch("task three".to_string(), "project-a".to_string());
+        dm.start_dispatch("task one".to_string(), "project-a".to_string(), "claude".to_string());
+        dm.start_dispatch("task two".to_string(), "project-b".to_string(), "claude".to_string());
+        dm.start_dispatch("task three".to_string(), "project-a".to_string(), "claude".to_string());
     }
 
     let app = test_app(state);
@@ -211,9 +211,9 @@ async fn test_list_dispatches_with_project_filter() {
 
     {
         let mut dm = state.dispatch_manager.write().await;
-        dm.start_dispatch("task one".to_string(), "project-a".to_string());
-        dm.start_dispatch("task two".to_string(), "project-b".to_string());
-        dm.start_dispatch("task three".to_string(), "project-a".to_string());
+        dm.start_dispatch("task one".to_string(), "project-a".to_string(), "claude".to_string());
+        dm.start_dispatch("task two".to_string(), "project-b".to_string(), "claude".to_string());
+        dm.start_dispatch("task three".to_string(), "project-a".to_string(), "claude".to_string());
     }
 
     let app = test_app(state);
@@ -250,7 +250,7 @@ async fn test_get_dispatch_returns_detail() {
 
     let dispatch_id = {
         let mut dm = state.dispatch_manager.write().await;
-        let id = dm.start_dispatch("test task".to_string(), "my-project".to_string());
+        let id = dm.start_dispatch("test task".to_string(), "my-project".to_string(), "claude".to_string());
         dm.append_output(&id, "line 1\n");
         dm.append_output(&id, "line 2\n");
         id
@@ -287,7 +287,7 @@ async fn test_get_dispatch_completed() {
 
     let dispatch_id = {
         let mut dm = state.dispatch_manager.write().await;
-        let id = dm.start_dispatch("done task".to_string(), "proj".to_string());
+        let id = dm.start_dispatch("done task".to_string(), "proj".to_string(), "claude".to_string());
         dm.append_output(&id, "result\n");
         dm.complete_dispatch(&id);
         id
@@ -406,7 +406,7 @@ async fn test_stream_dispatch_receives_events() {
     // Create a dispatch and get subscriber before sending output
     let dispatch_id = {
         let mut dm = state.dispatch_manager.write().await;
-        dm.start_dispatch("streaming task".to_string(), "proj".to_string())
+        dm.start_dispatch("streaming task".to_string(), "proj".to_string(), "claude".to_string())
     };
 
     // Spawn a task that will send output after a small delay

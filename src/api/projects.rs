@@ -4,9 +4,13 @@
 //! - `POST /api/projects` — register a new project by path
 //! - `DELETE /api/projects/:id` — remove a project by workspace ID
 //! - `GET /api/projects/:id/status` — get current project status
+//! - `GET /api/projects/:id/stats` — get detailed project statistics
 //! - `POST /api/projects/:id/index` — trigger background indexing
+//! - `POST /api/launch/editor` — open a project in the user's configured editor
+//! - `POST /api/launch/terminal` — open a terminal at a project path
 
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::Arc;
 
 use axum::Json;
@@ -15,6 +19,7 @@ use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::api::common::resolve_workspace;
 use crate::daemon_indexer::IndexRequest;
 use crate::daemon_state::{DaemonState, WorkspaceLoadStatus};
 use crate::registry::ProjectStatus;
@@ -362,4 +367,213 @@ pub async fn trigger_index(
             },
         }),
     ))
+}
+
+// ---------------------------------------------------------------------------
+// Project stats
+// ---------------------------------------------------------------------------
+
+/// Per-language file count.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LanguageCount {
+    pub language: String,
+    pub file_count: i64,
+}
+
+/// Per-kind symbol count.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SymbolKindCount {
+    pub kind: String,
+    pub count: i64,
+}
+
+/// Detailed project statistics response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProjectStatsResponse {
+    pub total_symbols: i64,
+    pub total_files: i64,
+    pub total_relationships: i64,
+    pub db_size_mb: f64,
+    pub embedding_count: i64,
+    pub languages: Vec<LanguageCount>,
+    pub symbol_kinds: Vec<SymbolKindCount>,
+}
+
+/// `GET /api/projects/:id/stats` — get detailed project statistics.
+#[utoipa::path(
+    get,
+    path = "/api/projects/{id}/stats",
+    tag = "projects",
+    params(("id" = String, Path, description = "Workspace ID")),
+    responses(
+        (status = 200, description = "Project statistics", body = ProjectStatsResponse),
+        (status = 404, description = "Project not found or not ready")
+    )
+)]
+pub async fn get_project_stats(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ProjectStatsResponse>, (StatusCode, String)> {
+    let daemon_state = state.daemon_state.read().await;
+    let loaded_ws = resolve_workspace(&daemon_state, Some(&id))?;
+
+    let db = loaded_ws
+        .workspace
+        .db
+        .as_ref()
+        .ok_or((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Database not available for this workspace".to_string(),
+        ))?;
+
+    let db_lock = db.lock().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Database lock error: {}", e),
+        )
+    })?;
+
+    let stats = db_lock.get_stats().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to get database stats: {}", e),
+        )
+    })?;
+
+    let languages: Vec<LanguageCount> = db_lock
+        .count_files_by_language()
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to count languages: {}", e),
+            )
+        })?
+        .into_iter()
+        .map(|(language, file_count)| LanguageCount {
+            language,
+            file_count,
+        })
+        .collect();
+
+    let symbol_kinds: Vec<SymbolKindCount> = db_lock
+        .count_symbols_by_kind()
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to count symbol kinds: {}", e),
+            )
+        })?
+        .into_iter()
+        .map(|(kind, count)| SymbolKindCount { kind, count })
+        .collect();
+
+    Ok(Json(ProjectStatsResponse {
+        total_symbols: stats.total_symbols,
+        total_files: stats.total_files,
+        total_relationships: stats.total_relationships,
+        db_size_mb: stats.db_size_mb,
+        embedding_count: stats.embedding_count,
+        languages,
+        symbol_kinds,
+    }))
+}
+
+// ── Launch endpoints ──────────────────────────────────────────────────
+
+/// Request body for launching an editor at a project path.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct LaunchEditorRequest {
+    /// Editor command to run (e.g. "code", "code-insiders", "cursor", "zed")
+    pub editor: String,
+    /// Absolute path to the project directory
+    pub path: String,
+}
+
+/// Request body for opening a terminal at a project path.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct LaunchTerminalRequest {
+    /// Absolute path to the project directory
+    pub path: String,
+}
+
+/// Generic launch response.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LaunchResponse {
+    pub ok: bool,
+}
+
+/// `POST /api/launch/editor` — open a project directory in the user's editor.
+///
+/// Spawns a detached process: `{editor} {path}`. Returns immediately.
+#[utoipa::path(
+    post,
+    path = "/api/launch/editor",
+    request_body = LaunchEditorRequest,
+    responses(
+        (status = 200, description = "Editor launched", body = LaunchResponse),
+        (status = 400, description = "Invalid request"),
+        (status = 500, description = "Failed to spawn editor")
+    ),
+    tag = "projects"
+)]
+pub async fn launch_editor(
+    Json(body): Json<LaunchEditorRequest>,
+) -> Result<Json<LaunchResponse>, (StatusCode, String)> {
+    let path = PathBuf::from(&body.path);
+    if !path.exists() {
+        return Err((StatusCode::BAD_REQUEST, format!("Path does not exist: {}", body.path)));
+    }
+
+    tokio::process::Command::new(&body.editor)
+        .arg(&body.path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to launch {}: {}", body.editor, e))
+        })?;
+
+    Ok(Json(LaunchResponse { ok: true }))
+}
+
+/// `POST /api/launch/terminal` — open a system terminal at the given path.
+///
+/// On macOS, runs `open -a Terminal {path}`. On Linux, tries common terminals.
+#[utoipa::path(
+    post,
+    path = "/api/launch/terminal",
+    request_body = LaunchTerminalRequest,
+    responses(
+        (status = 200, description = "Terminal launched", body = LaunchResponse),
+        (status = 400, description = "Invalid request"),
+        (status = 500, description = "Failed to spawn terminal")
+    ),
+    tag = "projects"
+)]
+pub async fn launch_terminal(
+    Json(body): Json<LaunchTerminalRequest>,
+) -> Result<Json<LaunchResponse>, (StatusCode, String)> {
+    let path = PathBuf::from(&body.path);
+    if !path.exists() {
+        return Err((StatusCode::BAD_REQUEST, format!("Path does not exist: {}", body.path)));
+    }
+
+    let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "macos") {
+        ("open", vec!["-a", "Terminal", &body.path])
+    } else {
+        ("xdg-terminal-emulator", vec!["--working-directory", &body.path])
+    };
+
+    tokio::process::Command::new(cmd)
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to open terminal: {}", e))
+        })?;
+
+    Ok(Json(LaunchResponse { ok: true }))
 }

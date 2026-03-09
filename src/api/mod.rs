@@ -36,7 +36,11 @@ use crate::server::AppState;
         projects::delete_project,
         projects::get_project_status,
         projects::trigger_index,
+        projects::get_project_stats,
+        projects::launch_editor,
+        projects::launch_terminal,
         dashboard::stats,
+        dashboard::check_embeddings,
         // memories
         memories::list_memories,
         memories::get_memory,
@@ -62,11 +66,18 @@ use crate::server::AppState;
             projects::ProjectStatusResponse,
             projects::TriggerIndexRequest,
             projects::TriggerIndexResponse,
+            projects::ProjectStatsResponse,
+            projects::LanguageCount,
+            projects::SymbolKindCount,
+            projects::LaunchEditorRequest,
+            projects::LaunchTerminalRequest,
+            projects::LaunchResponse,
             dashboard::DashboardStats,
             dashboard::ProjectStats,
             dashboard::MemoryStats,
             dashboard::AgentStats,
             dashboard::BackendStat,
+            dashboard::EmbeddingProjectStatus,
             // memories
             crate::memory::Checkpoint,
             crate::memory::Plan,
@@ -119,7 +130,10 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/projects", get(projects::list_projects).post(projects::create_project))
         .route("/projects/{id}", axum::routing::delete(projects::delete_project))
         .route("/projects/{id}/status", get(projects::get_project_status))
+        .route("/projects/{id}/stats", get(projects::get_project_stats))
         .route("/projects/{id}/index", axum::routing::post(projects::trigger_index))
+        .route("/launch/editor", post(projects::launch_editor))
+        .route("/launch/terminal", post(projects::launch_terminal))
         .route("/search", axum::routing::post(search::search))
         .route("/search/debug", axum::routing::post(search::search_debug))
         // Agent dispatch routes (note: /agents/history and /agents/backends BEFORE /agents/{id})
@@ -136,6 +150,7 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/plans/{id}", get(memories::get_plan))
         // Dashboard
         .route("/dashboard/stats", get(dashboard::stats))
+        .route("/embeddings/check", post(dashboard::check_embeddings))
         // OpenAPI spec + interactive docs
         .route("/openapi.json", get(openapi_spec))
         .merge(Scalar::with_url("/docs", ApiDoc::openapi()))

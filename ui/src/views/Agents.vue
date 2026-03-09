@@ -22,6 +22,7 @@ interface DispatchSummary {
   id: string
   task: string
   project?: string
+  backend: string
   status: string
   started_at: string
   completed_at?: string
@@ -32,6 +33,7 @@ interface DispatchDetail {
   id: string
   task: string
   project?: string
+  backend: string
   status: string
   started_at: string
   completed_at?: string
@@ -46,6 +48,7 @@ interface DispatchDetail {
 // Dispatch form
 const taskDescription = ref('')
 const selectedProject = ref('')
+const selectedBackend = ref('')
 const hintsText = ref('')
 const dispatching = ref(false)
 const dispatchError = ref<string | null>(null)
@@ -158,6 +161,9 @@ async function dispatchTask() {
   }
   if (selectedProject.value) {
     body.project = selectedProject.value
+  }
+  if (selectedBackend.value) {
+    body.backend = selectedBackend.value
   }
   if (hintsText.value.trim()) {
     body.hints = { extra_context: hintsText.value.trim() }
@@ -337,6 +343,21 @@ onUnmounted(() => {
           </select>
         </div>
 
+        <div class="form-group form-group-backend">
+          <label class="form-label" for="backend-select">Backend</label>
+          <select
+            id="backend-select"
+            v-model="selectedBackend"
+            class="form-select"
+            :disabled="dispatching || availableBackends.length === 0"
+          >
+            <option value="">First available</option>
+            <option v-for="b in availableBackends" :key="b.name" :value="b.name">
+              {{ b.name }}{{ b.version ? ` (${b.version})` : '' }}
+            </option>
+          </select>
+        </div>
+
         <div class="form-group form-group-hints">
           <label class="form-label" for="hints-input">Hints (symbols, files, context)</label>
           <textarea
@@ -419,6 +440,10 @@ onUnmounted(() => {
           <span class="pi pi-folder meta-icon"></span>
           {{ selectedDispatch.project }}
         </span>
+        <span v-if="selectedDispatch.backend" class="meta-item">
+          <span class="pi pi-bolt meta-icon"></span>
+          {{ selectedDispatch.backend }}
+        </span>
         <span class="meta-item">
           <span class="pi pi-clock meta-icon"></span>
           {{ relativeTime(selectedDispatch.started_at) }}
@@ -486,6 +511,10 @@ onUnmounted(() => {
             </span>
           </div>
           <div class="history-meta">
+            <span v-if="d.backend" class="meta-item">
+              <span class="pi pi-bolt meta-icon"></span>
+              {{ d.backend }}
+            </span>
             <span v-if="d.project" class="meta-item">
               <span class="pi pi-folder meta-icon"></span>
               {{ d.project }}
@@ -604,6 +633,14 @@ onUnmounted(() => {
 }
 
 .form-group-project .form-select {
+  width: 100%;
+}
+
+.form-group-backend {
+  flex: 0 0 180px;
+}
+
+.form-group-backend .form-select {
   width: 100%;
 }
 
@@ -916,7 +953,8 @@ onUnmounted(() => {
     flex-direction: column;
   }
 
-  .form-group-project {
+  .form-group-project,
+  .form-group-backend {
     flex: none;
     width: 100%;
   }

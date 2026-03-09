@@ -49,6 +49,8 @@ pub struct AgentDispatch {
     pub task: String,
     /// The project this dispatch is associated with.
     pub project: String,
+    /// The backend that executed this dispatch (e.g. "claude", "codex").
+    pub backend: String,
     /// Current status.
     pub status: DispatchStatus,
     /// ISO 8601 UTC timestamp when the dispatch started.
@@ -105,7 +107,7 @@ impl DispatchManager {
     ///
     /// Creates a dispatch record in `Running` status with a broadcast
     /// channel for output streaming.
-    pub fn start_dispatch(&mut self, task: String, project: String) -> String {
+    pub fn start_dispatch(&mut self, task: String, project: String, backend: String) -> String {
         let timestamp = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let id = generate_dispatch_id(&timestamp, &task);
 
@@ -115,6 +117,7 @@ impl DispatchManager {
             id: id.clone(),
             task,
             project,
+            backend,
             status: DispatchStatus::Running,
             started_at: timestamp,
             completed_at: None,
@@ -228,6 +231,7 @@ pub struct DispatchSnapshot {
     pub task: String,
     pub output: String,
     pub project: String,
+    pub backend: String,
     pub status: DispatchStatus,
     pub error: Option<String>,
 }
@@ -238,6 +242,7 @@ impl From<&AgentDispatch> for DispatchSnapshot {
             task: d.task.clone(),
             output: d.output.clone(),
             project: d.project.clone(),
+            backend: d.backend.clone(),
             status: d.status.clone(),
             error: d.error.clone(),
         }

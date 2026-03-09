@@ -93,6 +93,7 @@ async fn test_dispatch_manager_start_dispatch() {
     let id = manager.start_dispatch(
         "Fix the bug in parser".to_string(),
         "julie".to_string(),
+        "claude".to_string(),
     );
 
     assert!(id.starts_with("dispatch_"), "ID should start with dispatch_ prefix");
@@ -110,7 +111,7 @@ async fn test_dispatch_manager_start_dispatch() {
 #[tokio::test]
 async fn test_dispatch_manager_append_output() {
     let mut manager = DispatchManager::new();
-    let id = manager.start_dispatch("task".to_string(), "proj".to_string());
+    let id = manager.start_dispatch("task".to_string(), "proj".to_string(), "claude".to_string());
 
     manager.append_output(&id, "line 1\n");
     manager.append_output(&id, "line 2\n");
@@ -122,7 +123,7 @@ async fn test_dispatch_manager_append_output() {
 #[tokio::test]
 async fn test_dispatch_manager_complete_dispatch() {
     let mut manager = DispatchManager::new();
-    let id = manager.start_dispatch("task".to_string(), "proj".to_string());
+    let id = manager.start_dispatch("task".to_string(), "proj".to_string(), "claude".to_string());
     manager.append_output(&id, "result output");
 
     manager.complete_dispatch(&id);
@@ -135,7 +136,7 @@ async fn test_dispatch_manager_complete_dispatch() {
 #[tokio::test]
 async fn test_dispatch_manager_fail_dispatch() {
     let mut manager = DispatchManager::new();
-    let id = manager.start_dispatch("task".to_string(), "proj".to_string());
+    let id = manager.start_dispatch("task".to_string(), "proj".to_string(), "claude".to_string());
 
     manager.fail_dispatch(&id, "process exited with code 1");
 
@@ -150,8 +151,8 @@ async fn test_dispatch_manager_list_dispatches_sorted() {
     let mut manager = DispatchManager::new();
     // Start dispatches with slight time differences (same millisecond is possible,
     // so we just verify count and that the sort doesn't crash)
-    let id1 = manager.start_dispatch("task 1".to_string(), "proj".to_string());
-    let id2 = manager.start_dispatch("task 2".to_string(), "proj".to_string());
+    let id1 = manager.start_dispatch("task 1".to_string(), "proj".to_string(), "claude".to_string());
+    let id2 = manager.start_dispatch("task 2".to_string(), "proj".to_string(), "claude".to_string());
 
     let dispatches = manager.list_dispatches();
     assert_eq!(dispatches.len(), 2);
@@ -177,15 +178,15 @@ async fn test_dispatch_manager_get_nonexistent() {
 #[tokio::test]
 async fn test_dispatch_id_uniqueness() {
     let mut manager = DispatchManager::new();
-    let id1 = manager.start_dispatch("task 1".to_string(), "proj".to_string());
-    let id2 = manager.start_dispatch("task 2".to_string(), "proj".to_string());
+    let id1 = manager.start_dispatch("task 1".to_string(), "proj".to_string(), "claude".to_string());
+    let id2 = manager.start_dispatch("task 2".to_string(), "proj".to_string(), "claude".to_string());
     assert_ne!(id1, id2, "dispatch IDs should be unique");
 }
 
 #[tokio::test]
 async fn test_dispatch_broadcast_channel() {
     let mut manager = DispatchManager::new();
-    let id = manager.start_dispatch("task".to_string(), "proj".to_string());
+    let id = manager.start_dispatch("task".to_string(), "proj".to_string(), "claude".to_string());
 
     // Subscribe to the broadcast channel
     let mut rx = manager.subscribe(&id).expect("should get receiver");
@@ -201,7 +202,7 @@ async fn test_dispatch_broadcast_channel() {
 #[tokio::test]
 async fn test_dispatch_broadcast_multiple_subscribers() {
     let mut manager = DispatchManager::new();
-    let id = manager.start_dispatch("task".to_string(), "proj".to_string());
+    let id = manager.start_dispatch("task".to_string(), "proj".to_string(), "claude".to_string());
 
     let mut rx1 = manager.subscribe(&id).expect("sub 1");
     let mut rx2 = manager.subscribe(&id).expect("sub 2");
@@ -234,7 +235,7 @@ fn test_dispatch_status_serializable() {
 #[test]
 fn test_agent_dispatch_serializable() {
     let mut manager = DispatchManager::new();
-    let id = manager.start_dispatch("my task".to_string(), "proj".to_string());
+    let id = manager.start_dispatch("my task".to_string(), "proj".to_string(), "claude".to_string());
     let dispatch = manager.get_dispatch(&id).unwrap();
     let json = serde_json::to_value(dispatch).expect("AgentDispatch should serialize");
     assert_eq!(json["task"], "my task");
@@ -417,6 +418,7 @@ async fn test_save_result_as_checkpoint_completed() {
     let id = manager.start_dispatch(
         "Refactor the parser".to_string(),
         "julie".to_string(),
+        "claude".to_string(),
     );
     manager.append_output(&id, "Done. Refactored 3 files.\n");
     manager.complete_dispatch(&id);
@@ -452,7 +454,7 @@ async fn test_save_result_as_checkpoint_failed() {
     let workspace_root = temp_dir.path();
 
     let mut manager = DispatchManager::new();
-    let id = manager.start_dispatch("Bad task".to_string(), "proj".to_string());
+    let id = manager.start_dispatch("Bad task".to_string(), "proj".to_string(), "claude".to_string());
     manager.fail_dispatch(&id, "Backend crashed");
 
     let dispatch = manager.get_dispatch(&id).unwrap();
@@ -476,6 +478,7 @@ async fn test_dispatch_lifecycle_happy_path() {
     let id = manager.start_dispatch(
         "Refactor the parser module".to_string(),
         "julie".to_string(),
+        "claude".to_string(),
     );
     assert!(matches!(
         manager.get_dispatch(&id).unwrap().status,
@@ -503,7 +506,7 @@ async fn test_dispatch_lifecycle_happy_path() {
 async fn test_dispatch_lifecycle_failure() {
     let mut manager = DispatchManager::new();
 
-    let id = manager.start_dispatch("Bad task".to_string(), "proj".to_string());
+    let id = manager.start_dispatch("Bad task".to_string(), "proj".to_string(), "claude".to_string());
     manager.append_output(&id, "Starting...\n");
     manager.fail_dispatch(&id, "Backend not available");
 

@@ -17,8 +17,7 @@ use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as _;
 
-use crate::agent::backend::{AgentBackend, BackendInfo};
-use crate::agent::claude_backend::ClaudeBackend;
+use crate::agent::backend::{self, BackendInfo};
 use crate::agent::context_assembly::{self, ContextHints};
 use crate::agent::dispatch;
 use crate::api::common::resolve_workspace;
@@ -36,6 +35,10 @@ pub struct DispatchRequest {
     /// Workspace/project ID. If omitted, uses the first Ready workspace.
     #[serde(default)]
     pub project: Option<String>,
+    /// Backend name (e.g. "claude", "codex", "gemini", "copilot").
+    /// If omitted, uses the first available backend.
+    #[serde(default)]
+    pub backend: Option<String>,
     /// Optional hints for context assembly.
     #[serde(default)]
     pub hints: Option<HintsInput>,
@@ -83,6 +86,7 @@ pub struct DispatchSummary {
     pub id: String,
     pub task: String,
     pub project: String,
+    pub backend: String,
     pub status: String,
     pub started_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -97,6 +101,7 @@ pub struct DispatchDetail {
     pub id: String,
     pub task: String,
     pub project: String,
+    pub backend: String,
     pub status: String,
     pub started_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -169,6 +174,7 @@ pub async fn list_dispatches(
             id: d.id.clone(),
             task: d.task.clone(),
             project: d.project.clone(),
+            backend: d.backend.clone(),
             status: d.status.as_str().to_string(),
             started_at: d.started_at.clone(),
             completed_at: d.completed_at.clone(),
@@ -204,6 +210,7 @@ pub async fn get_dispatch(
         id: dispatch.id.clone(),
         task: dispatch.task.clone(),
         project: dispatch.project.clone(),
+        backend: dispatch.backend.clone(),
         status: dispatch.status.as_str().to_string(),
         started_at: dispatch.started_at.clone(),
         completed_at: dispatch.completed_at.clone(),
@@ -324,16 +331,36 @@ pub async fn dispatch_agent(
         )
     })?;
 
-    // 3. Find an available backend
-    let backend = state
-        .backends
-        .iter()
-        .find(|b| b.available)
-        .ok_or((
-            StatusCode::SERVICE_UNAVAILABLE,
-            "No available agent backend".to_string(),
-        ))?;
-    let backend_name = backend.name.clone();
+    // 3. Resolve backend: use requested name or first available
+    let backend_name = if let Some(ref requested) = body.backend {
+        // Validate the requested backend exists and is available
+        let info = state
+            .backends
+            .iter()
+            .find(|b| b.name == *requested)
+            .ok_or((
+                StatusCode::BAD_REQUEST,
+                format!("Unknown backend: {}", requested),
+            ))?;
+        if !info.available {
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("Backend '{}' is not available (CLI not found)", requested),
+            ));
+        }
+        requested.clone()
+    } else {
+        // Default: first available backend
+        state
+            .backends
+            .iter()
+            .find(|b| b.available)
+            .map(|b| b.name.clone())
+            .ok_or((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "No available agent backend".to_string(),
+            ))?
+    };
 
     // 4. Start dispatch in the manager (creates broadcast channel)
     let project_name = body
@@ -341,12 +368,13 @@ pub async fn dispatch_agent(
         .unwrap_or_else(|| "default".to_string());
     let dispatch_id = {
         let mut dm = state.dispatch_manager.write().await;
-        dm.start_dispatch(body.task.clone(), project_name.clone())
+        dm.start_dispatch(body.task.clone(), project_name.clone(), backend_name.clone())
     };
 
     // 5. Spawn background task to run the agent
     let dm = state.dispatch_manager.clone();
     let id = dispatch_id.clone();
+    let bn = backend_name.clone();
     tokio::spawn(async move {
         // Get the broadcast sender for real-time streaming to SSE subscribers
         let tx = {
@@ -362,16 +390,23 @@ pub async fn dispatch_agent(
             }
         };
 
-        // Create the backend and verify availability
-        let claude = ClaudeBackend::new();
-        if !claude.is_available() {
+        // Create the backend by name and verify availability
+        let agent = match backend::create_backend(&bn) {
+            Some(b) => b,
+            None => {
+                let mut dm_write = dm.write().await;
+                dm_write.fail_dispatch(&id, &format!("Unknown backend: {}", bn));
+                return;
+            }
+        };
+        if !agent.is_available() {
             let mut dm_write = dm.write().await;
-            dm_write.fail_dispatch(&id, "Claude CLI not available");
+            dm_write.fail_dispatch(&id, &format!("{} CLI not available", bn));
             return;
         }
 
         // Dispatch to the backend — it streams output through the broadcast channel
-        let handle = match claude.dispatch(&prompt, tx) {
+        let handle = match agent.dispatch(&prompt, tx) {
             Ok(h) => h,
             Err(e) => {
                 let mut dm_write = dm.write().await;
@@ -394,21 +429,15 @@ pub async fn dispatch_agent(
                     dm_write.complete_dispatch(&id);
 
                     // Clone what we need for the checkpoint before dropping the lock.
-                    dm_write.get_dispatch(&id).map(|d| {
-                        (d.task.clone(), d.output.clone(), d.project.clone(),
-                         d.status.clone(), d.error.clone())
-                    })
+                    dm_write.get_dispatch(&id).map(dispatch::DispatchSnapshot::from)
                 };
                 // Lock released here -- checkpoint I/O runs without blocking
                 // other DispatchManager readers/writers.
-                if let Some((task, output, project, status, error)) = checkpoint_data {
-                    let proxy = dispatch::DispatchSnapshot {
-                        task, output, project, status, error,
-                    };
+                if let Some(snapshot) = checkpoint_data {
                     let _ = dispatch::save_result_as_checkpoint(
                         &workspace_root,
-                        &proxy,
-                        &backend_name,
+                        &snapshot,
+                        &bn,
                     )
                     .await;
                 }

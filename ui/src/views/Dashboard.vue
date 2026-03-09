@@ -38,11 +38,22 @@ interface BackendInfo {
   version?: string
 }
 
+interface EmbeddingProjectStatus {
+  project: string
+  workspace_id: string
+  backend: string | null
+  accelerated: boolean | null
+  degraded_reason: string | null
+  embedding_count: number
+  initialized: boolean
+}
+
 interface DashboardStats {
   projects: ProjectStats
   memories: MemoryStats
   agents: AgentStats
   backends: BackendInfo[]
+  embeddings: EmbeddingProjectStatus[]
 }
 
 // ---------------------------------------------------------------------------
@@ -54,6 +65,7 @@ const stats = ref<DashboardStats | null>(null)
 const error = ref<string | null>(null)
 const statsError = ref<string | null>(null)
 const loading = ref(true)
+const checkingEmbeddings = ref(false)
 
 // ---------------------------------------------------------------------------
 // Computed
@@ -120,6 +132,29 @@ async function fetchStats() {
   } catch (e) {
     statsError.value = e instanceof Error ? e.message : 'Failed to fetch stats'
   }
+}
+
+async function checkEmbeddings() {
+  checkingEmbeddings.value = true
+  try {
+    const res = await fetch('/api/embeddings/check', { method: 'POST' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const updated: EmbeddingProjectStatus[] = await res.json()
+    if (stats.value) {
+      stats.value = { ...stats.value, embeddings: updated }
+    }
+  } catch (e) {
+    // Non-fatal — the card will just keep showing current state
+  } finally {
+    checkingEmbeddings.value = false
+  }
+}
+
+function embeddingDotClass(e: EmbeddingProjectStatus): string {
+  if (!e.initialized) return 'dot-uninit'
+  if (e.accelerated) return 'dot-available'
+  if (e.degraded_reason) return 'dot-degraded'
+  return 'dot-available'
 }
 
 onMounted(async () => {
@@ -275,6 +310,47 @@ onMounted(async () => {
               <span v-if="b.version" class="backend-version">v{{ b.version }}</span>
             </div>
           </div>
+        </div>
+
+        <!-- Embeddings card -->
+        <div class="card">
+          <div class="card-header">
+            <span class="pi pi-microchip card-icon"></span>
+            <span class="card-label">Embeddings</span>
+          </div>
+          <div v-if="stats.embeddings.length === 0" class="card-value card-value-sm">No projects</div>
+          <div v-else class="embeddings-list">
+            <div
+              v-for="e in stats.embeddings"
+              :key="e.workspace_id"
+              class="embedding-row"
+            >
+              <span class="embedding-dot" :class="embeddingDotClass(e)"></span>
+              <span class="embedding-name">{{ e.project }}</span>
+              <span v-if="e.initialized && e.backend" class="embedding-backend">
+                {{ e.backend }}
+                <span v-if="e.accelerated" class="accel-bolt" title="GPU accelerated">&#9889;</span>
+              </span>
+              <span v-else class="embedding-backend embedding-uninit">not initialized</span>
+              <span class="embedding-count">{{ e.embedding_count.toLocaleString() }}</span>
+            </div>
+            <div
+              v-for="e in stats.embeddings.filter(x => x.degraded_reason)"
+              :key="'deg-' + e.workspace_id"
+              class="embedding-degraded"
+            >
+              <span class="pi pi-exclamation-triangle"></span>
+              {{ e.project }}: {{ e.degraded_reason }}
+            </div>
+          </div>
+          <button
+            class="check-btn"
+            :disabled="checkingEmbeddings"
+            @click="checkEmbeddings"
+          >
+            <span :class="checkingEmbeddings ? 'pi pi-spin pi-spinner' : 'pi pi-refresh'"></span>
+            {{ checkingEmbeddings ? 'Checking...' : 'Check Status' }}
+          </button>
         </div>
       </div>
 
@@ -526,5 +602,106 @@ onMounted(async () => {
 .backend-version {
   font-size: 0.75rem;
   color: var(--text-secondary);
+}
+
+/* Embeddings list */
+.embeddings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.embedding-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.embedding-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot-uninit {
+  background: var(--text-muted);
+}
+
+.dot-degraded {
+  background: var(--color-warning);
+}
+
+.embedding-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.embedding-backend {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.embedding-uninit {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.accel-bolt {
+  font-size: 0.65rem;
+}
+
+.embedding-count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.embedding-degraded {
+  font-size: 0.7rem;
+  color: var(--color-warning);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding-top: 0.2rem;
+}
+
+.embedding-degraded .pi {
+  font-size: 0.6rem;
+}
+
+.check-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  width: 100%;
+  justify-content: center;
+}
+
+.check-btn:hover:not(:disabled) {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  border-color: var(--color-primary-border);
+}
+
+.check-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.check-btn .pi {
+  font-size: 0.7rem;
 }
 </style>

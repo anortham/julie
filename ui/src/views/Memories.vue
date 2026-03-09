@@ -1296,4 +1296,21 @@ onMounted(() => {
 .plan-overlay-actions {
   margin-top: 0.75rem;
 }
+
+/* Responsive */
+@media (max-width: 600px) {
+  .filter-search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .filters-row {
+    gap: 0.5rem;
+  }
+
+  .filter-group {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+}
 </style>

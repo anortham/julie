@@ -726,7 +726,7 @@ async fn test_integration_dashboard_stats_with_populated_state() {
     // Add a dispatch so the agents section is populated
     {
         let mut dm = state.dispatch_manager.write().await;
-        let id = dm.start_dispatch("Review auth code".into(), "integ-search-ws".into());
+        let id = dm.start_dispatch("Review auth code".into(), "integ-search-ws".into(), "claude".into());
         dm.complete_dispatch(&id);
     }
 
@@ -823,7 +823,7 @@ async fn test_integration_dispatch_lifecycle_via_api() {
     // real backend; we test the lifecycle through the GET endpoints instead)
     let dispatch_id = {
         let mut dm = state.dispatch_manager.write().await;
-        let id = dm.start_dispatch("Analyze auth flow".into(), "integ-mem-ws".into());
+        let id = dm.start_dispatch("Analyze auth flow".into(), "integ-mem-ws".into(), "claude".into());
         dm.append_output(&id, "Analyzing authentication...\n");
         dm.append_output(&id, "Found 3 auth-related symbols.\n");
         dm.complete_dispatch(&id);

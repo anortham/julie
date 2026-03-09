@@ -384,4 +384,35 @@ body {
   border-color: var(--color-primary-border);
   background: var(--color-primary-bg);
 }
+
+/* =========================================================================
+   Responsive — narrow screens
+   ========================================================================= */
+
+@media (max-width: 768px) {
+  .app-header {
+    gap: 0.75rem;
+    padding: 0 0.75rem;
+  }
+
+  .brand-name {
+    display: none;
+  }
+
+  .nav-link {
+    padding: 0.5rem;
+    font-size: 0;       /* Hide text */
+    gap: 0;
+  }
+
+  .nav-link .pi {
+    font-size: 1.1rem;  /* Keep icons visible and tappable */
+  }
+}
+
+@media (max-width: 600px) {
+  .app-main {
+    padding: 1rem;
+  }
+}
 </style>

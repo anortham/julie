@@ -1,6 +1,6 @@
-//! Claude CLI backend implementation.
+//! Gemini CLI backend implementation.
 //!
-//! Spawns `claude -p "prompt"` via `tokio::process::Command` and streams
+//! Spawns `gemini -p "prompt"` via `tokio::process::Command` and streams
 //! stdout line-by-line through a broadcast channel.
 
 use anyhow::{Context, Result};
@@ -8,35 +8,35 @@ use tokio::sync::broadcast;
 
 use super::backend::AgentBackend;
 
-/// Claude CLI backend.
+/// Gemini CLI backend.
 ///
-/// Implements the `AgentBackend` trait by spawning `claude -p` as a child
+/// Implements the `AgentBackend` trait by spawning `gemini -p` as a child
 /// process and streaming its stdout through a broadcast channel.
-pub struct ClaudeBackend;
+pub struct GeminiBackend;
 
-impl ClaudeBackend {
+impl GeminiBackend {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for ClaudeBackend {
+impl Default for GeminiBackend {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl AgentBackend for ClaudeBackend {
+impl AgentBackend for GeminiBackend {
     fn name(&self) -> &str {
-        "claude"
+        "gemini"
     }
 
     fn is_available(&self) -> bool {
-        super::backend::check_command_exists("claude")
+        super::backend::check_command_exists("gemini")
     }
 
     fn version(&self) -> Option<String> {
-        super::backend::detect_cli_version("claude")
+        super::backend::detect_cli_version("gemini")
     }
 
     fn dispatch(
@@ -44,7 +44,7 @@ impl AgentBackend for ClaudeBackend {
         prompt: &str,
         broadcast_tx: broadcast::Sender<String>,
     ) -> Result<tokio::task::JoinHandle<Result<String>>> {
-        let child = tokio::process::Command::new("claude")
+        let child = tokio::process::Command::new("gemini")
             .arg("-p")
             .arg(prompt)
             .stdin(std::process::Stdio::null())
@@ -52,8 +52,8 @@ impl AgentBackend for ClaudeBackend {
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .context("Failed to spawn claude CLI process")?;
+            .context("Failed to spawn gemini CLI process")?;
 
-        super::backend::spawn_and_stream(child, "claude", broadcast_tx)
+        super::backend::spawn_and_stream(child, "gemini", broadcast_tx)
     }
 }

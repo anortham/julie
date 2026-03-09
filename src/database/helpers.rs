@@ -82,6 +82,36 @@ impl SymbolDatabase {
         })
     }
 
+    /// Count files grouped by language, sorted by count descending.
+    pub fn count_files_by_language(&self) -> Result<Vec<(String, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT language, COUNT(*) as cnt FROM files GROUP BY language ORDER BY cnt DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    /// Count symbols grouped by kind, sorted by count descending.
+    pub fn count_symbols_by_kind(&self) -> Result<Vec<(String, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT kind, COUNT(*) as cnt FROM symbols GROUP BY kind ORDER BY cnt DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
     /// Helper to convert database row to Symbol
     pub(crate) fn row_to_symbol(&self, row: &Row) -> rusqlite::Result<Symbol> {
         let kind_str: String = row.get("kind")?;

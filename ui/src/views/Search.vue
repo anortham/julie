@@ -999,4 +999,16 @@ function contentTypeBadgeClass(ct?: string): string {
   color: var(--text-primary);
   word-break: break-all;
 }
+
+/* Responsive */
+@media (max-width: 600px) {
+  .search-row {
+    flex-direction: column;
+  }
+
+  .search-row .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
 </style>

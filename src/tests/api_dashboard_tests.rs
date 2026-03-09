@@ -307,8 +307,8 @@ async fn test_dashboard_stats_agent_dispatches() {
     // Start some dispatches
     {
         let mut dm = state.dispatch_manager.write().await;
-        dm.start_dispatch("Fix bug #42".to_string(), "project-a".to_string());
-        dm.start_dispatch("Add feature".to_string(), "project-b".to_string());
+        dm.start_dispatch("Fix bug #42".to_string(), "project-a".to_string(), "claude".to_string());
+        dm.start_dispatch("Add feature".to_string(), "project-b".to_string(), "claude".to_string());
     }
 
     let app = test_app(state);

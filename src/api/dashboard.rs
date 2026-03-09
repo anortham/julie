@@ -2,6 +2,7 @@
 //!
 //! `GET /api/dashboard/stats` — aggregated statistics from DaemonState,
 //! memory filesystem, DispatchManager, and detected backends.
+//! `POST /api/embeddings/check` — trigger embedding provider initialization and return status.
 
 use std::sync::Arc;
 
@@ -27,8 +28,26 @@ pub struct DashboardStats {
     pub memories: MemoryStats,
     pub agents: AgentStats,
     pub backends: Vec<BackendStat>,
+    pub embeddings: Vec<EmbeddingProjectStatus>,
     /// Number of active file watchers (one per watched project).
     pub active_watchers: usize,
+}
+
+/// Per-project embedding status for the dashboard.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EmbeddingProjectStatus {
+    pub project: String,
+    pub workspace_id: String,
+    /// Resolved backend name: "sidecar", "ort", or null if not initialized.
+    pub backend: Option<String>,
+    /// Whether GPU acceleration is active.
+    pub accelerated: Option<bool>,
+    /// Reason for degraded performance (e.g. "MPS not available, using CPU").
+    pub degraded_reason: Option<String>,
+    /// Number of embeddings stored in SQLite (available even without runtime init).
+    pub embedding_count: i64,
+    /// Whether the embedding provider has been initialized this session.
+    pub initialized: bool,
 }
 
 /// Breakdown of project counts by status.
@@ -189,6 +208,9 @@ pub async fn stats(
     // -- Backends --
     let backends: Vec<BackendStat> = state.backends.iter().map(BackendStat::from).collect();
 
+    // -- Embeddings --
+    let embeddings = gather_embedding_stats(&state).await;
+
     // -- Active watchers --
     let active_watchers = {
         let ds = state.daemon_state.read().await;
@@ -200,13 +222,108 @@ pub async fn stats(
         memories: memory_stats,
         agents: agent_stats,
         backends,
+        embeddings,
         active_watchers,
     }))
 }
 
 // ---------------------------------------------------------------------------
+// Embedding check endpoint
+// ---------------------------------------------------------------------------
+
+/// `POST /api/embeddings/check`
+///
+/// Triggers embedding provider initialization on workspaces that haven't
+/// initialized yet, then returns the updated per-project embedding status.
+#[utoipa::path(
+    post,
+    path = "/api/embeddings/check",
+    tag = "dashboard",
+    responses(
+        (status = 200, description = "Per-project embedding status after initialization attempt", body = Vec<EmbeddingProjectStatus>),
+        (status = 500, description = "Internal server error")
+    )
+)]
+pub async fn check_embeddings(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<EmbeddingProjectStatus>>, (StatusCode, String)> {
+    // Initialize embedding providers on workspaces that don't have one yet.
+    {
+        let mut ds = state.daemon_state.write().await;
+        let uninitialized: Vec<String> = ds
+            .workspaces
+            .iter()
+            .filter(|(_, ws)| {
+                ws.status == WorkspaceLoadStatus::Ready
+                    && ws.workspace.embedding_provider.is_none()
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        for ws_id in uninitialized {
+            if let Some(loaded) = ds.workspaces.get_mut(&ws_id) {
+                loaded.workspace.initialize_embedding_provider();
+            }
+        }
+    }
+
+    let statuses = gather_embedding_stats(&state).await;
+    Ok(Json(statuses))
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Gather per-project embedding status from daemon state.
+async fn gather_embedding_stats(state: &Arc<AppState>) -> Vec<EmbeddingProjectStatus> {
+    let ds = state.daemon_state.read().await;
+    let registry = state.registry.read().await;
+
+    let mut statuses = Vec::new();
+
+    for entry in registry.list_projects() {
+        let ws = ds.workspaces.get(&entry.workspace_id);
+
+        let (backend, accelerated, degraded_reason, initialized) =
+            if let Some(loaded) = ws {
+                if let Some(ers) = &loaded.workspace.embedding_runtime_status {
+                    (
+                        Some(ers.resolved_backend.as_str().to_string()),
+                        Some(ers.accelerated),
+                        ers.degraded_reason.clone(),
+                        true,
+                    )
+                } else {
+                    (None, None, None, false)
+                }
+            } else {
+                (None, None, None, false)
+            };
+
+        // Always try to get embedding count from SQLite, even if runtime isn't initialized.
+        let embedding_count = ws
+            .filter(|loaded| loaded.status == WorkspaceLoadStatus::Ready)
+            .and_then(|loaded| loaded.workspace.db.as_ref())
+            .and_then(|db| {
+                let db = db.lock().ok()?;
+                db.embedding_count().ok()
+            })
+            .unwrap_or(0);
+
+        statuses.push(EmbeddingProjectStatus {
+            project: entry.name.clone(),
+            workspace_id: entry.workspace_id.clone(),
+            backend,
+            accelerated,
+            degraded_reason,
+            embedding_count,
+            initialized,
+        });
+    }
+
+    statuses
+}
 
 /// Walk `.memories/` date directories and count checkpoints.
 ///

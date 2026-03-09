@@ -473,3 +473,121 @@ async fn test_utf8_decode_error_handling() -> Result<()> {
     );
     Ok(())
 }
+
+/// Create a temporary Vue file with <script setup> for testing
+fn create_test_vue_file() -> Result<(TempDir, String)> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path().to_path_buf();
+
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+
+    let test_file = src_dir.join("Counter.vue");
+    let file_content = r#"<script setup lang="ts">
+import { ref } from 'vue'
+
+const count = ref(0)
+
+function increment() {
+  count.value++
+}
+
+function decrement() {
+  count.value--
+}
+</script>
+
+<template>
+  <div>
+    <button @click="decrement">-</button>
+    <span>{{ count }}</span>
+    <button @click="increment">+</button>
+  </div>
+</template>
+
+<style scoped>
+.counter {
+  display: flex;
+  gap: 8px;
+}
+</style>
+"#;
+    fs::write(&test_file, file_content)?;
+
+    Ok((temp_dir, workspace_path.to_string_lossy().to_string()))
+}
+
+#[tokio::test]
+async fn test_vue_target_minimal_extracts_code_body() -> Result<()> {
+    // Bug: get_symbols with target+minimal on Vue files returns empty code body
+    // because create_symbol_manual sets start_byte=0, end_byte=0 and
+    // extract_code_bodies slices source_code[0..0] = empty string.
+    let (_temp_dir, workspace_path) = create_test_vue_file()?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.clone()), true)
+        .await?;
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.clone()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // target+minimal should return the function body for "increment"
+    let tool = GetSymbolsTool {
+        file_path: "src/Counter.vue".to_string(),
+        max_depth: 1,
+        target: Some("increment".to_string()),
+        limit: None,
+        mode: Some("minimal".to_string()),
+        workspace: None,
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let text = extract_text_from_result(&result);
+
+    // Should contain the actual function body, not just a file header
+    assert!(
+        text.contains("count.value++"),
+        "Vue target+minimal should extract function body, got: {}",
+        text
+    );
+    assert!(
+        text.contains("function increment()"),
+        "Should contain function declaration, got: {}",
+        text
+    );
+
+    // Structure mode should still work (sanity check)
+    let structure_tool = GetSymbolsTool {
+        file_path: "src/Counter.vue".to_string(),
+        max_depth: 1,
+        target: None,
+        limit: None,
+        mode: Some("structure".to_string()),
+        workspace: None,
+    };
+
+    let structure_result = structure_tool.call_tool(&handler).await?;
+    let structure_text = extract_text_from_result(&structure_result);
+
+    assert!(
+        structure_text.contains("increment"),
+        "Structure mode should list increment symbol, got: {}",
+        structure_text
+    );
+    assert!(
+        structure_text.contains("decrement"),
+        "Structure mode should list decrement symbol, got: {}",
+        structure_text
+    );
+
+    Ok(())
+}

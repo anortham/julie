@@ -37,6 +37,10 @@ pub fn extract_code_bodies(
         }
     };
 
+    // Pre-split source into lines for line-based fallback (used when byte offsets unavailable)
+    let source_str = String::from_utf8_lossy(&source_code);
+    let source_lines: Vec<&str> = source_str.lines().collect();
+
     // Extract bodies based on mode
     for symbol in symbols.iter_mut() {
         let should_extract = match mode {
@@ -46,12 +50,30 @@ pub fn extract_code_bodies(
         };
 
         if should_extract {
-            // Extract the code bytes for this symbol
             let start_byte = symbol.start_byte as usize;
             let end_byte = symbol.end_byte as usize;
 
-            if start_byte < source_code.len() && end_byte <= source_code.len() {
-                // Use lossy conversion to handle potential UTF-8 issues
+            if start_byte == 0 && end_byte == 0 && symbol.start_line > 0 {
+                // Byte offsets unavailable (e.g. Vue SFC symbols from create_symbol_manual).
+                // Fall back to line-based extraction using start_line/end_line (1-indexed).
+                let start_idx = (symbol.start_line as usize).saturating_sub(1);
+                let end_idx = symbol.end_line as usize; // inclusive end → exclusive slice
+
+                if start_idx < source_lines.len() && end_idx <= source_lines.len() {
+                    let code = source_lines[start_idx..end_idx].join("\n");
+                    symbol.code_context = Some(code);
+                } else {
+                    debug!(
+                        symbol_name = %symbol.name,
+                        start_line = symbol.start_line,
+                        end_line = symbol.end_line,
+                        total_lines = source_lines.len(),
+                        "Symbol line range out of bounds, skipping extraction"
+                    );
+                    symbol.code_context = None;
+                }
+            } else if start_byte < source_code.len() && end_byte <= source_code.len() {
+                // Standard byte-based extraction
                 let code_bytes = &source_code[start_byte..end_byte];
                 symbol.code_context = Some(String::from_utf8_lossy(code_bytes).to_string());
             } else {
