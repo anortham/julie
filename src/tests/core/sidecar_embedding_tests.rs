@@ -127,7 +127,7 @@ mod tests {
     // =========================================================================
 
     #[test]
-    #[serial_test::serial]
+    #[serial_test::serial(embedding_env)]
     fn test_sidecar_root_path_env_override_wins() {
         use crate::embeddings::sidecar_supervisor::{sidecar_root_path, SIDECAR_ROOT_ENV};
 
@@ -150,6 +150,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(embedding_env)]
     fn test_sidecar_root_path_succeeds_from_source_checkout() {
         use crate::embeddings::sidecar_supervisor::sidecar_root_path;
 
