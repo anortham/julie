@@ -420,6 +420,8 @@ impl FastRefsTool {
             handler,
             ref_workspace_id,
             &self.symbol,
+            self.limit,
+            self.reference_kind.as_deref(),
         )
         .await
     }
