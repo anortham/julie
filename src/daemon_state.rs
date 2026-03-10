@@ -111,6 +111,23 @@ impl DaemonState {
         self.indexing_sender = Some(sender);
     }
 
+    /// Collect workspace IDs and paths for workspaces that need indexing.
+    ///
+    /// Returns entries with `Registered` or `Stale` status — these are projects
+    /// that were loaded on startup but don't yet have a complete index.
+    pub fn workspaces_needing_indexing(&self) -> Vec<(String, PathBuf)> {
+        self.workspaces
+            .iter()
+            .filter(|(_, w)| {
+                matches!(
+                    w.status,
+                    WorkspaceLoadStatus::Registered | WorkspaceLoadStatus::Stale
+                )
+            })
+            .map(|(id, w)| (id.clone(), w.path.clone()))
+            .collect()
+    }
+
     /// Register a project: validate path, register in GlobalRegistry, create
     /// workspace + MCP service, persist registry, start watcher, queue indexing.
     ///

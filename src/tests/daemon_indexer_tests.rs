@@ -224,6 +224,111 @@ fn test_daemon_state_indexing_status_maps_to_project_status() {
 }
 
 // ============================================================================
+// WORKSPACES NEEDING INDEXING
+// ============================================================================
+
+#[test]
+fn test_workspaces_needing_indexing_returns_registered_and_stale() {
+    let temp = tempfile::tempdir().unwrap();
+    let registry = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
+    let ct = CancellationToken::new();
+    let julie_home = temp.path().join("julie-home");
+    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+        registry.clone(), julie_home.clone(), ct.clone(),
+    )));
+    let mut state = DaemonState::new(registry, julie_home, ct);
+
+    // Register three workspaces with different statuses
+    let path_a = temp.path().join("project-a");
+    let path_b = temp.path().join("project-b");
+    let path_c = temp.path().join("project-c");
+
+    state.register_workspace("ws-a".to_string(), path_a.clone(), daemon_state_arc.clone());
+    state.register_workspace("ws-b".to_string(), path_b.clone(), daemon_state_arc.clone());
+    state.register_workspace("ws-c".to_string(), path_c.clone(), daemon_state_arc.clone());
+
+    // ws-a: Registered (default for no .julie dir)
+    // ws-b: set to Stale
+    if let Some(loaded) = state.workspaces.get_mut("ws-b") {
+        loaded.status = WorkspaceLoadStatus::Stale;
+    }
+    // ws-c: set to Ready (should NOT be returned)
+    if let Some(loaded) = state.workspaces.get_mut("ws-c") {
+        loaded.status = WorkspaceLoadStatus::Ready;
+    }
+
+    let needing = state.workspaces_needing_indexing();
+    let mut ids: Vec<&str> = needing.iter().map(|(id, _)| id.as_str()).collect();
+    ids.sort();
+
+    assert_eq!(ids.len(), 2, "Should return Registered + Stale, not Ready");
+    assert!(ids.contains(&"ws-a"), "Registered workspace should be included");
+    assert!(ids.contains(&"ws-b"), "Stale workspace should be included");
+}
+
+#[test]
+fn test_workspaces_needing_indexing_excludes_error_and_indexing() {
+    let temp = tempfile::tempdir().unwrap();
+    let registry = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
+    let ct = CancellationToken::new();
+    let julie_home = temp.path().join("julie-home");
+    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+        registry.clone(), julie_home.clone(), ct.clone(),
+    )));
+    let mut state = DaemonState::new(registry, julie_home, ct);
+
+    let path_a = temp.path().join("project-a");
+    let path_b = temp.path().join("project-b");
+
+    state.register_workspace("ws-a".to_string(), path_a.clone(), daemon_state_arc.clone());
+    state.register_workspace("ws-b".to_string(), path_b.clone(), daemon_state_arc.clone());
+
+    // ws-a: set to Error
+    if let Some(loaded) = state.workspaces.get_mut("ws-a") {
+        loaded.status = WorkspaceLoadStatus::Error("bad".to_string());
+    }
+    // ws-b: set to Indexing
+    if let Some(loaded) = state.workspaces.get_mut("ws-b") {
+        loaded.status = WorkspaceLoadStatus::Indexing;
+    }
+
+    let needing = state.workspaces_needing_indexing();
+    assert!(needing.is_empty(), "Error and Indexing should not be returned");
+}
+
+#[test]
+fn test_workspaces_needing_indexing_empty_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let registry = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
+    let ct = CancellationToken::new();
+    let julie_home = temp.path().join("julie-home");
+    let state = DaemonState::new(registry, julie_home, ct);
+
+    let needing = state.workspaces_needing_indexing();
+    assert!(needing.is_empty(), "No workspaces should need indexing when state is empty");
+}
+
+#[test]
+fn test_workspaces_needing_indexing_returns_correct_paths() {
+    let temp = tempfile::tempdir().unwrap();
+    let registry = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
+    let ct = CancellationToken::new();
+    let julie_home = temp.path().join("julie-home");
+    let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
+        registry.clone(), julie_home.clone(), ct.clone(),
+    )));
+    let mut state = DaemonState::new(registry, julie_home, ct);
+
+    let path_a = temp.path().join("project-a");
+    state.register_workspace("ws-a".to_string(), path_a.clone(), daemon_state_arc);
+
+    let needing = state.workspaces_needing_indexing();
+    assert_eq!(needing.len(), 1);
+    assert_eq!(needing[0].0, "ws-a");
+    assert_eq!(needing[0].1, path_a);
+}
+
+// ============================================================================
 // API ENDPOINT TESTS: POST /api/projects/:id/index
 // ============================================================================
 
