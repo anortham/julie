@@ -141,8 +141,8 @@ fn service_config_path() -> Result<PathBuf> {
 
 #[cfg(target_os = "windows")]
 fn service_config_path() -> Result<PathBuf> {
-    // Windows uses a scheduled task, not a config file — return a sentinel.
-    Ok(PathBuf::from("scheduled-task://Julie Server"))
+    // Windows uses a registry entry, not a config file — return a sentinel.
+    Ok(PathBuf::from("registry://HKCU/Run/Julie Server"))
 }
 
 // ─── Create service ─────────────────────────────────────────────────────────
@@ -252,30 +252,29 @@ WantedBy=default.target
 #[cfg(target_os = "windows")]
 fn create_service(paths: &InstallPaths, port: u16) -> Result<()> {
     let binary = paths.binary.display().to_string();
-    let task_command = format!("\"{}\" daemon start --foreground --port {}", binary, port);
+    let run_command = format!("\"{}\" daemon start --foreground --port {}", binary, port);
 
-    // /F forces overwrite if task already exists (idempotent)
-    let status = std::process::Command::new("schtasks")
+    // Use HKCU\...\Run — no admin rights required (same as Discord, Spotify, etc.)
+    let status = std::process::Command::new("reg")
         .args([
-            "/Create",
-            "/TN",
+            "add",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v",
             "Julie Server",
-            "/TR",
-            &task_command,
-            "/SC",
-            "ONLOGON",
-            "/RL",
-            "LIMITED",
-            "/F",
+            "/t",
+            "REG_SZ",
+            "/d",
+            &run_command,
+            "/f",
         ])
         .status()
-        .context("Failed to run schtasks")?;
+        .context("Failed to add registry autostart entry")?;
 
     if !status.success() {
-        bail!("schtasks /Create failed");
+        bail!("Failed to register Julie for autostart");
     }
 
-    println!("Created scheduled task: Julie Server");
+    println!("Registered autostart via HKCU\\...\\Run");
     Ok(())
 }
 
@@ -320,16 +319,17 @@ fn start_service() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn start_service() -> Result<()> {
-    let status = std::process::Command::new("schtasks")
-        .args(["/Run", "/TN", "Julie Server"])
+    let paths = InstallPaths::resolve()?;
+    let status = std::process::Command::new(&paths.binary)
+        .args(["daemon", "start"])
         .status()
-        .context("Failed to run scheduled task")?;
+        .context("Failed to start daemon")?;
 
     if !status.success() {
-        bail!("schtasks /Run failed");
+        bail!("daemon start failed");
     }
 
-    println!("Daemon started via scheduled task");
+    println!("Daemon started");
     Ok(())
 }
 
@@ -354,8 +354,9 @@ fn stop_service() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn stop_service() -> Result<()> {
-    let _ = std::process::Command::new("schtasks")
-        .args(["/End", "/TN", "Julie Server"])
+    // Kill by image name — covers both service and manual starts
+    let _ = std::process::Command::new("taskkill")
+        .args(["/IM", "julie-server.exe"])
         .status();
     Ok(())
 }
@@ -445,17 +446,21 @@ fn remove_service() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn remove_service() -> Result<()> {
-    let _ = std::process::Command::new("schtasks")
-        .args(["/End", "/TN", "Julie Server"])
-        .status();
+    let _ = stop_service();
 
-    let status = std::process::Command::new("schtasks")
-        .args(["/Delete", "/TN", "Julie Server", "/F"])
+    let status = std::process::Command::new("reg")
+        .args([
+            "delete",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v",
+            "Julie Server",
+            "/f",
+        ])
         .status()
-        .context("Failed to delete scheduled task")?;
+        .context("Failed to remove registry autostart entry")?;
 
     if status.success() {
-        println!("Removed scheduled task: Julie Server");
+        println!("Removed autostart: HKCU\\...\\Run\\Julie Server");
     }
     Ok(())
 }

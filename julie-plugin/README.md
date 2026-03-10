@@ -18,6 +18,7 @@ Download the latest release for your platform from the [Releases page](https://g
 
 ```bash
 curl -L https://github.com/anortham/julie/releases/latest/download/julie-aarch64-apple-darwin.tar.gz | tar xz
+xattr -d com.apple.quarantine julie-server
 sudo mv julie-server /usr/local/bin/julie
 ```
 
@@ -25,6 +26,7 @@ sudo mv julie-server /usr/local/bin/julie
 
 ```bash
 curl -L https://github.com/anortham/julie/releases/latest/download/julie-x86_64-apple-darwin.tar.gz | tar xz
+xattr -d com.apple.quarantine julie-server
 sudo mv julie-server /usr/local/bin/julie
 ```
 
@@ -35,9 +37,17 @@ curl -L https://github.com/anortham/julie/releases/latest/download/julie-x86_64-
 sudo mv julie-server /usr/local/bin/julie
 ```
 
-**Windows:**
+**Windows (PowerShell):**
 
-Download `julie-x86_64-pc-windows-msvc.zip` from the releases page, extract `julie-server.exe`, and add it to your PATH.
+Download and extract the latest release, then install:
+
+```powershell
+Invoke-WebRequest -Uri "https://github.com/anortham/julie/releases/latest/download/julie-x86_64-pc-windows-msvc.zip" -OutFile julie.zip
+Expand-Archive julie.zip -DestinationPath .
+.\julie-server.exe install
+```
+
+Or download `julie-x86_64-pc-windows-msvc.zip` from the releases page manually, extract it, and run `julie-server.exe install`.
 
 ### Option 2: Cargo Install
 
@@ -78,11 +88,14 @@ julie daemon stop
 
 ## Installing the Plugin
 
-```bash
-claude plugin add /path/to/julie-plugin
+In Claude Code:
+
+```
+/plugin marketplace add anortham/julie
+/plugin install julie@julie
 ```
 
-Or, if you cloned the Julie repository:
+Or from a local clone:
 
 ```bash
 claude plugin add ./julie-plugin

@@ -3,7 +3,7 @@ id: sidecar-binary-distribution
 title: Sidecar Binary Distribution
 status: completed
 created: 2026-03-04T21:45:29.810Z
-updated: 2026-03-08T22:01:33.521Z
+updated: 2026-03-08T22:14:07.433Z
 tags:
 - sidecar
 - distribution

@@ -1,7 +1,7 @@
 {
   "name": "julie",
   "description": "Cross-platform code intelligence server — fast search, navigation, refactoring, and developer memory across 31 languages",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "author": {
     "name": "Alan Northam"
   },

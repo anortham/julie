@@ -73,15 +73,21 @@ jobs:
         run: |
           strip target/${{ matrix.target }}/release/${{ matrix.binary_name }}
 
+      - name: Ad-hoc codesign (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          codesign --force --sign - target/${{ matrix.target }}/release/${{ matrix.binary_name }}
+
       - name: Create archive
         shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.zip"
-            7z a "${ARCHIVE}" "./target/${{ matrix.target }}/release/${{ matrix.binary_name }}"
+            ARCHIVE="julie-${{ matrix.target }}.zip"
+            cp "./target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "${{ matrix.binary_name }}"
+            7z a "${ARCHIVE}" "${{ matrix.binary_name }}"
           else
-            ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.tar.gz"
+            ARCHIVE="julie-${{ matrix.target }}.tar.gz"
             tar -czf "${ARCHIVE}" -C target/${{ matrix.target }}/release ${{ matrix.binary_name }}
           fi
           echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV
