@@ -131,6 +131,14 @@ fn spawn_process(
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
 
+    // On Windows, prevent the sidecar from opening a visible console window.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+
     let mut child = command
         .spawn()
         .context("failed to spawn embedding sidecar")?;

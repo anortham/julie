@@ -14,7 +14,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use tracing::{debug, error, info, warn};
 
-use crate::daemon::{daemon_stop, is_daemon_running, julie_home, pid_file_path};
+use crate::daemon::{daemon_stop, is_binary_newer_than_daemon, is_daemon_running, julie_home, pid_file_path};
 
 // Backoff schedule for polling daemon health (total ~5s)
 pub(crate) const BACKOFF_MS: &[u64] = &[50, 100, 200, 400, 800, 1600, 2000];
@@ -66,11 +66,11 @@ pub async fn run_connect(port: u16, workspace_root: PathBuf) -> Result<()> {
         }
     };
 
-    // Step 3: Bridge stdio ↔ HTTP
+    // Step 3: Bridge stdio ↔ HTTP (with reconnect on daemon crash)
     let mcp_url = format!("http://localhost:{}/mcp/{}", daemon_port, workspace_id);
     info!("Bridging stdio to MCP endpoint: {}", mcp_url);
 
-    run_stdio_bridge(&mcp_url).await
+    run_stdio_bridge(&mcp_url, port, &workspace_root).await
 }
 
 /// Ensure the daemon is running, starting it if necessary.
@@ -104,76 +104,6 @@ pub(crate) async fn ensure_daemon_running(requested_port: u16) -> Result<u16> {
     wait_for_daemon_health(requested_port).await?;
 
     Ok(requested_port)
-}
-
-/// Check if the current binary is newer than the running daemon.
-///
-/// Queries the daemon's health endpoint for uptime, then compares the binary's
-/// file modification time against when the daemon started. Returns `true` if
-/// the binary was modified after the daemon started (indicating a rebuild).
-///
-/// Defaults to `false` on any error (fail-safe: don't restart unless certain).
-async fn is_binary_newer_than_daemon(port: u16) -> bool {
-    let exe_path = match std::env::current_exe() {
-        Ok(p) => p,
-        Err(e) => {
-            debug!("Could not determine executable path: {}", e);
-            return false;
-        }
-    };
-
-    let exe_mtime = match std::fs::metadata(&exe_path).and_then(|m| m.modified()) {
-        Ok(t) => t,
-        Err(e) => {
-            debug!("Could not get executable mtime: {}", e);
-            return false;
-        }
-    };
-
-    // Query health endpoint for uptime
-    let url = format!("http://localhost:{}/api/health", port);
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-
-    let resp = match client.get(&url).send().await {
-        Ok(r) if r.status().is_success() => r,
-        _ => return false,
-    };
-
-    let body: serde_json::Value = match resp.json().await {
-        Ok(v) => v,
-        Err(e) => {
-            debug!("Could not parse health response: {}", e);
-            return false;
-        }
-    };
-
-    let uptime_seconds = match body["uptime_seconds"].as_u64() {
-        Some(u) => u,
-        None => {
-            debug!("Health response missing uptime_seconds");
-            return false;
-        }
-    };
-
-    // Calculate when the daemon started: now - uptime
-    let now = std::time::SystemTime::now();
-    let daemon_start = now - Duration::from_secs(uptime_seconds);
-
-    if exe_mtime > daemon_start {
-        info!(
-            "Binary is newer than running daemon (daemon started ~{}s ago)",
-            uptime_seconds
-        );
-        true
-    } else {
-        false
-    }
 }
 
 /// Spawn the daemon as a detached background child process.
@@ -308,6 +238,12 @@ pub(crate) async fn register_workspace(port: u16, workspace_root: &std::path::Pa
     )
 }
 
+/// Maximum reconnect attempts before giving up and returning errors to client.
+const MAX_RECONNECT_ATTEMPTS: u32 = 3;
+
+/// Maximum SSE buffer size (1MB) to prevent unbounded memory growth.
+const MAX_SSE_BUFFER_SIZE: usize = 1_048_576;
+
 /// Bridge stdin/stdout to the daemon's MCP HTTP endpoint.
 ///
 /// Reads newline-delimited JSON-RPC messages from stdin, POSTs each to
@@ -317,8 +253,15 @@ pub(crate) async fn register_workspace(port: u16, workspace_root: &std::path::Pa
 /// - POST with JSON-RPC body → response is either direct JSON or SSE stream
 /// - For SSE, we forward events as they arrive
 ///
+/// On daemon connection failure, attempts to restart the daemon and
+/// re-register the workspace (up to `MAX_RECONNECT_ATTEMPTS` times).
+///
 /// Exits on stdin EOF or unrecoverable bridge error.
-async fn run_stdio_bridge(mcp_url: &str) -> Result<()> {
+async fn run_stdio_bridge(
+    initial_mcp_url: &str,
+    port: u16,
+    workspace_root: &std::path::Path,
+) -> Result<()> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     let client = reqwest::Client::builder()
@@ -331,8 +274,10 @@ async fn run_stdio_bridge(mcp_url: &str) -> Result<()> {
     let mut reader = BufReader::new(stdin);
     let mut line = String::new();
 
-    // Track the MCP session ID — the server returns it in Mcp-Session-Id header
+    // Mutable state: URL and session can change on reconnect
+    let mut mcp_url = initial_mcp_url.to_string();
     let mut session_id: Option<String> = None;
+    let mut reconnect_attempts: u32 = 0;
 
     loop {
         line.clear();
@@ -342,14 +287,11 @@ async fn run_stdio_bridge(mcp_url: &str) -> Result<()> {
             .context("Failed to read from stdin")?;
 
         if bytes_read == 0 {
-            // EOF — client disconnected
             info!("stdin EOF, bridge shutting down");
-
-            // Send DELETE to tear down the MCP session if we have a session ID
             if let Some(ref sid) = session_id {
                 debug!("Sending session teardown DELETE for session {}", sid);
                 let _ = client
-                    .delete(mcp_url)
+                    .delete(&mcp_url)
                     .header("Mcp-Session-Id", sid)
                     .send()
                     .await;
@@ -364,46 +306,52 @@ async fn run_stdio_bridge(mcp_url: &str) -> Result<()> {
 
         debug!("Bridge → daemon: {}", trimmed);
 
-        // Build the POST request
-        let mut req = client
-            .post(mcp_url)
-            .header("Content-Type", "application/json")
-            .header("Accept", "application/json, text/event-stream");
-
-        // Include session ID if we have one
-        if let Some(ref sid) = session_id {
-            req = req.header("Mcp-Session-Id", sid);
-        }
-
-        let resp = match req.body(trimmed.to_string()).send().await {
-            Ok(r) => r,
+        // Send request, reconnecting to daemon if connection is lost
+        let resp = match send_to_daemon(&client, &mcp_url, &session_id, trimmed).await {
+            Ok(r) => {
+                reconnect_attempts = 0;
+                r
+            }
+            Err(e) if e.is_connect() && reconnect_attempts < MAX_RECONNECT_ATTEMPTS => {
+                reconnect_attempts += 1;
+                warn!(
+                    "Daemon connection lost (attempt {}/{}), reconnecting...",
+                    reconnect_attempts, MAX_RECONNECT_ATTEMPTS
+                );
+                match attempt_reconnect(port, workspace_root).await {
+                    Ok(new_url) => {
+                        mcp_url = new_url;
+                        session_id = None;
+                        // Retry this request with the new URL
+                        match send_to_daemon(&client, &mcp_url, &session_id, trimmed).await {
+                            Ok(r) => {
+                                reconnect_attempts = 0;
+                                r
+                            }
+                            Err(e2) => {
+                                write_jsonrpc_error(&mut stdout, &e2).await?;
+                                continue;
+                            }
+                        }
+                    }
+                    Err(re) => {
+                        error!("Reconnect failed: {}", re);
+                        write_jsonrpc_error(&mut stdout, &e).await?;
+                        continue;
+                    }
+                }
+            }
             Err(e) => {
-                error!("Bridge HTTP error: {}", e);
-                // Write a JSON-RPC error response so the client knows
-                let error_resp = serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "error": {
-                        "code": -32000,
-                        "message": format!("Bridge error: {}", e)
-                    },
-                    "id": null
-                });
-                let mut out = serde_json::to_vec(&error_resp)?;
-                out.push(b'\n');
-                stdout.write_all(&out).await?;
-                stdout.flush().await?;
+                write_jsonrpc_error(&mut stdout, &e).await?;
                 continue;
             }
         };
 
-        // Log non-2xx responses for debugging
         if !resp.status().is_success() {
             warn!("Daemon returned HTTP {} for bridge request", resp.status());
         }
 
-        // Update session ID from response headers.
-        // Always check (not just first time) so we pick up a new session after
-        // daemon restart instead of wedging on a stale ID.
+        // Update session ID from response headers (picks up new sessions after restart)
         if let Some(sid) = resp.headers().get("mcp-session-id") {
             if let Ok(sid_str) = sid.to_str() {
                 if session_id.as_deref() != Some(sid_str) {
@@ -412,8 +360,6 @@ async fn run_stdio_bridge(mcp_url: &str) -> Result<()> {
                 }
             }
         } else if !resp.status().is_success() && session_id.is_some() {
-            // Error without session header — session likely invalid (daemon restarted).
-            // Clear so next request goes without a stale ID and gets a fresh session.
             warn!("Non-success response without session header — clearing stale session ID");
             session_id = None;
         }
@@ -426,51 +372,13 @@ async fn run_stdio_bridge(mcp_url: &str) -> Result<()> {
             .to_string();
 
         if content_type.contains("text/event-stream") {
-            // SSE response — forward events as JSON-RPC messages
-            debug!("SSE response stream");
-            let mut stream = resp.bytes_stream();
-            use futures::StreamExt;
-
-            let mut sse_buffer = String::new();
-            while let Some(chunk) = stream.next().await {
-                match chunk {
-                    Ok(bytes) => {
-                        let text = String::from_utf8_lossy(&bytes);
-                        sse_buffer.push_str(&text);
-
-                        // Process complete SSE events in the buffer
-                        while let Some(event_end) = sse_buffer.find("\n\n") {
-                            let event = sse_buffer[..event_end].to_string();
-                            sse_buffer = sse_buffer[event_end + 2..].to_string();
-
-                            // Extract data lines from SSE event
-                            for sse_line in event.lines() {
-                                if let Some(data) = sse_line.strip_prefix("data: ") {
-                                    debug!("Bridge ← daemon (SSE): {}", data);
-                                    let mut out = data.as_bytes().to_vec();
-                                    out.push(b'\n');
-                                    stdout.write_all(&out).await?;
-                                    stdout.flush().await?;
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        warn!("SSE stream error: {}", e);
-                        break;
-                    }
-                }
-            }
+            forward_sse_stream(resp, &mut stdout).await?;
         } else {
             // Direct JSON response — forward to stdout
             let body = resp.bytes().await.context("Failed to read response body")?;
             if !body.is_empty() {
-                debug!(
-                    "Bridge ← daemon: {}",
-                    String::from_utf8_lossy(&body)
-                );
+                debug!("Bridge ← daemon: {}", String::from_utf8_lossy(&body));
                 stdout.write_all(&body).await?;
-                // Ensure newline-delimited
                 if !body.ends_with(b"\n") {
                     stdout.write_all(b"\n").await?;
                 }
@@ -480,5 +388,106 @@ async fn run_stdio_bridge(mcp_url: &str) -> Result<()> {
     }
 
     info!("Bridge exited cleanly");
+    Ok(())
+}
+
+/// Build and send a POST request to the daemon's MCP endpoint.
+async fn send_to_daemon(
+    client: &reqwest::Client,
+    mcp_url: &str,
+    session_id: &Option<String>,
+    body: &str,
+) -> Result<reqwest::Response, reqwest::Error> {
+    let mut req = client
+        .post(mcp_url)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream");
+    if let Some(sid) = session_id {
+        req = req.header("Mcp-Session-Id", sid);
+    }
+    req.body(body.to_string()).send().await
+}
+
+/// Attempt to restart the daemon and re-register the workspace.
+/// Returns the new MCP URL on success.
+async fn attempt_reconnect(port: u16, workspace_root: &std::path::Path) -> Result<String> {
+    let daemon_port = ensure_daemon_running(port)
+        .await
+        .context("Failed to restart daemon during reconnect")?;
+    let workspace_id = register_workspace(daemon_port, workspace_root)
+        .await
+        .context("Failed to re-register workspace during reconnect")?;
+    let new_url = format!("http://localhost:{}/mcp/{}", daemon_port, workspace_id);
+    info!("Reconnected to daemon: {}", new_url);
+    Ok(new_url)
+}
+
+/// Write a JSON-RPC error response to stdout so the MCP client knows the request failed.
+async fn write_jsonrpc_error(
+    stdout: &mut tokio::io::Stdout,
+    err: &dyn std::fmt::Display,
+) -> Result<()> {
+    use tokio::io::AsyncWriteExt;
+    error!("Bridge HTTP error: {}", err);
+    let error_resp = serde_json::json!({
+        "jsonrpc": "2.0",
+        "error": { "code": -32000, "message": format!("Bridge error: {}", err) },
+        "id": null
+    });
+    let mut out = serde_json::to_vec(&error_resp)?;
+    out.push(b'\n');
+    stdout.write_all(&out).await?;
+    stdout.flush().await?;
+    Ok(())
+}
+
+/// Forward an SSE response stream to stdout, extracting `data:` lines as JSON-RPC messages.
+async fn forward_sse_stream(
+    resp: reqwest::Response,
+    stdout: &mut tokio::io::Stdout,
+) -> Result<()> {
+    use futures::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    debug!("SSE response stream");
+    let mut stream = resp.bytes_stream();
+    let mut sse_buffer = String::new();
+
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(bytes) => {
+                let text = String::from_utf8_lossy(&bytes);
+                sse_buffer.push_str(&text);
+
+                // Guard against unbounded buffer growth (e.g., malformed SSE without delimiters)
+                if sse_buffer.len() > MAX_SSE_BUFFER_SIZE {
+                    warn!("SSE buffer exceeded {}B without complete event, dropping", MAX_SSE_BUFFER_SIZE);
+                    sse_buffer.clear();
+                    continue;
+                }
+
+                // Process complete SSE events (delimited by blank lines)
+                while let Some(event_end) = sse_buffer.find("\n\n") {
+                    let event = sse_buffer[..event_end].to_string();
+                    sse_buffer = sse_buffer[event_end + 2..].to_string();
+
+                    for sse_line in event.lines() {
+                        if let Some(data) = sse_line.strip_prefix("data: ") {
+                            debug!("Bridge ← daemon (SSE): {}", data);
+                            let mut out = data.as_bytes().to_vec();
+                            out.push(b'\n');
+                            stdout.write_all(&out).await?;
+                            stdout.flush().await?;
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("SSE stream error: {}", e);
+                break;
+            }
+        }
+    }
+
     Ok(())
 }

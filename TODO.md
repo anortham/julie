@@ -27,17 +27,14 @@
 
 ### SUGGESTIONS (Nice to have, post-release OK)
 
-- [ ] **S1.** `DaemonState` fields are all `pub` — make `pub(crate)` (`daemon_state.rs`)
-- [ ] **S2.** No retry/reconnect when daemon crashes mid-bridge session (`connect.rs:378`)
-- [ ] **S3.** SSE parsing is hand-rolled and fragile (`connect.rs:427`)
-- [ ] **S4.** Test fixtures use `/tmp/project-N` — won't work on Windows (`daemon_indexer_tests.rs`)
-- [ ] **S5.** `text_search.rs` is 731 lines — 46% over 500-line limit (`text_search.rs`)
-- [ ] **S6.** Inline tests in `formatting.rs` violate project test organization rules (`navigation/formatting.rs:268`)
-- [ ] **S7.** `get_symbols` returns error instead of stub for `workspace="all"` (`symbols/mod.rs:90`)
-- [ ] **S8.** No rate limiting on dispatch endpoint (`api/agents.rs`)
-- [ ] **S9.** `serde_yaml::to_string().unwrap_or_default()` silences errors (`memory/storage.rs:267`)
-- [ ] **S10.** Duplicated test helpers across memory test files (`memory_recall_tests.rs`, `memory_cross_project_tests.rs`)
-- [ ] **S11.** No confidence (1-5) or plan status validation in MCP tool layer (`tools/memory/checkpoint.rs:78`, `memory/plan.rs:210`)
+- [x] **S1.** `DaemonState` fields are all `pub` — make `pub(crate)` (`daemon_state.rs`)
+- [x] **S2.** No retry/reconnect when daemon crashes mid-bridge session (`connect.rs:378`)
+- [x] **S3.** SSE parsing is hand-rolled and fragile (`connect.rs:427`)
+- [x] **S4.** Test fixtures use `/tmp/project-N` — won't work on Windows (`daemon_indexer_tests.rs`)
+- [x] **S5.** `text_search.rs` is 731 lines — 46% over 500-line limit (`text_search.rs`)
+- [x] **S6.** Inline tests in `formatting.rs` violate project test organization rules (`navigation/formatting.rs:268`)
+- [x] **S7.** `get_symbols` returns error instead of stub for `workspace="all"` (`symbols/mod.rs:90`)
+- ~~**S8.** No rate limiting on dispatch endpoint~~ **Dismissed** — server binds to localhost only (C1), single-user daemon, DispatchManager has LRU eviction (I8); rate limiting a local dev tool is over-engineering
 
 ---
 
@@ -139,17 +136,16 @@
 - [x] **Search-layer relevance for natural-language queries**: Shipped deterministic NL query expansion (original/alias/normalized groups), weighted query builders, and conservative NL-only `src/` path prior with regression coverage for identifier-query stability.
 
 **Post Platform Tasks**
-1. ~~check goldfish skills, we'll need a refocused version of those for the memory tools. Also check goldfish server instructions and tool descriptions, they are effective at agent adoption and we need that too.~~ **DONE** — Julie plugin shipped with 5 skills, 3 hooks, enhanced tool descriptions
+1. ~~check goldfish skills~~ **DONE then REMOVED** — memory tools stripped in v4.0
 2. [x] **Promoted to 4.0** — Project stats/insights for dashboard project view (language breakdown, symbol counts by kind, index health)
-3. [ ] *(Deferred to 4.1)* with tantivy and embeddings available to memories now, what advanced memory features does that open up? Could we link memories to code/commits?
-4. [ ] *(Deferred to 4.1)* Can the dashboard also talk to a projects repo on gh or devops? what can we build with that?
+4. [ ] Can the dashboard also talk to a projects repo on gh or devops? what can we build with that?
 5. ~~Project registration: auto on startup with julie installed, add from dashboard~~ **DONE** — auto-registration on startup + dashboard registration
-6. [ ] *(Deferred to 4.1)* Can we tell the agent how to use the dashboard? Can the agent open the browser to a dashboard view as part of a tool call?
-7. [ ] *(Deferred to 4.1)* With the advanced javascript libs available for things like graphs and diagrams, what code intelligence from julie can we surface visually?
+6. [ ] Can we tell the agent how to use the dashboard? Can the agent open the browser to a dashboard view as part of a tool call?
+7. [ ] With the advanced javascript libs available for things like graphs and diagrams, what code intelligence from julie can we surface visually?
 8. ~~filewatcher: I don't think we need a filewatcher running in every project all the time, I'm not sure what the overhead of that would be. we should discuss~~ **DONE** — decided to keep current behavior (OS-native watchers have negligible idle cost), documented
 9. ~~we need good documentation of the http api so other tools can integrate~~ **DONE** — OpenAPI 3.0 spec at `/api/docs` via utoipa
 10. ~~validate functionality in a parallel scenario like multiple worktrees~~ **DONE** — worktree isolation validated and fixed (Task 13)
-11. [ ] *(Deferred to 4.1)* we should leverage gh pages to better showcase the dashboard functionality
+11. [ ] We should leverage gh pages to better showcase the dashboard functionality
 12. [x] **Promoted to 4.0** — Project view quick-launch (copy path, open in editor, open in terminal)
 13. ~~what's our most effective token optimization approach across tools? can we apply that approach to other tools?~~ **DONE** — evaluated, each tool already uses appropriate limiting; no action needed
 14. ~~We need to update CLAUDE.md and README.md to properly reflect the big changes that have been made.~~ **DONE** — README.md and CLAUDE.md updated for v4.0.0
@@ -259,9 +255,6 @@ All support subscription-based auth (OAuth/browser login) — no API key require
 
 ### Dismissed (not bugs / by design / low severity)
 
-- **R1.** Memory search BM25-only — **by design**: embeddings require GPU sidecar, BM25 is primary path, graceful fallback works correctly
 - **R3.** PID file reuse — **standard Unix daemon pattern**: connect does health checks, risk is theoretical
-- **R7.** Unified search ignores filters for memory content — **partially real** but only affects dashboard "All" content type, not MCP tools (post-release)
 - **R8.** Debug endpoint ignores content_type — **real but irrelevant**: debug is a developer diagnostic, not user-facing (post-release)
 - **R9.** Re-index TOCTOU race — **real but harmless**: indexing is idempotent, worst case is redundant work (post-release)
-- **R12.** Timestamp normalization to "now" — **defensive**: only triggers for hand-edited files with corrupt YAML, normal saves always valid (post-release)

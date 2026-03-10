@@ -424,3 +424,74 @@ pub fn daemon_status() -> Result<()> {
     }
     Ok(())
 }
+
+/// Check if the current binary is newer than the running daemon.
+///
+/// Queries the daemon's health endpoint for uptime, then compares the binary's
+/// file modification time against when the daemon started. Returns `true` if
+/// the binary was modified after the daemon started (indicating a rebuild).
+///
+/// Defaults to `false` on any error (fail-safe: don't restart unless certain).
+pub(crate) async fn is_binary_newer_than_daemon(port: u16) -> bool {
+    use std::time::Duration;
+    use tracing::{debug, info};
+
+    let exe_path = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            debug!("Could not determine executable path: {}", e);
+            return false;
+        }
+    };
+
+    let exe_mtime = match fs::metadata(&exe_path).and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(e) => {
+            debug!("Could not get executable mtime: {}", e);
+            return false;
+        }
+    };
+
+    let url = format!("http://localhost:{}/api/health", port);
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    let resp = match client.get(&url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        _ => return false,
+    };
+
+    let body: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            debug!("Could not parse health response: {}", e);
+            return false;
+        }
+    };
+
+    let uptime_seconds = match body["uptime_seconds"].as_u64() {
+        Some(u) => u,
+        None => {
+            debug!("Health response missing uptime_seconds");
+            return false;
+        }
+    };
+
+    let now = std::time::SystemTime::now();
+    let daemon_start = now - Duration::from_secs(uptime_seconds);
+
+    if exe_mtime > daemon_start {
+        info!(
+            "Binary is newer than running daemon (daemon started ~{}s ago)",
+            uptime_seconds
+        );
+        true
+    } else {
+        false
+    }
+}

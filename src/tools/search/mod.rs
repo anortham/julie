@@ -17,6 +17,7 @@ pub use self::types::{LineMatch, LineMatchStrategy};
 // Internal modules
 pub(crate) mod formatting; // Exposed for testing
 mod line_mode;
+mod nl_embeddings;
 pub(crate) mod query;
 pub mod query_preprocessor; // Public for testing
 pub mod text_search;

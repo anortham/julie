@@ -1,7 +1,6 @@
 //! Text-based search using Tantivy with code-aware tokenization.
 
 use anyhow::Result;
-use std::sync::LazyLock;
 use tracing::{debug, info, warn};
 
 use super::query::matches_glob_pattern;
@@ -10,29 +9,9 @@ use crate::handler::JulieServerHandler;
 use crate::search::scoring::{apply_centrality_boost, promote_exact_name_matches};
 use crate::search::SearchFilter;
 
-static NL_DEFINITION_EMBEDDING_INIT_SINGLE_FLIGHT: LazyLock<tokio::sync::Mutex<()>> =
-    LazyLock::new(|| tokio::sync::Mutex::new(()));
-
+// Re-export for tests
 #[cfg(test)]
-static NL_DEFINITION_EMBEDDING_INIT_ATTEMPTS: LazyLock<
-    std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, usize>>,
-> = LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-
-#[cfg(test)]
-fn record_nl_definition_embedding_init_attempt(workspace_root: &std::path::Path) {
-    let mut attempts = NL_DEFINITION_EMBEDDING_INIT_ATTEMPTS
-        .lock()
-        .expect("nl definition init attempt map mutex poisoned");
-    *attempts.entry(workspace_root.to_path_buf()).or_insert(0) += 1;
-}
-
-#[cfg(test)]
-pub(crate) fn take_nl_definition_embedding_init_attempts(workspace_root: &std::path::Path) -> usize {
-    let mut attempts = NL_DEFINITION_EMBEDDING_INIT_ATTEMPTS
-        .lock()
-        .expect("nl definition init attempt map mutex poisoned");
-    attempts.remove(workspace_root).unwrap_or(0)
-}
+pub(crate) use super::nl_embeddings::take_nl_definition_embedding_init_attempts;
 
 /// Text search with workspace filtering and search target selection.
 ///
@@ -51,9 +30,13 @@ pub async fn text_search_impl(
     _context_lines: Option<u32>,
     handler: &JulieServerHandler,
 ) -> Result<(Vec<Symbol>, bool)> {
-    maybe_initialize_embeddings_for_nl_definitions(query, search_target, handler).await;
+    super::nl_embeddings::maybe_initialize_embeddings_for_nl_definitions(
+        query,
+        search_target,
+        handler,
+    )
+    .await;
 
-    // Get the primary workspace (always needed for path resolution)
     let workspace = handler
         .get_workspace()
         .await?
@@ -86,7 +69,6 @@ pub async fn text_search_impl(
         query, search_target, ref_workspace_id
     );
 
-    // Build search filter from parameters
     let filter = SearchFilter {
         language: language.clone(),
         kind: None,
@@ -100,9 +82,6 @@ pub async fn text_search_impl(
     // Reference workspace: use handler helpers for DB + SearchIndex access
     if let Some(ref_id) = ref_workspace_id {
         let ref_embedding_provider = workspace.embedding_provider.clone();
-
-        // Get Arcs via handler helpers (fast in daemon mode — just Arc clones;
-        // opens from disk in stdio mode — same as the old direct path approach)
         let db_arc = handler.get_database_for_workspace(&ref_id).await?;
         let si_arc = handler.get_search_index_for_workspace(&ref_id).await?;
 
@@ -114,538 +93,293 @@ pub async fn text_search_impl(
                     return Ok((Vec::new(), false));
                 }
             };
-            let index = si_arc.lock().map_err(|e| {
-                anyhow::anyhow!("Search index lock error: {}", e)
-            })?;
+            let index = si_arc
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+            let db_lock = db_arc
+                .lock()
+                .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
 
             if search_target_clone == "definitions" {
-                // Check if this is an NL query and we have embeddings available
-                let use_hybrid = crate::search::scoring::is_nl_like_query(&query_clone)
-                    && ref_embedding_provider.is_some();
-
-                if use_hybrid {
-                    debug!("🔍 NL query on reference workspace, using hybrid search");
-
-                    let ref_db = db_arc.lock().map_err(|e| {
-                        anyhow::anyhow!("Database lock error: {}", e)
-                    })?;
-                    let profile = crate::search::weights::SearchWeightProfile::fast_search();
-                    let mut hybrid_results = crate::search::hybrid::hybrid_search(
-                        &query_clone,
-                        &filter,
-                        limit_usize,
-                        &index,
-                        &ref_db,
-                        ref_embedding_provider.as_deref(),
-                        Some(profile),
-                    )?;
-                    let relaxed = hybrid_results.relaxed;
-
-                    // Apply centrality boost + exact-name promotion + truncate
-                    let symbol_ids: Vec<&str> = hybrid_results
-                        .results
-                        .iter()
-                        .map(|r| r.id.as_str())
-                        .collect();
-                    if let Ok(ref_scores) = ref_db.get_reference_scores(&symbol_ids) {
-                        apply_centrality_boost(&mut hybrid_results.results, &ref_scores);
-                    }
-                    promote_exact_name_matches(&mut hybrid_results.results, &query_clone);
-                    hybrid_results.results.truncate(limit_usize);
-
-                    let mut symbols: Vec<Symbol> = hybrid_results
-                        .results
-                        .into_iter()
-                        .map(|result| tantivy_symbol_to_symbol(result))
-                        .collect();
-
-                    enrich_symbols_from_db(&mut symbols, &ref_db);
-
-                    Ok((symbols, relaxed))
-                } else {
-                    // Keyword search: over-fetch so exact-name definitions aren't lost
-                    let tantivy_limit = if filter.file_pattern.is_some() {
-                        limit_usize.saturating_mul(50).max(500).min(5000)
-                    } else {
-                        limit_usize.saturating_mul(10).max(200)
-                    };
-                    let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
-                    let relaxed = search.relaxed;
-                    drop(index); // Release SearchIndex lock — not needed past this point
-
-                    // Apply file_pattern filter BEFORE symbol conversion + enrichment
-                    let mut filtered_results: Vec<_> =
-                        if let Some(ref pattern) = filter.file_pattern {
-                            search
-                                .results
-                                .into_iter()
-                                .filter(|r| matches_glob_pattern(&r.file_path, pattern))
-                                .collect()
-                        } else {
-                            search.results
-                        };
-
-                    // Lock reference workspace DB for centrality boost and enrichment
-                    let ref_db = db_arc.lock().map_err(|e| {
-                        anyhow::anyhow!("Database lock error: {}", e)
-                    })?;
-
-                    // Apply centrality boost for reference workspace
-                    {
-                        let symbol_ids: Vec<&str> =
-                            filtered_results.iter().map(|r| r.id.as_str()).collect();
-                        if let Ok(ref_scores) = ref_db.get_reference_scores(&symbol_ids) {
-                            apply_centrality_boost(&mut filtered_results, &ref_scores);
-                        }
-                    }
-
-                    // Promote exact name matches to the top (stable partition)
-                    promote_exact_name_matches(&mut filtered_results, &query_clone);
-
-                    // Trim back to the user's requested limit after over-fetch + promotion
-                    filtered_results.truncate(limit_usize);
-
-                    let mut symbols: Vec<Symbol> = filtered_results
-                        .into_iter()
-                        .map(|result| tantivy_symbol_to_symbol(result))
-                        .collect();
-
-                    // Enrich with code_context from reference workspace's SQLite
-                    enrich_symbols_from_db(&mut symbols, &ref_db);
-
-                    Ok((symbols, relaxed))
-                }
+                definition_search_with_index(
+                    &query_clone,
+                    &filter,
+                    limit_usize,
+                    &index,
+                    Some(&db_lock),
+                    ref_embedding_provider.as_deref(),
+                )
             } else {
-                // Content search on reference workspace
-                let fetch_limit = if filter.file_pattern.is_some() {
-                    limit_usize.saturating_mul(100).max(500).min(1000)
-                } else {
-                    limit_usize.saturating_mul(5).max(50)
-                };
-                let content_search = index.search_content(&query_clone, &filter, fetch_limit)?;
-                let content_relaxed = content_search.relaxed;
-                let search_results = content_search.results;
-                drop(index); // Release SearchIndex lock — not needed past this point
-
-                let query_words: Vec<String> = query_clone
-                    .split(|c: char| !c.is_alphanumeric())
-                    .filter(|w| !w.is_empty())
-                    .map(|w| w.to_lowercase())
-                    .collect();
-
-                let mut verified_symbols = Vec::with_capacity(limit_usize);
-
-                let ref_db = db_arc.lock().map_err(|e| {
-                    anyhow::anyhow!("Database lock error: {}", e)
-                })?;
-                for result in search_results {
-                    if verified_symbols.len() >= limit_usize {
-                        break;
-                    }
-
-                    // Apply file_pattern filter BEFORE content verification
-                    if let Some(ref pattern) = filter.file_pattern {
-                        if !matches_glob_pattern(&result.file_path, pattern) {
-                            continue;
-                        }
-                    }
-
-                    match ref_db.get_file_content(&result.file_path) {
-                        Ok(Some(content)) => {
-                            let content_lower = content.to_lowercase();
-                            if query_words
-                                .iter()
-                                .all(|word| content_lower.contains(word.as_str()))
-                            {
-                                verified_symbols.push(content_result_to_symbol(result));
-                            }
-                        }
-                        _ => {
-                            verified_symbols.push(content_result_to_symbol(result));
-                        }
-                    }
-                }
-
-                Ok((verified_symbols, content_relaxed))
+                content_search_with_index(
+                    &query_clone,
+                    &filter,
+                    limit_usize,
+                    &index,
+                    Some(&db_lock),
+                )
             }
         })
         .await??;
 
-        let (results, relaxed) = results;
-
-        // Defense-in-depth: post-filter by file_pattern
-        // (primary filtering now happens inside the collection loops above)
-        let filtered_results = if let Some(pattern) = file_pattern {
-            results
-                .into_iter()
-                .filter(|symbol| matches_glob_pattern(&symbol.file_path, pattern))
-                .collect()
-        } else {
-            results
-        };
-
-        debug!(
-            "✅ Reference workspace search returned {} results",
-            filtered_results.len()
-        );
-
-        return Ok((filtered_results, relaxed));
+        return Ok(post_filter_results(
+            results,
+            file_pattern,
+            "Reference workspace",
+        ));
     }
 
     // Primary workspace: use shared search index
     let search_index = workspace.search_index.as_ref().ok_or_else(|| {
         anyhow::anyhow!("Search index not initialized. Run 'manage_workspace index' first.")
     })?;
-
-    // Clone the Arc so we can move it into spawn_blocking
     let search_index_clone = search_index.clone();
-
-    // Clone DB for both definition search (code_context enrichment) and
-    // content search (post-verification filtering)
     let db_clone = workspace.db.clone();
-
-    // Clone embedding provider for semantic fallback (cheap Arc clone)
     let embedding_provider = workspace.embedding_provider.clone();
 
-    // Perform the search in a blocking task since Tantivy uses std::sync::Mutex
     let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool)> {
         let index = search_index_clone.lock().unwrap();
+        let db_guard = db_clone.as_ref().map(|arc| {
+            arc.lock().unwrap_or_else(|poisoned| {
+                warn!("Database mutex poisoned, recovering");
+                poisoned.into_inner()
+            })
+        });
 
-        // Route based on search_target
         if search_target_clone == "definitions" {
-            // Check if this is an NL query and we have embeddings available
-            let use_hybrid = crate::search::scoring::is_nl_like_query(&query_clone)
-                && embedding_provider.is_some();
-
-            if use_hybrid {
-                info!(
-                    "🔍 Hybrid search (keyword + semantic) for NL query: '{}'",
-                    query_clone
-                );
-            } else {
-                info!(
-                    "🔍 Hybrid search skipped: is_nl={}, has_embeddings={}",
-                    crate::search::scoring::is_nl_like_query(&query_clone),
-                    embedding_provider.is_some()
-                );
-            }
-
-            if use_hybrid {
-                let db_guard = db_clone
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?;
-                let db_lock = match db_guard.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!("Database mutex poisoned during hybrid search, recovering");
-                        poisoned.into_inner()
-                    }
-                };
-
-                let profile = crate::search::weights::SearchWeightProfile::fast_search();
-                let mut hybrid_results = crate::search::hybrid::hybrid_search(
-                    &query_clone,
-                    &filter,
-                    limit_usize,
-                    &index,
-                    &db_lock,
-                    embedding_provider.as_deref(),
-                    Some(profile),
-                )?;
-                let relaxed = hybrid_results.relaxed;
-
-                // Apply same post-processing as keyword path:
-                // centrality boost → exact-name promotion → truncate
-                let symbol_ids: Vec<&str> = hybrid_results
-                    .results
-                    .iter()
-                    .map(|r| r.id.as_str())
-                    .collect();
-                if let Ok(ref_scores) = db_lock.get_reference_scores(&symbol_ids) {
-                    apply_centrality_boost(&mut hybrid_results.results, &ref_scores);
-                }
-                promote_exact_name_matches(&mut hybrid_results.results, &query_clone);
-                hybrid_results.results.truncate(limit_usize);
-
-                let mut symbols: Vec<Symbol> = hybrid_results
-                    .results
-                    .into_iter()
-                    .map(|result| tantivy_symbol_to_symbol(result))
-                    .collect();
-
-                // Enrich with code_context from SQLite
-                enrich_symbols_from_db(&mut symbols, &db_lock);
-
-                Ok((symbols, relaxed))
-            } else {
-                debug!("🔍 Searching symbols with Tantivy");
-
-                // Over-fetch so exact-name definitions aren't lost to higher-scoring references
-                let tantivy_limit = if filter.file_pattern.is_some() {
-                    limit_usize.saturating_mul(50).max(500).min(5000)
-                } else {
-                    limit_usize.saturating_mul(10).max(200)
-                };
-                let search = index.search_symbols(&query_clone, &filter, tantivy_limit)?;
-                let relaxed = search.relaxed;
-
-                // Apply file_pattern filter BEFORE symbol conversion + enrichment
-                let mut filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
-                    search
-                        .results
-                        .into_iter()
-                        .filter(|r| matches_glob_pattern(&r.file_path, pattern))
-                        .collect()
-                } else {
-                    search.results
-                };
-
-                // Apply centrality boost from graph reference scores
-                if let Some(db_arc) = &db_clone {
-                    let db_lock = match db_arc.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            warn!("Database mutex poisoned during centrality boost, recovering");
-                            poisoned.into_inner()
-                        }
-                    };
-                    let symbol_ids: Vec<&str> =
-                        filtered_results.iter().map(|r| r.id.as_str()).collect();
-                    if let Ok(ref_scores) = db_lock.get_reference_scores(&symbol_ids) {
-                        apply_centrality_boost(&mut filtered_results, &ref_scores);
-                    }
-                    drop(db_lock);
-                }
-
-                // Promote exact name matches to the top (stable partition)
-                promote_exact_name_matches(&mut filtered_results, &query_clone);
-
-                // Trim back to the user's requested limit after over-fetch + promotion
-                filtered_results.truncate(limit_usize);
-
-                let mut symbols: Vec<Symbol> = filtered_results
-                    .into_iter()
-                    .map(|result| tantivy_symbol_to_symbol(result))
-                    .collect();
-
-                // Enrich with code_context from SQLite (Tantivy doesn't store code_body)
-                if let Some(db_arc) = &db_clone {
-                    let db_lock = match db_arc.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            warn!(
-                                "Database mutex poisoned during code_context enrichment, recovering"
-                            );
-                            poisoned.into_inner()
-                        }
-                    };
-                    enrich_symbols_from_db(&mut symbols, &db_lock);
-                }
-
-                Ok((symbols, relaxed))
-            }
+            definition_search_with_index(
+                &query_clone,
+                &filter,
+                limit_usize,
+                &index,
+                db_guard.as_deref(),
+                embedding_provider.as_deref(),
+            )
         } else {
-            // "content" or any other value: search file content
-            debug!("🔍 Searching content with Tantivy");
-
-            // Over-fetch for post-verification (CodeTokenizer may over-split queries)
-            let fetch_limit = if filter.file_pattern.is_some() {
-                limit_usize.saturating_mul(100).max(500).min(1000)
-            } else {
-                limit_usize.saturating_mul(5).max(50)
-            };
-            let content_search = index.search_content(&query_clone, &filter, fetch_limit)?;
-            let content_relaxed = content_search.relaxed;
-            let search_results = content_search.results;
-
-            // Post-verify: all query words must appear in file content (eliminates
-            // false positives from CodeTokenizer over-splitting)
-            let query_words: Vec<String> = query_clone
-                .split(|c: char| !c.is_alphanumeric())
-                .filter(|w| !w.is_empty())
-                .map(|w| w.to_lowercase())
-                .collect();
-            let mut verified_symbols = Vec::with_capacity(limit_usize);
-
-            if let Some(db_arc) = &db_clone {
-                let db_lock = match db_arc.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => {
-                        warn!("Database mutex poisoned during content verification, recovering");
-                        poisoned.into_inner()
-                    }
-                };
-
-                for result in search_results {
-                    if verified_symbols.len() >= limit_usize {
-                        break;
-                    }
-
-                    // Apply file_pattern filter BEFORE expensive content verification
-                    if let Some(ref pattern) = filter.file_pattern {
-                        if !matches_glob_pattern(&result.file_path, pattern) {
-                            continue;
-                        }
-                    }
-
-                    // Verify all query words appear in actual file content
-                    match db_lock.get_file_content(&result.file_path) {
-                        Ok(Some(content)) => {
-                            let content_lower = content.to_lowercase();
-                            let all_words_match = query_words
-                                .iter()
-                                .all(|word| content_lower.contains(word.as_str()));
-
-                            if all_words_match {
-                                verified_symbols.push(content_result_to_symbol(result));
-                            } else {
-                                debug!(
-                                    "Filtered false positive: {} (missing query words for '{}')",
-                                    result.file_path, query_clone
-                                );
-                            }
-                        }
-                        Ok(None) => {
-                            // File not in DB (maybe deleted) — include as-is
-                            verified_symbols.push(content_result_to_symbol(result));
-                        }
-                        Err(e) => {
-                            // DB error — include as-is (graceful degradation)
-                            debug!("Could not verify content for {}: {}", result.file_path, e);
-                            verified_symbols.push(content_result_to_symbol(result));
-                        }
-                    }
-                }
-            } else {
-                // No database available — return unverified results (graceful degradation)
-                debug!(
-                    "No database available for content verification, returning unverified results"
-                );
-                for result in search_results.into_iter().take(limit_usize) {
-                    verified_symbols.push(content_result_to_symbol(result));
-                }
-            }
-
-            Ok((verified_symbols, content_relaxed))
+            content_search_with_index(
+                &query_clone,
+                &filter,
+                limit_usize,
+                &index,
+                db_guard.as_deref(),
+            )
         }
     })
     .await??;
 
-    let (results, relaxed) = results;
+    Ok(post_filter_results(results, file_pattern, "Tantivy"))
+}
 
-    // Defense-in-depth: post-filter by file_pattern
-    // (primary filtering now happens inside the collection loops above)
-    let filtered_results = if let Some(pattern) = file_pattern {
+/// Defense-in-depth post-filter by file_pattern and log result count.
+fn post_filter_results(
+    (results, relaxed): (Vec<Symbol>, bool),
+    file_pattern: &Option<String>,
+    label: &str,
+) -> (Vec<Symbol>, bool) {
+    let filtered = if let Some(pattern) = file_pattern {
         results
             .into_iter()
-            .filter(|symbol| matches_glob_pattern(&symbol.file_path, pattern))
+            .filter(|s| matches_glob_pattern(&s.file_path, pattern))
             .collect()
     } else {
         results
     };
-
     debug!(
-        "✅ Tantivy search returned {} results (after filtering)",
-        filtered_results.len()
+        "✅ {} search returned {} results (after filtering)",
+        label,
+        filtered.len()
     );
-
-    Ok((filtered_results, relaxed))
+    (filtered, relaxed)
 }
 
-async fn maybe_initialize_embeddings_for_nl_definitions(
+// ---------------------------------------------------------------------------
+// Shared search helpers (used by both reference and primary workspace paths)
+// ---------------------------------------------------------------------------
+
+/// Run a definition search: hybrid (keyword + semantic) if NL query with embeddings,
+/// otherwise pure keyword with over-fetch + exact-name promotion.
+fn definition_search_with_index(
     query: &str,
-    search_target: &str,
-    handler: &JulieServerHandler,
-) {
-    if search_target != "definitions" || !crate::search::scoring::is_nl_like_query(query) {
-        return;
-    }
+    filter: &SearchFilter,
+    limit: usize,
+    index: &crate::search::index::SearchIndex,
+    db: Option<&crate::database::SymbolDatabase>,
+    embedding_provider: Option<&dyn crate::embeddings::EmbeddingProvider>,
+) -> Result<(Vec<Symbol>, bool)> {
+    let use_hybrid = crate::search::scoring::is_nl_like_query(query)
+        && embedding_provider.is_some()
+        && db.is_some();
 
-    let should_attempt_init = {
-        let workspace_guard = handler.workspace.read().await;
-        match workspace_guard.as_ref() {
-            Some(workspace) => {
-                workspace.embedding_provider.is_none()
-                    && workspace.embedding_runtime_status.is_none()
-            }
-            None => false,
-        }
-    };
-
-    if !should_attempt_init {
-        return;
-    }
-
-    let _single_flight_guard = NL_DEFINITION_EMBEDDING_INIT_SINGLE_FLIGHT.lock().await;
-
-    // Double-check after acquiring the single-flight mutex: another caller may
-    // have completed init while we waited.  Clone the workspace in the same
-    // read-lock acquisition to avoid a redundant third lock.
-    let (workspace_identity_root, workspace_for_init) = {
-        let workspace_guard = handler.workspace.read().await;
-        match workspace_guard.as_ref() {
-            Some(workspace) => {
-                if workspace.embedding_provider.is_some()
-                    || workspace.embedding_runtime_status.is_some()
-                {
-                    return;
-                }
-                (workspace.root.clone(), workspace.clone())
-            }
-            None => return,
-        }
-    };
-
-    debug!(
-        "NL definitions query without embeddings/runtime status; attempting deferred provider init"
-    );
-
-    #[cfg(test)]
-    record_nl_definition_embedding_init_attempt(&workspace_identity_root);
-
-    let init_result = tokio::task::spawn_blocking(move || {
-        let mut workspace = workspace_for_init;
-        workspace.initialize_embedding_provider();
-        (
-            workspace.embedding_provider.clone(),
-            workspace.embedding_runtime_status.clone(),
-        )
-    })
-    .await;
-
-    let (initialized_provider, initialized_runtime_status) = match init_result {
-        Ok(result) => result,
-        Err(e) => {
-            warn!("Deferred embedding init task panicked during text search: {e}");
-            return;
-        }
-    };
-
-    let mut workspace_guard = handler.workspace.write().await;
-    let workspace = match workspace_guard.as_mut() {
-        Some(workspace) => workspace,
-        None => return,
-    };
-
-    if workspace.root != workspace_identity_root {
-        debug!(
-            expected_workspace_root = %workspace_identity_root.display(),
-            active_workspace_root = %workspace.root.display(),
-            "Discarding stale deferred embedding init result after workspace switch"
+    if use_hybrid {
+        info!(
+            "🔍 Hybrid search (keyword + semantic) for NL query: '{}'",
+            query
         );
-        return;
+    } else {
+        debug!(
+            "🔍 Keyword-only definition search for: '{}' (is_nl={}, has_embeddings={}, has_db={})",
+            query,
+            crate::search::scoring::is_nl_like_query(query),
+            embedding_provider.is_some(),
+            db.is_some()
+        );
     }
 
-    if workspace.embedding_provider.is_none() {
-        workspace.embedding_provider = initialized_provider;
-    }
-    if workspace.embedding_runtime_status.is_none() {
-        workspace.embedding_runtime_status = initialized_runtime_status;
+    if use_hybrid {
+        let db = db.expect("checked is_some above");
+        let profile = crate::search::weights::SearchWeightProfile::fast_search();
+        let mut hybrid_results = crate::search::hybrid::hybrid_search(
+            query,
+            filter,
+            limit,
+            index,
+            db,
+            embedding_provider,
+            Some(profile),
+        )?;
+        let relaxed = hybrid_results.relaxed;
+
+        // Apply centrality boost + exact-name promotion + truncate
+        let symbol_ids: Vec<&str> = hybrid_results
+            .results
+            .iter()
+            .map(|r| r.id.as_str())
+            .collect();
+        if let Ok(ref_scores) = db.get_reference_scores(&symbol_ids) {
+            apply_centrality_boost(&mut hybrid_results.results, &ref_scores);
+        }
+        promote_exact_name_matches(&mut hybrid_results.results, query);
+        hybrid_results.results.truncate(limit);
+
+        let mut symbols: Vec<Symbol> = hybrid_results
+            .results
+            .into_iter()
+            .map(tantivy_symbol_to_symbol)
+            .collect();
+        enrich_symbols_from_db(&mut symbols, db);
+
+        Ok((symbols, relaxed))
+    } else {
+        // Keyword search: over-fetch so exact-name definitions aren't lost
+        let tantivy_limit = if filter.file_pattern.is_some() {
+            limit.saturating_mul(50).max(500).min(5000)
+        } else {
+            limit.saturating_mul(10).max(200)
+        };
+        let search = index.search_symbols(query, filter, tantivy_limit)?;
+        let relaxed = search.relaxed;
+
+        // Apply file_pattern filter before centrality boost
+        let mut filtered_results: Vec<_> = if let Some(ref pattern) = filter.file_pattern {
+            search
+                .results
+                .into_iter()
+                .filter(|r| matches_glob_pattern(&r.file_path, pattern))
+                .collect()
+        } else {
+            search.results
+        };
+
+        // Apply centrality boost + exact-name promotion
+        if let Some(db) = db {
+            let symbol_ids: Vec<&str> =
+                filtered_results.iter().map(|r| r.id.as_str()).collect();
+            if let Ok(ref_scores) = db.get_reference_scores(&symbol_ids) {
+                apply_centrality_boost(&mut filtered_results, &ref_scores);
+            }
+        }
+        promote_exact_name_matches(&mut filtered_results, query);
+        filtered_results.truncate(limit);
+
+        let mut symbols: Vec<Symbol> = filtered_results
+            .into_iter()
+            .map(tantivy_symbol_to_symbol)
+            .collect();
+        if let Some(db) = db {
+            enrich_symbols_from_db(&mut symbols, db);
+        }
+
+        Ok((symbols, relaxed))
     }
 }
+
+/// Run a content search with post-verification against actual file content.
+fn content_search_with_index(
+    query: &str,
+    filter: &SearchFilter,
+    limit: usize,
+    index: &crate::search::index::SearchIndex,
+    db: Option<&crate::database::SymbolDatabase>,
+) -> Result<(Vec<Symbol>, bool)> {
+    debug!("🔍 Searching content with Tantivy");
+
+    let fetch_limit = if filter.file_pattern.is_some() {
+        limit.saturating_mul(100).max(500).min(1000)
+    } else {
+        limit.saturating_mul(5).max(50)
+    };
+    let content_search = index.search_content(query, filter, fetch_limit)?;
+    let relaxed = content_search.relaxed;
+    let search_results = content_search.results;
+
+    let query_words: Vec<String> = query
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_lowercase())
+        .collect();
+    let mut verified_symbols = Vec::with_capacity(limit);
+
+    if let Some(db) = db {
+        for result in search_results {
+            if verified_symbols.len() >= limit {
+                break;
+            }
+            if let Some(ref pattern) = filter.file_pattern {
+                if !matches_glob_pattern(&result.file_path, pattern) {
+                    continue;
+                }
+            }
+            match db.get_file_content(&result.file_path) {
+                Ok(Some(content)) => {
+                    let content_lower = content.to_lowercase();
+                    if query_words
+                        .iter()
+                        .all(|word| content_lower.contains(word.as_str()))
+                    {
+                        verified_symbols.push(content_result_to_symbol(result));
+                    } else {
+                        debug!(
+                            "Filtered false positive: {} (missing query words for '{}')",
+                            result.file_path, query
+                        );
+                    }
+                }
+                Ok(None) => {
+                    verified_symbols.push(content_result_to_symbol(result));
+                }
+                Err(e) => {
+                    debug!("Could not verify content for {}: {}", result.file_path, e);
+                    verified_symbols.push(content_result_to_symbol(result));
+                }
+            }
+        }
+    } else {
+        debug!("No database available for content verification, returning unverified results");
+        for result in search_results.into_iter().take(limit) {
+            verified_symbols.push(content_result_to_symbol(result));
+        }
+    }
+
+    Ok((verified_symbols, relaxed))
+}
+
+// ---------------------------------------------------------------------------
+// Result conversion helpers
+// ---------------------------------------------------------------------------
 
 /// Convert a Tantivy SymbolSearchResult into an extractors Symbol.
-pub(crate) fn tantivy_symbol_to_symbol(result: crate::search::index::SymbolSearchResult) -> Symbol {
+pub(crate) fn tantivy_symbol_to_symbol(
+    result: crate::search::index::SymbolSearchResult,
+) -> Symbol {
     Symbol {
         id: result.id,
         name: result.name,
@@ -705,11 +439,13 @@ fn enrich_symbols_from_db(symbols: &mut [Symbol], db: &crate::database::SymbolDa
 }
 
 /// Convert a ContentSearchResult into a Symbol (file-level match).
-pub(crate) fn content_result_to_symbol(result: crate::search::index::ContentSearchResult) -> Symbol {
+pub(crate) fn content_result_to_symbol(
+    result: crate::search::index::ContentSearchResult,
+) -> Symbol {
     Symbol {
         id: format!("content_{}", result.file_path.replace(['/', '\\'], "_")),
         name: result.file_path.clone(),
-        kind: SymbolKind::Module, // Represent as file/module match
+        kind: SymbolKind::Module,
         language: result.language,
         file_path: result.file_path,
         start_line: 1,

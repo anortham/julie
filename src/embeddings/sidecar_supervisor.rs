@@ -178,13 +178,21 @@ pub(crate) fn is_truthy_env_flag(value: &str) -> bool {
 pub(crate) fn python_version_from_program(program: &std::ffi::OsStr) -> Option<(u32, u32)> {
     use std::process::Command;
 
-    let output = Command::new(program)
-        .arg("--version")
+    let mut cmd = Command::new(program);
+    cmd.arg("--version")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .ok()?;
+        .stderr(std::process::Stdio::piped());
+
+    // On Windows, prevent a visible console window from flashing.
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = cmd.output().ok()?;
 
     if !output.status.success() {
         return None;

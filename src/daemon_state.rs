@@ -67,20 +67,20 @@ pub struct LoadedWorkspace {
 /// resources. Wrapped in `Arc<tokio::sync::RwLock<DaemonState>>` for shared access.
 pub struct DaemonState {
     /// Map of workspace_id -> loaded workspace.
-    pub workspaces: HashMap<String, LoadedWorkspace>,
+    pub(crate) workspaces: HashMap<String, LoadedWorkspace>,
     /// Per-workspace MCP services (isolated per-project sessions).
-    pub mcp_services: HashMap<String, StreamableHttpService<JulieServerHandler>>,
+    pub(crate) mcp_services: HashMap<String, StreamableHttpService<JulieServerHandler>>,
     /// Cross-project file watcher manager (one watcher per Ready project).
-    pub watcher_manager: Arc<DaemonWatcherManager>,
+    pub(crate) watcher_manager: Arc<DaemonWatcherManager>,
     /// Global project registry — shared with `AppState`.
-    pub registry: Arc<RwLock<GlobalRegistry>>,
+    pub(crate) registry: Arc<RwLock<GlobalRegistry>>,
     /// Path to `~/.julie` for persisting registry.
-    pub julie_home: PathBuf,
+    pub(crate) julie_home: PathBuf,
     /// Sender for background indexing pipeline (`None` during construction;
     /// set via `set_indexing_sender` after spawning the worker).
-    pub indexing_sender: Option<IndexingSender>,
+    pub(crate) indexing_sender: Option<IndexingSender>,
     /// Cancellation token for shutting down all MCP sessions and background work.
-    pub cancellation_token: CancellationToken,
+    pub(crate) cancellation_token: CancellationToken,
 }
 
 impl DaemonState {

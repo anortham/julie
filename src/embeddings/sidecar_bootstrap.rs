@@ -17,6 +17,19 @@ use super::sidecar_supervisor::{RUNTIME_EDITABLE_REQUIREMENT, SUPPORTED_PYTHON_M
 const SIDECAR_BOOTSTRAP_PYTHON_ENV: &str = "JULIE_EMBEDDING_SIDECAR_BOOTSTRAP_PYTHON";
 const INSTALL_MARKER: &str = ".julie-sidecar-install-root";
 
+/// On Windows, prevent spawned processes from opening visible console windows.
+#[cfg(windows)]
+fn suppress_console_window(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn suppress_console_window(_cmd: &mut Command) {
+    // No-op on Unix — child processes inherit the parent's terminal.
+}
+
 /// Try creating the sidecar venv with `uv venv --python 3.X`.
 ///
 /// Returns `Some(Ok(()))` on success, `Some(Err(_))` if uv ran but the venv
@@ -26,15 +39,16 @@ fn try_uv_venv(venv_path: &Path) -> Option<Result<()>> {
     // Try each supported version — uv will find both its own managed
     // installs and system interpreters.
     for minor in SUPPORTED_PYTHON_MINORS {
-        let status = Command::new("uv")
-            .arg("venv")
+        let mut cmd = Command::new("uv");
+        cmd.arg("venv")
             .arg("--python")
             .arg(format!("3.{minor}"))
             .arg(venv_path)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .status();
+            .stderr(std::process::Stdio::piped());
+        suppress_console_window(&mut cmd);
+        let status = cmd.status();
         if matches!(status, Ok(s) if s.success()) {
             return Some(Ok(()));
         }
@@ -43,13 +57,16 @@ fn try_uv_venv(venv_path: &Path) -> Option<Result<()>> {
     // No compatible Python available — auto-install the preferred version.
     let preferred = SUPPORTED_PYTHON_MINORS[0]; // 3.12
     tracing::info!("No Python 3.10-3.13 found — installing Python 3.{preferred} via uv");
-    let install_ok = Command::new("uv")
+    let mut install_cmd = Command::new("uv");
+    install_cmd
         .arg("python")
         .arg("install")
         .arg(format!("3.{preferred}"))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    suppress_console_window(&mut install_cmd);
+    let install_ok = install_cmd
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
@@ -60,15 +77,17 @@ fn try_uv_venv(venv_path: &Path) -> Option<Result<()>> {
     }
 
     // Retry venv creation with the freshly installed interpreter.
-    let status = Command::new("uv")
+    let mut retry_cmd = Command::new("uv");
+    retry_cmd
         .arg("venv")
         .arg("--python")
         .arg(format!("3.{preferred}"))
         .arg(venv_path)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .status();
+        .stderr(std::process::Stdio::piped());
+    suppress_console_window(&mut retry_cmd);
+    let status = retry_cmd.status();
     if matches!(status, Ok(s) if s.success()) {
         return Some(Ok(()));
     }
@@ -199,27 +218,27 @@ fn python_interpreter_candidates() -> Vec<OsString> {
 }
 
 fn command_exists(program: &OsStr) -> bool {
-    Command::new(program)
-        .arg("--version")
+    let mut cmd = Command::new(program);
+    cmd.arg("--version")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+        .stderr(std::process::Stdio::null());
+    suppress_console_window(&mut cmd);
+    cmd.status().is_ok_and(|status| status.success())
 }
 
 /// Ask `uv python find 3.{minor}` for a Python interpreter path.
 /// Returns `None` if uv isn't installed or doesn't have that version.
 fn uv_python_find(minor: u32) -> Option<OsString> {
-    let output = Command::new("uv")
-        .arg("python")
+    let mut cmd = Command::new("uv");
+    cmd.arg("python")
         .arg("find")
         .arg(format!("3.{minor}"))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
+        .stderr(std::process::Stdio::null());
+    suppress_console_window(&mut cmd);
+    let output = cmd.output().ok()?;
 
     if !output.status.success() {
         return None;
@@ -320,6 +339,7 @@ pub(super) fn ensure_sidecar_package_installed(
 }
 
 fn run_command(command: &mut Command, error_context: &str) -> Result<()> {
+    suppress_console_window(command);
     let program = command.get_program().to_string_lossy().to_string();
     let args = command
         .get_args()

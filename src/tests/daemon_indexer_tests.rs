@@ -83,7 +83,7 @@ fn test_state_with_registry(
 fn test_index_request_construction() {
     let request = IndexRequest {
         workspace_id: "test-ws-123".to_string(),
-        project_path: std::path::PathBuf::from("/tmp/project"),
+        project_path: std::env::temp_dir().join("project"),
         force: false,
     };
     assert_eq!(request.workspace_id, "test-ws-123");
@@ -94,7 +94,7 @@ fn test_index_request_construction() {
 fn test_index_request_clone() {
     let request = IndexRequest {
         workspace_id: "ws-1".to_string(),
-        project_path: std::path::PathBuf::from("/tmp/project"),
+        project_path: std::env::temp_dir().join("project"),
         force: true,
     };
     let cloned = request.clone();
@@ -112,7 +112,7 @@ async fn test_index_request_can_be_sent_through_channel() {
 
     let request = IndexRequest {
         workspace_id: "ws-channel-test".to_string(),
-        project_path: std::path::PathBuf::from("/tmp/project"),
+        project_path: std::env::temp_dir().join("project"),
         force: false,
     };
 
@@ -129,7 +129,7 @@ async fn test_multiple_requests_queued_in_order() {
     for i in 0..5 {
         tx.send(IndexRequest {
             workspace_id: format!("ws-{}", i),
-            project_path: std::path::PathBuf::from(format!("/tmp/project-{}", i)),
+            project_path: std::env::temp_dir().join(format!("project-{}", i)),
             force: false,
         })
         .await
@@ -202,14 +202,15 @@ fn test_registry_status_transition_to_error() {
 
 #[test]
 fn test_daemon_state_indexing_status_maps_to_project_status() {
+    let temp = tempfile::tempdir().unwrap();
     let registry = Arc::new(tokio::sync::RwLock::new(GlobalRegistry::new()));
     let ct = CancellationToken::new();
-    let julie_home = std::path::PathBuf::from("/tmp/test-julie-home");
+    let julie_home = temp.path().join("julie-home");
     let daemon_state_arc = Arc::new(tokio::sync::RwLock::new(DaemonState::new(
         registry.clone(), julie_home.clone(), ct.clone(),
     )));
     let mut state = DaemonState::new(registry, julie_home, ct);
-    let project_path = std::path::PathBuf::from("/tmp/project");
+    let project_path = temp.path().join("project");
 
     state.register_workspace("ws-1".to_string(), project_path, daemon_state_arc);
 

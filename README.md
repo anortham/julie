@@ -224,40 +224,117 @@ All features work in both light and dark mode, with responsive layouts for mobil
 
 ## Development
 
+### Prerequisites
+
+- **Rust** (stable, 1.80+) — [rustup.rs](https://rustup.rs)
+- **Node.js** (18+) — required to build the web dashboard UI
+- **Python 3.10-3.13** + **uv** (optional) — only needed for GPU-accelerated embeddings; keyword search works without it
+
+### Building from Source
+
 ```bash
-# Clone repository
 git clone https://github.com/anortham/julie.git
 cd julie
-
-# Development build
 cargo build
-
-# Run tests
-cargo test
-
-# Production build
-cargo build --release
 ```
 
-## Testing
+The `build.rs` script automatically runs `npm install && npm run build` in the `ui/` directory on first build to compile the Vue dashboard. If Node.js is not available, a stub fallback is used (dashboard won't be served, but all MCP tools work).
 
-Julie uses a comprehensive testing methodology:
+### Running Locally
 
-- **Unit tests** for all 31 language extractors
-- **Real-world validation** against GitHub repositories
-- **SOURCE/CONTROL methodology** for editing tools (original files vs expected results)
-- **Coverage targets**: 80% general, 90% for editing tools
+**Option A: Daemon mode** (recommended — persistent server with dashboard, file watchers, multi-project support)
 
 ```bash
-# Run all tests
-cargo test
+# Start the daemon (listens on http://localhost:7890)
+cargo run -- daemon start
 
-# Run with output
-cargo test -- --nocapture
+# Dashboard available at http://localhost:7890/ui/
+# API docs available at http://localhost:7890/api/docs
 
-# Coverage analysis
-cargo tarpaulin
+# Check status / stop
+cargo run -- daemon status
+cargo run -- daemon stop
 ```
+
+**Option B: Stdio mode** (single project, direct MCP over stdin/stdout — for testing MCP protocol)
+
+```bash
+cargo run -- --workspace /path/to/your/project
+```
+
+**Option C: Connect mode** (stdio bridge that auto-starts the daemon — how MCP clients typically use Julie)
+
+```bash
+cargo run -- connect --workspace /path/to/your/project
+```
+
+### Connecting MCP Clients to a Dev Build
+
+When developing Julie, point your MCP client at your debug build instead of the installed binary:
+
+**Claude Code:**
+```bash
+# Use connect mode (auto-starts daemon if needed)
+claude mcp add julie-dev -- /path/to/julie/target/debug/julie-server connect
+
+# Or point directly at the daemon's HTTP endpoint
+claude mcp add julie-dev --transport http http://localhost:7890/mcp
+```
+
+**VS Code / Cursor / Other HTTP MCP clients:**
+```json
+{
+  "servers": {
+    "Julie": {
+      "type": "http",
+      "url": "http://localhost:7890/mcp"
+    }
+  }
+}
+```
+
+After rebuilding (`cargo build`), restart the daemon to pick up changes:
+```bash
+cargo run -- daemon restart
+```
+
+### UI Development
+
+The web dashboard is a Vue 3 + TypeScript SPA in the `ui/` directory:
+
+```bash
+cd ui
+npm install
+npm run dev    # Vite dev server with hot reload (proxies API to localhost:7890)
+npm run build  # Production build (output to ui/dist/, embedded in binary via rust-embed)
+```
+
+When using `npm run dev`, make sure the Julie daemon is running — the Vite dev server on `localhost:5173` proxies `/api` requests to the daemon on `localhost:7890`.
+
+### Testing
+
+Julie has a tiered test strategy to keep iteration fast:
+
+| Tier | Command | Time | When to use |
+|------|---------|------|-------------|
+| **Fast** | `cargo test --lib -- --skip search_quality` | ~15s | After every change |
+| **Dogfood** | `cargo test --lib search_quality` | ~250s | After search/scoring changes |
+| **Full** | `cargo test --lib` | ~265s | Before merging |
+
+```bash
+# Fast tier (recommended during development)
+cargo test --lib -- --skip search_quality
+
+# Run specific test modules
+cargo test --lib tests::tools::deep_dive     # deep_dive tests
+cargo test --lib tests::tools::search        # search tests
+cargo test --lib tests::core::database       # database tests
+
+# Run extractor tests (separate crate)
+cargo test -p julie-extractors
+```
+
+The dogfood tests load a 100MB SQLite fixture and run real searches — they're regression guards, not unit tests.
 
 ## Project Structure
 

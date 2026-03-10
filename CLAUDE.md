@@ -281,6 +281,6 @@ Key docs: `WORKSPACE_ARCHITECTURE.md`, `TESTING_GUIDE.md`, `SEARCH_FLOW.md`, `AR
 
 ---
 
-**Last Updated:** 2026-03-10 | **Status:** Production Ready (v4.1.0)
+**Last Updated:** 2026-03-10 | **Status:** Production Ready (v4.1.3)
 
 - You CANNOT build the release build while we're running the server in session!
