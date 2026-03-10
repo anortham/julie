@@ -85,6 +85,12 @@ fn copy_binary(paths: &InstallPaths) -> Result<()> {
     fs::create_dir_all(&paths.bin_dir)
         .with_context(|| format!("Failed to create {}", paths.bin_dir.display()))?;
 
+    // Clean up .old binary from previous uninstall (Windows rename-to-old pattern)
+    let old_binary = paths.binary.with_extension("exe.old");
+    if old_binary.exists() {
+        let _ = fs::remove_file(&old_binary);
+    }
+
     // Create logs dir (services will log here)
     fs::create_dir_all(&paths.logs_dir)
         .with_context(|| format!("Failed to create {}", paths.logs_dir.display()))?;
@@ -357,11 +363,9 @@ fn stop_service() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn stop_service() -> Result<()> {
-    // /F = force kill (required — julie-server doesn't handle WM_CLOSE)
-    // /IM = match by image name
-    let _ = std::process::Command::new("taskkill")
-        .args(["/F", "/IM", "julie-server.exe"])
-        .status();
+    // Use PID-based stop via daemon_stop() — NOT taskkill /IM which kills ALL
+    // processes named julie-server.exe, including the installer itself.
+    let _ = daemon::daemon_stop();
     // Give Windows a moment to release the file lock
     std::thread::sleep(std::time::Duration::from_millis(500));
     Ok(())
@@ -383,9 +387,36 @@ pub fn uninstall() -> Result<()> {
     // 3. Remove binary
     let paths = InstallPaths::resolve()?;
     if paths.binary.exists() {
-        fs::remove_file(&paths.binary)
-            .with_context(|| format!("Failed to remove {}", paths.binary.display()))?;
-        println!("Removed {}", paths.binary.display());
+        match fs::remove_file(&paths.binary) {
+            Ok(()) => {
+                println!("Removed {}", paths.binary.display());
+            }
+            Err(e) if cfg!(windows) => {
+                // On Windows, a running executable can't be deleted but CAN be renamed.
+                // Rename to .old so the next install/startup can clean it up.
+                let old_path = paths.binary.with_extension("exe.old");
+                let _ = fs::remove_file(&old_path); // Remove previous .old if any
+                match fs::rename(&paths.binary, &old_path) {
+                    Ok(()) => {
+                        println!(
+                            "Binary is locked (still running?). Renamed to {}",
+                            old_path.display()
+                        );
+                        println!("It will be cleaned up on next install.");
+                    }
+                    Err(rename_err) => {
+                        eprintln!(
+                            "Warning: Could not remove or rename binary: {} (rename: {})",
+                            e, rename_err
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(e)
+                    .with_context(|| format!("Failed to remove {}", paths.binary.display()));
+            }
+        }
     }
 
     // Remove bin dir if empty

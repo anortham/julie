@@ -14,7 +14,11 @@ use std::path::{MAIN_SEPARATOR, Path, PathBuf};
 /// strips it for user-facing output.
 pub fn display_path(path: &Path) -> String {
     let s = path.to_string_lossy();
-    if let Some(stripped) = s.strip_prefix(r"\\?\") {
+    // UNC extended path: \\?\UNC\server\share → \\server\share
+    if let Some(unc_rest) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{}", unc_rest)
+    // Local extended path: \\?\C:\Users\... → C:\Users\...
+    } else if let Some(stripped) = s.strip_prefix(r"\\?\") {
         stripped.to_string()
     } else {
         s.into_owned()

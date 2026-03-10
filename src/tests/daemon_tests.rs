@@ -219,6 +219,7 @@ fn test_lock_and_write_pid_file_creates_valid_toml() {
 
     let _lock = lock_and_write_pid_file(&pid_path, 12345, 7890).unwrap();
 
+    // PID file is separate from the lock file and remains readable on all platforms
     let content = fs::read_to_string(&pid_path).unwrap();
     let parsed: DaemonInfo = toml::from_str(&content).unwrap();
     assert_eq!(parsed.pid, 12345);
@@ -259,7 +260,7 @@ fn test_lock_released_on_drop() {
     // Should be able to acquire the lock again after drop
     let _lock = lock_and_write_pid_file(&pid_path, 67890, 8080).unwrap();
 
-    // Verify the new content was written
+    // PID file is separate from lock — readable on all platforms
     let content = fs::read_to_string(&pid_path).unwrap();
     let parsed: DaemonInfo = toml::from_str(&content).unwrap();
     assert_eq!(parsed.pid, 67890);

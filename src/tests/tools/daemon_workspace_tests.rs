@@ -482,6 +482,7 @@ mod tests {
     // Registry persistence failure tests
     // =========================================================================
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn test_register_project_fails_when_registry_persist_fails() {
         use std::os::unix::fs::PermissionsExt;
@@ -515,6 +516,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn test_deregister_project_fails_when_registry_persist_fails() {
         use std::os::unix::fs::PermissionsExt;

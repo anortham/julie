@@ -8,7 +8,6 @@
 
 use std::fs;
 use std::fs::File;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -98,16 +97,23 @@ pub fn write_pid_file(path: &Path, pid: u32, port: u16) -> Result<()> {
 ///
 /// If another process already holds the lock, returns an error immediately
 /// (non-blocking via `try_lock_exclusive`).
+///
+/// Uses a separate `.lock` file for the exclusive lock so the PID file itself
+/// remains readable on all platforms. On Windows, exclusive byte-range locks
+/// prevent ALL reads from other handles, so locking the PID file directly
+/// would break `read_pid_file` / `is_daemon_running`.
 pub fn lock_and_write_pid_file(path: &Path, pid: u32, port: u16) -> Result<File> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create directory {:?}", parent))?;
     }
 
-    let file = File::create(path)
-        .with_context(|| format!("Failed to create PID file {:?}", path))?;
+    // Lock a separate file to avoid blocking reads of the PID file on Windows
+    let lock_path = path.with_extension("lock");
+    let lock_file = File::create(&lock_path)
+        .with_context(|| format!("Failed to create lock file {:?}", lock_path))?;
 
-    file.try_lock_exclusive().map_err(|_| {
+    lock_file.try_lock_exclusive().map_err(|_| {
         anyhow::anyhow!(
             "Another Julie daemon is already running (PID file {:?} is locked). \
              Use 'julie-server daemon stop' first.",
@@ -115,17 +121,13 @@ pub fn lock_and_write_pid_file(path: &Path, pid: u32, port: u16) -> Result<File>
         )
     })?;
 
-    // Lock acquired — write the PID info
+    // Lock acquired — write the PID info to the (unlocked) PID file
     let info = DaemonInfo { pid, port };
     let content = toml::to_string(&info).context("Failed to serialize DaemonInfo to TOML")?;
-    // Use the locked file handle to write (not fs::write which would open a new fd)
-    let mut file = file;
-    file.write_all(content.as_bytes())
+    fs::write(path, content.as_bytes())
         .with_context(|| format!("Failed to write PID file {:?}", path))?;
-    file.flush()
-        .with_context(|| format!("Failed to flush PID file {:?}", path))?;
 
-    Ok(file)
+    Ok(lock_file)
 }
 
 /// Read and parse a PID file. Returns `None` if the file doesn't exist.

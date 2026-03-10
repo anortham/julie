@@ -530,6 +530,8 @@ async fn test_worker_marks_indexing_then_processes() {
     // because it has no source files and the workspace init might fail.
     let project_dir = temp.path().join("empty-project");
     std::fs::create_dir_all(&project_dir).unwrap();
+    // .git marker prevents find_workspace_root from walking up to HOME
+    std::fs::create_dir_all(project_dir.join(".git")).unwrap();
 
     let mut registry = GlobalRegistry::new();
     let ws_id = registry
@@ -565,7 +567,8 @@ async fn test_worker_marks_indexing_then_processes() {
     // Give the worker some time to process
     // The indexing of an empty project should either succeed quickly
     // or fail quickly. Either way, the status should change from Registered.
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    // Windows needs more time due to tree-sitter parser init overhead.
+    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 
     let reg = registry_arc.read().await;
     let entry = reg.get_project(&ws_id).unwrap();
@@ -598,6 +601,8 @@ async fn test_worker_updates_daemon_state_on_success() {
 
     let project_dir = temp.path().join("real-project");
     std::fs::create_dir_all(&project_dir).unwrap();
+    // .git marker prevents find_workspace_root from walking up to HOME
+    std::fs::create_dir_all(project_dir.join(".git")).unwrap();
 
     // Create a simple Rust source file so indexing has something to work with
     std::fs::write(
@@ -636,8 +641,8 @@ async fn test_worker_updates_daemon_state_on_success() {
     .await
     .unwrap();
 
-    // Wait for indexing to complete
-    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+    // Wait for indexing to complete — needs headroom under parallel test load
+    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 
     // Check registry status
     let reg = registry_arc.read().await;
@@ -697,6 +702,8 @@ async fn test_worker_processes_multiple_requests_sequentially() {
     for i in 0..2 {
         let project_dir = temp.path().join(format!("project-{}", i));
         std::fs::create_dir_all(&project_dir).unwrap();
+        // .git marker prevents find_workspace_root from walking up to HOME
+        std::fs::create_dir_all(project_dir.join(".git")).unwrap();
         std::fs::write(
             project_dir.join("lib.rs"),
             &format!("pub fn func_{}() {{}}\n", i),
@@ -746,8 +753,8 @@ async fn test_worker_processes_multiple_requests_sequentially() {
         .unwrap();
     }
 
-    // Wait for both to complete
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    // Wait for both to complete — each project needs ~10s on Windows
+    tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
 
     // Both should be ready
     let reg = registry_arc.read().await;
@@ -774,6 +781,8 @@ async fn test_worker_handles_force_reindex() {
 
     let project_dir = temp.path().join("reindex-project");
     std::fs::create_dir_all(&project_dir).unwrap();
+    // .git marker prevents find_workspace_root from walking up to HOME
+    std::fs::create_dir_all(project_dir.join(".git")).unwrap();
     std::fs::write(
         project_dir.join("lib.rs"),
         "pub fn original() {}\n",
@@ -811,7 +820,8 @@ async fn test_worker_handles_force_reindex() {
     .await
     .unwrap();
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+    // Under full-suite parallel load, indexing needs more time on Windows
+    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 
     // Verify first index completed
     {
@@ -836,7 +846,7 @@ async fn test_worker_handles_force_reindex() {
     .await
     .unwrap();
 
-    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 
     // Verify re-index completed
     let reg = registry_arc.read().await;

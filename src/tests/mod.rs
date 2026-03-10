@@ -77,6 +77,7 @@ pub mod core {
     pub mod vector_storage; // sqlite-vec vector storage CRUD tests
     pub mod memory_vectors; // Memory embedding vector storage (migration 012 + CRUD + KNN)
     pub mod workspace_init; // Workspace root detection and initialization tests
+    pub mod paths; // Path utility tests (display_path, UNC handling)
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
     pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
 }

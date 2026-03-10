@@ -156,7 +156,7 @@ mod tests {
 
         // Running from source checkout, so priority 3 (CARGO_MANIFEST_DIR) should match
         let path = sidecar_root_path().expect("sidecar_root_path should succeed from source checkout");
-        let path_str = path.to_string_lossy();
+        let path_str = path.to_string_lossy().replace('\\', "/");
         assert!(
             path_str.contains("python/embeddings_sidecar"),
             "expected path to contain 'python/embeddings_sidecar', got: {path_str}"

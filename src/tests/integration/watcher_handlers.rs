@@ -716,3 +716,146 @@ async fn test_delete_handler_skips_when_file_still_exists() {
         );
     }
 }
+
+/// Regression test for Bug: File watcher drops Tantivy file content documents
+///
+/// Bug: handle_file_created_or_modified_static calls remove_by_file_path() which
+/// deletes BOTH symbol docs AND file content docs from Tantivy, but only re-adds
+/// symbol docs via add_symbol(). The add_file_content() call is missing.
+///
+/// Impact: Every file save progressively erodes the content search index. After
+/// hours of editing, fast_search with search_target="content" returns zero results
+/// for commonly-edited files because their content documents have been deleted.
+///
+/// Root cause:
+/// - Line 164: idx.remove_by_file_path() — deletes ALL docs (symbols + file content)
+/// - Lines 167-170: Only adds symbol docs back
+/// - MISSING: idx.add_file_content() call to re-add file content doc
+///
+/// Compare with populate_tantivy_index() in processor.rs which correctly adds both.
+#[tokio::test]
+async fn test_incremental_indexing_preserves_tantivy_file_content() {
+    use crate::search::index::{FileDocument, SearchFilter, SearchIndex};
+
+    let temp_dir = crate::tests::helpers::unique_temp_dir("watcher_tantivy_content");
+    let workspace_root = temp_dir.path().canonicalize().unwrap();
+
+    // Create a Rust file with a distinctive identifier for content search
+    let test_file = workspace_root.join("rich_component.rs");
+    let initial_content = r#"
+fn render_rich_text_field() {
+    let widget = RichTextField::new();
+    widget.display();
+}
+"#;
+    fs::write(&test_file, initial_content).unwrap();
+    let absolute_path = test_file.canonicalize().unwrap();
+
+    // Initialize database
+    let db_path = workspace_root.join("test.db");
+    let db = Arc::new(Mutex::new(
+        SymbolDatabase::new(&db_path).expect("Failed to create test database"),
+    ));
+    let extractor_manager = Arc::new(ExtractorManager::new());
+
+    // Create Tantivy search index
+    let tantivy_dir = workspace_root.join("tantivy");
+    fs::create_dir_all(&tantivy_dir).unwrap();
+    let search_index = Arc::new(Mutex::new(
+        SearchIndex::create(&tantivy_dir).expect("Failed to create search index"),
+    ));
+
+    // Seed Tantivy with initial file content (simulating what initial indexing does)
+    {
+        let idx = search_index.lock().unwrap();
+        idx.add_file_content(&FileDocument {
+            file_path: "rich_component.rs".into(),
+            content: initial_content.into(),
+            language: "rust".into(),
+        })
+        .unwrap();
+        idx.commit().unwrap();
+    }
+
+    // Verify content search works BEFORE incremental update
+    {
+        let idx = search_index.lock().unwrap();
+        let results = idx
+            .search_content("RichTextField", &SearchFilter::default(), 10)
+            .unwrap()
+            .results;
+        assert!(
+            !results.is_empty(),
+            "Content search should find 'RichTextField' before incremental update"
+        );
+    }
+
+    // Now simulate a file modification via the watcher handler
+    let modified_content = r#"
+fn render_rich_text_field() {
+    let widget = RichTextField::new();
+    widget.set_value("hello");
+    widget.display();
+}
+"#;
+    fs::write(&test_file, modified_content).unwrap();
+
+    // Call the watcher handler WITH the search index (this is the code path that has the bug)
+    handle_file_created_or_modified_static(
+        absolute_path.clone(),
+        &db,
+        &extractor_manager,
+        &workspace_root,
+        Some(&search_index),
+    )
+    .await
+    .expect("Incremental indexing should succeed");
+
+    // CRITICAL: Verify content search STILL works after incremental update
+    // BUG: Before fix, this fails because remove_by_file_path() deleted the content doc
+    // and only symbol docs were re-added
+    {
+        let idx = search_index.lock().unwrap();
+        let results = idx
+            .search_content("RichTextField", &SearchFilter::default(), 10)
+            .unwrap()
+            .results;
+        assert!(
+            !results.is_empty(),
+            "BUG: Content search for 'RichTextField' returns nothing after file modification! \
+             The file watcher's incremental update deletes file content documents from Tantivy \
+             (via remove_by_file_path) but never re-adds them (missing add_file_content call). \
+             This causes content search to progressively degrade over a session."
+        );
+        assert_eq!(
+            results[0].file_path, "rich_component.rs",
+            "Content search should find the correct file"
+        );
+    }
+
+    // Also verify the NEW content is searchable (not just the old content)
+    {
+        let idx = search_index.lock().unwrap();
+        let results = idx
+            .search_content("set_value", &SearchFilter::default(), 10)
+            .unwrap()
+            .results;
+        assert!(
+            !results.is_empty(),
+            "Content search should find new content 'set_value' added in the modification"
+        );
+    }
+
+    // Verify symbol search still works too (sanity check)
+    {
+        let idx = search_index.lock().unwrap();
+        let results = idx
+            .search_symbols("render_rich_text_field", &SearchFilter::default(), 10)
+            .unwrap()
+            .results;
+        assert!(
+            !results.is_empty(),
+            "Symbol search should still find 'render_rich_text_field' after incremental update"
+        );
+    }
+}

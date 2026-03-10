@@ -53,11 +53,11 @@ GPT review of v3.9.1→v4.1.4 delta, verified by Claude. 12/13 findings confirme
 - [x] **UI asset 404 instead of SPA fallback** — missing `.js`/`.css`/etc. return 404; SPA fallback only for navigation routes (8 new tests)
 - [x] **PID-file atomic locking** — `fs2::try_lock_exclusive()` eliminates TOCTOU race in `daemon_start` (5 new tests)
 
-### Deferred to Windows session
+### Completed (Windows session 2026-03-10)
 
-- [ ] **Fix Windows `stop_service()` self-kill** — `taskkill /F /IM julie-server.exe` kills all processes with that name including the installer (`src/install.rs:359-368`)
-- [ ] **Make Windows uninstall robust for active executable** — can't delete running binary on Windows (`src/install.rs`)
-- [ ] **Fix Windows UNC display-path** — `display_path()` strips `\\?\` but not `\\?\UNC\server\share` → `\\server\share` (`src/utils/paths.rs:15-22`)
+- [x] **Fix Windows `stop_service()` self-kill** — replaced `taskkill /IM` (kills all processes by name) with PID-based `daemon_stop()` (`src/install.rs`)
+- [x] **Make Windows uninstall robust for active executable** — rename-to-`.old` fallback when delete fails, cleaned up on next install (`src/install.rs`)
+- [x] **Fix Windows UNC display-path** — `\\?\UNC\server\share` → `\\server\share` (6 new tests in `src/tests/core/paths.rs`)
 
 ### Deferred (design discussion / uncertain)
 

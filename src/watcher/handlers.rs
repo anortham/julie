@@ -142,12 +142,19 @@ pub async fn handle_file_created_or_modified_static(
     }
 
     // 6. Update Tantivy search index (if available)
+    // CRITICAL: Must re-add BOTH symbol docs AND file content doc after removal.
+    // remove_by_file_path() deletes all doc types for the file path.
     if let Some(search_index) = search_index {
         let symbol_docs: Vec<_> = results
             .symbols
             .iter()
             .map(crate::search::SymbolDocument::from_symbol)
             .collect();
+        let file_content_doc = crate::search::FileDocument {
+            file_path: relative_path.clone(),
+            content: content_str.to_string(),
+            language: language.clone(),
+        };
         let file_to_clean = relative_path.clone();
 
         let search_index = Arc::clone(search_index);
@@ -168,6 +175,10 @@ pub async fn handle_file_created_or_modified_static(
                 if let Err(e) = idx.add_symbol(doc) {
                     warn!("Failed to add Tantivy symbol doc: {}", e);
                 }
+            }
+            // Re-add file content doc (required for content search / line-mode search)
+            if let Err(e) = idx.add_file_content(&file_content_doc) {
+                warn!("Failed to add Tantivy file content doc: {}", e);
             }
             if let Err(e) = idx.commit() {
                 warn!("Failed to commit Tantivy updates: {}", e);

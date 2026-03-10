@@ -578,6 +578,10 @@ async fn test_handler_uses_provided_workspace_root() {
     let intended_workspace = setup_test_workspace();
     let different_cwd = setup_test_workspace();
 
+    // Create .git boundaries so find_workspace_root doesn't walk up into ~/.julie
+    fs::create_dir_all(intended_workspace.path().join(".git")).unwrap();
+    fs::create_dir_all(different_cwd.path().join(".git")).unwrap();
+
     // Save original cwd
     let original_cwd = env::current_dir().expect("Failed to get cwd");
 
@@ -590,9 +594,11 @@ async fn test_handler_uses_provided_workspace_root() {
         .expect("Failed to create handler");
 
     // Verify the handler stored the correct workspace root
+    // Use canonicalize() on both sides to handle Windows 8.3 short path names
+    // (e.g., tempfile may return CHS300~1 instead of CHS300372)
     assert_eq!(
-        handler.workspace_root,
-        intended_workspace.path().to_path_buf(),
+        handler.workspace_root.canonicalize().unwrap(),
+        intended_workspace.path().canonicalize().unwrap(),
         "Handler should store the workspace root passed to new(), not current_dir"
     );
 
@@ -619,8 +625,8 @@ async fn test_handler_uses_provided_workspace_root() {
         .expect("Failed to get workspace")
         .expect("Workspace should be initialized");
     assert_eq!(
-        workspace.root,
-        intended_workspace.path().to_path_buf(),
+        workspace.root.canonicalize().unwrap(),
+        intended_workspace.path().canonicalize().unwrap(),
         "Workspace should be initialized at the intended root, not cwd"
     );
 
