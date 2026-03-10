@@ -155,7 +155,8 @@
 14. ~~We need to update CLAUDE.md and README.md to properly reflect the big changes that have been made.~~ **DONE** — README.md and CLAUDE.md updated for v4.0.0
 15. [x] **Promoted to 4.0** — ORT kept as sidecar fallback + embedding status dashboard card with Check Status button for on-demand initialization
 16. [x] **Promoted to 4.0** — Multi-agent dispatch: support Codex, Gemini CLI, Copilot CLI alongside Claude Code
-17. [ ] **Bug** — Projects page Embeddings column always shows "--" because `embedding_runtime_status` is `None` until lazy init. Either eagerly init on daemon startup or rethink how we surface embedding status (e.g. query SQLite `symbol_vectors` count directly).
+17. [ ] **Bug** — Projects page Embeddings column always shows "--" because `embedding_runtime_status` is `None` until lazy init. The daemon loads workspaces at startup but never calls `initialize_embedding_provider()`, so the in-memory status stays `None` forever until re-index. Fix: either query `embedding_config` table directly in `list_projects`, or eagerly init embedding status (not provider) at workspace load time.
+18. [x] **Windows build** — `cargo build --release` fails if `ui/dist/` doesn't exist. Added `build.rs` that auto-runs `npm install && npm run build` in `ui/`, with stub fallback if Node.js isn't available.
 
 
 ### Multi-Agent Dispatch — CLI Research (2026-03-09)
