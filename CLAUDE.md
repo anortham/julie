@@ -281,6 +281,16 @@ Key docs: `WORKSPACE_ARCHITECTURE.md`, `TESTING_GUIDE.md`, `SEARCH_FLOW.md`, `AR
 
 ---
 
-**Last Updated:** 2026-03-10 | **Status:** Production Ready (v4.1.3)
+## 📝 Source-Controlled Artifacts
+
+**Always commit these with your work:**
+- `.memories/` — Goldfish checkpoints (developer memory across sessions)
+- `docs/plans/` — Implementation plans
+
+These are project knowledge, not ephemeral. If you create a checkpoint or plan, include it in your commit.
+
+---
+
+**Last Updated:** 2026-03-10 | **Status:** Production Ready (v4.1.4)
 
 - You CANNOT build the release build while we're running the server in session!
