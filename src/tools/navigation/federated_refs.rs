@@ -110,22 +110,7 @@ pub async fn find_refs_federated(
         }
     }
 
-    // Sort by project name for stable output
-    per_project.sort_by(|a, b| a.0.cmp(&b.0));
-
-    // Apply global limit: per-workspace limit was applied during query, but the
-    // merged total can exceed the requested limit. Truncate references across
-    // projects to stay within bounds (definitions are kept — they're typically 0-1).
-    let global_limit = limit as usize;
-    let mut total_refs = 0usize;
-    for (_, _, refs) in &mut per_project {
-        let remaining = global_limit.saturating_sub(total_refs);
-        if refs.len() > remaining {
-            refs.truncate(remaining);
-        }
-        total_refs += refs.len();
-    }
-    per_project.retain(|(_, defs, refs)| !defs.is_empty() || !refs.is_empty());
+    apply_global_ref_limit(&mut per_project, limit as usize);
 
     // Build tagged results for formatting
     let tagged: Vec<ProjectTaggedResult<'_>> = per_project
@@ -150,8 +135,62 @@ pub async fn find_refs_federated(
 }
 
 // ---------------------------------------------------------------------------
-// Internal helper
+// Internal helpers
 // ---------------------------------------------------------------------------
+
+/// Apply a global reference limit across all projects fairly by confidence.
+///
+/// Instead of iterating projects alphabetically and truncating (which starves
+/// later-alphabet projects), this flattens all references, sorts globally by
+/// confidence descending, keeps the top `global_limit`, then re-groups by
+/// project. Definitions are never truncated.
+///
+/// After truncation, projects with no definitions and no remaining refs are
+/// removed, and the final list is sorted by project name for stable output.
+pub(crate) fn apply_global_ref_limit(
+    per_project: &mut Vec<(String, Vec<Symbol>, Vec<Relationship>)>,
+    global_limit: usize,
+) {
+    // Flatten refs into (project_index, Relationship) for global ranking
+    let mut all_refs: Vec<(usize, Relationship)> = Vec::new();
+    for (idx, (_, _, refs)) in per_project.iter_mut().enumerate() {
+        for r in refs.drain(..) {
+            all_refs.push((idx, r));
+        }
+    }
+
+    // Sort by confidence descending, then file path + line for stability
+    all_refs.sort_by(|a, b| {
+        b.1.confidence
+            .partial_cmp(&a.1.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.1.file_path.cmp(&b.1.file_path))
+            .then_with(|| a.1.line_number.cmp(&b.1.line_number))
+    });
+
+    // Truncate to global limit
+    all_refs.truncate(global_limit);
+
+    // Re-distribute refs back to their projects
+    for (idx, rel) in all_refs {
+        per_project[idx].2.push(rel);
+    }
+
+    // Sort refs within each project by file path, then line number for stable output
+    for entry in per_project.iter_mut() {
+        entry.2.sort_by(|a, b| {
+            a.file_path
+                .cmp(&b.file_path)
+                .then_with(|| a.line_number.cmp(&b.line_number))
+        });
+    }
+
+    // Remove projects with no definitions and no remaining refs
+    per_project.retain(|(_, defs, refs)| !defs.is_empty() || !refs.is_empty());
+
+    // Sort by project name for stable output
+    per_project.sort_by(|a, b| a.0.cmp(&b.0));
+}
 
 /// Query a single workspace's database for all references to a symbol.
 ///
