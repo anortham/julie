@@ -2,20 +2,16 @@
 //!
 //! The `DispatchManager` tracks active and completed dispatches, generates
 //! dispatch IDs, and manages broadcast channels for output streaming.
-//! Dispatches are ephemeral (held in memory); completed results are
-//! persisted as checkpoints via the memory system.
+//! Dispatches are ephemeral (held in memory).
 
 use std::collections::HashMap;
-use std::path::Path;
 
-use anyhow::Result;
 use chrono::Utc;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 
 use crate::agent::backend::BackendInfo;
-use crate::memory::{self, CheckpointInput};
 
 /// Status of an agent dispatch.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -74,8 +70,7 @@ const BROADCAST_CAPACITY: usize = 256;
 
 /// Manages agent dispatches.
 ///
-/// Holds dispatches in memory (not persisted to DB). Completed results
-/// can be saved as checkpoints via the memory system.
+/// Holds dispatches in memory (not persisted to DB).
 pub struct DispatchManager {
     dispatches: HashMap<String, AgentDispatch>,
     backends: Vec<BackendInfo>,
@@ -254,9 +249,9 @@ impl Default for DispatchManager {
     }
 }
 
-/// Lightweight snapshot of dispatch data for checkpoint saving.
+/// Lightweight snapshot of dispatch data.
 ///
-/// Used to avoid holding the `DispatchManager` write lock during filesystem I/O.
+/// Used to avoid holding the `DispatchManager` write lock during I/O.
 pub struct DispatchSnapshot {
     pub task: String,
     pub output: String,
@@ -277,43 +272,6 @@ impl From<&AgentDispatch> for DispatchSnapshot {
             error: d.error.clone(),
         }
     }
-}
-
-/// Save a completed dispatch's output as a checkpoint in the memory system.
-///
-/// The checkpoint is tagged with `agent_result`, the backend name, and the project
-/// so it can be recalled later. Uses `CheckpointType::Checkpoint` (the default)
-/// since `agent_result` is not a Goldfish checkpoint type variant.
-///
-/// Accepts a `DispatchSnapshot` so callers can release locks before calling.
-pub async fn save_result_as_checkpoint(
-    workspace_root: &Path,
-    dispatch: &DispatchSnapshot,
-    backend_name: &str,
-) -> Result<memory::Checkpoint> {
-    let description = format!(
-        "# Agent result: {}\n\n{}\n",
-        dispatch.task, dispatch.output
-    );
-
-    let input = CheckpointInput {
-        description,
-        checkpoint_type: Some(memory::CheckpointType::Checkpoint),
-        tags: Some(vec![
-            "agent_result".to_string(),
-            backend_name.to_string(),
-            dispatch.project.clone(),
-        ]),
-        context: Some(format!("Dispatched to {} backend", backend_name)),
-        impact: if dispatch.status == DispatchStatus::Completed {
-            Some("Agent task completed successfully".to_string())
-        } else {
-            dispatch.error.clone()
-        },
-        ..Default::default()
-    };
-
-    memory::checkpoint::save_checkpoint(workspace_root, input).await
 }
 
 /// Generate a deterministic dispatch ID from timestamp and task.

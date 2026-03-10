@@ -81,6 +81,10 @@ async fn main() -> anyhow::Result<()> {
                     info!("Daemon stop requested");
                     daemon::daemon_stop()?;
                 }
+                DaemonAction::Restart { port } => {
+                    info!("Daemon restart requested: port={}", port);
+                    daemon::daemon_restart(port)?;
+                }
                 DaemonAction::Status => {
                     info!("Daemon status requested");
                     daemon::daemon_status()?;

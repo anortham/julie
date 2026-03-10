@@ -1,20 +1,17 @@
 //! Context assembly for agent dispatch.
 //!
-//! Assembles a structured prompt from workspace search results and memories,
+//! Assembles a structured prompt from workspace search results,
 //! formatted for consumption by an AI agent CLI.
 //!
 //! The assembly approach:
 //! 1. Search the workspace's SearchIndex for symbols relevant to the task
 //! 2. Get symbol signatures and doc comments from search results
-//! 3. Recall relevant memories from the checkpoint system
-//! 4. Format everything into a structured prompt
+//! 3. Format everything into a structured prompt
 
-use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::memory::{self, RecallOptions};
 use crate::search::{SearchFilter, SearchIndex};
 
 /// Hints to guide context assembly.
@@ -37,9 +34,6 @@ pub struct ContextHints {
 /// The caller (API layer) has access to the workspace's `SearchIndex` via
 /// `LoadedWorkspace.workspace.search_index`.
 ///
-/// Memory recall uses `workspace_root` directly since `.memories/` lives
-/// at the workspace root.
-///
 /// # Sections
 ///
 /// The output is structured as:
@@ -49,9 +43,6 @@ pub struct ContextHints {
 /// ## Relevant Code
 /// [Top N symbols with signatures and doc comments]
 ///
-/// ## Recent Memories
-/// [Relevant checkpoint summaries from recall]
-///
 /// ## Additional Context
 /// [Any extra hints provided by the caller]
 ///
@@ -59,7 +50,7 @@ pub struct ContextHints {
 /// [User's task description]
 /// ```
 pub async fn assemble_context(
-    workspace_root: Option<&Path>,
+    _workspace_root: Option<&std::path::Path>,
     search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
     task: &str,
     hints: Option<ContextHints>,
@@ -80,18 +71,7 @@ pub async fn assemble_context(
         }
     }
 
-    // 2. Recall relevant memories (uses workspace_root for .memories/ path)
-    if let Some(root) = workspace_root {
-        let memory_section = assemble_memory_context(root, task);
-        if !memory_section.is_empty() {
-            sections.push("## Recent Memories".to_string());
-            sections.push(String::new());
-            sections.push(memory_section);
-            sections.push(String::new());
-        }
-    }
-
-    // 3. Include hints
+    // 2. Include hints
     if let Some(ref hints) = hints {
         let hints_section = assemble_hints_context(hints);
         if !hints_section.is_empty() {
@@ -102,7 +82,7 @@ pub async fn assemble_context(
         }
     }
 
-    // 4. Task section (always present)
+    // 3. Task section (always present)
     sections.push("# Task".to_string());
     sections.push(String::new());
     sections.push(task.to_string());
@@ -149,47 +129,6 @@ fn assemble_code_context(
             lines.push(result.doc_comment.clone());
         }
         lines.push(String::new());
-    }
-
-    lines.join("\n")
-}
-
-/// Recall relevant memories from the checkpoint system.
-///
-/// Uses the task description as a search query to find relevant checkpoints.
-fn assemble_memory_context(workspace_root: &Path, task: &str) -> String {
-    let options = RecallOptions {
-        search: Some(task.to_string()),
-        limit: Some(5),
-        full: Some(false),
-        ..Default::default()
-    };
-
-    let result = match memory::recall::recall(workspace_root, options) {
-        Ok(r) => r,
-        Err(_) => return String::new(),
-    };
-
-    if result.checkpoints.is_empty() {
-        return String::new();
-    }
-
-    let mut lines = Vec::new();
-    for checkpoint in &result.checkpoints {
-        let summary = checkpoint
-            .summary
-            .as_deref()
-            .unwrap_or(&checkpoint.description);
-        let truncated = if summary.chars().count() > 200 {
-            let s: String = summary.chars().take(200).collect();
-            format!("{}...", s)
-        } else {
-            summary.to_string()
-        };
-        lines.push(format!(
-            "- **{}** ({}): {}",
-            checkpoint.id, checkpoint.timestamp, truncated
-        ));
     }
 
     lines.join("\n")

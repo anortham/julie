@@ -5,7 +5,7 @@
 //! auto-start service, and starts the daemon immediately.
 //!
 //! `julie-server uninstall` reverses the process, leaving user data
-//! (indexes, logs, memories) intact.
+//! (indexes, logs) intact.
 
 use anyhow::{Context, Result, bail};
 use std::fs;
@@ -67,11 +67,11 @@ pub fn install(port: u16) -> Result<()> {
     println!("Make sure julie-server is in your PATH:");
     println!("  {}", paths.bin_dir.display());
     println!();
-    println!("Next steps — connect your AI tool:");
-    println!("  Claude Code:");
-    println!("    /plugin marketplace add anortham/julie");
-    println!("    /plugin install julie@julie");
-    println!("  Cursor/other: see https://github.com/anortham/julie#installation");
+    println!("Next steps — add Julie to your AI tool's MCP config:");
+    println!(
+        "  {{\"type\": \"http\", \"url\": \"http://localhost:{}/mcp\"}}",
+        port
+    );
 
     Ok(())
 }

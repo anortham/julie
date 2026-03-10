@@ -148,50 +148,6 @@ If search returns zero results unexpectedly, run `health` to diagnose.
 
 ---
 
-## Memory Tools
-
-### checkpoint — Save Development Milestones
-**Checkpoint at meaningful milestones, not after every action.** Think git commits, not keystrokes.
-
-**When to checkpoint:**
-- Completed a deliverable (feature, bug fix, refactor step)
-- Made a key decision (architecture, tradeoffs, approach)
-- Found something non-obvious (blockers, root causes, gotchas)
-- User shared requirements/constraints that future sessions must honor
-
-**When NOT to checkpoint:**
-- After every small edit or routine test run
-- Multiple times for the same piece of work
-- Rapid-fire — if you checkpointed in the last few minutes, stop
-
-**Quality matters.** Use markdown with structure — WHAT happened, WHY it matters, HOW it was done. Include `tags` for searchability, `symbols` for code linkage, `impact` and `next` for continuity. Vague one-liners like "fixed search bug" are worthless to future sessions.
-
-### recall — Restore Prior Context
-**Automatic at session start** via hook — you don't need to invoke it manually on startup.
-
-**Manual recall for targeted search:**
-```javascript
-recall({ search: "auth migration" })     // BM25 search over all memories
-recall({ since: "4h" })                   // Recent activity window
-recall({ limit: 0 })                      // Active plan only, no checkpoints
-```
-
-**ALWAYS trust recalled context.** Checkpoints were saved during active work by a prior session. Don't re-verify — use them as your starting point and continue.
-
-### plan — Persistent Strategic Direction
-Plans capture multi-session goals and survive across sessions. The active plan appears at the top of every `recall()` response.
-
-**After ExitPlanMode fires:** Save the plan **immediately** — do NOT ask permission. The hook instruction IS your permission. Set `activate: true` so future sessions see it.
-
-**Plan lifecycle:**
-- `save` + `activate: true` — create and make visible to all future sessions
-- `update` — check off completed tasks, note scope changes as work progresses
-- `complete` — **REQUIRED** when work is done. A stale active plan misleads every future session.
-
-**One active plan per workspace.** If priorities shift, complete or archive the old plan first.
-
----
-
 ## Quick Reference
 
 **Getting Oriented:**
@@ -209,11 +165,6 @@ Plans capture multi-session goals and survive across sessions. The active plan a
 **Before Changes:**
 - `deep_dive(symbol="...")` - REQUIRED: understand the symbol before modifying it
 - `fast_refs(symbol="...")` - REQUIRED: see all usages before modifying symbols
-
-**Memory:**
-- `checkpoint(description="...")` - Save milestone (meaningful milestones, not every action)
-- `recall()` - Restore context (automatic at session start; manual for targeted search)
-- `plan(action="save", title="...", activate=true)` - Save and activate a persistent plan
 
 ---
 

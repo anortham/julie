@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import SearchFilters from '../components/SearchFilters.vue'
-import MemoryResults from '../components/MemoryResults.vue'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface SymbolResult {
-  content_type?: string
   id: string
   name: string
   signature: string
@@ -26,31 +24,15 @@ interface ContentResult {
   score: number
 }
 
-interface MemoryResult {
-  content_type: string
-  id: string
-  body: string
-  tags?: string
-  symbols?: string
-  decision?: string
-  impact?: string
-  branch?: string
-  timestamp?: string
-  file_path?: string
-  score: number
-}
-
 interface SearchResponse {
   search_target: string
   relaxed: boolean
   count: number
   symbols?: SymbolResult[]
   content?: ContentResult[]
-  memories?: MemoryResult[]
 }
 
 interface SymbolDebugResult {
-  content_type?: string
   id: string
   name: string
   signature: string
@@ -116,7 +98,6 @@ const filePattern = ref('')
 const searchTarget = ref<'definitions' | 'content'>('definitions')
 const debugMode = ref(false)
 const limit = ref(20)
-const contentType = ref<'code' | 'memory' | 'all'>('code')
 const hybrid = ref(false)
 const projectFilter = ref('')
 const projects = ref<Project[]>([])
@@ -190,7 +171,6 @@ function buildSearchBody(): Record<string, unknown> {
   }
   if (language.value) body.language = language.value
   if (filePattern.value.trim()) body.file_pattern = filePattern.value.trim()
-  if (contentType.value !== 'code') body.content_type = contentType.value
   if (hybrid.value) body.hybrid = true
   return body
 }
@@ -215,11 +195,9 @@ function mergeStandardResponses(responses: SearchResponse[]): SearchResponse {
     count: 0,
     symbols: undefined,
     content: undefined,
-    memories: undefined,
   }
   const allSymbols = responses.flatMap((r) => r.symbols ?? [])
   const allContent = responses.flatMap((r) => r.content ?? [])
-  const allMemories = responses.flatMap((r) => r.memories ?? [])
 
   if (allSymbols.length > 0) {
     merged.symbols = allSymbols.sort((a, b) => b.score - a.score).slice(0, limit.value)
@@ -227,10 +205,7 @@ function mergeStandardResponses(responses: SearchResponse[]): SearchResponse {
   if (allContent.length > 0) {
     merged.content = allContent.sort((a, b) => b.score - a.score).slice(0, limit.value)
   }
-  if (allMemories.length > 0) {
-    merged.memories = allMemories.sort((a, b) => b.score - a.score).slice(0, limit.value)
-  }
-  merged.count = (merged.symbols?.length ?? 0) + (merged.content?.length ?? 0) + (merged.memories?.length ?? 0)
+  merged.count = (merged.symbols?.length ?? 0) + (merged.content?.length ?? 0)
   return merged
 }
 
@@ -325,10 +300,6 @@ function formatScore(n: number): string {
   return n.toFixed(4)
 }
 
-function contentTypeBadgeClass(ct?: string): string {
-  if (ct === 'memory') return 'ct-badge ct-badge-memory'
-  return 'ct-badge ct-badge-code'
-}
 </script>
 
 <template>
@@ -363,7 +334,6 @@ function contentTypeBadgeClass(ct?: string): string {
         v-model:file-pattern="filePattern"
         v-model:limit="limit"
         v-model:debug-mode="debugMode"
-        v-model:content-type="contentType"
         v-model:hybrid="hybrid"
         v-model:project="projectFilter"
         :languages="languages"
@@ -406,9 +376,6 @@ function contentTypeBadgeClass(ct?: string): string {
         >
           {{ isHybridMode ? 'Hybrid' : 'Keyword Only' }}
         </span>
-        <span v-if="contentType !== 'code'" class="mode-badge mode-badge-content">
-          {{ contentType === 'all' ? 'Code + Memories' : 'Memories Only' }}
-        </span>
       </div>
     </div>
 
@@ -434,12 +401,6 @@ function contentTypeBadgeClass(ct?: string): string {
     >
       <div v-for="sym in standardResponse.symbols" :key="sym.id" class="result-card">
         <div class="result-header">
-          <span
-            v-if="contentType !== 'code'"
-            :class="contentTypeBadgeClass(sym.content_type)"
-          >
-            {{ sym.content_type ?? 'code' }}
-          </span>
           <span class="kind-badge" :style="{ background: kindColor(sym.kind) }">
             {{ sym.kind }}
           </span>
@@ -472,12 +433,6 @@ function contentTypeBadgeClass(ct?: string): string {
       </div>
     </div>
 
-    <!-- STANDARD MODE: Memory results -->
-    <MemoryResults
-      v-if="!debugMode && standardResponse?.memories && standardResponse.memories.length > 0"
-      :memories="standardResponse.memories"
-    />
-
     <!-- ================================================================= -->
     <!-- DEBUG MODE: Definition results with expandable scoring              -->
     <!-- ================================================================= -->
@@ -496,12 +451,6 @@ function contentTypeBadgeClass(ct?: string): string {
             class="pi expand-icon"
             :class="expandedRows.has(sym.id) ? 'pi-chevron-down' : 'pi-chevron-right'"
           ></span>
-          <span
-            v-if="contentType !== 'code'"
-            :class="contentTypeBadgeClass(sym.content_type)"
-          >
-            {{ sym.content_type ?? 'code' }}
-          </span>
           <span class="kind-badge" :style="{ background: kindColor(sym.kind) }">
             {{ sym.kind }}
           </span>
@@ -760,11 +709,6 @@ function contentTypeBadgeClass(ct?: string): string {
   color: var(--text-secondary);
 }
 
-.mode-badge-content {
-  background: rgba(167, 139, 250, 0.15);
-  color: var(--color-purple);
-}
-
 /* Results meta */
 .results-meta {
   display: flex;
@@ -856,28 +800,6 @@ function contentTypeBadgeClass(ct?: string): string {
   color: white;
   text-transform: lowercase;
   flex-shrink: 0;
-}
-
-/* Content-type badges for mixed results */
-.ct-badge {
-  display: inline-block;
-  padding: 0.1rem 0.4rem;
-  border-radius: 9999px;
-  font-size: 0.6rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  flex-shrink: 0;
-}
-
-.ct-badge-code {
-  background: var(--color-primary-bg);
-  color: var(--color-info);
-}
-
-.ct-badge-memory {
-  background: rgba(167, 139, 250, 0.15);
-  color: var(--color-purple);
 }
 
 .result-name {

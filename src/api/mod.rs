@@ -4,10 +4,8 @@ pub mod agents;
 pub mod common;
 pub mod dashboard;
 pub mod health;
-pub mod memories;
 pub mod projects;
 pub mod search;
-pub mod search_unified;
 
 use std::sync::Arc;
 
@@ -20,12 +18,11 @@ use crate::server::AppState;
 /// OpenAPI documentation aggregator.
 ///
 /// Collects all annotated paths and schemas into a single OpenAPI 3.1 spec.
-/// Tasks 11-12 will add the remaining endpoint annotations.
 #[derive(OpenApi)]
 #[openapi(
     info(
         title = "Julie API",
-        description = "Julie Code Intelligence Server — REST API for projects, search, memories, agents, and dashboard.",
+        description = "Julie Code Intelligence Server — REST API for projects, search, agents, and dashboard.",
         version = "4.0.0",
         license(name = "MIT")
     ),
@@ -41,12 +38,6 @@ use crate::server::AppState;
         projects::launch_terminal,
         dashboard::stats,
         dashboard::check_embeddings,
-        // memories
-        memories::list_memories,
-        memories::get_memory,
-        memories::list_plans,
-        memories::get_plan,
-        memories::get_active_plan,
         // search
         search::search,
         search::search_debug,
@@ -74,23 +65,14 @@ use crate::server::AppState;
             projects::LaunchResponse,
             dashboard::DashboardStats,
             dashboard::ProjectStats,
-            dashboard::MemoryStats,
             dashboard::AgentStats,
             dashboard::BackendStat,
             dashboard::EmbeddingProjectStatus,
-            // memories
-            crate::memory::Checkpoint,
-            crate::memory::Plan,
-            crate::memory::RecallResult,
-            crate::memory::CheckpointType,
-            crate::memory::GitContext,
-            crate::memory::WorkspaceSummary,
             // search
             search::SearchRequest,
             search::SearchResponse,
             search::SymbolResultResponse,
             search::ContentResultResponse,
-            search::MemoryResultResponse,
             search::DebugSearchResponse,
             crate::search::debug::SymbolDebugResults,
             crate::search::debug::SymbolDebugResult,
@@ -110,8 +92,7 @@ use crate::server::AppState;
     tags(
         (name = "health", description = "Server health"),
         (name = "projects", description = "Project management and indexing"),
-        (name = "search", description = "Code search and unified search"),
-        (name = "memories", description = "Checkpoints, recall, and plans"),
+        (name = "search", description = "Code search"),
         (name = "agents", description = "Agent dispatch and management"),
         (name = "dashboard", description = "Dashboard statistics")
     )
@@ -142,12 +123,6 @@ pub fn routes(state: Arc<AppState>) -> Router {
         .route("/agents/backends", get(agents::list_backends))
         .route("/agents/{id}/stream", get(agents::stream_dispatch))
         .route("/agents/{id}", get(agents::get_dispatch))
-        // Memory + plan routes (note: /plans/active BEFORE /plans/{id})
-        .route("/memories", get(memories::list_memories))
-        .route("/memories/{id}", get(memories::get_memory))
-        .route("/plans", get(memories::list_plans))
-        .route("/plans/active", get(memories::get_active_plan))
-        .route("/plans/{id}", get(memories::get_plan))
         // Dashboard
         .route("/dashboard/stats", get(dashboard::stats))
         .route("/embeddings/check", post(dashboard::check_embeddings))

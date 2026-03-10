@@ -13,9 +13,6 @@ pub mod search;
 pub mod symbols; // Symbol overview tools
 pub mod workspace;
 
-// Memory tools (checkpoint, recall, plan)
-pub mod memory;
-
 // Cross-workspace federation (daemon mode only)
 pub mod federation;
 
@@ -26,7 +23,6 @@ pub use navigation::FastRefsTool;
 pub use refactoring::RenameSymbolTool;
 pub use search::FastSearchTool;
 pub use symbols::GetSymbolsTool;
-pub use memory::{CheckpointTool, PlanTool, RecallTool};
 pub use workspace::ManageWorkspaceTool;
 
 // Re-export shared types and helpers

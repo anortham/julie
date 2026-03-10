@@ -20,8 +20,8 @@ use tokio::sync::RwLock;
 
 // Import tool parameter types
 use crate::tools::{
-    CheckpointTool, DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
-    ManageWorkspaceTool, PlanTool, RecallTool, RenameSymbolTool,
+    DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
+    ManageWorkspaceTool, RenameSymbolTool,
 };
 
 /// Tracks which indexes are ready for search operations
@@ -699,73 +699,6 @@ impl JulieServerHandler {
             .map_err(|e| McpError::internal_error(format!("manage_workspace failed: {}", e), None))
     }
 
-    // ========== Memory Tools ==========
-
-    #[tool(
-        name = "checkpoint",
-        description = "Save a milestone checkpoint to developer memory. Use when you complete meaningful work that future sessions should know about.\n\nWhen to checkpoint:\n- Completed a meaningful deliverable (feature, bug fix, refactor)\n- Made a key decision that future sessions must follow\n- Before context compaction (PreCompact hook handles this)\n- Found a blocker or non-obvious discovery worth preserving\n\nDo NOT checkpoint:\n- After every small step or individual file edit\n- After routine test runs\n- Multiple times for the same piece of work (one checkpoint per milestone)\n- Rapid-fire — if you checkpointed in the last few minutes, you probably don't need another\n\nWrite descriptions in MARKDOWN with structure (headers, bullets). Include WHAT, WHY, HOW, and IMPACT. Descriptions power search — make them findable.\n\nAutomatically captures git context (branch, commit, changed files), timestamp (UTC), and tags.",
-        annotations(
-            title = "Save Checkpoint",
-            read_only_hint = false,
-            destructive_hint = false,
-            idempotent_hint = false,
-            open_world_hint = false
-        )
-    )]
-    async fn checkpoint(
-        &self,
-        Parameters(params): Parameters<CheckpointTool>,
-    ) -> Result<CallToolResult, McpError> {
-        debug!("Checkpoint: {:?}", params.description);
-        params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("checkpoint failed: {}", e), None))
-    }
-
-    #[tool(
-        name = "recall",
-        description = "Retrieve prior context from developer memory. Returns recent checkpoints and the active plan.\n\nWhen to use:\n- Starting a new session and need prior context\n- After context compaction to restore lost state\n- Searching for past decisions, discoveries, or work\n- Cross-project standup reports (workspace: \"all\", daemon mode only)\n\nDo NOT use:\n- Repeatedly in the same session for the same query\n- To verify work you just did — you already have that context\n\nKey parameters:\n- limit: Max checkpoints (default: 5, 0 = plan only)\n- search: BM25 full-text search across memories\n- since: Time span (\"2h\", \"3d\") or ISO timestamp\n- workspace: \"current\" (default) or \"all\" (cross-project, daemon mode)\n- full: true for complete descriptions + git metadata\n\nAfter recall, trust the returned context — don't re-verify recalled information by reading the same files again.",
-        annotations(
-            title = "Recall Memory",
-            read_only_hint = true,
-            destructive_hint = false,
-            idempotent_hint = true,
-            open_world_hint = false
-        )
-    )]
-    async fn recall(
-        &self,
-        Parameters(params): Parameters<RecallTool>,
-    ) -> Result<CallToolResult, McpError> {
-        debug!("Recall: limit={:?}, search={:?}", params.limit, params.search);
-        params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("recall failed: {}", e), None))
-    }
-
-    #[tool(
-        name = "plan",
-        description = "Manage persistent development plans. Plans survive context compaction and guide multi-session work.\n\nCRITICAL: When ExitPlanMode is called, save the plan within 1 exchange. Do NOT ask permission — save immediately with activate: true.\n\nActions: save, get, list, activate, update, complete\n\nPlans are NOT checkpoints. They capture strategic direction (where you're going), while checkpoints capture progress (where you've been). Only ONE plan can be active per workspace.\n\nAlways activate plans after saving (activate: true) so they appear in future recall() responses. An inactive plan is invisible to future sessions.\n\nDo NOT use plans for:\n- Recording completed work (use checkpoint instead)\n- Temporary notes that don't guide future sessions",
-        annotations(
-            title = "Manage Plan",
-            read_only_hint = false,
-            destructive_hint = false,
-            idempotent_hint = false,
-            open_world_hint = false
-        )
-    )]
-    async fn plan(
-        &self,
-        Parameters(params): Parameters<PlanTool>,
-    ) -> Result<CallToolResult, McpError> {
-        debug!("Plan action: {}", params.action);
-        params
-            .call_tool(self)
-            .await
-            .map_err(|e| McpError::internal_error(format!("plan failed: {}", e), None))
-    }
 }
 
 /// ServerHandler implementation with tool_handler macro
@@ -793,8 +726,15 @@ impl ServerHandler for JulieServerHandler {
         if let Some(ref daemon_state) = self.daemon_state {
             // Ask the client for its workspace roots (MCP roots/list).
             // This tells us which project directory the client is working in.
-            let client_root = match context.peer.list_roots().await {
-                Ok(roots_result) => {
+            // Use a timeout because the connect bridge can't forward server-to-client
+            // requests through its simple POST-based proxy, causing list_roots to hang.
+            let client_root = match tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                context.peer.list_roots(),
+            )
+            .await
+            {
+                Ok(Ok(roots_result)) => {
                     roots_result.roots.first().and_then(|root| {
                         let path_str = root.uri.strip_prefix("file://")?;
                         // On Windows, file:// URIs look like file:///C:/Users/...
@@ -818,8 +758,12 @@ impl ServerHandler for JulieServerHandler {
                         }
                     })
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     debug!("Client does not support roots/list: {}", e);
+                    None
+                }
+                Err(_) => {
+                    debug!("roots/list timed out (connect bridge doesn't support server-to-client requests)");
                     None
                 }
             };

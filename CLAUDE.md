@@ -192,8 +192,8 @@ cargo test --lib build_julie_fixture -- --ignored --nocapture
 1. **Development Mode**: Always work in `debug` mode for fast iteration
 2. **Testing New Features**: When ready to test:
    - Agent asks user to exit Claude Code
-   - User runs: `cargo build --release`
-   - User restarts Claude Code with new Julie build
+   - User runs: `cargo build --release && ./target/release/julie-server daemon restart`
+   - User restarts Claude Code (MCP client reconnects to updated daemon)
    - Test features in live MCP session
 3. **Backward Compatibility**: We don't need it (MCP server, not REST API)
 4. **Target User**: YOU (Claude) and other AI coding agents are the target user
@@ -281,6 +281,6 @@ Key docs: `WORKSPACE_ARCHITECTURE.md`, `TESTING_GUIDE.md`, `SEARCH_FLOW.md`, `AR
 
 ---
 
-**Last Updated:** 2026-03-09 | **Status:** Production Ready (v4.0.0)
+**Last Updated:** 2026-03-10 | **Status:** Production Ready (v4.1.0)
 
 - You CANNOT build the release build while we're running the server in session!

@@ -25,8 +25,7 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - **Multi-workspace support** for indexing and searching related codebases
 - **Persistent daemon mode** with HTTP API and web dashboard at `/ui/`
 - **Multi-agent dispatch** — run tasks through Claude Code, Codex, Gemini CLI, or Copilot CLI from the dashboard
-- **Web dashboard** — project management, search exploration, agent dispatch, memory browser, embedding status
-- **Developer memory** — checkpoint progress, recall context across sessions, manage persistent plans
+- **Web dashboard** — project management, search exploration, agent dispatch, embedding status
 - **Auto-start daemon** via `julie-server connect` (stdio bridge with automatic daemon lifecycle)
 - **OpenAPI documentation** with interactive Scalar docs at `/api/docs`
 
@@ -86,18 +85,11 @@ This installs the binary to `~/.julie/bin/`, registers Julie as a system service
 
 To uninstall: `~/.julie/bin/julie-server uninstall` (preserves your data).
 
+To update after downloading a new release: `./julie-server daemon restart` (copies the new binary and restarts the daemon).
+
 ### Step 2: Connect Your AI Tool
 
-**Claude Code (recommended):**
-
-The Julie plugin gives you the full experience: MCP tools + skills (`/checkpoint`, `/recall`, `/plan`, `/standup`, `/plan-status`) + hooks (auto-recall on session start, auto-checkpoint before compaction, auto-save plans).
-
-```bash
-/plugin marketplace add anortham/julie
-/plugin install julie@julie
-```
-
-**Claude Code — Standalone MCP (no plugin):**
+**Claude Code:**
 
 ```bash
 claude mcp add julie -- ~/.julie/bin/julie-server connect
@@ -143,10 +135,11 @@ If you prefer to build from source:
 git clone https://github.com/anortham/julie.git
 cd julie
 cargo build --release
-# Binary will be at: target/release/julie-server[.exe]
+./target/release/julie-server install   # First time: install + start daemon
+./target/release/julie-server daemon restart  # After rebuilds: update + restart
 ```
 
-## Tools (10)
+## Tools (7)
 
 ### Search & Navigation
 
@@ -176,12 +169,6 @@ cargo build --release
 - `rename_symbol` - Rename symbols across entire workspace
   - Updates all references atomically
   - Preview mode with dry_run parameter
-
-### Developer Memory
-
-- `checkpoint` - Save development milestones with git context, tags, and structured fields
-- `recall` - Restore context from previous sessions with BM25 full-text search
-- `plan` - Manage persistent plans that survive context compaction and guide multi-session work
 
 ### Workspace Management
 
@@ -214,11 +201,10 @@ Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patter
 
 The daemon serves a built-in web dashboard at `http://localhost:7890/ui/` with:
 
-- **Dashboard** — project health, memory stats, agent activity, backend availability, embedding status with on-demand initialization
+- **Dashboard** — project health, agent activity, backend availability, embedding status with on-demand initialization
 - **Projects** — register/remove projects, view stats (language breakdown, symbol counts by kind), quick-launch actions (copy path, open in editor, open in terminal)
 - **Search** — interactive search with debug mode for inspecting scoring and tokenization
 - **Agents** — dispatch tasks to any detected CLI agent (Claude Code, Codex, Gemini CLI, Copilot CLI), view dispatch history with streaming output
-- **Memories** — browse checkpoints and plans across projects, filter by type and tags
 
 All features work in both light and dark mode, with responsive layouts for mobile.
 
@@ -281,7 +267,7 @@ src/
 ├── connect.rs       # Auto-start daemon + stdio↔HTTP bridge
 ├── daemon.rs        # Daemon lifecycle (start/stop/status, PID file)
 ├── server.rs        # HTTP server (axum router, startup, shutdown)
-├── api/             # REST API modules (health, projects, search, memories, agents, dashboard)
+├── api/             # REST API modules (health, projects, search, agents, dashboard)
 ├── extractors/      # Language-specific symbol extraction (31 languages)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer
@@ -289,7 +275,6 @@ src/
 ├── tools/           # MCP tool implementations
 │   ├── deep_dive/   # Progressive-depth symbol investigation
 │   ├── get_context/ # Token-budgeted context retrieval
-│   ├── memory/      # checkpoint, recall, plan
 │   ├── navigation/  # fast_refs
 │   ├── refactoring/ # rename_symbol
 │   ├── search/      # fast_search

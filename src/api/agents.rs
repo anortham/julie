@@ -20,7 +20,6 @@ use tokio_stream::StreamExt as _;
 
 use crate::agent::backend::{self, BackendInfo};
 use crate::agent::context_assembly::{self, ContextHints};
-use crate::agent::dispatch;
 use crate::api::common::resolve_workspace;
 use crate::server::AppState;
 
@@ -438,29 +437,12 @@ pub async fn dispatch_agent(
         // Await the result
         match handle.await {
             Ok(Ok(output)) => {
-                // Store output and mark complete under the write lock, then
-                // release before doing checkpoint I/O.
-                let checkpoint_data = {
-                    let mut dm_write = dm.write().await;
-                    // Use set_final_output (not append_output) -- the backend
-                    // already broadcasted each line; re-broadcasting the full
-                    // accumulated output would duplicate every line to SSE clients.
-                    dm_write.set_final_output(&id, output);
-                    dm_write.complete_dispatch(&id);
-
-                    // Clone what we need for the checkpoint before dropping the lock.
-                    dm_write.get_dispatch(&id).map(dispatch::DispatchSnapshot::from)
-                };
-                // Lock released here -- checkpoint I/O runs without blocking
-                // other DispatchManager readers/writers.
-                if let Some(snapshot) = checkpoint_data {
-                    let _ = dispatch::save_result_as_checkpoint(
-                        &workspace_root,
-                        &snapshot,
-                        &bn,
-                    )
-                    .await;
-                }
+                let mut dm_write = dm.write().await;
+                // Use set_final_output (not append_output) -- the backend
+                // already broadcasted each line; re-broadcasting the full
+                // accumulated output would duplicate every line to SSE clients.
+                dm_write.set_final_output(&id, output);
+                dm_write.complete_dispatch(&id);
             }
             Ok(Err(e)) => {
                 let mut dm_write = dm.write().await;

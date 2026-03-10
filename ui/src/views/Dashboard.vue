@@ -21,12 +21,6 @@ interface ProjectStats {
   stale: number
 }
 
-interface MemoryStats {
-  total_checkpoints: number
-  active_plan: string | null
-  last_checkpoint: string | null
-}
-
 interface AgentStats {
   total_dispatches: number
   last_dispatch: string | null
@@ -50,7 +44,6 @@ interface EmbeddingProjectStatus {
 
 interface DashboardStats {
   projects: ProjectStats
-  memories: MemoryStats
   agents: AgentStats
   backends: BackendInfo[]
   embeddings: EmbeddingProjectStatus[]
@@ -238,32 +231,6 @@ onMounted(async () => {
             <span v-if="stats.projects.total === 0" class="breakdown-empty">
               No projects registered
             </span>
-          </div>
-        </RouterLink>
-
-        <!-- Memory card -->
-        <RouterLink to="/memories" class="card card-link">
-          <div class="card-header">
-            <span class="pi pi-clock card-icon"></span>
-            <span class="card-label">Memories</span>
-            <span class="pi pi-arrow-right card-arrow"></span>
-          </div>
-          <div class="card-value">{{ stats.memories.total_checkpoints }}</div>
-          <div class="card-breakdown">
-            <span class="breakdown-label">checkpoints</span>
-          </div>
-          <div class="card-detail">
-            <div v-if="stats.memories.active_plan" class="detail-row">
-              <span class="pi pi-map detail-icon"></span>
-              <span class="detail-text">{{ stats.memories.active_plan }}</span>
-            </div>
-            <div v-if="stats.memories.last_checkpoint" class="detail-row">
-              <span class="pi pi-calendar detail-icon"></span>
-              <span class="detail-text detail-muted">Last {{ relativeTime(stats.memories.last_checkpoint) }}</span>
-            </div>
-            <div v-if="stats.memories.total_checkpoints === 0 && !stats.memories.active_plan" class="breakdown-empty">
-              No checkpoints yet
-            </div>
           </div>
         </RouterLink>
 

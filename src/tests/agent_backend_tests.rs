@@ -3,17 +3,14 @@
 //! Tests cover:
 //! - `AgentBackend` trait and `ClaudeBackend` implementation
 //! - `is_available()` detection logic
-//! - `assemble_context()` prompt assembly from search + memories
+//! - `assemble_context()` prompt assembly from search
 //! - `DispatchManager` lifecycle (create, update, list, history)
 //! - Broadcast channel mechanism for streaming output
-//! - `save_result_as_checkpoint()` persistence
 
 use crate::agent::backend::{AgentBackend, BackendInfo};
 use crate::agent::claude_backend::ClaudeBackend;
 use crate::agent::context_assembly::{assemble_context, ContextHints};
-use crate::agent::dispatch::{
-    save_result_as_checkpoint, DispatchManager, DispatchSnapshot, DispatchStatus,
-};
+use crate::agent::dispatch::{DispatchManager, DispatchStatus};
 
 // ============================================================================
 // AgentBackend trait + ClaudeBackend
@@ -353,43 +350,6 @@ async fn test_assemble_context_with_search_index() {
 }
 
 #[tokio::test]
-async fn test_assemble_context_with_workspace_memories() {
-    // Create a temp workspace with .memories for recall
-    let temp_dir = tempfile::tempdir().unwrap();
-    let workspace_root = temp_dir.path();
-
-    // Create a checkpoint so recall has something to find
-    let memories_dir = workspace_root.join(".memories").join("2026-03-07");
-    std::fs::create_dir_all(&memories_dir).unwrap();
-    std::fs::write(
-        memories_dir.join("120000_abcd.md"),
-        r#"---
-id: checkpoint_abcd1234
-timestamp: "2026-03-07T12:00:00.000Z"
-summary: Fixed the parser edge case
----
-# Fixed the parser edge case
-
-The parser was failing on empty input. Added a guard clause.
-"#,
-    )
-    .unwrap();
-
-    let context = assemble_context(
-        Some(workspace_root),
-        None, // no search index
-        "Review the parser changes",
-        None,
-    )
-    .await
-    .unwrap();
-
-    assert!(context.contains("# Task"));
-    assert!(context.contains("Review the parser changes"));
-    // The key thing is it doesn't crash with a real workspace path
-}
-
-#[tokio::test]
 async fn test_assemble_context_format_structure() {
     let context = assemble_context(None, None, "My task", None).await.unwrap();
 
@@ -403,67 +363,6 @@ async fn test_assemble_context_format_structure() {
         lines.iter().any(|l| l.starts_with("# Task")),
         "should have Task header"
     );
-}
-
-// ============================================================================
-// save_result_as_checkpoint
-// ============================================================================
-
-#[tokio::test]
-async fn test_save_result_as_checkpoint_completed() {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let workspace_root = temp_dir.path();
-
-    let mut manager = DispatchManager::new();
-    let id = manager.start_dispatch(
-        "Refactor the parser".to_string(),
-        "julie".to_string(),
-        "claude".to_string(),
-    );
-    manager.append_output(&id, "Done. Refactored 3 files.\n");
-    manager.complete_dispatch(&id);
-
-    let dispatch = manager.get_dispatch(&id).unwrap();
-    let snapshot = DispatchSnapshot::from(dispatch);
-    let checkpoint = save_result_as_checkpoint(workspace_root, &snapshot, "claude")
-        .await
-        .expect("should save checkpoint");
-
-    assert!(checkpoint.id.starts_with("checkpoint_"));
-    assert!(checkpoint.description.contains("Refactor the parser"));
-    assert!(checkpoint.description.contains("Done. Refactored 3 files."));
-
-    let tags = checkpoint.tags.expect("should have tags");
-    assert!(tags.contains(&"agent_result".to_string()));
-    assert!(tags.contains(&"claude".to_string()));
-    assert!(tags.contains(&"julie".to_string()));
-
-    assert_eq!(
-        checkpoint.impact.as_deref(),
-        Some("Agent task completed successfully")
-    );
-    assert_eq!(
-        checkpoint.context.as_deref(),
-        Some("Dispatched to claude backend")
-    );
-}
-
-#[tokio::test]
-async fn test_save_result_as_checkpoint_failed() {
-    let temp_dir = tempfile::tempdir().unwrap();
-    let workspace_root = temp_dir.path();
-
-    let mut manager = DispatchManager::new();
-    let id = manager.start_dispatch("Bad task".to_string(), "proj".to_string(), "claude".to_string());
-    manager.fail_dispatch(&id, "Backend crashed");
-
-    let dispatch = manager.get_dispatch(&id).unwrap();
-    let snapshot = DispatchSnapshot::from(dispatch);
-    let checkpoint = save_result_as_checkpoint(workspace_root, &snapshot, "claude")
-        .await
-        .expect("should save checkpoint even for failures");
-
-    assert_eq!(checkpoint.impact.as_deref(), Some("Backend crashed"));
 }
 
 // ============================================================================

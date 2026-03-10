@@ -4,7 +4,6 @@
  *
  * Includes:
  * - Search target (definitions / content) radio group
- * - Content type selector (Code / Memories / All)
  * - Language dropdown
  * - File pattern input
  * - Limit input
@@ -22,7 +21,6 @@ const language = defineModel<string>('language', { required: true })
 const filePattern = defineModel<string>('filePattern', { required: true })
 const limit = defineModel<number>('limit', { required: true })
 const debugMode = defineModel<boolean>('debugMode', { required: true })
-const contentType = defineModel<'code' | 'memory' | 'all'>('contentType', { required: true })
 const hybrid = defineModel<boolean>('hybrid', { required: true })
 const project = defineModel<string>('project', { default: '' })
 
@@ -30,12 +28,6 @@ defineProps<{
   languages: string[]
   projects: Project[]
 }>()
-
-const contentTypeOptions = [
-  { label: 'Code', value: 'code' },
-  { label: 'Memories', value: 'memory' },
-  { label: 'All', value: 'all' },
-]
 </script>
 
 <template>
@@ -60,26 +52,6 @@ const contentTypeOptions = [
             class="radio-input"
           />
           Content
-        </label>
-      </div>
-    </div>
-
-    <div class="filter-group">
-      <label class="filter-label">Content</label>
-      <div class="radio-group">
-        <label
-          v-for="opt in contentTypeOptions"
-          :key="opt.value"
-          class="radio-item"
-          :class="{ active: contentType === opt.value }"
-        >
-          <input
-            v-model="contentType"
-            type="radio"
-            :value="opt.value"
-            class="radio-input"
-          />
-          {{ opt.label }}
         </label>
       </div>
     </div>

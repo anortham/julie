@@ -38,17 +38,9 @@ onMounted(() => {
           <span class="pi pi-search"></span>
           Search
         </RouterLink>
-        <RouterLink to="/memories" class="nav-link">
-          <span class="pi pi-clock"></span>
-          Memories
-        </RouterLink>
         <RouterLink to="/agents" class="nav-link">
           <span class="pi pi-bolt"></span>
           Agents
-        </RouterLink>
-        <RouterLink to="/standup" class="nav-link">
-          <span class="pi pi-megaphone"></span>
-          Standup
         </RouterLink>
       </nav>
       <button class="theme-toggle" @click="toggleTheme" :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'">

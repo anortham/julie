@@ -282,6 +282,101 @@ pub fn daemon_stop() -> Result<()> {
     Ok(())
 }
 
+/// Restart the daemon: stop → copy current binary to ~/.julie/bin/ → start.
+///
+/// Designed for the development loop: `cargo build --release && julie-server daemon restart`
+/// copies the freshly-built binary to the install location and bounces the daemon.
+pub fn daemon_restart(port: u16) -> Result<()> {
+    // 1. Stop existing daemon (if running)
+    let pid_path = pid_file_path()?;
+    if is_daemon_running(&pid_path).is_some() {
+        daemon_stop()?;
+    } else {
+        println!("No running daemon found, starting fresh.");
+    }
+
+    // 2. Copy current binary to ~/.julie/bin/
+    let home = julie_home()?;
+    let bin_dir = home.join("bin");
+    fs::create_dir_all(&bin_dir)
+        .with_context(|| format!("Failed to create {}", bin_dir.display()))?;
+
+    let installed_binary = if cfg!(windows) {
+        bin_dir.join("julie-server.exe")
+    } else {
+        bin_dir.join("julie-server")
+    };
+
+    let current_exe =
+        std::env::current_exe().context("Could not determine path of current executable")?;
+    let current_canonical = current_exe.canonicalize().unwrap_or(current_exe.clone());
+    let target_canonical = installed_binary
+        .canonicalize()
+        .unwrap_or(installed_binary.clone());
+
+    if current_canonical != target_canonical {
+        fs::copy(&current_exe, &installed_binary).with_context(|| {
+            format!(
+                "Failed to copy {} to {}",
+                current_exe.display(),
+                installed_binary.display()
+            )
+        })?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = fs::Permissions::from_mode(0o755);
+            fs::set_permissions(&installed_binary, perms)
+                .context("Failed to set binary permissions")?;
+        }
+
+        println!("Updated {}", installed_binary.display());
+    } else {
+        println!("Binary already at {}", installed_binary.display());
+    }
+
+    // 3. Start the daemon from the installed binary
+    let port_str = port.to_string();
+
+    #[cfg(unix)]
+    {
+        use std::process::Command;
+        let child = Command::new(&installed_binary)
+            .args(["daemon", "start", "--foreground", "--port", &port_str])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .with_context(|| format!("Failed to start {}", installed_binary.display()))?;
+        println!("Julie daemon started (PID {}, port {})", child.id(), port);
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+
+        let child = std::process::Command::new(&installed_binary)
+            .args(["daemon", "start", "--foreground", "--port", &port_str])
+            .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+            .spawn()
+            .with_context(|| format!("Failed to start {}", installed_binary.display()))?;
+        println!("Julie daemon started (PID {}, port {})", child.id(), port);
+    }
+
+    // 4. Wait briefly and verify it came up
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    if is_daemon_running(&pid_path).is_some() {
+        println!("Julie daemon is running on port {}.", port);
+    } else {
+        eprintln!("Warning: daemon may not have started. Check logs at ~/.julie/logs/");
+    }
+
+    Ok(())
+}
+
 /// Send a termination signal to the process.
 #[cfg(unix)]
 fn send_terminate_signal(pid: u32) -> Result<()> {

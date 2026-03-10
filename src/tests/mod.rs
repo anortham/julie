@@ -39,14 +39,11 @@ pub mod federation_tests; // Federation module: RRF merge, federated search
 // SERVER TESTS - HTTP server and API endpoint tests
 // ============================================================================
 pub mod api_dashboard_tests; // Dashboard stats endpoint (GET /api/dashboard/stats)
-pub mod api_memories_tests; // Memories & plans API endpoints (GET /api/memories, GET /api/plans)
 pub mod api_search_tests; // Search API endpoints (POST /api/search, POST /api/search/debug)
-pub mod api_search_unified_tests; // Unified cross-content search API (content_type, hybrid, memory results)
 pub mod server_tests; // HTTP server, health endpoint, project endpoints
 pub mod daemon_integration_tests; // End-to-end daemon integration tests
 pub mod federation_integration_tests; // Cross-project federation end-to-end tests
-pub mod phase4_integration_tests; // Phase 4: Full REST API integration tests (search, memories, plans, dashboard, agents)
-pub mod phase5_search_enhancement; // Phase 5: Search enhancement integration tests (dimensions, embeddings, RRF, unified, API)
+pub mod phase4_integration_tests; // Phase 4: Full REST API integration tests (search, dashboard, agents)
 
 // ============================================================================
 // UI TESTS - Embedded web UI serving
@@ -83,21 +80,6 @@ pub mod core {
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
     pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
 }
-
-// ============================================================================
-// MEMORY TESTS - Checkpoint storage, recall, plans
-// ============================================================================
-pub mod memory_checkpoint_tests; // Checkpoint save (directory creation, file writing, git context, plan ID)
-pub mod memory_git_tests; // Git context capture (branch, commit, changed/untracked files)
-pub mod memory_index_tests; // Memory Tantivy index (BM25 search, rebuild from files)
-pub mod memory_plan_tests; // Plan CRUD (save, get, list, activate, update, complete)
-pub mod memory_cross_project_tests; // Cross-project recall (recall_cross_project, daemon mode)
-pub mod memory_embedding_tests; // Memory checkpoint embedding (format, store, hybrid search)
-pub mod memory_recall_tests; // Recall filesystem mode (last N, date filtering, planId, full flag)
-pub mod memory_storage_tests; // YAML frontmatter storage layer (format, parse, round-trip)
-pub mod unified_search_tests; // Unified cross-content search (code + memories)
-pub mod memory_tool_tests; // MCP tool wrappers (CheckpointTool, RecallTool, PlanTool)
-pub mod memory_integration_tests; // End-to-end: checkpoint→recall round trip, plan workflow, Goldfish compat
 
 // ============================================================================
 // REGRESSION PREVENTION TESTS - Catch recurring bugs before they ship

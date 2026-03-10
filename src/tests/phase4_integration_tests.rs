@@ -2,12 +2,8 @@
 //!
 //! These tests exercise the full HTTP stack with realistic state:
 //! - Real Tantivy search indexes with indexed symbols and file content
-//! - Real checkpoint/plan files written to disk
 //! - Real DispatchManager with actual dispatches
 //! - Full axum Router built from `api::routes`
-//!
-//! Unlike the per-endpoint test files (which use minimal mocks), these tests
-//! combine multiple subsystems to verify realistic E2E flows.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -23,8 +19,6 @@ use crate::agent::dispatch::DispatchManager;
 use crate::api;
 use crate::daemon_indexer::IndexRequest;
 use crate::daemon_state::{DaemonState, LoadedWorkspace, WorkspaceLoadStatus};
-use crate::memory::storage::format_checkpoint;
-use crate::memory::{Checkpoint, CheckpointType};
 use crate::registry::GlobalRegistry;
 use crate::search::{FileDocument, LanguageConfigs, SearchIndex, SymbolDocument};
 use crate::server::AppState;
@@ -192,94 +186,6 @@ async fn setup_search_workspace(
 
     state.daemon_state.write().await.workspaces.insert(ws_id.clone(), loaded);
     ws_id
-}
-
-/// Register a workspace with no search index (for memory/plan tests).
-async fn setup_memory_workspace(
-    state: &Arc<AppState>,
-    root: &std::path::Path,
-) -> String {
-    let ws_id = "integ-mem-ws".to_string();
-
-    let workspace = JulieWorkspace {
-        root: root.to_path_buf(),
-        julie_dir: root.join(".julie"),
-        db: None,
-        search_index: None,
-        watcher: None,
-        embedding_provider: None,
-        embedding_runtime_status: None,
-        config: Default::default(),
-    };
-
-    let loaded = LoadedWorkspace {
-        workspace,
-        status: WorkspaceLoadStatus::Ready,
-        path: root.to_path_buf(),
-    };
-
-    state.daemon_state.write().await.workspaces.insert(ws_id.clone(), loaded);
-    ws_id
-}
-
-/// Write a checkpoint to the `.memories/<date>/` dir under root.
-fn write_checkpoint(root: &std::path::Path, cp: &Checkpoint) {
-    let date = &cp.timestamp[..10];
-    let date_dir = root.join(".memories").join(date);
-    std::fs::create_dir_all(&date_dir).unwrap();
-
-    let hash4 = cp
-        .id
-        .strip_prefix("checkpoint_")
-        .unwrap_or(&cp.id)
-        .get(..4)
-        .unwrap_or("0000");
-    let time_part = &cp.timestamp[11..19];
-    let hhmmss = time_part.replace(':', "");
-    let filename = format!("{}_{}.md", hhmmss, hash4);
-
-    let content = format_checkpoint(cp);
-    std::fs::write(date_dir.join(&filename), content).unwrap();
-}
-
-/// Write a plan file into `.memories/plans/`.
-fn write_plan(root: &std::path::Path, id: &str, title: &str, status: &str) {
-    let plans_dir = root.join(".memories").join("plans");
-    std::fs::create_dir_all(&plans_dir).unwrap();
-    let content = format!(
-        "---\nid: {id}\ntitle: {title}\nstatus: {status}\ncreated: \"2026-03-07T10:00:00.000Z\"\nupdated: \"2026-03-07T10:00:00.000Z\"\ntags:\n  - integration\n---\n\n{title} plan body.\n"
-    );
-    std::fs::write(plans_dir.join(format!("{id}.md")), content).unwrap();
-}
-
-/// Set the active plan pointer.
-fn write_active_plan(root: &std::path::Path, plan_id: &str) {
-    let memories_dir = root.join(".memories");
-    std::fs::create_dir_all(&memories_dir).unwrap();
-    std::fs::write(memories_dir.join(".active-plan"), plan_id).unwrap();
-}
-
-/// Make a test checkpoint.
-fn make_checkpoint(id: &str, timestamp: &str, description: &str) -> Checkpoint {
-    Checkpoint {
-        id: id.to_string(),
-        timestamp: timestamp.to_string(),
-        description: description.to_string(),
-        checkpoint_type: Some(CheckpointType::Checkpoint),
-        context: None,
-        decision: None,
-        alternatives: None,
-        impact: None,
-        evidence: None,
-        symbols: None,
-        next: None,
-        confidence: None,
-        unknowns: None,
-        tags: Some(vec!["integration".to_string()]),
-        git: None,
-        summary: Some("Integration test checkpoint".to_string()),
-        plan_id: None,
-    }
 }
 
 /// POST JSON and return (status, body).
@@ -537,172 +443,6 @@ async fn test_integration_debug_search_content_mode() {
 }
 
 // ===========================================================================
-// Memories API — round-trip with real checkpoints on disk
-// ===========================================================================
-
-#[tokio::test]
-async fn test_integration_memories_round_trip() {
-    let tmp = tempfile::tempdir().unwrap();
-    let state = integration_state(tmp.path().to_path_buf());
-    setup_memory_workspace(&state, tmp.path()).await;
-
-    // Write multiple checkpoints
-    let cp1 = make_checkpoint(
-        "checkpoint_aaa11111",
-        "2026-03-07T10:00:00.000Z",
-        "Implemented auth middleware",
-    );
-    let cp2 = make_checkpoint(
-        "checkpoint_bbb22222",
-        "2026-03-07T11:30:00.000Z",
-        "Added user repository",
-    );
-    let cp3 = make_checkpoint(
-        "checkpoint_ccc33333",
-        "2026-03-07T14:00:00.000Z",
-        "Wired search endpoint",
-    );
-    write_checkpoint(tmp.path(), &cp1);
-    write_checkpoint(tmp.path(), &cp2);
-    write_checkpoint(tmp.path(), &cp3);
-
-    // List all
-    let app = test_app(state.clone());
-    let (status, json) = get_json(app, "/api/memories").await;
-
-    assert_eq!(status, StatusCode::OK);
-    let checkpoints = json["checkpoints"].as_array().unwrap();
-    assert_eq!(checkpoints.len(), 3, "should list all 3 checkpoints");
-
-    // Verify they're sorted by timestamp (most recent first)
-    let timestamps: Vec<&str> = checkpoints
-        .iter()
-        .filter_map(|c| c["timestamp"].as_str())
-        .collect();
-    assert!(
-        timestamps.windows(2).all(|w| w[0] >= w[1]),
-        "checkpoints should be sorted most-recent-first, got: {:?}",
-        timestamps
-    );
-
-    // Fetch single by ID
-    let app = test_app(state.clone());
-    let (status, json) = get_json(app, "/api/memories/checkpoint_aaa11111").await;
-
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(json["id"], "checkpoint_aaa11111");
-    assert_eq!(json["description"], "Implemented auth middleware");
-
-    // Fetch by prefix
-    let app = test_app(state.clone());
-    let (status, json) = get_json(app, "/api/memories/checkpoint_bbb").await;
-
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(json["id"], "checkpoint_bbb22222");
-}
-
-#[tokio::test]
-async fn test_integration_memories_with_limit() {
-    let tmp = tempfile::tempdir().unwrap();
-    let state = integration_state(tmp.path().to_path_buf());
-    setup_memory_workspace(&state, tmp.path()).await;
-
-    for i in 0..5 {
-        let cp = make_checkpoint(
-            &format!("checkpoint_{:04x}aaaa", i),
-            &format!("2026-03-07T{:02}:00:00.000Z", 10 + i),
-            &format!("Checkpoint number {}", i),
-        );
-        write_checkpoint(tmp.path(), &cp);
-    }
-
-    let app = test_app(state);
-    let (status, json) = get_json(app, "/api/memories?limit=2").await;
-
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(json["checkpoints"].as_array().unwrap().len(), 2);
-}
-
-// ===========================================================================
-// Plans API — round-trip with real plan files on disk
-// ===========================================================================
-
-#[tokio::test]
-async fn test_integration_plans_round_trip() {
-    let tmp = tempfile::tempdir().unwrap();
-    let state = integration_state(tmp.path().to_path_buf());
-    setup_memory_workspace(&state, tmp.path()).await;
-
-    // Write two plans, make one active
-    write_plan(tmp.path(), "plan-alpha", "Alpha Feature", "active");
-    write_plan(tmp.path(), "plan-beta", "Beta Feature", "completed");
-    write_active_plan(tmp.path(), "plan-alpha");
-
-    // List all plans (returns a bare array)
-    let app = test_app(state.clone());
-    let (status, json) = get_json(app, "/api/plans").await;
-
-    assert_eq!(status, StatusCode::OK);
-    assert!(json.is_array(), "plans endpoint should return a JSON array");
-    let plans = json.as_array().unwrap();
-    assert_eq!(plans.len(), 2, "should list both plans");
-
-    let titles: Vec<&str> = plans.iter().filter_map(|p| p["title"].as_str()).collect();
-    assert!(titles.contains(&"Alpha Feature"));
-    assert!(titles.contains(&"Beta Feature"));
-
-    // Get single plan by ID
-    let app = test_app(state.clone());
-    let (status, json) = get_json(app, "/api/plans/plan-alpha").await;
-
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(json["id"], "plan-alpha");
-    assert_eq!(json["title"], "Alpha Feature");
-    assert_eq!(json["status"], "active");
-
-    // Get active plan
-    let app = test_app(state.clone());
-    let (status, json) = get_json(app, "/api/plans/active").await;
-
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(json["id"], "plan-alpha");
-    assert_eq!(json["title"], "Alpha Feature");
-}
-
-#[tokio::test]
-async fn test_integration_plans_filter_by_status() {
-    let tmp = tempfile::tempdir().unwrap();
-    let state = integration_state(tmp.path().to_path_buf());
-    setup_memory_workspace(&state, tmp.path()).await;
-
-    write_plan(tmp.path(), "plan-a", "Active Plan", "active");
-    write_plan(tmp.path(), "plan-c", "Completed Plan", "completed");
-    write_plan(tmp.path(), "plan-d", "Draft Plan", "draft");
-
-    let app = test_app(state.clone());
-    let (status, json) = get_json(app, "/api/plans?status=completed").await;
-
-    assert_eq!(status, StatusCode::OK);
-    assert!(json.is_array());
-    let plans = json.as_array().unwrap();
-    assert_eq!(plans.len(), 1);
-    assert_eq!(plans[0]["title"], "Completed Plan");
-}
-
-#[tokio::test]
-async fn test_integration_no_active_plan_returns_404() {
-    let tmp = tempfile::tempdir().unwrap();
-    let state = integration_state(tmp.path().to_path_buf());
-    setup_memory_workspace(&state, tmp.path()).await;
-
-    // No .active-plan file written
-    let app = test_app(state);
-    let (status, _json) = get_json(app, "/api/plans/active").await;
-
-    assert_eq!(status, StatusCode::NOT_FOUND);
-}
-
-// ===========================================================================
 // Dashboard Stats — aggregated response shape
 // ===========================================================================
 
@@ -711,17 +451,8 @@ async fn test_integration_dashboard_stats_with_populated_state() {
     let tmp = tempfile::tempdir().unwrap();
     let state = integration_state(tmp.path().to_path_buf());
 
-    // Register a search workspace (Ready) + a memory workspace
+    // Register a search workspace (Ready)
     setup_search_workspace(&state, &tmp).await;
-    // Write checkpoints and an active plan under the search workspace root
-    let cp = make_checkpoint(
-        "checkpoint_dash1111",
-        "2026-03-07T15:00:00.000Z",
-        "Dashboard test checkpoint",
-    );
-    write_checkpoint(tmp.path(), &cp);
-    write_plan(tmp.path(), "dash-plan", "Dashboard Plan", "active");
-    write_active_plan(tmp.path(), "dash-plan");
 
     // Add a dispatch so the agents section is populated
     {
@@ -737,7 +468,6 @@ async fn test_integration_dashboard_stats_with_populated_state() {
 
     // Top-level sections must all be present
     assert!(json["projects"].is_object(), "missing 'projects' section");
-    assert!(json["memories"].is_object(), "missing 'memories' section");
     assert!(json["agents"].is_object(), "missing 'agents' section");
     assert!(json["backends"].is_array(), "missing 'backends' section");
 
@@ -766,7 +496,6 @@ async fn test_integration_dashboard_stats_empty_state() {
 
     // All counts should be zero
     assert_eq!(json["projects"]["total"], 0);
-    assert_eq!(json["memories"]["total_checkpoints"], 0);
     assert_eq!(json["agents"]["total_dispatches"], 0);
 
     // Backends still present (from state)
@@ -816,14 +545,11 @@ async fn test_integration_dispatch_lifecycle_via_api() {
     let tmp = tempfile::tempdir().unwrap();
     let state = integration_state(tmp.path().to_path_buf());
 
-    // Register a workspace so dispatch can reference it
-    setup_memory_workspace(&state, tmp.path()).await;
-
     // Start a dispatch via the manager directly (the POST endpoint needs a
     // real backend; we test the lifecycle through the GET endpoints instead)
     let dispatch_id = {
         let mut dm = state.dispatch_manager.write().await;
-        let id = dm.start_dispatch("Analyze auth flow".into(), "integ-mem-ws".into(), "claude".into());
+        let id = dm.start_dispatch("Analyze auth flow".into(), "integ-ws".into(), "claude".into());
         dm.append_output(&id, "Analyzing authentication...\n");
         dm.append_output(&id, "Found 3 auth-related symbols.\n");
         dm.complete_dispatch(&id);
@@ -848,7 +574,7 @@ async fn test_integration_dispatch_lifecycle_via_api() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["id"], dispatch_id);
     assert_eq!(json["task"], "Analyze auth flow");
-    assert_eq!(json["project"], "integ-mem-ws");
+    assert_eq!(json["project"], "integ-ws");
     assert_eq!(json["status"], "completed");
     // Output should contain both appended chunks
     let output = json["output"].as_str().unwrap();

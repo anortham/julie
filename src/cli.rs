@@ -48,6 +48,12 @@ pub enum DaemonAction {
     },
     /// Stop the running daemon
     Stop,
+    /// Restart the daemon (copies current binary to ~/.julie/bin/ first)
+    Restart {
+        /// Port to listen on after restart
+        #[arg(long, default_value = "7890", env = "JULIE_PORT")]
+        port: u16,
+    },
     /// Show daemon status
     Status,
 }
