@@ -131,6 +131,148 @@ async fn test_ui_favicon_served_with_correct_type() {
     );
 }
 
+// ============================================================================
+// STATIC ASSET 404 TESTS (missing assets should NOT get SPA fallback)
+// ============================================================================
+
+#[tokio::test]
+async fn test_ui_missing_js_returns_404() {
+    let app = test_ui_app();
+    let req = Request::builder()
+        .uri("/ui/assets/nonexistent.js")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Missing .js files should return 404, not SPA fallback HTML"
+    );
+}
+
+#[tokio::test]
+async fn test_ui_missing_css_returns_404() {
+    let app = test_ui_app();
+    let req = Request::builder()
+        .uri("/ui/assets/nonexistent.css")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Missing .css files should return 404, not SPA fallback HTML"
+    );
+}
+
+#[tokio::test]
+async fn test_ui_missing_png_returns_404() {
+    let app = test_ui_app();
+    let req = Request::builder()
+        .uri("/ui/images/logo.png")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Missing .png files should return 404, not SPA fallback HTML"
+    );
+}
+
+#[tokio::test]
+async fn test_ui_missing_woff2_returns_404() {
+    let app = test_ui_app();
+    let req = Request::builder()
+        .uri("/ui/fonts/myfont.woff2")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Missing .woff2 files should return 404, not SPA fallback HTML"
+    );
+}
+
+#[tokio::test]
+async fn test_ui_missing_svg_returns_404() {
+    let app = test_ui_app();
+    let req = Request::builder()
+        .uri("/ui/icons/missing.svg")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Missing .svg files should return 404, not SPA fallback HTML"
+    );
+}
+
+#[tokio::test]
+async fn test_ui_missing_map_returns_404() {
+    let app = test_ui_app();
+    let req = Request::builder()
+        .uri("/ui/assets/index.js.map")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Missing .map files should return 404, not SPA fallback HTML"
+    );
+}
+
+#[tokio::test]
+async fn test_ui_missing_json_returns_404() {
+    let app = test_ui_app();
+    let req = Request::builder()
+        .uri("/ui/manifest.json")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Missing .json files should return 404, not SPA fallback HTML"
+    );
+}
+
+#[tokio::test]
+async fn test_ui_spa_fallback_still_works_for_extensionless_routes() {
+    // Verify extensionless paths still get SPA fallback (not broken by the 404 change)
+    let app = test_ui_app();
+    let req = Request::builder()
+        .uri("/ui/settings/workspace")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Extensionless SPA routes should still get index.html fallback"
+    );
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body_str = String::from_utf8_lossy(&body);
+    assert!(
+        body_str.contains("<div id=\"app\">"),
+        "SPA routes should receive index.html content"
+    );
+}
+
 #[tokio::test]
 async fn test_ui_index_html_references_assets() {
     // Verify the built index.html contains references to JS and CSS bundles
