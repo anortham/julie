@@ -9,7 +9,7 @@ license = "MIT"
 
 [package]
 name = "julie"
-version = "4.0.2"
+version = "4.0.3"
 edition.workspace = true
 authors.workspace = true
 description = "Julie - Cross-Platform Code Intelligence Server"
@@ -119,6 +119,7 @@ fastembed = { version = "5", optional = true }
 ort = { version = "2.0.0-rc.10", optional = true }
 sqlite-vec = "0.1"
 zerocopy = { version = "0.7", features = ["derive"] }
+percent-encoding = "2.3.2"
 
 # Platform-specific process management (daemon lifecycle)
 [target.'cfg(unix)'.dependencies]

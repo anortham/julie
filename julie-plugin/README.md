@@ -131,7 +131,13 @@ After installing the binary, starting the daemon, and adding the plugin:
 
 ## How It Works
 
-Unlike stdio-based MCP servers, Julie runs as a persistent daemon. This architecture enables:
+The plugin connects to the Julie daemon via HTTP. When Claude Code opens a project, Julie automatically:
+
+1. **Discovers your workspace** from the MCP client's roots
+2. **Registers the project** with the daemon for indexing
+3. **Starts background indexing** so searches work immediately
+
+The persistent daemon architecture enables:
 
 - **Shared index**: One daemon serves all your Claude Code sessions and projects
 - **Background indexing**: File changes are picked up automatically
@@ -159,17 +165,14 @@ Add to `.cursor/mcp.json` in your project (daemon mode):
 }
 ```
 
-Or stdio mode (no daemon required):
+Or use `connect` mode (auto-starts daemon, no manual setup):
 
 ```json
 {
   "mcpServers": {
     "julie": {
-      "command": "julie",
-      "args": [],
-      "env": {
-        "JULIE_WORKSPACE": "/path/to/your/project"
-      }
+      "command": "julie-server",
+      "args": ["connect"]
     }
   }
 }

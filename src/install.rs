@@ -64,8 +64,13 @@ pub fn install(port: u16) -> Result<()> {
     println!();
     println!("Julie will auto-start on login from now on.");
     println!();
+    println!("Make sure julie-server is in your PATH:");
+    println!("  {}", paths.bin_dir.display());
+    println!();
     println!("Next steps — connect your AI tool:");
-    println!("  Claude Code:  /plugin marketplace add anortham/julie");
+    println!("  Claude Code:");
+    println!("    /plugin marketplace add anortham/julie");
+    println!("    /plugin install julie@julie");
     println!("  Cursor/other: see https://github.com/anortham/julie#installation");
 
     Ok(())

@@ -786,26 +786,65 @@ impl ServerHandler for JulieServerHandler {
         }
     }
 
-    async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
+    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
         info!("🔗 MCP connection established - client initialized");
 
-        // Daemon mode: pre-populate workspace from daemon state.
-        // The daemon already manages indexing and file watching — creating
-        // a duplicate workspace here would spawn competing SearchIndex
-        // writers and file watchers on the same directory.
+        // Daemon mode: discover workspace from client roots, register, and attach.
         if let Some(ref daemon_state) = self.daemon_state {
+            // Ask the client for its workspace roots (MCP roots/list).
+            // This tells us which project directory the client is working in.
+            let client_root = match context.peer.list_roots().await {
+                Ok(roots_result) => {
+                    roots_result.roots.first().and_then(|root| {
+                        let path_str = root.uri.strip_prefix("file://")?;
+                        // On Windows, file:// URIs look like file:///C:/Users/...
+                        // strip_prefix gives us /C:/Users/... — trim the leading slash
+                        let path_str = if cfg!(windows) && path_str.starts_with('/') {
+                            &path_str[1..]
+                        } else {
+                            path_str
+                        };
+                        // Decode percent-encoded characters (spaces, unicode, etc.)
+                        let decoded = percent_encoding::percent_decode_str(path_str)
+                            .decode_utf8()
+                            .ok()?;
+                        let path = PathBuf::from(decoded.as_ref());
+                        if path.is_dir() {
+                            info!("📂 Client workspace root: {}", path.display());
+                            Some(path)
+                        } else {
+                            warn!("Client root is not a directory: {}", path.display());
+                            None
+                        }
+                    })
+                }
+                Err(e) => {
+                    debug!("Client does not support roots/list: {}", e);
+                    None
+                }
+            };
+
+            let target_path = client_root.unwrap_or_else(|| self.workspace_root.clone());
+
+            // Register the project with the daemon (idempotent — no-ops if already registered).
+            // This ensures the workspace exists in daemon_state.workspaces.
+            if let Err(e) = DaemonState::register_project(daemon_state, &target_path).await {
+                warn!("Failed to register workspace {}: {}", target_path.display(), e);
+            }
+
+            // Attach the daemon's workspace to this handler session.
             let ds = daemon_state.read().await;
             for loaded in ds.workspaces.values() {
-                if loaded.path == self.workspace_root {
+                if loaded.path == target_path {
                     let mut ws_guard = self.workspace.write().await;
                     *ws_guard = Some(loaded.workspace.clone());
                     *self.is_indexed.write().await = true;
-                    info!("📦 Using daemon's pre-loaded workspace");
+                    info!("📦 Using daemon workspace: {}", target_path.display());
                     return;
                 }
             }
-            // Workspace not in daemon state (still indexing or just registered)
-            // — skip auto-indexing, the daemon indexer will handle it.
+            // Workspace registered but not yet loaded — daemon indexer will handle it.
+            info!("⏳ Workspace registered, waiting for daemon indexer");
             return;
         }
 
