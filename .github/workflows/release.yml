@@ -83,11 +83,11 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            ARCHIVE="julie-${{ matrix.target }}.zip"
+            ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.zip"
             cp "./target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "${{ matrix.binary_name }}"
             7z a "${ARCHIVE}" "${{ matrix.binary_name }}"
           else
-            ARCHIVE="julie-${{ matrix.target }}.tar.gz"
+            ARCHIVE="julie-v${VERSION}-${{ matrix.target }}.tar.gz"
             tar -czf "${ARCHIVE}" -C target/${{ matrix.target }}/release ${{ matrix.binary_name }}
           fi
           echo "ARCHIVE=${ARCHIVE}" >> $GITHUB_ENV

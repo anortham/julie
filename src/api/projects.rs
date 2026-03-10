@@ -36,6 +36,7 @@ pub struct ProjectResponse {
     pub symbol_count: Option<u64>,
     pub file_count: Option<u64>,
     pub embedding_status: Option<EmbeddingStatusResponse>,
+    pub embedding_count: Option<i64>,
 }
 
 /// Embedding runtime status for a project.
@@ -103,20 +104,26 @@ pub async fn list_projects(
             // otherwise fall back to the registry's static status.
             let live_status = daemon_state.project_status_for(&entry.workspace_id);
 
-            // Extract embedding runtime status from loaded workspace.
-            let embedding_status = daemon_state
+            // Extract embedding info from loaded workspace.
+            let loaded_ws = daemon_state
                 .workspaces
                 .get(&entry.workspace_id)
-                .filter(|ws| ws.status == WorkspaceLoadStatus::Ready)
-                .and_then(|ws| {
-                    ws.workspace.embedding_runtime_status.as_ref().map(|ers| {
-                        EmbeddingStatusResponse {
-                            backend: ers.resolved_backend.as_str().to_string(),
-                            accelerated: ers.accelerated,
-                            degraded_reason: ers.degraded_reason.clone(),
-                        }
-                    })
-                });
+                .filter(|ws| ws.status == WorkspaceLoadStatus::Ready);
+
+            let embedding_status = loaded_ws.and_then(|ws| {
+                ws.workspace.embedding_runtime_status.as_ref().map(|ers| {
+                    EmbeddingStatusResponse {
+                        backend: ers.resolved_backend.as_str().to_string(),
+                        accelerated: ers.accelerated,
+                        degraded_reason: ers.degraded_reason.clone(),
+                    }
+                })
+            });
+
+            let embedding_count = loaded_ws
+                .and_then(|ws| ws.workspace.db.as_ref())
+                .and_then(|db| db.lock().ok())
+                .and_then(|db| db.embedding_count().ok());
 
             ProjectResponse {
                 workspace_id: entry.workspace_id.clone(),
@@ -127,6 +134,7 @@ pub async fn list_projects(
                 symbol_count: entry.symbol_count,
                 file_count: entry.file_count,
                 embedding_status,
+                embedding_count,
             }
         })
         .collect();

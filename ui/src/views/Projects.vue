@@ -16,6 +16,7 @@ interface Project {
   symbol_count: number | null
   file_count: number | null
   embedding_status: EmbeddingStatus | null
+  embedding_count: number | null
 }
 
 interface LanguageCount {
@@ -342,17 +343,9 @@ onMounted(() => {
                   {{ p.status }}
                 </span>
               </td>
-              <td>
-                <template v-if="p.embedding_status">
-                  <span
-                    class="badge"
-                    :class="p.embedding_status.degraded_reason ? 'badge-warning' : 'badge-ready'"
-                    :title="p.embedding_status.degraded_reason ?? undefined"
-                  >
-                    {{ p.embedding_status.backend }}
-                    <span v-if="p.embedding_status.accelerated" class="accel-icon" title="GPU accelerated">&#9889;</span>
-                    <span v-if="p.embedding_status.degraded_reason" class="pi pi-exclamation-triangle degrade-icon"></span>
-                  </span>
+              <td class="cell-num">
+                <template v-if="p.embedding_count != null && p.embedding_count > 0">
+                  {{ p.embedding_count.toLocaleString() }}
                 </template>
                 <span v-else class="text-muted">--</span>
               </td>
