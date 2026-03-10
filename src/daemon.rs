@@ -26,7 +26,7 @@ pub struct DaemonInfo {
 /// Returns the Julie home directory.
 ///
 /// - Unix: `$HOME/.julie`
-/// - Windows: `%APPDATA%\julie` (falls back to `%USERPROFILE%\julie`)
+/// - Windows: `%USERPROFILE%\.julie` (consistent with Unix — works naturally in MSYS/Git Bash)
 ///
 /// Returns an error if the home directory cannot be determined.
 pub fn julie_home() -> Result<PathBuf> {
@@ -38,10 +38,28 @@ pub fn julie_home() -> Result<PathBuf> {
     }
     #[cfg(windows)]
     {
-        let base = std::env::var("APPDATA")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .context("Cannot determine Julie home directory: neither %APPDATA% nor %USERPROFILE% is set")?;
-        Ok(PathBuf::from(base).join("julie"))
+        let base = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .context("Cannot determine Julie home directory: neither %USERPROFILE% nor $HOME is set")?;
+        let new_home = PathBuf::from(&base).join(".julie");
+
+        // Migrate from old location (%APPDATA%\julie) if it exists and new doesn't
+        if !new_home.exists() {
+            if let Ok(appdata) = std::env::var("APPDATA") {
+                let old_home = PathBuf::from(appdata).join("julie");
+                if old_home.exists() {
+                    eprintln!(
+                        "Migrating julie home: {:?} → {:?}",
+                        old_home, new_home
+                    );
+                    if let Err(e) = std::fs::rename(&old_home, &new_home) {
+                        eprintln!("Migration failed (will use new location): {e}");
+                    }
+                }
+            }
+        }
+
+        Ok(new_home)
     }
 }
 

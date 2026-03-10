@@ -207,7 +207,7 @@ cargo test --lib build_julie_fixture -- --ignored --nocapture
 
 ### 🚨 LOG LOCATION
 
-**Daemon/connect modes** log to the global `~/.julie/logs/` directory (the daemon serves multiple projects, so logs are centralized).
+**Daemon/connect modes** log to the global `~/.julie/logs/` directory (the daemon serves multiple projects, so logs are centralized). This is `~/.julie` on all platforms.
 
 **Stdio mode** logs to the project-level `.julie/logs/` directory.
 

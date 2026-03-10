@@ -1,4 +1,4 @@
-//! Build script: ensures `ui/dist/` exists before `cargo build`.
+//! Build script: ensures `ui/dist/` is up-to-date before `cargo build`.
 //!
 //! The `#[derive(Embed)] #[folder = "ui/dist/"]` macro in `src/ui.rs` requires
 //! the folder to physically exist at compile time. On a fresh clone (or CI
@@ -6,34 +6,43 @@
 //!
 //! This script:
 //! 1. Checks if `ui/dist/index.html` exists
-//! 2. If missing, runs `npm install && npm run build` in `ui/`
+//! 2. If missing OR stale (source files newer than dist), runs `npm run build`
 //! 3. Falls back to creating an empty `ui/dist/` with a stub `index.html`
 //!    if npm/node isn't available
 
 use std::path::Path;
 use std::process::Command;
+use std::time::SystemTime;
 
 fn main() {
-    // Only rerun if the dist directory or package.json changes
-    println!("cargo:rerun-if-changed=ui/dist/index.html");
+    // Rerun when Vue source files or package.json change
+    println!("cargo:rerun-if-changed=ui/src");
     println!("cargo:rerun-if-changed=ui/package.json");
+    println!("cargo:rerun-if-changed=ui/vite.config.ts");
 
     let dist_index = Path::new("ui/dist/index.html");
-    if dist_index.exists() {
+    if dist_index.exists() && !is_dist_stale(dist_index) {
         return;
     }
 
-    eprintln!("ui/dist/ not found — building UI...");
+    let reason = if dist_index.exists() { "stale" } else { "missing" };
+    eprintln!("ui/dist/ {reason} — building UI...");
 
     // Try npm
     let npm = if cfg!(windows) { "npm.cmd" } else { "npm" };
 
-    let install_ok = Command::new(npm)
-        .args(["install"])
-        .current_dir("ui")
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
+    // Only run npm install if node_modules is missing
+    let needs_install = !Path::new("ui/node_modules").exists();
+    let install_ok = if needs_install {
+        Command::new(npm)
+            .args(["install"])
+            .current_dir("ui")
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    } else {
+        true
+    };
 
     if install_ok {
         let build_ok = Command::new(npm)
@@ -69,4 +78,34 @@ fn main() {
     )
     .expect("Failed to write stub index.html");
     eprintln!("Created stub ui/dist/index.html — dashboard will show placeholder.");
+}
+
+/// Check if any file in `ui/src/` is newer than the dist output.
+fn is_dist_stale(dist_index: &Path) -> bool {
+    let dist_mtime = match dist_index.metadata().and_then(|m| m.modified()) {
+        Ok(t) => t,
+        Err(_) => return true, // can't read mtime → treat as stale
+    };
+
+    newest_mtime_in(Path::new("ui/src"))
+        .map(|src_mtime| src_mtime > dist_mtime)
+        .unwrap_or(false) // if we can't walk src, don't force a rebuild
+}
+
+/// Recursively find the newest modification time in a directory.
+fn newest_mtime_in(dir: &Path) -> Option<SystemTime> {
+    let mut newest: Option<SystemTime> = None;
+    let entries = std::fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let mtime = if path.is_dir() {
+            newest_mtime_in(&path)
+        } else {
+            path.metadata().and_then(|m| m.modified()).ok()
+        };
+        if let Some(t) = mtime {
+            newest = Some(newest.map_or(t, |n: SystemTime| n.max(t)));
+        }
+    }
+    newest
 }

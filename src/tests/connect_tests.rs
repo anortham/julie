@@ -278,3 +278,142 @@ fn test_no_subcommand_still_works() {
         "No subcommand should parse as None (backward compatible stdio mode)"
     );
 }
+
+// ============================================================================
+// SESSION RECOVERY TESTS (401/422 bridge handling)
+// ============================================================================
+
+/// Mock server: returns 401 when Mcp-Session-Id header is present (stale session),
+/// returns 200 with a new session ID when no session header is sent.
+async fn mock_stale_session_server() -> (u16, tokio::task::JoinHandle<()>) {
+    use axum::{Router, routing::post, response::IntoResponse};
+    use axum::http::StatusCode;
+
+    let app = Router::new().route(
+        "/mcp/test",
+        post(|req: axum::extract::Request| async move {
+            if req.headers().contains_key("mcp-session-id") {
+                StatusCode::UNAUTHORIZED.into_response()
+            } else {
+                (
+                    StatusCode::OK,
+                    [("mcp-session-id", "fresh-session-abc")],
+                    r#"{"jsonrpc":"2.0","result":{},"id":1}"#,
+                )
+                    .into_response()
+            }
+        }),
+    );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    (port, handle)
+}
+
+#[tokio::test]
+async fn test_session_recovery_retries_on_401_and_succeeds() {
+    let (port, server) = mock_stale_session_server().await;
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{}/mcp/test", port);
+    let mut session_id = Some("stale-session-xyz".to_string());
+
+    let resp = crate::connect::send_with_session_recovery(
+        &client,
+        &url,
+        &mut session_id,
+        r#"{"jsonrpc":"2.0","method":"initialize","id":1}"#,
+    )
+    .await
+    .unwrap();
+
+    assert!(resp.status().is_success(), "Should succeed after 401 retry");
+    assert!(
+        session_id.is_none(),
+        "Stale session should be cleared before retry"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn test_session_recovery_no_retry_when_no_session() {
+    use axum::{Router, routing::post};
+
+    let app = Router::new().route(
+        "/mcp/test",
+        post(|| async { (axum::http::StatusCode::UNAUTHORIZED, "No session") }),
+    );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{}/mcp/test", port);
+    let mut session_id: Option<String> = None;
+
+    let resp = crate::connect::send_with_session_recovery(
+        &client,
+        &url,
+        &mut session_id,
+        r#"{"jsonrpc":"2.0","method":"tools/call","id":2}"#,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::UNAUTHORIZED,
+        "Should return 401 without retrying when no session to clear"
+    );
+
+    server.abort();
+}
+
+#[tokio::test]
+async fn test_session_recovery_422_passed_through() {
+    use axum::{Router, routing::post};
+
+    let app = Router::new().route(
+        "/mcp/test",
+        post(|| async {
+            (
+                axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                "Session required",
+            )
+        }),
+    );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let client = reqwest::Client::new();
+    let url = format!("http://localhost:{}/mcp/test", port);
+    let mut session_id: Option<String> = None;
+
+    let resp = crate::connect::send_with_session_recovery(
+        &client,
+        &url,
+        &mut session_id,
+        r#"{"jsonrpc":"2.0","method":"tools/call","id":3}"#,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        "422 should pass through — caller decides how to handle"
+    );
+
+    server.abort();
+}

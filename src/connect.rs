@@ -306,8 +306,11 @@ async fn run_stdio_bridge(
 
         debug!("Bridge → daemon: {}", trimmed);
 
-        // Send request, reconnecting to daemon if connection is lost
-        let resp = match send_to_daemon(&client, &mcp_url, &session_id, trimmed).await {
+        // Send request with session recovery (retries once on 401 stale session),
+        // falling back to daemon reconnect on TCP connection failure.
+        let resp = match send_with_session_recovery(&client, &mcp_url, &mut session_id, trimmed)
+            .await
+        {
             Ok(r) => {
                 reconnect_attempts = 0;
                 r
@@ -322,7 +325,6 @@ async fn run_stdio_bridge(
                     Ok(new_url) => {
                         mcp_url = new_url;
                         session_id = None;
-                        // Retry this request with the new URL
                         match send_to_daemon(&client, &mcp_url, &session_id, trimmed).await {
                             Ok(r) => {
                                 reconnect_attempts = 0;
@@ -347,6 +349,24 @@ async fn run_stdio_bridge(
             }
         };
 
+        // Guard: don't forward raw HTTP error bodies for session failures.
+        // These aren't valid JSON-RPC and would corrupt the MCP client's stream.
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED
+            || resp.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY
+        {
+            warn!(
+                "Unrecoverable session error ({}), returning JSON-RPC error to client",
+                resp.status()
+            );
+            session_id = None;
+            write_jsonrpc_error(
+                &mut stdout,
+                &format_args!("MCP session error (HTTP {})", resp.status().as_u16()),
+            )
+            .await?;
+            continue;
+        }
+
         if !resp.status().is_success() {
             warn!("Daemon returned HTTP {} for bridge request", resp.status());
         }
@@ -359,9 +379,6 @@ async fn run_stdio_bridge(
                     session_id = Some(sid_str.to_string());
                 }
             }
-        } else if !resp.status().is_success() && session_id.is_some() {
-            warn!("Non-success response without session header — clearing stale session ID");
-            session_id = None;
         }
 
         let content_type = resp
@@ -389,6 +406,31 @@ async fn run_stdio_bridge(
 
     info!("Bridge exited cleanly");
     Ok(())
+}
+
+/// Send a request to the daemon with automatic session recovery.
+///
+/// On HTTP 401 (stale session): clears the session and retries once without it.
+/// On HTTP 422 or persistent 401: returns the error response as-is for the
+/// caller to handle (typically by writing a clean JSON-RPC error).
+///
+/// This prevents the 401→422 death spiral where a stale session causes every
+/// subsequent request to fail permanently.
+pub(crate) async fn send_with_session_recovery(
+    client: &reqwest::Client,
+    mcp_url: &str,
+    session_id: &mut Option<String>,
+    body: &str,
+) -> Result<reqwest::Response, reqwest::Error> {
+    let resp = send_to_daemon(client, mcp_url, session_id, body).await?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED && session_id.is_some() {
+        warn!("Stale MCP session (401), clearing and retrying");
+        *session_id = None;
+        send_to_daemon(client, mcp_url, session_id, body).await
+    } else {
+        Ok(resp)
+    }
 }
 
 /// Build and send a POST request to the daemon's MCP endpoint.

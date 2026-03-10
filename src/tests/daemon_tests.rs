@@ -14,17 +14,10 @@ use crate::daemon::{
 #[test]
 fn test_julie_home_returns_dot_julie_in_home_dir() {
     let home = julie_home().unwrap();
-    // Should end with .julie (Unix) or julie (Windows)
-    #[cfg(unix)]
+    // Both Unix and Windows use ~/.julie
     assert!(
         home.ends_with(".julie"),
         "Expected path ending with .julie, got {:?}",
-        home
-    );
-    #[cfg(windows)]
-    assert!(
-        home.ends_with("julie"),
-        "Expected path ending with julie, got {:?}",
         home
     );
 }
