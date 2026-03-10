@@ -144,12 +144,6 @@ fn service_config_path() -> Result<PathBuf> {
         .join("julie.service"))
 }
 
-#[cfg(target_os = "windows")]
-fn service_config_path() -> Result<PathBuf> {
-    // Windows uses a registry entry, not a config file — return a sentinel.
-    Ok(PathBuf::from("registry://HKCU/Run/Julie Server"))
-}
-
 // ─── Create service ─────────────────────────────────────────────────────────
 
 #[cfg(target_os = "macos")]
