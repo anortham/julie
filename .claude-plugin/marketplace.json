@@ -11,7 +11,7 @@
       "name": "julie",
       "source": "./julie-plugin/",
       "description": "Code intelligence with token-budgeted context, graph-aware navigation, and persistent developer memory — powers longer, more productive AI coding sessions",
-      "version": "4.0.3",
+      "version": "4.0.4",
       "category": "developer-tools"
     }
   ]

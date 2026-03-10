@@ -53,7 +53,7 @@ pub fn install(port: u16) -> Result<()> {
     create_service(&paths, port)?;
 
     // 3. Start the service
-    start_service()?;
+    start_service(&paths, port)?;
 
     // 4. Print summary
     println!();
@@ -286,7 +286,7 @@ fn create_service(paths: &InstallPaths, port: u16) -> Result<()> {
 // ─── Start service ──────────────────────────────────────────────────────────
 
 #[cfg(target_os = "macos")]
-fn start_service() -> Result<()> {
+fn start_service(_paths: &InstallPaths, _port: u16) -> Result<()> {
     let plist_path = service_config_path()?;
 
     // Unload first (ignore errors — may not be loaded yet)
@@ -308,7 +308,7 @@ fn start_service() -> Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-fn start_service() -> Result<()> {
+fn start_service(_paths: &InstallPaths, _port: u16) -> Result<()> {
     let status = std::process::Command::new("systemctl")
         .args(["--user", "restart", "julie"])
         .status()
@@ -323,18 +323,22 @@ fn start_service() -> Result<()> {
 }
 
 #[cfg(target_os = "windows")]
-fn start_service() -> Result<()> {
-    let paths = InstallPaths::resolve()?;
-    let status = std::process::Command::new(&paths.binary)
-        .args(["daemon", "start"])
-        .status()
+fn start_service(paths: &InstallPaths, port: u16) -> Result<()> {
+    use std::os::windows::process::CommandExt;
+
+    // DETACHED_PROCESS: don't inherit console (runs in background)
+    // CREATE_NEW_PROCESS_GROUP: own process group (survives terminal close)
+    const DETACHED_PROCESS: u32 = 0x00000008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+
+    let port_str = port.to_string();
+    std::process::Command::new(&paths.binary)
+        .args(["daemon", "start", "--foreground", "--port", &port_str])
+        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+        .spawn()
         .context("Failed to start daemon")?;
 
-    if !status.success() {
-        bail!("daemon start failed");
-    }
-
-    println!("Daemon started");
+    println!("Daemon started in background");
     Ok(())
 }
 
@@ -359,10 +363,13 @@ fn stop_service() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn stop_service() -> Result<()> {
-    // Kill by image name — covers both service and manual starts
+    // /F = force kill (required — julie-server doesn't handle WM_CLOSE)
+    // /IM = match by image name
     let _ = std::process::Command::new("taskkill")
-        .args(["/IM", "julie-server.exe"])
+        .args(["/F", "/IM", "julie-server.exe"])
         .status();
+    // Give Windows a moment to release the file lock
+    std::thread::sleep(std::time::Duration::from_millis(500));
     Ok(())
 }
 
