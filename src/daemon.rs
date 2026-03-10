@@ -1,15 +1,18 @@
 //! Daemon lifecycle management: PID file, start/stop/status, signal handling.
 //!
 //! Provides cross-platform daemon process management:
-//! - PID file at `~/.julie/daemon.pid` (TOML format)
+//! - PID file at `~/.julie/daemon.pid` (TOML format) with exclusive file lock
 //! - Process existence checking via `kill(pid, 0)` (Unix) or `tasklist` (Windows)
 //! - Graceful shutdown on SIGTERM/SIGINT with PID file cleanup
-//! - Double-start detection
+//! - Double-start detection with atomic file locking (prevents TOCTOU races)
 
 use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 
 /// Information stored in the PID file.
@@ -85,6 +88,44 @@ pub fn write_pid_file(path: &Path, pid: u32, port: u16) -> Result<()> {
     let content = toml::to_string(&info).context("Failed to serialize DaemonInfo to TOML")?;
     fs::write(path, content).with_context(|| format!("Failed to write PID file {:?}", path))?;
     Ok(())
+}
+
+/// Open (or create) the PID file, acquire an exclusive lock, and write daemon info.
+///
+/// Returns the locked `File` handle. The caller MUST keep this handle alive for the
+/// daemon's lifetime — dropping it releases the lock. The OS also releases the lock
+/// automatically if the process crashes.
+///
+/// If another process already holds the lock, returns an error immediately
+/// (non-blocking via `try_lock_exclusive`).
+pub fn lock_and_write_pid_file(path: &Path, pid: u32, port: u16) -> Result<File> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory {:?}", parent))?;
+    }
+
+    let file = File::create(path)
+        .with_context(|| format!("Failed to create PID file {:?}", path))?;
+
+    file.try_lock_exclusive().map_err(|_| {
+        anyhow::anyhow!(
+            "Another Julie daemon is already running (PID file {:?} is locked). \
+             Use 'julie-server daemon stop' first.",
+            path
+        )
+    })?;
+
+    // Lock acquired — write the PID info
+    let info = DaemonInfo { pid, port };
+    let content = toml::to_string(&info).context("Failed to serialize DaemonInfo to TOML")?;
+    // Use the locked file handle to write (not fs::write which would open a new fd)
+    let mut file = file;
+    file.write_all(content.as_bytes())
+        .with_context(|| format!("Failed to write PID file {:?}", path))?;
+    file.flush()
+        .with_context(|| format!("Failed to flush PID file {:?}", path))?;
+
+    Ok(file)
 }
 
 /// Read and parse a PID file. Returns `None` if the file doesn't exist.
@@ -213,7 +254,10 @@ pub async fn daemon_start(port: u16, workspace_root: PathBuf, foreground: bool) 
         .with_context(|| format!("Failed to load global registry from {:?}", home))?;
     tracing::info!("Loaded global registry: {} project(s)", registry.projects.len());
 
-    write_pid_file(&pid_path, pid, port)?;
+    // Atomically lock the PID file to prevent TOCTOU race between is_daemon_running()
+    // and starting the server. The lock is held for the daemon's entire lifetime.
+    // _pid_file_lock must stay alive until after server shutdown — dropping it releases the lock.
+    let _pid_file_lock = lock_and_write_pid_file(&pid_path, pid, port)?;
     println!("Julie daemon started (PID {}, port {})", pid, port);
 
     // Start the HTTP server — runs until a shutdown signal is received
@@ -225,6 +269,10 @@ pub async fn daemon_start(port: u16, workspace_root: PathBuf, foreground: bool) 
         home.clone(),
     )
     .await;
+
+    // Drop the lock before removing the file (required on Windows where locked files
+    // can't be deleted; on Unix this is harmless since flock is on the fd, not the path)
+    drop(_pid_file_lock);
 
     // Always clean up PID file on exit
     if let Err(e) = remove_pid_file(&pid_path) {

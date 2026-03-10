@@ -4,7 +4,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::daemon::{
-    DaemonInfo, julie_home, is_daemon_running, pid_file_path, remove_pid_file, write_pid_file,
+    DaemonInfo, julie_home, is_daemon_running, lock_and_write_pid_file, pid_file_path,
+    remove_pid_file, write_pid_file,
 };
 
 // ============================================================================
@@ -206,4 +207,89 @@ fn test_daemon_info_toml_format_is_readable() {
     // Should be human-readable key = value format
     assert!(serialized.contains("pid = 12345"), "TOML should contain 'pid = 12345', got: {}", serialized);
     assert!(serialized.contains("port = 7890"), "TOML should contain 'port = 7890', got: {}", serialized);
+}
+
+// ============================================================================
+// PID FILE LOCKING TESTS
+// ============================================================================
+
+#[test]
+fn test_lock_and_write_pid_file_creates_valid_toml() {
+    let (_dir, pid_path) = temp_pid_file();
+
+    let _lock = lock_and_write_pid_file(&pid_path, 12345, 7890).unwrap();
+
+    let content = fs::read_to_string(&pid_path).unwrap();
+    let parsed: DaemonInfo = toml::from_str(&content).unwrap();
+    assert_eq!(parsed.pid, 12345);
+    assert_eq!(parsed.port, 7890);
+}
+
+#[test]
+fn test_lock_and_write_pid_file_prevents_second_lock() {
+    let (_dir, pid_path) = temp_pid_file();
+
+    // First lock should succeed
+    let _lock = lock_and_write_pid_file(&pid_path, 12345, 7890).unwrap();
+
+    // Second lock on the same file should fail
+    let result = lock_and_write_pid_file(&pid_path, 67890, 8080);
+    assert!(
+        result.is_err(),
+        "Second lock_and_write_pid_file should fail while first lock is held"
+    );
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("already running"),
+        "Error should mention 'already running', got: {}",
+        err_msg
+    );
+}
+
+#[test]
+fn test_lock_released_on_drop() {
+    let (_dir, pid_path) = temp_pid_file();
+
+    // Acquire and drop the lock
+    {
+        let _lock = lock_and_write_pid_file(&pid_path, 12345, 7890).unwrap();
+        // _lock dropped here
+    }
+
+    // Should be able to acquire the lock again after drop
+    let _lock = lock_and_write_pid_file(&pid_path, 67890, 8080).unwrap();
+
+    // Verify the new content was written
+    let content = fs::read_to_string(&pid_path).unwrap();
+    let parsed: DaemonInfo = toml::from_str(&content).unwrap();
+    assert_eq!(parsed.pid, 67890);
+    assert_eq!(parsed.port, 8080);
+}
+
+#[test]
+fn test_locked_pid_file_can_still_be_read() {
+    let (_dir, pid_path) = temp_pid_file();
+
+    let _lock = lock_and_write_pid_file(&pid_path, 12345, 7890).unwrap();
+
+    // Other processes can still read the locked file (flock doesn't prevent reads)
+    let info = crate::daemon::read_pid_file(&pid_path).unwrap();
+    assert!(info.is_some());
+    let info = info.unwrap();
+    assert_eq!(info.pid, 12345);
+    assert_eq!(info.port, 7890);
+}
+
+#[test]
+fn test_locked_pid_file_can_be_removed_on_unix() {
+    let (_dir, pid_path) = temp_pid_file();
+
+    let _lock = lock_and_write_pid_file(&pid_path, 12345, 7890).unwrap();
+
+    // On Unix, removing a locked file is fine (lock is on the fd, not the path)
+    #[cfg(unix)]
+    {
+        remove_pid_file(&pid_path).unwrap();
+        assert!(!pid_path.exists());
+    }
 }
