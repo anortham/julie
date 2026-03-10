@@ -4,9 +4,10 @@
 //! (workspaces other than the primary one).
 
 use anyhow::Result;
+use std::collections::HashSet;
 use tracing::debug;
 
-use crate::extractors::{Relationship, Symbol};
+use crate::extractors::{Relationship, RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
@@ -14,10 +15,20 @@ use crate::utils::cross_language_intelligence::generate_naming_variants;
 ///
 /// In daemon mode, uses the shared loaded workspace DB (no re-opening).
 /// In stdio mode, opens the reference workspace's SQLite database from disk.
+///
+/// Supports the same strategies as the primary workspace path:
+/// 1. Exact name lookup
+/// 2. Cross-language naming variants
+/// 3. Relationship-based refs (optionally filtered by `reference_kind`)
+/// 4. Identifier-based refs (optionally filtered by `reference_kind`)
+///
+/// Results are sorted by confidence (descending) then truncated to `limit`.
 pub async fn find_references_in_reference_workspace(
     handler: &JulieServerHandler,
     ref_workspace_id: String,
     symbol: &str,
+    limit: u32,
+    reference_kind: Option<&str>,
 ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
     // Use handler helper for DB access (shared in daemon mode, opens fresh in stdio mode)
     let db_arc = handler
@@ -30,6 +41,7 @@ pub async fn find_references_in_reference_workspace(
     );
 
     let symbol_owned = symbol.to_string();
+    let reference_kind_owned = reference_kind.map(|s| s.to_string());
 
     // All DB work in spawn_blocking (SQLite is synchronous)
     let (definitions, mut references) = tokio::task::spawn_blocking(move || -> Result<_> {
@@ -49,11 +61,11 @@ pub async fn find_references_in_reference_workspace(
         let variants = generate_naming_variants(&symbol_owned);
         debug!("Cross-language search variants: {:?}", variants);
 
-        for variant in variants {
-            if variant != symbol_owned {
-                if let Ok(variant_symbols) = ref_db.get_symbols_by_name(&variant) {
+        for variant in &variants {
+            if *variant != symbol_owned {
+                if let Ok(variant_symbols) = ref_db.get_symbols_by_name(variant) {
                     for sym in variant_symbols {
-                        if sym.name == variant {
+                        if sym.name == *variant {
                             debug!(
                                 "Found cross-language match: {} (variant: {})",
                                 sym.name, variant
@@ -70,15 +82,82 @@ pub async fn find_references_in_reference_workspace(
         defs.dedup_by(|a, b| a.id == b.id);
 
         // Strategy 3: Find direct relationships - REFERENCES TO these symbols
-        let mut refs: Vec<Relationship> = Vec::new();
-
         // Collect all definition IDs for single batch query
         let definition_ids: Vec<String> = defs.iter().map(|d| d.id.clone()).collect();
 
-        // Single batch query instead of N individual queries
-        if let Ok(symbol_references) = ref_db.get_relationships_to_symbols(&definition_ids) {
-            refs.extend(symbol_references);
+        // Single batch query, optionally filtered by identifier kind
+        let mut refs: Vec<Relationship> = if let Some(ref kind) = reference_kind_owned {
+            ref_db
+                .get_relationships_to_symbols_filtered_by_kind(&definition_ids, kind)
+                .unwrap_or_default()
+        } else {
+            ref_db
+                .get_relationships_to_symbols(&definition_ids)
+                .unwrap_or_default()
+        };
+
+        // Strategy 4: Identifier-based reference discovery
+        // The identifiers table stores every usage site extracted by all 31 language extractors.
+        // This catches references that relationships miss (struct type usages, function calls
+        // without extracted relationships, member accesses, etc.)
+        let mut all_names = vec![symbol_owned.clone()];
+        for v in &variants {
+            if *v != symbol_owned {
+                all_names.push(v.clone());
+            }
         }
+
+        let first_def_id = defs.first().map(|d| d.id.clone()).unwrap_or_default();
+
+        let identifier_refs = if let Some(ref kind) = reference_kind_owned {
+            ref_db
+                .get_identifiers_by_names_and_kind(&all_names, kind)
+                .unwrap_or_default()
+        } else {
+            ref_db.get_identifiers_by_names(&all_names).unwrap_or_default()
+        };
+
+        // Build dedup set from existing relationships AND definitions
+        // so identifier entries at definition sites don't create duplicates
+        let mut existing_refs: HashSet<(String, u32)> = refs
+            .iter()
+            .map(|r| (r.file_path.clone(), r.line_number))
+            .collect();
+        for def in &defs {
+            existing_refs.insert((def.file_path.clone(), def.start_line));
+        }
+
+        let mut added = 0;
+        for ident in identifier_refs {
+            let key = (ident.file_path.clone(), ident.start_line);
+            if existing_refs.contains(&key) {
+                continue; // Prefer existing relationship (richer data)
+            }
+
+            // Convert IdentifierKind string to RelationshipKind
+            let rel_kind = match ident.kind.as_str() {
+                "call" => RelationshipKind::Calls,
+                "import" => RelationshipKind::Imports,
+                _ => RelationshipKind::References,
+            };
+
+            refs.push(Relationship {
+                id: format!("ident_{}_{}", ident.file_path, ident.start_line),
+                from_symbol_id: ident.containing_symbol_id.unwrap_or_default(),
+                to_symbol_id: first_def_id.clone(),
+                kind: rel_kind,
+                file_path: ident.file_path,
+                line_number: ident.start_line,
+                confidence: ident.confidence,
+                metadata: None,
+            });
+            added += 1;
+        }
+
+        debug!(
+            "Identifiers added {} new references (deduped from existing relationships)",
+            added
+        );
 
         Ok((defs, refs))
     })
@@ -101,10 +180,15 @@ pub async fn find_references_in_reference_workspace(
         a.line_number.cmp(&b.line_number)
     });
 
+    // Apply user-specified limit to prevent massive responses
+    // Truncate AFTER sorting to return the top N most relevant references
+    references.truncate(limit as usize);
+
     debug!(
-        "Reference workspace search: {} definitions, {} references",
+        "Reference workspace search: {} definitions, {} references (limit: {})",
         definitions.len(),
-        references.len()
+        references.len(),
+        limit
     );
 
     Ok((definitions, references))

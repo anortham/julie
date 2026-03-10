@@ -121,6 +121,9 @@ sqlite-vec = "0.1"
 zerocopy = { version = "0.7", features = ["derive"] }
 percent-encoding = "2.3.2"
 
+# Cross-platform file locking (flock on Unix, LockFileEx on Windows)
+fs2 = "0.4"
+
 # Platform-specific process management (daemon lifecycle)
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

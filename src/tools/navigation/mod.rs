@@ -11,7 +11,7 @@
 mod fast_refs;
 pub(crate) mod federated_refs;
 pub(crate) mod formatting;
-mod reference_workspace;
+pub(crate) mod reference_workspace;
 pub mod resolution; // Public for use by other tools
 
 // Re-export public APIs

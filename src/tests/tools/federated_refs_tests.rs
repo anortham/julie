@@ -95,6 +95,15 @@ mod tests {
     }
 
     fn make_relationship(file_path: &str, line: u32, kind: RelationshipKind) -> Relationship {
+        make_relationship_with_confidence(file_path, line, kind, 1.0)
+    }
+
+    fn make_relationship_with_confidence(
+        file_path: &str,
+        line: u32,
+        kind: RelationshipKind,
+        confidence: f32,
+    ) -> Relationship {
         Relationship {
             id: format!("rel_{}_{}", file_path, line),
             from_symbol_id: "caller".to_string(),
@@ -102,7 +111,7 @@ mod tests {
             kind,
             file_path: file_path.to_string(),
             line_number: line,
-            confidence: 1.0,
+            confidence,
             metadata: None,
         }
     }
@@ -639,5 +648,245 @@ mod tests {
             "Should not show definitions when include_definition=false. Got:\n{}",
             text
         );
+    }
+
+    // =========================================================================
+    // apply_global_ref_limit: unit tests for confidence-based truncation
+    // =========================================================================
+
+    #[test]
+    fn test_global_limit_prefers_high_confidence_over_alphabetical_order() {
+        use crate::tools::navigation::federated_refs::apply_global_ref_limit;
+
+        // "a-project" has 5 LOW-confidence refs (0.3)
+        // "z-project" has 3 HIGH-confidence refs (0.95)
+        // With a limit of 4, the old alphabetical approach would keep all 4 from
+        // "a-project" and starve "z-project" entirely. The fix should keep the
+        // 3 high-confidence z-project refs + 1 from a-project.
+
+        let a_refs: Vec<Relationship> = (0..5)
+            .map(|i| {
+                make_relationship_with_confidence(
+                    &format!("src/a_file_{}.rs", i),
+                    10 + i,
+                    RelationshipKind::Calls,
+                    0.3,
+                )
+            })
+            .collect();
+
+        let z_refs: Vec<Relationship> = (0..3)
+            .map(|i| {
+                make_relationship_with_confidence(
+                    &format!("src/z_file_{}.rs", i),
+                    20 + i,
+                    RelationshipKind::Calls,
+                    0.95,
+                )
+            })
+            .collect();
+
+        let mut per_project = vec![
+            ("a-project".to_string(), vec![], a_refs),
+            ("z-project".to_string(), vec![], z_refs),
+        ];
+
+        apply_global_ref_limit(&mut per_project, 4);
+
+        // z-project should still have all 3 of its high-confidence refs
+        let z_entry = per_project
+            .iter()
+            .find(|(name, _, _)| name == "z-project");
+        assert!(
+            z_entry.is_some(),
+            "z-project should survive truncation (has high-confidence refs)"
+        );
+        let z_refs = &z_entry.unwrap().2;
+        assert_eq!(
+            z_refs.len(),
+            3,
+            "z-project should keep all 3 high-confidence refs, got {}",
+            z_refs.len()
+        );
+
+        // a-project should have exactly 1 ref (4 total - 3 from z = 1)
+        let a_entry = per_project
+            .iter()
+            .find(|(name, _, _)| name == "a-project");
+        assert!(
+            a_entry.is_some(),
+            "a-project should survive with 1 ref"
+        );
+        let a_refs = &a_entry.unwrap().2;
+        assert_eq!(
+            a_refs.len(),
+            1,
+            "a-project should keep only 1 ref (budget remainder), got {}",
+            a_refs.len()
+        );
+
+        // Total should be exactly the limit
+        let total: usize = per_project.iter().map(|(_, _, r)| r.len()).sum();
+        assert_eq!(total, 4, "Total refs should equal limit of 4");
+    }
+
+    #[test]
+    fn test_global_limit_definitions_not_truncated() {
+        use crate::tools::navigation::federated_refs::apply_global_ref_limit;
+
+        // Both projects have definitions + refs. Limit is 2 refs.
+        // Definitions should never be dropped.
+
+        let a_defs = vec![make_symbol(
+            "Widget",
+            "src/widget.rs",
+            1,
+            SymbolKind::Struct,
+            Some("pub struct Widget"),
+        )];
+        let a_refs = vec![
+            make_relationship_with_confidence("src/use_a.rs", 10, RelationshipKind::Calls, 0.5),
+            make_relationship_with_confidence("src/use_a2.rs", 20, RelationshipKind::Calls, 0.5),
+        ];
+
+        let z_defs = vec![make_symbol(
+            "Widget",
+            "lib/widget.py",
+            1,
+            SymbolKind::Class,
+            Some("class Widget"),
+        )];
+        let z_refs = vec![
+            make_relationship_with_confidence("lib/use_z.py", 10, RelationshipKind::Calls, 0.9),
+        ];
+
+        let mut per_project = vec![
+            ("a-project".to_string(), a_defs, a_refs),
+            ("z-project".to_string(), z_defs, z_refs),
+        ];
+
+        apply_global_ref_limit(&mut per_project, 2);
+
+        // Both projects should still exist (they have definitions)
+        assert_eq!(per_project.len(), 2, "Both projects should survive (have definitions)");
+
+        // Definitions should be untouched
+        for (name, defs, _) in &per_project {
+            assert_eq!(
+                defs.len(),
+                1,
+                "Project {} should still have its definition",
+                name
+            );
+        }
+
+        // Total refs should be 2 (the limit)
+        let total_refs: usize = per_project.iter().map(|(_, _, r)| r.len()).sum();
+        assert_eq!(total_refs, 2, "Total refs should equal limit of 2");
+
+        // The high-confidence z-project ref (0.9) should survive
+        let z_entry = per_project
+            .iter()
+            .find(|(name, _, _)| name == "z-project")
+            .unwrap();
+        assert_eq!(z_entry.2.len(), 1, "z-project's high-confidence ref should survive");
+    }
+
+    #[test]
+    fn test_global_limit_removes_empty_projects_without_defs() {
+        use crate::tools::navigation::federated_refs::apply_global_ref_limit;
+
+        // "loser-project" has only low-confidence refs and no defs.
+        // With a tight limit, it gets zero refs and should be removed entirely.
+
+        let winner_refs = vec![
+            make_relationship_with_confidence("src/win.rs", 1, RelationshipKind::Calls, 1.0),
+            make_relationship_with_confidence("src/win.rs", 2, RelationshipKind::Calls, 0.99),
+        ];
+        let loser_refs = vec![
+            make_relationship_with_confidence("src/lose.rs", 1, RelationshipKind::Calls, 0.1),
+            make_relationship_with_confidence("src/lose.rs", 2, RelationshipKind::Calls, 0.1),
+        ];
+
+        let mut per_project = vec![
+            ("winner".to_string(), vec![], winner_refs),
+            ("loser".to_string(), vec![], loser_refs),
+        ];
+
+        apply_global_ref_limit(&mut per_project, 2);
+
+        // Only winner should survive
+        assert_eq!(per_project.len(), 1);
+        assert_eq!(per_project[0].0, "winner");
+        assert_eq!(per_project[0].2.len(), 2);
+    }
+
+    #[test]
+    fn test_global_limit_no_truncation_when_under_limit() {
+        use crate::tools::navigation::federated_refs::apply_global_ref_limit;
+
+        // Total refs (3) < limit (10). Nothing should be dropped.
+        let a_refs = vec![
+            make_relationship_with_confidence("src/a.rs", 1, RelationshipKind::Calls, 0.5),
+        ];
+        let b_refs = vec![
+            make_relationship_with_confidence("src/b.rs", 1, RelationshipKind::Calls, 0.7),
+            make_relationship_with_confidence("src/b.rs", 2, RelationshipKind::Calls, 0.8),
+        ];
+
+        let mut per_project = vec![
+            ("alpha".to_string(), vec![], a_refs),
+            ("beta".to_string(), vec![], b_refs),
+        ];
+
+        apply_global_ref_limit(&mut per_project, 10);
+
+        let total: usize = per_project.iter().map(|(_, _, r)| r.len()).sum();
+        assert_eq!(total, 3, "All 3 refs should survive when under limit");
+        assert_eq!(per_project.len(), 2, "Both projects should survive");
+    }
+
+    #[test]
+    fn test_global_limit_output_sorted_by_project_name() {
+        use crate::tools::navigation::federated_refs::apply_global_ref_limit;
+
+        // Projects should end up sorted by name regardless of input order.
+        let mut per_project = vec![
+            (
+                "zebra".to_string(),
+                vec![],
+                vec![make_relationship_with_confidence(
+                    "z.rs",
+                    1,
+                    RelationshipKind::Calls,
+                    1.0,
+                )],
+            ),
+            (
+                "apple".to_string(),
+                vec![],
+                vec![make_relationship_with_confidence(
+                    "a.rs",
+                    1,
+                    RelationshipKind::Calls,
+                    1.0,
+                )],
+            ),
+            (
+                "mango".to_string(),
+                vec![],
+                vec![make_relationship_with_confidence(
+                    "m.rs",
+                    1,
+                    RelationshipKind::Calls,
+                    1.0,
+                )],
+            ),
+        ];
+
+        apply_global_ref_limit(&mut per_project, 100);
+
+        let names: Vec<&str> = per_project.iter().map(|(n, _, _)| n.as_str()).collect();
+        assert_eq!(names, vec!["apple", "mango", "zebra"]);
     }
 }

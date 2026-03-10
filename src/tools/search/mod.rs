@@ -135,7 +135,7 @@ impl FastSearchTool {
                 &self.language,
                 &self.file_pattern,
                 self.limit,
-                &self.workspace,
+                &workspace_target,
                 handler,
             )
             .await;

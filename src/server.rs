@@ -130,6 +130,34 @@ pub async fn start_server(
         ds.set_indexing_sender(indexing_sender.clone());
     }
 
+    // Auto-queue indexing for Registered/Stale projects so they don't sit idle.
+    // Collect first, then drop the read lock before sending.
+    let to_index = {
+        let ds = daemon_state.read().await;
+        ds.workspaces_needing_indexing()
+    };
+    if !to_index.is_empty() {
+        tracing::info!(
+            "Auto-queuing indexing for {} Registered/Stale project(s)",
+            to_index.len()
+        );
+        for (workspace_id, project_path) in to_index {
+            tracing::info!(
+                "  Queuing indexing: {} ({})",
+                workspace_id,
+                project_path.display()
+            );
+            let request = crate::daemon_indexer::IndexRequest {
+                workspace_id,
+                project_path,
+                force: false,
+            };
+            if let Err(e) = indexing_sender.send(request).await {
+                tracing::warn!("Failed to auto-queue indexing: {}", e);
+            }
+        }
+    }
+
     let backends = agent::backend::detect_backends();
     let dispatch_manager = Arc::new(RwLock::new(DispatchManager::with_backends(backends.clone())));
 
