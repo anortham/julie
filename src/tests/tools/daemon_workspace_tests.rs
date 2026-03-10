@@ -477,4 +477,79 @@ mod tests {
             "Should return Some when search_index is present"
         );
     }
+
+    // =========================================================================
+    // Registry persistence failure tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_register_project_fails_when_registry_persist_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let julie_home = temp.path().join("julie-home");
+        std::fs::create_dir_all(&julie_home).unwrap();
+
+        let project_dir = temp.path().join("persist-fail-project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+
+        let ds = test_daemon_state_with_home(julie_home.clone());
+
+        // Make julie_home read-only so registry.save() fails
+        std::fs::set_permissions(&julie_home, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let result = DaemonState::register_project(&ds, &project_dir).await;
+
+        // Restore permissions for cleanup
+        std::fs::set_permissions(&julie_home, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(
+            result.is_err(),
+            "register_project should fail when registry persist fails"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("registry") && err_msg.contains("write failed"),
+            "Error should indicate registry write failure. Got: {}",
+            err_msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_deregister_project_fails_when_registry_persist_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let julie_home = temp.path().join("julie-home");
+        std::fs::create_dir_all(&julie_home).unwrap();
+
+        let project_dir = temp.path().join("dereg-persist-fail");
+        std::fs::create_dir_all(&project_dir).unwrap();
+
+        let ds = test_daemon_state_with_home(julie_home.clone());
+
+        // Register the project first (this should succeed with writable julie_home)
+        let reg = DaemonState::register_project(&ds, &project_dir)
+            .await
+            .expect("register should succeed");
+
+        // Now make julie_home read-only so the deregister's persist fails
+        std::fs::set_permissions(&julie_home, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let result = DaemonState::deregister_project(&ds, &reg.workspace_id).await;
+
+        // Restore permissions for cleanup
+        std::fs::set_permissions(&julie_home, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(
+            result.is_err(),
+            "deregister_project should fail when registry persist fails"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("registry") && err_msg.contains("write failed"),
+            "Error should indicate registry write failure. Got: {}",
+            err_msg
+        );
+    }
 }

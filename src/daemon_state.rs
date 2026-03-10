@@ -167,10 +167,13 @@ impl DaemonState {
 
             if is_new {
                 // Step 3: Persist registry to disk
-                if let Err(e) = registry.save(&julie_home) {
+                registry.save(&julie_home).map_err(|e| {
                     tracing::error!("Failed to save registry after adding project: {}", e);
-                    // Don't fail — project is registered in memory
-                }
+                    anyhow::anyhow!(
+                        "Project registered in memory but registry file write failed: {}",
+                        e
+                    )
+                })?;
             }
 
             (wid, name, cpath, is_new)
@@ -506,14 +509,17 @@ impl DaemonState {
 
                 // Persist registry to disk
                 let julie_home = ds.julie_home.clone();
-                if let Err(e) = registry.save(&julie_home) {
+                registry.save(&julie_home).map_err(|e| {
                     tracing::error!(
                         "Failed to save registry after removing project '{}': {}",
                         workspace_id,
                         e
                     );
-                    // Don't fail — project is removed in memory
-                }
+                    anyhow::anyhow!(
+                        "Project deregistered in memory but registry file write failed: {}",
+                        e
+                    )
+                })?;
 
                 (name, path)
             };
