@@ -306,6 +306,12 @@ async fn run_stdio_bridge(
 
         debug!("Bridge → daemon: {}", trimmed);
 
+        // Extract the JSON-RPC request id so error responses can reference it.
+        // This is a lightweight parse — we only need the "id" field.
+        let request_id = serde_json::from_str::<serde_json::Value>(trimmed)
+            .ok()
+            .and_then(|v| v.get("id").cloned());
+
         // Send request with session recovery (retries once on 401 stale session),
         // falling back to daemon reconnect on TCP connection failure.
         let resp = match send_with_session_recovery(&client, &mcp_url, &mut session_id, trimmed)
@@ -331,20 +337,20 @@ async fn run_stdio_bridge(
                                 r
                             }
                             Err(e2) => {
-                                write_jsonrpc_error(&mut stdout, &e2).await?;
+                                write_jsonrpc_error(&mut stdout, request_id.as_ref(), &e2).await?;
                                 continue;
                             }
                         }
                     }
                     Err(re) => {
                         error!("Reconnect failed: {}", re);
-                        write_jsonrpc_error(&mut stdout, &e).await?;
+                        write_jsonrpc_error(&mut stdout, request_id.as_ref(), &e).await?;
                         continue;
                     }
                 }
             }
             Err(e) => {
-                write_jsonrpc_error(&mut stdout, &e).await?;
+                write_jsonrpc_error(&mut stdout, request_id.as_ref(), &e).await?;
                 continue;
             }
         };
@@ -361,6 +367,7 @@ async fn run_stdio_bridge(
             session_id = None;
             write_jsonrpc_error(
                 &mut stdout,
+                request_id.as_ref(),
                 &format_args!("MCP session error (HTTP {})", resp.status().as_u16()),
             )
             .await?;
@@ -465,16 +472,22 @@ async fn attempt_reconnect(port: u16, workspace_root: &std::path::Path) -> Resul
 }
 
 /// Write a JSON-RPC error response to stdout so the MCP client knows the request failed.
+///
+/// `id` is the request ID extracted from the incoming JSON-RPC request so the
+/// error response can be correlated by the client. Falls back to `null` when
+/// the ID could not be determined.
 async fn write_jsonrpc_error(
     stdout: &mut tokio::io::Stdout,
+    id: Option<&serde_json::Value>,
     err: &dyn std::fmt::Display,
 ) -> Result<()> {
     use tokio::io::AsyncWriteExt;
     error!("Bridge HTTP error: {}", err);
+    let id_value = id.unwrap_or(&serde_json::Value::Null);
     let error_resp = serde_json::json!({
         "jsonrpc": "2.0",
         "error": { "code": -32000, "message": format!("Bridge error: {}", err) },
-        "id": null
+        "id": id_value
     });
     let mut out = serde_json::to_vec(&error_resp)?;
     out.push(b'\n');
