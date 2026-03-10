@@ -38,6 +38,34 @@
 
 ---
 
+## Post-v4.1.4 Review Fixes (2026-03-10)
+
+GPT review of v3.9.1→v4.1.4 delta, verified by Claude. 12/13 findings confirmed valid.
+
+### Completed (this session)
+
+- [x] **Restore reference-workspace `fast_refs` parity** — added `limit`, `reference_kind`, and identifier-based refs to reference workspace path (10 new tests)
+- [x] **Auto-queue indexing for Registered/Stale on startup** — daemon now sends `IndexRequest` for idle projects after startup (4 new tests)
+- [x] **Preserve JSON-RPC request id in connect bridge errors** — `write_jsonrpc_error` now passes through the original request `id`
+- [x] **Fix federated refs alphabetical starvation** — global limit now sorts by confidence before truncating, not by project name (5 new tests)
+- [x] **Stop line-mode workspace re-resolution** — `line_mode_search` accepts `WorkspaceTarget` directly, no redundant `WorkspaceRegistryService`
+- [x] **Fail project registration when registry persistence fails** — `register_project`/`deregister_project` propagate file write errors (2 new tests)
+- [x] **UI asset 404 instead of SPA fallback** — missing `.js`/`.css`/etc. return 404; SPA fallback only for navigation routes (8 new tests)
+- [x] **PID-file atomic locking** — `fs2::try_lock_exclusive()` eliminates TOCTOU race in `daemon_start` (5 new tests)
+
+### Deferred to Windows session
+
+- [ ] **Fix Windows `stop_service()` self-kill** — `taskkill /F /IM julie-server.exe` kills all processes with that name including the installer (`src/install.rs:359-368`)
+- [ ] **Make Windows uninstall robust for active executable** — can't delete running binary on Windows (`src/install.rs`)
+- [ ] **Fix Windows UNC display-path** — `display_path()` strips `\\?\` but not `\\?\UNC\server\share` → `\\server\share` (`src/utils/paths.rs:15-22`)
+
+### Deferred (design discussion / uncertain)
+
+- [ ] **CORS + unauthenticated destructive endpoints** — `launch_editor`/`launch_terminal` execute system commands with no auth; localhost-only but any local process can trigger via CORS (`src/server.rs`, `src/api/projects.rs`)
+- ~~**Embedding provider cross-workspace**~~ **Dismissed** — likely stale post-Tantivy migration; Tantivy already uses per-workspace indexes
+
+---
+
 ## Open Items
 
 - [x] **Dashboard memories tab needs project selector** (2026-03-09)
