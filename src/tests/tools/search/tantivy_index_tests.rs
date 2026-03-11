@@ -1109,3 +1109,141 @@ fn test_same_tokenizer_search_works() {
         "'preprocessor' should be found when using same tokenizer"
     );
 }
+
+/// Regression test: opening a Tantivy index created with an older schema
+/// (different field names / tokenizer) should recreate the index transparently
+/// instead of crashing with "Error getting tokenizer for field: symbol_name".
+///
+/// This reproduces the bug reported when users upgraded from the pre-razorback
+/// Julie version (which used `symbol_id`, `symbol_name`, `code_aware` tokenizer)
+/// to the current version (which uses `id`, `name`, `code` tokenizer).
+#[test]
+fn test_schema_migration_recreates_stale_index() {
+    use tantivy::schema::{IndexRecordOption, Schema, TextFieldIndexing, TextOptions, STORED, STRING};
+    use tantivy::tokenizer::TextAnalyzer;
+
+    let temp_dir = TempDir::new().unwrap();
+    let index_path = temp_dir.path().join("tantivy");
+    std::fs::create_dir_all(&index_path).unwrap();
+
+    // Create an index with the OLD schema (symbol_id, symbol_name, code_aware tokenizer)
+    {
+        let mut builder = Schema::builder();
+        let old_text_options = TextOptions::default()
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_tokenizer("code_aware")
+                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+            )
+            .set_stored();
+
+        builder.add_text_field("doc_type", STRING | STORED);
+        builder.add_text_field("symbol_id", STRING | STORED);   // old name for "id"
+        builder.add_text_field("file_path", STRING | STORED);
+        builder.add_text_field("language", STRING | STORED);
+        builder.add_text_field("symbol_name", old_text_options); // old name for "name"
+        let old_schema = builder.build();
+
+        let old_index = tantivy::Index::create_in_dir(&index_path, old_schema).unwrap();
+        // Register the old tokenizer name so we can write a doc
+        old_index.tokenizers().register(
+            "code_aware",
+            TextAnalyzer::builder(crate::search::tokenizer::CodeTokenizer::with_default_patterns())
+                .build(),
+        );
+        let mut writer: tantivy::IndexWriter<tantivy::TantivyDocument> = old_index.writer(15_000_000).unwrap();
+        writer.commit().unwrap();
+        // Index with old schema now exists on disk
+    }
+
+    // open_or_create should detect the mismatch and recreate
+    let index = SearchIndex::open_or_create(&index_path).unwrap();
+    assert_eq!(index.num_docs(), 0, "recreated index should be empty");
+
+    // Verify we can write and search with the new schema
+    index
+        .add_symbol(&SymbolDocument {
+            id: "test_sym".into(),
+            name: "MyTestClass".into(),
+            signature: "class MyTestClass".into(),
+            doc_comment: "".into(),
+            code_body: "".into(),
+            file_path: "src/test.rs".into(),
+            kind: "class".into(),
+            language: "rust".into(),
+            start_line: 1,
+        })
+        .unwrap();
+    index.commit().unwrap();
+
+    let results = index
+        .search_symbols("MyTestClass", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].name, "MyTestClass");
+}
+
+/// Same as above, but exercises the `open_with_language_configs` path
+/// (used by `handler.rs` when loading existing workspaces at daemon startup).
+#[test]
+fn test_schema_migration_via_open_path() {
+    use tantivy::schema::{IndexRecordOption, Schema, TextFieldIndexing, TextOptions, STORED, STRING};
+    use tantivy::tokenizer::TextAnalyzer;
+
+    let temp_dir = TempDir::new().unwrap();
+    let index_path = temp_dir.path().join("tantivy");
+    std::fs::create_dir_all(&index_path).unwrap();
+
+    // Create old-schema index
+    {
+        let mut builder = Schema::builder();
+        builder.add_text_field("doc_type", STRING | STORED);
+        builder.add_text_field("symbol_id", STRING | STORED);
+        builder.add_text_field("file_path", STRING | STORED);
+        builder.add_text_field("symbol_name", TextOptions::default()
+            .set_indexing_options(
+                TextFieldIndexing::default()
+                    .set_tokenizer("code_aware")
+                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+            )
+            .set_stored());
+        let old_schema = builder.build();
+
+        let old_index = tantivy::Index::create_in_dir(&index_path, old_schema).unwrap();
+        old_index.tokenizers().register(
+            "code_aware",
+            TextAnalyzer::builder(crate::search::tokenizer::CodeTokenizer::with_default_patterns())
+                .build(),
+        );
+        let mut writer: tantivy::IndexWriter<tantivy::TantivyDocument> = old_index.writer(15_000_000).unwrap();
+        writer.commit().unwrap();
+    }
+
+    // open (not open_or_create) should also handle the migration
+    let configs = LanguageConfigs::load_embedded();
+    let index = SearchIndex::open_with_language_configs(&index_path, &configs).unwrap();
+    assert_eq!(index.num_docs(), 0);
+
+    // Verify writes work
+    index
+        .add_symbol(&SymbolDocument {
+            id: "sym1".into(),
+            name: "ProcessPayment".into(),
+            signature: "fn process_payment()".into(),
+            doc_comment: "".into(),
+            code_body: "".into(),
+            file_path: "src/payments.rs".into(),
+            kind: "function".into(),
+            language: "rust".into(),
+            start_line: 10,
+        })
+        .unwrap();
+    index.commit().unwrap();
+
+    let results = index
+        .search_symbols("ProcessPayment", &SearchFilter::default(), 10)
+        .unwrap()
+        .results;
+    assert_eq!(results.len(), 1);
+}

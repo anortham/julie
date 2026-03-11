@@ -514,10 +514,24 @@ impl SearchIndex {
         let schema = create_schema();
         let schema_fields = SchemaFields::new(&schema);
 
-        let index = Index::builder()
-            .schema(schema)
-            .create_in_dir(path)
-            .or_else(|_| Index::open_in_dir(path))?;
+        let index = match Index::builder().schema(schema.clone()).create_in_dir(path) {
+            Ok(index) => index,
+            Err(_) => {
+                let existing = Index::open_in_dir(path)?;
+                if Self::schema_is_compatible(&schema, &existing.schema()) {
+                    existing
+                } else {
+                    tracing::warn!(
+                        "Tantivy schema mismatch at {} — recreating index (data will be repopulated on next indexing)",
+                        path.display()
+                    );
+                    drop(existing);
+                    std::fs::remove_dir_all(path)?;
+                    std::fs::create_dir_all(path)?;
+                    Index::create_in_dir(path, schema)?
+                }
+            }
+        };
 
         Self::register_tokenizer(&index, tokenizer);
         let reader = index.reader()?;
@@ -559,10 +573,23 @@ impl SearchIndex {
         tokenizer: CodeTokenizer,
         language_configs: Option<LanguageConfigs>,
     ) -> Result<Self> {
+        let expected_schema = create_schema();
         let index = Index::open_in_dir(path)?;
-        let schema = index.schema();
-        let schema_fields = SchemaFields::new(&schema);
 
+        let index = if Self::schema_is_compatible(&expected_schema, &index.schema()) {
+            index
+        } else {
+            tracing::warn!(
+                "Tantivy schema mismatch at {} — recreating index (data will be repopulated on next indexing)",
+                path.display()
+            );
+            drop(index);
+            std::fs::remove_dir_all(path)?;
+            std::fs::create_dir_all(path)?;
+            Index::create_in_dir(path, expected_schema.clone())?
+        };
+
+        let schema_fields = SchemaFields::new(&expected_schema);
         Self::register_tokenizer(&index, tokenizer);
         let reader = index.reader()?;
 
@@ -580,6 +607,19 @@ impl SearchIndex {
         index
             .tokenizers()
             .register("code", TextAnalyzer::builder(tokenizer).build());
+    }
+
+    /// Check whether an on-disk Tantivy schema has all the fields the current
+    /// code expects.  Returns `false` when the index was created by an older
+    /// Julie version that used different field names (e.g. `symbol_name`
+    /// instead of `name`).
+    fn schema_is_compatible(
+        expected: &tantivy::schema::Schema,
+        actual: &tantivy::schema::Schema,
+    ) -> bool {
+        expected
+            .fields()
+            .all(|(_field, entry)| actual.get_field(entry.name()).is_ok())
     }
 
     fn get_or_create_writer(&self) -> Result<std::sync::MutexGuard<'_, Option<IndexWriter>>> {
