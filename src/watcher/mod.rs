@@ -234,7 +234,7 @@ impl IncrementalIndexer {
                             )
                             .await
                             {
-                                error!("Failed to handle file change: {}", e);
+                                warn!("Failed to handle file change: {}", e);
                             } else if let (Some(provider), Some(rel)) =
                                 (&embedding_provider, &rel_path)
                             {
@@ -278,7 +278,7 @@ impl IncrementalIndexer {
                                 )
                                 .await
                                 {
-                                    error!("Failed to handle file deletion: {}", e);
+                                    warn!("Failed to handle file deletion: {}", e);
                                 }
                             }
                         }
@@ -301,7 +301,7 @@ impl IncrementalIndexer {
                             )
                             .await
                             {
-                                error!("Failed to handle file rename: {}", e);
+                                warn!("Failed to handle file rename: {}", e);
                             } else if let (Some(provider), Ok(rel_to)) = (
                                 &embedding_provider,
                                 crate::utils::paths::to_relative_unix_style(&to, &workspace_root),
@@ -346,7 +346,7 @@ impl IncrementalIndexer {
                     )
                     .await
                     {
-                        error!("Failed to handle file change: {}", e);
+                        warn!("Failed to handle file change: {}", e);
                     } else if let (Some(provider), Some(rel)) =
                         (&self.embedding_provider, &rel_path)
                     {
@@ -379,7 +379,7 @@ impl IncrementalIndexer {
                         )
                         .await
                         {
-                            error!("Failed to handle file deletion: {}", e);
+                            warn!("Failed to handle file deletion: {}", e);
                         }
                     }
                 }
@@ -401,7 +401,7 @@ impl IncrementalIndexer {
                     )
                     .await
                     {
-                        error!("Failed to handle file rename: {}", e);
+                        warn!("Failed to handle file rename: {}", e);
                     } else if let (Some(provider), Ok(rel_to)) = (
                         &self.embedding_provider,
                         crate::utils::paths::to_relative_unix_style(&to, &self.workspace_root),
