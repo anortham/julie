@@ -59,6 +59,7 @@ const error = ref<string | null>(null)
 const statsError = ref<string | null>(null)
 const loading = ref(true)
 const checkingEmbeddings = ref(false)
+const exportingDiagnostics = ref(false)
 
 // ---------------------------------------------------------------------------
 // Computed
@@ -140,6 +141,28 @@ async function checkEmbeddings() {
     // Non-fatal — the card will just keep showing current state
   } finally {
     checkingEmbeddings.value = false
+  }
+}
+
+async function exportDiagnostics() {
+  exportingDiagnostics.value = true
+  try {
+    const res = await fetch('/api/diagnostics/report')
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    a.download = `julie-diagnostic-${ts}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    // Could show a toast, but for now just log it
+    console.error('Failed to export diagnostics:', e)
+  } finally {
+    exportingDiagnostics.value = false
   }
 }
 
@@ -317,6 +340,23 @@ onMounted(async () => {
           >
             <span :class="checkingEmbeddings ? 'pi pi-spin pi-spinner' : 'pi pi-refresh'"></span>
             {{ checkingEmbeddings ? 'Checking...' : 'Check Status' }}
+          </button>
+        </div>
+
+        <!-- Diagnostics card -->
+        <div class="card">
+          <div class="card-header">
+            <span class="pi pi-file-export card-icon"></span>
+            <span class="card-label">Diagnostics</span>
+          </div>
+          <div class="card-value card-value-sm">Export logs, system info, and project state for debugging.</div>
+          <button
+            class="check-btn"
+            :disabled="exportingDiagnostics"
+            @click="exportDiagnostics"
+          >
+            <span :class="exportingDiagnostics ? 'pi pi-spin pi-spinner' : 'pi pi-download'"></span>
+            {{ exportingDiagnostics ? 'Exporting...' : 'Export Diagnostic Bundle' }}
           </button>
         </div>
       </div>

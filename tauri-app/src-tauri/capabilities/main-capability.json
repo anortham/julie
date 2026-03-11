@@ -1,0 +1,13 @@
+{
+  "identifier": "main-capability",
+  "description": "Permissions for the Julie tray app",
+  "platforms": ["linux", "macOS", "windows"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "notification:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
+  ]
+}

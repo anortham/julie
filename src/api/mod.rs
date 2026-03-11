@@ -3,6 +3,7 @@
 pub mod agents;
 pub mod common;
 pub mod dashboard;
+pub mod diagnostics;
 pub mod health;
 pub mod projects;
 pub mod search;
@@ -38,6 +39,8 @@ use crate::server::AppState;
         projects::launch_terminal,
         dashboard::stats,
         dashboard::check_embeddings,
+        // diagnostics
+        diagnostics::report,
         // search
         search::search,
         search::search_debug,
@@ -87,6 +90,13 @@ use crate::server::AppState;
             agents::DispatchDetail,
             agents::BackendsResponse,
             crate::agent::backend::BackendInfo,
+            // diagnostics
+            diagnostics::DiagnosticReport,
+            diagnostics::SystemInfo,
+            diagnostics::DaemonHealth,
+            diagnostics::ProjectDiagnostic,
+            diagnostics::EmbeddingDiagnostic,
+            diagnostics::DaemonLogs,
         )
     ),
     tags(
@@ -94,7 +104,8 @@ use crate::server::AppState;
         (name = "projects", description = "Project management and indexing"),
         (name = "search", description = "Code search"),
         (name = "agents", description = "Agent dispatch and management"),
-        (name = "dashboard", description = "Dashboard statistics")
+        (name = "dashboard", description = "Dashboard statistics"),
+        (name = "diagnostics", description = "Diagnostic reports")
     )
 )]
 pub struct ApiDoc;
@@ -126,6 +137,8 @@ pub fn routes(state: Arc<AppState>) -> Router {
         // Dashboard
         .route("/dashboard/stats", get(dashboard::stats))
         .route("/embeddings/check", post(dashboard::check_embeddings))
+        // Diagnostics
+        .route("/diagnostics/report", get(diagnostics::report))
         // OpenAPI spec + interactive docs
         .route("/openapi.json", get(openapi_spec))
         .merge(Scalar::with_url("/docs", ApiDoc::openapi()))

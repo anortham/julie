@@ -27,6 +27,7 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - **Multi-agent dispatch** — run tasks through Claude Code, Codex, Gemini CLI, or Copilot CLI from the dashboard
 - **Web dashboard** — project management, search exploration, agent dispatch, embedding status
 - **Auto-start daemon** via `julie-server connect` (stdio bridge with automatic daemon lifecycle)
+- **System tray app** — persistent status icon (green/yellow/red), one-click dashboard, start/stop/restart, update notifications, diagnostic export
 - **OpenAPI documentation** with interactive Scalar docs at `/api/docs`
 
 ### Performance Characteristics
@@ -86,6 +87,19 @@ This installs the binary to `~/.julie/bin/`, registers Julie as a system service
 To uninstall: `~/.julie/bin/julie-server uninstall` (preserves your data).
 
 To update after downloading a new release: `./julie-server daemon restart` (copies the new binary and restarts the daemon).
+
+#### Optional: Tray App
+
+Download the **Julie Tray** installer for your platform from the [Releases page](https://github.com/anortham/julie/releases) (`.dmg` for macOS, `-setup.exe` for Windows, `.AppImage`/`.deb` for Linux). The tray app provides:
+
+- Persistent status icon showing daemon health (green = running, yellow = starting, red = stopped)
+- One-click access to the web dashboard
+- Start/stop/restart daemon from the system tray
+- Update notifications when new versions are available
+- Diagnostic bundle export for troubleshooting
+- Auto-launch on login (replaces `julie-server install` for autostart)
+
+The tray app is optional — the daemon works independently via the CLI.
 
 ### Step 2: Connect Your AI Tool
 
@@ -201,7 +215,7 @@ Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patter
 
 The daemon serves a built-in web dashboard at `http://localhost:7890/ui/` with:
 
-- **Dashboard** — project health, agent activity, backend availability, embedding status with on-demand initialization
+- **Dashboard** — project health, agent activity, backend availability, embedding status with on-demand initialization, diagnostic export
 - **Projects** — register/remove projects, view stats (language breakdown, symbol counts by kind), quick-launch actions (copy path, open in editor, open in terminal)
 - **Search** — interactive search with debug mode for inspecting scoring and tokenization
 - **Agents** — dispatch tasks to any detected CLI agent (Claude Code, Codex, Gemini CLI, Copilot CLI), view dispatch history with streaming output
@@ -220,6 +234,7 @@ All features work in both light and dark mode, with responsive layouts for mobil
 - **Web dashboard** (Vue/TypeScript SPA) embedded in binary via rust-embed
 - **Multi-agent dispatch** with backend auto-detection and streaming output parsing
 - **Embedding pipeline** with GPU-accelerated Python sidecar + ORT CPU fallback
+- **System tray app** (Tauri 2.0, ~5MB) — no `julie` crate dependency, uses subprocess + HTTP
 - **OpenAPI 3.1** spec with interactive Scalar docs
 
 ## Development
@@ -361,6 +376,7 @@ src/
 └── tests/           # Test infrastructure
 
 ui/                  # Vue/TypeScript dashboard (built assets embedded in binary)
+tauri-app/           # System tray app (Tauri 2.0, tray-only — daemon management)
 python/
 └── embeddings_sidecar/  # GPU-accelerated embedding sidecar (PyTorch + sentence-transformers)
 
