@@ -510,6 +510,36 @@ pub struct LaunchResponse {
     pub ok: bool,
 }
 
+/// Spawn an editor process. On Windows, uses `cmd /c` to resolve `.cmd` shims
+/// (VS Code installs as `code.cmd`); on other platforms, spawns directly.
+fn spawn_editor(editor: &str, path: &str) -> std::io::Result<std::process::Child> {
+    #[cfg(target_os = "windows")]
+    {
+        // CreateProcessW only finds .exe — VS Code/Insiders install .cmd shims.
+        // Route through cmd.exe so PATHEXT resolution works.
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        std::process::Command::new("cmd")
+            .args(["/c", editor, path])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new(editor)
+            .arg(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+    }
+}
+
 /// `POST /api/launch/editor` — open a project directory in the user's editor.
 ///
 /// Spawns a detached process: `{editor} {path}`. Returns immediately.
@@ -559,17 +589,28 @@ pub async fn launch_editor(
     // Execute the validated basename, not the user-supplied path.
     // This prevents bypasses like `/tmp/code` where the basename passes
     // the allowlist but the full path points to a malicious binary.
-    tokio::process::Command::new(editor_name)
-        .arg(&body.path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| {
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to launch {}: {}", body.editor, e))
-        })?;
+    //
+    // Build a list of editors to try: primary + VS Code variant fallback.
+    let mut editors_to_try = vec![editor_name.to_string()];
+    match editor_name {
+        "code" => editors_to_try.push("code-insiders".into()),
+        "code-insiders" => editors_to_try.push("code".into()),
+        _ => {}
+    }
 
-    Ok(Json(LaunchResponse { ok: true }))
+    let mut last_err = None;
+    for editor in &editors_to_try {
+        let result = spawn_editor(editor, &body.path);
+        match result {
+            Ok(_) => return Ok(Json(LaunchResponse { ok: true })),
+            Err(e) => last_err = Some(e),
+        }
+    }
+
+    Err((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("Failed to launch {}: {}", body.editor, last_err.unwrap()),
+    ))
 }
 
 /// `POST /api/launch/terminal` — open a system terminal at the given path.
@@ -594,30 +635,58 @@ pub async fn launch_terminal(
         return Err((StatusCode::BAD_REQUEST, format!("Path does not exist: {}", body.path)));
     }
 
-    // Build the cd command string outside the if/else so it lives long enough
-    // for the borrow in the args vector. On Windows, we must quote the path to
-    // prevent command injection via metacharacters (&, |, etc.) in valid paths.
-    let cd_command = format!("cd /d \"{}\"", body.path);
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-a", "Terminal", &body.path])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| {
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to open terminal: {}", e))
+            })?;
+    }
 
-    let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "macos") {
-        ("open", vec!["-a", "Terminal", &body.path])
-    } else if cfg!(target_os = "windows") {
-        // "julie" is the window title (required by `start` when the command is quoted).
-        // The cd_command is passed as a single arg so cmd.exe doesn't re-parse the path.
-        ("cmd", vec!["/c", "start", "julie", "cmd", "/k", &cd_command])
-    } else {
-        ("xdg-terminal-emulator", vec!["--working-directory", &body.path])
-    };
+    #[cfg(target_os = "windows")]
+    {
+        // Try Windows Terminal first (wt.exe, standard on Win11), fall back to cmd.exe.
+        let wt_result = std::process::Command::new("wt")
+            .args(["-d", &body.path])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
 
-    tokio::process::Command::new(cmd)
-        .args(&args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| {
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to open terminal: {}", e))
-        })?;
+        if wt_result.is_err() {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+
+            std::process::Command::new("cmd")
+                .creation_flags(CREATE_NEW_CONSOLE)
+                .current_dir(&body.path)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|e| {
+                    (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to open terminal: {}", e))
+                })?;
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        std::process::Command::new("xdg-terminal-emulator")
+            .args(["--working-directory", &body.path])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| {
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to open terminal: {}", e))
+            })?;
+    }
 
     Ok(Json(LaunchResponse { ok: true }))
 }
