@@ -1,6 +1,6 @@
 {
   "productName": "Julie",
-  "version": "4.2.0",
+  "version": "4.2.1",
   "identifier": "com.julie.tray",
   "build": {
     "beforeDevCommand": "",

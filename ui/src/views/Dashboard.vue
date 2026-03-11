@@ -356,7 +356,7 @@ onMounted(async () => {
             @click="exportDiagnostics"
           >
             <span :class="exportingDiagnostics ? 'pi pi-spin pi-spinner' : 'pi pi-download'"></span>
-            {{ exportingDiagnostics ? 'Exporting...' : 'Export Diagnostic Bundle' }}
+            {{ exportingDiagnostics ? 'Exporting...' : 'Export Diagnostic Report' }}
           </button>
         </div>
       </div>

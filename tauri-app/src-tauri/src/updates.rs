@@ -19,7 +19,7 @@ const INITIAL_DELAY: Duration = Duration::from_secs(60);
 
 /// GitHub owner/repo for Julie releases.
 /// TODO: Update to the actual GitHub repo when ready.
-const GITHUB_OWNER: &str = "anthropics";
+const GITHUB_OWNER: &str = "anortham";
 const GITHUB_REPO: &str = "julie";
 
 /// Current version of the tray app (synced with Julie releases).
