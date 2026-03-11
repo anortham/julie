@@ -78,6 +78,9 @@ pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
     ".tmp",
     "tmp",
     "temp",
+    // Windows system/app data directories (defense-in-depth for home dir indexing)
+    "AppData",           // Windows: AppData\Local, AppData\Roaming, AppData\LocalLow
+    "Application Data",  // Windows: legacy name for AppData
     // Our own directories
     ".julie",
     ".coa",

@@ -4,7 +4,7 @@
 // on first workspace scan. Ensures patterns are detected correctly and formatted
 // properly for the ignore matcher.
 
-use crate::tools::shared::BLACKLISTED_EXTENSIONS;
+use crate::tools::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS};
 use crate::tools::workspace::ManageWorkspaceTool;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -657,7 +657,6 @@ fn test_discover_indexable_files_respects_gitignore() {
 
 #[test]
 fn test_claude_dir_in_blacklist() {
-    use crate::tools::shared::BLACKLISTED_DIRECTORIES;
     assert!(
         BLACKLISTED_DIRECTORIES.contains(&".claude"),
         ".claude should be blacklisted"
@@ -692,5 +691,18 @@ fn test_should_index_file_skips_unreadable_files() {
     assert!(
         !result.unwrap(),
         "should_index_file should return false for unreadable files"
+    );
+}
+
+/// Test: Windows system directories are in BLACKLISTED_DIRECTORIES
+#[test]
+fn test_windows_system_dirs_in_blacklist() {
+    assert!(
+        BLACKLISTED_DIRECTORIES.contains(&"AppData"),
+        "AppData should be in BLACKLISTED_DIRECTORIES"
+    );
+    assert!(
+        BLACKLISTED_DIRECTORIES.contains(&"Application Data"),
+        "Application Data should be in BLACKLISTED_DIRECTORIES"
     );
 }
