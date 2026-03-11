@@ -4,7 +4,9 @@
 // on first workspace scan. Ensures patterns are detected correctly and formatted
 // properly for the ignore matcher.
 
+use crate::tools::shared::BLACKLISTED_EXTENSIONS;
 use crate::tools::workspace::ManageWorkspaceTool;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -659,5 +661,36 @@ fn test_claude_dir_in_blacklist() {
     assert!(
         BLACKLISTED_DIRECTORIES.contains(&".claude"),
         ".claude should be blacklisted"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tests: should_index_file — Unreadable file handling
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Test: should_index_file returns Ok(false) for unreadable files instead of Err
+///
+/// Reproduces the bug where a Dropbox-locked file (os error 32 on Windows) caused
+/// the entire indexing operation to fail.
+#[test]
+fn test_should_index_file_skips_unreadable_files() {
+    let tool = create_tool();
+    let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
+    let max_file_size = 1024 * 1024;
+
+    // A file path that doesn't exist — simulates an inaccessible/locked file
+    // Use no extension so it hits both metadata check AND is_likely_text_file
+    let nonexistent = PathBuf::from("/tmp/julie_test_nonexistent_file_no_extension");
+    let result = tool.should_index_file(&nonexistent, &blacklisted_exts, max_file_size, false);
+
+    // Should return Ok(false), NOT Err
+    assert!(
+        result.is_ok(),
+        "should_index_file should not error on unreadable files: {:?}",
+        result.err()
+    );
+    assert!(
+        !result.unwrap(),
+        "should_index_file should return false for unreadable files"
     );
 }

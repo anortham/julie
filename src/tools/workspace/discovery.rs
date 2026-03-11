@@ -112,8 +112,14 @@ impl ManageWorkspaceTool {
         }
 
         // Check file size
-        let metadata = fs::metadata(file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to get metadata for {:?}: {}", file_path, e))?;
+        // Skip files we can't stat (locked by another process, permissions, etc.)
+        let metadata = match fs::metadata(file_path) {
+            Ok(m) => m,
+            Err(e) => {
+                debug!("⏭️  Skipping inaccessible file {:?}: {}", file_path, e);
+                return Ok(false);
+            }
+        };
 
         if metadata.len() > max_file_size {
             debug!(
@@ -136,13 +142,22 @@ impl ManageWorkspaceTool {
     /// Heuristic to determine if a file without extension is likely a text file
     pub(crate) fn is_likely_text_file(&self, file_path: &Path) -> Result<bool> {
         // Read first 512 bytes to check for binary content
-        let mut file = fs::File::open(file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to open file {:?}: {}", file_path, e))?;
+        let mut file = match fs::File::open(file_path) {
+            Ok(f) => f,
+            Err(e) => {
+                debug!("⏭️  Skipping inaccessible file {:?}: {}", file_path, e);
+                return Ok(false);
+            }
+        };
 
         let mut buffer = [0; 512];
-        let bytes_read = file
-            .read(&mut buffer)
-            .map_err(|e| anyhow::anyhow!("Failed to read file {:?}: {}", file_path, e))?;
+        let bytes_read = match file.read(&mut buffer) {
+            Ok(n) => n,
+            Err(e) => {
+                debug!("⏭️  Skipping unreadable file {:?}: {}", file_path, e);
+                return Ok(false);
+            }
+        };
 
         if bytes_read == 0 {
             return Ok(false); // Empty file
