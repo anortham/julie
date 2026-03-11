@@ -172,7 +172,7 @@ jobs:
         shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          DMG=$(find tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/dmg -name '*.dmg' | head -1)
+          DMG=$(find target/${{ matrix.target }}/release/bundle/dmg -name '*.dmg' | head -1)
           DEST="julie-tray-v${VERSION}-aarch64-apple-darwin.dmg"
           cp "$DMG" "$DEST"
           codesign --force --sign - "$DEST"
@@ -183,7 +183,7 @@ jobs:
         shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          NSIS=$(find tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/nsis -name '*.exe' | head -1)
+          NSIS=$(find target/${{ matrix.target }}/release/bundle/nsis -name '*.exe' | head -1)
           DEST="julie-tray-v${VERSION}-x86_64-pc-windows-msvc-setup.exe"
           cp "$NSIS" "$DEST"
           echo "TRAY_ARTIFACT=${DEST}" >> $GITHUB_ENV
@@ -194,8 +194,8 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
           # Upload both AppImage and .deb
-          APPIMAGE=$(find tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/appimage -name '*.AppImage' | head -1)
-          DEB=$(find tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/deb -name '*.deb' | head -1)
+          APPIMAGE=$(find target/${{ matrix.target }}/release/bundle/appimage -name '*.AppImage' | head -1)
+          DEB=$(find target/${{ matrix.target }}/release/bundle/deb -name '*.deb' | head -1)
           DEST_AI="julie-tray-v${VERSION}-x86_64-unknown-linux-gnu.AppImage"
           DEST_DEB="julie-tray-v${VERSION}-x86_64-unknown-linux-gnu.deb"
           cp "$APPIMAGE" "$DEST_AI"
