@@ -18,8 +18,8 @@ use tracing::{debug, error, info, warn};
 
 use crate::daemon::{daemon_stop, is_binary_newer_than_daemon, is_daemon_running, julie_home, pid_file_path};
 
-// Backoff schedule for polling daemon health (total ~5s)
-pub(crate) const BACKOFF_MS: &[u64] = &[50, 100, 200, 400, 800, 1600, 2000];
+// Backoff schedule for polling daemon health (total ~14.5s)
+pub(crate) const BACKOFF_MS: &[u64] = &[100, 200, 400, 800, 1000, 2000, 2000, 2000, 2000, 2000, 2000];
 
 /// Main entry point for the `connect` command.
 ///

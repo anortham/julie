@@ -23,7 +23,7 @@ pub const DEFAULT_PORT: u16 = 7890;
 
 /// Backoff schedule for health checks after starting daemon (milliseconds).
 /// Mirrors `julie::connect::BACKOFF_MS`.
-const HEALTH_BACKOFF_MS: &[u64] = &[50, 100, 200, 400, 800, 1600, 2000];
+const HEALTH_BACKOFF_MS: &[u64] = &[100, 200, 400, 800, 1000, 2000, 2000, 2000, 2000, 2000, 2000];
 
 /// PID file content — mirrors `julie::daemon::DaemonInfo`.
 #[derive(Debug, Clone, Deserialize)]

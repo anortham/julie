@@ -193,14 +193,14 @@ async fn test_register_workspace_error_on_unreachable_server() {
 fn test_backoff_schedule_is_reasonable() {
     let total_ms: u64 = crate::connect::BACKOFF_MS.iter().sum();
     assert!(
-        total_ms >= 4000 && total_ms <= 6000,
-        "Total backoff should be ~5s, got {}ms",
+        total_ms >= 13000 && total_ms <= 16000,
+        "Total backoff should be ~14.5s, got {}ms",
         total_ms
     );
     assert_eq!(
         crate::connect::BACKOFF_MS.len(),
-        7,
-        "Should have 7 backoff steps"
+        11,
+        "Should have 11 backoff steps"
     );
 }
 
