@@ -7,11 +7,13 @@
 //! This lets MCP clients use the `command` transport type in `.mcp.json`
 //! while Julie runs as a persistent daemon that survives session exits.
 
-use std::path::PathBuf;
+use std::fs::File;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use fs2::FileExt;
 use tracing::{debug, error, info, warn};
 
 use crate::daemon::{daemon_stop, is_binary_newer_than_daemon, is_daemon_running, julie_home, pid_file_path};
@@ -75,11 +77,22 @@ pub async fn run_connect(port: u16, workspace_root: PathBuf) -> Result<()> {
 
 /// Ensure the daemon is running, starting it if necessary.
 ///
+/// Uses a file-based startup lock to prevent multiple connect clients from
+/// racing to spawn daemons simultaneously. Without this lock, N concurrent
+/// `julie-server connect` invocations would all see "no daemon running" and
+/// each spawn a separate daemon process.
+///
 /// Returns the port the daemon is listening on.
 pub(crate) async fn ensure_daemon_running(requested_port: u16) -> Result<u16> {
     let pid_path = pid_file_path()?;
 
-    // Check if daemon is already running
+    // Acquire startup lock — serializes daemon check+spawn across all connect
+    // clients. Other clients block here until the first one finishes startup.
+    let startup_lock_path = pid_path.with_file_name("daemon.startup.lock");
+    let _startup_lock = acquire_startup_lock(&startup_lock_path).await?;
+    info!("Startup lock acquired");
+
+    // Under the lock: check if daemon is already running
     if let Some(info) = is_daemon_running(&pid_path) {
         info!(
             "Daemon already running (PID {}, port {})",
@@ -100,10 +113,47 @@ pub(crate) async fn ensure_daemon_running(requested_port: u16) -> Result<u16> {
     info!("Spawning daemon on port {}", requested_port);
     spawn_daemon(requested_port)?;
 
-    // Poll health endpoint until ready
+    // Poll health endpoint until ready (still under lock so other clients
+    // wait until the daemon is confirmed healthy before they re-check)
     wait_for_daemon_health(requested_port).await?;
 
     Ok(requested_port)
+    // _startup_lock dropped here — releases lock for waiting clients
+}
+
+/// Acquire the startup lock file with retry + backoff.
+///
+/// Uses `fs2::try_lock_exclusive` in a polling loop to avoid blocking the
+/// Tokio runtime thread. Returns the lock guard (File) — dropping it
+/// releases the lock.
+async fn acquire_startup_lock(lock_path: &Path) -> Result<File> {
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory {:?}", parent))?;
+    }
+
+    let start = tokio::time::Instant::now();
+    let timeout = Duration::from_secs(30);
+
+    loop {
+        let lock_file = File::create(lock_path)
+            .with_context(|| format!("Failed to create startup lock {:?}", lock_path))?;
+
+        match lock_file.try_lock_exclusive() {
+            Ok(()) => return Ok(lock_file),
+            Err(_) if start.elapsed() < timeout => {
+                debug!("Startup lock held by another client, waiting...");
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            Err(_) => {
+                bail!(
+                    "Timed out waiting for daemon startup lock ({:?}). \
+                     Another connect client may be stuck. Remove the lock file and retry.",
+                    lock_path
+                );
+            }
+        }
+    }
 }
 
 /// Spawn the daemon as a detached background child process.

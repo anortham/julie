@@ -217,6 +217,24 @@ pub async fn start_server(
         )
     })?;
 
+    // Mark the listening socket as non-inheritable so child processes (e.g. the
+    // Python embeddings sidecar) don't inherit it. Without this, if the daemon
+    // crashes, children keep the socket handle alive — the port stays LISTENING
+    // under a ghost PID, blocking restarts and causing HTTP timeouts.
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawSocket;
+        unsafe extern "system" {
+            fn SetHandleInformation(hObject: isize, dwMask: u32, dwFlags: u32) -> i32;
+        }
+        const HANDLE_FLAG_INHERIT: u32 = 0x00000001;
+        let raw = listener.as_raw_socket() as isize;
+        unsafe {
+            SetHandleInformation(raw, HANDLE_FLAG_INHERIT, 0);
+        }
+        tracing::debug!("Listening socket marked non-inheritable");
+    }
+
     // Startup banner
     let project_count = {
         let reg = state.registry.read().await;
