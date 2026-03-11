@@ -172,18 +172,48 @@ pub async fn acquire_startup_lock() -> Result<File> {
 // BINARY DISCOVERY
 // ============================================================================
 
+/// Return the target triple for the current platform at compile time.
+fn current_target_triple() -> &'static str {
+    env!("TARGET_TRIPLE") // Set by build.rs
+}
+
+/// Look for the sidecar binary adjacent to this executable.
+/// Tries plain name first, then Tauri's target-triple-suffixed name.
+fn find_sidecar_adjacent() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+
+    let bin_name = if cfg!(windows) { "julie-server.exe" } else { "julie-server" };
+
+    // Try plain name first
+    let adjacent = dir.join(bin_name);
+    if adjacent.exists() {
+        return Some(adjacent);
+    }
+
+    // Try Tauri sidecar name (with target triple suffix)
+    let sidecar_name = if cfg!(windows) {
+        format!("julie-server-{}.exe", current_target_triple())
+    } else {
+        format!("julie-server-{}", current_target_triple())
+    };
+    let sidecar = dir.join(&sidecar_name);
+    if sidecar.exists() {
+        return Some(sidecar);
+    }
+
+    None
+}
+
 /// Find the `julie-server` binary. Search order:
-/// 1. `~/.julie/bin/julie-server` (installed location)
-/// 2. Same directory as this tray app binary
+/// 1. `~/.julie/bin/julie-server` (user/dev override — highest priority)
+/// 2. Adjacent to this tray binary (Tauri sidecar location) — tries both
+///    plain name and target-triple-suffixed name
 /// 3. PATH lookup
 pub fn find_julie_binary() -> Option<PathBuf> {
-    let bin_name = if cfg!(windows) {
-        "julie-server.exe"
-    } else {
-        "julie-server"
-    };
+    let bin_name = if cfg!(windows) { "julie-server.exe" } else { "julie-server" };
 
-    // 1. Installed location
+    // 1. User/dev override location
     if let Ok(home) = julie_home() {
         let installed = home.join("bin").join(bin_name);
         if installed.exists() {
@@ -191,14 +221,9 @@ pub fn find_julie_binary() -> Option<PathBuf> {
         }
     }
 
-    // 2. Adjacent to tray app
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let adjacent = dir.join(bin_name);
-            if adjacent.exists() {
-                return Some(adjacent);
-            }
-        }
+    // 2. Adjacent to tray app (covers Tauri sidecar bundling)
+    if let Some(path) = find_sidecar_adjacent() {
+        return Some(path);
     }
 
     // 3. PATH lookup
@@ -378,4 +403,40 @@ pub async fn fetch_projects(port: u16) -> Option<Vec<ProjectResponse>> {
         .json::<Vec<ProjectResponse>>()
         .await
         .ok()
+}
+
+#[cfg(test)]
+mod find_binary_tests {
+    use super::*;
+    use std::fs;
+
+    /// Test the sidecar name lookup in isolation (avoids ~/.julie/bin/ short-circuit).
+    /// This directly tests `find_sidecar_adjacent()` rather than the full
+    /// `find_julie_binary()` chain, so it works even when ~/.julie/bin/julie-server exists.
+    #[test]
+    fn test_find_sidecar_adjacent_to_exe() {
+        let exe = std::env::current_exe().unwrap();
+        let exe_dir = exe.parent().unwrap();
+
+        let suffix = current_target_triple();
+        let sidecar_name = if cfg!(windows) {
+            format!("julie-server-{}.exe", suffix)
+        } else {
+            format!("julie-server-{}", suffix)
+        };
+
+        let sidecar_path = exe_dir.join(&sidecar_name);
+        fs::write(&sidecar_path, b"fake-binary").unwrap();
+
+        // Test the sidecar lookup directly
+        let result = find_sidecar_adjacent();
+        let path = result.expect("Should find sidecar binary adjacent to exe");
+        assert!(
+            path.file_name().unwrap().to_str().unwrap().contains("julie-server"),
+            "Found path should contain 'julie-server', got: {:?}", path
+        );
+
+        // Cleanup
+        let _ = fs::remove_file(&sidecar_path);
+    }
 }
