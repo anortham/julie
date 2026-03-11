@@ -265,7 +265,6 @@ async fn run_stdio_bridge(
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(300)) // MCP requests can be long-running
         .build()
         .context("Failed to create HTTP client for bridge")?;
 
@@ -396,7 +395,10 @@ async fn run_stdio_bridge(
             .to_string();
 
         if content_type.contains("text/event-stream") {
-            forward_sse_stream(resp, &mut stdout).await?;
+            if let Err(e) = forward_sse_stream(resp, &mut stdout).await {
+                write_jsonrpc_error(&mut stdout, request_id.as_ref(), &e).await?;
+                continue;
+            }
         } else {
             // Direct JSON response — forward to stdout
             let body = resp.bytes().await.context("Failed to read response body")?;
@@ -539,7 +541,7 @@ async fn forward_sse_stream(
             }
             Err(e) => {
                 warn!("SSE stream error: {}", e);
-                break;
+                return Err(anyhow::anyhow!("SSE stream error: {}", e));
             }
         }
     }

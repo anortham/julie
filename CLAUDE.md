@@ -291,6 +291,6 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-03-10 | **Status:** Production Ready (v4.1.4)
+**Last Updated:** 2026-03-11 | **Status:** Production Ready (v4.1.5)
 
 - You CANNOT build the release build while we're running the server in session!

@@ -747,7 +747,7 @@ while True:
                 .join(".cache")
                 .join("fastembed");
 
-        OrtEmbeddingProvider::try_new(Some(cache_dir))
+        OrtEmbeddingProvider::try_new_cpu_only(Some(cache_dir))
             .expect("OrtEmbeddingProvider should initialize")
     }
 

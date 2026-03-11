@@ -66,6 +66,28 @@ GPT review of v3.9.1→v4.1.4 delta, verified by Claude. 12/13 findings confirme
 
 ---
 
+## Follow-Up Review Findings (2026-03-11)
+
+### Findings
+
+- [ ] **F1. Connect bridge drops long-running MCP/SSE requests after 300s** — `reqwest` timeout applies to the whole bridged request; `forward_sse_stream()` returns `Ok(())` on stream error instead of a JSON-RPC error, so long tool calls can silently hang (`src/connect.rs:268`, `src/connect.rs:540-543`)
+- [ ] **F2. Windows `launch_terminal` shells unquoted project paths** — `cmd /c start cmd /k cd /d <path>` with metacharacters (`&`, `|`) in valid Windows paths can cause command injection; `path.exists()` check limits to real paths but doesn't prevent it (`src/api/projects.rs:597-613`)
+- [ ] **F3. `daemon_stop()` removes PID file even if the daemon is still alive** — timed-out shutdowns (>5s) unconditionally call `remove_pid_file()`, leaving a live daemon invisible to `is_daemon_running()` and enabling duplicate daemon spawns (`src/daemon.rs:334-349`)
+- [ ] **F4. Embedding KNN smoke test may be red** — `test_pipeline_knn_works_after_embedding` asserts `authenticate_user` ranks above `DatabaseConnection` for an auth query; needs verification run (`src/tests/integration/embedding_pipeline.rs`)
+
+### Deferred
+
+- ~~**Dashboard embedding check blocks daemon-wide state during cold starts**~~ **Overstated** — `check_embeddings()` holds write lock during `initialize_embedding_provider()`, but that method only does synchronous config parsing / factory creation, NOT the 30-60s sidecar bootstrap. Lock duration is seconds, not minutes.
+
+### Opportunities
+
+- [ ] **O1. Add server-side federated multi-project search** — dashboard "All projects" currently merges raw per-workspace scores client-side; UI comment confirms "scores aren't comparable across indices" (`ui/src/views/Search.vue:239-241`)
+- [ ] **O2. Load existing `.julie` workspaces immediately on registration** — projects with existing `.julie/` dir get `Stale` status, forcing reindex before usable; could load existing index immediately then refresh in background (`src/daemon_state.rs:419-423`). Note: `Stale` is intentional to catch file changes while daemon was down.
+- [ ] **O3. Refactor `src/api/projects.rs` (616 lines)** — exceeds 500-line implementation limit. Vue files don't fall under the .rs file limit.
+- [ ] **O4. Add `py -3.12` / `py -3.13` to Windows Python launcher probing** — `python_interpreter_candidates()` lists `py`, `python3.12`, etc., but doesn't try `py -3.12` (Windows `py` launcher version flag syntax), which is the standard way to request a specific version on Windows (`src/embeddings/sidecar_bootstrap.rs:197-208`)
+
+---
+
 ## Open Items
 
 - [x] **Dashboard memories tab needs project selector** (2026-03-09)

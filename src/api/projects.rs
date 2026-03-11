@@ -594,10 +594,17 @@ pub async fn launch_terminal(
         return Err((StatusCode::BAD_REQUEST, format!("Path does not exist: {}", body.path)));
     }
 
+    // Build the cd command string outside the if/else so it lives long enough
+    // for the borrow in the args vector. On Windows, we must quote the path to
+    // prevent command injection via metacharacters (&, |, etc.) in valid paths.
+    let cd_command = format!("cd /d \"{}\"", body.path);
+
     let (cmd, args): (&str, Vec<&str>) = if cfg!(target_os = "macos") {
         ("open", vec!["-a", "Terminal", &body.path])
     } else if cfg!(target_os = "windows") {
-        ("cmd", vec!["/c", "start", "cmd", "/k", "cd", "/d", &body.path])
+        // "julie" is the window title (required by `start` when the command is quoted).
+        // The cd_command is passed as a single arg so cmd.exe doesn't re-parse the path.
+        ("cmd", vec!["/c", "start", "julie", "cmd", "/k", &cd_command])
     } else {
         ("xdg-terminal-emulator", vec!["--working-directory", &body.path])
     };

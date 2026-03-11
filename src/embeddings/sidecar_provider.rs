@@ -139,9 +139,12 @@ fn spawn_process(
         command.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let mut child = command
-        .spawn()
-        .context("failed to spawn embedding sidecar")?;
+    let mut child = command.spawn().with_context(|| {
+        format!(
+            "failed to spawn embedding sidecar (program: {:?}, args: {:?})",
+            launch_config.program, launch_config.args
+        )
+    })?;
     let stdin = child
         .stdin
         .take()
@@ -165,7 +168,14 @@ fn spawn_process(
         Ok(h) => h,
         Err(err) => {
             process.terminate();
-            return Err(err);
+            return Err(err).with_context(|| {
+                format!(
+                    "sidecar process started but health check failed \
+                     (program: {:?}). Check sidecar logs for import \
+                     errors or missing dependencies.",
+                    launch_config.program
+                )
+            });
         }
     };
 

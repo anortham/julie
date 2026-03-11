@@ -360,9 +360,10 @@ while True:
             Err(err) => err,
         };
 
+        let full_err = format!("{err:#}");
         assert!(
-            err.to_string().contains("not ready"),
-            "expected readiness probe failure, got: {err}"
+            full_err.contains("not ready"),
+            "expected readiness probe failure, got: {full_err}"
         );
     }
 }

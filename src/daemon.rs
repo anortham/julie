@@ -333,20 +333,22 @@ pub fn daemon_stop() -> Result<()> {
 
     // Wait for the process to exit (up to 5 seconds)
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    loop {
+    let exited = loop {
         if !process_exists(info.pid) {
-            break;
+            break true;
         }
         if std::time::Instant::now() > deadline {
-            eprintln!("Warning: daemon (PID {}) did not exit within 5 seconds", info.pid);
-            break;
+            break false;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    };
 
-    // Clean up PID file
-    remove_pid_file(&pid_path)?;
-    println!("Julie daemon stopped.");
+    if exited {
+        remove_pid_file(&pid_path)?;
+        println!("Julie daemon stopped.");
+    } else {
+        eprintln!("Warning: daemon (PID {}) did not exit within 5 seconds; PID file retained", info.pid);
+    }
     Ok(())
 }
 

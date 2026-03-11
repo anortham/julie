@@ -49,14 +49,14 @@ mod tests {
         Arc::new(Mutex::new(db))
     }
 
-    /// Helper: create the test embedding provider.
+    /// Helper: create the test embedding provider (CPU-only for deterministic results).
     fn create_test_provider() -> OrtEmbeddingProvider {
         let cache_dir =
             std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
                 .join(".cache")
                 .join("fastembed");
 
-        OrtEmbeddingProvider::try_new(Some(cache_dir)).expect("provider should init")
+        OrtEmbeddingProvider::try_new_cpu_only(Some(cache_dir)).expect("provider should init")
     }
 
     #[test]
@@ -85,13 +85,76 @@ mod tests {
         assert_eq!(db_guard.embedding_count().unwrap(), 3);
     }
 
+    /// Helper: create a database with symbols that include signature + doc_comment
+    /// for richer embedding text (more semantic signal for the model).
+    fn setup_db_with_rich_symbols(
+        symbols: &[(&str, &str, SymbolKind, &str, &str)],
+    ) -> Arc<Mutex<SymbolDatabase>> {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("test.db");
+        let mut db = SymbolDatabase::new(&db_path).expect("create db");
+
+        db.conn
+            .execute(
+                "INSERT INTO files (path, language, hash, size, last_modified, last_indexed)
+                 VALUES ('src/lib.rs', 'rust', 'abc', 100, 0, 0)",
+                [],
+            )
+            .unwrap();
+
+        for (id, name, kind, signature, doc_comment) in symbols {
+            let sig: Option<&str> = if signature.is_empty() {
+                None
+            } else {
+                Some(signature)
+            };
+            let doc: Option<&str> = if doc_comment.is_empty() {
+                None
+            } else {
+                Some(doc_comment)
+            };
+            db.conn
+                .execute(
+                    "INSERT INTO symbols (id, name, kind, file_path, language,
+                     start_line, start_col, end_line, end_col, start_byte, end_byte,
+                     reference_score, signature, doc_comment)
+                     VALUES (?, ?, ?, 'src/lib.rs', 'rust', 1, 0, 10, 0, 0, 100, 0.0, ?, ?)",
+                    rusqlite::params![id, name, format!("{:?}", kind).to_lowercase(), sig, doc],
+                )
+                .unwrap();
+        }
+
+        std::mem::forget(dir);
+        Arc::new(Mutex::new(db))
+    }
+
     #[test]
     #[serial(fastembed)]
     fn test_pipeline_knn_works_after_embedding() {
-        let db = setup_db_with_symbols(&[
-            ("s1", "authenticate_user", SymbolKind::Function),
-            ("s2", "DatabaseConnection", SymbolKind::Struct),
-            ("s3", "parse_json_data", SymbolKind::Function),
+        // Use rich symbols with signatures + doc comments so the embedding model
+        // has enough semantic signal to produce meaningful rankings.
+        let db = setup_db_with_rich_symbols(&[
+            (
+                "s1",
+                "authenticate_user",
+                SymbolKind::Function,
+                "fn authenticate_user(username: &str, password: &str) -> AuthResult",
+                "Authenticates a user by verifying their login credentials against the database",
+            ),
+            (
+                "s2",
+                "DatabaseConnection",
+                SymbolKind::Struct,
+                "struct DatabaseConnection",
+                "Manages pooled database connections for query execution",
+            ),
+            (
+                "s3",
+                "parse_json_data",
+                SymbolKind::Function,
+                "fn parse_json_data(input: &str) -> Result<Value>",
+                "Parses raw JSON string input into a structured data value",
+            ),
         ]);
 
         let provider = create_test_provider();

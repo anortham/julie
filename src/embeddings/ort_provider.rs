@@ -27,6 +27,7 @@ const BGE_SMALL_DIMENSIONS: usize = 384;
 /// Thread-safe via internal `Mutex<TextEmbedding>`.
 pub struct OrtEmbeddingProvider {
     model: Mutex<TextEmbedding>,
+    cache_dir: PathBuf,
     dimensions: usize,
     model_name: String,
     device: String,
@@ -59,7 +60,7 @@ impl OrtEmbeddingProvider {
 
         let (model, signal) = if policy.is_empty() {
             // No accelerated EP for this platform — CPU only
-            let model = TextEmbedding::try_new(base_init_options(cache))
+            let model = TextEmbedding::try_new(base_init_options(cache.clone()))
                 .context("Failed to initialize fastembed ONNX model")?;
             (model, ort_runtime_signal(false))
         } else {
@@ -76,7 +77,7 @@ impl OrtEmbeddingProvider {
                         "ORT {ep_name} EP failed, falling back to CPU: {primary_error:#}"
                     );
                     let model = TextEmbedding::try_new(
-                        base_init_options(cache)
+                        base_init_options(cache.clone())
                             .with_execution_providers(vec![CPUExecutionProvider::default().build()]),
                     )
                     .with_context(|| {
@@ -91,11 +92,34 @@ impl OrtEmbeddingProvider {
 
         Ok(Self {
             model: Mutex::new(model),
+            cache_dir: cache,
             dimensions: BGE_SMALL_DIMENSIONS,
             model_name: "BGE-small-en-v1.5".to_string(),
             device: signal.device,
             accelerated: signal.accelerated,
             degraded_reason: signal.degraded_reason,
+        })
+    }
+
+    /// Create a CPU-only provider (deterministic — no GPU non-determinism).
+    /// Use this in tests where ranking order must be reproducible.
+    #[cfg(test)]
+    pub fn try_new_cpu_only(cache_dir: Option<PathBuf>) -> Result<Self> {
+        let cache = cache_dir.unwrap_or_else(default_cache_dir);
+        let model = TextEmbedding::try_new(
+            base_init_options(cache.clone())
+                .with_execution_providers(vec![CPUExecutionProvider::default().build()]),
+        )
+        .context("Failed to initialize fastembed ONNX model (CPU-only)")?;
+
+        Ok(Self {
+            model: Mutex::new(model),
+            cache_dir: cache,
+            dimensions: BGE_SMALL_DIMENSIONS,
+            model_name: "BGE-small-en-v1.5".to_string(),
+            device: "cpu".to_string(),
+            accelerated: false,
+            degraded_reason: None,
         })
     }
 }
@@ -210,9 +234,32 @@ impl EmbeddingProvider for OrtEmbeddingProvider {
             .lock()
             .map_err(|e| anyhow::anyhow!("Embedding model mutex poisoned: {e}"))?;
 
-        model
-            .embed(texts.to_vec(), None)
-            .context("Failed to embed batch")
+        match model.embed(texts.to_vec(), None) {
+            Ok(result) => Ok(result),
+            Err(gpu_err) if self.accelerated => {
+                // GPU driver crash (e.g. DirectML 887A0020) — rebuild with CPU and retry.
+                // Once we swap in the CPU model, all subsequent batches use CPU too.
+                tracing::warn!(
+                    "GPU embedding failed, falling back to CPU: {gpu_err:#}"
+                );
+                let mut cpu_model = TextEmbedding::try_new(
+                    base_init_options(self.cache_dir.clone())
+                        .with_execution_providers(vec![CPUExecutionProvider::default().build()]),
+                )
+                .context("Failed to initialize CPU fallback embedding model")?;
+
+                let result = cpu_model
+                    .embed(texts.to_vec(), None)
+                    .context("CPU fallback embedding also failed")?;
+
+                *model = cpu_model;
+                tracing::info!(
+                    "GPU→CPU embedding fallback successful; subsequent batches will use CPU"
+                );
+                Ok(result)
+            }
+            Err(err) => Err(err).context("Failed to embed batch"),
+        }
     }
 
     fn dimensions(&self) -> usize {

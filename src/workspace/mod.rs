@@ -847,6 +847,21 @@ impl JulieWorkspace {
                     strict_accel,
                     capabilities,
                 ) {
+                    warn!(
+                        "Embedding backend '{}' failed to initialize, \
+                         falling back to '{}': {:#}",
+                        resolved_backend.as_str(),
+                        fallback_backend.as_str(),
+                        e,
+                    );
+                    if resolved_backend == EmbeddingBackend::Sidecar {
+                        warn!(
+                            "Python sidecar unavailable — common causes: \
+                             Python 3.10-3.13 not installed, uv not on PATH, \
+                             or sidecar source not found. \
+                             Check: uv python install 3.12 && uv --version"
+                        );
+                    }
                     let mut fallback_config = config.clone();
                     fallback_config.provider = fallback_backend.as_str().to_string();
 
