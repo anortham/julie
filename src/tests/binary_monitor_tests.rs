@@ -93,3 +93,39 @@ async fn test_monitor_stops_on_external_cancellation() {
     let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
     assert!(result.is_ok(), "Monitor should exit within 1s of cancellation");
 }
+
+use serial_test::serial;
+
+/// Verify spawn() returns a handle when JULIE_NO_BINARY_WATCH is unset.
+/// Uses #[serial] because it mutates process-global env vars.
+#[tokio::test]
+#[serial]
+async fn test_spawn_returns_handle() {
+    // Ensure env var is not set
+    // SAFETY: test is #[serial] so no concurrent env mutation
+    unsafe { std::env::remove_var("JULIE_NO_BINARY_WATCH") };
+
+    let ct = CancellationToken::new();
+    let handle = crate::binary_monitor::spawn(ct.clone());
+    assert!(handle.is_some(), "spawn() should return a JoinHandle");
+
+    // Clean up: cancel so the spawned task exits
+    ct.cancel();
+    if let Some(h) = handle {
+        let _ = tokio::time::timeout(Duration::from_secs(1), h).await;
+    }
+}
+
+/// Verify spawn() returns None when disabled.
+/// Uses #[serial] because it mutates process-global env vars.
+#[tokio::test]
+#[serial]
+async fn test_spawn_disabled_via_env() {
+    // SAFETY: test is #[serial] so no concurrent env mutation
+    unsafe { std::env::set_var("JULIE_NO_BINARY_WATCH", "1") };
+    let ct = CancellationToken::new();
+    let handle = crate::binary_monitor::spawn(ct);
+    assert!(handle.is_none(), "spawn() should return None when disabled");
+    // SAFETY: test is #[serial] so no concurrent env mutation
+    unsafe { std::env::remove_var("JULIE_NO_BINARY_WATCH") };
+}

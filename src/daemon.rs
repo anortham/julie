@@ -262,13 +262,21 @@ pub async fn daemon_start(port: u16, workspace_root: PathBuf, foreground: bool) 
     let _pid_file_lock = lock_and_write_pid_file(&pid_path, pid, port)?;
     println!("Julie daemon started (PID {}, port {})", pid, port);
 
-    // Start the HTTP server — runs until a shutdown signal is received
+    // Create cancellation token shared between server and binary monitor.
+    // When either side cancels (signal handler OR binary change), both shut down.
+    let cancellation_token = tokio_util::sync::CancellationToken::new();
+
+    // Start binary monitor — detects rebuilds and triggers graceful restart
+    let _binary_monitor = crate::binary_monitor::spawn(cancellation_token.clone());
+
+    // Start the HTTP server — runs until shutdown signal or binary change
     let server_result = crate::server::start_server(
         port,
         workspace_root,
         shutdown_signal(),
         registry,
         home.clone(),
+        cancellation_token,
     )
     .await;
 

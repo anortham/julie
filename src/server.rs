@@ -67,10 +67,8 @@ pub async fn start_server(
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
     registry: GlobalRegistry,
     julie_home: PathBuf,
+    cancellation_token: CancellationToken,
 ) -> Result<()> {
-    // Create a cancellation token that will be cancelled when the server shuts down.
-    // This ensures all active MCP sessions are cleaned up on shutdown.
-    let cancellation_token = CancellationToken::new();
     let ct_for_shutdown = cancellation_token.clone();
 
     // Create the shared registry Arc BEFORE DaemonState so both DaemonState
@@ -255,8 +253,16 @@ pub async fn start_server(
     tracing::info!("Projects:       {} registered ({} ready)", project_count, ready_count);
     tracing::info!("============================================================");
 
+    let shutdown_ct = cancellation_token.clone();
+    let combined_shutdown = async move {
+        tokio::select! {
+            _ = shutdown_signal => {},
+            _ = shutdown_ct.cancelled() => {},
+        }
+    };
+
     let result = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal)
+        .with_graceful_shutdown(combined_shutdown)
         .await
         .context("HTTP server error");
 

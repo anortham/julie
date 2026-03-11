@@ -318,6 +318,7 @@ async fn test_port_conflict_gives_clear_error_message() {
         std::future::pending(),
         GlobalRegistry::new(),
         temp_dir.path().to_path_buf(),
+        tokio_util::sync::CancellationToken::new(),
     )
     .await;
     assert!(result.is_err());
