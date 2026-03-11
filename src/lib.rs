@@ -5,6 +5,7 @@
 
 pub mod agent;
 pub mod api;
+pub mod binary_monitor;
 pub mod cli;
 pub mod connect;
 pub mod daemon;

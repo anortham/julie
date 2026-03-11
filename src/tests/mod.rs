@@ -23,6 +23,11 @@ pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
 pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
 
 // ============================================================================
+// BINARY MONITOR TESTS - Daemon binary change detection for auto-restart
+// ============================================================================
+pub mod binary_monitor_tests; // Binary mtime monitoring for daemon auto-restart on rebuild
+
+// ============================================================================
 // DAEMON TESTS - PID file management, process checking, start/stop/status
 // ============================================================================
 pub mod connect_tests; // Connect command: daemon-ensure logic, workspace registration, CLI parsing
