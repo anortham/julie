@@ -221,6 +221,21 @@ impl ManageWorkspaceTool {
                 // Mark as indexed
                 *handler.is_indexed.write().await = true;
 
+                // Daemon mode: register the project with the global registry so it
+                // appears on the dashboard and persists across daemon restarts.
+                // This is critical for HTTP clients where roots/list is unavailable —
+                // manage_workspace(operation="index") is the only registration path.
+                if let Some(ref daemon_state) = handler.daemon_state {
+                    if let Err(e) = crate::daemon_state::DaemonState::register_project(
+                        daemon_state,
+                        &canonical_path,
+                    )
+                    .await
+                    {
+                        warn!("Failed to register project with daemon: {}", e);
+                    }
+                }
+
                 // Register as primary workspace and update statistics
                 let mut indexed_workspace_id: Option<String> = None;
                 if let Some(workspace) = handler.get_workspace().await? {

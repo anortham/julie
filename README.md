@@ -106,7 +106,7 @@ The tray app is optional — the daemon works independently via the CLI.
 **Claude Code:**
 
 ```bash
-claude mcp add julie -- ~/.julie/bin/julie-server connect
+claude mcp add --transport http julie http://localhost:7890/mcp
 ```
 
 **VS Code with GitHub Copilot:**

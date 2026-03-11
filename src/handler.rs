@@ -768,7 +768,18 @@ impl ServerHandler for JulieServerHandler {
                 }
             };
 
-            let target_path = client_root.unwrap_or_else(|| self.workspace_root.clone());
+            let Some(target_path) = client_root else {
+                // roots/list failed (timeout or unsupported). In daemon mode we cannot
+                // fall back to self.workspace_root — that's the daemon's cwd which is
+                // meaningless (e.g. the tray app's install directory). Leave the handler
+                // workspace-less. The agent's instructions tell it to call
+                // manage_workspace(operation="index") which will register the project.
+                warn!(
+                    "Could not discover client workspace (roots/list unavailable over HTTP). \
+                     Agent must call manage_workspace(operation=\"index\") to register a project."
+                );
+                return;
+            };
 
             // Register the project with the daemon (idempotent — no-ops if already registered).
             // This ensures the workspace exists in daemon_state.workspaces.
