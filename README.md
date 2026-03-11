@@ -137,6 +137,23 @@ Create a `.vscode/mcp.json` file in your project:
 }
 ```
 
+**OpenCode:**
+
+Create an `opencode.json` file in your project:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "julie": {
+      "type": "remote",
+      "url": "http://localhost:7890/mcp",
+      "enabled": true
+    }
+  }
+}
+```
+
 **First Use:**
 
 Julie indexes your workspace automatically on first connection (~2-5s for most projects). All search capabilities are available immediately after indexing completes.
