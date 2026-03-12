@@ -7,12 +7,6 @@
 // toolset redesign (2026-02-07). Only EditingTransaction remains (used by rename_symbol).
 
 // ============================================================================
-// AGENT TESTS - Agent dispatch backend, context assembly
-// ============================================================================
-pub mod agent_backend_tests; // Agent backend trait, ClaudeBackend, DispatchManager, context assembly
-pub mod api_agents_tests; // Agent dispatch REST API + SSE streaming
-
-// ============================================================================
 // TEST FIXTURES - Pre-indexed databases and test data
 // ============================================================================
 pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
@@ -21,44 +15,6 @@ pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
 // CLI TESTS - Argument parsing and workspace resolution
 // ============================================================================
 pub mod cli_tests; // CLI argument parsing (clap) and workspace resolution tests
-
-// ============================================================================
-// BINARY MONITOR TESTS - Daemon binary change detection for auto-restart
-// ============================================================================
-pub mod binary_monitor_tests; // Binary mtime monitoring for daemon auto-restart on rebuild
-
-// ============================================================================
-// DAEMON TESTS - PID file management, process checking, start/stop/status
-// ============================================================================
-pub mod connect_tests; // Connect command: daemon-ensure logic, workspace registration, CLI parsing
-pub mod daemon_indexer_tests; // Background indexing pipeline tests
-pub mod daemon_tests; // Daemon lifecycle tests
-pub mod daemon_watcher_tests; // Daemon cross-project file watcher tests
-
-// ============================================================================
-// FEDERATION TESTS - Cross-workspace RRF merge and parallel fan-out
-// ============================================================================
-pub mod federation_tests; // Federation module: RRF merge, federated search
-
-// ============================================================================
-// SERVER TESTS - HTTP server and API endpoint tests
-// ============================================================================
-pub mod api_dashboard_tests; // Dashboard stats endpoint (GET /api/dashboard/stats)
-pub mod api_search_tests; // Search API endpoints (POST /api/search, POST /api/search/debug)
-pub mod server_tests; // HTTP server, health endpoint, project endpoints
-pub mod daemon_integration_tests; // End-to-end daemon integration tests
-pub mod federation_integration_tests; // Cross-project federation end-to-end tests
-pub mod phase4_integration_tests; // Phase 4: Full REST API integration tests (search, dashboard, agents)
-
-// ============================================================================
-// UI TESTS - Embedded web UI serving
-// ============================================================================
-pub mod ui_tests; // Embedded Vue SPA serving, SPA fallback, asset content types
-
-// ============================================================================
-// REGISTRY TESTS - Global project registry (CRUD, persistence)
-// ============================================================================
-pub mod registry_tests; // Global project registry CRUD and persistence
 
 // ============================================================================
 // MAIN SERVER TESTS - Entry point error handling
@@ -110,7 +66,6 @@ pub mod tools {
     pub mod editing; // EditingTransaction tests (used by rename_symbol)
 
     pub mod deep_dive_tests; // DeepDiveTool tests (formatting + data layer)
-    pub mod deep_dive_federation_tests; // Federated deep_dive (workspace="all") tests
     pub mod search; // Search tool tests (line mode, quality, race conditions)
     pub mod search_context_lines;
     pub mod search_quality; // Search quality dogfooding tests (regression suite) // FastSearchTool context_lines parameter tests (token optimization)
@@ -147,13 +102,8 @@ pub mod tools {
 
     pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
 
-    pub mod workspace_target_tests; // WorkspaceTarget enum and resolve_workspace_filter tests
-    pub mod daemon_workspace_tests; // Daemon registration/deregistration + handler helper tests
-
-    pub mod federated_refs_tests; // Federated fast_refs: cross-project reference search
     pub mod formatting_tests; // Navigation formatting tests (lean refs, qualified name parsing)
     pub mod reference_workspace_fast_refs_tests; // Reference workspace fast_refs parity (limit, reference_kind, identifiers)
-    pub mod get_context_federation_tests; // Federated get_context (workspace="all") tests
 }
 
 // ============================================================================
