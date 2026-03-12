@@ -9,11 +9,14 @@ use crate::extractors::{Relationship, Symbol, SymbolKind};
 
 /// Truncate a signature to `max_len` characters, appending "..." if trimmed.
 fn truncate_signature(sig: &str, max_len: usize) -> String {
-    let trimmed = sig.trim();
-    if trimmed.len() <= max_len {
-        trimmed.to_string()
+    let first_line = sig.lines().next().unwrap_or(sig).trim();
+
+    if first_line.len() <= max_len {
+        first_line.to_string()
+    } else if max_len <= 3 {
+        ".".repeat(max_len)
     } else {
-        format!("{}...", &trimmed[..max_len])
+        format!("{}...", &first_line[..max_len - 3])
     }
 }
 
@@ -132,4 +135,3 @@ pub fn format_lean_refs_results(
 
     output.trim_end().to_string()
 }
-

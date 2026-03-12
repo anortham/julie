@@ -23,12 +23,7 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - **Cross-language code navigation** (go-to-definition, find-references) across 31 languages
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Multi-workspace support** for indexing and searching related codebases
-- **Persistent daemon mode** with HTTP API and web dashboard at `/ui/`
-- **Multi-agent dispatch** — run tasks through Claude Code, Codex, Gemini CLI, or Copilot CLI from the dashboard
-- **Web dashboard** — project management, search exploration, agent dispatch, embedding status
-- **Auto-start daemon** via `julie-server connect` (stdio bridge with automatic daemon lifecycle)
-- **System tray app** — persistent status icon (green/yellow/red), one-click dashboard, start/stop/restart, update notifications, diagnostic export
-- **OpenAPI documentation** with interactive Scalar docs at `/api/docs`
+- **Stdio MCP server** — single binary, zero configuration, works with any MCP client
 
 ### Performance Characteristics
 
@@ -65,60 +60,30 @@ Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings (BGE
 
 ## Installation
 
-### Step 1: Install Julie
-
-Download the latest release for your platform from the [Releases page](https://github.com/anortham/julie/releases), extract it, then run:
+### Build from Source
 
 ```bash
-# macOS / Linux
-tar -xzf julie-v*.tar.gz
-./julie-server install
-
-# Windows (PowerShell)
-Expand-Archive julie-v*.zip
-.\julie-server.exe install
+git clone https://github.com/anortham/julie.git
+cd julie
+cargo build --release
 ```
 
-This installs the binary to `~/.julie/bin/`, registers Julie as a system service that auto-starts on login, and starts the daemon immediately.
-
-- **Dashboard:** http://localhost:7890/ui/
-- **API docs:** http://localhost:7890/api/docs
-
-To uninstall: `~/.julie/bin/julie-server uninstall` (preserves your data).
-
-To update after downloading a new release: `./julie-server daemon restart` (copies the new binary and restarts the daemon).
-
-#### Optional: Tray App
-
-Download the **Julie Tray** installer for your platform from the [Releases page](https://github.com/anortham/julie/releases) (`.dmg` for macOS, `-setup.exe` for Windows, `.AppImage`/`.deb` for Linux). The tray app provides:
-
-- Persistent status icon showing daemon health (green = running, yellow = starting, red = stopped)
-- One-click access to the web dashboard
-- Start/stop/restart daemon from the system tray
-- Update notifications when new versions are available
-- Diagnostic bundle export for troubleshooting
-- Auto-launch on login (replaces `julie-server install` for autostart)
-
-The tray app is optional — the daemon works independently via the CLI.
-
-### Step 2: Connect Your AI Tool
+### Connect Your AI Tool
 
 **Claude Code:**
 
 ```bash
-claude mcp add --transport http julie http://localhost:7890/mcp
+claude mcp add julie -- /path/to/julie/target/release/julie-server
 ```
 
-**VS Code with GitHub Copilot:**
-
-Create a `.vscode/mcp.json` file in your project:
+**VS Code with GitHub Copilot** (`.vscode/mcp.json`):
 
 ```json
 {
   "servers": {
     "Julie": {
-      "type": "http",
-      "url": "http://localhost:7890/mcp"
+      "type": "stdio",
+      "command": "/path/to/julie/target/release/julie-server"
     }
   }
 }
@@ -130,25 +95,7 @@ Create a `.vscode/mcp.json` file in your project:
 {
   "mcpServers": {
     "julie": {
-      "type": "http",
-      "url": "http://localhost:7890/mcp"
-    }
-  }
-}
-```
-
-**OpenCode:**
-
-Create an `opencode.json` file in your project:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "julie": {
-      "type": "remote",
-      "url": "http://localhost:7890/mcp",
-      "enabled": true
+      "command": "/path/to/julie/target/release/julie-server"
     }
   }
 }
@@ -157,18 +104,6 @@ Create an `opencode.json` file in your project:
 **First Use:**
 
 Julie indexes your workspace automatically on first connection (~2-5s for most projects). All search capabilities are available immediately after indexing completes.
-
-### Build from Source
-
-If you prefer to build from source:
-
-```bash
-git clone https://github.com/anortham/julie.git
-cd julie
-cargo build --release
-./target/release/julie-server install   # First time: install + start daemon
-./target/release/julie-server daemon restart  # After rebuilds: update + restart
-```
 
 ## Tools (7)
 
@@ -228,17 +163,6 @@ third-party/
 
 Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patterns cover 99% of use cases - only use `.julieignore` for project-specific needs.
 
-## Web Dashboard
-
-The daemon serves a built-in web dashboard at `http://localhost:7890/ui/` with:
-
-- **Dashboard** — project health, agent activity, backend availability, embedding status with on-demand initialization, diagnostic export
-- **Projects** — register/remove projects, view stats (language breakdown, symbol counts by kind), quick-launch actions (copy path, open in editor, open in terminal)
-- **Search** — interactive search with debug mode for inspecting scoring and tokenization
-- **Agents** — dispatch tasks to any detected CLI agent (Claude Code, Codex, Gemini CLI, Copilot CLI), view dispatch history with streaming output
-
-All features work in both light and dark mode, with responsive layouts for mobile.
-
 ## Architecture
 
 - **Tree-sitter parsers** for accurate symbol extraction across all languages
@@ -246,23 +170,17 @@ All features work in both light and dark mode, with responsive layouts for mobil
 - **Graph centrality ranking** using pre-computed reference scores from the relationship graph
 - **SQLite storage** for symbols, identifiers, relationships, types, and file metadata
 - **Per-workspace isolation** with separate databases and indexes
-- **MCP protocol** for AI agent integration (stdio and Streamable HTTP transports)
-- **Persistent daemon** with HTTP API, file watchers, and background indexing
-- **Web dashboard** (Vue/TypeScript SPA) embedded in binary via rust-embed
-- **Multi-agent dispatch** with backend auto-detection and streaming output parsing
+- **MCP protocol** over stdio (JSON-RPC)
 - **Embedding pipeline** with GPU-accelerated Python sidecar + ORT CPU fallback
-- **System tray app** (Tauri 2.0, ~5MB) — no `julie` crate dependency, uses subprocess + HTTP
-- **OpenAPI 3.1** spec with interactive Scalar docs
 
 ## Development
 
 ### Prerequisites
 
 - **Rust** (stable, 1.80+) — [rustup.rs](https://rustup.rs)
-- **Node.js** (18+) — required to build the web dashboard UI
 - **Python 3.10-3.13** + **uv** (optional) — only needed for GPU-accelerated embeddings; keyword search works without it
 
-### Building from Source
+### Building
 
 ```bash
 git clone https://github.com/anortham/julie.git
@@ -270,78 +188,21 @@ cd julie
 cargo build
 ```
 
-The `build.rs` script automatically runs `npm install && npm run build` in the `ui/` directory on first build to compile the Vue dashboard. If Node.js is not available, a stub fallback is used (dashboard won't be served, but all MCP tools work).
-
 ### Running Locally
 
-**Option A: Daemon mode** (recommended — persistent server with dashboard, file watchers, multi-project support)
-
-```bash
-# Start the daemon (listens on http://localhost:7890)
-cargo run -- daemon start
-
-# Dashboard available at http://localhost:7890/ui/
-# API docs available at http://localhost:7890/api/docs
-
-# Check status / stop
-cargo run -- daemon status
-cargo run -- daemon stop
-```
-
-**Option B: Stdio mode** (single project, direct MCP over stdin/stdout — for testing MCP protocol)
+Julie is a stdio MCP server — it communicates via JSON-RPC over stdin/stdout:
 
 ```bash
 cargo run -- --workspace /path/to/your/project
 ```
 
-**Option C: Connect mode** (stdio bridge that auto-starts the daemon — how MCP clients typically use Julie)
+To test with an MCP client, point it at your debug build:
 
 ```bash
-cargo run -- connect --workspace /path/to/your/project
+claude mcp add julie-dev -- /path/to/julie/target/debug/julie-server
 ```
 
-### Connecting MCP Clients to a Dev Build
-
-When developing Julie, point your MCP client at your debug build instead of the installed binary:
-
-**Claude Code:**
-```bash
-# Use connect mode (auto-starts daemon if needed)
-claude mcp add julie-dev -- /path/to/julie/target/debug/julie-server connect
-
-# Or point directly at the daemon's HTTP endpoint
-claude mcp add julie-dev --transport http http://localhost:7890/mcp
-```
-
-**VS Code / Cursor / Other HTTP MCP clients:**
-```json
-{
-  "servers": {
-    "Julie": {
-      "type": "http",
-      "url": "http://localhost:7890/mcp"
-    }
-  }
-}
-```
-
-After rebuilding (`cargo build`), restart the daemon to pick up changes:
-```bash
-cargo run -- daemon restart
-```
-
-### UI Development
-
-The web dashboard is a Vue 3 + TypeScript SPA in the `ui/` directory:
-
-```bash
-cd ui
-npm install
-npm run dev    # Vite dev server with hot reload (proxies API to localhost:7890)
-npm run build  # Production build (output to ui/dist/, embedded in binary via rust-embed)
-```
-
-When using `npm run dev`, make sure the Julie daemon is running — the Vite dev server on `localhost:5173` proxies `/api` requests to the daemon on `localhost:7890`.
+After rebuilding (`cargo build`), restart Claude Code to pick up the new binary.
 
 ### Testing
 
@@ -372,11 +233,10 @@ The dogfood tests load a 100MB SQLite fixture and run real searches — they're 
 
 ```
 src/
-├── main.rs          # CLI entry point (stdio / daemon / connect dispatch)
-├── connect.rs       # Auto-start daemon + stdio↔HTTP bridge
-├── daemon.rs        # Daemon lifecycle (start/stop/status, PID file)
-├── server.rs        # HTTP server (axum router, startup, shutdown)
-├── api/             # REST API modules (health, projects, search, agents, dashboard)
+├── main.rs          # Stdio MCP entry point
+├── handler.rs       # MCP tool handler (rmcp ServerHandler)
+├── startup.rs       # Workspace initialization and staleness detection
+├── cli.rs           # CLI argument parsing
 ├── extractors/      # Language-specific symbol extraction (31 languages)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer
@@ -392,8 +252,6 @@ src/
 ├── workspace/       # Multi-workspace management
 └── tests/           # Test infrastructure
 
-ui/                  # Vue/TypeScript dashboard (built assets embedded in binary)
-tauri-app/           # System tray app (Tauri 2.0, tray-only — daemon management)
 python/
 └── embeddings_sidecar/  # GPU-accelerated embedding sidecar (PyTorch + sentence-transformers)
 

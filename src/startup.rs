@@ -11,6 +11,29 @@ use std::path::Path;
 use std::time::SystemTime;
 use tracing::{debug, info, warn};
 
+/// Checkpoint the active workspace database WAL if a workspace is initialized.
+pub async fn checkpoint_active_workspace_wal(
+    handler: &JulieServerHandler,
+) -> Result<Option<(i32, i32, i32)>> {
+    let workspace = match handler.get_workspace().await? {
+        Some(workspace) => workspace,
+        None => return Ok(None),
+    };
+
+    let Some(db_arc) = workspace.db else {
+        return Ok(None);
+    };
+
+    tokio::task::spawn_blocking(move || -> Result<Option<(i32, i32, i32)>> {
+        let mut db = db_arc
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Could not acquire database lock for checkpoint: {}", e))?;
+        Ok(Some(db.checkpoint_wal()?))
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to join checkpoint task: {}", e))?
+}
+
 /// Check if the workspace needs indexing by examining database state
 ///
 /// This function checks:

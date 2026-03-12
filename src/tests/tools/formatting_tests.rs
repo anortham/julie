@@ -78,11 +78,65 @@ fn test_truncate_signature() {
     // truncate_signature is private, so we test it indirectly via format_lean_refs_results
     // with a very long signature
     let long_sig = "pub fn very_long_function_name_with_many_parameters(a: i32, b: String, c: Vec<u8>, d: HashMap<String, Vec<u8>>, e: Option<Box<dyn Fn()>>)";
-    let defs = vec![make_test_symbol("src/lib.rs", 1, SymbolKind::Function, Some(long_sig))];
+    let defs = vec![make_test_symbol(
+        "src/lib.rs",
+        1,
+        SymbolKind::Function,
+        Some(long_sig),
+    )];
     let output = format_lean_refs_results("test_fn", &defs, &[]);
     // The output should contain the definition but signature should be truncated
     assert!(output.contains("src/lib.rs:1 (function)"));
     assert!(output.contains("→ "));
+}
+
+#[test]
+fn test_lean_refs_uses_first_signature_line_only() {
+    let multiline_sig = "fn example(\n    arg: String,\n)";
+    let defs = vec![make_test_symbol(
+        "src/lib.rs",
+        1,
+        SymbolKind::Function,
+        Some(multiline_sig),
+    )];
+
+    let output = format_lean_refs_results("example", &defs, &[]);
+
+    assert!(output.contains("→ fn example("));
+    assert!(
+        !output.contains("arg: String"),
+        "signature formatting should stay single-line. Got:\n{}",
+        output
+    );
+}
+
+#[test]
+fn test_truncate_signature_keeps_total_length_within_limit() {
+    let long_sig =
+        "fn this_signature_is_deliberately_long_enough_to_require_truncation_with_suffix()";
+    let defs = vec![make_test_symbol(
+        "src/lib.rs",
+        1,
+        SymbolKind::Function,
+        Some(long_sig),
+    )];
+
+    let output = format_lean_refs_results("test_fn", &defs, &[]);
+    let signature = output
+        .lines()
+        .find_map(|line| line.split("→ ").nth(1))
+        .expect("formatted output should include truncated signature");
+
+    assert!(
+        signature.ends_with("..."),
+        "signature should be truncated: {signature}"
+    );
+    assert!(
+        signature.len() <= 60,
+        "truncated signature should respect the 60-char cap, got {} chars: {}",
+        signature.len(),
+        signature
+    );
 }
 
 #[test]

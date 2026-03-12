@@ -1,6 +1,6 @@
 use std::fs;
 
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -46,6 +46,7 @@ async fn main() -> anyhow::Result<()> {
     let handler = JulieServerHandler::new(workspace_root)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
+    let cleanup_handler = handler.clone();
 
     let service = match handler.serve(stdio()).await {
         Ok(s) => s,
@@ -61,5 +62,21 @@ async fn main() -> anyhow::Result<()> {
     }
 
     info!("Julie server stopped");
+
+    match julie::startup::checkpoint_active_workspace_wal(&cleanup_handler).await {
+        Ok(Some((busy, log, checkpointed))) => {
+            info!(
+                "WAL checkpoint complete: busy={}, log={}, checkpointed={}",
+                busy, log, checkpointed
+            );
+        }
+        Ok(None) => {
+            debug!("No database available for shutdown checkpoint");
+        }
+        Err(e) => {
+            warn!("WAL checkpoint failed: {}", e);
+        }
+    }
+
     Ok(())
 }
