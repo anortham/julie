@@ -11,10 +11,7 @@ use crate::extractors::{Relationship, RelationshipKind, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 
-/// Find references in a reference workspace using handler helpers for DB access
-///
-/// In daemon mode, uses the shared loaded workspace DB (no re-opening).
-/// In stdio mode, opens the reference workspace's SQLite database from disk.
+/// Find references in a reference workspace using handler helpers for DB access.
 ///
 /// Supports the same strategies as the primary workspace path:
 /// 1. Exact name lookup
@@ -30,7 +27,7 @@ pub async fn find_references_in_reference_workspace(
     limit: u32,
     reference_kind: Option<&str>,
 ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
-    // Use handler helper for DB access (shared in daemon mode, opens fresh in stdio mode)
+    // Use handler helper for DB access
     let db_arc = handler
         .get_database_for_workspace(&ref_workspace_id)
         .await?;

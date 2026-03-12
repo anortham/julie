@@ -27,7 +27,6 @@ pub async fn get_symbols_from_reference(
     );
 
     // Use handler helpers for DB and workspace root access
-    // (shared in daemon mode, opens fresh / looks up registry in stdio mode)
     let db_arc = handler
         .get_database_for_workspace(&ref_workspace_id)
         .await?;

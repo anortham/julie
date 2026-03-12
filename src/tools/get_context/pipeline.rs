@@ -479,7 +479,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
                 ref_workspace_id
             );
 
-            // Get Arcs first (fast in daemon mode — just Arc clones)
+            // Get Arcs for reference workspace DB and search index
             let db_arc = handler
                 .get_database_for_workspace(&ref_workspace_id)
                 .await?;

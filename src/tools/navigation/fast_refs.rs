@@ -43,7 +43,7 @@ pub struct FastRefsTool {
     /// Maximum references (default: 10, range: 1-500)
     #[serde(default = "default_limit", deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient")]
     pub limit: u32,
-    /// Workspace filter: "primary" (default), workspace ID, or "all" (daemon mode: search all projects)
+    /// Workspace filter: "primary" (default) or a reference workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
     /// Reference kind filter: "call", "variable_ref", "type_usage", "member_access", "import"
@@ -67,7 +67,7 @@ impl FastRefsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("Finding references for: {}", self.symbol);
 
-        // Resolve workspace target first to dispatch between single and federated paths
+        // Resolve workspace target (primary or reference workspace)
         let workspace_target =
             resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
 

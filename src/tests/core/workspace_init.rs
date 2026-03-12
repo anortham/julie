@@ -640,7 +640,7 @@ async fn test_handler_uses_provided_workspace_root() {
 
 /// Test: find_workspace_root rejects ~/.julie/ global config dir as workspace marker
 ///
-/// Regression test for: The global ~/.julie/ directory (daemon config, logs, registry)
+/// Regression test for: The global ~/.julie/ directory
 /// was being treated as a workspace marker, causing the user's entire home directory
 /// to be indexed. find_workspace_root must skip ~/.julie/ and fall through.
 #[test]

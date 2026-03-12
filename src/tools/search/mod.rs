@@ -58,7 +58,7 @@ pub struct FastSearchTool {
     /// Context lines before/after match (default: 1)
     #[serde(default = "default_context_lines", deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient")]
     pub context_lines: Option<u32>,
-    /// Workspace filter: "primary" (default), workspace ID, or "all" (daemon mode: search all projects)
+    /// Workspace filter: "primary" (default) or a reference workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
 }

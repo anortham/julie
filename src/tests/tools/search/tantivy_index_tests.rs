@@ -1185,7 +1185,7 @@ fn test_schema_migration_recreates_stale_index() {
 }
 
 /// Same as above, but exercises the `open_with_language_configs` path
-/// (used by `handler.rs` when loading existing workspaces at daemon startup).
+/// (used by `handler.rs` when loading existing workspaces at startup).
 #[test]
 fn test_schema_migration_via_open_path() {
     use tantivy::schema::{IndexRecordOption, Schema, TextFieldIndexing, TextOptions, STORED, STRING};

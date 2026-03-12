@@ -121,10 +121,7 @@ get_context(query="payment processing")
 - `format`: `"compact"` (default) or `"readable"` for human-friendly output
 
 ### manage_workspace — Workspace Setup
-**First action in any session:** If any tool returns a "no database" or "not indexed" error, call `manage_workspace(operation="index")` to register your project. The workspace path is auto-detected from the server's working directory, but you can override it with `path`.
-```javascript
-manage_workspace(operation="index")
-```
+**First action in new workspace:** `manage_workspace(operation="index")`
 If search returns zero results unexpectedly, run `health` to diagnose.
 
 ---

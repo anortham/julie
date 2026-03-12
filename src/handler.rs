@@ -334,11 +334,6 @@ impl JulieServerHandler {
     }
 
     // ========== Workspace Access Helpers ==========
-    //
-    // These helpers abstract daemon-vs-stdio workspace access for non-primary
-    // workspaces. In daemon mode they return the shared Arc from DaemonState
-    // (no re-opening). In stdio mode they open local reference workspace files
-    // (current behavior).
 
     /// Get the database for a specific workspace by ID.
     ///
