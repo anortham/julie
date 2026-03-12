@@ -1,61 +1,12 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "julie", version, about = "Julie - Cross-Platform Code Intelligence Server")]
+#[command(name = "julie-server", version, about = "Julie - Code Intelligence Server")]
 pub struct Cli {
     /// Workspace root path (overrides JULIE_WORKSPACE env var)
-    #[arg(long, global = true)]
+    #[arg(long)]
     pub workspace: Option<PathBuf>,
-
-    #[command(subcommand)]
-    pub command: Option<Commands>,
-}
-
-#[derive(Subcommand)]
-pub enum Commands {
-    /// Run Julie as a persistent daemon
-    Daemon {
-        #[command(subcommand)]
-        action: DaemonAction,
-    },
-    /// Connect to daemon (auto-starts if needed), bridging stdio ↔ HTTP
-    Connect {
-        /// Port for the daemon HTTP server
-        #[arg(long, default_value = "7890", env = "JULIE_PORT")]
-        port: u16,
-    },
-    /// Install Julie as a system service (auto-starts on login)
-    Install {
-        /// Port for the daemon HTTP server
-        #[arg(long, default_value = "7890", env = "JULIE_PORT")]
-        port: u16,
-    },
-    /// Uninstall Julie system service (preserves data)
-    Uninstall,
-}
-
-#[derive(Subcommand)]
-pub enum DaemonAction {
-    /// Start the Julie daemon
-    Start {
-        /// Port to listen on
-        #[arg(long, default_value = "7890", env = "JULIE_PORT")]
-        port: u16,
-        /// Run in foreground (don't daemonize)
-        #[arg(long)]
-        foreground: bool,
-    },
-    /// Stop the running daemon
-    Stop,
-    /// Restart the daemon (copies current binary to ~/.julie/bin/ first)
-    Restart {
-        /// Port to listen on after restart
-        #[arg(long, default_value = "7890", env = "JULIE_PORT")]
-        port: u16,
-    },
-    /// Show daemon status
-    Status,
 }
 
 /// Resolve the workspace root path from CLI arg, env var, or current directory.
@@ -118,4 +69,3 @@ pub fn resolve_workspace_root(cli_workspace: Option<PathBuf>) -> PathBuf {
 
     current.canonicalize().unwrap_or(current)
 }
-
