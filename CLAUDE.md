@@ -115,46 +115,46 @@ See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CO
 
 ---
 
-## 🚨 RUNNING TESTS (STOP RUNNING THE FULL SUITE!)
+## 🚨 RUNNING TESTS (USE THE XTASK RUNNER)
 
-**The full test suite takes ~265s (4.5 min).** DO NOT run it after every small change. That is a waste of the user's time.
+**The full suite is still too expensive to run after every small change.** Use the xtask runner as the canonical interface so the same calibrated buckets show up everywhere.
 
-### Test Tiers
+### Canonical Test Tiers
 
-| Tier | Command | Time | When to use |
-|------|---------|------|-------------|
-| **Fast** | `cargo test --lib --exclude-from=none -- --skip search_quality` | ~15s | After EVERY change |
-| **Dogfood** | `cargo test --lib search_quality` | ~250s | Only before merging or after search/scoring changes |
-| **Full** | `cargo test --lib 2>&1 \| tail -5` | ~265s | Only before merging a branch |
+| Tier | Command | What it covers | When to use |
+|------|---------|----------------|-------------|
+| **Smoke** | `cargo xtask test smoke` | Small confidence slice of the fastest buckets | Quick sanity check when you want a tiny run |
+| **Dev** | `cargo xtask test dev` | Default local tier for normal code changes | After the usual change-set |
+| **System** | `cargo xtask test system` | `workspace_init` + integration buckets | Use when touching startup/workspace/system behavior |
+| **Dogfood** | `cargo xtask test dogfood` | `search_quality` bucket | Use after search/scoring/tokenization changes |
+| **Full** | `cargo xtask test full` | Dev + system + dogfood buckets | Use for broad branch-level confidence |
 
-### Why Dogfood Tests Are Slow
+### Default Workflow
 
-The 43 `search_quality` tests load a **100MB SQLite fixture**, backfill a Tantivy index from it, and run real searches. They are integration-level regression guards, not unit tests.
+1. **After normal changes**: run `cargo xtask test dev`
+2. **If you changed startup/workspace/system flows**: add `cargo xtask test system`
+3. **If you changed search/scoring/tokenization**: add `cargo xtask test dogfood`
+4. **For a broad pre-merge pass**: run `cargo xtask test full`
+5. **To inspect the calibrated buckets**: run `cargo xtask test list`
+
+### Current Caveat
+
+`system` and `full` are the right commands for those tiers, but do **not** describe them as green-by-default right now. Calibration uncovered a pre-existing `workspace_init` failure/outlier in the `system` bucket, so those tiers remain the canonical runner entry points while that bucket is being fixed. That issue blocks both `system` and `full` from being treated as green-by-default until the bucket is fixed.
+
+### Why Dogfood Is Slow
+
+The `search_quality` bucket loads a **100MB SQLite fixture**, backfills a Tantivy index from it, and runs real searches. It is a regression guard, not a quick unit-tier pass.
 
 ### The Rules
 
-1. **After changing non-search code** (extractors, tools, database, workspace): Run fast tier only
-   ```bash
-   cargo test --lib -- --skip search_quality 2>&1 | tail -5
-   ```
+1. **Default to `cargo xtask test dev` after normal changes.**
+2. **Escalate with xtask tiers instead of inventing ad hoc canonical commands.**
+3. **Use raw cargo filters only to narrow failures** after an xtask tier fails or when iterating on one known area.
+4. **Do not casually run `cargo test --lib` as the default workflow.**
 
-2. **After changing search/scoring/tokenizer code**: Run fast tier + the specific search test module
-   ```bash
-   cargo test --lib -- --skip search_quality 2>&1 | tail -5
-   cargo test --lib tantivy_stemming 2>&1 | tail -5   # if you changed tokenizer
-   cargo test --lib tantivy_scoring 2>&1 | tail -5     # if you changed scoring
-   ```
+### Narrowing Failures With Raw Cargo Filters
 
-3. **Before merging a branch**: Run full suite ONCE
-   ```bash
-   cargo test --lib 2>&1 | tail -5
-   ```
-
-4. **After merging**: Do NOT re-run the full suite. You just ran it.
-
-### Targeted Test Filters
-
-Use `cargo test --lib <filter>` to run only relevant tests:
+When an xtask tier fails and you need to zoom in, use targeted cargo filters like these:
 
 ```bash
 # By module area

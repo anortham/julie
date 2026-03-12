@@ -206,28 +206,31 @@ After rebuilding (`cargo build`), restart Claude Code to pick up the new binary.
 
 ### Testing
 
-Julie has a tiered test strategy to keep iteration fast:
-
-| Tier | Command | Time | When to use |
-|------|---------|------|-------------|
-| **Fast** | `cargo test --lib -- --skip search_quality` | ~15s | After every change |
-| **Dogfood** | `cargo test --lib search_quality` | ~250s | After search/scoring changes |
-| **Full** | `cargo test --lib` | ~265s | Before merging |
+Julie has a tiered xtask runner so the documented commands stay aligned with the checked-in manifest:
 
 ```bash
-# Fast tier (recommended during development)
-cargo test --lib -- --skip search_quality
+# Tiny smoke pass
+cargo xtask test smoke
 
-# Run specific test modules
-cargo test --lib tests::tools::deep_dive     # deep_dive tests
-cargo test --lib tests::tools::search        # search tests
-cargo test --lib tests::core::database       # database tests
+# Default local development tier
+cargo xtask test dev
 
-# Run extractor tests (separate crate)
-cargo test -p julie-extractors
+# System / startup coverage
+cargo xtask test system
+
+# Search-quality / dogfood tier
+cargo xtask test dogfood
+
+# Broad branch-level pass
+cargo xtask test full
+
+# Inspect available tiers and buckets
+cargo xtask test list
 ```
 
-The dogfood tests load a 100MB SQLite fixture and run real searches — they're regression guards, not unit tests.
+Use raw `cargo test --lib <filter>` only when narrowing a failure after an xtask tier points you at the right area. The dogfood tier is intentionally heavier because it loads the large search-quality fixture and runs real searches.
+
+For now, do not treat `system` or `full` as green-by-default right now: a pre-existing `workspace_init` issue is still being worked through in that path.
 
 ## Project Structure
 

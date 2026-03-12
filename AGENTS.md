@@ -19,6 +19,6 @@ This file is for AI agents that are not Claude Code (e.g., Copilot, Cursor, Wind
 
 3. **Dogfood Julie's own tools.** Use Julie's MCP tools (fast_search, deep_dive, fast_refs, get_symbols, get_context) to understand the codebase before modifying it. Don't grep when Julie can search. Don't read entire files when get_symbols gives you the structure.
 
-4. **Don't run the full test suite casually.** It takes ~265 seconds. Use `cargo test --lib -- --skip search_quality 2>&1 | tail -5` for the fast tier (~15s). See CLAUDE.md for the full test strategy.
+4. **Default to `cargo xtask test dev`.** That is the canonical fast local tier now. Use raw `cargo test --lib <filter>` only to narrow a known failure after the xtask run points you at a bucket. See `CLAUDE.md` for the full tiering strategy, including `smoke`, `system`, `dogfood`, and `full`.
 
 5. **Check references before changing symbols.** Use `fast_refs` to see all callers before modifying any function, struct, or interface.
