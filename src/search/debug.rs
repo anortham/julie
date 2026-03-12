@@ -17,7 +17,7 @@ use crate::search::scoring::{
 };
 
 /// A symbol search result enriched with scoring breakdown.
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SymbolDebugResult {
     // -- original fields --
     pub id: String,
@@ -43,7 +43,7 @@ pub struct SymbolDebugResult {
 }
 
 /// A content search result enriched with scoring breakdown.
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ContentDebugResult {
     pub file_path: String,
     pub language: String,
@@ -54,7 +54,7 @@ pub struct ContentDebugResult {
 }
 
 /// Result container for debug symbol search.
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Serialize)]
 pub struct SymbolDebugResults {
     pub results: Vec<SymbolDebugResult>,
     pub relaxed: bool,
@@ -63,7 +63,7 @@ pub struct SymbolDebugResults {
 }
 
 /// Result container for debug content search.
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Serialize)]
 pub struct ContentDebugResults {
     pub results: Vec<ContentDebugResult>,
     pub relaxed: bool,

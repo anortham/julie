@@ -7,6 +7,16 @@
 
 use crate::extractors::{Relationship, Symbol, SymbolKind};
 
+/// Truncate a signature to `max_len` characters, appending "..." if trimmed.
+fn truncate_signature(sig: &str, max_len: usize) -> String {
+    let trimmed = sig.trim();
+    if trimmed.len() <= max_len {
+        trimmed.to_string()
+    } else {
+        format!("{}...", &trimmed[..max_len])
+    }
+}
+
 /// Format references in lean text format for AI agents
 ///
 /// Output format:

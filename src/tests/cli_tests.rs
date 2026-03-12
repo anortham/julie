@@ -1,6 +1,6 @@
 //! Tests for CLI argument parsing (clap) and workspace resolution.
 
-use crate::cli::{Cli, Commands, DaemonAction, resolve_workspace_root};
+use crate::cli::{Cli, resolve_workspace_root};
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -9,117 +9,15 @@ use std::path::PathBuf;
 // ============================================================================
 
 #[test]
-fn test_no_args_parses_to_stdio_mode() {
+fn test_no_args_parses_successfully() {
     let cli = Cli::parse_from(["julie-server"]);
-    assert!(cli.command.is_none(), "No subcommand should mean stdio MCP mode");
     assert!(cli.workspace.is_none());
 }
 
 #[test]
 fn test_workspace_flag_parsed() {
     let cli = Cli::parse_from(["julie-server", "--workspace", "/tmp/myproject"]);
-    assert!(cli.command.is_none());
     assert_eq!(cli.workspace, Some(PathBuf::from("/tmp/myproject")));
-}
-
-#[test]
-fn test_daemon_start_default_port() {
-    let cli = Cli::parse_from(["julie-server", "daemon", "start"]);
-    match cli.command {
-        Some(Commands::Daemon {
-            action: DaemonAction::Start { port, foreground },
-        }) => {
-            assert_eq!(port, 7890);
-            assert!(!foreground);
-        }
-        other => panic!("Expected Daemon Start, got command.is_some()={}", other.is_some()),
-    }
-}
-
-#[test]
-fn test_daemon_start_custom_port() {
-    let cli = Cli::parse_from(["julie-server", "daemon", "start", "--port", "8080"]);
-    match cli.command {
-        Some(Commands::Daemon {
-            action: DaemonAction::Start { port, foreground },
-        }) => {
-            assert_eq!(port, 8080);
-            assert!(!foreground);
-        }
-        other => panic!("Expected Daemon Start, got command.is_some()={}", other.is_some()),
-    }
-}
-
-#[test]
-fn test_daemon_start_foreground() {
-    let cli = Cli::parse_from(["julie-server", "daemon", "start", "--foreground"]);
-    match cli.command {
-        Some(Commands::Daemon {
-            action: DaemonAction::Start { foreground, .. },
-        }) => {
-            assert!(foreground);
-        }
-        other => panic!("Expected Daemon Start, got command.is_some()={}", other.is_some()),
-    }
-}
-
-#[test]
-fn test_daemon_stop() {
-    let cli = Cli::parse_from(["julie-server", "daemon", "stop"]);
-    assert!(matches!(
-        cli.command,
-        Some(Commands::Daemon {
-            action: DaemonAction::Stop
-        })
-    ));
-}
-
-#[test]
-fn test_daemon_status() {
-    let cli = Cli::parse_from(["julie-server", "daemon", "status"]);
-    assert!(matches!(
-        cli.command,
-        Some(Commands::Daemon {
-            action: DaemonAction::Status
-        })
-    ));
-}
-
-#[test]
-fn test_workspace_global_with_daemon() {
-    let cli = Cli::parse_from([
-        "julie-server",
-        "--workspace",
-        "/tmp/myproject",
-        "daemon",
-        "start",
-    ]);
-    assert_eq!(cli.workspace, Some(PathBuf::from("/tmp/myproject")));
-    assert!(matches!(
-        cli.command,
-        Some(Commands::Daemon {
-            action: DaemonAction::Start { .. }
-        })
-    ));
-}
-
-#[test]
-fn test_workspace_after_subcommand_also_works() {
-    // clap global args can appear after the subcommand too
-    let cli = Cli::parse_from([
-        "julie-server",
-        "daemon",
-        "start",
-        "--workspace",
-        "/tmp/myproject",
-    ]);
-    assert_eq!(cli.workspace, Some(PathBuf::from("/tmp/myproject")));
-    assert!(matches!(
-        cli.command,
-        Some(Commands::Daemon {
-            action: DaemonAction::Start { .. }
-        })
-    ));
 }
 
 // ============================================================================

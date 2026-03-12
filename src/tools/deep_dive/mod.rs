@@ -154,8 +154,6 @@ pub(crate) fn deep_dive_query(
     incoming_cap: usize,
     outgoing_cap: usize,
 ) -> Result<String> {
-    use crate::tools::navigation::resolution::compare_symbols_by_priority_and_context;
-
     // Step 1: Find the symbol
     let symbols = data::find_symbol(db, symbol_name, context_file)?;
 
