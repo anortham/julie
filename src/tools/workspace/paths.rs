@@ -1,4 +1,10 @@
-use crate::daemon::julie_home;
+/// Get the global Julie home directory (~/.julie/).
+fn julie_home() -> anyhow::Result<std::path::PathBuf> {
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .map_err(|_| anyhow::anyhow!("Could not determine home directory"))?;
+    Ok(std::path::PathBuf::from(home).join(".julie"))
+}
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use std::env;
