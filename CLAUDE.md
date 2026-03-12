@@ -80,7 +80,7 @@ src/database/
 - **Language**: Rust (native performance, cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
 - **Architecture**: Tantivy full-text search + SQLite structured storage
-- **Modes**: Daemon (persistent HTTP server on port 7890) with `connect` command (auto-start daemon + stdio bridge), web dashboard at `/ui/`, OpenAPI docs at `/api/docs`
+- **Mode**: Stdio-only MCP server (JSON-RPC over stdin/stdout)
 - **Origin**: Native Rust implementation for true cross-platform compatibility
 - **Crown Jewels**: 31 tree-sitter extractors with comprehensive test suites
 
@@ -192,10 +192,10 @@ cargo test --lib build_julie_fixture -- --ignored --nocapture
 1. **Development Mode**: Always work in `debug` mode for fast iteration
 2. **Testing New Features**: When ready to test:
    - Agent asks user to exit Claude Code
-   - User runs: `cargo build --release && ./target/release/julie-server daemon restart`
-   - User restarts Claude Code (MCP client reconnects to updated daemon)
+   - User runs: `cargo build --release`
+   - User restarts Claude Code (MCP client spawns new stdio server)
    - Test features in live MCP session
-3. **Backward Compatibility**: We don't need it (MCP server, not REST API)
+3. **Backward Compatibility**: We don't need it (stdio MCP server, not a public API)
 4. **Target User**: YOU (Claude) and other AI coding agents are the target user
    - Review code from standpoint of you being the user
    - Optimize tool output for YOU
@@ -207,23 +207,21 @@ cargo test --lib build_julie_fixture -- --ignored --nocapture
 
 ### 🚨 LOG LOCATION
 
-**Daemon/connect modes** log to the global `~/.julie/logs/` directory (the daemon serves multiple projects, so logs are centralized). This is `~/.julie` on all platforms.
-
-**Stdio mode** logs to the project-level `.julie/logs/` directory.
+Julie logs to the project-level `.julie/logs/` directory.
 
 **When checking logs, ALWAYS use:**
 ```bash
-# Daemon logs (most common — Claude Code uses connect mode)
-tail -f ~/.julie/logs/julie.log.$(date +%Y-%m-%d)
+# Julie logs (project-level)
+tail -f .julie/logs/julie.log.$(date +%Y-%m-%d)
 
 # Check indexing progress
-tail -50 ~/.julie/logs/julie.log.$(date +%Y-%m-%d) | grep -E "Tantivy|indexing|Background"
+tail -50 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -E "Tantivy|indexing|Background"
 
 # View recent errors
-tail -100 ~/.julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i error
+tail -100 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i error
 
 # List all log files
-ls -lh ~/.julie/logs/
+ls -lh .julie/logs/
 ```
 
 ---
@@ -291,6 +289,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-03-11 | **Status:** Production Ready (v4.1.5)
-
-- You CANNOT build the release build while we're running the server in session!
+**Last Updated:** 2026-03-11 | **Status:** Production Ready (v5.0.0)
