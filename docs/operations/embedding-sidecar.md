@@ -1,11 +1,11 @@
 # Embedding Sidecar Operations
 
-Julie defaults to a Python sidecar runtime for embeddings (`JULIE_EMBEDDING_PROVIDER=auto` resolves to `sidecar` first when the feature is compiled in).
+Julie uses the Python sidecar runtime for embeddings on macOS and Linux. Windows uses ONNX Runtime with DirectML instead of the sidecar.
 
 ## Bootstrap Flow (Managed venv)
 
 1. Workspace init builds embedding config from env (`JULIE_EMBEDDING_PROVIDER`, `JULIE_EMBEDDING_CACHE_DIR`).
-2. Backend resolver chooses `sidecar` first for `auto` when available.
+2. Backend resolver chooses `sidecar` first for `auto` on macOS/Linux when available. Windows `auto` resolves to `ort`.
 3. Sidecar launch config is resolved in this order:
    - If `JULIE_EMBEDDING_SIDECAR_PROGRAM` is set, Julie launches that program override.
      - Default override mode: Julie still applies Python-style entrypoint args (`JULIE_EMBEDDING_SIDECAR_SCRIPT` or `-m JULIE_EMBEDDING_SIDECAR_MODULE`) and may inject `PYTHONPATH`.
@@ -17,7 +17,7 @@ Julie defaults to a Python sidecar runtime for embeddings (`JULIE_EMBEDDING_PROV
    - Falls back to `python -m venv` only when `uv` is not available.
    - Installs sidecar package with `uv pip install --editable .[runtime]` (or `pip install` as fallback).
    - Writes install marker `.julie-sidecar-install-root` in the venv (versioned marker content + root) to avoid unnecessary reinstalls.
-5. Sidecar process is health-probed (`health` IPC) before being accepted. Health response includes device (cuda/mps/directml/cpu), runtime, model ID, and dimensions.
+5. Sidecar process is health-probed (`health` IPC) before being accepted. Health response includes device (cuda/mps/cpu), runtime, model ID, and dimensions.
 
 Operational caveat (release binaries): default sidecar root is derived from build-time `CARGO_MANIFEST_DIR` (`<manifest>/python/embeddings_sidecar`). On prebuilt binaries that path may not exist on the target machine.
 
@@ -32,6 +32,7 @@ Operational caveat (release binaries): default sidecar root is derived from buil
 ### Core embedding controls
 
 - `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`).
+  - Windows resolves `auto` to `ort` and does not support the sidecar backend.
 - `JULIE_EMBEDDING_STRICT_ACCEL`: `1|true|on` enables strict acceleration mode.
   - In strict mode, unaccelerated/degraded runtimes are disabled instead of used.
 - `JULIE_EMBEDDING_CACHE_DIR`: base cache dir.
@@ -76,9 +77,9 @@ Sidecar telemetry reports the actual device from the Python runtime (e.g., `Runt
 ## Fallback Behavior
 
 - `auto` preference:
-  - Tries `sidecar` first.
-  - If sidecar initialization fails and strict mode is off, falls back to `ort`.
-  - Degraded reason includes sidecar failure context.
+  - macOS/Linux: tries `sidecar` first, then falls back to `ort` when available.
+  - Windows: resolves directly to `ort`.
+  - Degraded reason includes sidecar failure context only on platforms where sidecar is attempted.
 - Explicit provider (`sidecar`, `ort`): no automatic cross-backend fallback on init failure.
 - Strict acceleration mode (`JULIE_EMBEDDING_STRICT_ACCEL` enabled):
   - Disables embeddings when runtime is unaccelerated/degraded.

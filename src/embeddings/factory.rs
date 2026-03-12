@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 #[cfg(feature = "embeddings-ort")]
 use super::OrtEmbeddingProvider;
@@ -106,6 +106,25 @@ pub fn resolve_backend_preference(
     requested_backend: EmbeddingBackend,
     capabilities: &BackendResolverCapabilities,
 ) -> Result<EmbeddingBackend> {
+    if capabilities.target_os == "windows" {
+        match requested_backend {
+            EmbeddingBackend::Auto => {
+                if capabilities.ort_available {
+                    return Ok(EmbeddingBackend::Ort);
+                }
+                bail!(
+                    "No embedding backend available for platform {}-{} (Windows requires 'ort'; 'sidecar' is unsupported)",
+                    capabilities.target_os,
+                    capabilities.target_arch
+                );
+            }
+            EmbeddingBackend::Sidecar => {
+                bail!("Embedding backend 'sidecar' is not supported on Windows; use 'ort'");
+            }
+            _ => {}
+        }
+    }
+
     let resolved_backend = match requested_backend {
         EmbeddingBackend::Auto => {
             if capabilities.sidecar_available {

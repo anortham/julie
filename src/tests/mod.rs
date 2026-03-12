@@ -32,6 +32,7 @@ pub mod core {
     pub mod embedding_provider; // EmbeddingProvider trait + OrtEmbeddingProvider tests
     pub mod embedding_sidecar_protocol; // Sidecar protocol contracts + validation tests
     pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
+    pub mod windows_embedding_policy; // Windows ORT policy + DirectML adapter selection tests
     pub mod handler; // MCP handler tests
     pub mod language; // Language detection and support tests
     pub mod tracing; // Tracing and logging tests

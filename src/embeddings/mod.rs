@@ -25,6 +25,8 @@ pub mod sidecar_bootstrap;
 pub mod sidecar_embedded;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_supervisor;
+#[cfg(feature = "embeddings-ort")]
+pub mod windows_directml;
 
 use anyhow::Result;
 

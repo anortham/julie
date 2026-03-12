@@ -36,15 +36,15 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 
 ### Embeddings Runtime
 
-Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings (BGE-small-en-v1.5, 384 dimensions). The sidecar is fully automated:
+Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings on macOS and Linux, and ONNX Runtime with DirectML on Windows (BGE-small-en-v1.5, 384 dimensions).
 
 - **Auto-provisioning**: If `uv` is available and no compatible Python 3.10-3.13 is found, Julie installs one via `uv python install` and creates a managed venv with `uv venv`
-- **GPU acceleration**: Automatically detects and uses CUDA (Linux/Windows), MPS (macOS), or DirectML (Windows) — falls back to CPU if no GPU is available
-- **Fallback**: If the sidecar fails to initialize, Julie falls back to in-process ONNX Runtime (CPU-only) — keyword search always remains available
+- **GPU acceleration**: Uses CUDA via the Python sidecar on Linux, MPS via the Python sidecar on macOS, and DirectML via ONNX Runtime on Windows — falls back to CPU if no GPU is available
+- **Fallback**: If the preferred accelerated runtime fails to initialize, Julie falls back to an available CPU path — keyword search always remains available
 - **Zero configuration**: Works out of the box on systems with `uv` or a compatible Python on PATH
 
 **Runtime controls:**
-- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`, tries sidecar first)
+- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`; Windows resolves to `ort`, macOS/Linux prefer `sidecar`)
 - `JULIE_EMBEDDING_STRICT_ACCEL`: `1` to disable embeddings when no GPU is available
 - See `docs/operations/embedding-sidecar.md` for all env vars and troubleshooting
 
