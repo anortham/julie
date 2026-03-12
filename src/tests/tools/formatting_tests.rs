@@ -1,8 +1,8 @@
-//! Tests for navigation output formatting (format_lean_refs_results, format_federated_refs_results)
+//! Tests for navigation output formatting (format_lean_refs_results)
 
 use crate::extractors::base::{RelationshipKind, SymbolKind, Visibility};
 use crate::extractors::{Relationship, Symbol};
-use crate::tools::navigation::formatting::{format_lean_refs_results, format_federated_refs_results};
+use crate::tools::navigation::formatting::format_lean_refs_results;
 use crate::tools::navigation::resolution::parse_qualified_name;
 
 fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&str>) -> Symbol {
