@@ -1,50 +1,26 @@
 // Julie - Cross-Platform Code Intelligence Server Library
 //!
-//! Julie provides code intelligence across 26+ programming languages using
+//! Julie provides code intelligence across 31 programming languages using
 //! Tantivy search with code-aware tokenization (CamelCase/snake_case splitting).
 
-pub mod agent;
-pub mod api;
-pub mod binary_monitor;
 pub mod cli;
-pub mod connect;
-pub mod daemon;
-pub mod daemon_indexer;
-pub mod daemon_state;
-pub mod daemon_state_watchers;
-pub mod daemon_watcher;
 pub mod database;
 pub mod embeddings;
 pub mod extractors;
 pub mod handler;
 pub mod health;
-pub mod install;
-pub mod mcp_http;
-pub mod language; // Shared language support (tree-sitter configuration)
-pub mod mcp_compat; // MCP compatibility layer for rmcp migration
-pub mod registry;
+pub mod language;
+pub mod mcp_compat;
 pub mod search;
-pub mod server;
-pub mod startup; // Startup utilities (indexing checks, staleness detection)
-pub mod stdio; // Stdio MCP transport (default mode + connect fallback)
+pub mod startup;
 pub mod tools;
 pub mod tracing;
-pub mod ui;
 pub mod utils;
 pub mod watcher;
 pub mod workspace;
 
 #[cfg(test)]
 pub mod tests;
-
-// #[cfg(test)]
-// mod test_parser_pool;
-
-// #[cfg(test)]
-// mod test_async_extraction;
-
-// #[cfg(test)]
-// mod debug_test;
 
 // Re-export common types
 pub use extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
