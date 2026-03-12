@@ -1,38 +1,13 @@
 {
   "_doc": [
-    "Julie MCP server configuration — pick ONE of the three options below.",
-    "Copy the option you want into your tool's MCP config file.",
+    "Julie MCP server configuration.",
     "",
-    "Option A (Daemon HTTP) is recommended if the daemon is already running:",
-    "  - Shared index across sessions and projects",
-    "  - Auto-registers your workspace on connect",
-    "  - Requires: julie-server daemon start (or julie-server install)",
-    "",
-    "Option B (Connect mode) auto-starts the daemon:",
-    "  - Same features as Option A, but starts daemon automatically",
-    "  - Requires: julie-server in PATH",
-    "",
-    "Option C (Stdio mode) for single-project use:",
-    "  - No daemon — the MCP client spawns Julie directly",
-    "  - One index per session, no cross-project features",
-    "  - Set JULIE_WORKSPACE to your project root"
+    "Julie runs as a stdio MCP server — your MCP client spawns it directly.",
+    "Set JULIE_WORKSPACE to your project root (optional if cwd is the project)."
   ],
 
   "mcpServers": {
     "julie": {
-      "_comment": "Option A: Daemon HTTP (recommended)",
-      "type": "http",
-      "url": "http://localhost:7890/mcp"
-    },
-
-    "julie-connect": {
-      "_comment": "Option B: Connect mode (auto-starts daemon)",
-      "command": "julie-server",
-      "args": ["connect"]
-    },
-
-    "julie-stdio": {
-      "_comment": "Option C: Stdio mode (single project, no daemon)",
       "command": "julie-server",
       "args": [],
       "env": {

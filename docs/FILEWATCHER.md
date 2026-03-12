@@ -1,18 +1,13 @@
 # File Watcher Architecture
 
-**Last Updated:** 2026-03-08
-**Status:** Production
+**Last Updated:** 2026-03-12
+**Status:** Production (v5.0)
 
 ## Overview
 
 Julie uses OS-native file watchers (via the [`notify`](https://docs.rs/notify) crate) to detect file changes and trigger incremental re-indexing. This keeps the symbol database and Tantivy search index up to date without requiring full re-indexes.
 
-There are two watcher layers:
-
-| Layer | Module | Used In | Scope |
-|-------|--------|---------|-------|
-| `IncrementalIndexer` | `src/watcher/mod.rs` | stdio MCP mode | Single workspace |
-| `DaemonWatcherManager` | `src/daemon_watcher.rs` | Daemon (HTTP) mode | All registered projects |
+In stdio mode, `IncrementalIndexer` in `src/watcher/mod.rs` manages a single watcher for the connected workspace. It lives for the duration of the MCP session.
 
 ---
 
@@ -41,7 +36,7 @@ File system event (OS)
           -> Handler: re-extract symbols, update SQLite + Tantivy
 ```
 
-1. **Filtering** (`src/watcher/filtering.rs`): Events are checked against supported file extensions (30 languages) and ignore patterns (`.git/`, `node_modules/`, `target/`, etc.). Unrecognized extensions and ignored paths are dropped immediately.
+1. **Filtering** (`src/watcher/filtering.rs`): Events are checked against supported file extensions (31 languages) and ignore patterns (`.git/`, `node_modules/`, `target/`, etc.). Unrecognized extensions and ignored paths are dropped immediately.
 
 2. **Debouncing**: Per-file deduplication prevents redundant re-indexing when editors write the same file multiple times in quick succession (e.g., auto-save, format-on-save). If a file was processed within the last 1 second, subsequent events for that file are skipped.
 
@@ -53,48 +48,15 @@ File system event (OS)
 
 ---
 
-## Daemon Mode (`DaemonWatcherManager`)
-
-In daemon mode, `DaemonWatcherManager` manages one `notify::RecommendedWatcher` per project.
-
-### When Watchers Start
-
-- **On daemon startup**: `start_watchers_for_ready_projects()` is called after loading all registered projects. Only projects with status `Ready` (both database and search index loaded) get watchers.
-- **On project registration**: When a new project is added via the API and reaches `Ready` status, `start_watcher_if_ready()` creates a watcher for it.
-
-### When Watchers Stop
-
-- **Project removal**: `remove_workspace()` calls `stop_watching()` to cancel the background task and drop the watcher handle.
-- **Daemon shutdown**: `stop_all()` cancels all watchers and their background tasks.
-
-### Current Behavior
-
-All registered and indexed (`Ready`) projects are watched, regardless of whether any MCP client is actively connected for that project. This is a deliberate simplicity-first design — the idle cost on macOS and Windows is negligible.
-
-### Dashboard Integration
-
-The dashboard stats endpoint (`GET /api/dashboard/stats`) exposes an `active_watchers` count showing how many projects currently have active file watchers. This is sourced from `DaemonWatcherManager::active_watchers()`.
-
----
-
-## Stdio Mode (`IncrementalIndexer`)
-
-In single-workspace stdio mode, `IncrementalIndexer` in `src/watcher/mod.rs` manages a single watcher for the connected workspace. It uses the same filtering, debouncing, and handler logic but is scoped to one project and lives for the duration of the MCP session.
-
----
-
 ## Future Considerations
 
-- **Session-aware watching**: Currently all `Ready` projects are watched even when no MCP client is connected. A future optimization (deferred to v4.1) could start/stop watchers based on active MCP sessions, reducing resource usage for users with many registered projects on Linux (where inotify watches are a finite resource).
 - **Linux inotify limits**: Users with very large projects (deep directory trees) on Linux may need to increase `fs.inotify.max_user_watches` via sysctl. macOS and Windows do not have this limitation.
 
 ---
 
 ## Related Files
 
-- `src/daemon_watcher.rs` — `DaemonWatcherManager` (daemon-mode multi-project watcher)
-- `src/watcher/mod.rs` — `IncrementalIndexer` (stdio-mode single-workspace watcher)
+- `src/watcher/mod.rs` — `IncrementalIndexer` (single-workspace watcher)
 - `src/watcher/filtering.rs` — Extension and ignore-pattern filtering
 - `src/watcher/handlers.rs` — File change handlers (create/modify/delete/rename)
 - `src/watcher/events.rs` — Notify event to `FileChangeEvent` conversion
-- `src/api/dashboard.rs` — Dashboard stats endpoint (exposes `active_watchers`)
