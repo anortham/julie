@@ -41,8 +41,6 @@ pub enum WorkspaceTarget {
     Primary,
     /// Use a specific reference workspace by ID
     Reference(String),
-    /// Federated search across all daemon-registered workspaces
-    All,
 }
 
 /// Given an invalid workspace ID and a list of known workspace IDs,
@@ -72,11 +70,9 @@ fn suggest_closest_workspace(workspace_id: &str, known_ids: &[&str]) -> Result<W
 /// Resolve workspace parameter to a WorkspaceTarget.
 ///
 /// - `None` or `"primary"` → `WorkspaceTarget::Primary`
-/// - `"all"` → `WorkspaceTarget::All`
 /// - Any other string → validated as a reference workspace ID → `WorkspaceTarget::Reference(id)`
 ///
-/// In daemon mode, workspace IDs are validated against `DaemonState.workspaces`.
-/// In stdio mode, workspace IDs are validated against `WorkspaceRegistryService`.
+/// Workspace IDs are validated against `WorkspaceRegistryService`.
 pub async fn resolve_workspace_filter(
     workspace_param: Option<&str>,
     handler: &JulieServerHandler,
@@ -85,39 +81,25 @@ pub async fn resolve_workspace_filter(
 
     match workspace_param {
         "primary" => Ok(WorkspaceTarget::Primary),
-        "all" => Ok(WorkspaceTarget::All),
         workspace_id => {
-            if let Some(daemon_state) = &handler.daemon_state {
-                // Daemon mode: validate against DaemonState.workspaces
-                let state = daemon_state.read().await;
-                if state.workspaces.contains_key(workspace_id) {
-                    return Ok(WorkspaceTarget::Reference(workspace_id.to_string()));
-                }
-                // Not found — fuzzy match against daemon workspace IDs
-                let workspace_ids: Vec<&str> =
-                    state.workspaces.keys().map(|k| k.as_str()).collect();
-                suggest_closest_workspace(workspace_id, &workspace_ids)
-            } else {
-                // Stdio mode: validate against per-project WorkspaceRegistryService
-                if let Some(primary_workspace) = handler.get_workspace().await? {
-                    let registry_service =
-                        WorkspaceRegistryService::new(primary_workspace.root.clone());
+            if let Some(primary_workspace) = handler.get_workspace().await? {
+                let registry_service =
+                    WorkspaceRegistryService::new(primary_workspace.root.clone());
 
-                    match registry_service.get_workspace(workspace_id).await? {
-                        Some(_) => Ok(WorkspaceTarget::Reference(workspace_id.to_string())),
-                        None => {
-                            let all_workspaces =
-                                registry_service.get_all_workspaces().await?;
-                            let workspace_ids: Vec<&str> =
-                                all_workspaces.iter().map(|w| w.id.as_str()).collect();
-                            suggest_closest_workspace(workspace_id, &workspace_ids)
-                        }
+                match registry_service.get_workspace(workspace_id).await? {
+                    Some(_) => Ok(WorkspaceTarget::Reference(workspace_id.to_string())),
+                    None => {
+                        let all_workspaces =
+                            registry_service.get_all_workspaces().await?;
+                        let workspace_ids: Vec<&str> =
+                            all_workspaces.iter().map(|w| w.id.as_str()).collect();
+                        suggest_closest_workspace(workspace_id, &workspace_ids)
                     }
-                } else {
-                    Err(anyhow::anyhow!(
-                        "No primary workspace found. Initialize workspace first."
-                    ))
                 }
+            } else {
+                Err(anyhow::anyhow!(
+                    "No primary workspace found. Initialize workspace first."
+                ))
             }
         }
     }
