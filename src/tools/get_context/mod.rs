@@ -6,7 +6,6 @@
 
 pub mod allocation;
 pub mod content;
-pub mod federated;
 pub mod formatting;
 pub mod pipeline;
 pub mod scoring;
