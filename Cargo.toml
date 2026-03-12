@@ -9,7 +9,7 @@ license = "MIT"
 
 [package]
 name = "julie"
-version = "5.0.0"
+version = "5.0.1"
 edition.workspace = true
 authors.workspace = true
 description = "Julie - Cross-Platform Code Intelligence Server"
@@ -25,7 +25,7 @@ path = "src/main.rs"
 
 [features]
 default = ["embeddings-ort", "embeddings-sidecar"]
-embeddings-ort = ["dep:fastembed", "dep:ort", "ort/directml", "ort/coreml"]
+embeddings-ort = ["dep:fastembed", "dep:ort", "ort/directml"]
 embeddings-sidecar = []
 
 
