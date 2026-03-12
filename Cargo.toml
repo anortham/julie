@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/julie-extractors", "tauri-app/src-tauri"]
+members = [".", "crates/julie-extractors"]
 resolver = "2"
 
 [workspace.package]
@@ -9,7 +9,7 @@ license = "MIT"
 
 [package]
 name = "julie"
-version = "4.2.3"
+version = "5.0.0"
 edition.workspace = true
 authors.workspace = true
 description = "Julie - Cross-Platform Code Intelligence Server"
@@ -34,7 +34,7 @@ embeddings-sidecar = []
 julie-extractors = { path = "crates/julie-extractors" }
 
 # MCP Server SDK - Official Anthropic SDK
-rmcp = { version = "0.12", features = ["server", "transport-io", "transport-streamable-http-server", "macros"] }
+rmcp = { version = "0.12", features = ["server", "transport-io", "macros"] }
 schemars = "1.0"  # For JsonSchema derives in tool parameters
 
 # Async recursion support
@@ -53,7 +53,6 @@ rayon = "1.10"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = "0.9"
 toml = "0.8"
 
 # Database
@@ -67,25 +66,7 @@ rust-stemmers = "1.2"
 notify = "8.2"
 
 # CLI argument parsing
-clap = { version = "4.5", features = ["derive", "env"] }
-
-# HTTP server (daemon mode)
-axum = "0.8"
-tower-http = { version = "0.6", features = ["cors"] }
-tokio-util = "0.7"
-tokio-stream = { version = "0.1", features = ["sync"] }
-
-# HTTP client (connect command: stdio↔HTTP bridge)
-reqwest = { version = "0.12", features = ["json", "stream"] }
-
-# Embedded web UI assets
-rust-embed = { version = "8", features = ["debug-embed"] }
-mime_guess = "2"
-
-# OpenAPI documentation
-utoipa = { version = "5.4", features = ["axum_extras"] }
-utoipa-axum = "0.2"
-utoipa-scalar = { version = "0.3", features = ["axum"] }
+clap = { version = "4.5", features = ["derive"] }
 
 # Utilities
 async-trait = "0.1"
@@ -119,21 +100,12 @@ fastembed = { version = "5", optional = true }
 ort = { version = "2.0.0-rc.10", optional = true }
 sqlite-vec = "0.1"
 zerocopy = { version = "0.7", features = ["derive"] }
-percent-encoding = "2.3.2"
-
-# Cross-platform file locking (flock on Unix, LockFileEx on Windows)
-fs2 = "0.4"
-
-# Platform-specific process management (daemon lifecycle)
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3.13"
 tokio-test = "0.4"
 cargo-tarpaulin = "0.31"
 serial_test = "3.2"
-tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 opt-level = 3
