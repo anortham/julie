@@ -12,30 +12,10 @@ use super::data::{RefEntry, SimilarEntry, SymbolContext};
 
 /// Format a SymbolContext for the given depth level.
 pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
-    format_symbol_context_impl(ctx, depth, None)
-}
-
-/// Format a SymbolContext with project attribution in the header.
-///
-/// When `project_name` is `Some`, the header includes `[project: name]` after
-/// the kind/visibility tag. Used by federated deep_dive (`workspace="all"`).
-pub fn format_symbol_context_with_project(
-    ctx: &SymbolContext,
-    depth: &str,
-    project_name: &str,
-) -> String {
-    format_symbol_context_impl(ctx, depth, Some(project_name))
-}
-
-fn format_symbol_context_impl(
-    ctx: &SymbolContext,
-    depth: &str,
-    project_name: Option<&str>,
-) -> String {
     let mut out = String::new();
 
-    // === Header: location + kind + visibility + optional project tag + signature ===
-    format_header(&mut out, ctx, project_name);
+    // === Header: location + kind + visibility + signature ===
+    format_header(&mut out, ctx);
 
     // === Kind-specific body ===
     match ctx.symbol.kind {
@@ -66,7 +46,7 @@ fn format_symbol_context_impl(
     out.trim_end().to_string()
 }
 
-fn format_header(out: &mut String, ctx: &SymbolContext, project_name: Option<&str>) {
+fn format_header(out: &mut String, ctx: &SymbolContext) {
     let s = &ctx.symbol;
     let kind = s.kind.to_string();
     let vis = s
@@ -75,13 +55,9 @@ fn format_header(out: &mut String, ctx: &SymbolContext, project_name: Option<&st
         .map(|v| format!(", {}", v.to_string().to_lowercase()))
         .unwrap_or_default();
 
-    let project_tag = project_name
-        .map(|name| format!(" [project: {}]", name))
-        .unwrap_or_default();
-
     out.push_str(&format!(
-        "{}:{} ({}{}){}\n",
-        s.file_path, s.start_line, kind, vis, project_tag
+        "{}:{} ({}{})\n",
+        s.file_path, s.start_line, kind, vis
     ));
 
     if let Some(sig) = &s.signature {
