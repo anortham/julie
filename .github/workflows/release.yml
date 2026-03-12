@@ -49,19 +49,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: ui/package-lock.json
-
-      - name: Build web UI
-        run: |
-          cd ui
-          npm ci
-          npm run build
-
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
@@ -102,156 +89,11 @@ jobs:
           path: ${{ env.ARCHIVE }}
 
   # ==========================================================================
-  # Tray app builds (julie-tray)
-  # ==========================================================================
-  build-tray:
-    name: Tray ${{ matrix.label }}
-    needs: [build]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            label: macOS
-            target: aarch64-apple-darwin
-            bundles: dmg
-            server_archive_ext: tar.gz
-          - os: windows-latest
-            label: Windows
-            target: x86_64-pc-windows-msvc
-            bundles: nsis
-            server_archive_ext: zip
-          - os: ubuntu-latest
-            label: Linux
-            target: x86_64-unknown-linux-gnu
-            bundles: appimage,deb
-            server_archive_ext: tar.gz
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: tauri-app/package-lock.json
-
-      - name: Install system dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: tray-${{ matrix.target }}
-
-      - name: Install Tauri CLI
-        working-directory: tauri-app
-        run: npm ci
-
-      - name: Generate bundle icons
-        working-directory: tauri-app
-        run: npx tauri icon src-tauri/icons/icon.png
-
-      - name: Compute server artifact name
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "SERVER_ARTIFACT=julie-v${VERSION}-${{ matrix.target }}.${{ matrix.server_archive_ext }}" >> $GITHUB_ENV
-
-      - name: Download server binary for bundling
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.SERVER_ARTIFACT }}
-          path: server-artifact
-
-      - name: Place server binary as Tauri sidecar
-        shell: bash
-        run: |
-          mkdir -p tauri-app/src-tauri/binaries
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cd server-artifact && 7z x *.zip -y && cd ..
-            cp server-artifact/julie-server.exe \
-               "tauri-app/src-tauri/binaries/julie-server-${{ matrix.target }}.exe"
-          else
-            tar -xzf server-artifact/*.tar.gz -C server-artifact
-            cp server-artifact/julie-server \
-               "tauri-app/src-tauri/binaries/julie-server-${{ matrix.target }}"
-          fi
-
-      - name: Build tray app
-        working-directory: tauri-app
-        run: npx tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
-
-      - name: Collect artifacts (macOS)
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          DMG=$(find target/${{ matrix.target }}/release/bundle/dmg -name '*.dmg' | head -1)
-          DEST="julie-tray-v${VERSION}-aarch64-apple-darwin.dmg"
-          cp "$DMG" "$DEST"
-          codesign --force --sign - "$DEST"
-          echo "TRAY_ARTIFACT=${DEST}" >> $GITHUB_ENV
-
-      - name: Collect artifacts (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          NSIS=$(find target/${{ matrix.target }}/release/bundle/nsis -name '*.exe' | head -1)
-          DEST="julie-tray-v${VERSION}-x86_64-pc-windows-msvc-setup.exe"
-          cp "$NSIS" "$DEST"
-          echo "TRAY_ARTIFACT=${DEST}" >> $GITHUB_ENV
-
-      - name: Collect artifacts (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          # Upload both AppImage and .deb
-          APPIMAGE=$(find target/${{ matrix.target }}/release/bundle/appimage -name '*.AppImage' | head -1)
-          DEB=$(find target/${{ matrix.target }}/release/bundle/deb -name '*.deb' | head -1)
-          DEST_AI="julie-tray-v${VERSION}-x86_64-unknown-linux-gnu.AppImage"
-          DEST_DEB="julie-tray-v${VERSION}-x86_64-unknown-linux-gnu.deb"
-          cp "$APPIMAGE" "$DEST_AI"
-          cp "$DEB" "$DEST_DEB"
-          echo "TRAY_ARTIFACT=${DEST_AI}" >> $GITHUB_ENV
-          echo "TRAY_ARTIFACT_DEB=${DEST_DEB}" >> $GITHUB_ENV
-
-      - name: Upload tray artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.TRAY_ARTIFACT }}
-          path: ${{ env.TRAY_ARTIFACT }}
-
-      - name: Upload tray .deb artifact (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.TRAY_ARTIFACT_DEB }}
-          path: ${{ env.TRAY_ARTIFACT_DEB }}
-
-  # ==========================================================================
   # Create GitHub release with all artifacts
   # ==========================================================================
   release:
     name: Create Release
-    needs: [build, build-tray]
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -280,29 +122,21 @@ jobs:
 
           ### What's Included
 
-          Each release contains two components:
-
-          **`julie-server`** — MCP server for code intelligence (search, navigation, refactoring)
+          **\`julie-server\`** — MCP server for code intelligence (search, navigation, refactoring)
           - Download the archive for your platform, extract, and add to PATH
 
-          **`julie-tray`** — System tray app for daemon management
-          - Persistent tray icon shows daemon health (green/yellow/red)
-          - One-click dashboard access, start/stop/restart, diagnostic export
-          - Auto-starts daemon on login
-
           ### Platform Support
-          | Platform | Server | Tray App |
-          |----------|--------|----------|
-          | macOS Apple Silicon | `.tar.gz` | `.dmg` |
-          | Windows x86_64 | `.zip` | `-setup.exe` |
-          | Linux x86_64 | `.tar.gz` | `.AppImage` / `.deb` |
+          | Platform | Archive |
+          |----------|---------|
+          | macOS Apple Silicon | \`.tar.gz\` |
+          | Windows x86_64 | \`.zip\` |
+          | Linux x86_64 | \`.tar.gz\` |
 
           ### Quick Start
-          ```bash
+          \`\`\`bash
           # 1. Extract julie-server for your platform and add to PATH
-          # 2. Install julie-tray (optional — manages daemon lifecycle)
-          # 3. Configure your MCP client to use julie-server
-          ```
+          # 2. Configure your MCP client to use julie-server
+          \`\`\`
 
           See [README.md](https://github.com/${{ github.repository }}) for full documentation.
           EOF
@@ -334,7 +168,6 @@ jobs:
           echo "Release v${{ steps.version.outputs.version }} created successfully"
           echo ""
           echo "Server binary: julie-server"
-          echo "Tray app: julie-tray"
           echo ""
           echo "Platforms built:"
           echo "  - Windows (x86_64-pc-windows-msvc)"
