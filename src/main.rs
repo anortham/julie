@@ -1,55 +1,34 @@
-#!/usr/bin/env cargo run --release
-
-// Use modules from the library crate
-// (imports are done directly where needed)
-
 use std::fs;
-use tracing::{debug, info};
+
+use tracing::{error, info};
 use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use clap::Parser;
-use julie::cli::{Cli, Commands, DaemonAction, resolve_workspace_root};
-use julie::daemon;
+use julie::cli::{Cli, resolve_workspace_root};
+use julie::handler::JulieServerHandler;
+use rmcp::{ServiceExt, transport::stdio};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Parse CLI arguments with clap
     let cli = Cli::parse();
-
-    // Resolve workspace root BEFORE setting up logging
-    // VS Code/MCP servers may start with arbitrary working directories
-    // Priority: --workspace flag > JULIE_WORKSPACE env > current directory
     let workspace_root = resolve_workspace_root(cli.workspace);
 
-    // Initialize logging with both console and file output
+    // Initialize logging — file only, stdout reserved for MCP JSON-RPC
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("julie=info"))
         .map_err(|e| anyhow::anyhow!("Failed to initialize logging filter: {}", e))?;
 
-    // Daemon/connect modes log to ~/.julie/logs/ (global, since the daemon
-    // serves multiple projects). Stdio mode logs to {workspace}/.julie/logs/.
-    let logs_dir = if matches!(cli.command, Some(Commands::Daemon { .. }) | Some(Commands::Connect { .. })) {
-        daemon::julie_home()
-            .map(|h| h.join("logs"))
-            .unwrap_or_else(|_| workspace_root.join(".julie").join("logs"))
-    } else {
-        workspace_root.join(".julie").join("logs")
-    };
+    let logs_dir = workspace_root.join(".julie").join("logs");
     fs::create_dir_all(&logs_dir).unwrap_or_else(|e| {
         eprintln!("Failed to create logs directory at {:?}: {}", logs_dir, e);
     });
 
-    // Set up file appender with daily rolling
     let file_appender = rolling::daily(&logs_dir, "julie.log");
     let (non_blocking_file, _file_guard) = non_blocking(file_appender);
 
-    // 🔥 CRITICAL FIX: MCP servers MUST NOT log to stdout
-    // stdout is reserved exclusively for JSON-RPC messages
-    // Any text logging breaks the MCP protocol parser in VS Code/Copilot
-    // ALL logging goes to file only: .julie/logs/julie.log
     tracing_subscriber::registry()
-        .with(filter.clone())
+        .with(filter)
         .with(
             fmt::layer()
                 .with_writer(non_blocking_file)
@@ -60,65 +39,27 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    info!("🚀 Starting Julie - Cross-Platform Code Intelligence Server");
-    debug!("Built with Rust for true cross-platform compatibility");
-    info!(
-        "📝 Logging enabled - File output to {:?}",
-        logs_dir.join("julie.log")
-    );
-    info!("📂 Workspace root: {:?}", workspace_root);
+    info!("Starting Julie v{} (stdio mode)", env!("CARGO_PKG_VERSION"));
+    info!("Workspace root: {:?}", workspace_root);
 
-    // Branch on subcommand: None = stdio MCP mode (backward compatible), Some = daemon/connect mode
-    match cli.command {
-        // Daemon mode: start/stop/status lifecycle management
-        Some(Commands::Daemon { action }) => {
-            match action {
-                DaemonAction::Start { port, foreground } => {
-                    info!("Daemon start requested: port={}, foreground={}", port, foreground);
-                    daemon::daemon_start(port, workspace_root.clone(), foreground).await?;
-                }
-                DaemonAction::Stop => {
-                    info!("Daemon stop requested");
-                    daemon::daemon_stop()?;
-                }
-                DaemonAction::Restart { port } => {
-                    info!("Daemon restart requested: port={}", port);
-                    daemon::daemon_restart(port)?;
-                }
-                DaemonAction::Status => {
-                    info!("Daemon status requested");
-                    daemon::daemon_status()?;
-                }
-            }
-            Ok(())
+    // Create handler and start stdio MCP transport
+    let handler = JulieServerHandler::new(workspace_root)
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to create handler: {}", e))?;
+
+    let service = match handler.serve(stdio()).await {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Server failed to start: {}", e);
+            return Err(anyhow::anyhow!("Server failed to start: {}", e));
         }
+    };
 
-        // Connect mode: auto-start daemon + stdio↔HTTP bridge
-        Some(Commands::Connect { port }) => {
-            info!("Connect mode requested: port={}", port);
-            julie::connect::run_connect(port, workspace_root).await
-        }
-
-        // Install: set up as system service
-        Some(Commands::Install { port }) => {
-            info!("Install requested: port={}", port);
-            julie::install::install(port)
-        }
-
-        // Uninstall: remove system service
-        Some(Commands::Uninstall) => {
-            info!("Uninstall requested");
-            julie::install::uninstall()
-        }
-
-        // No subcommand: stdio MCP mode (backward compatible — this is the default)
-        None => julie::stdio::run_stdio_mode(workspace_root).await,
+    if let Err(e) = service.waiting().await {
+        error!("Server error: {}", e);
+        return Err(anyhow::anyhow!("Server error: {}", e));
     }
-}
 
-// AUTO-INDEXING MOVED: Now handled in handler.rs on_initialized() callback
-// This ensures MCP handshake completes immediately before indexing begins
-//
-// perform_auto_indexing() and update_workspace_statistics() functions removed
-// - Auto-indexing now runs via on_initialized() callback in ServerHandler trait
-// - Statistics updates are handled by ManageWorkspaceTool during indexing
+    info!("Julie server stopped");
+    Ok(())
+}
