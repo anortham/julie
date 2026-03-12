@@ -31,19 +31,10 @@ pub async fn line_mode_search(
 ) -> Result<CallToolResult> {
     debug!("📄 Line-level search for: '{}'", query);
 
-    // WorkspaceTarget::All should be handled by the caller (federated search path)
-    if matches!(workspace_target, WorkspaceTarget::All) {
-        return Err(anyhow::anyhow!(
-            "Line-mode search does not support workspace='all'. \
-             The caller should route to federated search instead."
-        ));
-    }
-
     // Display label for search result headers
     let workspace_label = match workspace_target {
         WorkspaceTarget::Primary => "primary".to_string(),
         WorkspaceTarget::Reference(id) => id.clone(),
-        WorkspaceTarget::All => unreachable!("handled above"),
     };
 
     let match_strategy = line_match_strategy(query);
@@ -230,7 +221,6 @@ pub async fn line_mode_search(
                 anyhow::anyhow!("Failed to spawn reference workspace search: {}", e)
             })??
         }
-        WorkspaceTarget::All => unreachable!("handled above"),
     };
 
     // Defense-in-depth: post-filter by language and file_pattern
