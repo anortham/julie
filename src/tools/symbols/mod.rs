@@ -87,14 +87,6 @@ impl GetSymbolsTool {
                 )
                 .await
             }
-            WorkspaceTarget::All => {
-                use crate::mcp_compat::Content;
-                Ok(CallToolResult::success(vec![Content::text(
-                    "get_symbols operates on a single file and does not support workspace=\"all\".\n\
-                     Use fast_search or get_context with workspace=\"all\" for cross-project queries, \
-                     then get_symbols on specific files from the results."
-                )]))
-            }
             WorkspaceTarget::Primary => {
                 // Primary workspace logic
                 primary::get_symbols_from_primary(

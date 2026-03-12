@@ -9,7 +9,6 @@
 //! - Cross-language support through naming convention variants
 
 mod fast_refs;
-pub(crate) mod federated_refs;
 pub(crate) mod formatting;
 pub(crate) mod reference_workspace;
 pub mod resolution; // Public for use by other tools

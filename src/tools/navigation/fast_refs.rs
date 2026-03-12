@@ -17,7 +17,6 @@ use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 use std::collections::{HashMap, HashSet};
 
-use super::federated_refs;
 use super::formatting::format_lean_refs_results;
 use super::reference_workspace;
 use super::resolution::{WorkspaceTarget, resolve_workspace_filter};
@@ -72,17 +71,6 @@ impl FastRefsTool {
         let workspace_target =
             resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
 
-        if matches!(workspace_target, WorkspaceTarget::All) {
-            return federated_refs::find_refs_federated(
-                handler,
-                &self.symbol,
-                self.include_definition,
-                self.reference_kind.as_deref(),
-                self.limit,
-            )
-            .await;
-        }
-
         // Find references (workspace resolution is handled by workspace_target)
         let (definitions, references) =
             self.find_references_and_definitions(handler, workspace_target).await?;
@@ -117,12 +105,6 @@ impl FastRefsTool {
                 return self
                     .database_find_references_in_reference(handler, ref_workspace_id)
                     .await;
-            }
-            WorkspaceTarget::All => {
-                // Handled by call_tool_federated — should not reach here
-                return Err(anyhow::anyhow!(
-                    "WorkspaceTarget::All should be handled by call_tool_federated"
-                ));
             }
             WorkspaceTarget::Primary => {
                 // Fall through to primary workspace search below
