@@ -12,7 +12,6 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use tracing::{debug, info, warn};
 
-use crate::daemon_state::DaemonState;
 use crate::database::SymbolDatabase;
 use crate::search::SearchIndex;
 use crate::workspace::JulieWorkspace;
@@ -68,12 +67,6 @@ pub struct JulieServerHandler {
     pub indexing_status: Arc<IndexingStatus>,
     /// rmcp tool router for handling tool calls
     tool_router: ToolRouter<Self>,
-    /// Daemon-wide state for cross-project operations.
-    ///
-    /// `Some` in daemon mode (HTTP server) — gives tools access to all loaded
-    /// workspaces for federated search (`workspace="all"`).
-    /// `None` in stdio mode — single-workspace, no federation.
-    pub(crate) daemon_state: Option<Arc<RwLock<DaemonState>>>,
 }
 
 impl JulieServerHandler {
@@ -82,17 +75,7 @@ impl JulieServerHandler {
     /// `workspace_root` is the resolved root path for this server session,
     /// determined by the caller (main.rs) via CLI args / env var / cwd.
     pub async fn new(workspace_root: PathBuf) -> Result<Self> {
-        Self::new_sync(workspace_root)
-    }
-
-    /// Synchronous constructor for use in contexts where async is not available
-    /// (e.g., the MCP Streamable HTTP service factory closure).
-    ///
-    /// This is the actual implementation — `new()` delegates to it. The handler
-    /// construction is inherently synchronous (just creating Arcs and empty state).
-    pub fn new_sync(workspace_root: PathBuf) -> Result<Self> {
-        info!("🔧 Initializing Julie server handler (workspace_root: {:?})", workspace_root);
-        debug!("✓ Julie handler initialized - workspace initialization will provide storage");
+        info!("Initializing Julie server handler (workspace_root: {:?})", workspace_root);
 
         Ok(Self {
             workspace_root,
@@ -100,28 +83,6 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
             tool_router: Self::tool_router(),
-            daemon_state: None,
-        })
-    }
-
-    /// Synchronous constructor for daemon mode — injects shared `DaemonState`.
-    ///
-    /// Used by `create_workspace_mcp_service` so that tool handlers can access
-    /// all loaded workspaces for federated search (`workspace="all"`).
-    pub fn new_with_daemon_state(
-        workspace_root: PathBuf,
-        daemon_state: Arc<RwLock<DaemonState>>,
-    ) -> Result<Self> {
-        info!("🔧 Initializing Julie server handler with daemon state (workspace_root: {:?})", workspace_root);
-        debug!("✓ Julie handler initialized with daemon state — federation enabled");
-
-        Ok(Self {
-            workspace_root,
-            workspace: Arc::new(RwLock::new(None)),
-            is_indexed: Arc::new(RwLock::new(false)),
-            indexing_status: Arc::new(IndexingStatus::new()),
-            tool_router: Self::tool_router(),
-            daemon_state: Some(daemon_state),
         })
     }
 
@@ -381,141 +342,88 @@ impl JulieServerHandler {
 
     /// Get the database for a specific workspace by ID.
     ///
-    /// **Daemon mode**: returns the shared `Arc<Mutex<SymbolDatabase>>` from
-    /// `DaemonState.workspaces` (no re-opening per request).
-    ///
-    /// **Stdio mode**: opens the reference workspace's SQLite database from
+    /// Opens the reference workspace's SQLite database from
     /// the primary workspace's `.julie/indexes/{workspace_id}/db/symbols.db`.
     pub async fn get_database_for_workspace(
         &self,
         workspace_id: &str,
     ) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
-        if let Some(ref daemon_state) = self.daemon_state {
-            // Daemon mode: look up the loaded workspace
-            let state = daemon_state.read().await;
-            let loaded = state.workspaces.get(workspace_id).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Workspace '{}' not found in daemon state",
-                    workspace_id
-                )
-            })?;
-            loaded.workspace.db.clone().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Workspace '{}' is not ready (status: {:?}) — database not initialized",
-                    workspace_id,
-                    loaded.status
-                )
-            })
-        } else {
-            // Stdio mode: open from the primary workspace's index directory
-            let primary = self
-                .get_workspace()
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
-
-            let db_path = primary.workspace_db_path(workspace_id);
-            if !db_path.exists() {
-                return Err(anyhow::anyhow!(
-                    "Database not found for workspace '{}' at {}",
-                    workspace_id,
-                    db_path.display()
-                ));
-            }
-
-            tokio::task::spawn_blocking(move || {
-                let db = SymbolDatabase::new(&db_path)?;
-                Ok(Arc::new(std::sync::Mutex::new(db)))
-            })
+        let primary = self
+            .get_workspace()
             .await?
+            .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
+
+        let db_path = primary.workspace_db_path(workspace_id);
+        if !db_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Database not found for workspace '{}' at {}",
+                workspace_id,
+                db_path.display()
+            ));
         }
+
+        tokio::task::spawn_blocking(move || {
+            let db = SymbolDatabase::new(&db_path)?;
+            Ok(Arc::new(std::sync::Mutex::new(db)))
+        })
+        .await?
     }
 
     /// Get the search index for a specific workspace by ID.
     ///
-    /// **Daemon mode**: returns the shared `Arc<Mutex<SearchIndex>>` from
-    /// `DaemonState.workspaces` (already `Option` — `None` if not yet built).
-    ///
-    /// **Stdio mode**: opens the reference workspace's Tantivy index from
+    /// Opens the reference workspace's Tantivy index from
     /// the primary workspace's `.julie/indexes/{workspace_id}/tantivy/`.
     /// Returns `Ok(None)` if the index directory doesn't exist yet.
     pub async fn get_search_index_for_workspace(
         &self,
         workspace_id: &str,
     ) -> Result<Option<Arc<std::sync::Mutex<SearchIndex>>>> {
-        if let Some(ref daemon_state) = self.daemon_state {
-            // Daemon mode: look up the loaded workspace
-            let state = daemon_state.read().await;
-            let loaded = state.workspaces.get(workspace_id).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Workspace '{}' not found in daemon state",
-                    workspace_id
-                )
-            })?;
-            Ok(loaded.workspace.search_index.clone())
-        } else {
-            // Stdio mode: open from the primary workspace's index directory
-            let primary = self
-                .get_workspace()
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
-
-            let tantivy_path = primary.workspace_tantivy_path(workspace_id);
-            if !tantivy_path.join("meta.json").exists() {
-                return Ok(None);
-            }
-
-            tokio::task::spawn_blocking(move || {
-                let configs = crate::search::LanguageConfigs::load_embedded();
-                let index =
-                    SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
-                Ok(Some(Arc::new(std::sync::Mutex::new(index))))
-            })
+        let primary = self
+            .get_workspace()
             .await?
+            .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
+
+        let tantivy_path = primary.workspace_tantivy_path(workspace_id);
+        if !tantivy_path.join("meta.json").exists() {
+            return Ok(None);
         }
+
+        tokio::task::spawn_blocking(move || {
+            let configs = crate::search::LanguageConfigs::load_embedded();
+            let index =
+                SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+            Ok(Some(Arc::new(std::sync::Mutex::new(index))))
+        })
+        .await?
     }
 
     /// Get the root path on disk for a specific workspace by ID.
     ///
-    /// **Daemon mode**: returns `LoadedWorkspace.path` from `DaemonState`.
-    ///
-    /// **Stdio mode**: looks up the workspace entry in the primary workspace's
+    /// Looks up the workspace entry in the primary workspace's
     /// registry and returns `WorkspaceEntry.original_path`.
     pub async fn get_workspace_root_for_target(
         &self,
         workspace_id: &str,
     ) -> Result<PathBuf> {
-        if let Some(ref daemon_state) = self.daemon_state {
-            // Daemon mode: return the path from the loaded workspace
-            let state = daemon_state.read().await;
-            let loaded = state.workspaces.get(workspace_id).ok_or_else(|| {
+        let primary = self
+            .get_workspace()
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
+
+        let registry_service =
+            crate::workspace::registry_service::WorkspaceRegistryService::new(
+                primary.root.clone(),
+            );
+        let entry = registry_service
+            .get_workspace(workspace_id)
+            .await?
+            .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "Workspace '{}' not found in daemon state",
+                    "Workspace '{}' not found in workspace registry",
                     workspace_id
                 )
             })?;
-            Ok(loaded.path.clone())
-        } else {
-            // Stdio mode: look up in the primary workspace's registry
-            let primary = self
-                .get_workspace()
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
-
-            let registry_service =
-                crate::workspace::registry_service::WorkspaceRegistryService::new(
-                    primary.root.clone(),
-                );
-            let entry = registry_service
-                .get_workspace(workspace_id)
-                .await?
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Workspace '{}' not found in workspace registry",
-                        workspace_id
-                    )
-                })?;
-            Ok(PathBuf::from(entry.original_path))
-        }
+        Ok(PathBuf::from(entry.original_path))
     }
 
     /// Returns the agent instructions embedded at compile time.
@@ -719,91 +627,10 @@ impl ServerHandler for JulieServerHandler {
         }
     }
 
-    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
-        info!("🔗 MCP connection established - client initialized");
+    async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
+        info!("MCP connection established - client initialized");
 
-        // Daemon mode: discover workspace from client roots, register, and attach.
-        if let Some(ref daemon_state) = self.daemon_state {
-            // Ask the client for its workspace roots (MCP roots/list).
-            // This tells us which project directory the client is working in.
-            // Use a timeout because the connect bridge can't forward server-to-client
-            // requests through its simple POST-based proxy, causing list_roots to hang.
-            let client_root = match tokio::time::timeout(
-                std::time::Duration::from_secs(3),
-                context.peer.list_roots(),
-            )
-            .await
-            {
-                Ok(Ok(roots_result)) => {
-                    roots_result.roots.first().and_then(|root| {
-                        let path_str = root.uri.strip_prefix("file://")?;
-                        // On Windows, file:// URIs look like file:///C:/Users/...
-                        // strip_prefix gives us /C:/Users/... — trim the leading slash
-                        let path_str = if cfg!(windows) && path_str.starts_with('/') {
-                            &path_str[1..]
-                        } else {
-                            path_str
-                        };
-                        // Decode percent-encoded characters (spaces, unicode, etc.)
-                        let decoded = percent_encoding::percent_decode_str(path_str)
-                            .decode_utf8()
-                            .ok()?;
-                        let path = PathBuf::from(decoded.as_ref());
-                        if path.is_dir() {
-                            info!("📂 Client workspace root: {}", path.display());
-                            Some(path)
-                        } else {
-                            warn!("Client root is not a directory: {}", path.display());
-                            None
-                        }
-                    })
-                }
-                Ok(Err(e)) => {
-                    debug!("Client does not support roots/list: {}", e);
-                    None
-                }
-                Err(_) => {
-                    debug!("roots/list timed out (connect bridge doesn't support server-to-client requests)");
-                    None
-                }
-            };
-
-            let Some(target_path) = client_root else {
-                // roots/list failed (timeout or unsupported). In daemon mode we cannot
-                // fall back to self.workspace_root — that's the daemon's cwd which is
-                // meaningless (e.g. the tray app's install directory). Leave the handler
-                // workspace-less. The agent's instructions tell it to call
-                // manage_workspace(operation="index") which will register the project.
-                warn!(
-                    "Could not discover client workspace (roots/list unavailable over HTTP). \
-                     Agent must call manage_workspace(operation=\"index\") to register a project."
-                );
-                return;
-            };
-
-            // Register the project with the daemon (idempotent — no-ops if already registered).
-            // This ensures the workspace exists in daemon_state.workspaces.
-            if let Err(e) = DaemonState::register_project(daemon_state, &target_path).await {
-                warn!("Failed to register workspace {}: {}", target_path.display(), e);
-            }
-
-            // Attach the daemon's workspace to this handler session.
-            let ds = daemon_state.read().await;
-            for loaded in ds.workspaces.values() {
-                if loaded.path == target_path {
-                    let mut ws_guard = self.workspace.write().await;
-                    *ws_guard = Some(loaded.workspace.clone());
-                    *self.is_indexed.write().await = true;
-                    info!("📦 Using daemon workspace: {}", target_path.display());
-                    return;
-                }
-            }
-            // Workspace registered but not yet loaded — daemon indexer will handle it.
-            info!("⏳ Workspace registered, waiting for daemon indexer");
-            return;
-        }
-
-        // Stdio mode: run auto-indexing in background task
+        // Run auto-indexing in background task
         let handler = self.clone();
         tokio::spawn(async move {
             handler.run_auto_indexing().await;
