@@ -488,7 +488,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "get_symbols",
-        description = "Get symbols (functions, classes, etc.) from a file without reading full content.",
+        description = "Get symbols (functions, classes, etc.) from a file without reading full content. Requires exact file path — use deep_dive(symbol=...) if you don't know the path.",
         annotations(
             title = "Get File Symbols",
             read_only_hint = true,

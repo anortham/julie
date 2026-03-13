@@ -112,7 +112,7 @@ impl DeepDiveTool {
         let workspace = handler
             .get_workspace()
             .await?
-            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+            .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first."))?;
 
         let db_arc = workspace
             .db

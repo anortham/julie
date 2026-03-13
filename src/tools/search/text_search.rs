@@ -40,7 +40,7 @@ pub async fn text_search_impl(
     let workspace = handler
         .get_workspace()
         .await?
-        .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+        .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first."))?;
 
     // Determine if we're targeting a reference workspace
     let ref_workspace_id = if let Some(ref ids) = workspace_ids {

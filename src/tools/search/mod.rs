@@ -171,7 +171,7 @@ impl FastSearchTool {
         if optimized.results.is_empty() {
             let message = format!(
                 "🔍 No results found for: '{}'\n\
-                💡 Try a broader search term or different keywords",
+                💡 Try search_target=\"content\" for line-level search, or a broader query",
                 self.query
             );
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));

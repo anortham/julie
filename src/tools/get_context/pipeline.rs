@@ -158,8 +158,9 @@ pub fn run_pipeline(
 
     if search_results.results.is_empty() {
         return Ok(format!(
-            "\u{2550}\u{2550}\u{2550} Context: \"{}\" \u{2550}\u{2550}\u{2550}\nNo relevant symbols found.",
-            query
+            "\u{2550}\u{2550}\u{2550} Context: \"{}\" \u{2550}\u{2550}\u{2550}\nNo relevant symbols found.\n\
+            💡 Try fast_search(query=\"{}\") for exact matches, or verify the workspace is indexed",
+            query, query
         ));
     }
 
@@ -501,18 +502,18 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             let workspace = handler
                 .get_workspace()
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+                .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first."))?;
 
             let search_index = workspace
                 .search_index
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Search index not initialized"))?
+                .ok_or_else(|| anyhow::anyhow!("Search index not initialized. Run manage_workspace(operation=\"index\") first."))?
                 .clone();
 
             let db = workspace
                 .db
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Database not initialized"))?
+                .ok_or_else(|| anyhow::anyhow!("Database not initialized. Run manage_workspace(operation=\"index\") first."))?
                 .clone();
 
             let embedding_provider = workspace.embedding_provider.clone();

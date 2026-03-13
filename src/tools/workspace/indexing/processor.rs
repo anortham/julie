@@ -57,7 +57,7 @@ impl ManageWorkspaceTool {
             let primary_workspace = handler
                 .get_workspace()
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+                .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first."))?;
 
             let ref_db_path = primary_workspace.workspace_db_path(&workspace_id);
             debug!(

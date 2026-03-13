@@ -72,10 +72,24 @@ pub async fn get_symbols_from_reference(
 
     // Check if file exists before querying database
     if !std::path::Path::new(&absolute_path).exists() {
-        let message = format!(
-            "❌ File not found: {}\n💡 Check the file path - use relative paths from workspace root",
-            file_path
-        );
+        let mut message = format!("❌ File not found: {}", file_path);
+        if let Some(target_name) = target {
+            // Symbol-first intent — point to deep_dive
+            message.push_str(&format!(
+                "\n💡 Try deep_dive(symbol=\"{}\") to find it without needing the file path",
+                target_name
+            ));
+        } else {
+            // File-first intent — point to fast_search with the filename
+            let filename = std::path::Path::new(file_path)
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_else(|| file_path.to_string());
+            message.push_str(&format!(
+                "\n💡 Try fast_search(query=\"{}\", search_target=\"definitions\") to locate the file",
+                filename
+            ));
+        }
         return Ok(CallToolResult::text_content(vec![Content::text(message)]));
     }
 

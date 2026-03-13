@@ -108,8 +108,9 @@ pub fn format_context_with_mode(data: &ContextData, output_format: OutputFormat)
 fn format_context_readable(data: &ContextData) -> String {
     if data.pivots.is_empty() {
         return format!(
-            "\u{2550}\u{2550}\u{2550} Context: \"{}\" \u{2550}\u{2550}\u{2550}\nNo relevant symbols found.",
-            data.query
+            "\u{2550}\u{2550}\u{2550} Context: \"{}\" \u{2550}\u{2550}\u{2550}\nNo relevant symbols found.\n\
+            💡 Try fast_search(query=\"{}\") for exact matches, or verify the workspace is indexed",
+            data.query, data.query
         );
     }
 
@@ -187,7 +188,11 @@ fn format_context_readable(data: &ContextData) -> String {
 
 fn format_context_compact(data: &ContextData) -> String {
     if data.pivots.is_empty() {
-        return format!("Context \"{}\" | no relevant symbols", data.query);
+        return format!(
+            "Context \"{}\" | no relevant symbols\n\
+            💡 Try fast_search(query=\"{}\") for exact matches, or verify the workspace is indexed",
+            data.query, data.query
+        );
     }
 
     let mut out = String::with_capacity(1536);

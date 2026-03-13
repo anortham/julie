@@ -62,7 +62,7 @@ pub async fn line_mode_search(
             let workspace_struct = handler
                 .get_workspace()
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("No workspace initialized for line search"))?;
+                .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first."))?;
 
             let db = workspace_struct
                 .db
@@ -245,7 +245,7 @@ pub async fn line_mode_search(
     if filtered_matches.is_empty() {
         let message = format!(
             "🔍 No lines found matching: '{}'\n\
-            💡 Try a broader search term or different query",
+            💡 Try search_target=\"definitions\" if looking for a symbol name, or broaden file_pattern/language filters",
             query
         );
         return Ok(CallToolResult::text_content(vec![Content::text(message)]));
