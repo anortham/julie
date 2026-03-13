@@ -72,7 +72,16 @@ fn test_lean_refs_single_definition() {
 #[test]
 fn test_lean_refs_no_results() {
     let output = format_lean_refs_results("Unknown", &[], &[], &HashMap::new());
-    assert_eq!(output, "No references found for \"Unknown\"");
+    assert!(
+        output.contains("No references found for \"Unknown\""),
+        "Should contain 'No references found' message, got: {}",
+        output
+    );
+    assert!(
+        output.contains("fast_search"),
+        "Should contain recovery hint suggesting fast_search, got: {}",
+        output
+    );
 }
 
 #[test]
