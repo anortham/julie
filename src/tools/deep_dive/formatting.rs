@@ -40,7 +40,7 @@ pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
         }
     }
 
-    // === Semantic similarity (full depth only) ===
+    // === Semantic similarity (context and full depth) ===
     format_similar_section(&mut out, &ctx.similar);
 
     out.trim_end().to_string()

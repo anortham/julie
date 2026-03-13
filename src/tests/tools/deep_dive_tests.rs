@@ -1961,7 +1961,7 @@ mod data_tests {
     }
 
     #[test]
-    fn test_similar_symbols_not_at_context_depth() {
+    fn test_similar_symbols_at_context_depth() {
         let (_tmp, mut db) = setup_db();
 
         let sym_a = make_symbol(
@@ -1993,11 +1993,11 @@ mod data_tests {
         db.store_embeddings(&[("sym-c".to_string(), emb_a), ("sym-d".to_string(), emb_b)])
             .unwrap();
 
-        // At "context" depth, similar should NOT be populated
+        // At "context" depth, similar SHOULD be populated
         let ctx_context = build_symbol_context(&db, &sym_a, "context", 10, 10).unwrap();
         assert!(
-            ctx_context.similar.is_empty(),
-            "similar should be empty at context depth"
+            !ctx_context.similar.is_empty(),
+            "similar should be populated at context depth"
         );
 
         // At "overview" depth, similar should NOT be populated
