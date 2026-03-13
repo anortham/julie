@@ -71,7 +71,7 @@ impl FastRefsTool {
     /// Returns formatted semantic results or empty string.
     /// Skips for reference workspace queries (may lack embeddings).
     async fn try_semantic_fallback(&self, handler: &JulieServerHandler) -> String {
-        use crate::search::similarity::{self, MIN_SIMILARITY_SCORE};
+        use crate::search::similarity;
         use super::formatting::format_semantic_fallback;
 
         // Skip for reference workspace queries
@@ -106,8 +106,12 @@ impl FastRefsTool {
             Err(_) => return String::new(),
         };
 
+        // Use a lower threshold than MIN_SIMILARITY_SCORE (0.5) because we're
+        // comparing a raw symbol name against rich metadata embeddings (kind +
+        // name + signature + docstring). Different input domains = lower scores.
+        const QUERY_SIMILARITY_THRESHOLD: f32 = 0.3;
         let similar = match similarity::find_similar_by_query(
-            &db_guard, &query_vector, 5, MIN_SIMILARITY_SCORE,
+            &db_guard, &query_vector, 5, QUERY_SIMILARITY_THRESHOLD,
         ) {
             Ok(results) => results,
             Err(_) => return String::new(),
