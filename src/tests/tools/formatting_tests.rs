@@ -4,8 +4,9 @@ use std::collections::HashMap;
 
 use crate::extractors::base::{RelationshipKind, SymbolKind, Visibility};
 use crate::extractors::{Relationship, Symbol};
-use crate::tools::navigation::formatting::format_lean_refs_results;
+use crate::tools::navigation::formatting::{format_lean_refs_results, format_semantic_fallback};
 use crate::tools::navigation::resolution::parse_qualified_name;
+use crate::search::similarity::SimilarEntry;
 
 fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&str>) -> Symbol {
     Symbol {
@@ -325,4 +326,61 @@ fn test_parse_qualified_name_dot_nested() {
         parse_qualified_name("package.Class.method"),
         Some(("package.Class", "method"))
     );
+}
+
+#[test]
+fn test_format_semantic_fallback_with_results() {
+    let entries = vec![SimilarEntry {
+        symbol: Symbol {
+            id: "s1".to_string(),
+            name: "UserDto".to_string(),
+            kind: SymbolKind::Class,
+            language: "csharp".to_string(),
+            file_path: "src/api/models.cs".to_string(),
+            start_line: 45,
+            end_line: 80,
+            start_column: 0,
+            end_column: 0,
+            start_byte: 0,
+            end_byte: 100,
+            parent_id: None,
+            signature: None,
+            visibility: Some(Visibility::Public),
+            doc_comment: None,
+            content_type: None,
+            confidence: None,
+            semantic_group: None,
+            metadata: None,
+            code_context: None,
+        },
+        score: 0.82,
+    }];
+
+    let output = format_semantic_fallback("IUser", &entries);
+    assert!(
+        output.contains("Related symbols (semantic)"),
+        "Should contain header. Got:\n{}",
+        output
+    );
+    assert!(
+        output.contains("UserDto"),
+        "Should contain symbol name. Got:\n{}",
+        output
+    );
+    assert!(
+        output.contains("0.82"),
+        "Should contain score. Got:\n{}",
+        output
+    );
+    assert!(
+        output.contains("src/api/models.cs:45"),
+        "Should contain file:line. Got:\n{}",
+        output
+    );
+}
+
+#[test]
+fn test_format_semantic_fallback_empty() {
+    let output = format_semantic_fallback("IUser", &[]);
+    assert!(output.is_empty(), "Should return empty string for no results");
 }

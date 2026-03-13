@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use crate::extractors::{Relationship, Symbol, SymbolKind};
+use crate::search::similarity::SimilarEntry;
 
 /// Truncate a signature to `max_len` characters, appending "..." if trimmed.
 fn truncate_signature(sig: &str, max_len: usize) -> String {
@@ -148,4 +149,44 @@ pub fn format_lean_refs_results(
     }
 
     output.trim_end().to_string()
+}
+
+/// Format semantic similarity results for the zero-ref fallback in fast_refs.
+pub fn format_semantic_fallback(symbol: &str, similar: &[SimilarEntry]) -> String {
+    if similar.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::from("\nRelated symbols (semantic):\n");
+
+    for entry in similar {
+        let kind = entry.symbol.kind.to_string();
+        let vis = entry
+            .symbol
+            .visibility
+            .as_ref()
+            .map(|v| v.to_string().to_lowercase())
+            .unwrap_or_default();
+        let kind_vis = if vis.is_empty() {
+            kind
+        } else {
+            format!("{}, {}", kind, vis)
+        };
+
+        out.push_str(&format!(
+            "  {:<25} {:.2}  {}:{} ({})\n",
+            entry.symbol.name,
+            entry.score,
+            entry.symbol.file_path,
+            entry.symbol.start_line,
+            kind_vis,
+        ));
+    }
+
+    out.push_str(&format!(
+        "\nThese are semantically similar to \"{}\", not exact references",
+        symbol
+    ));
+
+    out
 }
