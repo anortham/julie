@@ -6,6 +6,7 @@
 pub mod debug;
 mod error;
 pub mod expansion;
+pub mod similarity;
 pub mod hybrid;
 pub mod index;
 pub mod language_config;

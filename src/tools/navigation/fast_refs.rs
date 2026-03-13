@@ -66,6 +66,55 @@ impl FastRefsTool {
         )]))
     }
 
+    /// When zero references are found, try semantic similarity as a fallback.
+    /// Returns formatted semantic results or empty string.
+    /// Skips for reference workspace queries (may lack embeddings).
+    async fn try_semantic_fallback(&self, handler: &JulieServerHandler) -> String {
+        use crate::search::similarity::{self, MIN_SIMILARITY_SCORE};
+        use super::formatting::format_semantic_fallback;
+
+        // Skip for reference workspace queries
+        if self.workspace.is_some() && self.workspace.as_deref() != Some("primary") {
+            return String::new();
+        }
+
+        let workspace = match handler.get_workspace().await {
+            Ok(Some(w)) => w,
+            _ => return String::new(),
+        };
+
+        let db = match workspace.db.as_ref() {
+            Some(db) => db,
+            None => return String::new(),
+        };
+
+        let db_guard = match db.lock() {
+            Ok(guard) => guard,
+            Err(_) => return String::new(),
+        };
+
+        // Find the symbol by name to get its ID for embedding lookup
+        let symbols = match db_guard.find_symbols_by_name(&self.symbol) {
+            Ok(syms) => syms,
+            Err(_) => return String::new(),
+        };
+
+        // Filter out imports, take first definition match
+        let symbol = match symbols.iter().find(|s| s.kind != SymbolKind::Import) {
+            Some(s) => s.clone(),
+            None => return String::new(),
+        };
+
+        let similar = match similarity::find_similar_symbols(
+            &db_guard, &symbol, 5, MIN_SIMILARITY_SCORE,
+        ) {
+            Ok(results) => results,
+            Err(_) => return String::new(),
+        };
+
+        format_semantic_fallback(&self.symbol, &similar)
+    }
+
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!("Finding references for: {}", self.symbol);
 
@@ -78,8 +127,15 @@ impl FastRefsTool {
             self.find_references_and_definitions(handler, workspace_target).await?;
 
         if definitions.is_empty() && references.is_empty() {
+            // Attempt semantic fallback (primary workspace only)
+            let semantic_section = self.try_semantic_fallback(handler).await;
+
             let empty_names = HashMap::new();
-            return self.create_result(vec![], vec![], &empty_names);
+            let mut result_text = format_lean_refs_results(
+                &self.symbol, &[], &[], &empty_names,
+            );
+            result_text.push_str(&semantic_section);
+            return Ok(CallToolResult::text_content(vec![Content::text(result_text)]));
         }
 
         // Resolve from_symbol_id → name for each reference so the formatter
