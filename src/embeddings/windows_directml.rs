@@ -102,7 +102,7 @@ fn adapter_info_from_desc(index: i32, desc: &DXGI_ADAPTER_DESC1) -> DirectMlAdap
     DirectMlAdapterInfo {
         index,
         name,
-        is_software: desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0,
+        is_software: (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0,
         is_discrete: dedicated_video_memory > 0,
         dedicated_video_memory,
         is_remote: normalized.contains("remote desktop")
