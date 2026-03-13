@@ -74,22 +74,12 @@ impl FastRefsTool {
         use crate::search::similarity;
         use super::formatting::format_semantic_fallback;
 
-        // Skip for reference workspace queries
-        if self.workspace.is_some() && self.workspace.as_deref() != Some("primary") {
-            return String::new();
-        }
-
         let workspace = match handler.get_workspace().await {
             Ok(Some(w)) => w,
             _ => return String::new(),
         };
 
-        // Need both DB and embedding provider
-        let db = match workspace.db.as_ref() {
-            Some(db) => db,
-            None => return String::new(),
-        };
-
+        // Embedding provider comes from the primary workspace (same model for all)
         let provider = match workspace.embedding_provider.as_ref() {
             Some(p) => p,
             None => return String::new(),
@@ -101,23 +91,49 @@ impl FastRefsTool {
             Err(_) => return String::new(),
         };
 
-        let db_guard = match db.lock() {
-            Ok(guard) => guard,
-            Err(_) => return String::new(),
-        };
+        // Use the correct DB: reference workspace DB if specified, primary otherwise
+        let is_reference = self.workspace.is_some()
+            && self.workspace.as_deref() != Some("primary");
 
         // Use a lower threshold than MIN_SIMILARITY_SCORE (0.5) because we're
         // comparing a raw symbol name against rich metadata embeddings (kind +
         // name + signature + docstring). Different input domains = lower scores.
         const QUERY_SIMILARITY_THRESHOLD: f32 = 0.3;
-        let similar = match similarity::find_similar_by_query(
-            &db_guard, &query_vector, 5, QUERY_SIMILARITY_THRESHOLD,
-        ) {
-            Ok(results) => results,
-            Err(_) => return String::new(),
-        };
 
-        format_semantic_fallback(&self.symbol, &similar)
+        if is_reference {
+            let ref_id = self.workspace.as_deref().unwrap();
+            let db_arc = match handler.get_database_for_workspace(ref_id).await {
+                Ok(db) => db,
+                Err(_) => return String::new(),
+            };
+            let db_guard = match db_arc.lock() {
+                Ok(guard) => guard,
+                Err(_) => return String::new(),
+            };
+            let similar = match similarity::find_similar_by_query(
+                &db_guard, &query_vector, 5, QUERY_SIMILARITY_THRESHOLD,
+            ) {
+                Ok(results) => results,
+                Err(_) => return String::new(),
+            };
+            format_semantic_fallback(&self.symbol, &similar)
+        } else {
+            let db = match workspace.db.as_ref() {
+                Some(db) => db,
+                None => return String::new(),
+            };
+            let db_guard = match db.lock() {
+                Ok(guard) => guard,
+                Err(_) => return String::new(),
+            };
+            let similar = match similarity::find_similar_by_query(
+                &db_guard, &query_vector, 5, QUERY_SIMILARITY_THRESHOLD,
+            ) {
+                Ok(results) => results,
+                Err(_) => return String::new(),
+            };
+            format_semantic_fallback(&self.symbol, &similar)
+        }
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -132,7 +148,7 @@ impl FastRefsTool {
             self.find_references_and_definitions(handler, workspace_target).await?;
 
         if definitions.is_empty() && references.is_empty() {
-            // Attempt semantic fallback (primary workspace only)
+            // Attempt semantic fallback (works for both primary and reference workspaces)
             let semantic_section = self.try_semantic_fallback(handler).await;
 
             let empty_names = HashMap::new();
