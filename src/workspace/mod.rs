@@ -347,11 +347,37 @@ impl JulieWorkspace {
     fn find_workspace_root(start_path: &Path) -> Result<Option<PathBuf>> {
         let mut current = start_path.to_path_buf();
 
+        // Resolve the global Julie config dir (~/.julie/) so we can skip it.
+        // Without this guard, walking up from a temp dir or any path without
+        // a .git boundary would find ~/.julie/ and treat the entire home
+        // directory as a workspace — potentially walking OneDrive-synced
+        // folders and triggering mass file downloads on Windows.
+        let global_julie_home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .ok()
+            .map(|h| PathBuf::from(h).join(".julie"));
+
         loop {
             let julie_dir = current.join(".julie");
             if julie_dir.exists() && julie_dir.is_dir() {
-                debug!("Found .julie directory at: {}", julie_dir.display());
-                return Ok(Some(julie_dir));
+                // Skip the global ~/.julie/ config dir — it's not a workspace
+                let is_global = global_julie_home.as_ref().map_or(false, |home| {
+                    julie_dir
+                        .canonicalize()
+                        .unwrap_or_else(|_| julie_dir.clone())
+                        == home
+                            .canonicalize()
+                            .unwrap_or_else(|_| home.clone())
+                });
+                if is_global {
+                    debug!(
+                        "Skipping global ~/.julie/ config dir at: {}",
+                        current.display()
+                    );
+                } else {
+                    debug!("Found .julie directory at: {}", julie_dir.display());
+                    return Ok(Some(julie_dir));
+                }
             }
 
             // Treat .git (file or directory) as a project boundary.

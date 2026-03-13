@@ -20,6 +20,48 @@ pub struct SimilarEntry {
     pub score: f32,
 }
 
+/// Find symbols semantically similar to a query vector.
+///
+/// Use this when you don't have a stored symbol — e.g., embedding a search term
+/// on the fly via `provider.embed_query()`. No self-filtering is applied since
+/// the query isn't a stored symbol.
+pub fn find_similar_by_query(
+    db: &SymbolDatabase,
+    query_vector: &[f32],
+    limit: usize,
+    min_score: f32,
+) -> Result<Vec<SimilarEntry>> {
+    let knn_results = db.knn_search(query_vector, limit)?;
+
+    let filtered: Vec<(String, f64)> = knn_results
+        .into_iter()
+        .filter(|(_, distance)| (1.0 - distance) as f32 >= min_score)
+        .take(limit)
+        .collect();
+
+    if filtered.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let distances: HashMap<String, f64> = filtered.iter().cloned().collect();
+    let symbol_ids: Vec<String> = filtered.iter().map(|(id, _)| id.clone()).collect();
+
+    let symbols = db.get_symbols_by_ids(&symbol_ids)?;
+
+    let mut entries = Vec::new();
+    for id in &symbol_ids {
+        if let Some(sym) = symbols.iter().find(|s| &s.id == id) {
+            let distance = distances.get(id).copied().unwrap_or(1.0);
+            entries.push(SimilarEntry {
+                symbol: sym.clone(),
+                score: (1.0 - distance) as f32,
+            });
+        }
+    }
+
+    Ok(entries)
+}
+
 /// Find symbols semantically similar to `symbol` via KNN on stored embeddings.
 ///
 /// Returns empty Vec if the symbol has no embedding (graceful degradation).

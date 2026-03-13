@@ -67,6 +67,7 @@ impl FastRefsTool {
     }
 
     /// When zero references are found, try semantic similarity as a fallback.
+    /// Embeds the symbol name on the fly and finds similar symbols by vector distance.
     /// Returns formatted semantic results or empty string.
     /// Skips for reference workspace queries (may lack embeddings).
     async fn try_semantic_fallback(&self, handler: &JulieServerHandler) -> String {
@@ -83,9 +84,21 @@ impl FastRefsTool {
             _ => return String::new(),
         };
 
+        // Need both DB and embedding provider
         let db = match workspace.db.as_ref() {
             Some(db) => db,
             None => return String::new(),
+        };
+
+        let provider = match workspace.embedding_provider.as_ref() {
+            Some(p) => p,
+            None => return String::new(),
+        };
+
+        // Embed the symbol name on the fly — no need for it to exist in the DB
+        let query_vector = match provider.embed_query(&self.symbol) {
+            Ok(vec) => vec,
+            Err(_) => return String::new(),
         };
 
         let db_guard = match db.lock() {
@@ -93,20 +106,8 @@ impl FastRefsTool {
             Err(_) => return String::new(),
         };
 
-        // Find the symbol by name to get its ID for embedding lookup
-        let symbols = match db_guard.find_symbols_by_name(&self.symbol) {
-            Ok(syms) => syms,
-            Err(_) => return String::new(),
-        };
-
-        // Filter out imports, take first definition match
-        let symbol = match symbols.iter().find(|s| s.kind != SymbolKind::Import) {
-            Some(s) => s.clone(),
-            None => return String::new(),
-        };
-
-        let similar = match similarity::find_similar_symbols(
-            &db_guard, &symbol, 5, MIN_SIMILARITY_SCORE,
+        let similar = match similarity::find_similar_by_query(
+            &db_guard, &query_vector, 5, MIN_SIMILARITY_SCORE,
         ) {
             Ok(results) => results,
             Err(_) => return String::new(),
