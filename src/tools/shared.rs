@@ -95,6 +95,30 @@ pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
     "DerivedData",
 ];
 
+/// Common method/function names that are too ambiguous to resolve reliably.
+///
+/// These names appear across virtually all 31 supported languages (e.g., `new`, `len`,
+/// `get`, `from`). The relationship resolver often picks the wrong symbol because
+/// dozens of definitions share the name. Filtering them from callee/neighbor lists
+/// prevents misleading results and frees token budget for real symbols.
+///
+/// Used by: deep_dive (callee filtering), get_context (neighbor filtering).
+pub const NOISE_CALLEE_NAMES: &[&str] = &[
+    // Constructors / converters — every language has these
+    "new", "default", "from", "into", "try_from", "try_into",
+    // Accessors — too generic to resolve
+    "as_ref", "as_mut", "borrow", "borrow_mut", "get", "set",
+    // Unwrapping / error handling
+    "unwrap", "expect", "ok", "err",
+    // Trait / protocol boilerplate
+    "clone", "to_string", "fmt", "eq", "ne", "cmp", "partial_cmp",
+    "hash", "drop", "deref", "deref_mut",
+    // Collection / iterator plumbing
+    "is_empty", "len", "iter", "into_iter", "collect",
+    "map", "filter", "push", "pop", "insert", "remove",
+    "with_capacity", "and_then", "or_else", "push_str",
+];
+
 /// File extensions that are likely to contain code and should be indexed
 #[allow(dead_code)]
 pub const KNOWN_CODE_EXTENSIONS: &[&str] = &[

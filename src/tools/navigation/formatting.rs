@@ -5,6 +5,8 @@
 //! - Familiar grep-style output
 //! - Zero parsing overhead
 
+use std::collections::HashMap;
+
 use crate::extractors::{Relationship, Symbol, SymbolKind};
 
 /// Truncate a signature to `max_len` characters, appending "..." if trimmed.
@@ -34,15 +36,16 @@ fn truncate_signature(sig: &str, max_len: usize) -> String {
 ///   src/handlers/login.rs:5 (import)
 ///
 /// References (4):
-///   src/api/auth.rs:42 (Calls)
-///   src/api/profile.rs:28 (Uses)
-///   src/handlers/login.rs:55 (Calls)
-///   src/tests/user_test.rs:12 (Uses)
+///   src/api/auth.rs:42  handle_request (Calls)
+///   src/api/profile.rs:28  get_profile (Uses)
+///   src/handlers/login.rs:55  login (Calls)
+///   src/tests/user_test.rs:12  test_user (Uses)
 /// ```
 pub fn format_lean_refs_results(
     symbol: &str,
     definitions: &[Symbol],
     references: &[Relationship],
+    source_names: &HashMap<String, String>,
 ) -> String {
     let mut output = String::new();
     let total = definitions.len() + references.len();
@@ -120,16 +123,24 @@ pub fn format_lean_refs_results(
         output.push('\n');
     }
 
-    // References section
+    // References section — unified format: file:line  name (Kind)
     if !references.is_empty() {
         output.push_str(&format!("References ({}):\n", references.len()));
 
         for rel in references {
             let kind = format!("{:?}", rel.kind);
-            output.push_str(&format!(
-                "  {}:{} ({})\n",
-                rel.file_path, rel.line_number, kind
-            ));
+            let name = source_names.get(&rel.from_symbol_id);
+            if let Some(name) = name {
+                output.push_str(&format!(
+                    "  {}:{}  {} ({})\n",
+                    rel.file_path, rel.line_number, name, kind
+                ));
+            } else {
+                output.push_str(&format!(
+                    "  {}:{} ({})\n",
+                    rel.file_path, rel.line_number, kind
+                ));
+            }
         }
     }
 

@@ -128,8 +128,6 @@ mod formatting_tests {
             "should have Neighbors section"
         );
 
-        // Files section
-        assert!(output.contains("Files"), "should have Files section");
     }
 
     // === Test 3: Centrality hints ===
@@ -472,77 +470,6 @@ mod formatting_tests {
         );
     }
 
-    // === Test 9: File map section ===
-
-    #[test]
-    fn test_file_map_section() {
-        let data = ContextData {
-            query: "payment".to_string(),
-            pivots: vec![
-                make_pivot(
-                    "process_payment",
-                    "src/payment/processor.rs",
-                    42,
-                    25.0,
-                    "fn process_payment() {}",
-                ),
-                make_pivot(
-                    "PaymentMethod",
-                    "src/payment/types.rs",
-                    10,
-                    8.0,
-                    "enum PaymentMethod {}",
-                ),
-            ],
-            neighbors: vec![
-                make_neighbor(
-                    "Receipt",
-                    "src/payment/types.rs",
-                    35,
-                    Some("struct Receipt"),
-                    None,
-                ),
-                make_neighbor(
-                    "validate",
-                    "src/payment/validation.rs",
-                    1,
-                    Some("fn validate()"),
-                    None,
-                ),
-            ],
-            allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
-        };
-
-        let output = format_context(&data);
-
-        // Files section should exist
-        assert!(output.contains("Files"), "should have Files section");
-
-        // All unique files should appear
-        assert!(
-            output.contains("src/payment/processor.rs"),
-            "pivot file should appear in file map"
-        );
-        assert!(
-            output.contains("src/payment/types.rs"),
-            "shared file should appear"
-        );
-        assert!(
-            output.contains("src/payment/validation.rs"),
-            "neighbor-only file should appear"
-        );
-
-        // Annotations
-        assert!(
-            output.contains("pivot: process_payment"),
-            "file map should annotate pivots"
-        );
-        assert!(
-            output.contains("neighbor: Receipt"),
-            "file map should annotate neighbors"
-        );
-    }
-
     // === Test 10: Multiple pivots in output ===
 
     #[test]
@@ -882,9 +809,12 @@ mod formatting_tests {
         let compact_tokens = estimator.estimate_string_hybrid(&compact) as f64;
         let reduction = 1.0 - (compact_tokens / readable_tokens);
 
+        // With the redundant Files section removed from readable, the gap between
+        // readable and compact is smaller. The remaining savings come from: no Unicode
+        // decorators, no alignment padding, KEY=VALUE format vs labeled sections.
         assert!(
-            reduction >= 0.15,
-            "compact should reduce estimated tokens by >=15% (readable={}, compact={}, reduction={:.1}%)",
+            reduction >= 0.05,
+            "compact should reduce estimated tokens by >=5% (readable={}, compact={}, reduction={:.1}%)",
             readable_tokens,
             compact_tokens,
             reduction * 100.0

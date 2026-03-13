@@ -3,8 +3,6 @@
 //! Renders pivots (with code bodies or signatures), neighbors (with signatures or names),
 //! a file map, and centrality hints into a structured text response.
 
-use std::collections::BTreeMap;
-
 use super::allocation::{Allocation, NeighborMode};
 
 /// All data needed to format a get_context response.
@@ -184,16 +182,6 @@ fn format_context_readable(data: &ContextData) -> String {
         }
     }
 
-    // --- Files section ---
-    out.push('\n');
-    out.push_str(
-        "\u{2500}\u{2500} Files \u{2500}\u{2500}\u{2500}\n",
-    );
-    let file_map = build_file_map(data);
-    for (file_path, annotations) in &file_map {
-        out.push_str(&format!("  {}   ({})\n", file_path, annotations.join(", ")));
-    }
-
     out
 }
 
@@ -317,24 +305,3 @@ fn count_unique_files(data: &ContextData) -> usize {
     files.len()
 }
 
-/// Build a sorted file map: file_path -> list of annotation strings.
-///
-/// Annotations describe what role each symbol plays in that file:
-/// - "pivot: name" for pivots
-/// - "neighbor: name" for neighbors
-fn build_file_map<'a>(data: &'a ContextData) -> BTreeMap<&'a str, Vec<String>> {
-    let mut map: BTreeMap<&str, Vec<String>> = BTreeMap::new();
-
-    for p in &data.pivots {
-        map.entry(p.file_path.as_str())
-            .or_default()
-            .push(format!("pivot: {}", p.name));
-    }
-    for n in &data.neighbors {
-        map.entry(n.file_path.as_str())
-            .or_default()
-            .push(format!("neighbor: {}", n.name));
-    }
-
-    map
-}

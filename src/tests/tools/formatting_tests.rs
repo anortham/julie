@@ -1,5 +1,7 @@
 //! Tests for navigation output formatting (format_lean_refs_results)
 
+use std::collections::HashMap;
+
 use crate::extractors::base::{RelationshipKind, SymbolKind, Visibility};
 use crate::extractors::{Relationship, Symbol};
 use crate::tools::navigation::formatting::format_lean_refs_results;
@@ -56,7 +58,7 @@ fn test_lean_refs_single_definition() {
         make_test_relationship("src/handler.rs", 55, RelationshipKind::Uses),
     ];
 
-    let output = format_lean_refs_results("UserService", &defs, &refs);
+    let output = format_lean_refs_results("UserService", &defs, &refs, &HashMap::new());
 
     assert!(output.contains("3 references to \"UserService\":"));
     assert!(output.contains("Definition:"));
@@ -69,7 +71,7 @@ fn test_lean_refs_single_definition() {
 
 #[test]
 fn test_lean_refs_no_results() {
-    let output = format_lean_refs_results("Unknown", &[], &[]);
+    let output = format_lean_refs_results("Unknown", &[], &[], &HashMap::new());
     assert_eq!(output, "No references found for \"Unknown\"");
 }
 
@@ -84,7 +86,7 @@ fn test_truncate_signature() {
         SymbolKind::Function,
         Some(long_sig),
     )];
-    let output = format_lean_refs_results("test_fn", &defs, &[]);
+    let output = format_lean_refs_results("test_fn", &defs, &[], &HashMap::new());
     // The output should contain the definition but signature should be truncated
     assert!(output.contains("src/lib.rs:1 (function)"));
     assert!(output.contains("→ "));
@@ -100,7 +102,7 @@ fn test_lean_refs_uses_first_signature_line_only() {
         Some(multiline_sig),
     )];
 
-    let output = format_lean_refs_results("example", &defs, &[]);
+    let output = format_lean_refs_results("example", &defs, &[], &HashMap::new());
 
     assert!(output.contains("→ fn example("));
     assert!(
@@ -121,7 +123,7 @@ fn test_truncate_signature_keeps_total_length_within_limit() {
         Some(long_sig),
     )];
 
-    let output = format_lean_refs_results("test_fn", &defs, &[]);
+    let output = format_lean_refs_results("test_fn", &defs, &[], &HashMap::new());
     let signature = output
         .lines()
         .find_map(|line| line.split("→ ").nth(1))
@@ -157,7 +159,7 @@ fn test_lean_refs_separates_imports_from_definitions() {
         RelationshipKind::Calls,
     )];
 
-    let output = format_lean_refs_results("UserService", &defs, &refs);
+    let output = format_lean_refs_results("UserService", &defs, &refs, &HashMap::new());
 
     // Total should include all definitions + references
     assert!(
@@ -201,7 +203,7 @@ fn test_lean_refs_single_import_uses_singular() {
     let import = make_test_symbol("src/api/auth.rs", 3, SymbolKind::Import, None);
     let defs = vec![import];
 
-    let output = format_lean_refs_results("UserService", &defs, &[]);
+    let output = format_lean_refs_results("UserService", &defs, &[], &HashMap::new());
 
     assert!(
         output.contains("Import:\n"),
@@ -212,6 +214,55 @@ fn test_lean_refs_single_import_uses_singular() {
     assert!(
         !output.contains("Definition:"),
         "Should not show Definition section when only imports exist"
+    );
+}
+
+// --- Reference line format tests (Step 3 + 4: names + unified format) ---
+
+#[test]
+fn test_lean_refs_includes_source_symbol_names() {
+    let defs = vec![make_test_symbol(
+        "src/user.rs",
+        15,
+        SymbolKind::Struct,
+        Some("pub struct UserService"),
+    )];
+    let mut refs = vec![make_test_relationship(
+        "src/api.rs",
+        42,
+        RelationshipKind::Calls,
+    )];
+    // Set a known from_symbol_id so we can provide a name for it
+    refs[0].from_symbol_id = "caller_123".to_string();
+
+    let mut source_names = HashMap::new();
+    source_names.insert("caller_123".to_string(), "handle_request".to_string());
+
+    let output = format_lean_refs_results("UserService", &defs, &refs, &source_names);
+
+    // Unified format: file:line  name (Kind)
+    assert!(
+        output.contains("src/api.rs:42  handle_request (Calls)"),
+        "Reference line should include source symbol name. Got:\n{}",
+        output
+    );
+}
+
+#[test]
+fn test_lean_refs_graceful_without_source_names() {
+    let refs = vec![make_test_relationship(
+        "src/api.rs",
+        42,
+        RelationshipKind::Uses,
+    )];
+
+    // Empty source names — should fall back to file:line (Kind) without name
+    let output = format_lean_refs_results("Foo", &[], &refs, &HashMap::new());
+
+    assert!(
+        output.contains("src/api.rs:42 (Uses)"),
+        "Should fall back to kind-only when no source name available. Got:\n{}",
+        output
     );
 }
 

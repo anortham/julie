@@ -13,6 +13,7 @@ use tracing::debug;
 
 use crate::database::SymbolDatabase;
 use crate::extractors::base::{RelationshipKind, Symbol};
+use crate::tools::shared::NOISE_CALLEE_NAMES;
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
 
@@ -387,9 +388,9 @@ fn get_pivot_relationship_names_batched(
     let mut incoming_names = Vec::new();
     let mut outgoing_names = Vec::new();
 
-    // Filter: skip noise trait methods and test file symbols
+    // Filter: skip noise callee names and test file symbols
     let should_include = |name: &str, path: &str| -> bool {
-        !NOISE_NEIGHBOR_NAMES.contains(&name) && !is_test_path(path)
+        !NOISE_CALLEE_NAMES.contains(&name) && !is_test_path(path)
     };
 
     if let Some(incoming_ids) = incoming_by_pivot.get(pivot_id) {
@@ -415,24 +416,7 @@ fn get_pivot_relationship_names_batched(
     (incoming_names, outgoing_names)
 }
 
-/// Common trait method names that provide no useful context as neighbors.
-/// These are boilerplate implementations that appear everywhere but tell you nothing
-/// about the actual code architecture.
-const NOISE_NEIGHBOR_NAMES: &[&str] = &[
-    "clone",
-    "to_string",
-    "fmt",
-    "eq",
-    "ne",
-    "cmp",
-    "partial_cmp",
-    "hash",
-    "drop",
-    "deref",
-    "deref_mut",
-    "is_empty",
-    "len",
-];
+// Noise callee names are shared across tools — see NOISE_CALLEE_NAMES in shared.rs
 
 /// Build NeighborEntry structs from graph expansion results, filtering noise.
 /// Filters out: common trait methods (clone, fmt, etc.) and test file symbols.
@@ -442,7 +426,7 @@ fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::
     expansion
         .neighbors
         .iter()
-        .filter(|neighbor| !NOISE_NEIGHBOR_NAMES.contains(&neighbor.symbol.name.as_str()))
+        .filter(|neighbor| !NOISE_CALLEE_NAMES.contains(&neighbor.symbol.name.as_str()))
         .filter(|neighbor| !is_test_path(&neighbor.symbol.file_path))
         .map(|neighbor| NeighborEntry {
             name: neighbor.symbol.name.clone(),

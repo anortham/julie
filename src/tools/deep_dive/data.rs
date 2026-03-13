@@ -9,6 +9,7 @@ use tracing::debug;
 
 use crate::database::SymbolDatabase;
 use crate::extractors::base::{RelationshipKind, Symbol, SymbolKind};
+use crate::tools::shared::NOISE_CALLEE_NAMES;
 
 /// Aggregated context for a single symbol, ready for formatting
 #[derive(Debug)]
@@ -149,6 +150,15 @@ pub fn build_symbol_context(
             .collect();
         enrich_refs(db, &mut outgoing, &id_map)?;
     }
+
+    // Filter noise callees — common names like `new`, `len`, `from` that
+    // resolve to wrong symbols because they're too ambiguous
+    let pre_filter_len = outgoing.len();
+    outgoing.retain(|r| {
+        let name = r.symbol.as_ref().map(|s| s.name.as_str()).unwrap_or("");
+        !NOISE_CALLEE_NAMES.contains(&name)
+    });
+    let outgoing_total = outgoing_total.saturating_sub(pre_filter_len - outgoing.len());
 
     // === Identifier fallback: catch refs that relationships miss ===
     let (incoming, incoming_total) =

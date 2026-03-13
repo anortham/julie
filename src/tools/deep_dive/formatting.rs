@@ -465,39 +465,55 @@ fn format_ref_section(
     out.push_str(&header);
 
     for r in refs {
+        let kind = format!("{:?}", r.kind);
         match depth {
             "full" => {
                 // Full: show signature + body if available
                 if let Some(sym) = &r.symbol {
                     let name = sym.signature.as_deref().unwrap_or(&sym.name);
-                    out.push_str(&format!("  {}:{}  {}\n", r.file_path, r.line_number, name));
+                    out.push_str(&format!(
+                        "  {}:{}  {} ({})\n",
+                        r.file_path, r.line_number, name, kind
+                    ));
                     if let Some(code) = &sym.code_context {
                         for line in code.lines().take(10) {
                             out.push_str(&format!("    {}\n", line));
                         }
                     }
                 } else {
-                    out.push_str(&format!("  {}:{}\n", r.file_path, r.line_number));
+                    out.push_str(&format!(
+                        "  {}:{} ({})\n",
+                        r.file_path, r.line_number, kind
+                    ));
                 }
             }
             "context" => {
-                // Context: show signature
+                // Context: show signature + kind
                 if let Some(sym) = &r.symbol {
                     let name = sym.signature.as_deref().unwrap_or(&sym.name);
-                    out.push_str(&format!("  {}:{}  {}\n", r.file_path, r.line_number, name));
+                    out.push_str(&format!(
+                        "  {}:{}  {} ({})\n",
+                        r.file_path, r.line_number, name, kind
+                    ));
                 } else {
-                    out.push_str(&format!("  {}:{}\n", r.file_path, r.line_number));
+                    out.push_str(&format!(
+                        "  {}:{} ({})\n",
+                        r.file_path, r.line_number, kind
+                    ));
                 }
             }
             _ => {
-                // Overview: just location + name
+                // Overview: location + name + kind
                 if let Some(sym) = &r.symbol {
                     out.push_str(&format!(
-                        "  {}:{}  {}\n",
-                        r.file_path, r.line_number, sym.name
+                        "  {}:{}  {} ({})\n",
+                        r.file_path, r.line_number, sym.name, kind
                     ));
                 } else {
-                    out.push_str(&format!("  {}:{}\n", r.file_path, r.line_number));
+                    out.push_str(&format!(
+                        "  {}:{} ({})\n",
+                        r.file_path, r.line_number, kind
+                    ));
                 }
             }
         }

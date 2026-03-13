@@ -57,8 +57,10 @@ impl FastRefsTool {
         &self,
         definitions: Vec<Symbol>,
         references: Vec<Relationship>,
+        source_names: &HashMap<String, String>,
     ) -> Result<CallToolResult> {
-        let lean_output = format_lean_refs_results(&self.symbol, &definitions, &references);
+        let lean_output =
+            format_lean_refs_results(&self.symbol, &definitions, &references, source_names);
         Ok(CallToolResult::text_content(vec![Content::text(
             lean_output,
         )]))
@@ -76,8 +78,13 @@ impl FastRefsTool {
             self.find_references_and_definitions(handler, workspace_target).await?;
 
         if definitions.is_empty() && references.is_empty() {
-            return self.create_result(vec![], vec![]);
+            let empty_names = HashMap::new();
+            return self.create_result(vec![], vec![], &empty_names);
         }
+
+        // Resolve from_symbol_id → name for each reference so the formatter
+        // can show the calling symbol's name (e.g., "format_definition_search_results (Calls)")
+        let source_names = self.resolve_source_names(handler, &references).await;
 
         // Respect include_definition parameter
         let defs = if self.include_definition {
@@ -86,7 +93,49 @@ impl FastRefsTool {
             vec![]
         };
 
-        self.create_result(defs, references)
+        self.create_result(defs, references, &source_names)
+    }
+
+    /// Batch-resolve from_symbol_id values to symbol names for reference display.
+    async fn resolve_source_names(
+        &self,
+        handler: &JulieServerHandler,
+        references: &[Relationship],
+    ) -> HashMap<String, String> {
+        let ids: Vec<String> = references
+            .iter()
+            .map(|r| r.from_symbol_id.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        if ids.is_empty() {
+            return HashMap::new();
+        }
+
+        let result = if let Ok(Some(workspace)) = handler.get_workspace().await {
+            if let Some(db) = workspace.db.as_ref() {
+                let db_arc = db.clone();
+                tokio::task::spawn_blocking(move || {
+                    let db_lock = super::lock_db(&db_arc, "fast_refs source name resolution");
+                    match db_lock.get_symbols_by_ids(&ids) {
+                        Ok(symbols) => symbols
+                            .into_iter()
+                            .map(|s| (s.id.clone(), s.name.clone()))
+                            .collect(),
+                        Err(_) => HashMap::new(),
+                    }
+                })
+                .await
+                .unwrap_or_default()
+            } else {
+                HashMap::new()
+            }
+        } else {
+            HashMap::new()
+        };
+
+        result
     }
 
     async fn find_references_and_definitions(
