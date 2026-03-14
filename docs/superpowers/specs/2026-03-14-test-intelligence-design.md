@@ -33,21 +33,66 @@ For every production symbol, determine which test symbols exercise it and aggreg
 
 Existing tables — no new tables or schema migrations.
 
-1. **Relationships table** — Where `from_symbol` has `metadata["is_test"] = true` and `to_symbol` does not. These are direct "test calls production code" edges (kind = "Calls", "Uses", etc.).
-2. **Identifiers table** — Where the containing symbol has `is_test = true` and the referenced name matches a non-test symbol. These capture "test references production symbol" even without a resolved relationship.
+**Strategy 1 — Relationships (high confidence):** Query relationships where `from_symbol` has `metadata["is_test"] = true` and `to_symbol` does not. These are direct "test calls production code" edges (kind = "Calls", "Uses", etc.). Resolved by the relationship resolver, so linkage is precise.
+
+**Strategy 2 — Identifiers (medium confidence):** Query identifiers where the containing symbol has `is_test = true`. Prefer `target_symbol_id` when populated (precise linkage). When `target_symbol_id` is NULL (common — resolved on-demand, not at index time), fall back to name matching against non-test symbols, disambiguated by file proximity (same directory > same parent > anywhere). This fallback can produce false positives for common names, but the deduplication step limits the damage.
 
 ### Algorithm
 
 New function `compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats>`:
 
-1. Query all relationships where `from_symbol` has `metadata["is_test"] = true` and `to_symbol` does NOT
-2. Query identifiers where the containing symbol has `is_test = true` and the referenced name matches a non-test symbol
-3. Deduplicate by `(test_symbol_id, production_symbol_id)` pairs
-4. For each production symbol, aggregate:
-   - Count of distinct test symbols that exercise it
-   - Best and worst quality tier among those tests (from test symbol's `metadata["test_quality"]["quality_tier"]`)
-   - Names of the covering test functions (capped at 5 for storage)
-5. Bulk UPDATE production symbols' metadata
+**Step 1 — Relationship-based linkage:**
+
+```sql
+SELECT r.to_symbol_id AS prod_id, s_test.id AS test_id, s_test.name AS test_name,
+       json_extract(s_test.metadata, '$.test_quality.quality_tier') AS tier
+FROM relationships r
+JOIN symbols s_test ON r.from_symbol_id = s_test.id
+JOIN symbols s_prod ON r.to_symbol_id = s_prod.id
+WHERE json_extract(s_test.metadata, '$.is_test') = 1
+  AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
+       OR json_extract(s_prod.metadata, '$.is_test') != 1)
+  AND r.kind IN ('Calls', 'Uses', 'References', 'Instantiates', 'Imports')
+```
+
+**Step 2 — Identifier-based linkage (supplements step 1):**
+
+```sql
+-- Precise: use target_symbol_id when available
+SELECT i.target_symbol_id AS prod_id, s_test.id AS test_id, s_test.name AS test_name,
+       json_extract(s_test.metadata, '$.test_quality.quality_tier') AS tier
+FROM identifiers i
+JOIN symbols s_test ON i.containing_symbol_id = s_test.id
+JOIN symbols s_prod ON i.target_symbol_id = s_prod.id
+WHERE json_extract(s_test.metadata, '$.is_test') = 1
+  AND i.target_symbol_id IS NOT NULL
+  AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
+       OR json_extract(s_prod.metadata, '$.is_test') != 1)
+
+-- Fallback: name match when target_symbol_id is NULL
+-- Disambiguate by preferring symbols in the same directory tree
+SELECT s_prod.id AS prod_id, s_test.id AS test_id, s_test.name AS test_name,
+       json_extract(s_test.metadata, '$.test_quality.quality_tier') AS tier
+FROM identifiers i
+JOIN symbols s_test ON i.containing_symbol_id = s_test.id
+JOIN symbols s_prod ON s_prod.name = i.name
+WHERE json_extract(s_test.metadata, '$.is_test') = 1
+  AND i.target_symbol_id IS NULL
+  AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
+       OR json_extract(s_prod.metadata, '$.is_test') != 1)
+  AND s_prod.kind NOT IN ('Import', 'Export', 'Module', 'Namespace')
+```
+
+For the name-match fallback, when multiple production symbols match, prefer the one whose `file_path` shares the longest common directory prefix with the test file. This handles the "3 functions named `validate`" case by picking the one closest in the directory tree.
+
+**Step 3** — Deduplicate by `(test_symbol_id, production_symbol_id)` pairs across both strategies.
+
+**Step 4** — For each production symbol, aggregate:
+- Count of distinct test symbols that exercise it
+- Best and worst quality tier among those tests (from test symbol's `metadata["test_quality"]["quality_tier"]`)
+- Names of the covering test functions (capped at 5 for storage)
+
+**Step 5** — Bulk UPDATE production symbols' metadata
 
 ### Storage
 
@@ -80,14 +125,33 @@ For every non-test symbol, compute a 0.0–1.0 score representing "how risky is 
 
 ### Formula
 
-Four normalized signals, weighted:
+Four normalized signals (all 0.0–1.0), weighted:
 
 | Signal | Weight | Source | Meaning |
 |--------|--------|--------|---------|
-| **Centrality** | 0.35 | `reference_score` column | How many things depend on this |
-| **Visibility** | 0.25 | `visibility` column | Public = 1.0, Protected = 0.5, Private = 0.2 |
+| **Centrality** | 0.35 | `reference_score` column (normalized) | How many things depend on this |
+| **Visibility** | 0.25 | `visibility` column | Public = 1.0, Protected = 0.5, Private = 0.2, NULL = 0.5 |
 | **Test weakness** | 0.30 | `test_coverage` metadata (Layer C) | Inverse of coverage quality |
-| **Symbol kind** | 0.10 | `kind` column | Functions/methods = 1.0, classes/structs = 0.7, constants/fields = 0.3 |
+| **Symbol kind** | 0.10 | `kind` column | Callable = 1.0, container = 0.7, data = 0.3 |
+
+**Centrality normalization:** `reference_score` is an unbounded weighted count (e.g., 0.0 to 50.0+). Normalize to 0.0–1.0 using a logarithmic sigmoid:
+
+```
+centrality_normalized = min(1.0, ln(1.0 + reference_score) / ln(1.0 + P95))
+```
+
+Where `P95` is the 95th percentile `reference_score` in the workspace, computed once at the start of `compute_change_risk_scores()`. This ensures the top 5% of symbols saturate at 1.0 and the distribution is spread meaningfully across the range. If `P95 = 0` (no reference scores), all centrality values are 0.0.
+
+**Visibility mapping:** NULL visibility (common in Python, Go, JS, C) maps to 0.5 — assume moderate exposure when unknown.
+
+**Symbol kind mapping:**
+
+| Weight | Kinds |
+|--------|-------|
+| 1.0 (callable) | Function, Method, Constructor, Destructor, Operator |
+| 0.7 (container) | Class, Struct, Interface, Trait, Enum, Union, Module, Namespace, Type, Delegate |
+| 0.3 (data) | Variable, Constant, Property, Field, EnumMember, Event |
+| 0.0 (skip) | Import, Export — excluded from risk scoring entirely |
 
 **Test weakness mapping:**
 
@@ -165,7 +229,10 @@ Pivots:
   PaymentConfig    src/config.rs:5  (struct, public)  [LOW risk]
 ```
 
-**Implementation:** In `src/tools/get_context/formatting.rs`, extract risk label from `metadata["change_risk"]["label"]` when formatting pivots. No label for neighbors (too noisy at that density).
+**Implementation:** Requires two changes:
+
+1. **Pipeline** (`src/tools/get_context/pipeline.rs`): When constructing `PivotEntry` from pivot results (~line 365), extract `metadata["change_risk"]["label"]` and store in a new `pub risk_label: Option<String>` field on `PivotEntry`.
+2. **Formatting** (`src/tools/get_context/formatting.rs`): When formatting pivot lines, append `[{risk_label} risk]` when the field is `Some`. No label for neighbors (too noisy at that density).
 
 ### What does NOT change
 
@@ -188,7 +255,7 @@ Extract & Store
   → compute_change_risk_scores()        [NEW - Layer D]
 ```
 
-Order matters: each step depends on the previous. Change risk needs test coverage, which needs test quality, which needs reference scores.
+Order matters: change risk reads `reference_score` (from step 3), `test_quality` tiers (from step 4), and `test_coverage` (from step 5). Test coverage reads `test_quality` tiers to determine best/worst tier. So steps 3→4→5→6 must run in sequence.
 
 Hook point: `src/tools/workspace/indexing/processor.rs`, after the existing `compute_test_quality_metrics()` call (~line 520).
 
@@ -203,7 +270,8 @@ Hook point: `src/tools/workspace/indexing/processor.rs`, after the existing `com
 | `src/analysis/change_risk.rs` | **NEW** — `compute_change_risk_scores()` | ~150 |
 | `src/tools/workspace/indexing/processor.rs` | Hook two new functions after test quality | ~6 |
 | `src/tools/deep_dive/formatting.rs` | Add `format_change_risk_info()` | ~40 |
-| `src/tools/get_context/formatting.rs` | Append risk label to pivot lines | ~15 |
+| `src/tools/get_context/pipeline.rs` | Add `risk_label` to `PivotEntry`, extract from metadata | ~10 |
+| `src/tools/get_context/formatting.rs` | Append risk label to pivot lines | ~10 |
 | `src/tests/analysis/test_coverage_tests.rs` | **NEW** — linkage computation tests | ~300 |
 | `src/tests/analysis/change_risk_tests.rs` | **NEW** — risk scoring tests | ~250 |
 
