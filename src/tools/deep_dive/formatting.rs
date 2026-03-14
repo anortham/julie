@@ -63,6 +63,9 @@ fn format_header(out: &mut String, ctx: &SymbolContext) {
     if let Some(sig) = &s.signature {
         out.push_str(&format!("  {}\n", sig));
     }
+
+    // Show test quality info when the symbol itself is a test
+    format_test_quality_info(out, s);
 }
 
 fn format_body(out: &mut String, ctx: &SymbolContext, depth: &str) {
@@ -90,21 +93,84 @@ fn body_line_limit(depth: &str) -> usize {
     }
 }
 
-/// Show test file locations at full depth
+/// Show test file locations at context and full depth, with quality tiers when available
 fn format_test_locations(out: &mut String, ctx: &SymbolContext, depth: &str) {
-    if depth != "full" || ctx.test_refs.is_empty() {
+    if (depth != "full" && depth != "context") || ctx.test_refs.is_empty() {
         return;
     }
     out.push_str(&format!("\nTest locations ({}):\n", ctx.test_refs.len()));
     for r in &ctx.test_refs {
         if let Some(sym) = &r.symbol {
+            let quality_tag = extract_quality_tier(&sym.metadata);
             out.push_str(&format!(
-                "  {}:{}  {}\n",
-                r.file_path, r.line_number, sym.name
+                "  {}:{}  {}{}\n",
+                r.file_path, r.line_number, sym.name, quality_tag
             ));
         } else {
             out.push_str(&format!("  {}:{}\n", r.file_path, r.line_number));
         }
+    }
+}
+
+/// Extract quality tier tag from symbol metadata, e.g. "  [thorough]"
+fn extract_quality_tier(
+    metadata: &Option<std::collections::HashMap<String, serde_json::Value>>,
+) -> String {
+    metadata
+        .as_ref()
+        .and_then(|m| m.get("test_quality"))
+        .and_then(|tq| tq.get("quality_tier"))
+        .and_then(|v| v.as_str())
+        .map(|tier| format!("  [{}]", tier))
+        .unwrap_or_default()
+}
+
+/// Format test quality info line when the primary symbol IS a test
+fn format_test_quality_info(out: &mut String, symbol: &crate::extractors::base::Symbol) {
+    let metadata = match &symbol.metadata {
+        Some(m) => m,
+        None => return,
+    };
+
+    // Only show for test symbols
+    let is_test = metadata
+        .get("is_test")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !is_test {
+        return;
+    }
+
+    let tq = match metadata.get("test_quality") {
+        Some(v) => v,
+        None => return,
+    };
+
+    let tier = tq
+        .get("quality_tier")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    // Build detail parts from available metrics
+    let mut details = Vec::new();
+    if let Some(count) = tq.get("assertion_count").and_then(|v| v.as_u64()) {
+        details.push(format!("{} assertions", count));
+    }
+    if let Some(count) = tq.get("mock_count").and_then(|v| v.as_u64()) {
+        details.push(format!("{} mocks", count));
+    }
+    if let Some(density) = tq.get("assertion_density").and_then(|v| v.as_f64()) {
+        details.push(format!("{:.2} density", density));
+    }
+
+    if details.is_empty() {
+        out.push_str(&format!("  Test quality: {}\n", tier));
+    } else {
+        out.push_str(&format!(
+            "  Test quality: {} ({})\n",
+            tier,
+            details.join(", ")
+        ));
     }
 }
 

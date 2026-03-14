@@ -1032,6 +1032,222 @@ mod formatting_tests {
             output
         );
     }
+
+    // === Test quality tier in test refs ===
+
+    #[test]
+    fn test_quality_tier_displayed_in_test_refs() {
+        let sym = make_symbol(
+            "process_payment",
+            SymbolKind::Function,
+            "src/payment.rs",
+            10,
+            Some("pub fn process_payment()"),
+            None,
+            None,
+        );
+        let mut test_sym = make_symbol(
+            "test_process_payment",
+            SymbolKind::Function,
+            "tests/payment_tests.rs",
+            45,
+            Some("fn test_process_payment()"),
+            None,
+            None,
+        );
+        // Set test_quality metadata on the test symbol
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert(
+            "test_quality".to_string(),
+            serde_json::json!({
+                "quality_tier": "thorough",
+                "assertion_count": 5
+            }),
+        );
+        test_sym.metadata = Some(metadata);
+
+        let mut ctx = empty_context(sym);
+        ctx.test_refs = vec![make_ref(
+            RelationshipKind::Calls,
+            "tests/payment_tests.rs",
+            45,
+            Some(test_sym),
+        )];
+
+        let output = format_symbol_context(&ctx, "full");
+        assert!(
+            output.contains("[thorough]"),
+            "should display quality tier tag, got: {}",
+            output
+        );
+        assert!(
+            output.contains("test_process_payment  [thorough]"),
+            "quality tier should follow test name, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_no_quality_data_no_empty_brackets() {
+        let sym = make_symbol(
+            "process_payment",
+            SymbolKind::Function,
+            "src/payment.rs",
+            10,
+            None,
+            None,
+            None,
+        );
+        let test_sym = make_symbol(
+            "test_process_payment",
+            SymbolKind::Function,
+            "tests/payment_tests.rs",
+            45,
+            None,
+            None,
+            None,
+        );
+        // No metadata set — test_sym.metadata is None
+
+        let mut ctx = empty_context(sym);
+        ctx.test_refs = vec![make_ref(
+            RelationshipKind::Calls,
+            "tests/payment_tests.rs",
+            45,
+            Some(test_sym),
+        )];
+
+        let output = format_symbol_context(&ctx, "full");
+        assert!(
+            output.contains("test_process_payment"),
+            "should still show test name, got: {}",
+            output
+        );
+        assert!(
+            !output.contains("[]"),
+            "should NOT show empty brackets when no quality data, got: {}",
+            output
+        );
+        assert!(
+            !output.contains("  ["),
+            "should NOT show any quality tag bracket when no data, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_quality_info_shown_for_test_symbol_self() {
+        let mut sym = make_symbol(
+            "test_process_payment",
+            SymbolKind::Function,
+            "tests/payment_tests.rs",
+            45,
+            Some("fn test_process_payment()"),
+            None,
+            None,
+        );
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("is_test".to_string(), serde_json::json!(true));
+        metadata.insert(
+            "test_quality".to_string(),
+            serde_json::json!({
+                "quality_tier": "thorough",
+                "assertion_count": 5,
+                "mock_count": 1,
+                "assertion_density": 0.25
+            }),
+        );
+        sym.metadata = Some(metadata);
+
+        let ctx = empty_context(sym);
+        let output = format_symbol_context(&ctx, "full");
+        assert!(
+            output.contains("Test quality: thorough"),
+            "should show test quality line for test symbol, got: {}",
+            output
+        );
+        assert!(
+            output.contains("5 assertions"),
+            "should show assertion count, got: {}",
+            output
+        );
+        assert!(
+            output.contains("1 mocks"),
+            "should show mock count, got: {}",
+            output
+        );
+        assert!(
+            output.contains("0.25 density"),
+            "should show assertion density, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_no_quality_info_for_non_test_symbol() {
+        let mut sym = make_symbol(
+            "process_payment",
+            SymbolKind::Function,
+            "src/payment.rs",
+            10,
+            Some("pub fn process_payment()"),
+            None,
+            None,
+        );
+        // Has metadata but is_test is false
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("is_test".to_string(), serde_json::json!(false));
+        sym.metadata = Some(metadata);
+
+        let ctx = empty_context(sym);
+        let output = format_symbol_context(&ctx, "full");
+        assert!(
+            !output.contains("Test quality:"),
+            "should NOT show test quality for non-test symbols, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_context_depth_shows_test_locations() {
+        let sym = make_symbol(
+            "search_index",
+            SymbolKind::Function,
+            "src/search/index.rs",
+            42,
+            Some("pub fn search_index()"),
+            None,
+            None,
+        );
+        let test_sym = make_symbol(
+            "test_search_basic",
+            SymbolKind::Function,
+            "src/tests/search_tests.rs",
+            78,
+            Some("fn test_search_basic()"),
+            None,
+            None,
+        );
+        let mut ctx = empty_context(sym);
+        ctx.test_refs = vec![make_ref(
+            RelationshipKind::Calls,
+            "src/tests/search_tests.rs",
+            78,
+            Some(test_sym),
+        )];
+
+        let output = format_symbol_context(&ctx, "context");
+        assert!(
+            output.contains("Test locations"),
+            "context depth should show test locations, got: {}",
+            output
+        );
+        assert!(
+            output.contains("test_search_basic"),
+            "should show test name at context depth, got: {}",
+            output
+        );
+    }
 }
 
 #[cfg(test)]
@@ -2005,6 +2221,50 @@ mod data_tests {
         assert!(
             ctx_overview.similar.is_empty(),
             "similar should be empty at overview depth"
+        );
+    }
+
+    #[test]
+    fn test_build_context_populates_test_refs_at_context_depth() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![make_symbol(
+            "sym-target",
+            "process",
+            SymbolKind::Function,
+            "src/engine.rs",
+            10,
+            None,
+            None,
+            None,
+            None,
+        )];
+        db.store_symbols(&symbols).unwrap();
+
+        // Identifier in a test file
+        insert_identifier(
+            &db,
+            "process",
+            "call",
+            "src/tests/search_tests.rs",
+            42,
+            None,
+        );
+
+        // At "context" depth, test_refs SHOULD be populated
+        let ctx = build_symbol_context(&db, &symbols[0], "context", 10, 10).unwrap();
+        assert_eq!(
+            ctx.test_refs.len(),
+            1,
+            "context depth should populate test_refs"
+        );
+        assert_eq!(ctx.test_refs[0].file_path, "src/tests/search_tests.rs");
+
+        // At "overview" depth, test_refs should NOT be populated
+        let ctx_overview = build_symbol_context(&db, &symbols[0], "overview", 10, 10).unwrap();
+        assert!(
+            ctx_overview.test_refs.is_empty(),
+            "overview should not populate test_refs"
         );
     }
 }

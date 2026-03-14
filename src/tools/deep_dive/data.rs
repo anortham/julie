@@ -28,7 +28,7 @@ pub struct SymbolContext {
     pub children: Vec<Symbol>,
     /// Implementations of this trait/interface
     pub implementations: Vec<Symbol>,
-    /// Test file references (populated at full depth only)
+    /// Test file references (populated at context and full depth)
     pub test_refs: Vec<RefEntry>,
     /// Semantically similar symbols (populated at "full" depth only)
     pub similar: Vec<SimilarEntry>,
@@ -190,8 +190,8 @@ pub fn build_symbol_context(
         symbol.clone()
     };
 
-    // === Test locations (full depth only) ===
-    let test_refs = if depth == "full" {
+    // === Test locations (context and full depth) ===
+    let test_refs = if depth == "full" || depth == "context" {
         build_test_refs(db, &symbol)?
     } else {
         vec![]
