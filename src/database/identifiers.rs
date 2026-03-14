@@ -8,6 +8,7 @@
 
 use super::*;
 use anyhow::Result;
+use std::collections::HashMap;
 use tracing::debug;
 
 /// Lightweight identifier reference — just the fields fast_refs needs.
@@ -115,6 +116,36 @@ impl SymbolDatabase {
             names.len()
         );
         Ok(results)
+    }
+
+    /// Get all call identifiers grouped by containing_symbol_id.
+    ///
+    /// Returns a HashMap mapping symbol_id → Vec<callee_name>.
+    /// Used by security risk analysis for batch sink detection.
+    pub fn get_call_identifiers_grouped(&self) -> Result<HashMap<String, Vec<String>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT containing_symbol_id, name FROM identifiers WHERE kind = 'call' AND containing_symbol_id IS NOT NULL"
+        )?;
+
+        let mut grouped: HashMap<String, Vec<String>> = HashMap::new();
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+            ))
+        })?;
+
+        for row in rows {
+            let (symbol_id, callee_name) = row?;
+            grouped.entry(symbol_id).or_default().push(callee_name);
+        }
+
+        debug!("Loaded {} call identifiers across {} symbols",
+            grouped.values().map(|v| v.len()).sum::<usize>(),
+            grouped.len()
+        );
+
+        Ok(grouped)
     }
 
     /// Find identifiers matching any of the given names or qualified forms, filtered by kind.
