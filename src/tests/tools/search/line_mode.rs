@@ -108,6 +108,7 @@ fn processPayment() {
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result = search_tool.call_tool(&handler).await?;
@@ -187,6 +188,7 @@ fn processPayment() {
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result = search_primary.call_tool(&handler).await?;
@@ -212,6 +214,7 @@ fn processPayment() {
             workspace: Some("nonexistent_workspace_id".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result = search_invalid.call_tool(&handler).await;
@@ -272,6 +275,7 @@ fn processPayment() {
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result = search_tool.call_tool(&handler).await?;
@@ -349,6 +353,7 @@ fn processPayment() {
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result = search_tool.call_tool(&handler).await?;
@@ -435,6 +440,7 @@ def python_function():
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result = search_rust.call_tool(&handler).await?;
@@ -462,6 +468,7 @@ def python_function():
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result_ts = search_ts.call_tool(&handler).await?;
@@ -530,6 +537,7 @@ def python_function():
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result = search_src.call_tool(&handler).await?;
@@ -554,6 +562,7 @@ def python_function():
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result_tests = search_tests.call_tool(&handler).await?;
@@ -619,6 +628,7 @@ def python_function():
             workspace: Some("primary".to_string()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result = search_combined.call_tool(&handler).await?;

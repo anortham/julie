@@ -65,6 +65,7 @@ async fn test_concurrent_content_searches_no_corruption() -> Result<()> {
                 workspace: Some("primary".to_string()),
                 search_target: "content".to_string(),
                 context_lines: Some(1),
+                exclude_tests: None,
             };
             tool.call_tool(&handler_clone).await
         });
@@ -159,6 +160,7 @@ async fn test_force_reindex_no_lock_busy_errors() -> Result<()> {
         workspace: Some("primary".to_string()),
         search_target: "content".to_string(),
         context_lines: None,
+        exclude_tests: None,
     };
     let search_result = tool.call_tool(&handler).await;
     assert!(

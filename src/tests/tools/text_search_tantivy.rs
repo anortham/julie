@@ -535,3 +535,204 @@ pub fn lookup_user_profile(id: u32) -> String {
 
     Ok(())
 }
+
+/// Create a shared fixture with both production and test functions.
+/// Returns (workspace_path, temp_dir) so the caller holds the TempDir alive.
+async fn setup_workspace_with_test_and_prod_symbols(
+) -> Result<(std::path::PathBuf, TempDir, crate::handler::JulieServerHandler)> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path().to_path_buf();
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+
+    // Write a Rust file containing both production functions and annotated test functions.
+    // The extractor detects #[test] attributes and sets metadata["is_test"] = true.
+    fs::write(
+        src_dir.join("payments.rs"),
+        r#"
+pub fn process_payment(amount: f64) -> bool {
+    amount > 0.0
+}
+
+pub fn validate_input(data: &str) -> bool {
+    !data.is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_process_payment() {
+        assert!(process_payment(10.0));
+    }
+
+    #[test]
+    fn test_validate_input() {
+        assert!(validate_input("hello"));
+    }
+}
+"#,
+    )?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await?;
+
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+
+    // Wait for background indexing to complete
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    Ok((workspace_path, temp_dir, handler))
+}
+
+/// Test 1: When `exclude_tests: Some(true)` is set, test symbols are filtered from
+/// definition search results. This exercises the `filter_test_symbols` path directly.
+///
+/// Note: The smart default for definition searches is always to include tests
+/// (`search_target == "definitions"` → `exclude_tests = false`). The NL auto-exclude
+/// smart default only resolves to `true` for non-definition targets, but those go
+/// through `content_search_with_index` which operates on files, not symbols.
+/// So explicit `Some(true)` is the practical mechanism for excluding tests.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_exclude_tests_explicit_true_filters_test_symbols() -> Result<()> {
+    let (_workspace_path, _temp_dir, handler) =
+        setup_workspace_with_test_and_prod_symbols().await?;
+
+    // Use an NL-like query so the intent is clear, but force exclude via Some(true)
+    // because the smart default for definitions search is to always include tests.
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+        "process payment",
+        &None,
+        &None,
+        20,
+        None,
+        "definitions",
+        None,
+        Some(true), // explicitly exclude test symbols
+        &handler,
+    )
+    .await?;
+
+    let has_test_symbol = results.iter().any(|s| s.name == "test_process_payment");
+    let has_prod_symbol = results.iter().any(|s| s.name == "process_payment");
+
+    assert!(
+        !has_test_symbol,
+        "exclude_tests=true should filter out test_process_payment; results: {:?}",
+        results.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
+    assert!(
+        has_prod_symbol,
+        "process_payment (production symbol) should still appear; results: {:?}",
+        results.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
+
+    Ok(())
+}
+
+/// Test 2: `exclude_tests: Some(false)` overrides any smart default and includes test
+/// symbols even when the query looks like natural language.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_exclude_tests_explicit_override_includes_tests() -> Result<()> {
+    let (_workspace_path, _temp_dir, handler) =
+        setup_workspace_with_test_and_prod_symbols().await?;
+
+    // Explicit Some(false) must include test symbols regardless of query shape.
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+        "process payment",
+        &None,
+        &None,
+        20,
+        None,
+        "definitions",
+        None,
+        Some(false), // explicit include — override any smart default
+        &handler,
+    )
+    .await?;
+
+    let has_test_symbol = results.iter().any(|s| s.name == "test_process_payment");
+
+    assert!(
+        has_test_symbol,
+        "exclude_tests=false should include test_process_payment; results: {:?}",
+        results.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
+
+    Ok(())
+}
+
+/// Test 3: The smart default (`exclude_tests: None`) for a definition search includes test
+/// symbols — definition searches are never auto-filtered.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_definition_search_includes_tests_by_default() -> Result<()> {
+    let (_workspace_path, _temp_dir, handler) =
+        setup_workspace_with_test_and_prod_symbols().await?;
+
+    // Search directly by identifier name — not NL-like (single term / underscore).
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+        "test_process_payment",
+        &None,
+        &None,
+        20,
+        None,
+        "definitions",
+        None,
+        None, // smart default — should include tests for definition searches
+        &handler,
+    )
+    .await?;
+
+    let has_test_symbol = results.iter().any(|s| s.name == "test_process_payment");
+
+    assert!(
+        has_test_symbol,
+        "definition search with exclude_tests=None should include test symbols; results: {:?}",
+        results.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
+
+    Ok(())
+}
+
+/// Test 4: `exclude_tests: Some(true)` with a direct identifier search for a test function
+/// should suppress that symbol even in definition mode.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_exclude_tests_explicit_true_filters_for_definitions() -> Result<()> {
+    let (_workspace_path, _temp_dir, handler) =
+        setup_workspace_with_test_and_prod_symbols().await?;
+
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+        "test_process_payment",
+        &None,
+        &None,
+        20,
+        None,
+        "definitions",
+        None,
+        Some(true), // force exclude even in definition mode
+        &handler,
+    )
+    .await?;
+
+    let has_test_symbol = results.iter().any(|s| s.name == "test_process_payment");
+
+    assert!(
+        !has_test_symbol,
+        "exclude_tests=Some(true) should remove test_process_payment from definition results; \
+         results: {:?}",
+        results.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
+
+    Ok(())
+}

@@ -113,6 +113,7 @@ pub fn process_user_data(input: &str) -> String {
         workspace: Some("primary".to_string()),
         search_target: "definitions".to_string(),
         context_lines: None, // Use default (1)
+        exclude_tests: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -187,6 +188,7 @@ pub fn calculate_sum(a: i32, b: i32) -> i32 {
         workspace: Some("primary".to_string()),
         search_target: "definitions".to_string(),
         context_lines: Some(0), // 0 = just match line
+        exclude_tests: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -266,6 +268,7 @@ pub fn validate_input(data: &str) -> bool {
         workspace: Some("primary".to_string()),
         search_target: "definitions".to_string(),
         context_lines: Some(3), // 3 = grep default (7 total lines)
+        exclude_tests: None,
     };
 
     let result = tool.call_tool(&handler).await?;
@@ -334,6 +337,7 @@ pub fn short_func() -> i32 { 42 }
         workspace: Some("primary".to_string()),
         search_target: "definitions".to_string(),
         context_lines: None, // Default (1)
+        exclude_tests: None,
     };
 
     let result = tool.call_tool(&handler).await?;

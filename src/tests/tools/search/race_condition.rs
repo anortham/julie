@@ -68,6 +68,7 @@ mod tests {
             workspace: None,
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         // Search MUST complete within 5 seconds or it's the lock contention bug
@@ -130,6 +131,7 @@ mod tests {
                     workspace: None,
                     search_target: "content".to_string(),
                     context_lines: None,
+                    exclude_tests: None,
                 };
 
                 timeout(
@@ -183,6 +185,7 @@ mod tests {
             workspace: None,
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result = timeout(Duration::from_secs(5), search_tool.call_tool(&handler)).await??;
@@ -252,6 +255,7 @@ pub fn helper_function() {}
                 workspace: None,
                 search_target: "content".to_string(),
                 context_lines: None,
+                exclude_tests: None,
             };
 
             let fast_search_query_b = FastSearchTool {
@@ -262,6 +266,7 @@ pub fn helper_function() {}
                 workspace: None,
                 search_target: "content".to_string(),
                 context_lines: None,
+                exclude_tests: None,
             };
 
             let get_symbols_main = GetSymbolsTool {
@@ -370,6 +375,7 @@ pub fn embedding_vector_semantic() {}
             workspace: None,
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         let result = timeout(
@@ -503,6 +509,7 @@ pub fn embedding_vector_semantic() {}
             workspace: Some(workspace_id.clone()),
             search_target: "content".to_string(),
             context_lines: None,
+            exclude_tests: None,
         };
 
         println!("🐛 TEST TRACE 10: About to call fast_search with 5s timeout");
