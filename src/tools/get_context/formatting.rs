@@ -58,6 +58,8 @@ pub struct PivotEntry {
     pub incoming_names: Vec<String>,
     /// Names of symbols this pivot calls/references (outgoing).
     pub outgoing_names: Vec<String>,
+    /// Change risk label (HIGH/MEDIUM/LOW) from metadata, if available.
+    pub risk_label: Option<String>,
 }
 
 /// Pre-processed neighbor for formatting.
@@ -139,9 +141,12 @@ fn format_context_readable(data: &ContextData) -> String {
             "\u{2500}\u{2500} Pivot: {} \u{2500}\u{2500}\u{2500}\n",
             pivot.name
         ));
+        let risk_tag = pivot.risk_label.as_ref()
+            .map(|l| format!("  [{} risk]", l))
+            .unwrap_or_default();
         out.push_str(&format!(
-            "{}:{} ({})\n",
-            pivot.file_path, pivot.start_line, pivot.kind
+            "{}:{} ({}){}\n",
+            pivot.file_path, pivot.start_line, pivot.kind, risk_tag
         ));
         let label = centrality_label(pivot.reference_score);
         out.push_str(&format!("  Centrality: {}\n", label));

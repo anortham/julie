@@ -362,6 +362,13 @@ fn build_pivot_entries(
             .copied()
             .unwrap_or(0.0);
 
+        let risk_label = batch.full_symbols.get(&pivot.result.id)
+            .and_then(|sym| sym.metadata.as_ref())
+            .and_then(|m| m.get("change_risk"))
+            .and_then(|r| r.get("label"))
+            .and_then(|l| l.as_str())
+            .map(String::from);
+
         entries.push(PivotEntry {
             name: pivot.result.name.clone(),
             file_path: pivot.result.file_path.clone(),
@@ -371,6 +378,7 @@ fn build_pivot_entries(
             content,
             incoming_names,
             outgoing_names,
+            risk_label,
         });
     }
 
