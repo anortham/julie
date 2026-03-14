@@ -52,7 +52,7 @@ JOIN symbols s_prod ON r.to_symbol_id = s_prod.id
 WHERE json_extract(s_test.metadata, '$.is_test') = 1
   AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
        OR json_extract(s_prod.metadata, '$.is_test') != 1)
-  AND r.kind IN ('Calls', 'Uses', 'References', 'Instantiates', 'Imports')
+  AND r.kind IN ('calls', 'uses', 'references', 'instantiates', 'imports')
 ```
 
 **Step 2 — Identifier-based linkage (supplements step 1):**
@@ -80,7 +80,7 @@ WHERE json_extract(s_test.metadata, '$.is_test') = 1
   AND i.target_symbol_id IS NULL
   AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
        OR json_extract(s_prod.metadata, '$.is_test') != 1)
-  AND s_prod.kind NOT IN ('Import', 'Export', 'Module', 'Namespace')
+  AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')
 ```
 
 For the name-match fallback, when multiple production symbols match, prefer the one whose `file_path` shares the longest common directory prefix with the test file. This handles the "3 functions named `validate`" case by picking the one closest in the directory tree.
@@ -231,7 +231,7 @@ Pivots:
 
 **Implementation:** Requires two changes:
 
-1. **Pipeline** (`src/tools/get_context/pipeline.rs`): When constructing `PivotEntry` from pivot results (~line 365), extract `metadata["change_risk"]["label"]` and store in a new `pub risk_label: Option<String>` field on `PivotEntry`.
+1. **Pipeline** (`src/tools/get_context/pipeline.rs`): When constructing `PivotEntry` (~line 365), extract `metadata["change_risk"]["label"]` from `batch.full_symbols` (the SQLite-hydrated `Symbol` objects, not from `pivot.result` which is a Tantivy `SymbolSearchResult` without metadata). Store in a new `pub risk_label: Option<String>` field on `PivotEntry`. Note: in `SignatureOnly` mode, `full_symbols` is empty — risk labels will be absent, which is acceptable since `SignatureOnly` is the compact mode.
 2. **Formatting** (`src/tools/get_context/formatting.rs`): When formatting pivot lines, append `[{risk_label} risk]` when the field is `Some`. No label for neighbors (too noisy at that density).
 
 ### What does NOT change
