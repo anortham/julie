@@ -39,16 +39,18 @@ Five structural signals, each normalized to 0.0–1.0:
 
 ### Exposure signal (0.25)
 
-Same mapping as change risk visibility + kind, combined:
+Reuses the same `visibility_score()` from `change_risk.rs` but uses a security-specific kind weight (containers and data are less relevant for security than for change risk):
 
 ```
-exposure = visibility_score * kind_weight
+exposure = visibility_score * security_kind_weight
 ```
 
 Where:
-- `visibility_score`: public = 1.0, protected = 0.5, private = 0.2, NULL = 0.5
-- `kind_weight`: callable (Function/Method/Constructor/etc.) = 1.0, container = 0.5, data = 0.2
-- Import/Export excluded from scoring entirely (kind_weight returns None)
+- `visibility_score`: public = 1.0, protected = 0.5, private = 0.2, NULL = 0.5 (reuse from change_risk)
+- `security_kind_weight`: callable (Function/Method/Constructor/etc.) = 1.0, container = 0.3, data = 0.1
+- Import/Export excluded from scoring entirely (returns None)
+
+The lower container/data weights reflect that security risk is primarily about callable code that handles input and calls sinks, not data structures.
 
 ### Input handling signal (0.25)
 
@@ -69,9 +71,9 @@ QueryString, RouteParams
 ByteArray, Vec<u8>, &[u8]
 ```
 
-**Score:** 1.0 if any pattern matches, 0.0 otherwise. Binary signal — either the function accepts untrusted input or it doesn't.
+**Score:** 1.0 if any pattern matches in the parameter portion, 0.0 otherwise. Binary signal.
 
-**Implementation note:** Match against the full signature string. Most extractors produce signatures like `pub fn name(param: Type, other: &str) -> Result<T>`. The parameter patterns above are designed to match within these signature formats across languages.
+**Implementation note:** To avoid false positives on return types (e.g., `fn get_user() -> String`), split the signature at the return type delimiter before matching. Heuristic: find the last `->` (Rust), `:` after `)` (TypeScript/Python), or `returns` keyword, and only match patterns in the text BEFORE that delimiter. If no delimiter is found, match the full signature (many languages don't have explicit return type syntax in signatures). This is imperfect but catches the majority of cases.
 
 ### Sink calls signal (0.30)
 
@@ -86,17 +88,41 @@ child_process, ShellExecute, CreateProcess
 
 **Category B — Database/query operations:**
 ```
-execute, query, raw_sql, exec_query, executeQuery,
-executeUpdate, cursor.execute, raw, rawQuery, prepare,
-sql, RunSQL, db.Exec, db.Query
+execute, raw_sql, exec_query, executeQuery, executeUpdate,
+cursor.execute, rawQuery, RunSQL, db.Exec, db.Query
 ```
 
-**Detection algorithm:**
-1. Query all identifiers where `containing_symbol_id = this_symbol` AND `kind = 'call'` AND `name` matches any sink pattern
-2. Query all relationships where `from_symbol_id = this_symbol` AND `kind = 'calls'` AND target symbol name matches any sink pattern
-3. Deduplicate by sink name
-4. Score: 0.0 if no sinks found, 0.7 if one sink, 1.0 if multiple sinks
-5. Store detected sink names (capped at 5) for display
+Note: `prepare`, `query`, `sql`, and `raw` are intentionally excluded — they're too common in safe abstractions (query builders, ORMs, test helpers) and produce excessive false positives.
+
+**Matching strategy:** Split the identifier/symbol name by `::` and `.` separators, then **exact-match the final segment** against the sink list. Examples:
+- `db.execute` → final segment `execute` → **matches**
+- `cursor.execute` → final segment `execute` → **matches**
+- `execution_context` → final segment `execution_context` → **no match**
+- `SymbolDatabase::new` → final segment `new` → **no match**
+- `os.system` → final segment `system` → **matches**
+
+For multi-segment sink patterns like `Process.Start`, match the last N segments: `Process.Start` matches when the last two segments are `Process` and `Start`.
+
+**Detection algorithm — batch approach:**
+
+Pre-load all relevant data once, then match in-memory (avoids O(N) per-symbol queries):
+
+1. **Pre-load identifiers:** Query all identifiers where `kind = 'call'`, grouped by `containing_symbol_id` into a `HashMap<String, Vec<String>>` (symbol_id → list of callee names). This requires a new query method `get_call_identifiers_grouped()` on `SymbolDatabase` (see file structure).
+
+2. **Pre-load relationship callees:** Query all relationships where `kind = 'calls'`, JOIN to symbols table to get the callee name, grouped by `from_symbol_id` into a `HashMap<String, Vec<String>>`.
+
+```sql
+SELECT r.from_symbol_id, s_callee.name
+FROM relationships r
+JOIN symbols s_callee ON r.to_symbol_id = s_callee.id
+WHERE r.kind = 'calls'
+```
+
+3. **Per-symbol matching:** For each symbol being scored, look up its callee names from both HashMaps, apply the final-segment matching strategy against the sink pattern list.
+
+4. Deduplicate matched sink names.
+5. Score: 0.0 if no sinks found, 0.7 if one sink, 1.0 if multiple sinks.
+6. Store detected sink names (capped at 5) for display.
 
 ### Blast radius signal (0.10)
 
@@ -132,7 +158,7 @@ security_risk = 0.25 * exposure + 0.25 * input_handling + 0.30 * sink_calls + 0.
 | < 0.4 | LOW |
 
 **Scoring gate:** Only symbols where at least one of these is true get scored:
-- `exposure > 0.5` (public callable)
+- `exposure >= 0.5` (public callable or public container)
 - `input_handling > 0` (accepts untrusted-looking params)
 - `sink_calls > 0` (calls a dangerous function)
 
@@ -151,7 +177,7 @@ In the symbol's existing `metadata` JSON column:
     "label": "HIGH",
     "signals": {
       "exposure": 1.0,
-      "input_handling": 0.8,
+      "input_handling": 1.0,
       "sink_calls": ["execute", "raw_sql"],
       "blast_radius": 0.60,
       "untested": true
@@ -181,7 +207,7 @@ Security Risk: HIGH (0.85) — calls execute, raw_sql; public; accepts string pa
   untested: yes
 ```
 
-**Implementation:** New `format_security_risk_info()` in `src/tools/deep_dive/formatting.rs`. Wired into the same call sites as `format_change_risk_info`. Self-skips when no `security_risk` key in metadata.
+**Implementation:** New `format_security_risk_info()` in `src/tools/deep_dive/formatting.rs`. Wire into the kind-specific formatter call sites only (after `format_change_risk_info` in `format_callable`, `format_class_or_struct`, etc.) — NOT in `format_header`, to avoid double-rendering. Self-skips when no `security_risk` key in metadata.
 
 ### `get_context` — security label on pivots
 
@@ -230,6 +256,7 @@ Hook point: `src/tools/workspace/indexing/processor.rs`, after `compute_change_r
 |------|--------|-----------|
 | `src/analysis/mod.rs` | Add `pub mod security_risk;` + re-export | ~2 |
 | `src/analysis/security_risk.rs` | **NEW** — signals, patterns, `compute_security_risk()` | ~300 |
+| `src/database/identifiers.rs` | Add `get_call_identifiers_grouped()` query method | ~20 |
 | `src/tools/workspace/indexing/processor.rs` | Hook after `compute_change_risk_scores()` | ~4 |
 | `src/tools/deep_dive/formatting.rs` | Add `format_security_risk_info()`, wire into call sites | ~50 |
 | `src/tools/get_context/formatting.rs` | Add `security_label` to `PivotEntry`, append to both formats | ~10 |
