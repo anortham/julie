@@ -41,6 +41,8 @@ test_*.rs
 !**/test_detection.rs
 !**/test_quality.rs
 !**/test_quality_tests.rs
+!**/test_coverage.rs
+!**/test_coverage_tests.rs
 test_*.exe
 debug_*.rs
 validate_*.rs

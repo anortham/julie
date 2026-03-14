@@ -5,5 +5,7 @@
 //! that tools can surface to users.
 
 pub mod test_quality;
+pub mod test_coverage;
 
 pub use test_quality::compute_test_quality_metrics;
+pub use test_coverage::compute_test_coverage;
