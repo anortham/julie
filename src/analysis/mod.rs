@@ -6,6 +6,8 @@
 
 pub mod test_quality;
 pub mod test_coverage;
+pub mod change_risk;
 
 pub use test_quality::compute_test_quality_metrics;
 pub use test_coverage::compute_test_coverage;
+pub use change_risk::compute_change_risk_scores;
