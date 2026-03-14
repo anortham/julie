@@ -212,9 +212,12 @@ fn format_context_compact(data: &ContextData) -> String {
 
     for pivot in &data.pivots {
         let label = centrality_label(pivot.reference_score);
+        let risk_tag = pivot.risk_label.as_ref()
+            .map(|l| format!(" risk={}", l))
+            .unwrap_or_default();
         out.push_str(&format!(
-            "PIVOT {} {}:{} kind={} centrality={}\n",
-            pivot.name, pivot.file_path, pivot.start_line, pivot.kind, label
+            "PIVOT {} {}:{} kind={} centrality={}{}\n",
+            pivot.name, pivot.file_path, pivot.start_line, pivot.kind, label, risk_tag
         ));
         for line in pivot.content.lines() {
             out.push_str("  ");
