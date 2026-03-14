@@ -161,6 +161,7 @@ impl Default for WorkspaceConfig {
                 "**/build/**".to_string(),
                 "**/dist/**".to_string(),
                 "**/.git/**".to_string(),
+                "**/.worktrees/**".to_string(),
                 "**/*.min.js".to_string(),
                 "**/*.bundle.js".to_string(),
                 "**/.julie/**".to_string(), // Don't index our own data
