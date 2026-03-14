@@ -16,13 +16,13 @@
 ## Code Health Intelligence — Phase 2
 
 ### Search refinement with test metadata
-- [ ] **Filter test code from search results** — Now that symbols have `metadata["is_test"]`, `fast_search` could support an `exclude_tests: bool` parameter (or `include_tests: false` default for NL queries). This would let agents focus on production code when searching. The existing `is_test_path()` scoring penalty (0.95x) is a soft signal; a hard filter using indexed metadata would be more precise since it operates at the symbol level, not just path level. Key files: `src/tools/search/`, `src/search/scoring.rs`
+- [x] **Filter test code from search results** — `fast_search` now supports `exclude_tests: Option<bool>` with smart default. Filters on `metadata["is_test"]` after enrichment. Key files: `src/tools/search/text_search.rs`, `src/tools/search/mod.rs`
 
 ### Test-to-code linkage (Layer C)
-- [ ] **`test_coverage` table** — Many-to-many mapping between test symbols and the production code they cover. Three linkage strategies: call graph (outgoing Calls from tests), import analysis (identifiers in test files referencing production symbols), naming convention (`test_process_payment` → `process_payment`). New table + migration 013.
+- [x] **Test coverage linkage** — `compute_test_coverage()` in `src/analysis/test_coverage.rs`. Uses relationships + identifiers (with directory-proximity disambiguation) to find test→production linkages. Stores `metadata["test_coverage"]` with test_count, best/worst tier, covering test names.
 
 ### Test risk scoring (Layer D)
-- [ ] **`test_risk_score` column on symbols** — Combine centrality, visibility, and test coverage quality into a single risk score. High centrality + public + untested = high risk. Surface in `get_context` pivots and `deep_dive` output.
+- [x] **Change risk scoring** — `compute_change_risk_scores()` in `src/analysis/change_risk.rs`. Combines centrality (log sigmoid P95 normalization), visibility, test weakness, and symbol kind into a 0.0–1.0 score with HIGH/MEDIUM/LOW labels. Surfaced in `deep_dive` (full breakdown) and `get_context` (label on pivots).
 
 ### Structural security risk signals
 - [ ] **`risk_score` column on symbols** — Six structural signals: exposure (visibility + kind), input handling (string/Request params), sensitive sinks (calls to query/exec/spawn), blast radius (centrality), untested (test coverage), flow depth (BFS from public entry to sink). Pre-computed at index time. Surface in `deep_dive` and `get_context`.
