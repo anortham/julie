@@ -32,6 +32,7 @@ mod formatting_tests {
             content: content.to_string(),
             incoming_names: vec![],
             outgoing_names: vec![],
+            risk_label: None,
         }
     }
 
