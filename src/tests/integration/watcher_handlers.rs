@@ -453,7 +453,7 @@ async fn test_file_deletion_absolute_path() {
     fs::remove_file(&test_file).unwrap();
 
     // Call deletion handler with absolute path
-    handle_file_deleted_static(absolute_path, &db, &workspace_root)
+    handle_file_deleted_static(absolute_path, &db, &workspace_root, None)
         .await
         .expect("File deletion should succeed");
 
@@ -702,7 +702,7 @@ async fn test_delete_handler_skips_when_file_still_exists() {
     );
 
     // Call deletion handler with absolute path — file still on disk!
-    handle_file_deleted_static(absolute_path, &db, &workspace_root)
+    handle_file_deleted_static(absolute_path, &db, &workspace_root, None)
         .await
         .expect("Delete handler should succeed");
 

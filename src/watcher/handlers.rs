@@ -200,6 +200,7 @@ pub async fn handle_file_deleted_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
+    search_index: Option<&Arc<std::sync::Mutex<crate::search::SearchIndex>>>,
 ) -> Result<()> {
     // Guard against atomic save patterns (write-temp → delete → rename).
     // If the file still exists when we process the DELETE event, the deletion
@@ -217,54 +218,83 @@ pub async fn handle_file_deleted_static(
     // CRITICAL FIX: Convert absolute path to relative for database operations
     let relative_path = crate::utils::paths::to_relative_unix_style(&path, workspace_root)
         .context("Failed to convert path to relative")?;
-    let db_lock = match db.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            warn!(
-                "Database mutex poisoned during file deletion, recovering: {}",
-                poisoned
-            );
-            poisoned.into_inner()
-        }
-    };
 
-    // Handle transient DELETE events gracefully (e.g., editor save operations)
-    // Editors often delete-then-recreate files, causing DELETE events before the file
-    // was ever indexed. "no such table" errors are harmless in this case.
-    match db_lock.delete_symbols_for_file(&relative_path) {
-        Ok(_) => {}
-        Err(e) => {
-            let err_msg = e.to_string();
-            if err_msg.contains("no such table") {
-                // Transient state - file was never indexed, nothing to delete
-                info!("Skipping deletion for {} (not yet indexed)", path.display());
-                return Ok(());
-            } else {
-                // Real error - propagate it
-                return Err(e);
-            }
-        }
-    }
-
-    match db_lock.delete_file_record(&relative_path) {
-        Ok(_) => {}
-        Err(e) => {
-            let err_msg = e.to_string();
-            if err_msg.contains("no such table") {
-                // Transient state - file record never existed
-                info!(
-                    "Skipping file record deletion for {} (not yet indexed)",
-                    path.display()
+    {
+        let db_lock = match db.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!(
+                    "Database mutex poisoned during file deletion, recovering: {}",
+                    poisoned
                 );
-                return Ok(());
-            } else {
-                // Real error - propagate it
-                return Err(e);
+                poisoned.into_inner()
+            }
+        };
+
+        // Handle transient DELETE events gracefully (e.g., editor save operations)
+        // Editors often delete-then-recreate files, causing DELETE events before the file
+        // was ever indexed. "no such table" errors are harmless in this case.
+        match db_lock.delete_symbols_for_file(&relative_path) {
+            Ok(_) => {}
+            Err(e) => {
+                let err_msg = e.to_string();
+                if err_msg.contains("no such table") {
+                    // Transient state - file was never indexed, nothing to delete
+                    info!("Skipping deletion for {} (not yet indexed)", path.display());
+                    return Ok(());
+                } else {
+                    // Real error - propagate it
+                    return Err(e);
+                }
             }
         }
-    }
+
+        match db_lock.delete_file_record(&relative_path) {
+            Ok(_) => {}
+            Err(e) => {
+                let err_msg = e.to_string();
+                if err_msg.contains("no such table") {
+                    // Transient state - file record never existed
+                    info!(
+                        "Skipping file record deletion for {} (not yet indexed)",
+                        path.display()
+                    );
+                    return Ok(());
+                } else {
+                    // Real error - propagate it
+                    return Err(e);
+                }
+            }
+        }
+    } // db_lock is dropped here
 
     info!("Successfully removed indexes for {}", path.display());
+
+    // Clean up Tantivy search index
+    if let Some(search_index) = search_index {
+        let search_index = Arc::clone(search_index);
+        let rel_path = relative_path.clone();
+        let tantivy_result = tokio::task::spawn_blocking(move || {
+            let idx = match search_index.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    warn!("Search index mutex poisoned during deletion, recovering");
+                    poisoned.into_inner()
+                }
+            };
+            if let Err(e) = idx.remove_by_file_path(&rel_path) {
+                warn!("Failed to remove Tantivy docs for {}: {}", rel_path, e);
+            }
+            if let Err(e) = idx.commit() {
+                warn!("Failed to commit Tantivy deletion: {}", e);
+            }
+        })
+        .await;
+        if let Err(e) = tantivy_result {
+            warn!("Tantivy deletion task panicked: {}", e);
+        }
+    }
+
     Ok(())
 }
 
@@ -284,7 +314,7 @@ pub async fn handle_file_renamed_static(
     );
 
     // Delete + create
-    handle_file_deleted_static(from, db, workspace_root).await?;
+    handle_file_deleted_static(from, db, workspace_root, search_index).await?;
     handle_file_created_or_modified_static(to, db, extractor_manager, workspace_root, search_index)
         .await?;
 

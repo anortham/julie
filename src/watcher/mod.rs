@@ -275,6 +275,7 @@ impl IncrementalIndexer {
                                     event.path,
                                     &db,
                                     &workspace_root,
+                                    search_index.as_ref(),
                                 )
                                 .await
                                 {
@@ -376,6 +377,7 @@ impl IncrementalIndexer {
                             event.path,
                             &self.db,
                             &self.workspace_root,
+                            self.search_index.as_ref(),
                         )
                         .await
                         {
