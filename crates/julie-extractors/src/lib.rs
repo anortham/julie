@@ -30,6 +30,7 @@ pub mod manager;
 pub mod routing_identifiers;
 pub mod routing_relationships;
 pub mod routing_symbols;
+pub mod test_detection;
 pub mod utils;
 
 // Language extractors (31 total - including documentation/config languages)
@@ -77,6 +78,9 @@ pub use manager::ExtractorManager;
 
 // Re-export BaseExtractor for language implementors
 pub use base::BaseExtractor;
+
+// Re-export test detection
+pub use test_detection::is_test_symbol;
 
 // Re-export language detection utilities
 pub use language::{detect_language_from_extension, get_tree_sitter_language};

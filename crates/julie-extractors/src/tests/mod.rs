@@ -35,3 +35,6 @@ pub mod typescript;
 pub mod vue;
 pub mod yaml;
 pub mod zig;
+
+// Cross-cutting concerns
+pub mod test_detection;
