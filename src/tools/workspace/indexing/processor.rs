@@ -492,6 +492,23 @@ impl ManageWorkspaceTool {
 
                 stats.log_summary();
 
+                drop(db_lock);
+            }
+
+            // ═══════════════════════════════════════════════════════════════════
+            // 🧮 PHASE 3: Post-indexing analysis (runs unconditionally)
+            // Reference scores and test quality metrics don't depend on pending
+            // relationships — they operate on all stored symbols.
+            // ═══════════════════════════════════════════════════════════════════
+            {
+                let db_lock = match db.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => {
+                        warn!("Database mutex poisoned during post-indexing analysis, recovering");
+                        poisoned.into_inner()
+                    }
+                };
+
                 // Compute graph centrality reference scores
                 if let Err(e) = db_lock.compute_reference_scores() {
                     warn!("Failed to compute reference scores: {}", e);
@@ -501,8 +518,6 @@ impl ManageWorkspaceTool {
                 if let Err(e) = crate::analysis::compute_test_quality_metrics(&db_lock) {
                     warn!("Failed to compute test quality metrics: {}", e);
                 }
-
-                drop(db_lock);
             }
 
             let bulk_duration = bulk_start.elapsed();
