@@ -66,6 +66,7 @@ fn format_header(out: &mut String, ctx: &SymbolContext) {
 
     // Show test quality info when the symbol itself is a test
     format_test_quality_info(out, s);
+    format_change_risk_info(out, s, ctx.incoming_total);
 }
 
 fn format_body(out: &mut String, ctx: &SymbolContext, depth: &str) {
@@ -174,6 +175,76 @@ fn format_test_quality_info(out: &mut String, symbol: &crate::extractors::base::
     }
 }
 
+/// Format change risk section for production symbols.
+/// Skipped for test symbols (they have quality tiers instead).
+fn format_change_risk_info(out: &mut String, symbol: &crate::extractors::base::Symbol, incoming_count: usize) {
+    let metadata = match &symbol.metadata {
+        Some(m) => m,
+        None => return,
+    };
+
+    // Skip test symbols
+    if metadata.get("is_test").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return;
+    }
+
+    let risk = match metadata.get("change_risk") {
+        Some(r) => r,
+        None => return,
+    };
+
+    let score = risk.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let label = risk.get("label").and_then(|v| v.as_str()).unwrap_or("LOW");
+    let factors = risk.get("factors");
+
+    let vis = factors
+        .and_then(|f| f.get("visibility"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let kind = factors
+        .and_then(|f| f.get("kind"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    // Build summary line: "Change Risk: HIGH (0.82) — 14 callers, public, thin tests"
+    let coverage = metadata.get("test_coverage");
+    let test_summary = match coverage {
+        Some(tc) => {
+            let count = tc.get("test_count").and_then(|v| v.as_u64()).unwrap_or(0);
+            let best = tc.get("best_tier").and_then(|v| v.as_str()).unwrap_or("none");
+            if count > 0 {
+                format!("{} tests", best)
+            } else {
+                "untested".to_string()
+            }
+        }
+        None => "untested".to_string(),
+    };
+
+    out.push_str(&format!(
+        "\nChange Risk: {} ({:.2}) — {} callers, {}, {}\n",
+        label, score, incoming_count, vis, test_summary
+    ));
+
+    // Detail lines
+    if let Some(f) = factors {
+        let centrality = f.get("centrality").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        out.push_str(&format!("  centrality: {:.2} ({} direct callers)\n", centrality, incoming_count));
+        out.push_str(&format!("  visibility: {}\n", vis));
+
+        if let Some(tc) = coverage {
+            let count = tc.get("test_count").and_then(|v| v.as_u64()).unwrap_or(0);
+            let best = tc.get("best_tier").and_then(|v| v.as_str()).unwrap_or("none");
+            let worst = tc.get("worst_tier").and_then(|v| v.as_str()).unwrap_or("none");
+            out.push_str(&format!("  test coverage: {} tests (best: {}, worst: {})\n", count, best, worst));
+        } else {
+            out.push_str("  test coverage: untested\n");
+        }
+
+        out.push_str(&format!("  kind: {}\n", kind));
+    }
+}
+
 // === Kind-specific formatters ===
 
 fn format_callable(out: &mut String, ctx: &SymbolContext, depth: &str) {
@@ -246,6 +317,7 @@ fn format_callable(out: &mut String, ctx: &SymbolContext, depth: &str) {
     }
 
     format_test_locations(out, ctx, depth);
+    format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
@@ -283,6 +355,7 @@ fn format_trait_or_interface(out: &mut String, ctx: &SymbolContext, depth: &str)
     }
 
     format_test_locations(out, ctx, depth);
+    format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
@@ -371,6 +444,7 @@ fn format_class_or_struct(out: &mut String, ctx: &SymbolContext, depth: &str) {
     }
 
     format_test_locations(out, ctx, depth);
+    format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
@@ -418,6 +492,7 @@ fn format_enum(out: &mut String, ctx: &SymbolContext, depth: &str) {
     }
 
     format_test_locations(out, ctx, depth);
+    format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
@@ -485,6 +560,7 @@ fn format_module(out: &mut String, ctx: &SymbolContext, depth: &str) {
     }
 
     format_test_locations(out, ctx, depth);
+    format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
@@ -508,6 +584,7 @@ fn format_generic(out: &mut String, ctx: &SymbolContext, depth: &str) {
         );
     }
     format_test_locations(out, ctx, depth);
+    format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
