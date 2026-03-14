@@ -98,13 +98,17 @@ impl FastRefsTool {
         // Use a lower threshold than MIN_SIMILARITY_SCORE (0.5) because we're
         // comparing a raw symbol name against rich metadata embeddings (kind +
         // name + signature + docstring). Different input domains = lower scores.
-        const QUERY_SIMILARITY_THRESHOLD: f32 = 0.3;
+        const QUERY_SIMILARITY_THRESHOLD: f32 = 0.2;
 
         if is_reference {
             let ref_id = self.workspace.as_deref().unwrap();
+            debug!("Semantic fallback: reference workspace '{}'", ref_id);
             let db_arc = match handler.get_database_for_workspace(ref_id).await {
                 Ok(db) => db,
-                Err(_) => return String::new(),
+                Err(e) => {
+                    debug!("Semantic fallback: DB error for '{}': {}", ref_id, e);
+                    return String::new();
+                }
             };
             let db_guard = match db_arc.lock() {
                 Ok(guard) => guard,
@@ -114,7 +118,10 @@ impl FastRefsTool {
                 &db_guard, &query_vector, 5, QUERY_SIMILARITY_THRESHOLD,
             ) {
                 Ok(results) => results,
-                Err(_) => return String::new(),
+                Err(e) => {
+                    debug!("Semantic fallback: KNN error: {}", e);
+                    return String::new();
+                }
             };
             format_semantic_fallback(&self.symbol, &similar)
         } else {
