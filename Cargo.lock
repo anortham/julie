@@ -2040,7 +2040,7 @@ dependencies = [
 
 [[package]]
 name = "julie"
-version = "5.0.4"
+version = "5.0.5"
 dependencies = [
  "anyhow",
  "async-recursion",

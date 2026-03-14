@@ -7,8 +7,8 @@ All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, 
 ## 🔥 CRITICAL: WORKSPACE ARCHITECTURE (Overview)
 
 **Each workspace has SEPARATE PHYSICAL FILES:**
-- Primary workspace: `.julie/indexes/julie_316c0b08/db/symbols.db` + `tantivy/`
-- Reference workspace: `.julie/indexes/coa-mcp-framework_c77f81e4/db/symbols.db` + `tantivy/`
+- Primary workspace: `.julie/indexes/julie_95d84a94/db/symbols.db` + `tantivy/`
+- Reference workspace: `.julie/indexes/labhandbookv2_bbcca739/db/symbols.db` + `tantivy/`
 
 **WORKSPACE ISOLATION HAPPENS AT FILE LEVEL, NOT QUERY LEVEL:**
 - Tool receives workspace param → Routes to correct .db file → Opens connection
@@ -55,7 +55,7 @@ fixtures/               # ALL test data (SOURCE/CONTROL files, samples)
 **Rules:**
 - ✅ ALL test code goes in `src/tests/`
 - ✅ ALL test data/fixtures goes in `fixtures/`
-- ❌ NO inline `#[cfg(test)] mod tests` in implementation files
+- ⚠️ PREFER no inline `#[cfg(test)] mod tests` in implementation files (some legacy exceptions exist)
 - ❌ NO test data in `tests/` directory
 
 ### Module Boundaries
@@ -83,7 +83,7 @@ src/database/
 ### Key Project Facts
 - **Language**: Rust (native performance, cross-platform)
 - **Purpose**: Code intelligence MCP server (search, navigation, editing)
-- **Architecture**: Tantivy full-text search + SQLite structured storage
+- **Architecture**: Tantivy full-text search + SQLite structured storage + KNN vector search (embeddings)
 - **Mode**: Stdio-only MCP server (JSON-RPC over stdin/stdout)
 - **Origin**: Native Rust implementation for true cross-platform compatibility
 - **Crown Jewels**: 31 tree-sitter extractors with comprehensive test suites
@@ -93,7 +93,7 @@ src/database/
 **Core Languages:** Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin
 **Systems Languages:** C, C++, Go, Lua, Zig
 **Specialized:** GDScript, Vue, Razor, QML, R, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart
-**Documentation:** Markdown, JSON, JSONL, TOML, YAML
+**Documentation:** Markdown, JSON, TOML, YAML
 
 ---
 
@@ -248,9 +248,10 @@ ls -lh .julie/logs/
 5. **Tree-sitter Native**: Direct Rust bindings for all language parsers
 6. **SQLite Storage**: Symbols, identifiers, relationships, types, files
 7. **Single Binary + Optional Sidecar**: Core features work standalone; GPU-accelerated embeddings use a managed Python sidecar (auto-provisioned via `uv`)
-8. **Instant Search**: Tantivy index available immediately after indexing
-9. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
-10. **Language-Agnostic Everything**: See below — this is critical
+8. **Semantic Embeddings + KNN Vector Search**: Symbol embeddings (via ONNX Runtime or Python sidecar) stored in SQLite, enabling semantic similarity for `deep_dive` (related symbols) and `fast_refs` (zero-reference fallback). Two threshold tiers: symbol-to-symbol (0.5) and query-to-symbol (0.2)
+9. **Instant Search**: Tantivy index available immediately after indexing
+10. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
+11. **Language-Agnostic Everything**: See below — this is critical
 
 ### 🔴 CRITICAL: Language-Agnostic Design (Non-Negotiable)
 
@@ -301,4 +302,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-03-13 | **Status:** Production Ready (v5.0.2)
+**Last Updated:** 2026-03-14 | **Status:** Production Ready (v5.0.5)
