@@ -94,7 +94,7 @@ cursor.execute, rawQuery, RunSQL, db.Exec, db.Query
 
 Note: `prepare`, `query`, `sql`, and `raw` are intentionally excluded — they're too common in safe abstractions (query builders, ORMs, test helpers) and produce excessive false positives.
 
-**Matching strategy:** Split the identifier/symbol name by `::` and `.` separators, then **exact-match the final segment** against the sink list. Examples:
+**Matching strategy:** Split the identifier/symbol name by `::` and `.` separators, then **case-insensitive exact-match the final segment** against the sink list. Case-insensitive matching means `db.Exec` matches `exec` and `Process.Start` is redundant (covered by final segment `start` — but `start` is too generic, so keep compound patterns for precision). Examples:
 - `db.execute` → final segment `execute` → **matches**
 - `cursor.execute` → final segment `execute` → **matches**
 - `execution_context` → final segment `execution_context` → **no match**
@@ -158,7 +158,7 @@ security_risk = 0.25 * exposure + 0.25 * input_handling + 0.30 * sink_calls + 0.
 | < 0.4 | LOW |
 
 **Scoring gate:** Only symbols where at least one of these is true get scored:
-- `exposure >= 0.5` (public callable or public container)
+- `exposure >= 0.5` (public/protected callable)
 - `input_handling > 0` (accepts untrusted-looking params)
 - `sink_calls > 0` (calls a dangerous function)
 
