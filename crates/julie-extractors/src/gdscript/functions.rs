@@ -1,6 +1,8 @@
 //! Function and constructor extraction for GDScript
 
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 const LIFECYCLE_PREFIXES: &[&str] = &[
@@ -101,6 +103,20 @@ pub(super) fn extract_function_definition(
     // Extract doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    // Test detection
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "gdscript",
+        &name,
+        &base.file_path,
+        &kind,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     Some(base.create_symbol(
         &node,
         name,
@@ -109,7 +125,11 @@ pub(super) fn extract_function_definition(
             signature: Some(signature),
             visibility: Some(visibility),
             parent_id: parent_id.cloned(),
-            metadata: None,
+            metadata: if metadata.is_empty() {
+                None
+            } else {
+                Some(metadata)
+            },
             doc_comment,
         },
     ))

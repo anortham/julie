@@ -1,6 +1,8 @@
 /// Method and constructor extraction
 use crate::base::{Symbol, SymbolKind, SymbolOptions};
 use crate::java::JavaExtractor;
+use crate::test_detection::is_test_symbol;
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 use super::helpers;
@@ -73,11 +75,36 @@ pub(super) fn extract_method(
     // Extract JavaDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
+    // Extract annotations for test detection (modifiers starting with '@')
+    let annotations: Vec<String> = modifiers
+        .iter()
+        .filter(|m| m.starts_with('@'))
+        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
+        .collect();
+
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "java",
+        &name,
+        &extractor.base().file_path,
+        &SymbolKind::Method,
+        &annotations,
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment,
+        metadata: if metadata.is_empty() {
+            None
+        } else {
+            Some(metadata)
+        },
         ..Default::default()
     };
 
@@ -121,11 +148,36 @@ pub(super) fn extract_constructor(
     // Extract JavaDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
 
+    // Extract annotations for test detection
+    let annotations: Vec<String> = modifiers
+        .iter()
+        .filter(|m| m.starts_with('@'))
+        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
+        .collect();
+
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "java",
+        &name,
+        &extractor.base().file_path,
+        &SymbolKind::Constructor,
+        &annotations,
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id: parent_id.map(|s| s.to_string()),
         doc_comment,
+        metadata: if metadata.is_empty() {
+            None
+        } else {
+            Some(metadata)
+        },
         ..Default::default()
     };
 

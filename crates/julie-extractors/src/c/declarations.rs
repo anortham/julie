@@ -6,6 +6,7 @@
 
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::c::CExtractor;
+use crate::test_detection::is_test_symbol;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -146,9 +147,44 @@ pub(super) fn extract_function_definition(
 
     let doc_comment = extractor.base.find_doc_comment(&node);
 
+    let mut metadata = HashMap::from([
+        ("type".to_string(), Value::String("function".to_string())),
+        ("name".to_string(), Value::String(function_name.clone())),
+        (
+            "returnType".to_string(),
+            Value::String(types::extract_return_type(&extractor.base, node)),
+        ),
+        (
+            "parameters".to_string(),
+            Value::String(
+                signatures::extract_function_parameters(&extractor.base, node).join(", "),
+            ),
+        ),
+        (
+            "isDefinition".to_string(),
+            Value::String("true".to_string()),
+        ),
+        (
+            "isStatic".to_string(),
+            Value::String(helpers::is_static_function(&extractor.base, node).to_string()),
+        ),
+    ]);
+
+    if is_test_symbol(
+        "c",
+        &function_name,
+        &extractor.base.file_path,
+        &SymbolKind::Function,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), Value::Bool(true));
+    }
+
     Some(extractor.base.create_symbol(
         &node,
-        function_name.clone(),
+        function_name,
         SymbolKind::Function,
         SymbolOptions {
             signature: Some(signature),
@@ -158,28 +194,7 @@ pub(super) fn extract_function_definition(
                 Visibility::Public
             }),
             parent_id: parent_id.map(|s| s.to_string()),
-            metadata: Some(HashMap::from([
-                ("type".to_string(), Value::String("function".to_string())),
-                ("name".to_string(), Value::String(function_name)),
-                (
-                    "returnType".to_string(),
-                    Value::String(types::extract_return_type(&extractor.base, node)),
-                ),
-                (
-                    "parameters".to_string(),
-                    Value::String(
-                        signatures::extract_function_parameters(&extractor.base, node).join(", "),
-                    ),
-                ),
-                (
-                    "isDefinition".to_string(),
-                    Value::String("true".to_string()),
-                ),
-                (
-                    "isStatic".to_string(),
-                    Value::String(helpers::is_static_function(&extractor.base, node).to_string()),
-                ),
-            ])),
+            metadata: Some(metadata),
             doc_comment,
         },
     ))

@@ -1,4 +1,6 @@
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Function and method extraction for Go
@@ -55,6 +57,19 @@ impl super::GoExtractor {
 
         let doc_comment = self.base.find_doc_comment(&node);
 
+        let mut metadata = HashMap::new();
+        if is_test_symbol(
+            "go",
+            &name,
+            &self.base.file_path,
+            &SymbolKind::Function,
+            &[],
+            &[],
+            doc_comment.as_deref(),
+        ) {
+            metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+        }
+
         Some(self.base.create_symbol(
             &node,
             name,
@@ -63,7 +78,11 @@ impl super::GoExtractor {
                 signature: Some(signature),
                 visibility,
                 parent_id: parent_id.map(|s| s.to_string()),
-                metadata: None,
+                metadata: if metadata.is_empty() {
+                    None
+                } else {
+                    Some(metadata)
+                },
                 doc_comment,
             },
         ))
@@ -141,6 +160,19 @@ impl super::GoExtractor {
 
         let doc_comment = self.base.find_doc_comment(&node);
 
+        let mut metadata = HashMap::new();
+        if is_test_symbol(
+            "go",
+            &name,
+            &self.base.file_path,
+            &SymbolKind::Method,
+            &[],
+            &[],
+            doc_comment.as_deref(),
+        ) {
+            metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+        }
+
         Some(self.base.create_symbol(
             &node,
             name,
@@ -149,7 +181,11 @@ impl super::GoExtractor {
                 signature: Some(signature),
                 visibility,
                 parent_id: parent_id.map(|s| s.to_string()),
-                metadata: None,
+                metadata: if metadata.is_empty() {
+                    None
+                } else {
+                    Some(metadata)
+                },
                 doc_comment,
             },
         ))

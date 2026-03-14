@@ -3,6 +3,7 @@
 use super::super::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use super::PythonExtractor;
 use super::{decorators, signatures};
+use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -66,6 +67,18 @@ pub fn extract_function(extractor: &mut PythonExtractor, node: Node) -> Option<S
     metadata.insert("decorators".to_string(), serde_json::json!(decorators_list));
     metadata.insert("isAsync".to_string(), serde_json::json!(is_async));
     metadata.insert("returnType".to_string(), serde_json::json!(return_type));
+
+    if is_test_symbol(
+        "python",
+        &name,
+        &extractor.base().file_path,
+        &symbol_kind,
+        &decorators_list,
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::json!(true));
+    }
 
     Some(extractor.base_mut().create_symbol(
         &node,

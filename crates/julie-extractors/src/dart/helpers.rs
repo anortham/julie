@@ -187,6 +187,60 @@ fn find_override_annotation_in_subtree(node: &Node) -> bool {
     false
 }
 
+/// Extract annotation names from sibling nodes preceding a declaration.
+///
+/// Walks previous siblings looking for `annotation` kind nodes (e.g. `@isTest`,
+/// `@override`, `@pragma('vm:prefer-inline')`). Returns the annotation text
+/// stripped of the leading `@`.
+pub(super) fn extract_annotations(node: &Node) -> Vec<String> {
+    let mut annotations = Vec::new();
+
+    // For method_signature nodes, check the parent node's siblings
+    let target_node = if node.kind() == "method_signature" {
+        node.parent().unwrap_or(*node)
+    } else {
+        *node
+    };
+
+    let mut current = target_node.prev_sibling();
+    while let Some(sibling) = current {
+        let sibling_text = get_node_text(&sibling);
+
+        if sibling.kind() == "annotation" {
+            // Strip leading @ and trim whitespace
+            let name = sibling_text.trim().strip_prefix('@').unwrap_or(&sibling_text).to_string();
+            if !name.is_empty() {
+                annotations.push(name);
+            }
+        } else if !sibling_text.trim().is_empty()
+            && !sibling_text.chars().all(|c| c.is_whitespace())
+        {
+            // Stop at substantive non-annotation node
+            break;
+        }
+
+        current = sibling.prev_sibling();
+    }
+
+    // Also check subtree for annotation nodes (for nested structures)
+    collect_annotations_from_subtree(&target_node, &mut annotations);
+
+    annotations
+}
+
+fn collect_annotations_from_subtree(node: &Node, annotations: &mut Vec<String>) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "annotation" {
+            let text = get_node_text(&child);
+            let name = text.trim().strip_prefix('@').unwrap_or(&text).to_string();
+            if !name.is_empty() && !annotations.contains(&name) {
+                annotations.push(name);
+            }
+        }
+    }
+}
+
 /// Check if a constructor is a factory constructor
 pub(super) fn is_factory_constructor(node: &Node) -> bool {
     get_node_text(node).contains("factory")

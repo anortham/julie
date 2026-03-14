@@ -1,5 +1,6 @@
 /// C# symbol extraction within Razor code blocks
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -250,6 +251,17 @@ impl super::RazorExtractor {
         // Extract C# XML doc comment
         let doc_comment = self.base.find_doc_comment(&node);
 
+        // Test detection — pass actual attributes for C# attribute detection (e.g. [Fact], [Test])
+        let is_test = is_test_symbol(
+            "razor",
+            &name,
+            &self.base.file_path,
+            &SymbolKind::Method,
+            &[],
+            &attributes,
+            doc_comment.as_deref(),
+        );
+
         Some(self.base.create_symbol(
             &node,
             name,
@@ -284,6 +296,12 @@ impl super::RazorExtractor {
                         "attributes".to_string(),
                         serde_json::Value::String(attributes.join(", ")),
                     );
+                    if is_test {
+                        metadata.insert(
+                            "is_test".to_string(),
+                            serde_json::Value::Bool(true),
+                        );
+                    }
                     metadata
                 }),
                 doc_comment,

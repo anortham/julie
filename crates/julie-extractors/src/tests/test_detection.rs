@@ -304,6 +304,51 @@ fn csharp_bracketed_theory_attribute() {
 }
 
 // ===========================================================================
+// Razor (routes to C# detection)
+// ===========================================================================
+
+#[test]
+fn razor_routes_to_csharp_fact_attribute() {
+    // Razor files with C# attributes should route through detect_csharp
+    assert!(check(
+        "razor",
+        "ShouldRenderComponent",
+        "MyProject.Tests/Components/ButtonTests.cshtml",
+        &SymbolKind::Method,
+        &[],
+        &[s("[Fact]")],
+        None,
+    ));
+}
+
+#[test]
+fn razor_routes_to_csharp_test_attribute() {
+    assert!(check(
+        "razor",
+        "TestRender",
+        "MyProject.Tests/Views/IndexTests.cshtml",
+        &SymbolKind::Method,
+        &[],
+        &[s("Test")],
+        None,
+    ));
+}
+
+#[test]
+fn razor_no_test_attribute_returns_false() {
+    // Razor method without test attributes should not be flagged
+    assert!(!check(
+        "razor",
+        "OnGet",
+        "MyProject/Pages/Index.cshtml",
+        &SymbolKind::Method,
+        &[],
+        &[s("[HttpGet]")],
+        None,
+    ));
+}
+
+// ===========================================================================
 // Go
 // ===========================================================================
 
@@ -700,4 +745,172 @@ fn constructor_with_test_attr_returns_true() {
         &[s("TestMethod")],
         None,
     ));
+}
+
+// ===========================================================================
+// Integration tests — run actual extractors and verify is_test metadata
+// ===========================================================================
+
+/// Helper: extract symbols from code using the specified language extractor
+fn extract_symbols_for(language: &str, file_path: &str, code: &str) -> Vec<crate::base::Symbol> {
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let tree = super::helpers::init_parser(code, language);
+    let results = crate::factory::extract_symbols_and_relationships(
+        &tree,
+        file_path,
+        code,
+        language,
+        &workspace_root,
+    )
+    .expect("Extraction should succeed");
+    results.symbols
+}
+
+/// Helper: check if a symbol has is_test=true in its metadata
+fn has_is_test(symbol: &crate::base::Symbol) -> bool {
+    symbol
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get("is_test"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+#[test]
+fn integration_rust_test_function_detected() {
+    let code = r#"
+#[test]
+fn test_addition() {
+    assert_eq!(2 + 2, 4);
+}
+
+fn regular_function() {
+    println!("hello");
+}
+"#;
+    let symbols = extract_symbols_for("rust", "src/tests/math.rs", code);
+
+    let test_fn = symbols.iter().find(|s| s.name == "test_addition");
+    assert!(test_fn.is_some(), "Should extract test_addition");
+    assert!(
+        has_is_test(test_fn.unwrap()),
+        "test_addition should have is_test=true"
+    );
+
+    let regular_fn = symbols.iter().find(|s| s.name == "regular_function");
+    assert!(regular_fn.is_some(), "Should extract regular_function");
+    assert!(
+        !has_is_test(regular_fn.unwrap()),
+        "regular_function should NOT have is_test"
+    );
+}
+
+#[test]
+fn integration_python_test_function_detected() {
+    let code = r#"
+def test_payment_processing():
+    assert process_payment() == True
+
+def helper_function():
+    return 42
+"#;
+    let symbols = extract_symbols_for("python", "tests/test_payment.py", code);
+
+    let test_fn = symbols
+        .iter()
+        .find(|s| s.name == "test_payment_processing");
+    assert!(test_fn.is_some(), "Should extract test_payment_processing");
+    assert!(
+        has_is_test(test_fn.unwrap()),
+        "test_payment_processing should have is_test=true"
+    );
+
+    let helper_fn = symbols.iter().find(|s| s.name == "helper_function");
+    assert!(helper_fn.is_some(), "Should extract helper_function");
+    assert!(
+        !has_is_test(helper_fn.unwrap()),
+        "helper_function should NOT have is_test"
+    );
+}
+
+#[test]
+fn integration_go_test_function_detected() {
+    let code = r#"
+package payment
+
+import "testing"
+
+func TestProcessPayment(t *testing.T) {
+    if true {
+        t.Fatal("failed")
+    }
+}
+
+func processPayment() bool {
+    return true
+}
+"#;
+    let symbols = extract_symbols_for("go", "payment/payment_test.go", code);
+
+    let test_fn = symbols.iter().find(|s| s.name == "TestProcessPayment");
+    assert!(test_fn.is_some(), "Should extract TestProcessPayment");
+    assert!(
+        has_is_test(test_fn.unwrap()),
+        "TestProcessPayment should have is_test=true"
+    );
+
+    let regular_fn = symbols.iter().find(|s| s.name == "processPayment");
+    assert!(regular_fn.is_some(), "Should extract processPayment");
+    assert!(
+        !has_is_test(regular_fn.unwrap()),
+        "processPayment should NOT have is_test"
+    );
+}
+
+#[test]
+fn integration_regular_function_no_test_metadata() {
+    // A regular Rust function outside test context should not get is_test
+    let code = r#"
+pub fn calculate_sum(a: i32, b: i32) -> i32 {
+    a + b
+}
+"#;
+    let symbols = extract_symbols_for("rust", "src/math.rs", code);
+
+    let sum_fn = symbols.iter().find(|s| s.name == "calculate_sum");
+    assert!(sum_fn.is_some(), "Should extract calculate_sum");
+    assert!(
+        !has_is_test(sum_fn.unwrap()),
+        "calculate_sum should NOT have is_test"
+    );
+}
+
+#[test]
+fn integration_zig_test_block_detected() {
+    let code = r#"
+const std = @import("std");
+
+test "basic addition" {
+    try std.testing.expectEqual(@as(u32, 4), 2 + 2);
+}
+
+pub fn add(a: u32, b: u32) u32 {
+    return a + b;
+}
+"#;
+    let symbols = extract_symbols_for("zig", "tests/math_test.zig", code);
+
+    let test_block = symbols.iter().find(|s| s.name == "basic addition");
+    assert!(test_block.is_some(), "Should extract test block 'basic addition'");
+    assert!(
+        has_is_test(test_block.unwrap()),
+        "Zig test block should have is_test=true"
+    );
+
+    let add_fn = symbols.iter().find(|s| s.name == "add");
+    assert!(add_fn.is_some(), "Should extract add function");
+    assert!(
+        !has_is_test(add_fn.unwrap()),
+        "add function should NOT have is_test"
+    );
 }

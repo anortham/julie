@@ -6,6 +6,7 @@ mod identifiers;
 mod relationships;
 
 use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
+use crate::test_detection::is_test_symbol;
 use tree_sitter::Tree;
 
 pub struct QmlExtractor {
@@ -176,8 +177,28 @@ impl QmlExtractor {
             "function_declaration" => {
                 if let Some(name_node) = node.child_by_field_name("name") {
                     let name = self.base.get_node_text(&name_node);
+                    let mut metadata = std::collections::HashMap::new();
+                    if is_test_symbol(
+                        "qml",
+                        &name,
+                        &self.base.file_path,
+                        &SymbolKind::Function,
+                        &[],
+                        &[],
+                        None,
+                    ) {
+                        metadata.insert(
+                            "is_test".to_string(),
+                            serde_json::Value::Bool(true),
+                        );
+                    }
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),
+                        metadata: if metadata.is_empty() {
+                            None
+                        } else {
+                            Some(metadata)
+                        },
                         ..Default::default()
                     };
                     let symbol =

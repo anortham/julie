@@ -2,7 +2,9 @@
 //! Handles simple functions, advanced functions with [CmdletBinding()], and parameters
 
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
 use regex::Regex;
+use std::collections::HashMap;
 use std::sync::LazyLock;
 use tree_sitter::Node;
 
@@ -32,15 +34,33 @@ pub(super) fn extract_function(
     // Extract doc comment (PowerShell comment-based help)
     let doc_comment = documentation::extract_powershell_doc_comment(base, &node);
 
+    // Test detection
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "powershell",
+        &name,
+        &base.file_path,
+        &SymbolKind::Function,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     Some(base.create_symbol(
         &node,
         name,
         SymbolKind::Function,
         SymbolOptions {
             signature: Some(signature),
-            visibility: Some(Visibility::Public), // PowerShell functions are generally public
+            visibility: Some(Visibility::Public),
             parent_id: parent_id.map(|s| s.to_string()),
-            metadata: None,
+            metadata: if metadata.is_empty() {
+                None
+            } else {
+                Some(metadata)
+            },
             doc_comment,
         },
     ))

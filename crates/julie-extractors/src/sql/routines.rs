@@ -5,6 +5,7 @@
 
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions};
 use crate::sql::helpers::{DECLARE_VAR_RE, VAR_DECL_RE};
+use crate::test_detection::is_test_symbol;
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -35,19 +36,34 @@ pub(super) fn extract_stored_procedure(
     metadata.insert("isFunction".to_string(), Value::Bool(is_function));
     metadata.insert("isStoredProcedure".to_string(), Value::Bool(true));
 
-    let options = SymbolOptions {
-        signature: Some(signature),
-        visibility: Some(crate::base::Visibility::Public),
-        parent_id: parent_id.map(|s| s.to_string()),
-        doc_comment: base.find_doc_comment(&node),
-        metadata: Some(metadata),
-    };
+    let doc_comment = base.find_doc_comment(&node);
 
     let symbol_kind = if is_function {
         SymbolKind::Function
     } else {
         SymbolKind::Method
     };
+
+    if is_test_symbol(
+        "sql",
+        &name,
+        &base.file_path,
+        &symbol_kind,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), Value::Bool(true));
+    }
+
+    let options = SymbolOptions {
+        signature: Some(signature),
+        visibility: Some(crate::base::Visibility::Public),
+        parent_id: parent_id.map(|s| s.to_string()),
+        doc_comment,
+        metadata: Some(metadata),
+    };
+
     Some(base.create_symbol(&node, name, symbol_kind, options))
 }
 

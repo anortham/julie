@@ -5,6 +5,7 @@
 use super::helpers::*;
 use super::signatures;
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -84,6 +85,25 @@ pub(super) fn extract_function(
             .metadata
             .get_or_insert_with(HashMap::new)
             .insert("isAsync".to_string(), serde_json::Value::Bool(true));
+    }
+
+    // Extract annotations (e.g. @isTest) from sibling nodes for test detection
+    let annotations = extract_annotations(node);
+
+    // Test detection for Dart functions
+    if is_test_symbol(
+        "dart",
+        &symbol.name,
+        &base.file_path,
+        &symbol.kind,
+        &annotations,
+        &[],
+        None,
+    ) {
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("is_test".to_string(), serde_json::Value::Bool(true));
     }
 
     Some(symbol)
@@ -169,6 +189,25 @@ pub(super) fn extract_method(
         serde_json::Value::Bool(is_flutter_lifecycle),
     );
 
+    // Extract annotations (e.g. @isTest) from sibling nodes for test detection
+    let annotations = extract_annotations(node);
+
+    // Test detection for Dart methods
+    if is_test_symbol(
+        "dart",
+        &symbol.name,
+        &base.file_path,
+        &SymbolKind::Method,
+        &annotations,
+        &[],
+        None,
+    ) {
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     Some(symbol)
 }
 
@@ -248,6 +287,22 @@ pub(super) fn extract_constructor(
         .metadata
         .get_or_insert_with(HashMap::new)
         .insert("isConst".to_string(), serde_json::Value::Bool(is_const));
+
+    // Test detection for Dart constructors
+    if is_test_symbol(
+        "dart",
+        &symbol.name,
+        &base.file_path,
+        &SymbolKind::Constructor,
+        &[],
+        &[],
+        None,
+    ) {
+        symbol
+            .metadata
+            .get_or_insert_with(HashMap::new)
+            .insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
 
     Some(symbol)
 }

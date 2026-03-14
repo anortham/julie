@@ -73,7 +73,7 @@ pub fn is_test_symbol(
         "rust" => detect_rust(attributes),
         "python" => detect_python(name, decorators),
         "java" | "kotlin" => detect_java_kotlin(decorators, attributes),
-        "csharp" => detect_csharp(attributes),
+        "csharp" | "razor" => detect_csharp(attributes),
         "go" => detect_go(name, file_path),
         "javascript" | "typescript" => detect_js_ts(name, file_path),
         "php" => detect_php(name, doc_comment),

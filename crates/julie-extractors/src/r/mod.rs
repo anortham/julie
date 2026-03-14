@@ -7,6 +7,7 @@ mod relationships;
 
 use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
 use crate::base::{SymbolKind, SymbolOptions};
+use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -283,6 +284,11 @@ impl RExtractor {
         // Check for UseMethod() in body -> mark as S3 generic
         if self.body_contains_usemethod(func_def) {
             metadata.insert("s3_generic".to_string(), serde_json::Value::Bool(true));
+        }
+
+        // Test detection
+        if is_test_symbol("r", &name, &self.base.file_path, &kind, &[], &[], None) {
+            metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
         }
 
         let options = SymbolOptions {

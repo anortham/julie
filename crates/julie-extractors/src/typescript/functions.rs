@@ -5,6 +5,7 @@
 
 use super::helpers;
 use crate::base::{Symbol, SymbolKind, SymbolOptions};
+use crate::test_detection::is_test_symbol;
 use crate::typescript::TypeScriptExtractor;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -52,6 +53,19 @@ pub(super) fn extract_function(extractor: &mut TypeScriptExtractor, node: Node) 
 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
+
+    // Test detection
+    if is_test_symbol(
+        "typescript",
+        &name,
+        &extractor.base().file_path,
+        &SymbolKind::Function,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::json!(true));
+    }
 
     // CRITICAL FIX: Symbol must span entire function body for containment logic,
     // but ID should be generated from function name position (not body start).
@@ -161,6 +175,19 @@ pub(super) fn extract_method(extractor: &mut TypeScriptExtractor, node: Node) ->
 
     // Extract JSDoc comment
     let doc_comment = extractor.base().find_doc_comment(&node);
+
+    // Test detection
+    if is_test_symbol(
+        "typescript",
+        &name,
+        &extractor.base().file_path,
+        &symbol_kind,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::json!(true));
+    }
 
     // CRITICAL FIX: Keep full body span for containment
     let mut symbol = extractor.base_mut().create_symbol(

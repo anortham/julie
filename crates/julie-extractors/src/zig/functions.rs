@@ -1,4 +1,5 @@
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -34,6 +35,20 @@ pub(super) fn extract_function(
 
     let doc_comment = base.extract_documentation(&node);
 
+    // Test detection
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "zig",
+        &name,
+        &base.file_path,
+        &symbol_kind,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     Some(base.create_symbol(
         &node,
         name,
@@ -42,7 +57,11 @@ pub(super) fn extract_function(
             signature,
             visibility: Some(visibility),
             parent_id: parent_id.cloned(),
-            metadata: None,
+            metadata: if metadata.is_empty() {
+                None
+            } else {
+                Some(metadata)
+            },
             doc_comment,
         },
     ))
@@ -72,7 +91,7 @@ pub(super) fn extract_test(
 
     let metadata = Some({
         let mut meta = HashMap::new();
-        meta.insert("isTest".to_string(), serde_json::Value::Bool(true));
+        meta.insert("is_test".to_string(), serde_json::Value::Bool(true));
         meta
     });
 

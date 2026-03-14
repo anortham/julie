@@ -9,6 +9,7 @@
 use super::parsing::VueSection;
 use super::script::create_symbol_manual;
 use crate::base::{BaseExtractor, Symbol, SymbolKind};
+use crate::test_detection::is_test_symbol;
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::{Node, Parser};
@@ -116,6 +117,19 @@ fn extract_function_declaration(
     let mut metadata = HashMap::new();
     metadata.insert("type".to_string(), Value::String("function".to_string()));
 
+    // Test detection (Category 3: name + path, empty decorators/attributes)
+    if is_test_symbol(
+        "vue",
+        &name,
+        &base.file_path,
+        &SymbolKind::Function,
+        &[],
+        &[],
+        None,
+    ) {
+        metadata.insert("is_test".to_string(), Value::Bool(true));
+    }
+
     Some(create_symbol_manual(
         base,
         &name,
@@ -182,6 +196,19 @@ fn extract_variable_declarator(
             "isArrowFunction".to_string(),
             Value::Bool(value_node.kind() == "arrow_function"),
         );
+
+        // Test detection (Category 3: name + path, empty decorators/attributes)
+        if is_test_symbol(
+            "vue",
+            &name,
+            &base.file_path,
+            &SymbolKind::Function,
+            &[],
+            &[],
+            None,
+        ) {
+            metadata.insert("is_test".to_string(), Value::Bool(true));
+        }
 
         Some(create_symbol_manual(
             base,

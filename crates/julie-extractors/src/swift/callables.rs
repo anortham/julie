@@ -1,4 +1,5 @@
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
 use serde_json;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -49,7 +50,7 @@ impl SwiftExtractor {
             SymbolKind::Function
         };
 
-        let metadata = HashMap::from([
+        let mut metadata = HashMap::from([
             (
                 "type".to_string(),
                 serde_json::Value::String("function".to_string()),
@@ -70,6 +71,22 @@ impl SwiftExtractor {
 
         // Extract Swift documentation comment
         let doc_comment = self.base.find_doc_comment(&node);
+
+        // Test detection
+        if is_test_symbol(
+            "swift",
+            &name,
+            &self.base.file_path,
+            &symbol_kind,
+            &[],
+            &[],
+            doc_comment.as_deref(),
+        ) {
+            metadata.insert(
+                "is_test".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
 
         Some(self.base.create_symbol(
             &node,

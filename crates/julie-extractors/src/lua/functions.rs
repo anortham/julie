@@ -7,6 +7,8 @@ use super::helpers;
 /// - Methods with colon syntax: `function obj:method() end`
 /// - Methods with dot syntax: `function obj.method() end`
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract regular function definition statement
@@ -91,11 +93,30 @@ pub(super) fn extract_function_definition_statement(
     // Extract LuaDoc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    // Test detection
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "lua",
+        &name,
+        &base.file_path,
+        &kind,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     let options = SymbolOptions {
         signature: Some(signature),
         parent_id: method_parent_id.or_else(|| parent_id.map(|s| s.to_string())),
         visibility: Some(visibility),
         doc_comment,
+        metadata: if metadata.is_empty() {
+            None
+        } else {
+            Some(metadata)
+        },
         ..Default::default()
     };
 

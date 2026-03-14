@@ -3,6 +3,8 @@ use super::signatures;
 /// Symbol extraction for individual Ruby constructs
 /// Handles extraction of modules, classes, methods, variables, constants, and aliases
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract a module symbol
@@ -151,6 +153,20 @@ pub(super) fn extract_method(
     // Extract RDoc/YARD comment
     let doc_comment = base.find_doc_comment(&node);
 
+    // Test detection
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "ruby",
+        &name,
+        &base.file_path,
+        &kind,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     Some(base.create_symbol(
         &node,
         name,
@@ -159,7 +175,11 @@ pub(super) fn extract_method(
             signature: Some(signature),
             visibility: Some(current_visibility),
             parent_id,
-            metadata: None,
+            metadata: if metadata.is_empty() {
+                None
+            } else {
+                Some(metadata)
+            },
             doc_comment,
         },
     ))

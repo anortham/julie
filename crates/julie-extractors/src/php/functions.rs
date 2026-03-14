@@ -2,6 +2,7 @@
 
 use super::{PhpExtractor, determine_visibility, extract_modifiers, find_child, find_child_text};
 use crate::base::{Symbol, SymbolKind, SymbolOptions};
+use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -89,6 +90,27 @@ pub(super) fn extract_function(
     // Extract PHPDoc comment
     let doc_comment = extractor.get_base().find_doc_comment(&node);
 
+    // Test detection
+    let is_test = is_test_symbol(
+        "php",
+        &name,
+        &extractor.get_base().file_path,
+        &symbol_kind,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    );
+
+    // Convert string metadata to Value::String, then add is_test as Bool separately
+    let mut json_metadata: HashMap<String, serde_json::Value> = metadata
+        .into_iter()
+        .map(|(k, v)| (k, serde_json::Value::String(v)))
+        .collect();
+
+    if is_test {
+        json_metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     Some(
         extractor.get_base_mut().create_symbol(
             &node,
@@ -98,12 +120,7 @@ pub(super) fn extract_function(
                 signature: Some(signature),
                 visibility: Some(determine_visibility(&modifiers)),
                 parent_id: parent_id.map(|s| s.to_string()),
-                metadata: Some(
-                    metadata
-                        .into_iter()
-                        .map(|(k, v)| (k, serde_json::Value::String(v)))
-                        .collect(),
-                ),
+                metadata: Some(json_metadata),
                 doc_comment,
             },
         ),

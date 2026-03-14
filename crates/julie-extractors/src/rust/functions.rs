@@ -1,6 +1,6 @@
 use super::helpers::{
     ImplBlockInfo, extract_extern_modifier, extract_visibility, find_doc_comment,
-    has_async_keyword, has_unsafe_keyword, is_inside_impl,
+    get_preceding_attributes, has_async_keyword, has_unsafe_keyword, is_inside_impl,
 };
 use super::signatures::extract_return_type;
 /// Rust function and method extraction
@@ -8,6 +8,7 @@ use super::signatures::extract_return_type;
 /// - Impl blocks and two-phase processing
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::rust::RustExtractor;
+use crate::test_detection::is_test_symbol;
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -102,6 +103,28 @@ pub(super) fn extract_function(
         Visibility::Public
     };
 
+    // Extract attributes for test detection
+    let attr_nodes = get_preceding_attributes(base, node);
+    let attributes: Vec<String> = attr_nodes
+        .iter()
+        .filter_map(|attr_node| {
+            // Extract the inner attribute content (e.g., "test" from "#[test]")
+            let attr_child = attr_node
+                .children(&mut attr_node.walk())
+                .find(|c| c.kind() == "attribute")?;
+            let ident = attr_child
+                .children(&mut attr_child.walk())
+                .find(|c| c.kind() == "identifier" || c.kind() == "scoped_identifier")?;
+            Some(base.get_node_text(&ident))
+        })
+        .collect();
+
+    let mut metadata = HashMap::new();
+
+    if is_test_symbol("rust", &name, &base.file_path, &kind, &[], &attributes, None) {
+        metadata.insert("is_test".to_string(), Value::Bool(true));
+    }
+
     Some(base.create_symbol(
         &node,
         name,
@@ -111,7 +134,7 @@ pub(super) fn extract_function(
             visibility: Some(visibility_enum),
             parent_id,
             doc_comment: find_doc_comment(base, node),
-            metadata: Some(HashMap::new()),
+            metadata: Some(metadata),
         },
     ))
 }

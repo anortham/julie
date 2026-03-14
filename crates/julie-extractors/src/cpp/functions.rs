@@ -2,6 +2,8 @@
 //! Handles extraction of functions, methods, constructors, destructors, and operators
 
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions};
+use crate::test_detection::is_test_symbol;
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 use super::{declarations, helpers};
@@ -123,6 +125,20 @@ pub(super) fn extract_function(
 
     let doc_comment = base.find_doc_comment(&node);
 
+    // Test detection
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "cpp",
+        &name,
+        &base.file_path,
+        &kind,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     Some(base.create_symbol(
         &node,
         name,
@@ -131,7 +147,11 @@ pub(super) fn extract_function(
             signature: Some(signature),
             visibility: Some(visibility),
             parent_id: parent_id.map(String::from),
-            metadata: None,
+            metadata: if metadata.is_empty() {
+                None
+            } else {
+                Some(metadata)
+            },
             doc_comment,
         },
     ))
@@ -189,6 +209,20 @@ fn extract_method(
 
     let doc_comment = base.find_doc_comment(&node);
 
+    // Test detection
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "cpp",
+        name,
+        &base.file_path,
+        &kind,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     Some(base.create_symbol(
         &node,
         name.to_string(),
@@ -197,7 +231,11 @@ fn extract_method(
             signature: Some(signature),
             visibility: Some(visibility),
             parent_id: parent_id.map(String::from),
-            metadata: None,
+            metadata: if metadata.is_empty() {
+                None
+            } else {
+                Some(metadata)
+            },
             doc_comment,
         },
     ))

@@ -5,6 +5,7 @@
 
 use super::helpers;
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -100,6 +101,25 @@ pub(super) fn extract_function(
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
+    // Extract annotations for test detection (modifiers starting with '@')
+    let annotations: Vec<String> = modifiers
+        .iter()
+        .filter(|m| m.starts_with('@'))
+        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
+        .collect();
+
+    if is_test_symbol(
+        "kotlin",
+        &name,
+        &base.file_path,
+        &symbol_kind,
+        &annotations,
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), Value::Bool(true));
+    }
+
     Some(base.create_symbol(
         node,
         name,
@@ -154,6 +174,34 @@ pub(super) fn extract_secondary_constructor(
     // Extract KDoc comment
     let doc_comment = base.find_doc_comment(node);
 
+    let mut metadata = HashMap::from([
+        ("type".to_string(), Value::String("constructor".to_string())),
+        ("modifiers".to_string(), Value::String(modifiers.join(","))),
+        (
+            "constructorKind".to_string(),
+            Value::String("secondary".to_string()),
+        ),
+    ]);
+
+    // Extract annotations for test detection
+    let annotations: Vec<String> = modifiers
+        .iter()
+        .filter(|m| m.starts_with('@'))
+        .map(|m| m.strip_prefix('@').unwrap_or(m).to_string())
+        .collect();
+
+    if is_test_symbol(
+        "kotlin",
+        class_name,
+        &base.file_path,
+        &SymbolKind::Constructor,
+        &annotations,
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), Value::Bool(true));
+    }
+
     Some(base.create_symbol(
         node,
         class_name.to_string(),
@@ -162,14 +210,7 @@ pub(super) fn extract_secondary_constructor(
             signature: Some(signature),
             visibility: Some(visibility),
             parent_id: parent_id.map(|s| s.to_string()),
-            metadata: Some(HashMap::from([
-                ("type".to_string(), Value::String("constructor".to_string())),
-                ("modifiers".to_string(), Value::String(modifiers.join(","))),
-                (
-                    "constructorKind".to_string(),
-                    Value::String("secondary".to_string()),
-                ),
-            ])),
+            metadata: Some(metadata),
             doc_comment,
         },
     ))

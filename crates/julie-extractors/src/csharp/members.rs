@@ -2,6 +2,8 @@
 
 use super::helpers;
 use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
+use std::collections::HashMap;
 use tree_sitter::Node;
 
 /// Extract method
@@ -62,11 +64,36 @@ pub fn extract_method(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    // Extract attributes for test detection (modifiers starting with '[')
+    let attributes: Vec<String> = modifiers
+        .iter()
+        .filter(|m| m.starts_with('['))
+        .cloned()
+        .collect();
+
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "csharp",
+        &name,
+        &base.file_path,
+        &SymbolKind::Method,
+        &[],
+        &attributes,
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
         doc_comment,
+        metadata: if metadata.is_empty() {
+            None
+        } else {
+            Some(metadata)
+        },
         ..Default::default()
     };
 
@@ -101,11 +128,36 @@ pub fn extract_constructor(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    // Extract attributes for test detection
+    let attributes: Vec<String> = modifiers
+        .iter()
+        .filter(|m| m.starts_with('['))
+        .cloned()
+        .collect();
+
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "csharp",
+        &name,
+        &base.file_path,
+        &SymbolKind::Constructor,
+        &[],
+        &attributes,
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(visibility),
         parent_id,
         doc_comment,
+        metadata: if metadata.is_empty() {
+            None
+        } else {
+            Some(metadata)
+        },
         ..Default::default()
     };
 
@@ -135,11 +187,29 @@ pub fn extract_destructor(
     // Extract XML doc comment
     let doc_comment = base.find_doc_comment(&node);
 
+    let mut metadata = HashMap::new();
+    if is_test_symbol(
+        "csharp",
+        &name,
+        &base.file_path,
+        &SymbolKind::Method,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
+    }
+
     let options = SymbolOptions {
         signature: Some(signature),
         visibility: Some(Visibility::Protected),
         parent_id,
         doc_comment,
+        metadata: if metadata.is_empty() {
+            None
+        } else {
+            Some(metadata)
+        },
         ..Default::default()
     };
 
