@@ -39,6 +39,8 @@ julie-server
 /temp/
 test_*.rs
 !**/test_detection.rs
+!**/test_quality.rs
+!**/test_quality_tests.rs
 test_*.exe
 debug_*.rs
 validate_*.rs

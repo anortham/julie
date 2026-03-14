@@ -497,6 +497,11 @@ impl ManageWorkspaceTool {
                     warn!("Failed to compute reference scores: {}", e);
                 }
 
+                // Compute test quality metrics for all test symbols
+                if let Err(e) = crate::analysis::compute_test_quality_metrics(&db_lock) {
+                    warn!("Failed to compute test quality metrics: {}", e);
+                }
+
                 drop(db_lock);
             }
 

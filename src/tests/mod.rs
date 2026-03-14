@@ -7,6 +7,11 @@
 // toolset redesign (2026-02-07). Only EditingTransaction remains (used by rename_symbol).
 
 // ============================================================================
+// ANALYSIS TESTS - Post-indexing analysis (test quality, risk scoring)
+// ============================================================================
+pub mod analysis; // Test quality metrics engine tests
+
+// ============================================================================
 // TEST FIXTURES - Pre-indexed databases and test data
 // ============================================================================
 pub mod fixtures; // Test fixtures (JulieTestFixture for fast dogfooding tests)
