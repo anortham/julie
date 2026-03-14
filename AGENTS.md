@@ -35,6 +35,8 @@ cargo fmt                      # Format code
 cargo clippy                   # Lint
 ```
 
+**After cloning:** `git config core.hooksPath hooks/` — enables pre-commit hook that keeps CLAUDE.md and AGENTS.md in sync.
+
 **Commit messages:** Use conventional commits — `feat(scope): ...`, `fix(scope): ...`, `refactor(scope): ...`
 
 ---

@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# Pre-commit hook: ensure CLAUDE.md and AGENTS.md stay in sync.
+# If either file is staged, verify they are identical.
+
+# Only check if at least one of the files is staged
+CLAUDE_STAGED=$(git diff --cached --name-only | grep -c '^CLAUDE\.md$')
+AGENTS_STAGED=$(git diff --cached --name-only | grep -c '^AGENTS\.md$')
+
+if [ "$CLAUDE_STAGED" -eq 0 ] && [ "$AGENTS_STAGED" -eq 0 ]; then
+    exit 0
+fi
+
+# Both files must exist
+if [ ! -f CLAUDE.md ] || [ ! -f AGENTS.md ]; then
+    echo "ERROR: Both CLAUDE.md and AGENTS.md must exist."
+    exit 1
+fi
+
+# Compare the working tree versions (what will actually be committed)
+if ! diff -q CLAUDE.md AGENTS.md > /dev/null 2>&1; then
+    echo ""
+    echo "ERROR: CLAUDE.md and AGENTS.md have diverged!"
+    echo ""
+    echo "These files must stay identical. To fix:"
+    echo "  cp CLAUDE.md AGENTS.md   # if CLAUDE.md is the source of truth"
+    echo "  cp AGENTS.md CLAUDE.md   # if AGENTS.md is the source of truth"
+    echo ""
+    echo "Then stage both files and commit again."
+    exit 1
+fi
+
+# If only one is staged, stage the other too
+if [ "$CLAUDE_STAGED" -gt 0 ] && [ "$AGENTS_STAGED" -eq 0 ]; then
+    echo "NOTE: Auto-staging AGENTS.md to keep in sync with CLAUDE.md"
+    git add AGENTS.md
+fi
+
+if [ "$AGENTS_STAGED" -gt 0 ] && [ "$CLAUDE_STAGED" -eq 0 ]; then
+    echo "NOTE: Auto-staging CLAUDE.md to keep in sync with AGENTS.md"
+    git add CLAUDE.md
+fi
