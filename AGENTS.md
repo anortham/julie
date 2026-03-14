@@ -1,78 +1,6 @@
-# AGENTS.md - Project Julie Development Guidelines
+# Julie — Development Guidelines
 
 All AI coding agents (Claude Code, Copilot, Cursor, Windsurf, Cody, Gemini CLI, aider, etc.) must follow these guidelines.
-
----
-
-## 🔥 CRITICAL: WORKSPACE ARCHITECTURE (Overview)
-
-**Each workspace has SEPARATE PHYSICAL FILES:**
-- Primary workspace: `.julie/indexes/julie_95d84a94/db/symbols.db` + `tantivy/`
-- Reference workspace: `.julie/indexes/labhandbookv2_bbcca739/db/symbols.db` + `tantivy/`
-
-**WORKSPACE ISOLATION HAPPENS AT FILE LEVEL, NOT QUERY LEVEL:**
-- Tool receives workspace param → Routes to correct .db file → Opens connection
-- Connection is LOCKED to that workspace
-- Database functions can ONLY query that workspace
-
-**For detailed architecture info**, use Julie's code intelligence tools:
-```
-fast_search(query="workspace routing", search_target="definitions", file_pattern="docs/**")
-```
-
-See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
-
----
-
-## 🚨 PROJECT ORGANIZATION STANDARDS (NON-NEGOTIABLE)
-
-### File Size Limits
-**MANDATORY**: No implementation file shall exceed **500 lines**.
-
-- Implementation files: **≤ 500 lines** (strictly enforced)
-- Test files: **≤ 1000 lines** (acceptable for comprehensive test suites)
-- **Any file exceeding these limits MUST be refactored into smaller modules**
-
-**Rationale**: Files larger than 500 lines:
-- Cannot be fully read by AI agents (token limits)
-- Are difficult to understand and maintain
-- Violate single responsibility principle
-
-### Test Organization (Option A - Enforced)
-**All tests in `src/tests/`, all fixtures in `fixtures/`**
-
-```
-src/tests/              # ALL test code (.rs files with #[test] functions)
-├── database_tests.rs   # Tests for database module
-├── search_tests.rs     # Tests for search functionality
-└── ...
-
-fixtures/               # ALL test data (SOURCE/CONTROL files, samples)
-├── editing/           # SOURCE/CONTROL for editing tools
-└── real-world/        # Real-world code samples
-```
-
-**Rules:**
-- ✅ ALL test code goes in `src/tests/`
-- ✅ ALL test data/fixtures goes in `fixtures/`
-- ⚠️ PREFER no inline `#[cfg(test)] mod tests` in implementation files (some legacy exceptions exist)
-- ❌ NO test data in `tests/` directory
-
-### Module Boundaries
-**Each module MUST have a single, clear responsibility:**
-
-```rust
-// ✅ GOOD: Clear, focused responsibility
-src/database/
-├── mod.rs          # Public API, re-exports
-├── schema.rs       # Schema definitions only
-├── migrations.rs   # Migration logic only
-└── queries.rs      # Query operations only
-
-// ❌ BAD: God object
-src/database/
-└── mod.rs          # 4,837 lines of everything
-```
 
 ---
 
@@ -94,6 +22,20 @@ src/database/
 **Systems Languages:** C, C++, Go, Lua, Zig
 **Specialized:** GDScript, Vue, Razor, QML, R, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart
 **Documentation:** Markdown, JSON, TOML, YAML
+
+---
+
+## Quick Reference
+
+```bash
+cargo build                    # Debug build (fast iteration)
+cargo build --release          # Release build (for live MCP testing)
+cargo xtask test dev           # Default test tier — run after every change
+cargo fmt                      # Format code
+cargo clippy                   # Lint
+```
+
+**Commit messages:** Use conventional commits — `feat(scope): ...`, `fix(scope): ...`, `refactor(scope): ...`
 
 ---
 
@@ -192,6 +134,60 @@ cargo test --lib build_julie_fixture -- --ignored --nocapture
 
 ---
 
+## 🚨 PROJECT ORGANIZATION STANDARDS (NON-NEGOTIABLE)
+
+### File Size Limits
+**MANDATORY**: No implementation file shall exceed **500 lines**.
+
+- Implementation files: **≤ 500 lines** (target; some legacy files exceed this — refactor when touching them)
+- Test files: **≤ 1000 lines** (acceptable for comprehensive test suites)
+- **New files MUST respect these limits; existing violations should be refactored opportunistically**
+
+**Rationale**: Files larger than 500 lines:
+- Cannot be fully read by AI agents (token limits)
+- Are difficult to understand and maintain
+- Violate single responsibility principle
+
+### Test Organization
+**All tests in `src/tests/`, all fixture data in `fixtures/`**
+
+```
+src/tests/              # ALL test code (.rs files with #[test] functions)
+├── fixtures/           # Test fixture builder code (e.g., julie_db.rs)
+├── core/               # Core module tests
+├── tools/              # Tool-specific tests
+├── integration/        # Integration tests
+└── ...
+
+fixtures/               # ALL test data files (SOURCE/CONTROL files, samples)
+├── editing/           # SOURCE/CONTROL for editing tools
+└── real-world/        # Real-world code samples
+```
+
+**Rules:**
+- ✅ ALL test code goes in `src/tests/`
+- ✅ ALL test data/fixture files go in `fixtures/`
+- ✅ Test fixture *builder code* (Rust helpers) goes in `src/tests/fixtures/`
+- ⚠️ PREFER no inline `#[cfg(test)] mod tests` in implementation files (some legacy exceptions exist)
+
+### Module Boundaries
+**Each module MUST have a single, clear responsibility:**
+
+```rust
+// ✅ GOOD: Clear, focused responsibility
+src/database/
+├── mod.rs          # Public API, re-exports
+├── schema.rs       # Schema definitions only
+├── migrations.rs   # Migration logic only
+└── queries.rs      # Query operations only
+
+// ❌ BAD: God object
+src/database/
+└── mod.rs          # 4,837 lines of everything
+```
+
+---
+
 ## 🐕 Dogfooding Strategy
 
 **MANDATORY**: We use Julie to develop Julie (eating our own dog food).
@@ -235,6 +231,26 @@ tail -100 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i error
 # List all log files
 ls -lh .julie/logs/
 ```
+
+---
+
+## 🔥 WORKSPACE ARCHITECTURE (Overview)
+
+**Each workspace has SEPARATE PHYSICAL FILES:**
+- Primary workspace: `.julie/indexes/{workspace_id}/db/symbols.db` + `tantivy/`
+- Reference workspace: `.julie/indexes/{ref_workspace_id}/db/symbols.db` + `tantivy/`
+
+**WORKSPACE ISOLATION HAPPENS AT FILE LEVEL, NOT QUERY LEVEL:**
+- Tool receives workspace param → Routes to correct .db file → Opens connection
+- Connection is LOCKED to that workspace
+- Database functions can ONLY query that workspace
+
+**For detailed architecture info**, use Julie's code intelligence tools:
+```
+fast_search(query="workspace routing", search_target="definitions", file_pattern="docs/**")
+```
+
+See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
 
 ---
 
