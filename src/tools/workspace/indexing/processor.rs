@@ -518,6 +518,16 @@ impl ManageWorkspaceTool {
                 if let Err(e) = crate::analysis::compute_test_quality_metrics(&db_lock) {
                     warn!("Failed to compute test quality metrics: {}", e);
                 }
+
+                // Compute test-to-code coverage linkage
+                if let Err(e) = crate::analysis::compute_test_coverage(&db_lock) {
+                    warn!("Failed to compute test coverage: {}", e);
+                }
+
+                // Compute change risk scores
+                if let Err(e) = crate::analysis::compute_change_risk_scores(&db_lock) {
+                    warn!("Failed to compute change risk scores: {}", e);
+                }
             }
 
             let bulk_duration = bulk_start.elapsed();
