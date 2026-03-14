@@ -144,6 +144,7 @@ pub fn run_pipeline(
         language,
         kind: None,
         file_pattern,
+        exclude_tests: false,
     };
     let profile = crate::search::weights::SearchWeightProfile::get_context();
     let search_results = crate::search::hybrid::hybrid_search(

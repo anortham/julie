@@ -28,6 +28,7 @@ pub async fn text_search_impl(
     workspace_ids: Option<Vec<String>>,
     search_target: &str,
     _context_lines: Option<u32>,
+    exclude_tests: Option<bool>,
     handler: &JulieServerHandler,
 ) -> Result<(Vec<Symbol>, bool)> {
     super::nl_embeddings::maybe_initialize_embeddings_for_nl_definitions(
@@ -69,10 +70,17 @@ pub async fn text_search_impl(
         query, search_target, ref_workspace_id
     );
 
+    // Resolve exclude_tests smart default
+    let exclude_tests_resolved = exclude_tests.unwrap_or_else(|| {
+        // NL queries auto-exclude tests; definition searches always include them
+        search_target != "definitions" && crate::search::scoring::is_nl_like_query(query)
+    });
+
     let filter = SearchFilter {
         language: language.clone(),
         kind: None,
         file_pattern: file_pattern.clone(),
+        exclude_tests: exclude_tests_resolved,
     };
 
     let query_clone = query.to_string();
@@ -195,6 +203,20 @@ fn post_filter_results(
 // Shared search helpers (used by both reference and primary workspace paths)
 // ---------------------------------------------------------------------------
 
+/// Remove test symbols when `exclude` is `true`.
+fn filter_test_symbols(symbols: &mut Vec<Symbol>, exclude: bool) {
+    if !exclude {
+        return;
+    }
+    symbols.retain(|s| {
+        !s.metadata
+            .as_ref()
+            .and_then(|m| m.get("is_test"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    });
+}
+
 /// Run a definition search: hybrid (keyword + semantic) if NL query with embeddings,
 /// otherwise pure keyword with over-fetch + exact-name promotion.
 fn definition_search_with_index(
@@ -257,6 +279,9 @@ fn definition_search_with_index(
             .collect();
         enrich_symbols_from_db(&mut symbols, db);
 
+        // Filter out test symbols when exclude_tests is set
+        filter_test_symbols(&mut symbols, filter.exclude_tests);
+
         Ok((symbols, relaxed))
     } else {
         // Keyword search: over-fetch so exact-name definitions aren't lost
@@ -297,6 +322,9 @@ fn definition_search_with_index(
         if let Some(db) = db {
             enrich_symbols_from_db(&mut symbols, db);
         }
+
+        // Filter out test symbols when exclude_tests is set
+        filter_test_symbols(&mut symbols, filter.exclude_tests);
 
         Ok((symbols, relaxed))
     }
@@ -412,7 +440,7 @@ pub(crate) fn tantivy_symbol_to_symbol(
     }
 }
 
-/// Enrich symbols with code_context and visibility from a SQLite database.
+/// Enrich symbols with code_context, visibility, and metadata from a SQLite database.
 fn enrich_symbols_from_db(symbols: &mut [Symbol], db: &crate::database::SymbolDatabase) {
     let ids: Vec<String> = symbols.iter().map(|s| s.id.clone()).collect();
     if ids.is_empty() {
@@ -422,12 +450,13 @@ fn enrich_symbols_from_db(symbols: &mut [Symbol], db: &crate::database::SymbolDa
         Ok(db_symbols) => {
             let enrichment_map: std::collections::HashMap<String, _> = db_symbols
                 .into_iter()
-                .map(|s| (s.id, (s.code_context, s.visibility)))
+                .map(|s| (s.id, (s.code_context, s.visibility, s.metadata)))
                 .collect();
             for symbol in symbols.iter_mut() {
-                if let Some((ctx, vis)) = enrichment_map.get(&symbol.id) {
+                if let Some((ctx, vis, meta)) = enrichment_map.get(&symbol.id) {
                     symbol.code_context = ctx.clone();
                     symbol.visibility = vis.clone();
+                    symbol.metadata = meta.clone();
                 }
             }
             debug!("✅ Enriched {} symbols from SQLite", enrichment_map.len());

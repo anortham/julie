@@ -58,6 +58,11 @@ pub struct FastSearchTool {
     /// Context lines before/after match (default: 1)
     #[serde(default = "default_context_lines", deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient")]
     pub context_lines: Option<u32>,
+    /// Exclude test symbols from results.
+    /// Default: auto (excludes for NL queries, includes for definition searches).
+    /// Set explicitly to override.
+    #[serde(default)]
+    pub exclude_tests: Option<bool>,
     /// Workspace filter: "primary" (default) or a reference workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
@@ -159,6 +164,7 @@ impl FastSearchTool {
             workspace_ids,
             &self.search_target,
             self.context_lines,
+            self.exclude_tests,
             handler,
         )
         .await?;

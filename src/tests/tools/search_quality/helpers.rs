@@ -15,7 +15,7 @@ pub async fn search_content(
     limit: u32,
 ) -> Result<Vec<Symbol>> {
     let (symbols, _relaxed) = crate::tools::search::text_search::text_search_impl(
-        query, &None, &None, limit, None, "content", None, handler,
+        query, &None, &None, limit, None, "content", None, None, handler,
     )
     .await?;
     Ok(symbols)
@@ -34,6 +34,7 @@ pub async fn search_definitions(
         limit,
         None,
         "definitions",
+        None,
         None,
         handler,
     )

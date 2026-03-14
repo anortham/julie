@@ -59,6 +59,7 @@ pub fn get_user(id: u32) -> User {
         None,
         "definitions",
         None,
+        None,
         &handler,
     )
     .await?;
@@ -128,6 +129,7 @@ export function process_data(data: string): string {
         10,
         None,
         "definitions",
+        None,
         None,
         &handler,
     )
@@ -204,6 +206,7 @@ pub fn helper() {
         None,
         "definitions",
         None,
+        None,
         &handler,
     )
     .await?;
@@ -265,6 +268,7 @@ pub fn get_user(id: u32) -> User {
         None,
         "definitions",
         None,
+        None,
         &handler,
     )
     .await?;
@@ -325,6 +329,7 @@ pub fn search_term_six() { }
         2,
         None,
         "definitions",
+        None,
         None,
         &handler,
     )
@@ -390,6 +395,7 @@ pub fn example() {
         10,
         None,
         "content",
+        None,
         None,
         &handler,
     )
@@ -466,6 +472,7 @@ pub fn lookup_user_profile(id: u32) -> String {
             None,
             "definitions",
             None,
+            None,
             &handler_a,
         )
         .await
@@ -483,6 +490,7 @@ pub fn lookup_user_profile(id: u32) -> String {
             10,
             None,
             "definitions",
+            None,
             None,
             &handler_b,
         )

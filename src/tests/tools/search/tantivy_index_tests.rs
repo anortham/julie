@@ -438,6 +438,7 @@ fn test_compound_token_finds_exact_identifier() {
         language: None,
         kind: None,
         file_pattern: None,
+        exclude_tests: false,
     };
 
     let results = index

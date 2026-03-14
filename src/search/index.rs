@@ -85,6 +85,7 @@ pub struct SearchFilter {
     pub language: Option<String>,
     pub kind: Option<String>,
     pub file_pattern: Option<String>,
+    pub exclude_tests: bool,
 }
 
 /// A symbol search result with relevance score.

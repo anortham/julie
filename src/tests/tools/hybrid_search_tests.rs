@@ -452,6 +452,7 @@ mod orchestrator_tests {
             language: Some("rust".to_string()),
             kind: None,
             file_pattern: Some("src/**/*.rs".to_string()),
+            exclude_tests: false,
         };
 
         let provider = StaticProvider;

@@ -53,6 +53,7 @@ pub async fn line_mode_search(
         language: language.clone(),
         kind: None,
         file_pattern: file_pattern.clone(),
+        exclude_tests: false,
     };
 
     // Search the single target workspace
@@ -168,6 +169,7 @@ pub async fn line_mode_search(
                     language: ref_language.clone(),
                     kind: None,
                     file_pattern: ref_file_pattern.clone(),
+                    exclude_tests: false,
                 };
                 let file_results = ref_index
                     .search_content(&query_clone, &ref_filter, fetch_limit)?
