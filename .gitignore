@@ -39,6 +39,7 @@ julie-server
 /temp/
 test_*.rs
 !**/test_calls.rs
+!**/test_call_extraction.rs
 !**/test_detection.rs
 !**/test_quality.rs
 !**/test_quality_tests.rs
