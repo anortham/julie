@@ -24,6 +24,21 @@
 - [ ] **Add regression coverage for code-health output plumbing** — missing tests for line-mode `exclude_tests`, `get_context` label rendering in `SignatureOnly`, compact no-results formatting, and `deep_dive` change/security output let the current regressions slip through (`src/tests/tools/search/line_mode.rs`, `src/tests/tools/get_context_formatting_tests.rs`, `src/tests/tools/deep_dive_tests.rs`)
 - [x] ~~**Doc contract tests are stale**~~ — fixed: updated AGENTS.md assertion to match current wording, added "green-by-default" caveat to CLAUDE.md/AGENTS.md for blocked tiers
 
+## Performance
+
+- [ ] **Pending relationship resolution is O(N) per relationship — bottleneck for large repos** — On Guava (125,650 symbols, 3,327 files), indexing took ~6.5 minutes total, with **~320 seconds (82%) spent in pending relationship resolution**. The resolver processes 434,795 pending relationships sequentially, doing a `find_symbols_by_name` DB query per relationship (~0.7ms each). For comparison, the entire analysis pipeline (reference scores + test quality + test coverage + change risk + security risk) took only 4.8 seconds combined. Batch resolution (group by callee_name, query once per unique name) could cut this to seconds. Key files: `src/tools/workspace/indexing/resolver.rs`, `src/tools/workspace/indexing/processor.rs:437`. Guava benchmark data:
+
+  | Phase | Duration | Details |
+  |-------|----------|---------|
+  | File scanning | <1s | 3,327 files discovered |
+  | Parsing + extraction | ~86s | 125,651 symbols, tree-sitter |
+  | Tantivy indexing | ~1s | 125,651 symbols + 3,326 files |
+  | **Pending resolution** | **~320s** | **434,795 pending, 319,310 resolved (73%)** |
+  | Analysis pipeline | ~4.8s | ref_scores 0.6s, test_quality 0.07s, test_coverage 2.0s, change_risk 1.0s, security_risk 1.2s |
+  | **Total** | **~388s** | **~6.5 minutes for 125K symbols** |
+
+  Normal-sized projects are fine: OkHttp (26K symbols) = 13s, LabHandbookV2 (10K symbols) = 1.2s, Goldfish (3K symbols) = 1.5s.
+
 ## Enhancements
 
 - [ ] **Windows Python launcher `py -3.12` / `py -3.13` probing** — `python_interpreter_candidates()` doesn't try `py -3.12` syntax, which is the standard way to request a specific version on Windows (`src/embeddings/sidecar_bootstrap.rs:197-208`)
