@@ -232,6 +232,45 @@ mod tests {
     }
 
     #[test]
+    fn test_class_inherits_method_coverage() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        insert_file(&db, "src/services.rs");
+        insert_file(&db, "tests/services_test.rs");
+
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('class_1', 'PaymentService', 'class', 'csharp', 'src/services.rs', 1, 0, 50, 0, 0, 0, NULL, 5.0, 'public');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility, parent_id)
+            VALUES ('method_1', 'ProcessPayment', 'method', 'csharp', 'src/services.rs', 10, 0, 30, 0, 0, 0, NULL, 3.0, 'public', 'class_1');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('test_1', 'test_process_payment', 'method', 'csharp', 'tests/services_test.rs', 5, 0, 20, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "thorough"}}', 0.0, 'private');
+
+            INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+            VALUES ('rel_1', 'test_1', 'method_1', 'calls', 'tests/services_test.rs', 10);
+        "#).unwrap();
+
+        let _stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
+
+        let method_cov: Option<String> = db.conn.query_row(
+            "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'method_1'",
+            [], |row| row.get(0)
+        ).unwrap();
+        assert!(method_cov.is_some(), "Method should have test coverage");
+
+        let class_cov: Option<String> = db.conn.query_row(
+            "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'class_1'",
+            [], |row| row.get(0)
+        ).unwrap();
+        assert!(class_cov.is_some(), "Class should inherit test coverage from its methods");
+    }
+
+    #[test]
     fn test_deduplication_across_strategies() {
         let (_temp, db) = setup_test_db();
 

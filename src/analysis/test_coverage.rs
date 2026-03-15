@@ -273,6 +273,83 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
     }
 
     stats.symbols_covered = linkages.len();
+
+    // Step 4: Aggregate method-level coverage to parent classes/structs.
+    // Parents that have NO direct test_coverage but have children WITH test_coverage
+    // inherit aggregated stats from their children.
+    let mut parent_stmt = db.conn.prepare(
+        "SELECT parent.id,
+                json_extract(child.metadata, '$.test_coverage.test_count'),
+                json_extract(child.metadata, '$.test_coverage.best_tier'),
+                json_extract(child.metadata, '$.test_coverage.worst_tier')
+         FROM symbols parent
+         JOIN symbols child ON child.parent_id = parent.id
+         WHERE parent.kind IN ('class', 'struct', 'interface', 'enum', 'trait')
+           AND json_extract(child.metadata, '$.test_coverage') IS NOT NULL
+           AND (json_extract(parent.metadata, '$.test_coverage') IS NULL)",
+    )?;
+
+    let mut parent_coverage: HashMap<String, (u32, String, String)> = HashMap::new();
+    let parent_rows = parent_stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, u32>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+        ))
+    })?;
+
+    for row in parent_rows {
+        let (parent_id, child_count, child_best, child_worst) = row?;
+        let entry = parent_coverage
+            .entry(parent_id)
+            .or_insert((0, "stub".to_string(), "thorough".to_string()));
+        entry.0 += child_count;
+        if tier_rank(&child_best) > tier_rank(&entry.1) {
+            entry.1 = child_best;
+        }
+        if tier_rank(&child_worst) < tier_rank(&entry.2) {
+            entry.2 = child_worst;
+        }
+    }
+
+    if !parent_coverage.is_empty() {
+        db.conn.execute_batch("BEGIN")?;
+        let agg_result = (|| -> Result<()> {
+            for (parent_id, (total_tests, best, worst)) in &parent_coverage {
+                let coverage = serde_json::json!({
+                    "test_count": total_tests,
+                    "best_tier": best,
+                    "worst_tier": worst,
+                    "source": "aggregated_from_methods"
+                });
+                db.conn.execute(
+                    "UPDATE symbols SET metadata = json_set(
+                        COALESCE(metadata, '{}'),
+                        '$.test_coverage', json(?1)
+                    ) WHERE id = ?2",
+                    rusqlite::params![coverage.to_string(), parent_id],
+                )?;
+                stats.symbols_covered += 1;
+            }
+            Ok(())
+        })();
+
+        match agg_result {
+            Ok(()) => {
+                db.conn.execute_batch("COMMIT")?;
+            }
+            Err(e) => {
+                let _ = db.conn.execute_batch("ROLLBACK");
+                return Err(e);
+            }
+        }
+        debug!(
+            "Step 4 (parent aggregation): {} classes/structs got coverage from methods",
+            parent_coverage.len()
+        );
+    }
+
     info!(
         "Test coverage computed: {} symbols covered, {} total linkages",
         stats.symbols_covered, stats.total_linkages
