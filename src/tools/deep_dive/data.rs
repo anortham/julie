@@ -284,6 +284,19 @@ fn build_test_refs(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<RefEntry>
         });
     }
 
+    // Deduplicate by (file_path, containing symbol name) — keep first occurrence
+    let mut seen = HashSet::new();
+    test_refs.retain(|r| {
+        let key = (
+            r.file_path.clone(),
+            r.symbol.as_ref().map(|s| s.name.clone()).unwrap_or_default(),
+        );
+        seen.insert(key)
+    });
+
+    // Cap to prevent output bloat for common symbol names
+    test_refs.truncate(10);
+
     Ok(test_refs)
 }
 
