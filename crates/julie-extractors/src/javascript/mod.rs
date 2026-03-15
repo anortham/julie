@@ -167,6 +167,48 @@ impl JavaScriptExtractor {
                 }
             }
 
+            // Check for test call expressions (it, test, describe, beforeEach, etc.)
+            // The arrow_function inside it("name", () => {...}) has no name field,
+            // so we look at the parent call_expression and use the test name.
+            if current_node.kind() == "call_expression" {
+                if let Some(function_node) = current_node.child_by_field_name("function") {
+                    let callee = match function_node.kind() {
+                        "identifier" => self.base.get_node_text(&function_node),
+                        "member_expression" => {
+                            if let Some(obj) = function_node.child_by_field_name("object") {
+                                self.base.get_node_text(&obj)
+                            } else {
+                                String::new()
+                            }
+                        }
+                        _ => String::new(),
+                    };
+
+                    if crate::test_calls::is_test_runner_call(&callee) {
+                        if let Some(args) = current_node.child_by_field_name("arguments") {
+                            let mut cursor = args.walk();
+                            if let Some(first_str) = args
+                                .children(&mut cursor)
+                                .find(|c| c.kind() == "string" || c.kind() == "template_string")
+                            {
+                                let name = self
+                                    .base
+                                    .get_node_text(&first_str)
+                                    .trim_matches(|c| c == '"' || c == '\'' || c == '`')
+                                    .to_string();
+                                if let Some(symbol) = symbol_map.get(&name) {
+                                    return Some(symbol);
+                                }
+                            }
+                            // For lifecycle (no string arg), look up by callee name
+                            if let Some(symbol) = symbol_map.get(&callee) {
+                                return Some(symbol);
+                            }
+                        }
+                    }
+                }
+            }
+
             current = current_node.parent();
         }
 
@@ -279,6 +321,39 @@ impl JavaScriptExtractor {
             "assignment_expression" => {
                 if let Some(assignment_symbol) = self.extract_assignment(node, parent_id.clone()) {
                     symbol = Some(assignment_symbol);
+                }
+            }
+            // Test call expressions (describe, it, test, beforeEach, etc.)
+            "call_expression" => {
+                if let Some(function_node) = node.child_by_field_name("function") {
+                    let callee = match function_node.kind() {
+                        "identifier" => self.base.get_node_text(&function_node),
+                        "member_expression" => {
+                            if let Some(obj) = function_node.child_by_field_name("object") {
+                                self.base.get_node_text(&obj)
+                            } else {
+                                String::new()
+                            }
+                        }
+                        _ => String::new(),
+                    };
+                    if crate::test_calls::is_test_runner_call(&callee) {
+                        let parent = symbols
+                            .iter()
+                            .rev()
+                            .find(|s| {
+                                s.metadata
+                                    .as_ref()
+                                    .and_then(|m| m.get("test_container"))
+                                    .and_then(|v| v.as_bool())
+                                    == Some(true)
+                                    && s.start_byte <= node.start_byte() as u32
+                                    && s.end_byte >= node.end_byte() as u32
+                            })
+                            .map(|s| s.id.as_str());
+                        symbol =
+                            crate::test_calls::extract_test_call(&mut self.base, node, parent);
+                    }
                 }
             }
             _ => {}
