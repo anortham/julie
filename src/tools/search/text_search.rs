@@ -270,7 +270,6 @@ fn definition_search_with_index(
             apply_centrality_boost(&mut hybrid_results.results, &ref_scores);
         }
         promote_exact_name_matches(&mut hybrid_results.results, query);
-        hybrid_results.results.truncate(limit);
 
         let mut symbols: Vec<Symbol> = hybrid_results
             .results
@@ -279,8 +278,9 @@ fn definition_search_with_index(
             .collect();
         enrich_symbols_from_db(&mut symbols, db);
 
-        // Filter out test symbols when exclude_tests is set
+        // Filter BEFORE truncating so test symbols don't consume limit slots
         filter_test_symbols(&mut symbols, filter.exclude_tests);
+        symbols.truncate(limit);
 
         Ok((symbols, relaxed))
     } else {
@@ -313,7 +313,6 @@ fn definition_search_with_index(
             }
         }
         promote_exact_name_matches(&mut filtered_results, query);
-        filtered_results.truncate(limit);
 
         let mut symbols: Vec<Symbol> = filtered_results
             .into_iter()
@@ -323,8 +322,9 @@ fn definition_search_with_index(
             enrich_symbols_from_db(&mut symbols, db);
         }
 
-        // Filter out test symbols when exclude_tests is set
+        // Filter BEFORE truncating so test symbols don't consume limit slots
         filter_test_symbols(&mut symbols, filter.exclude_tests);
+        symbols.truncate(limit);
 
         Ok((symbols, relaxed))
     }
