@@ -54,10 +54,10 @@ This project **MUST** follow Test-Driven Development:
 **NEVER** fix a bug without following this sequence:
 1. **Find the bug** through investigation
 2. **Write a failing test** that reproduces the bug exactly
-3. **Verify the test fails** (confirms bug reproduction)
+3. **Verify the test fails** — run ONLY your specific test: `cargo test --lib <test_name> 2>&1 | tail -10`
 4. **Fix the bug** with minimal changes
-5. **Verify the test passes** (confirms bug fixed)
-6. **Ensure no regressions** (`cargo xtask test dev` — no *new* failures beyond known pre-existing ones)
+5. **Verify the test passes** — same narrow command as step 3
+6. **Ensure no regressions** — if you're the main session, run `cargo xtask test dev`. **If you're a subagent, SKIP this step** — the orchestrator handles it
 
 See: **docs/TESTING_GUIDE.md** for comprehensive testing standards and SOURCE/CONTROL methodology.
 
@@ -107,6 +107,26 @@ The `search_quality` bucket loads a **100MB SQLite fixture**, backfills a Tantiv
 3. **Use raw cargo filters only to narrow failures** after an xtask tier reports a *new* failure. Not as a shortcut to avoid running xtask.
 4. **Do not casually run `cargo test --lib` as the default workflow.** Even if you "know" which tests are affected — run xtask first, then narrow if needed.
 5. **Run one test command at a time.** On Windows, parallel `cargo test` invocations fight over the same output binary (`LNK1104` linker lock error). Never launch multiple test runs concurrently.
+
+### 🚨 Subagent & Worker Agent Test Rules (CRITICAL)
+
+**When running as a subagent, worker, or dispatched agent** (e.g., via subagent-driven development, worktree agents, or any delegated task):
+
+**YOU MUST:**
+- Run ONLY the specific test you wrote: `cargo test --lib <exact_test_name> 2>&1 | tail -10`
+- Use the narrowest possible test filter for your changed area
+- Limit yourself to **2 test runs per fix**: once to verify RED, once to verify GREEN
+
+**YOU MUST NOT:**
+- ❌ Run `cargo xtask test dev` or any xtask tier — **the orchestrating session handles regression checks**
+- ❌ Run `cargo test --lib` without a specific test filter — this runs the ENTIRE suite
+- ❌ Run `cargo test` with broad module filters when a specific test name will do
+- ❌ Sleep, poll, or retry test commands — if a test fails, diagnose and fix or report back
+- ❌ Run tests more than twice per change cycle (red → green, done)
+
+**Why this exists:** Multiple subagents each running the full suite creates 6+ parallel compilation/test processes that grind the machine to a halt. A targeted test takes ~3 seconds. `cargo xtask test dev` takes ~90 seconds. Six of them in parallel = unusable system for 10+ minutes.
+
+**The contract:** Subagents run narrow targeted tests. The orchestrating session runs `cargo xtask test dev` once per batch of completed changes. This is not optional.
 
 ### Narrowing Failures With Raw Cargo Filters
 
