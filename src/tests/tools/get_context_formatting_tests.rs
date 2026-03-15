@@ -822,4 +822,32 @@ mod formatting_tests {
             reduction * 100.0
         );
     }
+
+    #[test]
+    fn test_no_results_compact_format_avoids_readable_borders() {
+        let data = ContextData {
+            query: "nonexistent_symbol".to_string(),
+            pivots: vec![],
+            neighbors: vec![],
+            allocation: make_allocation(PivotMode::SignatureOnly, NeighborMode::NameAndLocation),
+        };
+
+        let compact = format_context_with_mode(&data, OutputFormat::Compact);
+        assert!(
+            !compact.contains("\u{2550}"),
+            "compact no-results should not use ═══ readable borders, got:\n{}",
+            compact
+        );
+        assert!(
+            compact.contains("no relevant symbols"),
+            "compact no-results should contain guidance message"
+        );
+
+        // Readable format SHOULD have borders
+        let readable = format_context_with_mode(&data, OutputFormat::Readable);
+        assert!(
+            readable.contains("\u{2550}"),
+            "readable no-results should use ═══ borders"
+        );
+    }
 }

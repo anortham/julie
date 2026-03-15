@@ -158,10 +158,15 @@ pub fn run_pipeline(
     )?;
 
     if search_results.results.is_empty() {
-        return Ok(format!(
-            "\u{2550}\u{2550}\u{2550} Context: \"{}\" \u{2550}\u{2550}\u{2550}\nNo relevant symbols found.\n\
-            💡 Try fast_search(query=\"{}\") for exact matches, or verify the workspace is indexed",
-            query, query
+        let empty_data = ContextData {
+            query: query.to_string(),
+            pivots: vec![],
+            neighbors: vec![],
+            allocation: TokenBudget::new(0).allocate(0, 0),
+        };
+        return Ok(format_context_with_mode(
+            &empty_data,
+            super::formatting::OutputFormat::from_option(format.as_deref()),
         ));
     }
 
