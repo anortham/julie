@@ -40,15 +40,31 @@ pub struct SecurityRiskStats {
 // =============================================================================
 
 /// Category A: Command/code execution sinks.
-const EXECUTION_SINKS: &[&str] = &[
+pub(crate) const EXECUTION_SINKS: &[&str] = &[
     "exec", "eval", "system", "popen", "spawn", "fork",
     "shell_exec", "child_process", "subprocess", "shellexecute", "createprocess",
 ];
 
 /// Category B: Database/query operation sinks.
-const DATABASE_SINKS: &[&str] = &[
+pub(crate) const DATABASE_SINKS: &[&str] = &[
+    // Raw SQL execution
     "execute", "raw_sql", "exec_query", "executequery",
     "executeupdate", "rawquery", "runsql",
+    // EF Core / .NET (include Async variants for exact matching)
+    "savechanges", "savechangesasync",
+    "executedelete", "executedeleteasync",
+    "executesqlraw", "executesqlrawasync",
+    "executesqlinterpolated", "executesqlinterpolatedasync",
+    "fromsqlraw", "fromsql",
+    // Django / SQLAlchemy / Python ORMs
+    "filter", "raw", "commit", "cursor",
+    // Rails / ActiveRecord
+    "destroy", "find_by_sql", "update_all", "delete_all",
+    // Prisma / TypeORM / JS ORMs
+    "findmany", "findunique", "createmany", "deletemany",
+    "getrepository", "createquerybuilder",
+    // JPA / Hibernate
+    "persist", "merge", "createquery", "createnativequery",
 ];
 
 /// All sink patterns combined (lowercase for case-insensitive matching).

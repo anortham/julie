@@ -114,6 +114,36 @@ mod tests {
         assert_eq!(matches_sink_pattern("executor", patterns), None);
     }
 
+    #[test]
+    fn test_sink_match_efcore_savechanges() {
+        let callees = vec!["SaveChangesAsync".to_string()];
+        let patterns: Vec<&str> = EXECUTION_SINKS.iter().chain(DATABASE_SINKS.iter()).copied().collect();
+        let (score, matched) = compute_sink_signal(&callees, &[], &patterns);
+        assert!(score > 0.0, "SaveChangesAsync should match a sink pattern");
+        assert!(!matched.is_empty());
+    }
+
+    #[test]
+    fn test_sink_match_django_raw() {
+        let patterns: Vec<&str> = EXECUTION_SINKS.iter().chain(DATABASE_SINKS.iter()).copied().collect();
+        let (score, _) = compute_sink_signal(&["queryset.raw".to_string()], &[], &patterns);
+        assert!(score > 0.0, "Django raw() should match a sink pattern");
+    }
+
+    #[test]
+    fn test_sink_match_prisma_findmany() {
+        let patterns: Vec<&str> = EXECUTION_SINKS.iter().chain(DATABASE_SINKS.iter()).copied().collect();
+        let (score, _) = compute_sink_signal(&["prisma.findMany".to_string()], &[], &patterns);
+        assert!(score > 0.0, "Prisma findMany should match a sink pattern");
+    }
+
+    #[test]
+    fn test_sink_match_jpa_persist() {
+        let patterns: Vec<&str> = EXECUTION_SINKS.iter().chain(DATABASE_SINKS.iter()).copied().collect();
+        let (score, _) = compute_sink_signal(&["em.persist".to_string()], &[], &patterns);
+        assert!(score > 0.0, "JPA persist should match a sink pattern");
+    }
+
     // =========================================================================
     // Sink signal computation
     // =========================================================================
