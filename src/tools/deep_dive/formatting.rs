@@ -245,6 +245,88 @@ fn format_change_risk_info(out: &mut String, symbol: &crate::extractors::base::S
     }
 }
 
+/// Format security risk section for production symbols.
+/// Only shown when metadata contains security_risk key.
+fn format_security_risk_info(out: &mut String, symbol: &crate::extractors::base::Symbol, incoming_count: usize) {
+    let metadata = match &symbol.metadata {
+        Some(m) => m,
+        None => return,
+    };
+
+    // Skip test symbols
+    if metadata.get("is_test").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return;
+    }
+
+    let security = match metadata.get("security_risk") {
+        Some(r) => r,
+        None => return,
+    };
+
+    let score = security.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let label = security.get("label").and_then(|v| v.as_str()).unwrap_or("LOW");
+    let signals = security.get("signals");
+
+    // Build summary: "Security Risk: HIGH (0.85) — calls execute, raw_sql; public; accepts string params"
+    let mut summary_parts = Vec::new();
+
+    if let Some(sigs) = signals {
+        if let Some(sinks) = sigs.get("sink_calls").and_then(|v| v.as_array()) {
+            if !sinks.is_empty() {
+                let names: Vec<&str> = sinks.iter().filter_map(|v| v.as_str()).collect();
+                summary_parts.push(format!("calls {}", names.join(", ")));
+            }
+        }
+        if let Some(exp) = sigs.get("exposure").and_then(|v| v.as_f64()) {
+            if exp >= 0.5 {
+                summary_parts.push("public".to_string());
+            }
+        }
+        if sigs.get("input_handling").and_then(|v| v.as_f64()).unwrap_or(0.0) > 0.0 {
+            summary_parts.push("accepts string params".to_string());
+        }
+    }
+
+    let summary = if summary_parts.is_empty() {
+        String::new()
+    } else {
+        format!(" — {}", summary_parts.join("; "))
+    };
+
+    out.push_str(&format!(
+        "\nSecurity Risk: {} ({:.2}){}\n",
+        label, score, summary
+    ));
+
+    // Detail lines
+    if let Some(sigs) = signals {
+        let exposure = sigs.get("exposure").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        if exposure >= 0.5 {
+            out.push_str("  exposure: public\n");
+        } else {
+            out.push_str(&format!("  exposure: {:.2}\n", exposure));
+        }
+
+        let input = sigs.get("input_handling").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        if input > 0.0 {
+            out.push_str("  input handling: yes (signature contains input type patterns)\n");
+        }
+
+        if let Some(sinks) = sigs.get("sink_calls").and_then(|v| v.as_array()) {
+            if !sinks.is_empty() {
+                let names: Vec<&str> = sinks.iter().filter_map(|v| v.as_str()).collect();
+                out.push_str(&format!("  sink calls: {}\n", names.join(", ")));
+            }
+        }
+
+        let blast = sigs.get("blast_radius").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        out.push_str(&format!("  blast radius: {:.2} ({} callers)\n", blast, incoming_count));
+
+        let untested = sigs.get("untested").and_then(|v| v.as_bool()).unwrap_or(false);
+        out.push_str(&format!("  untested: {}\n", if untested { "yes" } else { "no" }));
+    }
+}
+
 // === Kind-specific formatters ===
 
 fn format_callable(out: &mut String, ctx: &SymbolContext, depth: &str) {
@@ -318,6 +400,7 @@ fn format_callable(out: &mut String, ctx: &SymbolContext, depth: &str) {
 
     format_test_locations(out, ctx, depth);
     format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
+    format_security_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
@@ -356,6 +439,7 @@ fn format_trait_or_interface(out: &mut String, ctx: &SymbolContext, depth: &str)
 
     format_test_locations(out, ctx, depth);
     format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
+    format_security_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
@@ -445,6 +529,7 @@ fn format_class_or_struct(out: &mut String, ctx: &SymbolContext, depth: &str) {
 
     format_test_locations(out, ctx, depth);
     format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
+    format_security_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
@@ -493,6 +578,7 @@ fn format_enum(out: &mut String, ctx: &SymbolContext, depth: &str) {
 
     format_test_locations(out, ctx, depth);
     format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
+    format_security_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
@@ -561,6 +647,7 @@ fn format_module(out: &mut String, ctx: &SymbolContext, depth: &str) {
 
     format_test_locations(out, ctx, depth);
     format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
+    format_security_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
@@ -585,6 +672,7 @@ fn format_generic(out: &mut String, ctx: &SymbolContext, depth: &str) {
     }
     format_test_locations(out, ctx, depth);
     format_change_risk_info(out, &ctx.symbol, ctx.incoming_total);
+    format_security_risk_info(out, &ctx.symbol, ctx.incoming_total);
     format_body(out, ctx, depth);
 }
 
