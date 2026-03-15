@@ -238,19 +238,16 @@ fn fetch_pivot_batch_data(
     pivot_ids: &[String],
     expansion: &GraphExpansion,
     db: &SymbolDatabase,
-    pivot_mode: &super::allocation::PivotMode,
+    _pivot_mode: &super::allocation::PivotMode,
 ) -> Result<PivotBatchData> {
-    use super::allocation::PivotMode;
-
-    // 1. Full symbol bodies (skip if we only need signatures)
-    let full_symbols: HashMap<String, Symbol> = if matches!(pivot_mode, PivotMode::SignatureOnly) {
-        HashMap::new()
-    } else {
-        db.get_symbols_by_ids(pivot_ids)?
-            .into_iter()
-            .map(|s| (s.id.clone(), s))
-            .collect()
-    };
+    // Always fetch full symbols — even in SignatureOnly mode we need metadata
+    // for risk/security labels. Code bodies are only used in FullBody/SignatureAndKey
+    // modes (handled by build_pivot_entries).
+    let full_symbols: HashMap<String, Symbol> = db
+        .get_symbols_by_ids(pivot_ids)?
+        .into_iter()
+        .map(|s| (s.id.clone(), s))
+        .collect();
 
     // 2. Relationships (batched)
     let incoming_rels = db.get_relationships_to_symbols(pivot_ids)?;
