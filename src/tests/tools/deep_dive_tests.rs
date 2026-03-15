@@ -1254,6 +1254,71 @@ mod formatting_tests {
     }
 
     #[test]
+    fn test_change_risk_labels_say_dependents_not_callers() {
+        // Regression: incoming_total includes all relationship types (calls, uses,
+        // type_usage, member_access) plus identifier fallback — not just callers.
+        let mut sym = make_symbol(
+            "handle_request",
+            SymbolKind::Function,
+            "src/server.rs",
+            10,
+            Some("pub fn handle_request(req: Request) -> Response"),
+            Some(Visibility::Public),
+            None,
+        );
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert(
+            "change_risk".to_string(),
+            serde_json::json!({
+                "score": 0.65,
+                "label": "MEDIUM",
+                "factors": {
+                    "visibility": "public",
+                    "kind": "function",
+                    "centrality": 0.5
+                }
+            }),
+        );
+        metadata.insert(
+            "security_risk".to_string(),
+            serde_json::json!({
+                "score": 0.4,
+                "label": "MEDIUM",
+                "signals": {
+                    "exposure": 0.5,
+                    "blast_radius": 0.3,
+                    "untested": true
+                }
+            }),
+        );
+        sym.metadata = Some(metadata);
+
+        let ctx = SymbolContext {
+            symbol: sym,
+            incoming: vec![],
+            incoming_total: 8,
+            outgoing: vec![],
+            outgoing_total: 3,
+            children: vec![],
+            implementations: vec![],
+            test_refs: vec![],
+            similar: vec![],
+        };
+        let output = format_symbol_context(&ctx, "context");
+
+        assert!(
+            !output.contains(" callers"),
+            "Should not use 'callers' label — incoming_total includes all ref types, got:\n{}",
+            output
+        );
+        assert!(
+            output.contains("dependents"),
+            "Should label as 'dependents', got:\n{}",
+            output
+        );
+    }
+
+    #[test]
     fn test_context_depth_shows_test_locations() {
         let sym = make_symbol(
             "search_index",

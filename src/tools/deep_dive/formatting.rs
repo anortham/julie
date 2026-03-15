@@ -221,14 +221,14 @@ fn format_change_risk_info(out: &mut String, symbol: &crate::extractors::base::S
     };
 
     out.push_str(&format!(
-        "\nChange Risk: {} ({:.2}) — {} callers, {}, {}\n",
+        "\nChange Risk: {} ({:.2}) — {} dependents, {}, {}\n",
         label, score, incoming_count, vis, test_summary
     ));
 
     // Detail lines
     if let Some(f) = factors {
         let centrality = f.get("centrality").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        out.push_str(&format!("  centrality: {:.2} ({} direct callers)\n", centrality, incoming_count));
+        out.push_str(&format!("  centrality: {:.2} ({} incoming refs)\n", centrality, incoming_count));
         out.push_str(&format!("  visibility: {}\n", vis));
 
         if let Some(tc) = coverage {
@@ -319,7 +319,7 @@ fn format_security_risk_info(out: &mut String, symbol: &crate::extractors::base:
         }
 
         let blast = sigs.get("blast_radius").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        out.push_str(&format!("  blast radius: {:.2} ({} callers)\n", blast, incoming_count));
+        out.push_str(&format!("  blast radius: {:.2} ({} dependents)\n", blast, incoming_count));
 
         let untested = sigs.get("untested").and_then(|v| v.as_bool()).unwrap_or(false);
         out.push_str(&format!("  untested: {}\n", if untested { "yes" } else { "no" }));
