@@ -30,6 +30,7 @@ pub mod manager;
 pub mod routing_identifiers;
 pub mod routing_relationships;
 pub mod routing_symbols;
+pub mod test_calls;
 pub mod test_detection;
 pub mod utils;
 

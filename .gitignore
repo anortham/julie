@@ -38,6 +38,7 @@ julie-server
 /test_workspaces/
 /temp/
 test_*.rs
+!**/test_calls.rs
 !**/test_detection.rs
 !**/test_quality.rs
 !**/test_quality_tests.rs
