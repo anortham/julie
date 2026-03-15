@@ -94,7 +94,7 @@ Some buckets have pre-existing test failures unrelated to your changes. **Do not
 | `core-embeddings` | dev, full | `test_workspace_init_sidecar_bootstrap_failure_falls_back_to_ort`, `test_workspace_init_strict_accel_disables_sidecar_when_unaccelerated` | Known; sidecar resolution logic |
 | `workspace_init` | system, full | Outlier discovered during calibration | Known; blocking system/full green status |
 
-**This means:** `cargo xtask test dev` will report a failure in `core-embeddings` — that's expected. Your changes are fine if the other buckets pass and no *new* tests fail.
+**This means:** `cargo xtask test dev` will report a failure in `core-embeddings` — that's expected. Your changes are fine if the other buckets pass and no *new* tests fail. The `system` and `full` tiers are not yet green-by-default due to the `workspace_init` pre-existing failure.
 
 ### Why Dogfood Is Slow
 

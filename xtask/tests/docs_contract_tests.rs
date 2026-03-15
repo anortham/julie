@@ -20,7 +20,7 @@ fn docs_contract_tests_agents_md_defaults_to_xtask_dev_tier() {
 
     assert!(contents.contains("cargo xtask test dev"));
     assert!(contents
-        .contains("only to narrow a known failure after the xtask run points you at a bucket"));
+        .contains("Use raw cargo filters only to narrow failures"));
     assert!(!contents.contains("cargo test --lib -- --skip search_quality"));
 }
 

@@ -5,7 +5,7 @@
 - [ ] **F4. Embedding KNN smoke test may be red** — `test_pipeline_knn_works_after_embedding` asserts `authenticate_user` ranks above `DatabaseConnection` for an auth query; needs verification run (`src/tests/integration/embedding_pipeline.rs`)
 - [ ] **workspace_init is pre-existing red + pathological** — `tests::core::workspace_init::test_find_workspace_root_rejects_home_julie_dir` fails on both `main` and `feat/test-runner-tiering`, and the `workspace-init` bucket still times out even with a `480s` budget; this currently blocks treating `cargo xtask test system` / `full` as green-by-default (`src/tests/core/workspace_init.rs`)
 - [x] ~~**`fast_search` content path ignores `exclude_tests`**~~ — fixed: `line_mode_search` now accepts and applies `exclude_tests` parameter using `is_test_path` for file-level filtering
-- [x] ~~**Test coverage fallback can mislink tests to the wrong symbol**~~ — fixed: added `AND s_test.language = s_prod.language` to prevent cross-language mislinking. GPT's "collapsed buckets" claim was incorrect — `(test_id, ident_name)` grouping is correct.
+- [x] ~~**Test coverage fallback can mislink tests to the wrong symbol**~~ — fixed: language filter applied in Rust code (not SQL — adding it to SQL broke the query plan, causing a 3+ min hang). GPT's "collapsed buckets" claim was incorrect — `(test_id, ident_name)` grouping is correct.
 - [x] ~~**`get_context` drops risk/security labels in `SignatureOnly` mode**~~ — fixed: always fetch `full_symbols` for metadata even in SignatureOnly mode
 - [x] ~~**`deep_dive` prints `Change Risk` twice**~~ — fixed: removed `format_change_risk_info` call from `format_header` (kind-specific formatters already call it)
 - [x] ~~**`get_context` no-results output ignores compact/default format**~~ — fixed: routes through `format_context_with_mode` instead of hardcoded readable format
@@ -22,7 +22,7 @@
 - [ ] **Broaden and normalize cross-language test detection** — Java/Kotlin/C# annotation matching is exact-text only, while PHP/Swift `test*` detection is broad enough to risk production false positives (`crates/julie-extractors/src/test_detection.rs`, `crates/julie-extractors/src/java/methods.rs`, `crates/julie-extractors/src/csharp/helpers.rs`)
 - [x] ~~**Go test detection misses fuzz/example entry points**~~ — fixed: `detect_go()` now recognizes `FuzzXxx` and `ExampleXxx` in addition to `TestXxx`
 - [ ] **Add regression coverage for code-health output plumbing** — missing tests for line-mode `exclude_tests`, `get_context` label rendering in `SignatureOnly`, compact no-results formatting, and `deep_dive` change/security output let the current regressions slip through (`src/tests/tools/search/line_mode.rs`, `src/tests/tools/get_context_formatting_tests.rs`, `src/tests/tools/deep_dive_tests.rs`)
-- [ ] **Doc contract tests are stale** — `docs_contract_tests_agents_md_defaults_to_xtask_dev_tier` and `docs_contract_tests_claude_md_uses_xtask_runner_as_canonical_workflow` assert on text that no longer exists in CLAUDE.md/AGENTS.md (`xtask/tests/docs_contract_tests.rs`)
+- [x] ~~**Doc contract tests are stale**~~ — fixed: updated AGENTS.md assertion to match current wording, added "green-by-default" caveat to CLAUDE.md/AGENTS.md for blocked tiers
 
 ## Enhancements
 
