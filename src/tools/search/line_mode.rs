@@ -26,10 +26,13 @@ pub async fn line_mode_search(
     language: &Option<String>,
     file_pattern: &Option<String>,
     limit: u32,
+    exclude_tests: Option<bool>,
     workspace_target: &WorkspaceTarget,
     handler: &JulieServerHandler,
 ) -> Result<CallToolResult> {
     debug!("📄 Line-level search for: '{}'", query);
+
+    let exclude_test_files = exclude_tests.unwrap_or(false);
 
     // Display label for search result headers
     let workspace_label = match workspace_target {
@@ -123,6 +126,13 @@ pub async fn line_mode_search(
                         }
                     }
 
+                    // Skip test files when exclude_tests is set
+                    if exclude_test_files
+                        && crate::search::scoring::is_test_path(&file_result.file_path)
+                    {
+                        continue;
+                    }
+
                     if let Some(content) =
                         db_lock.get_file_content(&file_result.file_path)?
                     {
@@ -203,6 +213,13 @@ pub async fn line_mode_search(
                         }
                     }
 
+                    // Skip test files when exclude_tests is set
+                    if exclude_test_files
+                        && crate::search::scoring::is_test_path(&file_result.file_path)
+                    {
+                        continue;
+                    }
+
                     if let Some(content) =
                         ref_db.get_file_content(&file_result.file_path)?
                     {
@@ -225,7 +242,7 @@ pub async fn line_mode_search(
         }
     };
 
-    // Defense-in-depth: post-filter by language and file_pattern
+    // Defense-in-depth: post-filter by language, file_pattern, and test exclusion
     // (primary filtering now happens inside the collection loop above)
     let filtered_matches: Vec<LineMatch> = all_line_matches
         .into_iter()
@@ -240,7 +257,13 @@ pub async fn line_mode_search(
                 .map(|pattern| matches_glob_pattern(&line_match.file_path, pattern))
                 .unwrap_or(true);
 
-            language_match && file_match
+            let test_match = if exclude_test_files {
+                !crate::search::scoring::is_test_path(&line_match.file_path)
+            } else {
+                true
+            };
+
+            language_match && file_match && test_match
         })
         .collect();
 

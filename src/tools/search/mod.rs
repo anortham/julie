@@ -130,6 +130,7 @@ impl FastSearchTool {
                 &self.language,
                 &self.file_pattern,
                 self.limit,
+                self.exclude_tests,
                 &workspace_target,
                 handler,
             )
