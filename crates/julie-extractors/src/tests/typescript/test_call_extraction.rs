@@ -3,7 +3,7 @@
 //! Validates that Jest/Vitest/Mocha/Bun test DSL call expressions
 //! (describe/it/test/beforeEach/etc.) are extracted as named symbols.
 
-use crate::base::SymbolKind;
+use crate::base::{RelationshipKind, SymbolKind};
 use crate::typescript::TypeScriptExtractor;
 use std::path::PathBuf;
 
@@ -138,5 +138,84 @@ describe("UserService", () => {
         4,
         "Should extract exactly 4 test call symbols (describe + beforeEach + 2 it). Got: {:?}",
         test_call_symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_relationships_attributed_to_test_symbols() {
+    // This test verifies that when production code is called inside an it() callback,
+    // the relationship's from_symbol_id points to the it() test symbol, not nothing.
+    let code = r#"
+function helper() {
+    return 42;
+}
+
+it("should process", () => {
+    helper();
+    processPayment();
+});
+"#;
+
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+
+    let mut extractor = TypeScriptExtractor::new(
+        "javascript".to_string(),
+        "__tests__/payment.test.js".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+
+    let symbols = extractor.extract_symbols(&tree);
+    let relationships = extractor.extract_relationships(&tree, &symbols);
+    let pending = extractor.get_pending_relationships();
+
+    // The it() symbol should exist
+    let it_sym = symbols.iter().find(|s| s.name == "should process");
+    assert!(
+        it_sym.is_some(),
+        "Should extract it() test symbol. Got: {:?}",
+        symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+    );
+    let it_sym = it_sym.unwrap();
+
+    // helper() is a local function — should produce a direct Relationship
+    let helper_rel = relationships.iter().find(|r| {
+        let to_sym = symbols.iter().find(|s| s.id == r.to_symbol_id);
+        matches!(to_sym, Some(s) if s.name == "helper")
+    });
+    assert!(
+        helper_rel.is_some(),
+        "Should have a direct relationship to helper(). Rels: {:?}",
+        relationships
+            .iter()
+            .map(|r| (&r.from_symbol_id, &r.kind))
+            .collect::<Vec<_>>()
+    );
+    let helper_rel = helper_rel.unwrap();
+    assert_eq!(helper_rel.kind, RelationshipKind::Calls);
+    assert_eq!(
+        helper_rel.from_symbol_id, it_sym.id,
+        "helper() call should be attributed to the it() test symbol"
+    );
+
+    // processPayment() is unknown/imported — should produce a PendingRelationship
+    let process_pending = pending
+        .iter()
+        .find(|p| p.callee_name == "processPayment");
+    assert!(
+        process_pending.is_some(),
+        "Should have a pending relationship for processPayment(). Pending: {:?}",
+        pending
+            .iter()
+            .map(|p| &p.callee_name)
+            .collect::<Vec<_>>()
+    );
+    let process_pending = process_pending.unwrap();
+    assert_eq!(
+        process_pending.from_symbol_id, it_sym.id,
+        "processPayment() pending call should be attributed to the it() test symbol"
     );
 }
