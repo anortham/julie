@@ -33,6 +33,7 @@ mod formatting_tests {
             incoming_names: vec![],
             outgoing_names: vec![],
             risk_label: None,
+            security_label: None,
         }
     }
 

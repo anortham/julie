@@ -60,6 +60,8 @@ pub struct PivotEntry {
     pub outgoing_names: Vec<String>,
     /// Change risk label (HIGH/MEDIUM/LOW) from metadata, if available.
     pub risk_label: Option<String>,
+    /// Security risk label (HIGH/MEDIUM/LOW) from metadata, if available.
+    pub security_label: Option<String>,
 }
 
 /// Pre-processed neighbor for formatting.
@@ -144,9 +146,12 @@ fn format_context_readable(data: &ContextData) -> String {
         let risk_tag = pivot.risk_label.as_ref()
             .map(|l| format!("  [{} risk]", l))
             .unwrap_or_default();
+        let security_tag = pivot.security_label.as_ref()
+            .map(|l| format!("  [{} security]", l))
+            .unwrap_or_default();
         out.push_str(&format!(
-            "{}:{} ({}){}\n",
-            pivot.file_path, pivot.start_line, pivot.kind, risk_tag
+            "{}:{} ({}){}{}\n",
+            pivot.file_path, pivot.start_line, pivot.kind, risk_tag, security_tag
         ));
         let label = centrality_label(pivot.reference_score);
         out.push_str(&format!("  Centrality: {}\n", label));
@@ -215,9 +220,12 @@ fn format_context_compact(data: &ContextData) -> String {
         let risk_tag = pivot.risk_label.as_ref()
             .map(|l| format!(" risk={}", l))
             .unwrap_or_default();
+        let security_tag = pivot.security_label.as_ref()
+            .map(|l| format!(" security={}", l))
+            .unwrap_or_default();
         out.push_str(&format!(
-            "PIVOT {} {}:{} kind={} centrality={}{}\n",
-            pivot.name, pivot.file_path, pivot.start_line, pivot.kind, label, risk_tag
+            "PIVOT {} {}:{} kind={} centrality={}{}{}\n",
+            pivot.name, pivot.file_path, pivot.start_line, pivot.kind, label, risk_tag, security_tag
         ));
         for line in pivot.content.lines() {
             out.push_str("  ");
