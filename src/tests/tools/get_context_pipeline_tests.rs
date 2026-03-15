@@ -242,7 +242,12 @@ mod pipeline_integration_tests {
             None,
         )
         .unwrap();
-        assert!(result.contains("No relevant symbols found"));
+        // Default format is compact: "Context ... | no relevant symbols"
+        assert!(
+            result.contains("no relevant symbols"),
+            "Expected no-results message, got:\n{}",
+            result
+        );
     }
 
     #[test]
@@ -296,7 +301,12 @@ mod pipeline_integration_tests {
         )
         .unwrap();
 
-        assert!(result.contains("No relevant symbols found"));
+        // Default format is compact: "Context ... | no relevant symbols"
+        assert!(
+            result.contains("no relevant symbols"),
+            "Expected no-results message, got:\n{}",
+            result
+        );
     }
 
     #[test]
