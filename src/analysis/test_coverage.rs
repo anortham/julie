@@ -163,12 +163,34 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
     }
 
     // For each (test, identifier_name), pick the production symbol with closest directory
+    // and best file-name similarity (test file name contains prod file stem).
     for ((test_id, _ident_name), candidates) in &name_matches {
         if candidates.is_empty() {
             continue;
         }
         let best = candidates.iter().max_by_key(|(_, prod_path, test_path, _, _)| {
-            common_directory_depth(prod_path, test_path)
+            let dir_score = common_directory_depth(prod_path, test_path) * 10;
+            let test_file_stem = test_path
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .split('.')
+                .next()
+                .unwrap_or("");
+            let prod_file_stem = prod_path
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .split('.')
+                .next()
+                .unwrap_or("");
+            let name_bonus =
+                if !prod_file_stem.is_empty() && test_file_stem.contains(prod_file_stem) {
+                    100
+                } else {
+                    0
+                };
+            dir_score + name_bonus
         });
         if let Some((prod_id, _, _, tier, test_name)) = best {
             linkages.entry(prod_id.clone()).or_default().insert((

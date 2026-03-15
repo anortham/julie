@@ -191,6 +191,47 @@ mod tests {
     }
 
     #[test]
+    fn test_name_match_prefers_class_name_similarity() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        insert_file(&db, "src/Services/LabTestService.cs");
+        insert_file(&db, "src/Services/MediaService.cs");
+        insert_file(&db, "tests/Services/LabTestServiceTests.cs");
+
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('prod_labtest', 'ListAsync', 'method', 'csharp', 'src/Services/LabTestService.cs', 20, 0, 50, 0, 0, 0, NULL, 3.0, 'public');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('prod_media', 'ListAsync', 'method', 'csharp', 'src/Services/MediaService.cs', 20, 0, 50, 0, 0, 0, NULL, 3.0, 'public');
+
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, metadata, reference_score, visibility)
+            VALUES ('test_1', 'ListAsync_ReturnsResults', 'method', 'csharp', 'tests/Services/LabTestServiceTests.cs', 30, 0, 45, 0, 0, 0,
+                    '{"is_test": true, "test_quality": {"quality_tier": "adequate"}}', 0.0, 'private');
+
+            INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id, target_symbol_id)
+            VALUES ('ident_1', 'ListAsync', 'call', 'csharp', 'tests/Services/LabTestServiceTests.cs', 41, 0, 41, 20, 'test_1', NULL);
+        "#).unwrap();
+
+        let stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
+        assert_eq!(stats.symbols_covered, 1, "Should cover exactly one symbol");
+
+        let cov: Option<String> = db.conn.query_row(
+            "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'prod_labtest'",
+            [], |row| row.get(0)
+        ).unwrap();
+        assert!(cov.is_some(), "LabTestService.ListAsync should have test coverage");
+
+        let no_cov: Option<String> = db.conn.query_row(
+            "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'prod_media'",
+            [], |row| row.get(0)
+        ).unwrap();
+        assert!(no_cov.is_none(), "MediaService.ListAsync should NOT have test coverage from LabTestServiceTests");
+    }
+
+    #[test]
     fn test_deduplication_across_strategies() {
         let (_temp, db) = setup_test_db();
 
