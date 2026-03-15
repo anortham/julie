@@ -246,9 +246,10 @@ impl SymbolDatabase {
     ///   Uses/References/Returns/Parameter/Defines/Overrides/Joins/Composition=1,
     ///   Contains=0 (structural, not a usage signal)
     ///
-    /// After computing direct scores, propagates centrality from interfaces and base
-    /// classes to their implementations. This fixes C# DI patterns where concrete
-    /// classes get zero centrality because all references go through interfaces.
+    /// After computing direct scores:
+    /// - Propagates centrality from interfaces/base classes to implementations (70%).
+    /// - Propagates constructor centrality to parent class (70%), fixing DI patterns
+    ///   where all references target the constructor, leaving the class at zero.
     pub fn compute_reference_scores(&self) -> Result<()> {
         // Step 1: Compute direct reference scores from incoming relationships
         self.conn.execute(
@@ -301,6 +302,31 @@ impl SymbolDatabase {
             )",
             [],
         )?;
+
+        // Step 3: Propagate constructor centrality to parent class.
+        // In C# / Java / TypeScript DI patterns, all references target the constructor,
+        // leaving the class itself with zero centrality. Give the class 70% of its
+        // highest-scoring constructor's score (same factor as interface→implementation).
+        self.conn.execute(
+            "UPDATE symbols SET reference_score = reference_score + COALESCE(
+                (SELECT MAX(ctor.reference_score) * 0.7
+                 FROM symbols ctor
+                 WHERE ctor.parent_id = symbols.id
+                   AND ctor.kind = 'constructor'
+                   AND ctor.reference_score > 0
+                ), 0.0
+            )
+            WHERE kind IN ('class', 'struct')
+              AND reference_score = 0.0
+              AND EXISTS (
+                  SELECT 1 FROM symbols ctor
+                  WHERE ctor.parent_id = symbols.id
+                    AND ctor.kind = 'constructor'
+                    AND ctor.reference_score > 0
+              )",
+            [],
+        )?;
+
         Ok(())
     }
 

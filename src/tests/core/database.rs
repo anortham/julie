@@ -2253,3 +2253,121 @@ fn test_migration_011_is_idempotent() {
     assert_eq!(model, "bge-small-en-v1.5");
     assert_eq!(dims, 384);
 }
+
+/// Task 6: Constructor centrality propagation to parent class.
+/// In C# / Java / TypeScript with DI, all references target the constructor,
+/// leaving the class itself with zero centrality.
+#[test]
+fn test_compute_reference_scores_propagates_constructor_centrality() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    db.store_file_info(&FileInfo {
+        path: "src/services.cs".to_string(),
+        language: "csharp".to_string(),
+        hash: "abc123".to_string(),
+        size: 1000,
+        last_modified: 1234567890,
+        last_indexed: 0,
+        symbol_count: 5,
+        content: None,
+    })
+    .unwrap();
+
+    db.store_file_info(&FileInfo {
+        path: "src/program.cs".to_string(),
+        language: "csharp".to_string(),
+        hash: "def456".to_string(),
+        size: 500,
+        last_modified: 1234567890,
+        last_indexed: 0,
+        symbol_count: 2,
+        content: None,
+    })
+    .unwrap();
+
+    // Class with no direct references
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte, visibility)
+             VALUES ('class_1', 'LabTestService', 'class', 'csharp', 'src/services.cs', 1, 100, 0, 1, 0, 5000, 'public')",
+            [],
+        )
+        .unwrap();
+
+    // Constructor with parent_id pointing to the class
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte, visibility, parent_id)
+             VALUES ('ctor_1', 'LabTestService', 'constructor', 'csharp', 'src/services.cs', 10, 15, 0, 1, 200, 400, 'public', 'class_1')",
+            [],
+        )
+        .unwrap();
+
+    // Two callers that reference the constructor (DI registrations)
+    for (id, name) in [("caller_1", "ConfigureServices"), ("caller_2", "TestSetup")] {
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte, visibility)
+                 VALUES (?1, ?2, 'method', 'csharp', 'src/program.cs', 50, 80, 0, 1, 0, 500, 'public')",
+                rusqlite::params![id, name],
+            )
+            .unwrap();
+    }
+
+    // Relationships: callers -> constructor (DI pattern)
+    db.conn
+        .execute(
+            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+             VALUES ('rel_1', 'caller_1', 'ctor_1', 'instantiates')",
+            [],
+        )
+        .unwrap();
+    db.conn
+        .execute(
+            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+             VALUES ('rel_2', 'caller_2', 'ctor_1', 'uses')",
+            [],
+        )
+        .unwrap();
+
+    db.compute_reference_scores().unwrap();
+
+    // Constructor should have centrality from DI references:
+    // instantiates=2 + uses=1 = 3.0
+    let ctor_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'ctor_1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        ctor_score > 0.0,
+        "Constructor should have centrality from DI references, got {}",
+        ctor_score
+    );
+
+    // Class should inherit constructor centrality
+    let class_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'class_1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        class_score > 0.0,
+        "Class should inherit constructor centrality, got {}",
+        class_score
+    );
+    assert!(
+        class_score >= ctor_score * 0.5,
+        "Class should get at least 50% of constructor centrality (ctor={}), got {}",
+        ctor_score,
+        class_score
+    );
+}
