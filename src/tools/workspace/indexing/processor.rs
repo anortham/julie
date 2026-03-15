@@ -528,6 +528,11 @@ impl ManageWorkspaceTool {
                 if let Err(e) = crate::analysis::compute_change_risk_scores(&db_lock) {
                     warn!("Failed to compute change risk scores: {}", e);
                 }
+
+                // Compute structural security risk scores
+                if let Err(e) = crate::analysis::compute_security_risk(&db_lock) {
+                    warn!("Failed to compute security risk: {}", e);
+                }
             }
 
             let bulk_duration = bulk_start.elapsed();

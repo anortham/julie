@@ -42,7 +42,7 @@ pub struct SecurityRiskStats {
 /// Category A: Command/code execution sinks.
 const EXECUTION_SINKS: &[&str] = &[
     "exec", "eval", "system", "popen", "spawn", "fork",
-    "shell_exec", "subprocess", "shellexecute", "createprocess",
+    "shell_exec", "child_process", "subprocess", "shellexecute", "createprocess",
 ];
 
 /// Category B: Database/query operation sinks.
