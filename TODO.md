@@ -4,11 +4,25 @@
 
 - [ ] **F4. Embedding KNN smoke test may be red** — `test_pipeline_knn_works_after_embedding` asserts `authenticate_user` ranks above `DatabaseConnection` for an auth query; needs verification run (`src/tests/integration/embedding_pipeline.rs`)
 - [ ] **workspace_init is pre-existing red + pathological** — `tests::core::workspace_init::test_find_workspace_root_rejects_home_julie_dir` fails on both `main` and `feat/test-runner-tiering`, and the `workspace-init` bucket still times out even with a `480s` budget; this currently blocks treating `cargo xtask test system` / `full` as green-by-default (`src/tests/core/workspace_init.rs`)
+- [x] ~~**`fast_search` content path ignores `exclude_tests`**~~ — fixed: `line_mode_search` now accepts and applies `exclude_tests` parameter using `is_test_path` for file-level filtering
+- [x] ~~**Test coverage fallback can mislink tests to the wrong symbol**~~ — fixed: added `AND s_test.language = s_prod.language` to prevent cross-language mislinking. GPT's "collapsed buckets" claim was incorrect — `(test_id, ident_name)` grouping is correct.
+- [x] ~~**`get_context` drops risk/security labels in `SignatureOnly` mode**~~ — fixed: always fetch `full_symbols` for metadata even in SignatureOnly mode
+- [x] ~~**`deep_dive` prints `Change Risk` twice**~~ — fixed: removed `format_change_risk_info` call from `format_header` (kind-specific formatters already call it)
+- [x] ~~**`get_context` no-results output ignores compact/default format**~~ — fixed: routes through `format_context_with_mode` instead of hardcoded readable format
+- [x] ~~**Definition search truncates before `exclude_tests` filtering**~~ — fixed: moved `filter_test_symbols` before `truncate(limit)` in both hybrid and keyword paths
+- [x] ~~**`deep_dive` caller/blast-radius counts are mislabeled**~~ — fixed: relabeled to "dependents"/"incoming refs" since `incoming_total` includes all relationship types
 
 ## Tech Debt
 
 - [ ] **Run embedding benchmark** — baseline vs candidate on `LabHandbookV2` reference workspace, record quality/overhead deltas
 - [ ] **Watcher doesn't respect `.gitignore`** — The file walker uses `ignore::WalkBuilder` with `.gitignore` support, but the filewatcher uses hardcoded `glob::Pattern` via `build_ignore_patterns()`. Any `.gitignore` pattern not also in `build_ignore_patterns()` leaks through the watcher. Fix: use `ignore` crate's gitignore parsing at event-filter time, or sync patterns from `.gitignore` at startup. Key files: `src/watcher/filtering.rs`, `src/watcher/events.rs`, `src/utils/walk.rs`
+- [ ] **Test quality regexes count comments/strings as evidence** — `analyze_test_body()` scans raw source, so comment text like `// should_err` can incorrectly upgrade a test to `thorough` (`src/analysis/test_quality.rs`, `src/tests/analysis/test_quality_tests.rs`)
+- [x] ~~**Deep-dive test-location lookup is noisy and not linkage-based**~~ — partially fixed: added dedup by (file_path, symbol_name) and cap at 10. Full linkage-based approach is future work.
+- [x] ~~**Cap and dedupe deep-dive test locations**~~ — fixed: dedup + truncate(10) in `build_test_refs`
+- [ ] **Broaden and normalize cross-language test detection** — Java/Kotlin/C# annotation matching is exact-text only, while PHP/Swift `test*` detection is broad enough to risk production false positives (`crates/julie-extractors/src/test_detection.rs`, `crates/julie-extractors/src/java/methods.rs`, `crates/julie-extractors/src/csharp/helpers.rs`)
+- [x] ~~**Go test detection misses fuzz/example entry points**~~ — fixed: `detect_go()` now recognizes `FuzzXxx` and `ExampleXxx` in addition to `TestXxx`
+- [ ] **Add regression coverage for code-health output plumbing** — missing tests for line-mode `exclude_tests`, `get_context` label rendering in `SignatureOnly`, compact no-results formatting, and `deep_dive` change/security output let the current regressions slip through (`src/tests/tools/search/line_mode.rs`, `src/tests/tools/get_context_formatting_tests.rs`, `src/tests/tools/deep_dive_tests.rs`)
+- [ ] **Doc contract tests are stale** — `docs_contract_tests_agents_md_defaults_to_xtask_dev_tier` and `docs_contract_tests_claude_md_uses_xtask_runner_as_canonical_workflow` assert on text that no longer exists in CLAUDE.md/AGENTS.md (`xtask/tests/docs_contract_tests.rs`)
 
 ## Enhancements
 
@@ -30,6 +44,14 @@
 
 ### Reference workspace considerations
 - [ ] **Verify reference workspace coverage** — Test quality metrics run per-workspace during indexing via `process_files_optimized`, which handles both primary and reference workspaces. Verify with an integration test that indexes a reference workspace and confirms `is_test` metadata and `test_quality` metrics are present. Key files: `src/tools/workspace/indexing/processor.rs`, `src/tests/integration/reference_workspace.rs`
+
+## Review Notes
+
+- 2026-03-15 static review only — findings above come from code/test inspection; runtime verification is still pending.
+- Post-indexing analysis order looks sane: reference scores -> test quality -> test coverage -> change risk -> security risk (`src/tools/workspace/indexing/processor.rs`).
+- `get_context` batching is a solid improvement and avoids the usual N+1 nonsense (`src/tools/get_context/pipeline.rs`).
+- Security sink detection deduplicates evidence across identifiers and relationships before scoring, which is the right shape for this feature (`src/analysis/security_risk.rs`).
+- 2026-03-15 bugfix session — validated and fixed 7/7 code bugs, 4 tech debt items from GPT review. GPT's review quality was high — only overclaim was "collapsed identifier buckets" in test coverage.
 
 
 Spotted this in the logs:
