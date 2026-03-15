@@ -655,6 +655,40 @@ fn generic_test_capital_prefix_in_test_path() {
 }
 
 // ===========================================================================
+// Test lifecycle methods (setUp, tearDown, etc.)
+// ===========================================================================
+
+#[test]
+fn csharp_setup_is_test() {
+    assert!(check("csharp", "SetUp", "Tests/MyTests.cs", &SymbolKind::Method, &[], &[s("SetUp")], None));
+}
+
+#[test]
+fn csharp_teardown_is_test() {
+    assert!(check("csharp", "TearDown", "Tests/MyTests.cs", &SymbolKind::Method, &[], &[s("TearDown")], None));
+}
+
+#[test]
+fn csharp_onetime_setup_is_test() {
+    assert!(check("csharp", "Initialize", "Tests/MyTests.cs", &SymbolKind::Method, &[], &[s("OneTimeSetUp")], None));
+}
+
+#[test]
+fn java_before_each_is_test() {
+    assert!(check("java", "setup", "src/test/MyTest.java", &SymbolKind::Method, &[s("BeforeEach")], &[], None));
+}
+
+#[test]
+fn python_setup_is_test() {
+    assert!(check("python", "setUp", "tests/test_foo.py", &SymbolKind::Method, &[], &[], None));
+}
+
+#[test]
+fn swift_setup_is_test() {
+    assert!(check("swift", "setUp", "Tests/MyTests.swift", &SymbolKind::Method, &[], &[], None));
+}
+
+// ===========================================================================
 // False positive prevention
 // ===========================================================================
 

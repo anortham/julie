@@ -102,12 +102,20 @@ fn detect_python(name: &str, decorators: &[String]) -> bool {
     {
         return true;
     }
+    // unittest lifecycle methods (setUp/tearDown and class-level variants)
+    if matches!(name, "setUp" | "tearDown" | "setUpClass" | "tearDownClass") {
+        return true;
+    }
     // Name-based: test_ prefix for functions/methods (class filter already handled by kind gate)
     name.starts_with("test_")
 }
 
 fn detect_java_kotlin(decorators: &[String], attributes: &[String]) -> bool {
-    let test_annotations = ["Test", "ParameterizedTest", "RepeatedTest"];
+    let test_annotations = [
+        "Test", "ParameterizedTest", "RepeatedTest",
+        "BeforeEach", "AfterEach", "BeforeAll", "AfterAll",
+        "Before", "After", "BeforeClass", "AfterClass",
+    ];
     decorators
         .iter()
         .chain(attributes.iter())
@@ -115,7 +123,11 @@ fn detect_java_kotlin(decorators: &[String], attributes: &[String]) -> bool {
 }
 
 fn detect_csharp(attributes: &[String]) -> bool {
-    let test_attrs = ["Test", "TestMethod", "Fact", "Theory"];
+    let test_attrs = [
+        "Test", "TestMethod", "Fact", "Theory",
+        "SetUp", "TearDown", "OneTimeSetUp", "OneTimeTearDown",
+        "TestInitialize", "TestCleanup", "ClassInitialize", "ClassCleanup",
+    ];
     attributes.iter().any(|a| {
         // C# extractors may produce bracketed attributes like "[Fact]" or bare "Fact".
         // Strip surrounding brackets before matching.
@@ -165,8 +177,9 @@ fn detect_ruby(name: &str, file_path: &str) -> bool {
 }
 
 fn detect_swift(name: &str) -> bool {
-    // XCTest convention: test* prefix for methods/functions
+    // XCTest convention: test* prefix for methods/functions + lifecycle methods
     name.starts_with("test")
+        || matches!(name, "setUp" | "tearDown" | "setUpWithError" | "tearDownWithError")
 }
 
 fn detect_dart(name: &str, file_path: &str, decorators: &[String]) -> bool {
