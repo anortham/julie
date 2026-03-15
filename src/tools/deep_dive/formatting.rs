@@ -66,7 +66,6 @@ fn format_header(out: &mut String, ctx: &SymbolContext) {
 
     // Show test quality info when the symbol itself is a test
     format_test_quality_info(out, s);
-    format_change_risk_info(out, s, ctx.incoming_total);
 }
 
 fn format_body(out: &mut String, ctx: &SymbolContext, depth: &str) {

@@ -1208,6 +1208,51 @@ mod formatting_tests {
         );
     }
 
+    // === Change Risk formatting ===
+
+    #[test]
+    fn test_change_risk_not_duplicated() {
+        // Regression: format_header was calling format_change_risk_info AND so were
+        // all kind-specific formatters (format_callable, etc.), causing double-print.
+        let mut sym = make_symbol(
+            "process_order",
+            SymbolKind::Function,
+            "src/orders.rs",
+            10,
+            Some("pub fn process_order(order: &Order) -> Result<()>"),
+            Some(Visibility::Public),
+            None,
+        );
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("is_test".to_string(), serde_json::json!(false));
+        metadata.insert(
+            "change_risk".to_string(),
+            serde_json::json!({
+                "score": 0.75,
+                "label": "HIGH",
+                "factors": {
+                    "visibility": "public",
+                    "kind": "function",
+                    "centrality": 0.8
+                }
+            }),
+        );
+        sym.metadata = Some(metadata);
+
+        let ctx = empty_context(sym);
+        let output = format_symbol_context(&ctx, "overview");
+
+        // Count exact occurrences of "Change Risk:" in the output
+        let count = output.matches("Change Risk:").count();
+        assert_eq!(
+            count,
+            1,
+            "Change Risk: should appear exactly once, but appeared {} times.\nOutput:\n{}",
+            count,
+            output
+        );
+    }
+
     #[test]
     fn test_context_depth_shows_test_locations() {
         let sym = make_symbol(
