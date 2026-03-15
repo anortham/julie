@@ -21,6 +21,7 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 
 - **Fast symbol search** with code-aware tokenization (CamelCase/snake_case splitting, stemming, <5ms)
 - **Cross-language code navigation** (go-to-definition, find-references) across 31 languages
+- **Code Health Intelligence** — automatic test detection, test quality metrics, change risk scores, and security risk signals computed at index time and surfaced in tool output
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Multi-workspace support** for indexing and searching related codebases
 - **Stdio MCP server** — single binary, zero configuration, works with any MCP client
@@ -114,16 +115,19 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
   - Definition search promotes exact symbol matches with kind, visibility, and signature
   - <5ms search latency with CamelCase/snake_case splitting, English stemming
   - Automatic OR-fallback when strict AND returns zero results
+  - `exclude_tests` parameter for filtering test symbols from results
   - Language and file pattern filtering
 - `get_context` - Token-budgeted context for a concept or task
   - Returns relevant code subgraph with pivots (full code) and neighbors (signatures)
   - Pipeline: search → centrality ranking → graph expansion → adaptive token allocation → formatted output
+  - Pivots include change risk and security risk labels for immediate risk awareness
   - Adaptive budget: few results → deep context, many results → broad overview
   - Use at the start of a task for area-level orientation
 - `deep_dive` - Progressive-depth symbol investigation
   - Overview (~200 tokens), context (~600 tokens), or full (~1500 tokens) detail levels
   - Kind-aware: functions show callers/callees/types, traits show implementations, structs show fields/methods
-  - Includes identifier fallback and test file locations at full depth
+  - Includes test locations with quality tiers, change risk scores, and security risk signals
+  - Identifier fallback for references that relationships miss
 - `fast_refs` - Find all references to a symbol with structured output
 - `get_symbols` - Smart file reading with 70-90% token savings
   - View file structure without reading full content
@@ -162,6 +166,35 @@ third-party/
 ```
 
 Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patterns cover 99% of use cases - only use `.julieignore` for project-specific needs.
+
+## Code Health Intelligence
+
+Julie automatically analyzes your codebase for test coverage quality and structural risk during indexing — no configuration required. These signals appear directly in `deep_dive` and `get_context` output, giving agents immediate awareness without extra tool calls.
+
+### Test Intelligence
+
+- **Test detection** across all 31 languages — recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and language-specific test patterns
+- **Test quality metrics** — assertion density, mock usage, error path coverage, classified as thorough/adequate/thin/stub
+- **Test-to-code linkage** — maps which tests exercise each production function via call graph and identifier analysis
+- **Smart test filtering** — `fast_search` supports `exclude_tests` parameter to filter test symbols from results
+
+### Risk Scoring
+
+- **Change risk** (0.0–1.0) — "how dangerous is it to modify this?" based on centrality, visibility, test coverage quality, and symbol kind. Displayed as HIGH/MEDIUM/LOW in `deep_dive` with full factor breakdown, and as labels on `get_context` pivots.
+- **Security risk** (0.0–1.0) — "does this code have structural security concerns?" based on five signals:
+  - **Exposure** — public callable functions score highest
+  - **Input handling** — detects string/Request/Query parameter types in signatures
+  - **Sink calls** — one-hop detection of calls to exec/eval/execute/query patterns
+  - **Blast radius** — how many other symbols depend on this one
+  - **Untested** — no test coverage for security-critical code
+
+Example `deep_dive` output:
+```
+Change Risk: MEDIUM (0.66) — 8 callers, public, thorough tests
+Security Risk: HIGH (0.84) — calls execute; public; accepts string params
+  sink calls: execute
+  untested: yes
+```
 
 ## Architecture
 
@@ -241,6 +274,7 @@ src/
 ├── startup.rs       # Workspace initialization and staleness detection
 ├── cli.rs           # CLI argument parsing
 ├── extractors/      # Language-specific symbol extraction (31 languages)
+├── analysis/        # Post-indexing analysis (test quality, coverage, risk scoring)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer
 ├── embeddings/      # Embedding pipeline, sidecar supervisor and protocol
