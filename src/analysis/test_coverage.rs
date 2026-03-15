@@ -110,10 +110,16 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
     // Disambiguate by file proximity (same directory tree preferred).
     // Group by (test_id, identifier_name) so each identifier reference picks
     // the closest matching production symbol independently.
+    // NOTE: Language filter is applied in Rust (not SQL) because adding
+    // `AND s_test.language = s_prod.language` to the query causes SQLite's
+    // planner to drop idx_symbols_name in favor of idx_symbols_language,
+    // turning a fast name-index lookup into a full language-scan + name filter.
+    // On Julie's codebase this changed a <1s query into a 3+ minute hang.
     let mut stmt3 = db.conn.prepare(
         "SELECT s_prod.id, s_prod.file_path, s_test.id, s_test.name, i.file_path AS test_file,
                 COALESCE(json_extract(s_test.metadata, '$.test_quality.quality_tier'), 'unknown'),
-                i.name AS ident_name
+                i.name AS ident_name,
+                s_test.language, s_prod.language
          FROM identifiers i
          JOIN symbols s_test ON i.containing_symbol_id = s_test.id
          JOIN symbols s_prod ON s_prod.name = i.name
@@ -121,8 +127,7 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
            AND i.target_symbol_id IS NULL
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
                 OR json_extract(s_prod.metadata, '$.is_test') != 1)
-           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')
-           AND s_test.language = s_prod.language"
+           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')"
     )?;
 
     // Group by (test_id, identifier_name) → pick best prod match by directory proximity
@@ -140,11 +145,17 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
             row.get::<_, String>(4)?, // test_file_path
             row.get::<_, String>(5)?, // tier
             row.get::<_, String>(6)?, // ident_name
+            row.get::<_, String>(7)?, // test_language
+            row.get::<_, String>(8)?, // prod_language
         ))
     })?;
 
     for row in rows3 {
-        let (prod_id, prod_path, test_id, test_name, test_path, tier, ident_name) = row?;
+        let (prod_id, prod_path, test_id, test_name, test_path, tier, ident_name, test_lang, prod_lang) = row?;
+        // Language filter: skip cross-language matches (e.g. Python test → Rust symbol)
+        if test_lang != prod_lang {
+            continue;
+        }
         name_matches
             .entry((test_id.clone(), ident_name))
             .or_default()

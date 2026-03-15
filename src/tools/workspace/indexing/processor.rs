@@ -510,29 +510,39 @@ impl ManageWorkspaceTool {
                 };
 
                 // Compute graph centrality reference scores
+                let t = std::time::Instant::now();
                 if let Err(e) = db_lock.compute_reference_scores() {
                     warn!("Failed to compute reference scores: {}", e);
                 }
+                info!("⏱️  compute_reference_scores: {:.2}s", t.elapsed().as_secs_f64());
 
                 // Compute test quality metrics for all test symbols
+                let t = std::time::Instant::now();
                 if let Err(e) = crate::analysis::compute_test_quality_metrics(&db_lock) {
                     warn!("Failed to compute test quality metrics: {}", e);
                 }
+                info!("⏱️  compute_test_quality_metrics: {:.2}s", t.elapsed().as_secs_f64());
 
                 // Compute test-to-code coverage linkage
+                let t = std::time::Instant::now();
                 if let Err(e) = crate::analysis::compute_test_coverage(&db_lock) {
                     warn!("Failed to compute test coverage: {}", e);
                 }
+                info!("⏱️  compute_test_coverage: {:.2}s", t.elapsed().as_secs_f64());
 
                 // Compute change risk scores
+                let t = std::time::Instant::now();
                 if let Err(e) = crate::analysis::compute_change_risk_scores(&db_lock) {
                     warn!("Failed to compute change risk scores: {}", e);
                 }
+                info!("⏱️  compute_change_risk_scores: {:.2}s", t.elapsed().as_secs_f64());
 
                 // Compute structural security risk scores
+                let t = std::time::Instant::now();
                 if let Err(e) = crate::analysis::compute_security_risk(&db_lock) {
                     warn!("Failed to compute security risk: {}", e);
                 }
+                info!("⏱️  compute_security_risk: {:.2}s", t.elapsed().as_secs_f64());
             }
 
             let bulk_duration = bulk_start.elapsed();
