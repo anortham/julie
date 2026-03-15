@@ -121,7 +121,8 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
            AND i.target_symbol_id IS NULL
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
                 OR json_extract(s_prod.metadata, '$.is_test') != 1)
-           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')"
+           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')
+           AND s_test.language = s_prod.language"
     )?;
 
     // Group by (test_id, identifier_name) → pick best prod match by directory proximity
