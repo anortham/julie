@@ -74,6 +74,23 @@ mod tests {
         assert!(!has_input_handling(Some("")));
     }
 
+    #[test]
+    fn test_input_handling_request_delegate_excluded() {
+        // RequestDelegate is a DI type, not actual HTTP request handling
+        assert!(!has_input_handling(Some("(RequestDelegate next, ILogger<RoleClaimsMiddleware> logger)")));
+    }
+
+    #[test]
+    fn test_input_handling_real_http_request_still_matches() {
+        assert!(has_input_handling(Some("(HttpRequest req, string id)")));
+    }
+
+    #[test]
+    fn test_input_handling_ilogger_excluded() {
+        // ILogger<String> and IOptions<Foo> are DI types — String inside them is not user input
+        assert!(!has_input_handling(Some("(ILogger<Foo> logger, IOptions<Bar> opts)")));
+    }
+
     // =========================================================================
     // Sink matching
     // =========================================================================

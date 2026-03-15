@@ -92,6 +92,19 @@ const INPUT_PATTERNS: &[&str] = &[
 ];
 
 // =============================================================================
+// DI / framework type exclusions for input handling
+// =============================================================================
+
+/// Types that appear in DI constructor signatures but are not user input.
+/// These are stripped from the parameter portion before checking INPUT_PATTERNS
+/// to avoid false positives (e.g., `RequestDelegate` matching `Request`).
+const DI_EXCLUSION_PATTERNS: &[&str] = &[
+    "RequestDelegate", "ILogger", "IOptions", "IConfiguration",
+    "IServiceProvider", "IHostEnvironment", "IWebHostEnvironment",
+    "IMemoryCache", "CancellationToken",
+];
+
+// =============================================================================
 // Signal computation helpers
 // =============================================================================
 
@@ -126,6 +139,8 @@ pub fn exposure_score(visibility: Option<&str>, kind: &SymbolKind) -> f64 {
 
 /// Check if a signature's parameter portion contains input-handling patterns.
 /// Splits at return type delimiter to avoid matching return types.
+/// Strips DI framework types before checking to avoid false positives
+/// (e.g., `RequestDelegate` falsely matching the `Request` pattern).
 pub fn has_input_handling(signature: Option<&str>) -> bool {
     let sig = match signature {
         Some(s) if !s.is_empty() => s,
@@ -135,7 +150,18 @@ pub fn has_input_handling(signature: Option<&str>) -> bool {
     // Extract parameter portion only (before return type delimiter)
     let param_portion = extract_parameter_portion(sig);
 
-    INPUT_PATTERNS.iter().any(|pattern| param_portion.contains(pattern))
+    let has_match = INPUT_PATTERNS.iter().any(|pattern| param_portion.contains(pattern));
+    if !has_match {
+        return false;
+    }
+
+    // If all matches are explained by DI exclusions, it's a false positive.
+    // Strip DI type names from the param portion and re-check.
+    let mut remaining = param_portion.to_string();
+    for excl in DI_EXCLUSION_PATTERNS {
+        remaining = remaining.replace(excl, "");
+    }
+    INPUT_PATTERNS.iter().any(|pattern| remaining.contains(pattern))
 }
 
 /// Extract the parameter portion of a signature, excluding return type.
