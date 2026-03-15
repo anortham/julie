@@ -393,6 +393,32 @@ fn go_benchmark_not_test() {
     ));
 }
 
+#[test]
+fn go_fuzz_function_in_test_file() {
+    assert!(check(
+        "go",
+        "FuzzParseInput",
+        "parser/parser_test.go",
+        &SymbolKind::Function,
+        &[],
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn go_example_function_in_test_file() {
+    assert!(check(
+        "go",
+        "ExampleProcessPayment",
+        "payment/payment_test.go",
+        &SymbolKind::Function,
+        &[],
+        &[],
+        None,
+    ));
+}
+
 // ===========================================================================
 // JavaScript / TypeScript
 // ===========================================================================

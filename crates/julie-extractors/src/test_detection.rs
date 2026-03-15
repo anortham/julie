@@ -126,9 +126,10 @@ fn detect_csharp(attributes: &[String]) -> bool {
 }
 
 fn detect_go(name: &str, file_path: &str) -> bool {
-    // Go tests require BOTH: Test prefix AND _test.go file suffix
+    // Go tests require BOTH: recognized prefix AND _test.go file suffix
     let file_name = file_path.rsplit('/').next().unwrap_or(file_path);
-    name.starts_with("Test") && file_name.ends_with("_test.go")
+    (name.starts_with("Test") || name.starts_with("Fuzz") || name.starts_with("Example"))
+        && file_name.ends_with("_test.go")
 }
 
 /// Known limitation: in Jest/Mocha, `test()`/`describe()` are call expressions, not named
