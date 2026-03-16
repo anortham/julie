@@ -67,3 +67,6 @@ __pycache__/
 
 # Temp files
 *.rs.tmp
+
+# Brainstorm mockups (ephemeral)
+.superpowers/
