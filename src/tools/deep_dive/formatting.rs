@@ -276,8 +276,14 @@ fn format_security_risk_info(out: &mut String, symbol: &crate::extractors::base:
                 summary_parts.push(format!("calls {}", names.join(", ")));
             }
         }
-        if let Some(exp) = sigs.get("exposure").and_then(|v| v.as_f64()) {
-            if exp >= 0.5 {
+        if let Some(vis) = sigs.get("visibility").and_then(|v| v.as_str()) {
+            if vis == "public" {
+                summary_parts.push("public".to_string());
+            } else if vis == "protected" {
+                summary_parts.push("protected".to_string());
+            }
+        } else if let Some(exp) = sigs.get("exposure").and_then(|v| v.as_f64()) {
+            if exp >= 0.8 {
                 summary_parts.push("public".to_string());
             }
         }
@@ -300,11 +306,8 @@ fn format_security_risk_info(out: &mut String, symbol: &crate::extractors::base:
     // Detail lines
     if let Some(sigs) = signals {
         let exposure = sigs.get("exposure").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        if exposure >= 0.5 {
-            out.push_str("  exposure: public\n");
-        } else {
-            out.push_str(&format!("  exposure: {:.2}\n", exposure));
-        }
+        let vis_label = sigs.get("visibility").and_then(|v| v.as_str()).unwrap_or("unknown");
+        out.push_str(&format!("  exposure: {} ({:.2})\n", vis_label, exposure));
 
         let input = sigs.get("input_handling").and_then(|v| v.as_f64()).unwrap_or(0.0);
         if input > 0.0 {

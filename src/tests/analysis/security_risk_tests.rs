@@ -253,6 +253,71 @@ mod tests {
     }
 
     // =========================================================================
+    // Visibility string stored in metadata
+    // =========================================================================
+
+    #[test]
+    fn test_security_risk_metadata_stores_visibility_string() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).unwrap();
+
+        insert_file(&db, "src/handler.rs");
+
+        // Public function — should store visibility: "public"
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte,
+                                 reference_score, visibility, signature, metadata)
+            VALUES ('pub_fn', 'handle', 'function', 'rust', 'src/handler.rs', 1, 0, 20, 0, 0, 0,
+                    10.0, 'public', 'pub fn handle(input: &str)', NULL);
+        "#).unwrap();
+
+        // Protected method — should store visibility: "protected"
+        db.conn.execute_batch(r#"
+            INSERT INTO symbols (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte,
+                                 reference_score, visibility, signature, metadata)
+            VALUES ('prot_fn', 'on_update', 'method', 'csharp', 'src/handler.rs', 30, 0, 50, 0, 0, 0,
+                    10.0, 'protected', 'protected void OnUpdate(string data)', NULL);
+        "#).unwrap();
+
+        crate::analysis::security_risk::compute_security_risk(&db).unwrap();
+
+        // Check public symbol stores visibility: "public"
+        let pub_sym = db.get_symbol_by_id("pub_fn").unwrap().unwrap();
+        let pub_meta = pub_sym.metadata.unwrap();
+        let pub_sec = pub_meta.get("security_risk").unwrap();
+        let pub_vis = pub_sec.pointer("/signals/visibility").unwrap().as_str().unwrap();
+        assert_eq!(pub_vis, "public", "public symbol should store visibility: 'public'");
+
+        // Check protected symbol stores visibility: "protected"
+        let prot_sym = db.get_symbol_by_id("prot_fn").unwrap().unwrap();
+        let prot_meta = prot_sym.metadata.unwrap();
+        let prot_sec = prot_meta.get("security_risk").unwrap();
+        let prot_vis = prot_sec.pointer("/signals/visibility").unwrap().as_str().unwrap();
+        assert_eq!(prot_vis, "protected", "protected symbol should store visibility: 'protected'");
+    }
+
+    // =========================================================================
+    // filter is NOT a database sink (false-positive prone)
+    // =========================================================================
+
+    #[test]
+    fn test_filter_is_not_a_database_sink() {
+        // "filter" is too generic — Rust iterators, LINQ, JS array methods all use it.
+        // It should NOT be in DATABASE_SINKS.
+        assert_eq!(
+            matches_sink_pattern("filter", &DATABASE_SINKS),
+            None,
+            "bare 'filter' should not match DATABASE_SINKS"
+        );
+        assert_eq!(
+            matches_sink_pattern("items.filter", &DATABASE_SINKS),
+            None,
+            "'items.filter' should not match DATABASE_SINKS"
+        );
+    }
+
+    // =========================================================================
     // Integration tests: compute_security_risk
     // =========================================================================
 

@@ -57,7 +57,7 @@ pub(crate) const DATABASE_SINKS: &[&str] = &[
     "executesqlinterpolated", "executesqlinterpolatedasync",
     "fromsqlraw", "fromsql",
     // Django / SQLAlchemy / Python ORMs
-    "filter", "raw", "commit", "cursor",
+    "raw", "commit", "cursor",
     // Rails / ActiveRecord
     "destroy", "find_by_sql", "update_all", "delete_all",
     // Prisma / TypeORM / JS ORMs
@@ -363,6 +363,7 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
                 "label": label,
                 "signals": {
                     "exposure": (exposure * 100.0).round() / 100.0,
+                    "visibility": vis.as_deref().unwrap_or("default"),
                     "input_handling": input_handling,
                     "sink_calls": sink_names,
                     "blast_radius": (blast_radius * 100.0).round() / 100.0,
