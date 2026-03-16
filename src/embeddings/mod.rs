@@ -120,6 +120,10 @@ pub trait EmbeddingProvider: Send + Sync {
     fn degraded_reason(&self) -> Option<String> {
         None
     }
+
+    /// Explicitly shut down the provider, releasing any child processes.
+    /// Default is a no-op; sidecar providers override to kill the child process.
+    fn shutdown(&self) {}
 }
 
 // Re-exports

@@ -243,6 +243,16 @@ impl EmbeddingProvider for SidecarEmbeddingProvider {
             dimensions: self.expected_dims,
         }
     }
+
+    fn shutdown(&self) {
+        match self.process.lock() {
+            Ok(mut process) => process.shutdown_and_terminate(),
+            Err(poisoned) => {
+                let mut process = poisoned.into_inner();
+                process.terminate();
+            }
+        }
+    }
 }
 
 impl Drop for SidecarEmbeddingProvider {

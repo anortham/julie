@@ -63,6 +63,16 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Julie server stopped");
 
+    // Kill the embedding sidecar process before exit.
+    // Drop alone can't be relied on: Arc ref counts from background tasks and
+    // async runtime teardown on SIGPIPE/stdin-close mean Drop may never fire.
+    if let Ok(Some(workspace)) = cleanup_handler.get_workspace().await {
+        if let Some(ref provider) = workspace.embedding_provider {
+            provider.shutdown();
+            info!("Embedding provider shut down");
+        }
+    }
+
     match julie::startup::checkpoint_active_workspace_wal(&cleanup_handler).await {
         Ok(Some((busy, log, checkpointed))) => {
             info!(
