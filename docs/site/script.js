@@ -99,6 +99,8 @@
       message.textContent = 'Same understanding. 90% fewer tokens.';
       message.className = 'hero-message visible solution';
       ctas.classList.add('visible');
+      var hint = document.querySelector('.scroll-hint');
+      if (hint) hint.classList.add('visible');
       return;
     }
 
@@ -167,7 +169,12 @@
           setTimeout(() => {
             message.textContent = 'Same understanding. 90% fewer tokens.';
             message.className = 'hero-message visible solution';
-            setTimeout(() => ctas.classList.add('visible'), 600);
+            setTimeout(() => {
+              ctas.classList.add('visible');
+              // Show scroll hint after CTAs appear
+              var hint = document.querySelector('.scroll-hint');
+              if (hint) setTimeout(() => hint.classList.add('visible'), 400);
+            }, 600);
           }, 500);
           return;
         }
@@ -372,6 +379,15 @@
       });
     });
   });
+
+  // --- Hide scroll hint on first scroll ---
+  var scrollHint = document.querySelector('.scroll-hint');
+  if (scrollHint) {
+    window.addEventListener('scroll', function hideHint() {
+      scrollHint.style.opacity = '0';
+      window.removeEventListener('scroll', hideHint);
+    }, { passive: true });
+  }
 
   // Run after DOM is ready (script is at bottom of body, so DOM is ready)
   initScrollAnimations();

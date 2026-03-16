@@ -385,6 +385,32 @@ a:hover {
 
 .hero-ctas.visible { opacity: 1; }
 
+/* Scroll hint arrow */
+.scroll-hint {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--text-muted);
+  animation: bounce 2s ease infinite;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.scroll-hint.visible {
+  opacity: 1;
+}
+
+@keyframes bounce {
+  0%, 20%, 50%, 80%, 100% { transform: translateX(-50%) translateY(0); }
+  40% { transform: translateX(-50%) translateY(-8px); }
+  60% { transform: translateX(-50%) translateY(-4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-hint { animation: none; opacity: 1; }
+}
+
 .btn {
   font-family: var(--font-mono);
   font-size: 0.9rem;
