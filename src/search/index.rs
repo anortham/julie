@@ -629,6 +629,13 @@ impl SearchIndex {
         }
         let mut guard = self.writer.lock().unwrap_or_else(|e| e.into_inner());
         if guard.is_none() {
+            // Double-check after acquiring mutex: shutdown() may have run between
+            // the flag check above and the mutex acquisition, dropping the writer.
+            // Without this, a watcher task can re-create the writer after shutdown
+            // released it, causing LockBusy for the next IndexWriter.
+            if self.shutdown.load(Ordering::Acquire) {
+                return Err(SearchError::Shutdown);
+            }
             *guard = Some(self.index.writer(WRITER_HEAP_SIZE)?);
         }
         Ok(guard)
