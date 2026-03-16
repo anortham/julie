@@ -11,6 +11,11 @@
 - [x] ~~**`get_context` no-results output ignores compact/default format**~~ — fixed: routes through `format_context_with_mode` instead of hardcoded readable format
 - [x] ~~**Definition search truncates before `exclude_tests` filtering**~~ — fixed: moved `filter_test_symbols` before `truncate(limit)` in both hybrid and keyword paths
 - [x] ~~**`deep_dive` caller/blast-radius counts are mislabeled**~~ — fixed: relabeled to "dependents"/"incoming refs" since `incoming_total` includes all relationship types
+- [x] ~~**`get_context` exact test-name queries still hide the matching test**~~ — fixed: `select_pivots_for_query` applies a 5x exact-name-match boost before scoring, overcoming `TEST_FILE_PENALTY` for intentional test lookups
+- [x] ~~**`get_context` test pivots omit `test_quality` metadata**~~ — fixed: added `test_quality_label` to `PivotEntry`, extracted from metadata in `build_pivot_entries`, rendered as `quality=thorough` (compact) / `[thorough quality]` (readable)
+- [x] ~~**Security sink detection treats generic `filter` calls as risky sinks**~~ — fixed: removed `"filter"` from `DATABASE_SINKS` (too generic — matches iterator `.filter()` across all languages; Django's `queryset.filter()` is a real sink but indistinguishable via final-segment matching)
+- [ ] **Common method names can resolve to the wrong callee symbol** — in the `LabHandbookV2` reference workspace, `HandleAuthenticateAsync` is shown as calling `ApiResponse.Success`, but the code actually calls `AuthenticateResult.Success(ticket)`; the relationship/disambiguation path is too name-based for overloaded/common methods (`src/tools/workspace/indexing/resolver.rs`, `src/database/symbols/queries.rs`, `src/tools/deep_dive/data.rs`)
+- [x] ~~**Security exposure formatting overstates `protected` methods as `public`**~~ — fixed: store raw visibility string in `security_risk.signals.visibility` metadata, use it for display instead of threshold-guessing from the float; now renders `exposure: protected (0.50)` correctly
 
 ## Tech Debt
 
@@ -56,6 +61,8 @@
 - `get_context` batching is a solid improvement and avoids the usual N+1 nonsense (`src/tools/get_context/pipeline.rs`).
 - Security sink detection deduplicates evidence across identifiers and relationships before scoring, which is the right shape for this feature (`src/analysis/security_risk.rs`).
 - 2026-03-15 bugfix session — validated and fixed 7/7 code bugs, 4 tech debt items from GPT review. GPT's review quality was high — only overclaim was "collapsed identifier buckets" in test coverage.
+- 2026-03-16 dogfood pass (primary + `LabHandbookV2`) — `deep_dive` test/risk metadata is already useful, but `get_context` still under-serves test-centric workflows and the current security/callee heuristics can produce misleading output.
+- 2026-03-16 bugfix session — validated and fixed 4 more bugs from GPT review: `filter` false positive in sinks, `protected`→`public` mislabel, `get_context` test_quality omission, exact test-name queries hidden by TEST_FILE_PENALTY. All 8 xtask dev buckets green.
 
 
 Spotted this in the logs:
