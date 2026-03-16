@@ -19,7 +19,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::formatting::format_lean_refs_results;
 use super::reference_workspace;
-use super::resolution::{WorkspaceTarget, resolve_workspace_filter};
+use super::resolution::{WorkspaceTarget, parse_qualified_name, resolve_workspace_filter};
 
 fn default_true() -> bool {
     true
@@ -244,6 +244,15 @@ impl FastRefsTool {
             }
         }
 
+        // Resolve qualified names: "SearchIndex::search_symbols" → search "search_symbols" filtered by parent
+        let (effective_symbol, parent_filter) = match parse_qualified_name(&self.symbol) {
+            Some((parent, child)) => {
+                debug!("Qualified name: parent='{}', child='{}'", parent, child);
+                (child.to_string(), Some(parent.to_string()))
+            }
+            None => (self.symbol.clone(), None),
+        };
+
         // Primary workspace search - use handler.get_workspace().db
         // Strategy 1: Use SQLite for O(log n) indexed name lookup
         let mut definitions = Vec::new();
@@ -252,12 +261,45 @@ impl FastRefsTool {
         if let Some(workspace) = handler.get_workspace().await? {
             if let Some(db) = workspace.db.as_ref() {
                 // spawn_blocking to avoid blocking tokio runtime during DB I/O
-                let symbol = self.symbol.clone();
+                let symbol = effective_symbol.clone();
+                let parent_filter_clone = parent_filter.clone();
                 let db_arc = db.clone();
 
-                definitions = tokio::task::spawn_blocking(move || {
+                definitions = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<Symbol>> {
                     let db_lock = super::lock_db(&db_arc, "fast_refs exact lookup");
-                    db_lock.get_symbols_by_name(&symbol)
+                    let mut defs = db_lock.get_symbols_by_name(&symbol)?;
+
+                    // If a parent filter is specified, filter definitions to those
+                    // whose parent symbol has the matching name
+                    if let Some(ref parent_name) = parent_filter_clone {
+                        let parent_ids: Vec<String> = defs
+                            .iter()
+                            .filter_map(|s| s.parent_id.clone())
+                            .collect::<std::collections::HashSet<_>>()
+                            .into_iter()
+                            .collect();
+
+                        if !parent_ids.is_empty() {
+                            let parents = db_lock.get_symbols_by_ids(&parent_ids)?;
+                            let matching_parent_ids: std::collections::HashSet<String> = parents
+                                .into_iter()
+                                .filter(|p| p.name == *parent_name)
+                                .map(|p| p.id)
+                                .collect();
+
+                            defs.retain(|s| {
+                                s.parent_id
+                                    .as_deref()
+                                    .map(|pid| matching_parent_ids.contains(pid))
+                                    .unwrap_or(false)
+                            });
+                        } else {
+                            // No definitions have parent_id — qualified search finds nothing
+                            defs.clear();
+                        }
+                    }
+
+                    Ok(defs)
                 })
                 .await
                 .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
@@ -268,13 +310,13 @@ impl FastRefsTool {
 
         // ✨ INTELLIGENCE: Cross-language naming convention matching
         // Use our shared utility to generate variants (snake_case, camelCase, PascalCase)
-        let variants = generate_naming_variants(&self.symbol);
+        let variants = generate_naming_variants(&effective_symbol);
         debug!("🔍 Cross-language search variants: {:?}", variants);
 
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
                 // spawn_blocking to avoid blocking tokio runtime during DB I/O
-                let symbol = self.symbol.clone();
+                let symbol = effective_symbol.clone();
                 let db_arc = db.clone();
 
                 let variant_matches = tokio::task::spawn_blocking(move || {
@@ -379,7 +421,7 @@ impl FastRefsTool {
         if let Ok(Some(workspace)) = handler.get_workspace().await {
             if let Some(db) = workspace.db.as_ref() {
                 let db_arc = db.clone();
-                let symbol = self.symbol.clone();
+                let symbol = effective_symbol.clone();
                 let reference_kind_for_ident = self.reference_kind.clone();
 
                 // Collect all name variants for batch query
