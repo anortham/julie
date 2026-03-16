@@ -704,6 +704,58 @@ fn test_title_case_path_segments_detected() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Benchmark path and fixture penalty strength tests
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_is_fixture_path_matches_benchmarks() {
+    use crate::search::scoring::is_fixture_path;
+
+    assert!(
+        is_fixture_path("fixtures/benchmarks/queries.jsonl"),
+        "fixtures/benchmarks/ should match (benchmarks segment)"
+    );
+    assert!(
+        is_fixture_path("benchmarks/perf_data.json"),
+        "benchmarks/ at root should match"
+    );
+    assert!(
+        is_fixture_path("src/benchmarks/load_test.rs"),
+        "src/benchmarks/ should match"
+    );
+    assert!(
+        is_fixture_path("Benchmarks/data.csv"),
+        "Title-case Benchmarks/ should match"
+    );
+    assert!(
+        is_fixture_path("benchmark/suite.rs"),
+        "singular benchmark/ should match"
+    );
+    // Existing patterns still work
+    assert!(
+        is_fixture_path("fixtures/test_data.json"),
+        "fixtures/ still works"
+    );
+    assert!(
+        is_fixture_path("__fixtures__/mock.json"),
+        "__fixtures__/ still works"
+    );
+}
+
+#[test]
+fn test_fixture_penalty_is_meaningful() {
+    use crate::search::scoring::{NL_PATH_BOOST_SRC, NL_PATH_PENALTY_FIXTURES};
+
+    // Fixture penalty should be at least 20% reduction (≤ 0.80)
+    assert!(
+        NL_PATH_PENALTY_FIXTURES <= 0.80,
+        "fixture penalty {} is too gentle — should be ≤ 0.80 to suppress noise vs source boost {}",
+        NL_PATH_PENALTY_FIXTURES,
+        NL_PATH_BOOST_SRC
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Original tests
 // ──────────────────────────────────────────────────────────────────────────────
 

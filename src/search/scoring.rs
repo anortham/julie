@@ -22,7 +22,7 @@ pub const CENTRALITY_WEIGHT: f32 = 0.3;
 pub(crate) const NL_PATH_BOOST_SRC: f32 = 1.08;
 pub(crate) const NL_PATH_PENALTY_DOCS: f32 = 0.95;
 pub(crate) const NL_PATH_PENALTY_TESTS: f32 = 0.95;
-pub(crate) const NL_PATH_PENALTY_FIXTURES: f32 = 0.95;
+pub(crate) const NL_PATH_PENALTY_FIXTURES: f32 = 0.75;
 
 /// Symbol names that are too ubiquitous to benefit from centrality scoring.
 ///
@@ -222,13 +222,16 @@ pub(crate) fn is_docs_path(path: &str) -> bool {
 /// Detect whether a file path indicates test fixtures or data.
 ///
 /// Matches path segments: `fixtures`, `fixture`, `testdata`, `test_data`,
-/// `test-data`, `__fixtures__`, `snapshots`, `__snapshots__`.
-/// Also matches title-case variants (`Fixtures`, `Fixture`, `Snapshots`).
+/// `test-data`, `__fixtures__`, `snapshots`, `__snapshots__`, `benchmarks`,
+/// `benchmark`.
+/// Also matches title-case variants (`Fixtures`, `Fixture`, `Snapshots`,
+/// `Benchmarks`, `Benchmark`).
 pub(crate) fn is_fixture_path(path: &str) -> bool {
     for segment in path.split('/') {
         match segment {
             "fixtures" | "fixture" | "Fixtures" | "Fixture" | "testdata" | "test_data"
-            | "test-data" | "__fixtures__" | "snapshots" | "Snapshots" | "__snapshots__" => {
+            | "test-data" | "__fixtures__" | "snapshots" | "Snapshots" | "__snapshots__"
+            | "benchmarks" | "Benchmarks" | "benchmark" | "Benchmark" => {
                 return true;
             }
             _ => {}
