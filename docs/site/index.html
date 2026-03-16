@@ -502,6 +502,7 @@
       <div class="install-tabs" role="tablist">
         <button class="install-tab active" role="tab" aria-selected="true" data-tab="claude-code">Claude Code</button>
         <button class="install-tab" role="tab" aria-selected="false" data-tab="vscode">VS Code</button>
+        <button class="install-tab" role="tab" aria-selected="false" data-tab="opencode">OpenCode</button>
         <button class="install-tab" role="tab" aria-selected="false" data-tab="cursor">Cursor / Other</button>
       </div>
 
@@ -528,6 +529,22 @@
           <div><span class="result">&nbsp; &nbsp; &nbsp; "env": {</span></div>
           <div><span class="result">&nbsp; &nbsp; &nbsp; &nbsp; "JULIE_WORKSPACE": </span><span class="highlight">"${workspaceFolder}"</span></div>
           <div><span class="result">&nbsp; &nbsp; &nbsp; }</span></div>
+          <div><span class="result">&nbsp; &nbsp; }</span></div>
+          <div><span class="result">&nbsp; }</span></div>
+          <div><span class="result">}</span></div>
+        </div>
+      </div>
+
+      <div id="panel-opencode" class="install-panel" role="tabpanel">
+        <div class="terminal install-terminal" style="position:relative;" aria-label="Configuration for OpenCode">
+          <button class="copy-btn" data-copy="opencode" aria-label="Copy to clipboard">Copy</button>
+          <div><span class="comment">// opencode.json</span></div>
+          <div><span class="result">{</span></div>
+          <div><span class="result">&nbsp; "mcp": {</span></div>
+          <div><span class="result">&nbsp; &nbsp; "julie": {</span></div>
+          <div><span class="result">&nbsp; &nbsp; &nbsp; "type": </span><span class="highlight">"local"</span><span class="result">,</span></div>
+          <div><span class="result">&nbsp; &nbsp; &nbsp; "command": [</span><span class="highlight">"/path/to/julie-server"</span><span class="result">],</span></div>
+          <div><span class="result">&nbsp; &nbsp; &nbsp; "enabled": </span><span class="highlight">true</span></div>
           <div><span class="result">&nbsp; &nbsp; }</span></div>
           <div><span class="result">&nbsp; }</span></div>
           <div><span class="result">}</span></div>
