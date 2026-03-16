@@ -4,6 +4,7 @@ use super::super::helpers::{SYMBOL_COLUMNS, SYMBOL_COLUMNS_LIGHTWEIGHT};
 use super::super::*;
 use anyhow::Result;
 use rusqlite::params;
+use std::collections::HashMap;
 use tracing::debug;
 
 impl SymbolDatabase {
@@ -78,6 +79,59 @@ impl SymbolDatabase {
 
         debug!("Found {} symbols named '{}'", symbols.len(), name);
         Ok(symbols)
+    }
+
+    /// Find symbols matching any of the given names in a single batch.
+    ///
+    /// Groups results by name. Chunks queries to stay within SQLite's parameter limit.
+    /// This is O(unique_names) instead of O(total_lookups) — critical for pending
+    /// relationship resolution where many relationships share the same callee name.
+    pub fn find_symbols_by_names_batch(&self, names: &[String]) -> Result<HashMap<String, Vec<Symbol>>> {
+        if names.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        // Deduplicate input names
+        let unique_names: Vec<&str> = {
+            let mut seen = std::collections::HashSet::new();
+            names.iter().filter(|n| seen.insert(n.as_str())).map(|n| n.as_str()).collect()
+        };
+
+        let mut result: HashMap<String, Vec<Symbol>> = HashMap::new();
+
+        // Process in chunks of 500 (well within SQLite's 999 parameter limit)
+        const CHUNK_SIZE: usize = 500;
+        for chunk in unique_names.chunks(CHUNK_SIZE) {
+            let placeholders: String = chunk.iter().enumerate()
+                .map(|(i, _)| format!("?{}", i + 1))
+                .collect::<Vec<_>>()
+                .join(",");
+
+            let query = format!(
+                "SELECT {} FROM symbols WHERE name IN ({}) ORDER BY name, language, file_path",
+                SYMBOL_COLUMNS, placeholders
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+            let params: Vec<&dyn rusqlite::types::ToSql> = chunk
+                .iter()
+                .map(|n| n as &dyn rusqlite::types::ToSql)
+                .collect();
+
+            let symbol_iter = stmt.query_map(&*params, |row| self.row_to_symbol(row))?;
+
+            for symbol_result in symbol_iter {
+                let symbol = symbol_result?;
+                result.entry(symbol.name.clone()).or_default().push(symbol);
+            }
+        }
+
+        debug!(
+            "Batch lookup: {} unique names → {} entries with symbols",
+            unique_names.len(),
+            result.len()
+        );
+        Ok(result)
     }
 
     /// Get child symbols by parent ID (methods, fields, enum members)

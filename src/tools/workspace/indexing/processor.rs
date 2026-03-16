@@ -1,7 +1,7 @@
 //! File processing for indexing
 //! Handles reading, parsing, and extracting symbols from individual files
 
-use super::resolver::{self, ResolutionStats};
+use super::resolver;
 use crate::extractors::{PendingRelationship, Relationship, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::tools::workspace::LanguageParserPool;
@@ -434,16 +434,7 @@ impl ManageWorkspaceTool {
             // looking up callee names and scoring candidates by language + path proximity
             // ═══════════════════════════════════════════════════════════════════
             if !all_pending_relationships.is_empty() {
-                info!(
-                    "🔗 Resolving {} pending cross-file relationships...",
-                    all_pending_relationships.len()
-                );
-
-                let mut resolved_relationships = Vec::new();
-                let mut stats = ResolutionStats {
-                    total: all_pending_relationships.len(),
-                    ..Default::default()
-                };
+                let resolution_start = std::time::Instant::now();
 
                 // Re-acquire database lock for resolution queries
                 let mut db_lock = match db.lock() {
@@ -454,34 +445,9 @@ impl ManageWorkspaceTool {
                     }
                 };
 
-                for pending in &all_pending_relationships {
-                    match db_lock.find_symbols_by_name(&pending.callee_name) {
-                        Ok(candidates) => {
-                            if candidates.is_empty() {
-                                stats.no_candidates += 1;
-                                continue;
-                            }
-                            if let Some(target) =
-                                resolver::select_best_candidate(&candidates, pending)
-                            {
-                                resolved_relationships
-                                    .push(resolver::build_resolved_relationship(pending, target));
-                                stats.resolved += 1;
-                            } else {
-                                stats.no_valid_candidates += 1;
-                                trace!(
-                                    "Could not resolve '{}' - no valid target among {} candidates",
-                                    pending.callee_name,
-                                    candidates.len()
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            stats.lookup_errors += 1;
-                            trace!("Failed to look up callee '{}': {}", pending.callee_name, e);
-                        }
-                    }
-                }
+                // Batch resolution: group by callee_name, query once per unique name
+                let (resolved_relationships, stats) =
+                    resolver::resolve_batch(&all_pending_relationships, &db_lock);
 
                 // Store resolved relationships
                 if !resolved_relationships.is_empty() {
@@ -491,6 +457,7 @@ impl ManageWorkspaceTool {
                 }
 
                 stats.log_summary();
+                info!("⏱️  resolve_pending_relationships: {:.2}s", resolution_start.elapsed().as_secs_f64());
 
                 drop(db_lock);
             }

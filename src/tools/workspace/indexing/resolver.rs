@@ -9,11 +9,12 @@
 //! 2. **Same language** — strongly preferred (cross-language calls within a project are rare)
 //! 3. **Path proximity** — prefer symbols closer to the caller's directory
 
+use crate::database::SymbolDatabase;
 use julie_extractors::base::{
     PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
 };
 use julie_extractors::language::detect_language_from_extension;
-use tracing::info;
+use tracing::{info, trace, warn};
 
 /// Symbols that are valid resolution targets for cross-file relationships.
 /// Excludes Import, Export, Variable, Field, EnumMember — these aren't definitions you call or extend.
@@ -155,4 +156,74 @@ impl ResolutionStats {
             self.lookup_errors
         );
     }
+}
+
+/// Resolve pending relationships in batch: group by callee_name, query once per
+/// unique name, then disambiguate per pending relationship.
+///
+/// This is O(unique_callee_names) DB queries instead of O(total_pendings) —
+/// a massive win when many relationships share the same callee name.
+pub fn resolve_batch(
+    pendings: &[PendingRelationship],
+    db: &SymbolDatabase,
+) -> (Vec<Relationship>, ResolutionStats) {
+    let mut stats = ResolutionStats {
+        total: pendings.len(),
+        ..Default::default()
+    };
+
+    if pendings.is_empty() {
+        return (Vec::new(), stats);
+    }
+
+    // Collect unique callee names
+    let unique_names: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        pendings
+            .iter()
+            .filter(|p| seen.insert(p.callee_name.as_str()))
+            .map(|p| p.callee_name.clone())
+            .collect()
+    };
+
+    info!(
+        "🔗 Batch resolving {} pending relationships ({} unique callee names)",
+        pendings.len(),
+        unique_names.len()
+    );
+
+    // Single batch query for all unique names
+    let candidates_map = match db.find_symbols_by_names_batch(&unique_names) {
+        Ok(map) => map,
+        Err(e) => {
+            warn!("Batch symbol lookup failed: {}", e);
+            stats.lookup_errors = pendings.len();
+            return (Vec::new(), stats);
+        }
+    };
+
+    // Resolve each pending against the cached candidates
+    let mut resolved = Vec::with_capacity(pendings.len());
+    for pending in pendings {
+        match candidates_map.get(&pending.callee_name) {
+            Some(candidates) if !candidates.is_empty() => {
+                if let Some(target) = select_best_candidate(candidates, pending) {
+                    resolved.push(build_resolved_relationship(pending, target));
+                    stats.resolved += 1;
+                } else {
+                    stats.no_valid_candidates += 1;
+                    trace!(
+                        "Could not resolve '{}' - no valid target among {} candidates",
+                        pending.callee_name,
+                        candidates.len()
+                    );
+                }
+            }
+            _ => {
+                stats.no_candidates += 1;
+            }
+        }
+    }
+
+    (resolved, stats)
 }

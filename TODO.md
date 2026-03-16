@@ -26,18 +26,7 @@
 
 ## Performance
 
-- [ ] **Pending relationship resolution is O(N) per relationship — bottleneck for large repos** — On Guava (125,650 symbols, 3,327 files), indexing took ~6.5 minutes total, with **~320 seconds (82%) spent in pending relationship resolution**. The resolver processes 434,795 pending relationships sequentially, doing a `find_symbols_by_name` DB query per relationship (~0.7ms each). For comparison, the entire analysis pipeline (reference scores + test quality + test coverage + change risk + security risk) took only 4.8 seconds combined. Batch resolution (group by callee_name, query once per unique name) could cut this to seconds. Key files: `src/tools/workspace/indexing/resolver.rs`, `src/tools/workspace/indexing/processor.rs:437`. Guava benchmark data:
-
-  | Phase | Duration | Details |
-  |-------|----------|---------|
-  | File scanning | <1s | 3,327 files discovered |
-  | Parsing + extraction | ~86s | 125,651 symbols, tree-sitter |
-  | Tantivy indexing | ~1s | 125,651 symbols + 3,326 files |
-  | **Pending resolution** | **~320s** | **434,795 pending, 319,310 resolved (73%)** |
-  | Analysis pipeline | ~4.8s | ref_scores 0.6s, test_quality 0.07s, test_coverage 2.0s, change_risk 1.0s, security_risk 1.2s |
-  | **Total** | **~388s** | **~6.5 minutes for 125K symbols** |
-
-  Normal-sized projects are fine: OkHttp (26K symbols) = 13s, LabHandbookV2 (10K symbols) = 1.2s, Goldfish (3K symbols) = 1.5s.
+- [x] ~~**Pending relationship resolution is O(N) per relationship — bottleneck for large repos**~~ — fixed: `resolve_batch` groups pending relationships by callee_name and uses `find_symbols_by_names_batch` (SQL `IN` clause, chunked at 500) to query once per unique name instead of once per relationship. On Guava this should reduce ~434K individual queries to ~50K batched lookups. Key files: `src/tools/workspace/indexing/resolver.rs`, `src/database/symbols/queries.rs`
 
 ## Enhancements
 

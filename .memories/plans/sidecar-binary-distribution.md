@@ -1,13 +1,13 @@
 ---
 id: sidecar-binary-distribution
 title: Sidecar Binary Distribution
-status: completed
+status: archived
 created: 2026-03-04T21:45:29.810Z
-updated: 2026-03-08T22:14:07.433Z
+updated: 2026-03-15T23:32:14.370Z
 tags:
-- sidecar
-- distribution
-- embeddings
+  - sidecar
+  - distribution
+  - embeddings
 ---
 
 # Sidecar Binary Distribution

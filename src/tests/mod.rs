@@ -47,6 +47,7 @@ pub mod core {
     pub mod paths; // Path utility tests (display_path, UNC handling)
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
     pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
+    pub mod batch_resolver; // Batch pending relationship resolution tests
 }
 
 // ============================================================================

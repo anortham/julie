@@ -1,9 +1,9 @@
 ---
 id: token-efficiency-cleanup-across-julie-mcp-tool-for
 title: Token Efficiency Cleanup Across Julie MCP Tool Formatting
-status: active
+status: archived
 created: 2026-03-03T21:44:55.859Z
-updated: 2026-03-03T21:44:55.859Z
+updated: 2026-03-15T23:32:13.271Z
 tags:
   - refactoring
   - token-efficiency

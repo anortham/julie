@@ -1,9 +1,9 @@
 ---
 id: razorback-julie-goldfish-aware-superpowers-fork
 title: "Razorback: Julie/Goldfish-Aware Superpowers Fork"
-status: active
+status: archived
 created: 2026-03-02T22:17:24.583Z
-updated: 2026-03-02T22:22:04.784Z
+updated: 2026-03-15T23:32:14.085Z
 tags:
   - razorback
   - superpowers
