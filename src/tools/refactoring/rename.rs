@@ -6,7 +6,7 @@ use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use tracing::debug;
 
-use super::SmartRefactorTool;
+use super::{compute_line_changes, RenameChange, SmartRefactorTool};
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::FastRefsTool;
 
@@ -126,7 +126,7 @@ impl SmartRefactorTool {
         } else {
             std::path::PathBuf::new() // unused — no files to process
         };
-        let mut renamed_files = Vec::new();
+        let mut renamed_files: Vec<(String, Vec<RenameChange>)> = Vec::new();
         let mut errors = Vec::new();
 
         for file_path in file_locations.keys() {
@@ -134,9 +134,9 @@ impl SmartRefactorTool {
                 .rename_in_file(&workspace_root, file_path, old_name, new_name)
                 .await
             {
-                Ok(changes_applied) => {
-                    if changes_applied > 0 {
-                        renamed_files.push((file_path.clone(), changes_applied));
+                Ok(changes) => {
+                    if !changes.is_empty() {
+                        renamed_files.push((file_path.clone(), changes));
                     }
                 }
                 Err(e) => {
@@ -154,15 +154,20 @@ impl SmartRefactorTool {
                 .await
             {
                 Ok(updated_files) => {
-                    for (file_path, changes) in updated_files {
-                        // Add to renamed_files or increment count if already present
+                    for (file_path, changes_count) in updated_files {
+                        // Import changes don't have line-level detail — just add a note
+                        let import_note = RenameChange {
+                            line_number: 0,
+                            old_line: format!("(+ {} import updates)", changes_count),
+                            new_line: String::new(),
+                        };
                         if let Some((_, existing_changes)) = renamed_files
                             .iter_mut()
                             .find(|(path, _)| path == &file_path)
                         {
-                            *existing_changes += changes;
+                            existing_changes.push(import_note);
                         } else {
-                            renamed_files.push((file_path, changes));
+                            renamed_files.push((file_path, vec![import_note]));
                         }
                     }
                 }
@@ -175,7 +180,10 @@ impl SmartRefactorTool {
 
         // Step 3: Generate result summary
         let total_files = renamed_files.len();
-        let total_changes: usize = renamed_files.iter().map(|(_, count)| count).sum();
+        let total_changes: usize = renamed_files
+            .iter()
+            .map(|(_, changes)| changes.iter().filter(|c| c.line_number > 0).count())
+            .sum();
 
         // Check for errors and report partial failures
         if !errors.is_empty() {
@@ -195,10 +203,25 @@ impl SmartRefactorTool {
 
         if self.dry_run {
             let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
-            let file_summary: Vec<String> = renamed_files
-                .iter()
-                .map(|(f, c)| format!("  {} ({} changes)", f, c))
-                .collect();
+            let mut preview_lines: Vec<String> = Vec::new();
+            for (file_path, changes) in &renamed_files {
+                let line_changes: Vec<&RenameChange> =
+                    changes.iter().filter(|c| c.line_number > 0).collect();
+                preview_lines.push(format!("  {} ({} changes):", file_path, line_changes.len()));
+                for change in changes.iter().take(5) {
+                    if change.line_number > 0 {
+                        preview_lines
+                            .push(format!("    L{}: - {}", change.line_number, change.old_line.trim()));
+                        preview_lines
+                            .push(format!("    L{}: + {}", change.line_number, change.new_line.trim()));
+                    } else {
+                        preview_lines.push(format!("    {}", change.old_line)); // import update note
+                    }
+                }
+                if changes.len() > 5 {
+                    preview_lines.push(format!("    ... and {} more changes", changes.len() - 5));
+                }
+            }
             let workspace_label = match &workspace {
                 Some(ws) if ws != "primary" => format!(" (workspace: {})", ws),
                 _ => String::new(),
@@ -211,7 +234,7 @@ impl SmartRefactorTool {
                 Some(format!(
                     "rename_symbol dry run{} — '{}' → '{}'\n{} changes across {} files:\n{}\n\n(dry run — no changes applied)",
                     workspace_label, old_name, new_name, total_changes, renamed_files.len(),
-                    file_summary.join("\n")
+                    preview_lines.join("\n")
                 )),
             );
         }

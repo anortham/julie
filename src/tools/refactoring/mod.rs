@@ -18,6 +18,31 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// A single line-level change from a rename operation.
+#[derive(Debug, Clone)]
+pub struct RenameChange {
+    pub line_number: usize,
+    pub old_line: String,
+    pub new_line: String,
+}
+
+/// Compare old and new content line-by-line, returning changed lines.
+pub fn compute_line_changes(old_content: &str, new_content: &str) -> Vec<RenameChange> {
+    let old_lines: Vec<&str> = old_content.lines().collect();
+    let new_lines: Vec<&str> = new_content.lines().collect();
+    let mut changes = Vec::new();
+    for (i, (old, new)) in old_lines.iter().zip(new_lines.iter()).enumerate() {
+        if old != new {
+            changes.push(RenameChange {
+                line_number: i + 1,
+                old_line: old.to_string(),
+                new_line: new.to_string(),
+            });
+        }
+    }
+    changes
+}
+
 use crate::handler::JulieServerHandler;
 use crate::tools::editing::EditingTransaction;
 use crate::workspace::registry_service::WorkspaceRegistryService;
@@ -165,7 +190,7 @@ impl SmartRefactorTool {
         file_path: &str,
         old_name: &str,
         new_name: &str,
-    ) -> Result<usize> {
+    ) -> Result<Vec<RenameChange>> {
         // Resolve file path relative to workspace root
         let absolute_path = if Path::new(file_path).is_absolute() {
             file_path.to_string()
@@ -181,7 +206,7 @@ impl SmartRefactorTool {
             self.smart_text_replace(&content, old_name, new_name, file_path, false)?;
 
         if updated_content == content {
-            return Ok(0); // No changes
+            return Ok(Vec::new()); // No changes
         }
 
         // Write back using atomic operations (skip if dry-run)
@@ -190,16 +215,7 @@ impl SmartRefactorTool {
             tx.commit(&updated_content)?;
         }
 
-        // Count changes by line differences
-        let content_lines = content.lines().count();
-        let updated_lines = updated_content.lines().count();
-        let changes = if content_lines != updated_lines {
-            (content_lines.abs_diff(updated_lines)) + 1
-        } else {
-            1
-        };
-
-        Ok(changes)
+        Ok(compute_line_changes(&content, &updated_content))
     }
 
     /// Uses tree-sitter AST to find ONLY actual code symbols, skipping strings/comments.

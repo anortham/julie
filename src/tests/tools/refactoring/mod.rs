@@ -11,3 +11,6 @@ mod rename_symbol;
 
 // SmartRefactorTool rename tests
 mod smart_refactor;
+
+// compute_line_changes unit tests
+mod compute_line_changes_tests;
