@@ -1554,6 +1554,74 @@ mod data_tests {
         assert!(found.is_empty());
     }
 
+    #[test]
+    fn test_find_symbol_qualified_name() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![
+            make_symbol(
+                "sym-parent-a",
+                "Engine",
+                SymbolKind::Struct,
+                "src/engine.rs",
+                1,
+                None,
+                Some("pub struct Engine"),
+                Some(Visibility::Public),
+                None,
+            ),
+            make_symbol(
+                "sym-method-a",
+                "process",
+                SymbolKind::Method,
+                "src/engine.rs",
+                10,
+                Some("sym-parent-a"),
+                Some("pub fn process(&self)"),
+                Some(Visibility::Public),
+                None,
+            ),
+            make_symbol(
+                "sym-parent-b",
+                "Pipeline",
+                SymbolKind::Struct,
+                "src/engine.rs",
+                50,
+                None,
+                Some("pub struct Pipeline"),
+                Some(Visibility::Public),
+                None,
+            ),
+            make_symbol(
+                "sym-method-b",
+                "process",
+                SymbolKind::Method,
+                "src/engine.rs",
+                60,
+                Some("sym-parent-b"),
+                Some("pub fn process(&self)"),
+                Some(Visibility::Public),
+                None,
+            ),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        // Qualified lookup should resolve to exactly one symbol
+        let found = find_symbol(&db, "Engine::process", None).unwrap();
+        assert_eq!(found.len(), 1, "qualified name should resolve to exactly one symbol");
+        assert_eq!(found[0].file_path, "src/engine.rs");
+        assert_eq!(found[0].parent_id, Some("sym-parent-a".to_string()));
+
+        // Dot-separated also works (for Python, JS, etc.)
+        let found_dot = find_symbol(&db, "Pipeline.process", None).unwrap();
+        assert_eq!(found_dot.len(), 1);
+        assert_eq!(found_dot[0].parent_id, Some("sym-parent-b".to_string()));
+
+        // Unqualified still returns both
+        let found_all = find_symbol(&db, "process", None).unwrap();
+        assert_eq!(found_all.len(), 2, "unqualified should still return both");
+    }
+
     // === build_symbol_context tests ===
 
     #[test]

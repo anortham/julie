@@ -9,6 +9,7 @@ use tracing::debug;
 
 use crate::database::SymbolDatabase;
 use crate::extractors::base::{RelationshipKind, Symbol, SymbolKind};
+use crate::tools::navigation::resolution::parse_qualified_name;
 use crate::tools::shared::NOISE_CALLEE_NAMES;
 
 /// Aggregated context for a single symbol, ready for formatting
@@ -53,6 +54,42 @@ pub fn find_symbol(
     name: &str,
     context_file: Option<&str>,
 ) -> Result<Vec<Symbol>> {
+    // Try qualified name resolution first (e.g. "SearchIndex::search_symbols" or "MyClass.method")
+    if let Some((parent_name, child_name)) = parse_qualified_name(name) {
+        let mut candidates = db.find_symbols_by_name(child_name)?;
+        candidates.retain(|s| s.kind != SymbolKind::Import);
+
+        // Find parent symbols by name to collect their IDs
+        let parents = db.find_symbols_by_name(parent_name)?;
+        let parent_ids: std::collections::HashSet<&str> =
+            parents.iter().map(|p| p.id.as_str()).collect();
+
+        let qualified: Vec<Symbol> = candidates
+            .iter()
+            .filter(|s| {
+                s.parent_id
+                    .as_deref()
+                    .map_or(false, |pid| parent_ids.contains(pid))
+            })
+            .cloned()
+            .collect();
+
+        if !qualified.is_empty() {
+            if let Some(file) = context_file {
+                let file_matches: Vec<Symbol> = qualified
+                    .iter()
+                    .filter(|s| s.file_path.contains(file))
+                    .cloned()
+                    .collect();
+                if !file_matches.is_empty() {
+                    return Ok(file_matches);
+                }
+            }
+            return Ok(qualified);
+        }
+        // Fall through if no parent match found (e.g. parent not yet indexed)
+    }
+
     let mut symbols = db.find_symbols_by_name(name)?;
 
     // Filter out imports — we want actual definitions
