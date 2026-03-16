@@ -9,6 +9,7 @@ mod tests {
 
     use crate::search::index::SymbolSearchResult;
     use crate::tools::get_context::pipeline::{Pivot, select_pivots};
+    use crate::tools::get_context::scoring::select_pivots_for_query;
 
     /// Helper to create a SymbolSearchResult with a specific kind.
     fn make_result_with_kind(id: &str, name: &str, kind: &str, score: f32) -> SymbolSearchResult {
@@ -125,6 +126,29 @@ mod tests {
         assert_eq!(
             pivots[0].result.name, "real_function",
             "function (score 1.0) should beat namespace-in-test-file (8.0 * 0.06 = 0.48)"
+        );
+    }
+
+    /// When the query exactly matches a test function name, the test should rank first
+    /// despite TEST_FILE_PENALTY, because the user is clearly looking for that specific test.
+    #[test]
+    fn test_exact_test_name_match_overcomes_test_penalty() {
+        let test_result = make_result_with_kind_and_path(
+            "t1", "test_compute_security_risk", "function",
+            "src/tests/analysis/security_risk_tests.rs", 0.9,
+        );
+        let prod_result = make_result_with_kind_and_path(
+            "p1", "compute_security_risk", "function",
+            "src/analysis/security_risk.rs", 0.8,
+        );
+        let results = vec![test_result, prod_result];
+        let ref_scores = HashMap::new();
+
+        let pivots = select_pivots_for_query("test_compute_security_risk", results, &ref_scores);
+        assert!(!pivots.is_empty());
+        assert_eq!(
+            pivots[0].result.name, "test_compute_security_risk",
+            "exact test-name match should rank first despite TEST_FILE_PENALTY"
         );
     }
 

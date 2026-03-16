@@ -34,6 +34,7 @@ mod formatting_tests {
             outgoing_names: vec![],
             risk_label: None,
             security_label: None,
+            test_quality_label: None,
         }
     }
 
@@ -820,6 +821,58 @@ mod formatting_tests {
             readable_tokens,
             compact_tokens,
             reduction * 100.0
+        );
+    }
+
+    #[test]
+    fn test_compact_format_renders_test_quality_label() {
+        let mut pivot = make_pivot(
+            "test_compute_security_risk",
+            "src/tests/analysis/security_risk_tests.rs",
+            10,
+            2.0,
+            "fn test_compute_security_risk() { ... }",
+        );
+        pivot.test_quality_label = Some("thorough".to_string());
+
+        let data = ContextData {
+            query: "test_compute_security_risk".to_string(),
+            pivots: vec![pivot],
+            neighbors: vec![],
+            allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+        };
+
+        let output = format_context_with_mode(&data, OutputFormat::Compact);
+        assert!(
+            output.contains("quality=thorough"),
+            "compact format should render test_quality_label as quality=thorough, got:\n{}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_readable_format_renders_test_quality_label() {
+        let mut pivot = make_pivot(
+            "test_compute_security_risk",
+            "src/tests/analysis/security_risk_tests.rs",
+            10,
+            2.0,
+            "fn test_compute_security_risk() { ... }",
+        );
+        pivot.test_quality_label = Some("thorough".to_string());
+
+        let data = ContextData {
+            query: "test_compute_security_risk".to_string(),
+            pivots: vec![pivot],
+            neighbors: vec![],
+            allocation: make_allocation(PivotMode::FullBody, NeighborMode::SignatureAndDoc),
+        };
+
+        let output = format_context_with_mode(&data, OutputFormat::Readable);
+        assert!(
+            output.contains("[thorough quality]"),
+            "readable format should render test_quality_label as [thorough quality], got:\n{}",
+            output
         );
     }
 

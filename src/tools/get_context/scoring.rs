@@ -114,6 +114,48 @@ pub fn select_pivots(
     scored.into_iter().take(pivot_count).collect()
 }
 
+/// Exact-match boost: when the query exactly matches a symbol name,
+/// override the test-file penalty so the intended symbol ranks first.
+const EXACT_NAME_MATCH_BOOST: f32 = 5.0;
+
+/// Select pivots with an exact-name boost applied before scoring.
+///
+/// When the query exactly matches a symbol name (case-insensitive),
+/// that symbol's score is boosted so it isn't buried by test-file
+/// or structural penalties.
+pub fn select_pivots_for_query(
+    query: &str,
+    results: Vec<SymbolSearchResult>,
+    reference_scores: &HashMap<String, f64>,
+) -> Vec<Pivot> {
+    let boosted = apply_exact_name_boost(query, results);
+    select_pivots(boosted, reference_scores)
+}
+
+/// Select pivots with code fallback and exact-name boost.
+///
+/// Combines `select_pivots_with_code_fallback` with the exact-name boost
+/// so pipeline callers get both behaviors.
+pub fn select_pivots_with_code_fallback_for_query(
+    query: &str,
+    results: Vec<SymbolSearchResult>,
+    reference_scores: &HashMap<String, f64>,
+) -> Vec<Pivot> {
+    let boosted = apply_exact_name_boost(query, results);
+    select_pivots_with_code_fallback(boosted, reference_scores)
+}
+
+/// Apply exact-name boost to results where the symbol name matches the query.
+fn apply_exact_name_boost(query: &str, results: Vec<SymbolSearchResult>) -> Vec<SymbolSearchResult> {
+    let query_lower = query.to_lowercase();
+    results.into_iter().map(|mut r| {
+        if r.name.to_lowercase() == query_lower {
+            r.score *= EXACT_NAME_MATCH_BOOST;
+        }
+        r
+    }).collect()
+}
+
 /// Select pivots with a code-first fallback pass.
 ///
 /// Primary pass uses standard centrality-weighted scoring. If the selected pivots

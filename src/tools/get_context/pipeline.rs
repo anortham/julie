@@ -178,9 +178,9 @@ pub fn run_pipeline(
         .collect();
     let ref_scores = db.get_reference_scores(&result_ids)?;
 
-    // 3. Select pivots using centrality-weighted scoring
+    // 3. Select pivots using centrality-weighted scoring (with exact-name boost)
     let pivots =
-        super::scoring::select_pivots_with_code_fallback(search_results.results, &ref_scores);
+        super::scoring::select_pivots_with_code_fallback_for_query(query, search_results.results, &ref_scores);
 
     // 4. Expand graph from pivots
     let expansion = expand_graph(&pivots, db)?;
@@ -378,6 +378,13 @@ fn build_pivot_entries(
             .and_then(|l| l.as_str())
             .map(String::from);
 
+        let test_quality_label = batch.full_symbols.get(&pivot.result.id)
+            .and_then(|sym| sym.metadata.as_ref())
+            .and_then(|m| m.get("test_quality"))
+            .and_then(|tq| tq.get("quality_tier"))
+            .and_then(|t| t.as_str())
+            .map(String::from);
+
         entries.push(PivotEntry {
             name: pivot.result.name.clone(),
             file_path: pivot.result.file_path.clone(),
@@ -389,6 +396,7 @@ fn build_pivot_entries(
             outgoing_names,
             risk_label,
             security_label,
+            test_quality_label,
         });
     }
 
