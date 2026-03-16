@@ -343,7 +343,7 @@
   // --- Copy to clipboard ---
   const copySnippets = {
     'claude-code': 'git clone https://github.com/anortham/julie.git\ncd julie && cargo build --release\nclaude mcp add julie -- ./target/release/julie-server',
-    'vscode': '{\n  "servers": {\n    "Julie": {\n      "type": "stdio",\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
+    'vscode': '{\n  "servers": {\n    "Julie": {\n      "type": "stdio",\n      "command": "/path/to/julie-server",\n      "env": {\n        "JULIE_WORKSPACE": "${workspaceFolder}"\n      }\n    }\n  }\n}',
     'cursor': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
   };
 
