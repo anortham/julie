@@ -143,9 +143,3 @@ pub(super) fn get_name(base: &Base, node: &Node) -> Option<String> {
                 .map(|n| base.get_node_text(&n))
         })
 }
-
-/// Check if a node has a direct `case` keyword child (for case classes)
-pub(super) fn has_case_keyword(node: &Node) -> bool {
-    node.children(&mut node.walk())
-        .any(|n| n.kind() == "case" && !n.is_named())
-}

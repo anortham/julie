@@ -276,6 +276,11 @@ const DEFINITION_KINDS: &[&str] = &[
     "function",
     "method",
     "constructor",
+    "module",
+    "namespace",
+    "type",
+    "constant",
+    "delegate",
 ];
 
 /// Promote exact name matches to the top of results using a three-tier stable partition.
@@ -287,6 +292,9 @@ const DEFINITION_KINDS: &[&str] = &[
 /// 1. **Tier 1**: Exact name match + definition kind (class, struct, function, etc.)
 /// 2. **Tier 2**: Exact name match + non-definition kind (import, variable, etc.)
 /// 3. **Tier 3**: Everything else (non-exact matches)
+///
+/// Name matching handles qualified names: searching "Router" matches "Phoenix.Router"
+/// because the last component matches. Full-name matches are preferred over component matches.
 ///
 /// Within each tier, original relative order is preserved (stable partition).
 pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, query: &str) {
@@ -302,7 +310,7 @@ pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, 
     let mut rest = Vec::new();
 
     for result in results.drain(..) {
-        if result.name.to_lowercase() == query_lower {
+        if is_name_match(&result.name, &query_lower) {
             if DEFINITION_KINDS.contains(&result.kind.as_str()) {
                 definitions.push(result);
             } else {
@@ -313,9 +321,47 @@ pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, 
         }
     }
 
+    // Within definitions tier, sort by score descending (centrality-boosted).
+    // This ensures high-centrality component matches (e.g. Phoenix.Router with centrality 1.0)
+    // outrank zero-centrality exact matches (e.g. test stubs named "Router").
+    definitions.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
     results.extend(definitions);
     results.extend(other_exact);
     results.extend(rest);
+}
+
+/// Check if a symbol name matches a query, supporting qualified names.
+/// Matches if the full name matches OR the last component of a dot-qualified name matches.
+/// Examples:
+///   - "Router" matches "Router" (exact)
+///   - "Router" matches "Phoenix.Router" (last component)
+///   - "Phoenix.Router" matches "Phoenix.Router" (exact)
+///   - "Router" does NOT match "RouterHelper" (not a component match)
+fn is_name_match(symbol_name: &str, query_lower: &str) -> bool {
+    let name_lower = symbol_name.to_lowercase();
+    if name_lower == query_lower {
+        return true;
+    }
+    // Check if query matches the last component of a qualified name (e.g. "Router" matches "Phoenix.Router")
+    if let Some(last_component) = name_lower.rsplit('.').next() {
+        if last_component == query_lower {
+            return true;
+        }
+    }
+    // Check if query is itself qualified and matches a suffix (e.g. "Channel.Server" matches "Phoenix.Channel.Server")
+    if query_lower.contains('.') && name_lower.ends_with(query_lower) {
+        // Ensure it's a component boundary (preceded by '.' or start of string)
+        let prefix_len = name_lower.len() - query_lower.len();
+        if prefix_len == 0 || name_lower.as_bytes()[prefix_len - 1] == b'.' {
+            return true;
+        }
+    }
+    false
 }
 
 fn sort_results_by_score_desc(results: &mut [SymbolSearchResult]) {

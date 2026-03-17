@@ -250,6 +250,76 @@ impl SymbolDatabase {
         Ok(symbols)
     }
 
+    /// Find definition symbols whose name matches a query as a component.
+    /// Matches exact name OR qualified names ending with `.query` (component boundary).
+    /// Only returns definition kinds (module, class, trait, function, etc.).
+    /// Results are ordered by reference_score DESC so high-centrality definitions come first.
+    ///
+    /// Examples: query "Router" matches "Router" and "Phoenix.Router" but NOT "RouterHelper"
+    pub fn find_definitions_by_name_component(
+        &self,
+        name: &str,
+        language: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Symbol>> {
+        let suffix_pattern = format!("%.{}", name);
+        let definition_kinds = "('module', 'class', 'struct', 'trait', 'interface', 'enum', \
+                                'function', 'method', 'namespace', 'type', 'constant', 'constructor')";
+
+        let mut symbols = Vec::new();
+
+        // ONLY fetch qualified/suffix matches (e.g. "Phoenix.Channel" for query "Channel").
+        // Exact-name symbols (e.g. "Channel") are already in the Tantivy results — the
+        // whole point of this rescue query is to find qualified names that BM25 buried.
+        // Ordered by reference_score DESC so high-centrality core modules come first.
+        if let Some(lang) = language {
+            let query = format!(
+                "SELECT {} FROM symbols
+                 WHERE name LIKE ?1
+                   AND name != ?2
+                   AND kind IN {}
+                   AND language = ?3
+                 ORDER BY reference_score DESC, name, file_path
+                 LIMIT ?4",
+                SYMBOL_COLUMNS, definition_kinds
+            );
+            let mut stmt = self.conn.prepare(&query)?;
+            let rows = stmt.query_map(
+                rusqlite::params![suffix_pattern, name, lang, limit as i64],
+                |row| self.row_to_symbol(row),
+            )?;
+            for row in rows {
+                symbols.push(row?);
+            }
+        } else {
+            let query = format!(
+                "SELECT {} FROM symbols
+                 WHERE name LIKE ?1
+                   AND name != ?2
+                   AND kind IN {}
+                 ORDER BY reference_score DESC, name, file_path
+                 LIMIT ?3",
+                SYMBOL_COLUMNS, definition_kinds
+            );
+            let mut stmt = self.conn.prepare(&query)?;
+            let rows = stmt.query_map(
+                rusqlite::params![suffix_pattern, name, limit as i64],
+                |row| self.row_to_symbol(row),
+            )?;
+            for row in rows {
+                symbols.push(row?);
+            }
+        }
+
+        debug!(
+            "find_definitions_by_name_component('{}', lang={:?}) → {} results",
+            name,
+            language,
+            symbols.len()
+        );
+        Ok(symbols)
+    }
+
     /// Query symbols by kind
     /// Uses idx_symbols_kind for fast lookup
     pub fn query_symbols_by_kind(&self, kind: &SymbolKind) -> Result<Vec<Symbol>> {

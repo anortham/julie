@@ -76,47 +76,110 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
     }
 }
 
-/// Detect language from file extension
+/// Detect language from file extension.
 ///
+/// This is the **SINGLE SOURCE OF TRUTH** for extension → language mapping.
+/// All other language detection in the codebase MUST delegate to this function.
 /// Returns the language name that can be passed to `get_tree_sitter_language()`.
 pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
     match extension {
+        // Systems
         "rs" => Some("rust"),
-        "ts" => Some("typescript"),
-        "tsx" => Some("tsx"),
-        "js" | "jsx" => Some("javascript"),
-        "py" => Some("python"),
-        "go" => Some("go"),
-        "java" => Some("java"),
         "c" | "h" => Some("c"),
-        "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => Some("cpp"),
+        "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "h++" => Some("cpp"),
+        "go" => Some("go"),
+        "zig" => Some("zig"),
+
+        // Web
+        "ts" | "mts" | "cts" => Some("typescript"),
+        "tsx" => Some("tsx"),
+        "js" | "jsx" | "mjs" | "cjs" => Some("javascript"),
+        "html" | "htm" => Some("html"),
+        "css" => Some("css"),
+        "vue" => Some("vue"),
+
+        // Backend
+        "py" | "pyi" | "pyw" => Some("python"),
+        "java" => Some("java"),
         "cs" => Some("csharp"),
-        "rb" => Some("ruby"),
-        "php" => Some("php"),
+        "php" | "phtml" => Some("php"),
+        "rb" | "rbw" => Some("ruby"),
         "swift" => Some("swift"),
         "kt" | "kts" => Some("kotlin"),
         "scala" | "sc" => Some("scala"),
         "dart" => Some("dart"),
-        "gd" => Some("gdscript"),
+
+        // Functional
         "ex" | "exs" => Some("elixir"),
+
+        // Scripting
         "lua" => Some("lua"),
         "qml" => Some("qml"),
         "r" | "R" => Some("r"),
-        "vue" => Some("vue"),
+        "sh" | "bash" => Some("bash"),
+        "ps1" | "psm1" | "psd1" => Some("powershell"),
+
+        // Specialized
+        "gd" => Some("gdscript"),
         "razor" | "cshtml" => Some("razor"),
         "sql" => Some("sql"),
-        "html" | "htm" => Some("html"),
-        "css" => Some("css"),
-        "sh" | "bash" => Some("bash"),
-        "ps1" => Some("powershell"),
-        "zig" => Some("zig"),
         "regex" => Some("regex"),
+
+        // Documentation and config
         "md" | "markdown" => Some("markdown"),
         "json" | "jsonl" | "jsonc" => Some("json"),
         "toml" => Some("toml"),
         "yml" | "yaml" => Some("yaml"),
+
         _ => None,
     }
+}
+
+/// All file extensions that Julie can index.
+///
+/// **SINGLE SOURCE OF TRUTH** — `build_supported_extensions()` and `is_supported_file()`
+/// must derive from this, not maintain their own lists.
+pub fn supported_extensions() -> &'static [&'static str] {
+    &[
+        // Systems
+        "rs", "c", "h", "cpp", "cc", "cxx", "c++", "hpp", "hh", "hxx", "h++", "go", "zig",
+        // Web
+        "ts", "mts", "cts", "tsx", "js", "jsx", "mjs", "cjs", "html", "htm", "css", "vue",
+        // Backend
+        "py", "pyi", "pyw", "java", "cs", "php", "phtml", "rb", "rbw",
+        "swift", "kt", "kts", "scala", "sc", "dart",
+        // Functional
+        "ex", "exs",
+        // Scripting
+        "lua", "qml", "r", "R", "sh", "bash", "ps1", "psm1", "psd1",
+        // Specialized
+        "gd", "razor", "cshtml", "sql", "regex",
+        // Documentation and config
+        "md", "markdown", "json", "jsonl", "jsonc", "toml", "yml", "yaml",
+    ]
+}
+
+/// All language names Julie supports (33 languages).
+///
+/// **SINGLE SOURCE OF TRUTH** — `ExtractorManager::supported_languages()` must
+/// delegate to this, not maintain its own list.
+pub fn supported_languages() -> &'static [&'static str] {
+    &[
+        // Systems
+        "rust", "c", "cpp", "go", "zig",
+        // Web
+        "typescript", "tsx", "javascript", "html", "css", "vue",
+        // Backend
+        "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "scala", "dart",
+        // Functional
+        "elixir",
+        // Scripting
+        "lua", "qml", "r", "bash", "powershell",
+        // Specialized
+        "gdscript", "razor", "sql", "regex",
+        // Documentation and config
+        "markdown", "json", "toml", "yaml",
+    ]
 }
 
 /// Get AST node types that represent function definitions for a given language

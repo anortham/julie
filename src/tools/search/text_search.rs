@@ -284,11 +284,16 @@ fn definition_search_with_index(
 
         Ok((symbols, relaxed))
     } else {
-        // Keyword search: over-fetch so exact-name definitions aren't lost
+        // Keyword search: over-fetch so exact-name definitions aren't lost.
+        // For definition search, we need a large window because:
+        // 1. Qualified names (Phoenix.Router) rank low in BM25 — the definition
+        //    mentions the name once vs. many reference files mentioning it repeatedly.
+        // 2. Centrality boost + name promotion can rescue buried definitions,
+        //    but only if they're in the candidate pool.
         let tantivy_limit = if filter.file_pattern.is_some() {
             limit.saturating_mul(50).max(500).min(5000)
         } else {
-            limit.saturating_mul(10).max(200)
+            limit.saturating_mul(20).max(500)
         };
         let search = index.search_symbols(query, filter, tantivy_limit)?;
         let relaxed = search.relaxed;
@@ -304,7 +309,7 @@ fn definition_search_with_index(
             search.results
         };
 
-        // Apply centrality boost + exact-name promotion
+        // Apply centrality boost + exact-name promotion on Tantivy results
         if let Some(db) = db {
             let symbol_ids: Vec<&str> =
                 filtered_results.iter().map(|r| r.id.as_str()).collect();
@@ -325,6 +330,52 @@ fn definition_search_with_index(
         // Filter BEFORE truncating so test symbols don't consume limit slots
         filter_test_symbols(&mut symbols, filter.exclude_tests);
         symbols.truncate(limit);
+
+        // LAST STEP: Prepend high-centrality definitions from SQLite that the
+        // Tantivy pipeline missed or buried. This handles qualified names like
+        // "Phoenix.Router" when an agent searches just "Router".
+        // Runs AFTER truncation so these are guaranteed to appear in the output.
+        if let Some(db) = db {
+            match db.find_definitions_by_name_component(query, filter.language.as_deref(), 5) {
+                Err(e) => {
+                    tracing::warn!("find_definitions_by_name_component('{}') error: {}", query, e);
+                }
+                Ok(db_defs) => {
+                let existing_ids: std::collections::HashSet<String> =
+                    symbols.iter().map(|s| s.id.clone()).collect();
+                let mut prepend: Vec<Symbol> = db_defs
+                    .into_iter()
+                    .filter(|s| !existing_ids.contains(&s.id))
+                    .map(|s| {
+                        let sym = tantivy_symbol_to_symbol(
+                            crate::search::index::SymbolSearchResult {
+                                id: s.id,
+                                name: s.name,
+                                signature: s.signature.unwrap_or_default(),
+                                doc_comment: s.doc_comment.unwrap_or_default(),
+                                file_path: s.file_path,
+                                kind: format!("{:?}", s.kind).to_lowercase(),
+                                language: s.language,
+                                start_line: s.start_line,
+                                score: 100.0, // high score to signal these are DB-promoted
+                            },
+                        );
+                        // Enrich from DB for code_context etc.
+                        let mut single = vec![sym];
+                        enrich_symbols_from_db(&mut single, db);
+                        single.remove(0)
+                    })
+                    .collect();
+                if !prepend.is_empty() {
+                    // Apply same test filter as main results
+                    filter_test_symbols(&mut prepend, filter.exclude_tests);
+                    prepend.append(&mut symbols);
+                    symbols = prepend;
+                    symbols.truncate(limit);
+                }
+            }
+            }
+        }
 
         Ok((symbols, relaxed))
     }

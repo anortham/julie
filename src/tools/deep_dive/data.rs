@@ -49,12 +49,35 @@ pub struct RefEntry {
 }
 
 /// Look up a symbol by name, optionally disambiguated by file path.
+///
+/// Resolution order:
+/// 1. Try full name as-is (handles Elixir's "Phoenix.Router", Scala's "cats.Monad", etc.)
+/// 2. Try qualified parent/child parsing (handles Rust's "Struct::method", Python's "Class.method")
+/// 3. Fall back to full name without definition-kind filter
 pub fn find_symbol(
     db: &SymbolDatabase,
     name: &str,
     context_file: Option<&str>,
 ) -> Result<Vec<Symbol>> {
-    // Try qualified name resolution first (e.g. "SearchIndex::search_symbols" or "MyClass.method")
+    // Step 1: Try full name first — handles flat namespace languages (Elixir, Scala, PHP, C#)
+    // where "Phoenix.Channel" is a single symbol name, not a parent/child relationship.
+    if name.contains('.') || name.contains("::") {
+        let mut full_name_results = db.find_symbols_by_name(name)?;
+        full_name_results.retain(|s| {
+            s.kind != SymbolKind::Import && s.kind != SymbolKind::Export
+        });
+        // Only use these if we found actual definitions (Module, Class, Trait, Function, etc.)
+        let definitions: Vec<Symbol> = full_name_results
+            .iter()
+            .filter(|s| is_definition_kind(&s.kind))
+            .cloned()
+            .collect();
+        if !definitions.is_empty() {
+            return apply_context_file_filter(definitions, context_file);
+        }
+    }
+
+    // Step 2: Try qualified name resolution (e.g. "SearchIndex::search_symbols" or "MyClass.method")
     if let Some((parent_name, child_name)) = parse_qualified_name(name) {
         let mut candidates = db.find_symbols_by_name(child_name)?;
         candidates.retain(|s| s.kind != SymbolKind::Import);
@@ -75,27 +98,22 @@ pub fn find_symbol(
             .collect();
 
         if !qualified.is_empty() {
-            if let Some(file) = context_file {
-                let file_matches: Vec<Symbol> = qualified
-                    .iter()
-                    .filter(|s| s.file_path.contains(file))
-                    .cloned()
-                    .collect();
-                if !file_matches.is_empty() {
-                    return Ok(file_matches);
-                }
-            }
-            return Ok(qualified);
+            return apply_context_file_filter(qualified, context_file);
         }
         // Fall through if no parent match found (e.g. parent not yet indexed)
     }
 
+    // Step 3: Fall back to full name without definition-kind filter
     let mut symbols = db.find_symbols_by_name(name)?;
-
-    // Filter out imports — we want actual definitions
     symbols.retain(|s| s.kind != SymbolKind::Import);
+    apply_context_file_filter(symbols, context_file)
+}
 
-    // Disambiguate by file if specified
+/// Filter symbols by context_file if provided, falling back to full list.
+fn apply_context_file_filter(
+    symbols: Vec<Symbol>,
+    context_file: Option<&str>,
+) -> Result<Vec<Symbol>> {
     if let Some(file) = context_file {
         let file_matches: Vec<Symbol> = symbols
             .iter()
@@ -106,8 +124,25 @@ pub fn find_symbol(
             return Ok(file_matches);
         }
     }
-
     Ok(symbols)
+}
+
+/// Definition kinds that should be preferred in full-name lookups.
+fn is_definition_kind(kind: &SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::Module
+            | SymbolKind::Class
+            | SymbolKind::Struct
+            | SymbolKind::Trait
+            | SymbolKind::Interface
+            | SymbolKind::Enum
+            | SymbolKind::Function
+            | SymbolKind::Method
+            | SymbolKind::Namespace
+            | SymbolKind::Type
+            | SymbolKind::Constant
+    )
 }
 
 /// Build full context for a symbol.

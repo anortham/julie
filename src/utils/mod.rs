@@ -10,49 +10,14 @@ pub mod file_utils {
     use super::*;
     use std::fs;
 
-    /// Check if a file has a supported language extension
+    /// Check if a file has a supported language extension.
+    ///
+    /// Delegates to `julie_extractors::language::detect_language_from_extension()`.
     pub fn is_supported_file(path: &Path) -> bool {
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            matches!(
-                ext,
-                "rs" | "py"
-                    | "js"
-                    | "ts"
-                    | "tsx"
-                    | "jsx"
-                    | "go"
-                    | "java"
-                    | "c"
-                    | "cpp"
-                    | "h"
-                    | "hpp"
-                    | "cs"
-                    | "php"
-                    | "rb"
-                    | "swift"
-                    | "kt"
-                    | "lua"
-                    | "gd"
-                    | "vue"
-                    | "html"
-                    | "css"
-                    | "sql"
-                    | "sh"
-                    | "bash"
-                    | "r"
-                    | "R"
-                    | "md"        // Markdown
-                    | "markdown"
-                    | "json"      // JSON
-                    | "jsonl"     // JSON Lines
-                    | "jsonc"     // JSON with Comments (VSCode configs)
-                    | "toml"      // TOML
-                    | "yml"       // YAML
-                    | "yaml"
-            )
-        } else {
-            false
-        }
+        path.extension()
+            .and_then(|e| e.to_str())
+            .and_then(julie_extractors::language::detect_language_from_extension)
+            .is_some()
     }
 
     /// Read file content safely
@@ -185,43 +150,16 @@ pub mod walk;
 /// Lenient serde deserializers for MCP tool parameters (string-or-number u32)
 pub mod serde_lenient;
 
-/// Language detection utilities
+/// Language detection utilities.
+///
+/// Delegates to `julie_extractors::language::detect_language_from_extension()`.
 pub mod language {
     use std::path::Path;
 
-    /// Detect programming language from file extension
+    /// Detect programming language from file extension.
     pub fn detect_language(path: &Path) -> Option<&'static str> {
         path.extension()
             .and_then(|ext| ext.to_str())
-            .and_then(|ext| match ext {
-                "rs" => Some("rust"),
-                "py" => Some("python"),
-                "js" => Some("javascript"),
-                "ts" => Some("typescript"),
-                "tsx" => Some("typescript"),
-                "jsx" => Some("javascript"),
-                "go" => Some("go"),
-                "java" => Some("java"),
-                "c" => Some("c"),
-                "cpp" | "cc" | "cxx" => Some("cpp"),
-                "h" => Some("c"),
-                "hpp" | "hxx" => Some("cpp"),
-                "cs" => Some("csharp"),
-                "php" => Some("php"),
-                "rb" => Some("ruby"),
-                "swift" => Some("swift"),
-                "kt" => Some("kotlin"),
-                "scala" | "sc" => Some("scala"),
-                "lua" => Some("lua"),
-                "gd" => Some("gdscript"),
-                "vue" => Some("vue"),
-                "html" => Some("html"),
-                "css" => Some("css"),
-                "sql" => Some("sql"),
-                "sh" | "bash" => Some("bash"),
-                "qml" => Some("qml"),
-                "r" | "R" => Some("r"),
-                _ => None,
-            })
+            .and_then(julie_extractors::language::detect_language_from_extension)
     }
 }

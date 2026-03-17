@@ -244,4 +244,56 @@ mod tests {
         assert_eq!(results[4].file_path, "src/other.rs");
         assert_eq!(results[5].file_path, "src/helper.rs");
     }
+
+    // ── Qualified name matching tests ──────────────────────────────────
+
+    #[test]
+    fn test_qualified_name_last_component_match() {
+        // Searching "Router" should match "Phoenix.Router" (module) via last-component matching
+        let mut results = vec![
+            make_result_with_kind("Phoenix.Router", "lib/phoenix/router.ex", 3.0, "module"),
+            make_result_with_kind("Router", "test/router_test.exs", 8.0, "module"),
+            make_result_with_kind("use Phoenix.Router", "test/test.exs", 10.0, "import"),
+        ];
+
+        promote_exact_name_matches(&mut results, "Router");
+
+        // Both "Router" (exact) and "Phoenix.Router" (component) should be promoted
+        // Full-name match first, then component match
+        assert_eq!(results[0].name, "Router"); // exact full match
+        assert_eq!(results[1].name, "Phoenix.Router"); // component match
+        assert_eq!(results[2].name, "use Phoenix.Router"); // non-match
+    }
+
+    #[test]
+    fn test_qualified_name_suffix_match() {
+        // Searching "Channel.Server" should match "Phoenix.Channel.Server"
+        let mut results = vec![
+            make_result_with_kind("Phoenix.Channel.Server", "lib/server.ex", 3.0, "module"),
+            make_result_with_kind("Channel.Server", "test/server.ex", 5.0, "module"),
+            make_result_with_kind("other", "src/other.rs", 10.0, "function"),
+        ];
+
+        promote_exact_name_matches(&mut results, "Channel.Server");
+
+        // Full match first, then suffix match
+        assert_eq!(results[0].name, "Channel.Server");
+        assert_eq!(results[1].name, "Phoenix.Channel.Server");
+        assert_eq!(results[2].name, "other");
+    }
+
+    #[test]
+    fn test_qualified_name_no_partial_component_match() {
+        // "Router" should NOT match "RouterHelper" — only full component boundaries
+        let mut results = vec![
+            make_result_with_kind("RouterHelper", "src/helper.rs", 10.0, "function"),
+            make_result_with_kind("Phoenix.Router", "lib/router.ex", 3.0, "module"),
+        ];
+
+        promote_exact_name_matches(&mut results, "Router");
+
+        // Phoenix.Router matches (component), RouterHelper does not
+        assert_eq!(results[0].name, "Phoenix.Router");
+        assert_eq!(results[1].name, "RouterHelper");
+    }
 }

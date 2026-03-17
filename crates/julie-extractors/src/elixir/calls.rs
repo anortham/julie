@@ -5,6 +5,7 @@
 use super::helpers;
 use super::ElixirExtractor;
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::test_detection::is_test_symbol;
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -99,6 +100,23 @@ fn extract_def(
     };
     let doc_comment = extractor.base.find_doc_comment(node);
 
+    // Test detection
+    let metadata = if is_test_symbol(
+        "elixir",
+        &fn_name,
+        &extractor.base.file_path,
+        &SymbolKind::Function,
+        &[],
+        &[],
+        doc_comment.as_deref(),
+    ) {
+        let mut m = HashMap::new();
+        m.insert("is_test".to_string(), Value::Bool(true));
+        Some(m)
+    } else {
+        None
+    };
+
     let symbol = extractor.base.create_symbol(
         node,
         fn_name,
@@ -107,7 +125,7 @@ fn extract_def(
             signature: Some(signature),
             visibility: Some(visibility),
             parent_id: parent_id.map(String::from),
-            metadata: None,
+            metadata,
             doc_comment,
         },
     );

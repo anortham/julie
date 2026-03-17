@@ -232,7 +232,6 @@ impl ManageWorkspaceTool {
                 if matches!(
                     dir_name,
                     "libs"
-                        | "lib"
                         | "plugin"
                         | "plugins"
                         | "vendor"
@@ -264,7 +263,6 @@ impl ManageWorkspaceTool {
                     if matches!(
                         dir_name,
                         "libs"
-                            | "lib"
                             | "plugin"
                             | "plugins"
                             | "vendor"

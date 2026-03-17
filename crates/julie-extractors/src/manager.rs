@@ -26,42 +26,11 @@ impl ExtractorManager {
         Self {}
     }
 
-    /// Get supported languages (all 27 extractors complete language support)
+    /// Get supported languages.
+    ///
+    /// Delegates to `crate::language::supported_languages()`.
     pub fn supported_languages(&self) -> Vec<&'static str> {
-        vec![
-            "rust",
-            "typescript",
-            "tsx",
-            "javascript",
-            "jsx",
-            "python",
-            "go",
-            "java",
-            "c",
-            "cpp",
-            "csharp",
-            "ruby",
-            "elixir",
-            "php",
-            "swift",
-            "kotlin",
-            "scala",
-            "elixir",
-            "dart",
-            "gdscript",
-            "lua",
-            "qml",
-            "r",
-            "vue",
-            "razor",
-            "sql",
-            "html",
-            "css",
-            "bash",
-            "powershell",
-            "zig",
-            "regex",
-        ]
+        crate::language::supported_languages().to_vec()
     }
 
     /// Extract symbols from file content using the appropriate language extractor

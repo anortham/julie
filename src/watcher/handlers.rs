@@ -180,9 +180,9 @@ pub async fn handle_file_created_or_modified_static(
             if let Err(e) = idx.add_file_content(&file_content_doc) {
                 warn!("Failed to add Tantivy file content doc: {}", e);
             }
-            if let Err(e) = idx.commit() {
-                warn!("Failed to commit Tantivy updates: {}", e);
-            }
+            // NOTE: commit is intentionally deferred — the caller batches
+            // multiple file operations and commits once per tick to avoid
+            // Tantivy segment-merge conflicts (FileDoesNotExist on .term files).
         })
         .await;
 
@@ -285,9 +285,9 @@ pub async fn handle_file_deleted_static(
             if let Err(e) = idx.remove_by_file_path(&rel_path) {
                 warn!("Failed to remove Tantivy docs for {}: {}", rel_path, e);
             }
-            if let Err(e) = idx.commit() {
-                warn!("Failed to commit Tantivy deletion: {}", e);
-            }
+            // NOTE: commit is intentionally deferred — the caller batches
+            // multiple file operations and commits once per tick to avoid
+            // Tantivy segment-merge conflicts (FileDoesNotExist on .term files).
         })
         .await;
         if let Err(e) = tantivy_result {

@@ -350,6 +350,34 @@ fn test_analyze_vendor_patterns_no_false_positives_for_normal_code() {
     assert_eq!(patterns.len(), 0, "Should NOT detect normal source code");
 }
 
+#[test]
+fn test_analyze_vendor_patterns_does_not_flag_lib_directory() {
+    // lib/ is a primary source directory in Elixir, Ruby, Dart, and Haskell.
+    // It must NOT be flagged as vendor code.
+    let tool = create_tool();
+    let (temp_dir, files) = create_workspace_with_files(vec![
+        "lib/my_app/router.ex",
+        "lib/my_app/endpoint.ex",
+        "lib/my_app/channel.ex",
+        "lib/my_app/controller.ex",
+        "lib/my_app/views/page.ex",
+        "lib/my_app/views/layout.ex",
+        "lib/my_app/views/error.ex",
+        "lib/my_app/application.ex",
+        "lib/my_app.ex",
+    ]);
+
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
+        .expect("Failed to analyze patterns");
+
+    assert!(
+        !patterns.iter().any(|p| p == "lib" || p.starts_with("lib/")),
+        "lib/ must NOT be flagged as vendor — it's a source directory in Elixir/Ruby/Dart. Got: {:?}",
+        patterns,
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Tests: generate_julieignore_file() - File Format
 // ═══════════════════════════════════════════════════════════════════════

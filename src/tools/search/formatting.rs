@@ -99,11 +99,13 @@ pub fn format_definition_search_results(
     query: &str,
     response: &OptimizedResponse<Symbol>,
 ) -> String {
-    // Partition into exact matches and other matches
+    // Partition into name matches (exact or qualified component) and other matches.
+    // "Router" matches both "Router" (exact) and "Phoenix.Router" (last component).
+    let query_lower = query.to_lowercase();
     let (exact, others): (Vec<&Symbol>, Vec<&Symbol>) = response
         .results
         .iter()
-        .partition(|s| s.name.eq_ignore_ascii_case(query));
+        .partition(|s| is_definition_name_match(&s.name, &query_lower));
 
     // No exact match → standard format
     if exact.is_empty() {
@@ -155,5 +157,26 @@ pub fn format_definition_search_results(
     }
 
     output.trim_end().to_string()
+}
+
+/// Check if a symbol name matches a query for definition formatting.
+/// Matches exact name OR last component of a dot-qualified name.
+fn is_definition_name_match(symbol_name: &str, query_lower: &str) -> bool {
+    let name_lower = symbol_name.to_lowercase();
+    if name_lower == query_lower {
+        return true;
+    }
+    if let Some(last_component) = name_lower.rsplit('.').next() {
+        if last_component == query_lower {
+            return true;
+        }
+    }
+    if query_lower.contains('.') && name_lower.ends_with(query_lower) {
+        let prefix_len = name_lower.len() - query_lower.len();
+        if prefix_len == 0 || name_lower.as_bytes()[prefix_len - 1] == b'.' {
+            return true;
+        }
+    }
+    false
 }
 

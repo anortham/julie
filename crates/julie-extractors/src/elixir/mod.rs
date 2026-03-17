@@ -124,22 +124,6 @@ impl ElixirExtractor {
         }
     }
 
-    // ========================================================================
-    // Accessors
-    // ========================================================================
-
-    pub(crate) fn base(&self) -> &BaseExtractor {
-        &self.base
-    }
-
-    pub(crate) fn current_module_prefix(&self) -> String {
-        self.module_stack.join(".")
-    }
-
-    pub(crate) fn add_pending_relationship(&mut self, pending: crate::base::PendingRelationship) {
-        self.pending_relationships.push(pending);
-    }
-
     pub fn get_pending_relationships(&self) -> Vec<crate::base::PendingRelationship> {
         self.pending_relationships.clone()
     }

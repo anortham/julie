@@ -318,6 +318,26 @@ impl IncrementalIndexer {
                         }
                     }
                 }
+
+                // Batch-commit Tantivy after processing all queued events.
+                // Individual handlers intentionally defer commits to avoid
+                // segment-merge conflicts when many files change at once
+                // (e.g., worktree cleanup).
+                if queue_size > 0 {
+                    if let Some(ref search_index) = search_index {
+                        let si = Arc::clone(search_index);
+                        let _ = tokio::task::spawn_blocking(move || {
+                            let idx = match si.lock() {
+                                Ok(guard) => guard,
+                                Err(poisoned) => poisoned.into_inner(),
+                            };
+                            if let Err(e) = idx.commit() {
+                                warn!("Failed to commit Tantivy batch: {}", e);
+                            }
+                        })
+                        .await;
+                    }
+                }
             }
         });
 
@@ -328,6 +348,7 @@ impl IncrementalIndexer {
     /// Process any pending file changes from the queue
     pub async fn process_pending_changes(&self) -> Result<()> {
         // Process all items currently in the queue
+        let mut has_events = false;
         while let Some(event) = {
             let mut queue = self.index_queue.lock().await;
             queue.pop_front()
@@ -418,7 +439,26 @@ impl IncrementalIndexer {
                     }
                 }
             }
+            has_events = true;
         }
+
+        // Batch-commit Tantivy once after processing all pending events.
+        if has_events {
+            if let Some(ref search_index) = self.search_index {
+                let si = Arc::clone(search_index);
+                let _ = tokio::task::spawn_blocking(move || {
+                    let idx = match si.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    if let Err(e) = idx.commit() {
+                        warn!("Failed to commit Tantivy batch: {}", e);
+                    }
+                })
+                .await;
+            }
+        }
+
         Ok(())
     }
 

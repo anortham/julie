@@ -6,7 +6,7 @@ use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use tracing::debug;
 
-use super::{compute_line_changes, RenameChange, SmartRefactorTool};
+use super::{RenameChange, SmartRefactorTool};
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::FastRefsTool;
 

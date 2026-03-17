@@ -410,6 +410,72 @@ end"#;
         );
     }
 
+    #[test]
+    fn test_elixir_cross_file_use_produces_pending_relationship() {
+        // When a module uses another module not defined in the same file,
+        // we should get a pending relationship for cross-file resolution.
+        let code = r#"defmodule MyApp.Web do
+  use Phoenix.Router
+  use Plug.Builder
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_pending_relationships();
+
+        // Phoenix.Router and Plug.Builder are not defined in this file,
+        // so they should appear as pending relationships
+        let pending_names: Vec<_> = pending.iter().map(|p| p.callee_name.as_str()).collect();
+        assert!(
+            pending_names.contains(&"Phoenix.Router"),
+            "Expected pending relationship for 'Phoenix.Router', got: {:?}",
+            pending_names
+        );
+        assert!(
+            pending_names.contains(&"Plug.Builder"),
+            "Expected pending relationship for 'Plug.Builder', got: {:?}",
+            pending_names
+        );
+        // All should be Uses kind
+        assert!(
+            pending
+                .iter()
+                .all(|p| p.kind == crate::base::RelationshipKind::Uses),
+            "Expected all pending relationships to be Uses kind"
+        );
+    }
+
+    #[test]
+    fn test_elixir_cross_file_call_produces_pending_relationship() {
+        // When a function calls another unqualified function not defined in the same file,
+        // we should get a pending relationship for cross-file resolution.
+        // Note: qualified dot-calls (e.g. Logger.info) are not currently tracked.
+        let code = r#"defmodule MyApp.Worker do
+  def run do
+    start_server()
+    init_state()
+  end
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+        let _relationships = extractor.extract_relationships(&tree, &symbols);
+        let pending = extractor.get_pending_relationships();
+
+        // start_server and init_state are not defined in this file
+        let pending_names: Vec<_> = pending.iter().map(|p| p.callee_name.as_str()).collect();
+        assert!(
+            pending_names.contains(&"start_server"),
+            "Expected pending Calls relationship for 'start_server', got: {:?}",
+            pending_names
+        );
+        assert!(
+            pending
+                .iter()
+                .all(|p| p.kind == crate::base::RelationshipKind::Calls),
+            "Expected all pending relationships to be Calls kind"
+        );
+    }
+
     // ========================================================================
     // Identifier Tests
     // ========================================================================

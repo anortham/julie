@@ -72,7 +72,8 @@ pub fn is_test_symbol(
     match language {
         "rust" => detect_rust(attributes),
         "python" => detect_python(name, decorators),
-        "java" | "kotlin" | "scala" => detect_java_kotlin(decorators, attributes),
+        "java" | "kotlin" => detect_java_kotlin(decorators, attributes),
+        "scala" => detect_scala(name, file_path, decorators, attributes),
         "elixir" => detect_elixir(name, file_path),
         "csharp" | "razor" => detect_csharp(attributes),
         "go" => detect_go(name, file_path),
@@ -109,6 +110,26 @@ fn detect_python(name: &str, decorators: &[String]) -> bool {
     }
     // Name-based: test_ prefix for functions/methods (class filter already handled by kind gate)
     name.starts_with("test_")
+}
+
+fn detect_scala(
+    name: &str,
+    file_path: &str,
+    decorators: &[String],
+    attributes: &[String],
+) -> bool {
+    // JUnit-style: @Test annotation (used by some Scala projects)
+    if detect_java_kotlin(decorators, attributes) {
+        return true;
+    }
+    // ScalaTest/MUnit/Specs2: tests are methods in test files —
+    // no @Test annotation, but the file lives in a test directory.
+    // Also catch common ScalaTest lifecycle methods.
+    if is_test_path(file_path) {
+        return true;
+    }
+    // Name-based: test prefix (MUnit convention)
+    name.starts_with("test")
 }
 
 fn detect_java_kotlin(decorators: &[String], attributes: &[String]) -> bool {

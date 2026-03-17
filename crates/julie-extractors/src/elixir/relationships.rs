@@ -2,7 +2,7 @@
 ///
 /// Handles: use (Uses), @behaviour (Implements), defimpl (Implements), function calls (Calls).
 use super::helpers;
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol};
+use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -73,7 +73,7 @@ fn walk_for_relationships(
 }
 
 fn extract_use_relationship(
-    extractor: &super::ElixirExtractor,
+    extractor: &mut super::ElixirExtractor,
     node: &Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
@@ -88,8 +88,11 @@ fn extract_use_relationship(
         return;
     };
 
-    // Try to find the used module in symbols
-    if let Some(to_symbol) = symbols.iter().find(|s| s.name == target) {
+    // Try to find the used module in symbols — only match definition symbols,
+    // not Import/Export symbols (which are created for the `use` statement itself)
+    if let Some(to_symbol) = symbols.iter().find(|s| {
+        s.name == target && !matches!(s.kind, SymbolKind::Import | SymbolKind::Export)
+    }) {
         relationships.push(Relationship {
             id: format!(
                 "{}_{}_Uses_{}",
@@ -106,8 +109,8 @@ fn extract_use_relationship(
             metadata: None,
         });
     } else {
-        // Unresolved — pending relationship
-        extractor.add_pending_relationship_immut(PendingRelationship {
+        // Unresolved — pending relationship for cross-file resolution
+        extractor.pending_relationships.push(PendingRelationship {
             from_symbol_id: from_symbol.id.clone(),
             callee_name: target,
             kind: RelationshipKind::Uses,
@@ -157,7 +160,7 @@ fn extract_impl_relationship(
 }
 
 fn extract_behaviour_relationship(
-    extractor: &super::ElixirExtractor,
+    extractor: &mut super::ElixirExtractor,
     node: &Node,
     symbols: &[Symbol],
     relationships: &mut Vec<Relationship>,
@@ -215,7 +218,7 @@ fn extract_behaviour_relationship(
 }
 
 fn extract_call_relationship(
-    extractor: &super::ElixirExtractor,
+    extractor: &mut super::ElixirExtractor,
     node: &Node,
     fn_name: &str,
     symbol_map: &HashMap<String, &Symbol>,
@@ -246,7 +249,8 @@ fn extract_call_relationship(
             metadata: None,
         });
     } else {
-        extractor.add_pending_relationship_immut(PendingRelationship {
+        // Unresolved — pending relationship for cross-file resolution
+        extractor.pending_relationships.push(PendingRelationship {
             from_symbol_id: caller.id.clone(),
             callee_name: fn_name.to_string(),
             kind: RelationshipKind::Calls,
@@ -303,17 +307,3 @@ fn find_containing_function<'a>(
     None
 }
 
-// Helper trait to avoid borrowing issues — allows adding pending relationships
-// when we only have an immutable reference to the extractor
-trait AddPendingImmut {
-    fn add_pending_relationship_immut(&self, pending: PendingRelationship);
-}
-
-impl AddPendingImmut for super::ElixirExtractor {
-    fn add_pending_relationship_immut(&self, _pending: PendingRelationship) {
-        // For now, pending relationships from relationship extraction
-        // are not stored (they need &mut self). The main extraction pass
-        // collects pending relationships from calls.rs instead.
-        // TODO: refactor to use interior mutability if needed
-    }
-}
