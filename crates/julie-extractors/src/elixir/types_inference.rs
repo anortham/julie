@@ -1,19 +1,24 @@
-//! Type inference for Elixir
-//!
-//! Infers types from @spec annotations collected during extraction.
-
+/// Type inference for Elixir from @spec annotations.
+///
+/// Associates @spec return types with their corresponding function symbols.
 use crate::base::Symbol;
 use std::collections::HashMap;
 
-/// Infer types from @spec annotations
-pub(super) fn infer_types(symbols: &[Symbol]) -> HashMap<String, String> {
-    let mut types = HashMap::new();
+/// Infer types from collected @spec annotations.
+///
+/// `specs` maps function name → return type string (collected during attribute extraction).
+/// This function matches specs to function symbols and returns symbol_id → type_string.
+pub(super) fn infer_types(
+    specs: &HashMap<String, String>,
+    symbols: &[Symbol],
+) -> HashMap<String, String> {
+    let mut type_map = HashMap::new();
+
     for symbol in symbols {
-        if let Some(serde_json::Value::String(s)) =
-            symbol.metadata.as_ref().and_then(|m| m.get("returnType"))
-        {
-            types.insert(symbol.id.clone(), s.clone());
+        if let Some(return_type) = specs.get(&symbol.name) {
+            type_map.insert(symbol.id.clone(), return_type.clone());
         }
     }
-    types
+
+    type_map
 }

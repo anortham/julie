@@ -99,6 +99,15 @@ pub(crate) fn extract_symbols_for_language(
             );
             Ok(extractor.extract_symbols(tree))
         }
+        "elixir" => {
+            let mut extractor = crate::elixir::ElixirExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            Ok(extractor.extract_symbols(tree))
+        }
         "php" => {
             let mut extractor = crate::php::PhpExtractor::new(
                 language.to_string(),
