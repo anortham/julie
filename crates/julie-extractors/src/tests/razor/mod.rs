@@ -2382,4 +2382,48 @@ mod blazor_extraction_tests {
             "Layout assignment should NOT produce a Variable definition"
         );
     }
+
+    /// Verify that @code block symbols don't have orphan parent_ids.
+    /// Bug: extract_code_block created a parent symbol but never stored it,
+    /// causing children to reference a non-existent parent. This broke
+    /// get_symbols depth filtering — symbols existed in DB but were invisible.
+    #[test]
+    fn test_code_block_symbols_have_resolvable_parent_ids() {
+        let code = r#"@page "/counter"
+
+<h1>Counter</h1>
+<p>@currentCount</p>
+
+@code {
+    private int currentCount = 0;
+
+    private void IncrementCount() => currentCount++;
+}
+"#;
+
+        let symbols = extract_symbols(code);
+        let symbol_ids: std::collections::HashSet<String> =
+            symbols.iter().map(|s| s.id.clone()).collect();
+
+        // Every symbol's parent_id must either be None or reference an existing symbol
+        for sym in &symbols {
+            if let Some(ref parent_id) = sym.parent_id {
+                assert!(
+                    symbol_ids.contains(parent_id),
+                    "Symbol '{}' ({:?}) has orphan parent_id '{}' — parent not in symbol list. All symbols: {:?}",
+                    sym.name,
+                    sym.kind,
+                    parent_id,
+                    symbols.iter().map(|s| format!("{}:{:?}({})", s.name, s.kind, s.id)).collect::<Vec<_>>()
+                );
+            }
+        }
+
+        // The @code block methods should still be extracted
+        assert!(
+            symbols.iter().any(|s| s.name == "IncrementCount"),
+            "Should extract IncrementCount. Got: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
 }

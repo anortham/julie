@@ -15,7 +15,6 @@
 |----------|------------------|-----------|-----------------|---------------|--------------|--------------|-------------|---------------|------------------|------|
 | GDScript | bitbrain/pandora | PASS | PASS | PASS* | PASS* | PASS | PASS* | PASS | PASS | 2026-03-17 |
 | Zig | zigtools/zls | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-17 |
-| Razor | — | — | — | — | — | — | — | — | — | — |
 | TypeScript | — | — | — | — | — | — | — | — | — | — |
 | Python | — | — | — | — | — | — | — | — | — | — |
 | Go | — | — | — | — | — | — | — | — | — | — |
@@ -37,6 +36,7 @@
 | Language | Reference Project | 1. Symbols | 3. Identifiers | 5. Def Search | 8. Test Detection | Date |
 |----------|------------------|-----------|---------------|--------------|------------------|------|
 | QML | KDE/kirigami | PASS* | PASS* | PASS* | PASS* | 2026-03-17 |
+| Razor | dotnet/blazor-samples (9.0) | PASS* | PASS | PASS | N/A | 2026-03-17 |
 | Bash | — | — | — | — | — | — |
 | PowerShell | — | — | — | — | — | — |
 | Vue | — | — | — | — | — | — |
@@ -164,3 +164,16 @@
   - QML component instantiations now contribute to centrality via TypeUsage identifiers
   - **Live verified:** ScrollablePage centrality 0.00 → 0.87 (25 dependents), OverlayDrawer 0.00 → 0.56 (7 dependents)
   - AboutPage stays at 0.00 with 1 dependent — correct for a leaf component
+
+### Razor (Specialized Tier)
+- **Reference project:** dotnet/blazor-samples 9.0 (623 .razor files + 242 .cs files, 6901 symbols, 1390 relationships)
+- **Date verified:** 2026-03-17
+- **Tier:** Specialized (moved from Full — Razor is a template language with embedded C#)
+- **Issues found:**
+  - **FIXED: `get_symbols` invisible `@code` block content (orphan parent_id bug)** — `extract_code_block()` in `razor/mod.rs` created a parent symbol but never stored it (early `return` skipped the `symbols.push()`). Child symbols (methods, properties, fields from `@code {}` blocks) referenced this phantom parent via `parent_id`, causing `get_symbols` depth filtering to exclude them. Symbols were in the database and reachable via `fast_search`/`deep_dive`, but `get_symbols` — the primary navigation tool — showed zero C# code for Razor files. Fix: pass outer `parent_id` instead of code block's ID, making `@code` block symbols top-level file members.
+- **Notes:**
+  - `*` on Symbols indicates PASS after fix
+  - Extraction was always correct — methods, properties, classes from `@code` blocks were in the DB. Only `get_symbols` display was broken.
+  - `@page`, `@using`, `@inject`, `@attribute` directives all captured correctly
+  - No test files in this samples repo — Check 8 not applicable
+  - 62 definitions of `OnInitializedAsync` across the codebase, all with correct signatures and visibility

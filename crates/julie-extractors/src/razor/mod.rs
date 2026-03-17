@@ -79,16 +79,11 @@ impl RazorExtractor {
                 symbol = self.extract_section(node, parent_id.as_deref());
             }
             "razor_block" => {
-                symbol = self.extract_code_block(node, parent_id.as_deref());
-                // Extract C# symbols from within the block
-                self.extract_csharp_symbols(
-                    node,
-                    symbols,
-                    symbol
-                        .as_ref()
-                        .map(|s| s.id.as_str())
-                        .or(parent_id.as_deref()),
-                );
+                // Extract C# symbols from within the block.
+                // Use the outer parent_id (not a code block symbol) so children
+                // appear as top-level file symbols — the @code block is just a
+                // container, not a meaningful symbol for search/navigation.
+                self.extract_csharp_symbols(node, symbols, parent_id.as_deref());
                 // Don't visit children since we already extracted them
                 return;
             }
