@@ -4,7 +4,7 @@
 // on first workspace scan. Ensures patterns are detected correctly and formatted
 // properly for the ignore matcher.
 
-use crate::tools::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS};
+use crate::tools::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS, BLACKLISTED_FILENAMES};
 use crate::tools::workspace::ManageWorkspaceTool;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -57,23 +57,29 @@ fn create_workspace_with_files(files: Vec<&str>) -> (TempDir, Vec<PathBuf>) {
 // ═══════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_analyze_vendor_patterns_detects_libs_directory() {
+fn test_analyze_vendor_patterns_does_not_flag_libs_directory() {
+    // libs/ is the standard source directory in Nx/Angular monorepos (apps/ + libs/).
+    // It must NOT be treated as vendor — same reasoning as packages/ for npm/pnpm.
     let tool = create_tool();
     let (temp_dir, files) = create_workspace_with_files(vec![
-        "Scripts/libs/file1.js",
-        "Scripts/libs/file2.js",
-        "Scripts/libs/file3.js",
-        "Scripts/libs/file4.js",
-        "Scripts/libs/file5.js",
-        "Scripts/libs/file6.js", // >5 files triggers detection
+        "libs/shared/src/index.ts",
+        "libs/shared/src/lib.ts",
+        "libs/ui/src/button.ts",
+        "libs/ui/src/input.ts",
+        "libs/ui/src/modal.ts",
+        "libs/data-access/src/store.ts",
+        "libs/data-access/src/effects.ts",
     ]);
 
     let patterns = tool
         .analyze_vendor_patterns(&files, temp_dir.path())
         .expect("Failed to analyze patterns");
 
-    assert_eq!(patterns.len(), 1, "Should detect 1 vendor directory");
-    assert_eq!(patterns[0], "Scripts/libs", "Should detect Scripts/libs");
+    assert!(
+        !patterns.iter().any(|p| p == "libs" || p.starts_with("libs/")),
+        "libs/ must NOT be flagged as vendor — it's the standard source dir in Nx/Angular monorepos. Got: {:?}",
+        patterns,
+    );
 }
 
 #[test]
@@ -114,22 +120,6 @@ fn test_analyze_vendor_patterns_detects_vendor_directory() {
 
     assert_eq!(patterns.len(), 1);
     assert_eq!(patterns[0], "vendor");
-}
-
-#[test]
-fn test_analyze_vendor_patterns_ignores_small_libs_directory() {
-    let tool = create_tool();
-    let (temp_dir, files) = create_workspace_with_files(vec![
-        "Scripts/libs/file1.js",
-        "Scripts/libs/file2.js",
-        "Scripts/libs/file3.js", // Only 3 files, needs >5
-    ]);
-
-    let patterns = tool
-        .analyze_vendor_patterns(&files, temp_dir.path())
-        .expect("Failed to analyze patterns");
-
-    assert_eq!(patterns.len(), 0, "Should NOT detect libs/ with <5 files");
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -303,13 +293,13 @@ fn test_analyze_vendor_patterns_ignores_minified_below_50_percent() {
 fn test_analyze_vendor_patterns_detects_multiple_directories() {
     let tool = create_tool();
     let (temp_dir, files) = create_workspace_with_files(vec![
-        // First vendor directory (libs/)
-        "Scripts/libs/lib1.js",
-        "Scripts/libs/lib2.js",
-        "Scripts/libs/lib3.js",
-        "Scripts/libs/lib4.js",
-        "Scripts/libs/lib5.js",
-        "Scripts/libs/lib6.js",
+        // First vendor directory (vendor/)
+        "Scripts/vendor/lib1.js",
+        "Scripts/vendor/lib2.js",
+        "Scripts/vendor/lib3.js",
+        "Scripts/vendor/lib4.js",
+        "Scripts/vendor/lib5.js",
+        "Scripts/vendor/lib6.js",
         // Second vendor directory (plugin/)
         "Scripts/plugin/p1.js",
         "Scripts/plugin/p2.js",
@@ -324,7 +314,7 @@ fn test_analyze_vendor_patterns_detects_multiple_directories() {
         .expect("Failed to analyze patterns");
 
     assert_eq!(patterns.len(), 2, "Should detect 2 vendor directories");
-    assert!(patterns.contains(&"Scripts/libs".to_string()));
+    assert!(patterns.contains(&"Scripts/vendor".to_string()));
     assert!(patterns.contains(&"Scripts/plugin".to_string()));
 }
 
@@ -521,13 +511,13 @@ fn test_dir_to_pattern_handles_nested_directories() {
 fn test_vendor_detection_full_workflow() {
     let tool = create_tool();
     let (temp_dir, files) = create_workspace_with_files(vec![
-        // Vendor directory (libs/)
-        "Scripts/libs/jquery.js",
-        "Scripts/libs/bootstrap.js",
-        "Scripts/libs/angular.js",
-        "Scripts/libs/lodash.js",
-        "Scripts/libs/moment.js",
-        "Scripts/libs/axios.js",
+        // Vendor directory (vendor/)
+        "Scripts/vendor/jquery.js",
+        "Scripts/vendor/bootstrap.js",
+        "Scripts/vendor/angular.js",
+        "Scripts/vendor/lodash.js",
+        "Scripts/vendor/moment.js",
+        "Scripts/vendor/axios.js",
         // Custom code (should NOT be detected)
         "Scripts/PatientCase.js",
         "Scripts/Scheduling.js",
@@ -539,7 +529,7 @@ fn test_vendor_detection_full_workflow() {
         .expect("Failed to analyze patterns");
 
     assert_eq!(patterns.len(), 1, "Should detect 1 vendor directory");
-    assert_eq!(patterns[0], "Scripts/libs");
+    assert_eq!(patterns[0], "Scripts/vendor");
 
     // Step 2: Generate .julieignore
     tool.generate_julieignore_file(temp_dir.path(), &patterns)
@@ -552,11 +542,11 @@ fn test_vendor_detection_full_workflow() {
     let content = std::fs::read_to_string(&julieignore_path).expect("Failed to read .julieignore");
 
     assert!(
-        content.contains("Scripts/libs/"),
+        content.contains("Scripts/vendor/"),
         "Should have correct pattern format"
     );
     assert!(
-        !content.contains("Scripts/libs/**"),
+        !content.contains("Scripts/vendor/**"),
         "Should NOT use /** format"
     );
 }
@@ -691,6 +681,17 @@ fn test_claude_dir_in_blacklist() {
     );
 }
 
+#[test]
+fn test_packages_dir_not_in_blacklist() {
+    // packages/ is the standard monorepo layout for npm/pnpm/Lerna/Nx/Turborepo.
+    // It contains actual source code, not vendor/third-party dependencies.
+    // Blacklisting it silently excludes ALL source files in JS/TS monorepos.
+    assert!(
+        !BLACKLISTED_DIRECTORIES.contains(&"packages"),
+        "packages/ must NOT be blacklisted — it's the standard JS/TS monorepo source layout"
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Tests: should_index_file — Unreadable file handling
 // ═══════════════════════════════════════════════════════════════════════
@@ -722,6 +723,59 @@ fn test_should_index_file_skips_unreadable_files() {
     );
 }
 
+#[test]
+fn test_should_index_file_skips_lockfiles_by_name() {
+    // Lockfiles like pnpm-lock.yaml and package-lock.json have non-blacklisted
+    // extensions (.yaml, .json) but should be excluded by filename.
+    // pnpm-lock.yaml alone produced 12,984 symbols in zod — 43% of total.
+    let tool = create_tool();
+    let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
+    let max_file_size = 1024 * 1024;
+
+    let temp_dir = TempDir::new().unwrap();
+
+    for filename in &[
+        "pnpm-lock.yaml",
+        "package-lock.json",
+        "composer.lock",
+        "Pipfile.lock",
+        "poetry.lock",
+    ] {
+        let path = temp_dir.path().join(filename);
+        std::fs::write(&path, "content").unwrap();
+        let result = tool
+            .should_index_file(&path, &blacklisted_exts, max_file_size, false)
+            .unwrap();
+        assert!(
+            !result,
+            "{} should be excluded by filename blacklist",
+            filename
+        );
+    }
+
+    // Regular files with same extensions should still be indexed
+    for filename in &["config.yaml", "package.json", "schema.json"] {
+        let path = temp_dir.path().join(filename);
+        std::fs::write(&path, "content").unwrap();
+        let result = tool
+            .should_index_file(&path, &blacklisted_exts, max_file_size, false)
+            .unwrap();
+        assert!(result, "{} should NOT be excluded", filename);
+    }
+}
+
+#[test]
+fn test_lockfiles_in_blacklisted_filenames() {
+    assert!(
+        BLACKLISTED_FILENAMES.contains(&"pnpm-lock.yaml"),
+        "pnpm-lock.yaml should be in BLACKLISTED_FILENAMES"
+    );
+    assert!(
+        BLACKLISTED_FILENAMES.contains(&"package-lock.json"),
+        "package-lock.json should be in BLACKLISTED_FILENAMES"
+    );
+}
+
 /// Test: Windows system directories are in BLACKLISTED_DIRECTORIES
 #[test]
 fn test_windows_system_dirs_in_blacklist() {
@@ -732,5 +786,37 @@ fn test_windows_system_dirs_in_blacklist() {
     assert!(
         BLACKLISTED_DIRECTORIES.contains(&"Application Data"),
         "Application Data should be in BLACKLISTED_DIRECTORIES"
+    );
+}
+
+#[test]
+fn test_analyze_vendor_patterns_does_not_flag_packages_directory() {
+    // packages/ is the standard monorepo layout for npm/pnpm workspaces,
+    // Lerna, Nx, and Turborepo projects. It contains actual source code,
+    // not vendor/third-party code. Must NOT be flagged as vendor.
+    let tool = create_tool();
+    let (temp_dir, files) = create_workspace_with_files(vec![
+        "packages/zod/src/v4/core/api.ts",
+        "packages/zod/src/v4/core/checks.ts",
+        "packages/zod/src/v4/core/parse.ts",
+        "packages/zod/src/v4/core/schemas.ts",
+        "packages/zod/src/v4/core/errors.ts",
+        "packages/zod/src/v4/core/util.ts",
+        "packages/zod/src/v4/core/core.ts",
+        "packages/zod/src/v4/mini/parse.ts",
+        "packages/docs/src/pages/index.tsx",
+        "packages/docs/src/pages/docs.tsx",
+    ]);
+
+    let patterns = tool
+        .analyze_vendor_patterns(&files, temp_dir.path())
+        .expect("Failed to analyze patterns");
+
+    assert!(
+        !patterns
+            .iter()
+            .any(|p| p == "packages" || p.starts_with("packages/")),
+        "packages/ must NOT be flagged as vendor — it's the standard JS/TS monorepo source layout. Got: {:?}",
+        patterns,
     );
 }

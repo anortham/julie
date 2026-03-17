@@ -3,6 +3,7 @@
 //! This module provides utilities for determining which files should be indexed
 //! based on extension and ignore patterns.
 
+use crate::tools::shared::BLACKLISTED_FILENAMES;
 use anyhow::Result;
 use std::collections::HashSet;
 use std::path::Path;
@@ -77,6 +78,13 @@ pub fn should_index_file(
     // Check if it's a file
     if !path.is_file() {
         return false;
+    }
+
+    // Skip blacklisted filenames (lockfiles with non-blacklisted extensions)
+    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        if BLACKLISTED_FILENAMES.contains(&file_name) {
+            return false;
+        }
     }
 
     // Check extension
@@ -192,5 +200,30 @@ mod tests {
                 || p.matches("out/artifacts/MyApp.jar")
         });
         assert!(out_match, "Generic output directories should be ignored");
+    }
+
+    #[test]
+    fn test_should_index_file_skips_lockfiles() {
+        use std::fs;
+        let dir = std::env::temp_dir();
+        let lockfile = dir.join("pnpm-lock.yaml");
+        fs::write(&lockfile, "lockfileVersion: '9.0'").unwrap();
+
+        let extensions = build_supported_extensions();
+        let patterns = build_ignore_patterns().unwrap();
+
+        assert!(
+            !should_index_file(&lockfile, &extensions, &patterns),
+            "pnpm-lock.yaml must not be indexed by watcher"
+        );
+        let lockfile2 = dir.join("package-lock.json");
+        fs::write(&lockfile2, "{}").unwrap();
+        assert!(
+            !should_index_file(&lockfile2, &extensions, &patterns),
+            "package-lock.json must not be indexed by watcher"
+        );
+
+        fs::remove_file(&lockfile).ok();
+        fs::remove_file(&lockfile2).ok();
     }
 }

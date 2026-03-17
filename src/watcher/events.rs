@@ -3,6 +3,7 @@
 //! This module handles the conversion of notify::Event instances into
 //! FileChangeEvent entries queued for processing.
 
+use crate::tools::shared::BLACKLISTED_FILENAMES;
 use crate::watcher::types::FileChangeEvent;
 use crate::watcher::types::FileChangeType;
 use anyhow::Result;
@@ -81,6 +82,13 @@ fn should_index_file(
         return false;
     }
 
+    // Skip blacklisted filenames (lockfiles with non-blacklisted extensions)
+    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        if BLACKLISTED_FILENAMES.contains(&file_name) {
+            return false;
+        }
+    }
+
     // Check extension
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
         if !supported_extensions.contains(ext) {
@@ -111,6 +119,13 @@ fn should_process_deletion(
     supported_extensions: &HashSet<String>,
     ignore_patterns: &[glob::Pattern],
 ) -> bool {
+    // Skip blacklisted filenames (lockfiles with non-blacklisted extensions)
+    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        if BLACKLISTED_FILENAMES.contains(&file_name) {
+            return false;
+        }
+    }
+
     // Check extension (the file is gone, but the path still has its extension)
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
         if !supported_extensions.contains(ext) {

@@ -2699,3 +2699,90 @@ fn test_compute_reference_scores_qualified_name_identifiers() {
         about_score
     );
 }
+
+#[test]
+fn test_compute_reference_scores_escapes_like_wildcards() {
+    // Symbol names with underscores must NOT act as SQL LIKE wildcards.
+    // `_` in LIKE matches any single character, so `user_id` would match
+    // `userXid` without escaping. This test verifies proper escaping.
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for path in ["src/models.py", "src/views.py"] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: "python".to_string(),
+            hash: "abc123".to_string(),
+            size: 100,
+            last_modified: 1234567890,
+            last_indexed: 0,
+            symbol_count: 2,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    // Symbol with underscore: user_id
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('sym_user_id', 'user_id', 'class', 'python', 'src/models.py', 1, 10, 0, 1, 0, 200)",
+            [],
+        )
+        .unwrap();
+
+    // Symbol WITHOUT underscore that would match if _ is a wildcard: userXid
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('sym_userXid', 'userXid', 'class', 'python', 'src/models.py', 20, 30, 0, 1, 0, 200)",
+            [],
+        )
+        .unwrap();
+
+    // Qualified identifier referencing "models.userXid"
+    // This should match userXid (exact suffix) but NOT user_id (would only
+    // match if underscore acts as wildcard)
+    db.conn
+        .execute(
+            "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col)
+             VALUES ('ref1', 'models.userXid', 'type_usage', 'python', 'src/views.py', 5, 0, 5, 20)",
+            [],
+        )
+        .unwrap();
+
+    db.compute_reference_scores().unwrap();
+
+    let user_id_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'sym_user_id'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    let userxid_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'sym_userXid'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    // user_id must NOT be boosted — "models.userXid" should not match "user_id"
+    assert!(
+        (user_id_score - 0.0).abs() < f64::EPSILON,
+        "user_id must NOT match 'models.userXid' via underscore wildcard. Got score: {}",
+        user_id_score
+    );
+
+    // userXid SHOULD be boosted — "models.userXid" matches via suffix
+    assert!(
+        userxid_score > 0.0,
+        "userXid should be boosted by 'models.userXid' qualified ref. Got score: {}",
+        userxid_score
+    );
+}

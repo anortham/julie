@@ -1,4 +1,4 @@
-use crate::tools::shared::BLACKLISTED_EXTENSIONS;
+use crate::tools::shared::{BLACKLISTED_EXTENSIONS, BLACKLISTED_FILENAMES};
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use crate::utils::walk::{WalkConfig, build_walker};
 use anyhow::Result;
@@ -92,6 +92,13 @@ impl ManageWorkspaceTool {
         max_file_size: u64,
         skip_minified_check: bool,
     ) -> Result<bool> {
+        // Skip blacklisted filenames (lockfiles with non-blacklisted extensions)
+        if let Some(file_name) = file_path.file_name().and_then(|n| n.to_str()) {
+            if BLACKLISTED_FILENAMES.contains(&file_name) {
+                return Ok(false);
+            }
+        }
+
         // Skip minified files (they're generated, not source code)
         // BUT: don't skip when collecting files for vendor pattern analysis
         if !skip_minified_check && self.is_minified_file(file_path) {
@@ -229,10 +236,14 @@ impl ManageWorkspaceTool {
             if let Some(dir_name) = dir.file_name().and_then(|n| n.to_str()) {
                 // 🔧 BUG FIX: Include all common build output and vendor directories
                 // that are normally blacklisted (target, node_modules, vendor, etc.)
+                // NOTE: "packages" is NOT vendor — it's the standard monorepo
+                // layout for npm/pnpm/Lerna/Nx/Turborepo projects.
+                // NOTE: "libs" is NOT vendor — it's the standard Nx/Angular monorepo
+                // source directory (apps/ + libs/). Same reasoning as packages/.
+                // NOTE: "lib" is NOT vendor — it's a source directory in Elixir/Ruby/Dart.
                 if matches!(
                     dir_name,
-                    "libs"
-                        | "plugin"
+                    "plugin"
                         | "plugins"
                         | "vendor"
                         | "third-party"
@@ -245,7 +256,6 @@ impl ManageWorkspaceTool {
                         | "obj"
                         | "Debug"
                         | "Release"
-                        | "packages"
                         | "bower_components"
                 ) {
                     vendor_candidates.insert(dir.to_path_buf());
@@ -262,8 +272,7 @@ impl ManageWorkspaceTool {
                 if let Some(dir_name) = parent.file_name().and_then(|n| n.to_str()) {
                     if matches!(
                         dir_name,
-                        "libs"
-                            | "plugin"
+                        "plugin"
                             | "plugins"
                             | "vendor"
                             | "third-party"
@@ -276,7 +285,6 @@ impl ManageWorkspaceTool {
                             | "obj"
                             | "Debug"
                             | "Release"
-                            | "packages"
                             | "bower_components"
                     ) {
                         vendor_candidates.insert(parent.to_path_buf());

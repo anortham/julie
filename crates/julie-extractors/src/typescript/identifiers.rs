@@ -117,9 +117,35 @@ fn extract_identifier_from_node(
             }
         }
 
-        _ => {
-            // Skip other node types for now
+        // Type references: const x: Foo, function f(a: Foo): Bar, field: Foo
+        // TypeScript tree-sitter uses `type_identifier` for BOTH declaration names
+        // (interface Foo, type Foo) AND reference positions (const x: Foo).
+        // We only want references — declarations are filtered by parent context.
+        "type_identifier" => {
+            // Skip if this is a declaration name, not a type reference.
+            // type_identifier is the `name` field of declarations and type parameters.
+            if is_type_declaration_name(&node) {
+                return;
+            }
+
+            let name = extractor.base().get_node_text(&node);
+
+            // Skip common utility types and single-letter generic params
+            if is_ts_noise_type(&name) {
+                return;
+            }
+
+            let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+
+            extractor.base_mut().create_identifier(
+                &node,
+                name,
+                IdentifierKind::TypeUsage,
+                containing_symbol_id,
+            );
         }
+
+        _ => {}
     }
 }
 
@@ -141,4 +167,80 @@ fn find_containing_symbol_id(
         .base()
         .find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
+}
+
+/// Check if a `type_identifier` node is a declaration name rather than a type reference.
+///
+/// In TypeScript tree-sitter, `type_identifier` appears as the `name` field of:
+/// - `interface_declaration` → `interface Foo {}` (declaration)
+/// - `type_alias_declaration` → `type Foo = ...` (declaration)
+/// - `class_declaration` / `abstract_class_declaration` → `class Foo {}` (declaration)
+/// - `type_parameter` → `<T extends Base>` (the `T` is a declaration)
+/// - `mapped_type_clause` → `[K in keyof T]` (the `K` is a declaration)
+///
+/// It also appears as the `name` field of reference contexts like `generic_type`
+/// and `nested_type_identifier` — those are NOT declarations.
+fn is_type_declaration_name(node: &Node) -> bool {
+    if let Some(parent) = node.parent() {
+        // Check if this node is the `name` field of a declaration or type param
+        if let Some(name_node) = parent.child_by_field_name("name") {
+            if name_node.id() == node.id() {
+                return matches!(
+                    parent.kind(),
+                    "interface_declaration"
+                        | "type_alias_declaration"
+                        | "class_declaration"
+                        | "abstract_class_declaration"
+                        | "type_parameter"
+                        | "mapped_type_clause"
+                );
+            }
+        }
+    }
+    false
+}
+
+/// Returns true for TypeScript types that are too common to be meaningful
+/// type references for centrality scoring.
+///
+/// Includes:
+/// - Single-letter generic params (T, K, V, etc.) — appear everywhere in generic code
+/// - Common utility types (Promise, Array, Record, etc.) — too ubiquitous for signal
+fn is_ts_noise_type(name: &str) -> bool {
+    // Single-letter names are almost always generic type parameters used in scope.
+    // Even when they appear as references (e.g. `: T`), they carry no cross-file signal.
+    if name.len() == 1 && name.chars().next().map_or(false, |c| c.is_ascii_uppercase()) {
+        return true;
+    }
+
+    matches!(
+        name,
+        "Promise"
+            | "Array"
+            | "Map"
+            | "Set"
+            | "Record"
+            | "Partial"
+            | "Required"
+            | "Readonly"
+            | "Pick"
+            | "Omit"
+            | "Exclude"
+            | "Extract"
+            | "NonNullable"
+            | "ReturnType"
+            | "Parameters"
+            | "InstanceType"
+            | "ConstructorParameters"
+            | "ThisType"
+            | "Awaited"
+            | "WeakMap"
+            | "WeakSet"
+            | "WeakRef"
+            | "Iterator"
+            | "Iterable"
+            | "AsyncIterable"
+            | "Generator"
+            | "AsyncGenerator"
+    )
 }

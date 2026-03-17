@@ -303,7 +303,7 @@ impl SymbolDatabase {
                 )
                  FROM identifiers i
                  WHERE (i.name = symbols.name
-                        OR i.name LIKE '%.' || symbols.name)
+                        OR i.name LIKE '%.' || REPLACE(REPLACE(REPLACE(symbols.name, '\\', '\\\\'), '%', '\\%'), '_', '\\_') ESCAPE '\\')
                    AND i.kind IN ('type_usage', 'import')
                    AND i.file_path != symbols.file_path),
                 0.0

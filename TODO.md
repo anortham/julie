@@ -13,11 +13,32 @@
 - [ ] **Test quality regexes count comments/strings as evidence** — `analyze_test_body()` scans raw source, so comment text like `// should_err` can incorrectly upgrade a test to `thorough` (`src/analysis/test_quality.rs`, `src/tests/analysis/test_quality_tests.rs`)
 - [ ] **Broaden and normalize cross-language test detection** — Java/Kotlin/C# annotation matching is exact-text only, while PHP/Swift `test*` detection is broad enough to risk production false positives (`crates/julie-extractors/src/test_detection.rs`, `crates/julie-extractors/src/java/methods.rs`, `crates/julie-extractors/src/csharp/helpers.rs`)
 - [ ] **Elixir extractor doesn't extract ExUnit `test` blocks as symbols** — `test "description" do` is a macro call with target `"test"`, but `dispatch_call` in `calls.rs` sends it to `_ => None`. These are the primary test definitions in Elixir projects. Need to add a `"test"` arm that extracts a Function symbol with `is_test: true` metadata. Currently test detection only works for `def`/`defp` functions inside test directories. (`crates/julie-extractors/src/elixir/calls.rs:37`)
+- [ ] **Scala extractor missing `type_usage` identifiers** — Same bug as TypeScript (fixed 2026-03-17): identifier extraction only handles `call_expression` and `member_expression`, missing type annotation references. Scala has 0 `type_usage` identifiers in the cats workspace (22,336 symbols). Centrality Step 1b contributes nothing for Scala types/traits/classes. (`crates/julie-extractors/src/scala/identifiers.rs`)
 - [ ] **Add regression coverage for code-health output plumbing** — missing tests for line-mode `exclude_tests`, `get_context` label rendering in `SignatureOnly`, compact no-results formatting, and `deep_dive` change/security output let the current regressions slip through (`src/tests/tools/search/line_mode.rs`, `src/tests/tools/get_context_formatting_tests.rs`, `src/tests/tools/deep_dive_tests.rs`)
 
 ## Performance
 
 (No open items)
+
+## Ideas from Sentrux (tree-sitter code analysis tool)
+
+Reviewed `/Users/murphy/source/sentrux` on 2026-03-17. Sentrux is a code metrics/analysis tool using tree-sitter with a plugin architecture. Different goals than Julie (shallow metrics vs deep code intelligence), but several ideas worth stealing:
+
+- [ ] **AST-based complexity metrics (cyclomatic + cognitive)** — Sentrux computes CC (1 + branch_nodes + logic_nodes) and cognitive complexity (SonarSource 2016: nesting-weighted branch count) by walking the tree-sitter AST. Per-language config defines which node kinds are `branch_nodes`, `logic_nodes`, `nesting_nodes`. Julie already has the AST — adding CC/CoG to `FuncInfo`/`Symbol` metadata would be cheap and high-value for code quality insights. Reference: `sentrux-core/src/analysis/parser/mod.rs` (complexity counting), plugin.toml `[semantics.complexity]` sections.
+
+- [ ] **Function body hashing for duplication detection** — Sentrux hashes normalized function bodies (`bh: Option<u64>` on `FuncInfo`) to detect near-duplicate functions across a codebase. Normalize whitespace, hash content, compare. Trivial to add during symbol extraction, useful signal for code quality and refactoring recommendations. Reference: `sentrux-core/src/analysis/parser/mod.rs` body hash computation.
+
+- [ ] **Data-driven language config for semantic constants** — Sentrux defines `public_keywords`, `method_parent_kinds`, `test_decorators`, `entry_point_patterns`, `dot_is_module_separator` etc. in per-language TOML files instead of Rust match arms. Julie's core extraction logic rightly stays in Rust (too stateful for .scm queries), but the *constant tables* — which keywords mean public, which node kinds are method parents, which decorators mark tests — could move to config. Would reduce boilerplate across 31 language extractors without touching the extraction logic itself. Reference: `sentrux-core/src/analysis/plugin/profile.rs`, any `plugin.toml`.
+
+- [ ] **Scoped path extraction for implicit imports (Rust)** — Sentrux captures `crate::module::func()` calls and extracts `crate/module` as an implicit import via a `@call.scoped_path` query. In Rust, qualified paths are common and don't appear in `use` statements. Julie's identifier extraction would miss these as import edges. Worth adding to the Rust extractor's relationship/identifier logic. Reference: `sentrux-core/src/queries/rust/tags.scm`.
+
+- [ ] **Sound call-edge filtering via import constraint** — Sentrux only creates call edges when the caller's file imports the callee's file. Conservative but eliminates false-positive dependency edges from common method names (which is already a known Julie bug — see "Common method names can resolve to the wrong callee symbol" above). Could be applied in Julie's resolver as an additional disambiguation signal. Reference: `sentrux-core/src/analysis/` call edge computation.
+
+### Not worth borrowing
+
+- **Runtime grammar loading (libloading)** — Sentrux dynamically loads .so/.dylib grammar plugins. Adds complexity, fragile on user machines. Julie's compiled-in grammars are simpler and more reliable.
+- **Tree-sitter .scm query files for extraction** — Sentrux uses .scm queries because it extracts shallow data (name + location + complexity). Julie's extraction is 70-80% stateful multi-step logic (parent-child linking, two-phase impl processing, doc comment search, relationship inference) that .scm fundamentally cannot express. The manual AST walking approach is correct for Julie's depth of extraction.
+- **Content-hash parse caching** — Sentrux caches parse results keyed by SHA256(content+language). Julie uses incremental indexing with MD5 change detection + SQLite persistence, which is a better fit for a persistent index.
 
 ## Enhancements
 

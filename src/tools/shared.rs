@@ -39,6 +39,24 @@ pub const BLACKLISTED_EXTENSIONS: &[&str] = &[
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
 ];
 
+/// Blacklisted filenames — files excluded by exact name, not extension.
+/// Lockfiles use non-blacklisted extensions (.yaml, .json) but contain
+/// generated dependency data that produces thousands of noise symbols.
+pub const BLACKLISTED_FILENAMES: &[&str] = &[
+    // Package manager lockfiles (extension-based blacklist misses these)
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "composer.lock",  // PHP (also caught by .lock ext, but explicit is clearer)
+    "Pipfile.lock",   // Python
+    "poetry.lock",    // Python
+    "Gemfile.lock",   // Ruby
+    "yarn.lock",      // JS/TS (also caught by .lock ext)
+    "bun.lockb",      // Bun (binary, also caught by .lockb not being indexable)
+    "shrinkwrap.json",
+    // Other generated files with common extensions
+    "npm-shrinkwrap.json",
+];
+
 /// Blacklisted directory names - directories to exclude from indexing
 pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
     // Version control
@@ -62,7 +80,8 @@ pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
     "Release",
     // Package managers
     "node_modules",
-    "packages",
+    // NOTE: "packages" is NOT blacklisted — it's the standard monorepo layout
+    // for npm/pnpm/Lerna/Nx/Turborepo projects (contains actual source code).
     ".npm",
     "bower_components",
     "vendor",
