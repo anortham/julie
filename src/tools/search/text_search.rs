@@ -6,7 +6,7 @@ use tracing::{debug, info, warn};
 use super::query::matches_glob_pattern;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::search::scoring::{apply_centrality_boost, promote_exact_name_matches};
+use crate::search::scoring::{apply_centrality_boost, is_test_path, promote_exact_name_matches};
 use crate::search::SearchFilter;
 
 // Re-export for tests
@@ -204,16 +204,25 @@ fn post_filter_results(
 // ---------------------------------------------------------------------------
 
 /// Remove test symbols when `exclude` is `true`.
+///
+/// Uses two complementary mechanisms:
+/// 1. `metadata["is_test"]` — set by extractors for annotated test functions
+///    (e.g. Rust `#[test]`, TypeScript `it()`/`test()` runner calls).
+/// 2. `is_test_path()` — path-based fallback for non-function symbols in test
+///    files (interfaces, types, classes in `.test.ts`, `tests/`, etc.) that
+///    extractors do not annotate with `is_test`.
 fn filter_test_symbols(symbols: &mut Vec<Symbol>, exclude: bool) {
     if !exclude {
         return;
     }
     symbols.retain(|s| {
-        !s.metadata
+        let is_test_by_metadata = s
+            .metadata
             .as_ref()
             .and_then(|m| m.get("is_test"))
             .and_then(|v| v.as_bool())
-            .unwrap_or(false)
+            .unwrap_or(false);
+        !(is_test_by_metadata || is_test_path(&s.file_path))
     });
 }
 

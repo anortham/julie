@@ -398,4 +398,43 @@ mod graph_expansion_tests {
         let expansion = expand_graph(&[], &db).unwrap();
         assert!(expansion.neighbors.is_empty());
     }
+
+    /// When no relationships exist but identifier refs do (the TypeScript case), expand_graph
+    /// must find neighbors via identifiers. A pivot with 0 relationships but N type_usage
+    /// identifier refs from other symbols should produce N neighbor entries.
+    #[test]
+    fn test_expand_graph_finds_neighbors_via_identifiers_when_no_relationships() {
+        let (_tmp, mut db) = setup_db();
+
+        // Pivot: an interface with no relationship edges
+        let pivot_sym = make_symbol("sym_iface", "ZodInterface", SymbolKind::Interface, "src/main.rs", 1);
+        // Two symbols that reference the interface via type_usage identifiers
+        let caller_a = make_symbol("sym_validator", "validate_input", SymbolKind::Function, "src/handler.rs", 5);
+        let caller_b = make_symbol("sym_processor", "process_data", SymbolKind::Function, "src/utils.rs", 10);
+        db.store_symbols(&[pivot_sym, caller_a, caller_b]).unwrap();
+
+        // Insert type_usage identifiers (no relationships)
+        for (sym_id, file, line) in &[("sym_validator", "src/handler.rs", 6u32), ("sym_processor", "src/utils.rs", 11)] {
+            db.conn.execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, confidence)
+                 VALUES (?1, 'ZodInterface', 'type_usage', 'typescript', ?2, ?3, 0, ?3, 10, 0, 100, ?4, 0.9)",
+                rusqlite::params![
+                    format!("ident_{}_{}", sym_id, line),
+                    file, line, sym_id
+                ],
+            ).unwrap();
+        }
+
+        let pivots = vec![make_pivot("sym_iface", "ZodInterface", 9.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        assert_eq!(
+            expansion.neighbors.len(), 2,
+            "Expected 2 identifier-based neighbors; got {:?}",
+            expansion.neighbors.iter().map(|n| &n.symbol.name).collect::<Vec<_>>()
+        );
+        let names: Vec<&str> = expansion.neighbors.iter().map(|n| n.symbol.name.as_str()).collect();
+        assert!(names.contains(&"validate_input"), "validate_input should be a neighbor");
+        assert!(names.contains(&"process_data"), "process_data should be a neighbor");
+    }
 }

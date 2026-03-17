@@ -82,6 +82,31 @@ pub fn expand_graph(pivots: &[Pivot], db: &SymbolDatabase) -> Result<GraphExpans
         }
     }
 
+    // Identifier-based neighbor expansion: fills in when relationships are sparse.
+    // This is critical for TypeScript (and similar languages) where type usages and
+    // call references live in the identifiers table rather than the relationships table.
+    // Relationship-based entries take priority (or_insert_with keeps first-seen).
+    let pivot_names: Vec<String> = pivots.iter().map(|p| p.result.name.clone()).collect();
+    if !pivot_names.is_empty() {
+        let identifier_kinds = ["type_usage", "import", "call"];
+        if let Ok(ident_refs) = db.get_identifiers_by_names(&pivot_names) {
+            for iref in ident_refs {
+                if !identifier_kinds.contains(&iref.kind.as_str()) {
+                    continue;
+                }
+                let Some(container_id) = iref.containing_symbol_id else {
+                    continue;
+                };
+                if pivot_ids.contains(&container_id) {
+                    continue;
+                }
+                neighbor_map
+                    .entry(container_id)
+                    .or_insert_with(|| (RelationshipKind::References, NeighborDirection::Incoming));
+            }
+        }
+    }
+
     if neighbor_map.is_empty() {
         return Ok(GraphExpansion {
             neighbors: Vec::new(),

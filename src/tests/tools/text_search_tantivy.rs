@@ -736,3 +736,81 @@ async fn test_exclude_tests_explicit_true_filters_for_definitions() -> Result<()
 
     Ok(())
 }
+
+/// Test 5: TypeScript interface in a `.test.ts` file should be excluded when
+/// `exclude_tests=true` even though the interface lacks `is_test` metadata
+/// (only function symbols get `is_test` set by extractors).
+/// The path-based fallback in `filter_test_symbols` must handle this case.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_exclude_tests_path_based_excludes_interface_from_test_file() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path().to_path_buf();
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+
+    // TypeScript test file with a non-function symbol (interface).
+    // The extractor does NOT set is_test=true for interfaces — only functions get it.
+    // So filter_test_symbols must fall back to is_test_path() for path-based exclusion.
+    fs::write(
+        src_dir.join("payment.test.ts"),
+        r#"export interface MockPaymentGateway {
+    processPayment(amount: number): Promise<boolean>;
+}"#,
+    )?;
+
+    // Production file with a real interface for comparison
+    fs::write(
+        src_dir.join("payment.ts"),
+        r#"export interface PaymentGateway {
+    processPayment(amount: number): Promise<boolean>;
+}"#,
+    )?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await?;
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    index_tool.call_tool(&handler).await?;
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // Query "PaymentGateway" matches both MockPaymentGateway (test) and PaymentGateway (prod).
+    // With exclude_tests=true: only the production symbol should appear.
+    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+        "PaymentGateway",
+        &None,
+        &None,
+        20,
+        None,
+        "definitions",
+        None,
+        Some(true), // explicitly exclude test symbols
+        &handler,
+    )
+    .await?;
+
+    let has_test_interface = results.iter().any(|s| s.name == "MockPaymentGateway");
+    assert!(
+        !has_test_interface,
+        "exclude_tests=true should filter MockPaymentGateway from .test.ts file via path-based detection; \
+         results: {:?}",
+        results.iter().map(|s| (&s.name, &s.file_path)).collect::<Vec<_>>()
+    );
+
+    // Production interface should still be found
+    let has_prod_interface = results.iter().any(|s| s.name == "PaymentGateway");
+    assert!(
+        has_prod_interface,
+        "PaymentGateway (production symbol) should still appear; results: {:?}",
+        results.iter().map(|s| (&s.name, &s.file_path)).collect::<Vec<_>>()
+    );
+
+    Ok(())
+}

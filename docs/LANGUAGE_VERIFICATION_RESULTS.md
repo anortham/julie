@@ -15,7 +15,7 @@
 |----------|------------------|-----------|-----------------|---------------|--------------|--------------|-------------|---------------|------------------|------|
 | GDScript | bitbrain/pandora | PASS | PASS | PASS* | PASS* | PASS | PASS* | PASS | PASS | 2026-03-17 |
 | Zig | zigtools/zls | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-17 |
-| TypeScript | — | — | — | — | — | — | — | — | — | — |
+| TypeScript | colinhacks/zod | PASS | PASS | PASS* | PASS* | PASS* | PASS | PASS* | PASS* | 2026-03-17 |
 | Python | — | — | — | — | — | — | — | — | — | — |
 | Go | — | — | — | — | — | — | — | — | — | — |
 | Java | — | — | — | — | — | — | — | — | — | — |
@@ -28,7 +28,7 @@
 | C++ | — | — | — | — | — | — | — | — | — | — |
 | Dart | — | — | — | — | — | — | — | — | — | — |
 | Lua | — | — | — | — | — | — | — | — | — | — |
-| Scala | — | — | — | — | — | — | — | — | — | — |
+| Scala | typelevel/cats | — | — | PASS* | PASS* | — | PASS | — | — | — |
 | Elixir | — | — | — | — | — | — | — | — | — | — |
 
 ### Specialized Tier (9 languages)
@@ -177,3 +177,52 @@
   - `@page`, `@using`, `@inject`, `@attribute` directives all captured correctly
   - No test files in this samples repo — Check 8 not applicable
   - 62 definitions of `OnInitializedAsync` across the codebase, all with correct signatures and visibility
+
+### TypeScript
+- **Reference project:** colinhacks/zod (496 files, 17055 symbols, 7184 relationships)
+- **Date verified:** 2026-03-17
+- **Issues found (10 — all fixed):**
+  - **FIXED: `packages/` in BLACKLISTED_DIRECTORIES (CRITICAL)** — Hard directory filter silently excluded ALL source files in JS/TS monorepos (npm/pnpm/Lerna/Nx/Turborepo). zod: 36 → 498 files after fix. Commit `45885e09`.
+  - **FIXED: `packages/` in analyze_vendor_patterns** — Same false positive in soft vendor detection. Removed from both `matches!` blocks. Commit `45885e09`.
+  - **FIXED: Lockfile noise (pnpm-lock.yaml, package-lock.json)** — `pnpm-lock.yaml` has `.yaml` extension (not blacklisted). Added 9,861 YAML symbols = 43% noise. Fix: `BLACKLISTED_FILENAMES` constant with exact-name filtering in `should_index_file()`. Commit `45885e09`.
+  - **FIXED: Zero type_usage identifiers** — `identifiers.rs` only handled `call_expression` and `member_expression`. Missing `type_identifier` node → centrality Step 1b contributed nothing for TS interfaces/types. Commit `45885e09`.
+  - **FIXED: type_identifier too broad** — `type_identifier` appears for both declaration names AND type references. Added `is_type_declaration_name()` parent-context filter for `interface_declaration`, `type_alias_declaration`, `class_declaration`, `abstract_class_declaration`, `type_parameter`, `mapped_type_clause`. Commit `45885e09`.
+  - **FIXED: Noise types not filtered** — Added `is_ts_noise_type()` for single-letter generics (T, K, V) and common utility types (Promise, Array, Record, Map, Set, etc.). Commit `45885e09`.
+  - **FIXED: SQL LIKE wildcards in centrality (systemic)** — `_` and `%` in symbol names were SQL wildcards causing false centrality matches. Added REPLACE-based escaping + ESCAPE clause in `compute_reference_scores()`. Benefits all 33 languages. Commit `45885e09`.
+  - **FIXED: Watcher lockfile filtering** — `BLACKLISTED_FILENAMES` not checked in `watcher/filtering.rs` or `watcher/events.rs`. Watcher could re-index lockfiles on every save. Commit `45885e09`.
+  - **FIXED: `libs/` vendor false positive** — `analyze_vendor_patterns` treated `libs/` as vendor. Nx/Angular monorepos use `libs/` as standard source directory alongside `apps/`. Commit `45885e09`.
+  - **FIXED: Test exclusion missed non-function symbols in test files (systemic)** — `filter_test_symbols()` in `text_search.rs` checked only `metadata["is_test"]` (set by extractors for function symbols). Interfaces, types, and classes in `.test.ts` files had no `is_test` metadata and bypassed `exclude_tests=true`. Fix: added `is_test_path(&s.file_path)` as fallback in `filter_test_symbols`. Benefits all languages.
+  - **FIXED: `get_context` neighbors always 0 for TypeScript (systemic)** — `expand_graph()` queried only the `relationships` table (imports, inheritance edges). TypeScript type usages and call references live in the `identifiers` table instead. Fix: after relationship expansion, also query `get_identifiers_by_names()` for `type_usage`, `import`, and `call` kinds. `containing_symbol_id` from each identifier ref becomes a neighbor. Relationship-based entries take priority. Benefits all languages where identifiers are richer than relationships (TypeScript, GDScript, Zig, Scala).
+- **Live verification results:**
+  - Check 1 (Symbols): 151 symbols from `schemas.ts` at max_depth=1; kinds correct (interface, class, method, export); signatures preserved
+  - Check 2 (Relationships): 7184 total; ZodString class hierarchy captured; cross-file imports working
+  - Check 3 (Identifiers): 94 identifier refs for ZodType; definition found; call-site refs detected
+  - Check 4 (Centrality): ZodType interface **0.95** (94 refs); ZodType variable **0.00** (correct — value position); 94 dependents via deep_dive
+  - Check 5 (Def Search): Interface/class/export promoted above imports; test file definition ranks #1 (expected — definition searches include tests by default)
+  - Check 6 (deep_dive): `context_file` disambiguates cross-file ZodType; 44 methods shown; 94 dependents; change risk MEDIUM
+  - Check 7 (get_context): 7.1 PASS (TS source pivots, no bundled JS); 7.2 PASS (high-centrality ZodType pivot); 7.3 PASS after fix (identifier-based expansion now provides type_usage neighbors)
+  - Check 8 (Test Detection): `.test.ts` files detected by path; `exclude_tests=true` now excludes all symbols from test files (including interfaces); auto-exclusion works for content search
+- **Notes:**
+  - `*` on Identifiers, Centrality, Def Search, Test Detection indicates PASS after fixes
+  - TypeScript `predefined_type` node (`string`, `number`, `boolean`) is distinct from `type_identifier` — builtins naturally excluded without filtering
+  - Multi-letter generic param references (`Input`, `Output`) still appear as TypeUsage in reference positions — acceptable, would require scope analysis to filter
+  - The relationships table for TypeScript has 0 rows for ZodType — all 94 "dependents" live in the identifiers table (type_usage). Relationships only capture imports and extends/implements edges.
+
+### Scala (Partial — bugs fixed, full checklist not yet run)
+- **Reference project:** typelevel/cats (934 files, 22336 symbols, 12236 relationships)
+- **Date verified:** 2026-03-17 (partial)
+- **Checks completed:** 3. Identifiers (unit tests), 4. Centrality (deep_dive), 6. deep_dive
+- **Checks NOT yet run:** 1. Symbols (get_symbols), 2. Relationships (cross-file fast_refs), 5. Def Search, 7. get_context, 8. Test Detection
+- **Issues found (2 — all fixed):**
+  - **FIXED: Zero type_usage identifiers** — Same bug as TypeScript. Scala `identifiers.rs` only handled `call_expression` and `field_expression`. Added `type_identifier` handler. Commit `f90f7350`.
+  - **FIXED: Type alias declaration names not filtered** — `type_definition.name` uses `type_identifier` in Scala. Added `is_type_declaration_name()`. Simpler than TS: class/trait/object names use `identifier` (not `type_identifier`), so only `type_definition` needs filtering. Commit `f90f7350`.
+  - **FIXED: Noise types not filtered** — Added `is_scala_noise_type()` for single-letter generics (T, A, B, F) and Scala primitives (Int, String, Boolean, Any, Unit, AnyVal, AnyRef, Nothing, Null, Object). Commit `f90f7350`.
+  - **FIXED: Factory consistency test count stale** — `test_all_languages_in_factory` expected 31 entries but Scala+Elixir brought it to 34. Pre-existing failure, fixed opportunistically. Commit `f90f7350`.
+- **Live verification results:**
+  - Functor trait: centrality **1.00** (465 incoming refs) — was 0.00 before type_usage fix
+  - Monad trait: centrality **1.00** (366 incoming refs) — was 0.00 before type_usage fix
+  - deep_dive: Shows extends hierarchy (Monad → FlatMap + Applicative), implementations, companion objects
+- **Notes:**
+  - `*` on Identifiers and Centrality indicates PASS after fixes
+  - Scala class/trait/object names use `identifier` node (not `type_identifier`) — declaration names naturally excluded for those kinds
+  - Generic type parameter declarations use `identifier` in `type_parameters`/`covariant_type_parameter`/`contravariant_type_parameter` — won't appear as `type_identifier` in declaration position
