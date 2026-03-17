@@ -42,6 +42,7 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         "csharp" => Ok(tree_sitter_c_sharp::LANGUAGE.into()),
         "php" => Ok(tree_sitter_php::LANGUAGE_PHP.into()),
         "ruby" => Ok(tree_sitter_ruby::LANGUAGE.into()),
+        "elixir" => Ok(tree_sitter_elixir::LANGUAGE.into()),
         "swift" => Ok(tree_sitter_swift::LANGUAGE.into()),
         "kotlin" => Ok(tree_sitter_kotlin_ng::LANGUAGE.into()),
         "dart" => Ok(harper_tree_sitter_dart::LANGUAGE.into()),
@@ -66,7 +67,7 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         "yaml" => Ok(tree_sitter_yaml::LANGUAGE.into()),
 
         _ => Err(anyhow::anyhow!(
-            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, r, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex, markdown, json, toml, yaml",
+            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, r, python, java, csharp, php, ruby, elixir, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex, markdown, json, toml, yaml",
             language
         )),
     }
@@ -88,6 +89,7 @@ pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
         "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => Some("cpp"),
         "cs" => Some("csharp"),
         "rb" => Some("ruby"),
+        "ex" | "exs" => Some("elixir"),
         "php" => Some("php"),
         "swift" => Some("swift"),
         "kt" | "kts" => Some("kotlin"),
@@ -134,6 +136,7 @@ pub fn get_function_node_kinds(language: &str) -> Vec<&'static str> {
         "csharp" => vec!["method_declaration"],
         "php" => vec!["function_definition", "method_declaration"],
         "ruby" => vec!["method", "singleton_method"],
+        "elixir" => vec!["call"], // def/defp are all call nodes
         "swift" => vec!["function_declaration"],
         "kotlin" => vec!["function_declaration"],
         "dart" => vec!["function_signature", "method_signature"],
@@ -157,6 +160,7 @@ pub fn get_import_node_kinds(language: &str) -> Vec<&'static str> {
         "csharp" => vec!["using_directive"],
         "php" => vec!["namespace_use_declaration"],
         "ruby" => vec!["call"], // require/require_relative are function calls
+        "elixir" => vec!["call"], // use/import/alias/require are call nodes
         "swift" => vec!["import_declaration"],
         "kotlin" => vec!["import_header"],
         "dart" => vec!["import_or_export"],
@@ -219,6 +223,7 @@ pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
             "trait_declaration",
         ],
         "ruby" => vec!["method", "singleton_method", "class", "module"],
+        "elixir" => vec!["call"], // All definitions are call nodes in Elixir
         "swift" => vec![
             "function_declaration",
             "class_declaration",
@@ -245,7 +250,8 @@ pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
 pub fn get_symbol_name_field(language: &str) -> &'static str {
     match language {
         "rust" | "typescript" | "tsx" | "javascript" | "python" | "java" | "go" | "csharp"
-        | "php" | "ruby" | "swift" | "kotlin" | "dart" | "lua" | "bash" | "powershell" => "name",
+        | "php" | "ruby" | "elixir" | "swift" | "kotlin" | "dart" | "lua" | "bash"
+        | "powershell" => "name",
         "cpp" | "c" => "declarator", // C/C++ use nested declarator nodes
         _ => "name",                 // Generic fallback
     }

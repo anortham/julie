@@ -41,6 +41,7 @@ impl ExtractorManager {
             "cpp",
             "csharp",
             "ruby",
+            "elixir",
             "php",
             "swift",
             "kotlin",
