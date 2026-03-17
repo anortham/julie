@@ -19,6 +19,7 @@ impl SmartRefactorTool {
             Some("rb") => "ruby".to_string(),
             Some("swift") => "swift".to_string(),
             Some("kt") => "kotlin".to_string(),
+            Some("scala") | Some("sc") => "scala".to_string(),
             Some("go") => "go".to_string(),
             Some("c") => "c".to_string(),
             Some("cpp") | Some("cc") | Some("cxx") | Some("h") => "cpp".to_string(),

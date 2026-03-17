@@ -73,6 +73,7 @@ impl LanguageConfigs {
             ),
             ("json", include_str!("../../languages/json.toml")),
             ("kotlin", include_str!("../../languages/kotlin.toml")),
+            ("scala", include_str!("../../languages/scala.toml")),
             ("lua", include_str!("../../languages/lua.toml")),
             ("markdown", include_str!("../../languages/markdown.toml")),
             ("php", include_str!("../../languages/php.toml")),

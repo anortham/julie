@@ -1,0 +1,41 @@
+[tokenizer]
+# Character sequences to preserve as single tokens
+preserve_patterns = [
+    "=>",   # fat arrow (pattern matching, lambdas)
+    "->",   # arrow
+    "<:",   # upper bound
+    ">:",   # lower bound
+    "<%",   # view bound (deprecated)
+    "#",    # type projection
+    "@",    # annotation
+]
+
+# Naming conventions to recognize
+naming_styles = ["camelCase", "PascalCase", "SCREAMING_SNAKE_CASE"]
+
+# Prefixes/suffixes with semantic meaning
+meaningful_affixes = [
+    "is",
+    "has",
+    "get",
+    "set",
+    "with",
+    "_",
+]
+
+[variants]
+strip_prefixes = ["_"]
+strip_suffixes = ["Impl", "Spec", "Test", "Suite"]
+
+[scoring]
+important_patterns = [
+    "def ",
+    "class ",
+    "case class",
+    "trait ",
+    "object ",
+    "enum ",
+    "sealed trait",
+    "given ",
+    "extension ",
+]

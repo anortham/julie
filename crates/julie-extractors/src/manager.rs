@@ -44,6 +44,7 @@ impl ExtractorManager {
             "php",
             "swift",
             "kotlin",
+            "scala",
             "dart",
             "gdscript",
             "lua",

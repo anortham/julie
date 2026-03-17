@@ -72,7 +72,7 @@ pub fn is_test_symbol(
     match language {
         "rust" => detect_rust(attributes),
         "python" => detect_python(name, decorators),
-        "java" | "kotlin" => detect_java_kotlin(decorators, attributes),
+        "java" | "kotlin" | "scala" => detect_java_kotlin(decorators, attributes),
         "csharp" | "razor" => detect_csharp(attributes),
         "go" => detect_go(name, file_path),
         "javascript" | "typescript" => detect_js_ts(name, file_path),

@@ -28,6 +28,7 @@ pub mod razor;
 pub mod regex;
 pub mod ruby;
 pub mod rust;
+pub mod scala;
 pub mod sql;
 pub mod swift;
 pub mod toml;
