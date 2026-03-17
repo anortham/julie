@@ -724,11 +724,11 @@ mod factory_consistency_tests {
         let manager = crate::ExtractorManager::new();
         let supported = manager.supported_languages();
 
-        // Verify we have all 27 languages
+        // Verify we have all 33 languages (+ aliases for js/javascript, tsx/ts)
         assert_eq!(
             supported.len(),
-            31,
-            "Expected 31 language entries (29 languages, 2 with aliases)"
+            34,
+            "Expected 34 language entries (33 languages, with js/javascript and tsx aliases)"
         );
 
         let workspace_root = PathBuf::from("/tmp/test");

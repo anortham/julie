@@ -2,7 +2,7 @@
 
 mod ast_debug;
 
-use crate::base::SymbolKind;
+use crate::base::{IdentifierKind, SymbolKind};
 use crate::scala::ScalaExtractor;
 use std::path::PathBuf;
 use tree_sitter::Parser;
@@ -607,4 +607,163 @@ fn test_scala_full_fixture() {
     assert!(has_type_alias, "Missing type alias");
     assert!(has_import, "Missing import");
     assert!(has_package, "Missing package");
+}
+
+// ========================================================================
+// Identifier Extraction Tests
+// ========================================================================
+
+fn extract_identifiers(
+    code: &str,
+) -> Vec<crate::base::Identifier> {
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = ScalaExtractor::new(
+        "scala".to_string(),
+        "test.scala".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    extractor.extract_identifiers(&tree, &symbols)
+}
+
+#[test]
+fn test_scala_type_usage_identifiers() {
+    // Type annotations in Scala should produce TypeUsage identifiers.
+    // These drive centrality scoring for traits, classes, and type aliases.
+    let code = r#"
+trait UserService {
+  def getUser(id: String): User
+}
+
+class AuthController(service: UserService) {
+  def login(request: LoginRequest): AuthResult = {
+    service.getUser(request.userId)
+  }
+}
+
+val config: AppConfig = loadConfig()
+type Handler = Request => Response
+"#;
+
+    let identifiers = extract_identifiers(code);
+    let type_usages: Vec<_> = identifiers
+        .iter()
+        .filter(|id| id.kind == IdentifierKind::TypeUsage)
+        .collect();
+
+    assert!(
+        !type_usages.is_empty(),
+        "Scala type annotations must produce TypeUsage identifiers for centrality scoring"
+    );
+
+    let type_names: Vec<&str> = type_usages.iter().map(|id| id.name.as_str()).collect();
+
+    // Core type references that MUST be extracted
+    assert!(
+        type_names.contains(&"User"),
+        "Return type 'User' must be extracted. Got: {:?}",
+        type_names
+    );
+    assert!(
+        type_names.contains(&"UserService"),
+        "Constructor param type 'UserService' must be extracted. Got: {:?}",
+        type_names
+    );
+    assert!(
+        type_names.contains(&"LoginRequest"),
+        "Method param type 'LoginRequest' must be extracted. Got: {:?}",
+        type_names
+    );
+    assert!(
+        type_names.contains(&"AppConfig"),
+        "Val type annotation 'AppConfig' must be extracted. Got: {:?}",
+        type_names
+    );
+}
+
+#[test]
+fn test_scala_type_usage_skips_builtin_types() {
+    // Scala primitive wrappers (Int, String, Boolean, etc.) should NOT produce
+    // TypeUsage identifiers — they pollute centrality with noise.
+    let code = r#"
+def greet(name: String, age: Int): Boolean = {
+  true
+}
+val x: Any = null
+val u: Unit = ()
+"#;
+
+    let identifiers = extract_identifiers(code);
+    let type_usages: Vec<_> = identifiers
+        .iter()
+        .filter(|id| id.kind == IdentifierKind::TypeUsage)
+        .collect();
+
+    let type_names: Vec<&str> = type_usages.iter().map(|id| id.name.as_str()).collect();
+    assert!(
+        !type_names.contains(&"String"),
+        "Builtin 'String' must NOT be a TypeUsage identifier"
+    );
+    assert!(
+        !type_names.contains(&"Int"),
+        "Builtin 'Int' must NOT be a TypeUsage identifier"
+    );
+    assert!(
+        !type_names.contains(&"Boolean"),
+        "Builtin 'Boolean' must NOT be a TypeUsage identifier"
+    );
+    assert!(
+        !type_names.contains(&"Any"),
+        "Builtin 'Any' must NOT be a TypeUsage identifier"
+    );
+    assert!(
+        !type_names.contains(&"Unit"),
+        "Builtin 'Unit' must NOT be a TypeUsage identifier"
+    );
+}
+
+#[test]
+fn test_scala_type_usage_excludes_type_alias_declaration_names() {
+    // type alias declaration names should NOT produce TypeUsage identifiers.
+    // Only references to types should count.
+    let code = r#"
+trait UserService {
+  def getUser(): User
+}
+
+type ApiResult = UserService | Error
+
+class AuthController extends UserService {
+  def getUser(): User = ???
+}
+"#;
+
+    let identifiers = extract_identifiers(code);
+    let type_usages: Vec<_> = identifiers
+        .iter()
+        .filter(|id| id.kind == IdentifierKind::TypeUsage)
+        .collect();
+    let type_names: Vec<&str> = type_usages.iter().map(|id| id.name.as_str()).collect();
+
+    // Type alias declaration name must NOT appear as TypeUsage
+    assert!(
+        !type_names.contains(&"ApiResult"),
+        "Type alias declaration name 'ApiResult' must NOT be a TypeUsage. Got: {:?}",
+        type_names
+    );
+
+    // But references TO types should still be TypeUsage
+    assert!(
+        type_names.contains(&"UserService"),
+        "Reference to 'UserService' (in type alias) must be TypeUsage. Got: {:?}",
+        type_names
+    );
+    assert!(
+        type_names.contains(&"User"),
+        "Reference to 'User' (return type) must be TypeUsage. Got: {:?}",
+        type_names
+    );
 }

@@ -59,6 +59,25 @@ fn extract_identifier_from_node(
             }
         }
 
+        // Type references in type positions: val x: Foo, def f(a: Foo): Bar,
+        // class Foo extends Bar, type A = Foo
+        // Scala uses `type_identifier` for both declaration names and references.
+        // We filter out declaration names via parent context.
+        "type_identifier" => {
+            if is_type_declaration_name(&node) {
+                return;
+            }
+
+            let name = base.get_node_text(&node);
+
+            if is_scala_noise_type(&name) {
+                return;
+            }
+
+            let containing = find_containing_symbol_id(base, node, symbol_map);
+            base.create_identifier(&node, name, IdentifierKind::TypeUsage, containing);
+        }
+
         // Member access: obj.field
         "field_expression" => {
             // Only extract if NOT part of a call_expression
@@ -97,6 +116,60 @@ fn find_containing_symbol_id(
 
     base.find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
+}
+
+/// Check if a `type_identifier` node is a declaration name rather than a type reference.
+///
+/// In Scala, `type_identifier` appears as the `name` field of:
+/// - `type_definition` → `type Foo = ...` (declaration)
+///
+/// Class/trait/object names use `identifier`, not `type_identifier`, so they
+/// don't need to be filtered here.
+fn is_type_declaration_name(node: &Node) -> bool {
+    if let Some(parent) = node.parent() {
+        if let Some(name_node) = parent.child_by_field_name("name") {
+            if name_node.id() == node.id() {
+                return parent.kind() == "type_definition";
+            }
+        }
+    }
+    false
+}
+
+/// Returns true for Scala types that are too common to be meaningful
+/// type references for centrality scoring.
+///
+/// Includes:
+/// - Single-letter type params (T, A, B, etc.) — generic type parameters used in scope
+/// - Scala primitive/base types — ubiquitous in every file
+fn is_scala_noise_type(name: &str) -> bool {
+    // Single-letter uppercase names are almost always generic type parameters.
+    if name.len() == 1 && name.chars().next().map_or(false, |c| c.is_ascii_uppercase()) {
+        return true;
+    }
+
+    matches!(
+        name,
+        // Scala AnyVal types
+        "Int"
+            | "Long"
+            | "Short"
+            | "Byte"
+            | "Float"
+            | "Double"
+            | "Char"
+            | "Boolean"
+            | "Unit"
+            // Scala top types
+            | "Any"
+            | "AnyRef"
+            | "AnyVal"
+            | "Nothing"
+            | "Null"
+            // Java interop
+            | "String"
+            | "Object"
+    )
 }
 
 /// Extract the rightmost identifier from a field_expression
