@@ -203,9 +203,11 @@ fn is_type_declaration_name(node: &Node) -> bool {
 /// Returns true for TypeScript types that are too common to be meaningful
 /// type references for centrality scoring.
 ///
-/// Includes:
-/// - Single-letter generic params (T, K, V, etc.) — appear everywhere in generic code
-/// - Common utility types (Promise, Array, Record, etc.) — too ubiquitous for signal
+/// Only filters types that are TypeScript compiler intrinsics (mapped/conditional
+/// utility types) and single-letter generics. Does NOT filter JavaScript runtime
+/// globals (Map, Set, Promise, Array, etc.) because user-defined types with those
+/// names must be trackable — and builtin references to non-existent symbols cause
+/// zero centrality impact anyway (Step 1b only boosts symbols in the symbols table).
 fn is_ts_noise_type(name: &str) -> bool {
     // Single-letter names are almost always generic type parameters used in scope.
     // Even when they appear as references (e.g. `: T`), they carry no cross-file signal.
@@ -213,13 +215,10 @@ fn is_ts_noise_type(name: &str) -> bool {
         return true;
     }
 
+    // TypeScript compiler utility types — these are never user-defined
     matches!(
         name,
-        "Promise"
-            | "Array"
-            | "Map"
-            | "Set"
-            | "Record"
+        "Record"
             | "Partial"
             | "Required"
             | "Readonly"
@@ -234,13 +233,5 @@ fn is_ts_noise_type(name: &str) -> bool {
             | "ConstructorParameters"
             | "ThisType"
             | "Awaited"
-            | "WeakMap"
-            | "WeakSet"
-            | "WeakRef"
-            | "Iterator"
-            | "Iterable"
-            | "AsyncIterable"
-            | "Generator"
-            | "AsyncGenerator"
     )
 }

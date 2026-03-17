@@ -172,6 +172,17 @@ type Handler = (req: Request, res: Response) => void;
         "Variable type annotation 'AppConfig' must be extracted. Got: {:?}",
         type_names
     );
+    // JS runtime globals are NOT filtered — they could be user-defined types
+    assert!(
+        type_names.contains(&"Promise"),
+        "JS runtime type 'Promise' must be extracted (not filtered). Got: {:?}",
+        type_names
+    );
+    assert!(
+        type_names.contains(&"AuthResult"),
+        "Generic arg 'AuthResult' must be extracted. Got: {:?}",
+        type_names
+    );
 }
 
 #[test]
@@ -380,4 +391,125 @@ type Mapper<Input, Output> = (val: Input) => Output;
     // are acceptable — they're legitimate type_identifier references in the AST.
     // Filtering them would require scope analysis. They cause minimal centrality
     // noise since they rarely collide with real type names across files.
+}
+
+#[test]
+fn test_noise_type_filter_distinguishes_ts_intrinsics_from_js_globals() {
+    // The noise type filter must only block TS compiler utility types (never
+    // user-definable). JS runtime globals like Map, Set, Promise, Array can be
+    // user-defined (e.g. game dev Map class) — they must NOT be filtered.
+    // Builtin references to non-existent symbols cause zero centrality impact
+    // anyway (Step 1b only boosts symbols present in the symbols table).
+    let code = r#"
+const cache: Map<string, User> = new Map();
+const ids: Set<number> = new Set();
+const tasks: Array<Promise<Result>> = [];
+const weakCache: WeakMap<object, Data> = new WeakMap();
+const weakIds: WeakSet<object> = new WeakSet();
+const ref: WeakRef<Connection> = getRef();
+
+function* gen(): Generator<number> { yield 1; }
+async function* asyncGen(): AsyncGenerator<string> { yield "a"; }
+
+function consume(iter: Iterator<Item>, items: Iterable<Item>): void {}
+async function consumeAsync(iter: AsyncIterable<Chunk>): Promise<void> {}
+
+// TS utility types that SHOULD still be filtered
+type Cfg = Partial<Config>;
+type Req = Required<Config>;
+type RO = Readonly<Config>;
+type Picked = Pick<Config, "a">;
+type Omitted = Omit<Config, "b">;
+type Excl = Exclude<Union, "c">;
+type Extr = Extract<Union, "c">;
+type NN = NonNullable<Nullable>;
+type RT = ReturnType<typeof fn>;
+type Params = Parameters<typeof fn>;
+type Inst = InstanceType<typeof Cls>;
+type CtorP = ConstructorParameters<typeof Cls>;
+type TT = ThisType<Ctx>;
+type Aw = Awaited<Promise<number>>;
+type Rec = Record<string, number>;
+"#;
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+
+    let mut extractor = TypeScriptExtractor::new(
+        "typescript".to_string(),
+        "test.ts".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+    let type_usages: Vec<_> = identifiers
+        .iter()
+        .filter(|id| id.kind == IdentifierKind::TypeUsage)
+        .collect();
+    let type_names: Vec<&str> = type_usages.iter().map(|id| id.name.as_str()).collect();
+
+    // JS runtime globals MUST be extracted (not filtered)
+    for js_global in &[
+        "Map",
+        "Set",
+        "Array",
+        "Promise",
+        "WeakMap",
+        "WeakSet",
+        "WeakRef",
+        "Generator",
+        "AsyncGenerator",
+        "Iterator",
+        "Iterable",
+        "AsyncIterable",
+    ] {
+        assert!(
+            type_names.contains(js_global),
+            "JS runtime global '{}' must NOT be filtered — it could be user-defined. Got: {:?}",
+            js_global,
+            type_names
+        );
+    }
+
+    // TS compiler utility types MUST be filtered
+    for ts_intrinsic in &[
+        "Record",
+        "Partial",
+        "Required",
+        "Readonly",
+        "Pick",
+        "Omit",
+        "Exclude",
+        "Extract",
+        "NonNullable",
+        "ReturnType",
+        "Parameters",
+        "InstanceType",
+        "ConstructorParameters",
+        "ThisType",
+        "Awaited",
+    ] {
+        assert!(
+            !type_names.contains(ts_intrinsic),
+            "TS utility type '{}' must be filtered (compiler intrinsic). Got: {:?}",
+            ts_intrinsic,
+            type_names
+        );
+    }
+
+    // User-defined types referenced as generic args MUST be extracted
+    for user_type in &["User", "Data", "Connection", "Item", "Chunk", "Config"] {
+        assert!(
+            type_names.contains(user_type),
+            "User type '{}' must be extracted. Got: {:?}",
+            user_type,
+            type_names
+        );
+    }
 }

@@ -437,4 +437,40 @@ mod graph_expansion_tests {
         assert!(names.contains(&"validate_input"), "validate_input should be a neighbor");
         assert!(names.contains(&"process_data"), "process_data should be a neighbor");
     }
+
+    /// Identifiers with names containing SQL wildcard chars (`_`, `%`) must NOT
+    /// match unrelated identifiers. Regression test for the unescaped LIKE bug in
+    /// `build_name_match_clause`.
+    #[test]
+    fn test_expand_graph_identifier_names_with_sql_wildcards_do_not_overmatch() {
+        let (_tmp, mut db) = setup_db();
+
+        let symbols = vec![
+            make_symbol("sym_foo_bar", "Foo_Bar", SymbolKind::Interface, "src/main.rs", 1),
+            make_symbol("sym_caller_good", "good_caller", SymbolKind::Function, "src/handler.rs", 5),
+            make_symbol("sym_caller_bad", "bad_caller", SymbolKind::Function, "src/utils.rs", 10),
+        ];
+        db.store_symbols(&symbols).unwrap();
+
+        // "Foo_Bar::method" — qualified ref, should match pivot "Foo_Bar" via LIKE prefix
+        db.conn.execute(
+            "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, confidence)
+             VALUES ('ident_good', 'Foo_Bar::method', 'call', 'rust', 'src/handler.rs', 6, 0, 6, 10, 0, 100, 'sym_caller_good', 0.9)",
+            [],
+        ).unwrap();
+
+        // "FooXBar::method" — should NOT match pivot "Foo_Bar" (the _ in Foo_Bar must not wildcard-match X)
+        db.conn.execute(
+            "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, start_byte, end_byte, containing_symbol_id, confidence)
+             VALUES ('ident_bad', 'FooXBar::method', 'call', 'rust', 'src/utils.rs', 11, 0, 11, 10, 0, 100, 'sym_caller_bad', 0.9)",
+            [],
+        ).unwrap();
+
+        let pivots = vec![make_pivot("sym_foo_bar", "Foo_Bar", 9.0)];
+        let expansion = expand_graph(&pivots, &db).unwrap();
+
+        let names: Vec<&str> = expansion.neighbors.iter().map(|n| n.symbol.name.as_str()).collect();
+        assert!(names.contains(&"good_caller"), "Foo_Bar::method should match pivot Foo_Bar");
+        assert!(!names.contains(&"bad_caller"), "FooXBar::method must NOT match pivot Foo_Bar (SQL wildcard bug)");
+    }
 }

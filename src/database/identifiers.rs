@@ -27,6 +27,22 @@ pub struct IdentifierRef {
 const IDENTIFIER_REF_COLUMNS: &str =
     "name, kind, file_path, start_line, containing_symbol_id, confidence";
 
+/// Escape SQL LIKE wildcard characters so they match literally.
+/// `_` (any single char) and `%` (any sequence) are escaped with `\`.
+/// The backslash itself is also escaped.
+fn escape_sql_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '%' => out.push_str("\\%"),
+            '_' => out.push_str("\\_"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 /// Build WHERE clause that matches both exact names AND qualified names (e.g. Type::method).
 /// Identifiers are stored as qualified calls like "CodeTokenizer::new" but agents search
 /// for just "CodeTokenizer". This generates:
@@ -52,12 +68,12 @@ fn build_name_match_clause(names: &[String]) -> (String, Vec<Box<dyn rusqlite::T
     let mut prefix_conditions = Vec::new();
     for name in names {
         // Rust-style :: qualifier
-        prefix_conditions.push(format!("name LIKE ?{}", idx));
-        params.push(Box::new(format!("{}::%", name)));
+        prefix_conditions.push(format!("name LIKE ?{} ESCAPE '\\'", idx));
+        params.push(Box::new(format!("{}::%", escape_sql_like(name))));
         idx += 1;
         // Dot-style qualifier (most other languages)
-        prefix_conditions.push(format!("name LIKE ?{}", idx));
-        params.push(Box::new(format!("{}.%", name)));
+        prefix_conditions.push(format!("name LIKE ?{} ESCAPE '\\'", idx));
+        params.push(Box::new(format!("{}.%", escape_sql_like(name))));
         idx += 1;
     }
 
