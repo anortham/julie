@@ -45,6 +45,40 @@ fn extract_identifier_from_node(
     symbol_map: &HashMap<String, &Symbol>,
 ) {
     match node.kind() {
+        // Nested QML component instantiations: Rectangle {}, Button {}, etc.
+        // The root ui_object_definition is the class declaration (handled by symbol extraction).
+        // Nested ones are type references — analogous to constructor calls.
+        "ui_object_definition" => {
+            // Only nested objects (non-root) — check if there's a parent ui_object_definition
+            let is_nested = {
+                let mut current = node;
+                let mut found_parent = false;
+                while let Some(parent) = current.parent() {
+                    if parent.kind() == "ui_object_definition" {
+                        found_parent = true;
+                        break;
+                    }
+                    current = parent;
+                }
+                found_parent
+            };
+
+            if is_nested {
+                if let Some(type_name_node) = node.child_by_field_name("type_name") {
+                    let name = extractor.base.get_node_text(&type_name_node);
+                    let containing_symbol_id =
+                        find_containing_symbol_id(extractor, node, symbol_map);
+
+                    extractor.base.create_identifier(
+                        &type_name_node,
+                        name,
+                        IdentifierKind::TypeUsage,
+                        containing_symbol_id,
+                    );
+                }
+            }
+        }
+
         // Function/method calls: foo(), object.method()
         "call_expression" => {
             if let Some(function_node) = node.child_by_field_name("function") {

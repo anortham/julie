@@ -15,7 +15,6 @@
 |----------|------------------|-----------|-----------------|---------------|--------------|--------------|-------------|---------------|------------------|------|
 | GDScript | bitbrain/pandora | PASS | PASS | PASS* | PASS* | PASS | PASS* | PASS | PASS | 2026-03-17 |
 | Zig | zigtools/zls | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-17 |
-| QML | — | — | — | — | — | — | — | — | — | — |
 | Razor | — | — | — | — | — | — | — | — | — | — |
 | TypeScript | — | — | — | — | — | — | — | — | — | — |
 | Python | — | — | — | — | — | — | — | — | — | — |
@@ -37,6 +36,7 @@
 
 | Language | Reference Project | 1. Symbols | 3. Identifiers | 5. Def Search | 8. Test Detection | Date |
 |----------|------------------|-----------|---------------|--------------|------------------|------|
+| QML | KDE/kirigami | PASS* | PASS* | PASS* | PASS* | 2026-03-17 |
 | Bash | — | — | — | — | — | — |
 | PowerShell | — | — | — | — | — | — |
 | Vue | — | — | — | — | — | — |
@@ -147,3 +147,20 @@
   - `@This()` idiom (Zig's self-type pattern) captured as `constant` — semantically a type alias but syntactically a const
   - Server: centrality 0.40, 35 refs. DocumentStore: 39 refs. Healthy reference counts
   - Test files in `tests/` directory properly detected
+
+### QML (Specialized Tier)
+- **Reference project:** KDE/kirigami (200 .qml files, 6207 symbols, 11196 relationships)
+- **Date verified:** 2026-03-17
+- **Tier:** Specialized (moved from Full — QML is a declarative UI language)
+- **Issues found:**
+  - **FIXED: Import statements not extracted** — The extractor had no handler for `ui_import` nodes. QML imports like `import QtQuick 2.15`, `import org.kde.kirigami as Kirigami` were completely missed. Fix: added `ui_import` handler in `traverse_node()` that extracts the `source` field (handles both `identifier` and `nested_identifier` nodes for simple and dotted paths).
+  - **FIXED: Class name was base type instead of component name** — In QML, the file name IS the component name (`ScrollablePage.qml` defines `ScrollablePage`). The root element (`KC.Page {}`) declares the base type. The extractor stored the base type as the class name, making definition search unable to find components by name. Fix: derive component name from file path stem, store base type in signature as `extends BaseType`.
+  - **FIXED: No TypeUsage identifiers for component instantiations** — Nested `ui_object_definition` nodes (`Rectangle {}`, `Button {}`, etc.) are type references but weren't captured as identifiers. Fix: added `ui_object_definition` handler in `identifiers.rs` that detects nested (non-root) objects and creates `TypeUsage` identifiers for their type names. This enables centrality scoring for QML components.
+  - **FIXED: Test detection not working (systemic)** — QML test files use `autotests/` directory and `tst_` file prefix (Qt convention). Neither pattern was in `is_test_path()`. Fix: added `"autotests"` to directory segment match and `tst_` to file name prefix patterns. Benefits all languages using Qt-style test conventions.
+  - **FIXED: Centrality 0.00 for all QML components despite heavy usage (systemic)** — The centrality boost SQL in `compute_reference_scores()` Step 1b used exact name matching (`i.name = symbols.name`). QML (and other languages) use namespace-qualified references (`Kirigami.ScrollablePage`) that don't match unqualified symbol names (`ScrollablePage`). Fix: added suffix matching (`i.name LIKE '%.' || symbols.name`) to also match qualified identifiers by their last component. Benefits all languages using dot-qualified references (QML, Elixir, Scala, Java, C#, etc.).
+- **Notes:**
+  - `*` on all checks indicates PASS after fixes applied in this session
+  - KDE/Qt projects use `autotests/` with `tst_` prefix — now recognized by generic test detection
+  - QML component instantiations now contribute to centrality via TypeUsage identifiers
+  - **Live verified:** ScrollablePage centrality 0.00 → 0.87 (25 dependents), OverlayDrawer 0.00 → 0.56 (7 dependents)
+  - AboutPage stays at 0.00 with 1 dependent — correct for a leaf component

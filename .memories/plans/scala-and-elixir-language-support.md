@@ -1,9 +1,9 @@
 ---
 id: scala-and-elixir-language-support
 title: Scala and Elixir Language Support
-status: active
+status: completed
 created: 2026-03-16T21:49:10.012Z
-updated: 2026-03-16T21:49:10.012Z
+updated: 2026-03-17T15:55:36.654Z
 tags:
   - scala
   - elixir

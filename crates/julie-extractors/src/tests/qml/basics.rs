@@ -37,7 +37,14 @@ Rectangle {
             .filter(|s| s.kind == SymbolKind::Class)
             .collect();
         assert_eq!(components.len(), 1, "Should extract Rectangle component");
-        assert_eq!(components[0].name, "Rectangle");
+        // In QML, the class name is the file-derived component name, not the base type.
+        // Default test helper uses "test.qml", so component name is "test".
+        assert_eq!(components[0].name, "test");
+        // Base type preserved in signature
+        assert!(
+            components[0].signature.as_deref().unwrap_or("").contains("Rectangle"),
+            "Signature should contain base type 'Rectangle'"
+        );
 
         // Should extract properties
         let properties: Vec<&Symbol> = symbols
@@ -114,7 +121,12 @@ Window {
             1,
             "Should extract only the root Window component"
         );
-        assert_eq!(components[0].name, "Window");
+        // File-derived name from default "test.qml"
+        assert_eq!(components[0].name, "test");
+        assert!(
+            components[0].signature.as_deref().unwrap_or("").contains("Window"),
+            "Signature should contain base type 'Window'"
+        );
     }
 
     #[test]
@@ -133,15 +145,41 @@ Rectangle {
 
         let symbols = extract_symbols(qml_code);
 
-        // Should extract imports
+        // Should extract imports as Import-kind symbols
         let imports: Vec<&Symbol> = symbols
             .iter()
             .filter(|s| s.kind == SymbolKind::Import)
             .collect();
 
-        // Note: The extractor might not extract imports as symbols yet
-        // This test documents expected behavior for future implementation
-        // assert!(imports.len() >= 3, "Should extract import statements");
+        assert_eq!(
+            imports.len(),
+            4,
+            "Should extract all 4 import statements. Got: {:?}",
+            imports.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        // Verify import names are the module paths
+        let import_names: Vec<&str> = imports.iter().map(|s| s.name.as_str()).collect();
+        assert!(
+            import_names.contains(&"QtQuick"),
+            "Should find QtQuick import. Got: {:?}",
+            import_names
+        );
+        assert!(
+            import_names.contains(&"QtQuick.Controls"),
+            "Should find QtQuick.Controls import. Got: {:?}",
+            import_names
+        );
+        assert!(
+            import_names.contains(&"QtQuick.Layouts"),
+            "Should find QtQuick.Layouts import. Got: {:?}",
+            import_names
+        );
+        assert!(
+            import_names.contains(&"org.kde.plasma.core"),
+            "Should find org.kde.plasma.core import. Got: {:?}",
+            import_names
+        );
     }
 
     #[test]

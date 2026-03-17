@@ -287,6 +287,11 @@ impl SymbolDatabase {
         // These are captured as identifiers but not always as relationships,
         // so without this step, heavily-imported/referenced types would have zero centrality.
         // Weight: type_usage=1.0, import=2.0 (same as relationship weights).
+        //
+        // Name matching: exact OR qualified suffix match. QML and other languages use
+        // namespace-qualified references (Kirigami.ScrollablePage, Phoenix.Router) where
+        // the last component matches the symbol name. Without suffix matching, all QML
+        // components would have centrality 0.00 despite heavy usage.
         self.conn.execute(
             "UPDATE symbols SET reference_score = reference_score + COALESCE(
                 (SELECT SUM(
@@ -297,7 +302,8 @@ impl SymbolDatabase {
                     END
                 )
                  FROM identifiers i
-                 WHERE i.name = symbols.name
+                 WHERE (i.name = symbols.name
+                        OR i.name LIKE '%.' || symbols.name)
                    AND i.kind IN ('type_usage', 'import')
                    AND i.file_path != symbols.file_path),
                 0.0

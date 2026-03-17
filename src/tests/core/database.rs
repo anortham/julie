@@ -2606,3 +2606,96 @@ fn test_compute_reference_scores_includes_import_identifiers() {
         score
     );
 }
+
+/// Verify that qualified-name identifiers (e.g. Kirigami.ScrollablePage) match
+/// unqualified symbol names (ScrollablePage) for centrality computation.
+/// QML uses namespace-qualified references heavily: `Kirigami.ScrollablePage {}`.
+/// Without this, all QML components have centrality 0.00 despite heavy usage.
+#[test]
+fn test_compute_reference_scores_qualified_name_identifiers() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for (path, lang) in [
+        ("src/controls/ScrollablePage.qml", "qml"),
+        ("src/controls/AboutPage.qml", "qml"),
+        ("examples/SimplePage.qml", "qml"),
+    ] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: lang.to_string(),
+            hash: "abc123".to_string(),
+            size: 100,
+            last_modified: 1234567890,
+            last_indexed: 0,
+            symbol_count: 2,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    // QML component: file-derived name "ScrollablePage"
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('scrollable_page', 'ScrollablePage', 'class', 'qml', 'src/controls/ScrollablePage.qml', 1, 100, 0, 1, 0, 2000)",
+            [],
+        )
+        .unwrap();
+
+    // Another component that should NOT be matched
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('about_page', 'AboutPage', 'class', 'qml', 'src/controls/AboutPage.qml', 1, 50, 0, 1, 0, 1000)",
+            [],
+        )
+        .unwrap();
+
+    // TypeUsage identifiers using QUALIFIED name: "Kirigami.ScrollablePage"
+    // These reference ScrollablePage but through a namespace prefix
+    for (id, line) in [("id1", 10), ("id2", 20), ("id3", 30)] {
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col)
+                 VALUES (?1, 'Kirigami.ScrollablePage', 'type_usage', 'qml', 'examples/SimplePage.qml', ?2, 0, ?2, 30)",
+                rusqlite::params![id, line],
+            )
+            .unwrap();
+    }
+
+    db.compute_reference_scores().unwrap();
+
+    // ScrollablePage should have non-zero centrality from qualified type usage identifiers
+    let score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'scrollable_page'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    // 3 type_usage × 1.0 weight = 3.0
+    assert!(
+        (score - 3.0).abs() < f64::EPSILON,
+        "ScrollablePage should have centrality 3.0 from 3 qualified TypeUsage refs (Kirigami.ScrollablePage), got {}",
+        score
+    );
+
+    // AboutPage should NOT be boosted — no identifiers reference it
+    let about_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'about_page'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        (about_score - 0.0).abs() < f64::EPSILON,
+        "AboutPage should have 0.0 centrality (no matching identifiers), got {}",
+        about_score
+    );
+}

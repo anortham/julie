@@ -265,6 +265,52 @@ Item {
     }
 
     #[test]
+    fn test_component_name_derived_from_file_path() {
+        // In QML, the file name IS the component name.
+        // ScrollablePage.qml defines a component called ScrollablePage.
+        // The root element (KC.Page) is the base type it extends.
+        let qml_code = r#"
+import QtQuick 2.15
+import org.kde.kirigami as Kirigami
+
+Kirigami.ScrollablePage {
+    id: root
+    title: "Settings"
+
+    property alias model: listView.model
+
+    ListView {
+        id: listView
+    }
+}
+"#;
+
+        let symbols =
+            extract_symbols_with_path(qml_code, "src/controls/SettingsPage.qml");
+
+        let components: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Class)
+            .collect();
+
+        assert_eq!(components.len(), 1, "Should extract one class symbol");
+
+        // The class name should be the component name from the file, not the base type
+        assert_eq!(
+            components[0].name, "SettingsPage",
+            "Class name should be the file-derived component name, not the base type"
+        );
+
+        // The base type should be preserved in the signature
+        let sig = components[0].signature.as_deref().unwrap_or("");
+        assert!(
+            sig.contains("Kirigami.ScrollablePage"),
+            "Signature should contain the base type. Got: {:?}",
+            sig
+        );
+    }
+
+    #[test]
     fn test_extract_pathview_component() {
         let qml_code = r#"
 import QtQuick 2.15

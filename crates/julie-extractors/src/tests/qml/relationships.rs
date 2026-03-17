@@ -135,7 +135,8 @@ Item {
             1,
             "Should extract only the root Item component"
         );
-        assert_eq!(components[0].name, "Item");
+        // File-derived name from default "test.qml"
+        assert_eq!(components[0].name, "test");
     }
 
     #[test]

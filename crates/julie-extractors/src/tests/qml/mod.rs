@@ -37,6 +37,20 @@ pub fn extract_symbols_and_relationships(code: &str) -> (Vec<Symbol>, Vec<Relati
     (symbols, relationships)
 }
 
+/// Helper function to extract symbols from QML code with a custom file path
+/// Used for test detection tests where the file path matters
+pub fn extract_symbols_with_path(code: &str, file_path: &str) -> Vec<Symbol> {
+    let tree = init_parser(code, "qml");
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = QmlExtractor::new(
+        "qml".to_string(),
+        file_path.to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    extractor.extract_symbols(&tree)
+}
+
 /// Helper function to extract identifiers from QML code
 /// Used for tests that verify identifier extraction (calls, member access, variable refs)
 pub fn extract_identifiers(code: &str) -> Vec<Identifier> {

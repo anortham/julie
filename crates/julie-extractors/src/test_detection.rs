@@ -21,7 +21,9 @@ fn is_test_path(file_path: &str) -> bool {
     // Segment-level checks (directory names)
     for segment in file_path.split('/') {
         match segment {
-            "test" | "tests" | "Test" | "Tests" | "spec" | "Spec" | "__tests__" => return true,
+            "test" | "tests" | "Test" | "Tests" | "spec" | "Spec" | "__tests__" | "autotests" => {
+                return true
+            }
             _ => {}
         }
         // C# convention: MyProject.Tests/
@@ -36,6 +38,7 @@ fn is_test_path(file_path: &str) -> bool {
         || file_name.contains(".test.")
         || file_name.contains(".spec.")
         || file_name.starts_with("test_")
+        || file_name.starts_with("tst_")
     {
         return true;
     }

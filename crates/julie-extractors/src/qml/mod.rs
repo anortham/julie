@@ -47,22 +47,52 @@ impl QmlExtractor {
         let mut current_symbol: Option<Symbol> = None;
 
         match node.kind() {
+            // QML import statements (import QtQuick 2.15, import org.kde.plasma.core as Plasma)
+            "ui_import" => {
+                if let Some(source_node) = node.child_by_field_name("source") {
+                    let name = self.base.get_node_text(&source_node);
+                    let options = SymbolOptions {
+                        parent_id: parent_id.clone(),
+                        ..Default::default()
+                    };
+                    let symbol =
+                        self.base
+                            .create_symbol(&node, name, SymbolKind::Import, options);
+                    self.symbols.push(symbol);
+                }
+            }
+
             // QML object definitions (Rectangle, Window, Button, etc.)
             // Only the root object (parent_id is None) is a true definition —
             // it declares the file's component base type. Nested objects are
             // component instantiations (usages), not definitions.
+            //
+            // In QML, the file name IS the component name (e.g., ScrollablePage.qml
+            // defines "ScrollablePage"). The root element is the base type it extends.
             "ui_object_definition" => {
                 if let Some(type_name) = node.child_by_field_name("type_name") {
                     if parent_id.is_none() {
-                        // Root object: the file's component base type declaration
-                        let name = self.base.get_node_text(&type_name);
+                        let base_type = self.base.get_node_text(&type_name);
+
+                        // Derive the component name from the file path stem
+                        let component_name = std::path::Path::new(&self.base.file_path)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| base_type.clone());
+
+                        let signature = Some(format!("extends {}", base_type));
                         let options = SymbolOptions {
                             parent_id: parent_id.clone(),
+                            signature,
                             ..Default::default()
                         };
-                        let symbol =
-                            self.base
-                                .create_symbol(&node, name, SymbolKind::Class, options);
+                        let symbol = self.base.create_symbol(
+                            &node,
+                            component_name,
+                            SymbolKind::Class,
+                            options,
+                        );
                         self.symbols.push(symbol.clone());
                         current_symbol = Some(symbol);
                     }

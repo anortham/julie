@@ -259,4 +259,64 @@ Item {
 
         assert_eq!(functions.len(), 5, "Should extract all five functions");
     }
+
+    #[test]
+    fn test_qml_test_functions_detected_in_autotests() {
+        // QML test files live in autotests/ with tst_ prefix (Qt convention)
+        // Functions named test_* should be marked as test symbols
+        let qml_code = r#"
+import QtQuick
+import QtTest
+
+TestCase {
+    name: "MyTest"
+
+    function test_buttonClick() {
+        verify(true)
+    }
+
+    function test_inputValidation() {
+        compare(1, 1)
+    }
+
+    function helperSetup() {
+        // Not a test function
+    }
+}
+"#;
+
+        let symbols = extract_symbols_with_path(qml_code, "autotests/tst_mywidget.qml");
+
+        let test_fns: Vec<&Symbol> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Function)
+            .filter(|s| {
+                s.metadata
+                    .as_ref()
+                    .and_then(|m| m.get("is_test"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        assert_eq!(
+            test_fns.len(),
+            2,
+            "test_buttonClick and test_inputValidation should be marked as tests. Got: {:?}",
+            test_fns.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+
+        // helperSetup should NOT be marked as test
+        let helper = symbols
+            .iter()
+            .find(|s| s.name == "helperSetup")
+            .expect("Should find helperSetup");
+        let is_test = helper
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("is_test"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        assert!(!is_test, "helperSetup should not be marked as test");
+    }
 }

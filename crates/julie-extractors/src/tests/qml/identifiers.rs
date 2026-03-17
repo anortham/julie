@@ -223,4 +223,65 @@ Item {
             "start_line should be <= end_line"
         );
     }
+
+    #[test]
+    fn test_extract_component_instantiation_as_type_usage() {
+        // Nested QML components (Rectangle {}, Button {}, etc.) are type references.
+        // The type name used in a ui_object_definition is analogous to a constructor call
+        // or type annotation — it should produce a TypeUsage identifier.
+        let qml_code = r#"
+import QtQuick 2.15
+
+Item {
+    Rectangle {
+        id: header
+        width: parent.width
+
+        Text {
+            text: "Hello"
+        }
+    }
+
+    ListView {
+        id: mainList
+        model: 10
+    }
+
+    MouseArea {
+        anchors.fill: parent
+    }
+}
+"#;
+
+        let identifiers = extract_identifiers(qml_code);
+
+        let type_usages: Vec<&Identifier> = identifiers
+            .iter()
+            .filter(|id| id.kind == IdentifierKind::TypeUsage)
+            .collect();
+
+        let type_names: Vec<&str> = type_usages.iter().map(|id| id.name.as_str()).collect();
+
+        // Each nested component instantiation should produce a TypeUsage identifier
+        assert!(
+            type_names.contains(&"Rectangle"),
+            "Rectangle instantiation should be TypeUsage. Got: {:?}",
+            type_names
+        );
+        assert!(
+            type_names.contains(&"Text"),
+            "Text instantiation should be TypeUsage. Got: {:?}",
+            type_names
+        );
+        assert!(
+            type_names.contains(&"ListView"),
+            "ListView instantiation should be TypeUsage. Got: {:?}",
+            type_names
+        );
+        assert!(
+            type_names.contains(&"MouseArea"),
+            "MouseArea instantiation should be TypeUsage. Got: {:?}",
+            type_names
+        );
+    }
 }
