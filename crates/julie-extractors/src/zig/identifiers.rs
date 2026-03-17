@@ -109,10 +109,51 @@ fn extract_identifier_from_node(
             }
         }
 
-        _ => {
-            // Skip other node types for now
-            // Future: type usage, import statements, etc.
+        // Type annotations in Zig: field types, parameter types, return types, var types.
+        // Zig uses plain identifiers after `:` for types — no wrapper `type` node.
+        // We detect type position by checking the parent node context.
+        //
+        // Patterns:
+        //   container_field: `name: Type` → identifier after `:` is a type
+        //   parameter: `param: *Type` → identifier inside pointer_type/optional_type
+        //   variable_declaration: `var x: Type` → identifier after `:`
+        //   error_union_type: `!Type` → identifier child is a type
+        //   pointer_type: `*Type` → identifier child is a type
+        //   optional_type: `?Type` → identifier child is a type
+        "identifier" => {
+            if let Some(parent) = node.parent() {
+                let is_type_position = match parent.kind() {
+                    // *Server, []*Server
+                    "pointer_type" | "optional_type" => true,
+                    // !DocumentStore (error union return type)
+                    "error_union_type" => true,
+                    // document_store: DocumentStore (field or param type)
+                    // var store: DocumentStore (variable type)
+                    "container_field" | "parameter" | "variable_declaration" => {
+                        // Only the identifier AFTER `:` is the type, not before it (the name)
+                        is_after_colon(parent, node)
+                    }
+                    _ => false,
+                };
+
+                if is_type_position {
+                    let name = base.get_node_text(&node);
+                    // Skip builtin types and keywords
+                    if !is_zig_builtin_type(&name) {
+                        let containing_symbol_id =
+                            find_containing_symbol_id(base, node, symbol_map);
+                        base.create_identifier(
+                            &node,
+                            name,
+                            IdentifierKind::TypeUsage,
+                            containing_symbol_id,
+                        );
+                    }
+                }
+            }
         }
+
+        _ => {}
     }
 }
 
@@ -133,4 +174,32 @@ fn find_containing_symbol_id(
 
     base.find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
+}
+
+/// Check if `child` appears after a `:` token in `parent`.
+/// In Zig, `name: Type` means the identifier after `:` is a type, before is the name.
+fn is_after_colon(parent: Node, child: Node) -> bool {
+    let mut saw_colon = false;
+    let mut cursor = parent.walk();
+    for sibling in parent.children(&mut cursor) {
+        if sibling.kind() == ":" {
+            saw_colon = true;
+        }
+        if sibling.id() == child.id() {
+            return saw_colon;
+        }
+    }
+    false
+}
+
+/// Skip Zig builtin primitive types that would create noise.
+fn is_zig_builtin_type(name: &str) -> bool {
+    matches!(
+        name,
+        "void" | "bool" | "noreturn" | "anyerror" | "anytype" | "undefined" | "null" | "anyopaque"
+            | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
+            | "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
+            | "f16" | "f32" | "f64" | "f80" | "f128"
+            | "comptime_int" | "comptime_float"
+    )
 }

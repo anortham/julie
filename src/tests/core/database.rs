@@ -2371,3 +2371,238 @@ fn test_compute_reference_scores_propagates_constructor_centrality() {
         class_score
     );
 }
+
+/// Verify that TypeUsage identifiers contribute to centrality even without relationships.
+/// This fixes the GDScript pattern where classes are referenced via type annotations
+/// (var x: PandoraEntity, func f() -> PandoraEntity) but no call relationships exist.
+#[test]
+fn test_compute_reference_scores_includes_type_usage_identifiers() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Insert two files
+    for (path, lang) in [("model/entity.gd", "gdscript"), ("backend/api.gd", "gdscript")] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: lang.to_string(),
+            hash: "abc123".to_string(),
+            size: 100,
+            last_modified: 1234567890,
+            last_indexed: 0,
+            symbol_count: 2,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    // Insert class symbol: PandoraEntity in entity.gd
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('entity_class', 'PandoraEntity', 'class', 'gdscript', 'model/entity.gd', 1, 100, 0, 1, 0, 500)",
+            [],
+        )
+        .unwrap();
+
+    // Insert a function that references PandoraEntity via type annotation
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('api_func', 'create_entity', 'function', 'gdscript', 'backend/api.gd', 10, 20, 0, 1, 0, 200)",
+            [],
+        )
+        .unwrap();
+
+    // NO relationships — this is the key. Only identifiers.
+    // Insert TypeUsage identifiers pointing to PandoraEntity by name from api.gd
+    for (id, line) in [("id1", 10), ("id2", 15), ("id3", 18)] {
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col, containing_symbol_id)
+                 VALUES (?1, 'PandoraEntity', 'type_usage', 'gdscript', 'backend/api.gd', ?2, 0, ?2, 15, 'api_func')",
+                rusqlite::params![id, line],
+            )
+            .unwrap();
+    }
+
+    // Compute scores
+    db.compute_reference_scores().unwrap();
+
+    // PandoraEntity should now have non-zero centrality from type usage identifiers
+    let entity_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'entity_class'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        entity_score > 0.0,
+        "PandoraEntity should have non-zero centrality from TypeUsage identifiers, got {}",
+        entity_score
+    );
+
+    // create_entity function has no incoming refs — should stay at 0
+    let func_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'api_func'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        (func_score - 0.0).abs() < f64::EPSILON,
+        "create_entity should have 0.0 centrality (no incoming refs), got {}",
+        func_score
+    );
+}
+
+/// Verify that Zig-style type constants (const Server = @This()) get centrality from TypeUsage.
+/// In Zig, types are `constant` kind, not `class`/`struct`.
+#[test]
+fn test_compute_reference_scores_includes_constants_with_type_usage() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for (path, lang) in [("src/Server.zig", "zig"), ("src/main.zig", "zig")] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: lang.to_string(),
+            hash: "abc123".to_string(),
+            size: 100,
+            last_modified: 1234567890,
+            last_indexed: 0,
+            symbol_count: 2,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    // Zig type constant: const Server = @This()
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('server_const', 'Server', 'constant', 'zig', 'src/Server.zig', 1, 1, 0, 1, 0, 30)",
+            [],
+        )
+        .unwrap();
+
+    // A plain constant that's NOT used as a type (should NOT get boosted)
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('max_const', 'max_retries', 'constant', 'zig', 'src/Server.zig', 5, 5, 0, 1, 0, 30)",
+            [],
+        )
+        .unwrap();
+
+    // TypeUsage identifiers referencing Server from main.zig
+    for (id, line) in [("id1", 10), ("id2", 20), ("id3", 30)] {
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col)
+                 VALUES (?1, 'Server', 'type_usage', 'zig', 'src/main.zig', ?2, 0, ?2, 10)",
+                rusqlite::params![id, line],
+            )
+            .unwrap();
+    }
+
+    db.compute_reference_scores().unwrap();
+
+    // Server constant should get centrality from TypeUsage identifiers
+    let server_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'server_const'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        server_score > 0.0,
+        "Zig type constant 'Server' should have non-zero centrality from TypeUsage, got {}",
+        server_score
+    );
+
+    // max_retries has no TypeUsage identifiers — should stay at 0
+    let max_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'max_const'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        (max_score - 0.0).abs() < f64::EPSILON,
+        "Plain constant 'max_retries' should have 0.0 centrality (no TypeUsage refs), got {}",
+        max_score
+    );
+}
+
+/// Verify that import identifiers contribute to centrality.
+/// In Zig, cross-file references are primarily @import() which produce import-kind identifiers.
+/// A symbol imported in 15 files should have significant centrality.
+#[test]
+fn test_compute_reference_scores_includes_import_identifiers() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Create files
+    for path in ["src/Store.zig", "src/a.zig", "src/b.zig", "src/c.zig"] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: "zig".to_string(),
+            hash: "abc123".to_string(),
+            size: 100,
+            last_modified: 1234567890,
+            last_indexed: 0,
+            symbol_count: 1,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    // The type constant being imported
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('store', 'DocumentStore', 'constant', 'zig', 'src/Store.zig', 1, 1, 0, 1, 0, 30)",
+            [],
+        )
+        .unwrap();
+
+    // Import identifiers from 3 different files (weight 2.0 each)
+    for (id, file) in [("imp1", "src/a.zig"), ("imp2", "src/b.zig"), ("imp3", "src/c.zig")] {
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col)
+                 VALUES (?1, 'DocumentStore', 'import', 'zig', ?2, 1, 0, 1, 30)",
+                rusqlite::params![id, file],
+            )
+            .unwrap();
+    }
+
+    db.compute_reference_scores().unwrap();
+
+    let score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'store'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    // 3 imports × 2.0 weight = 6.0
+    assert!(
+        (score - 6.0).abs() < f64::EPSILON,
+        "DocumentStore should have centrality 6.0 from 3 imports (3 × 2.0), got {}",
+        score
+    );
+}

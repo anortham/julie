@@ -163,7 +163,7 @@ fast_search(query="<test_function>", exclude_tests=false)
 | **Go** | `*_test.go` file convention, no class hierarchy |
 | **Ruby** | Modules as namespaces (`Module::Class`), RSpec `describe`/`it` blocks |
 | **Python** | `__init__.py` module detection, decorator-based test detection |
-| **Rust** | `::` separator for qualified names, macro invocations as symbols |
+| **Rust** | `::` separator for qualified names, macro invocations as symbols, scoped paths (`crate::module::func()`) are implicit imports not captured by identifier extraction (see TODO.md sentrux ideas) |
 | **JS/TS** | CommonJS vs ESM exports, bundled files (`.min.js`) polluting results |
 
 ---

@@ -1,4 +1,4 @@
-//! Identifier extraction for GDScript (function calls, member access, etc.)
+//! Identifier extraction for GDScript (function calls, member access, type annotations, etc.)
 
 use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
 use std::collections::HashMap;
@@ -128,6 +128,26 @@ fn extract_identifier_from_node(
                         IdentifierKind::MemberAccess,
                         containing_symbol_id,
                     );
+                }
+            }
+        }
+
+        // Type annotations: extends X, var x: Type, func f(a: Type) -> ReturnType
+        // AST: type -> identifier (uniform across extends, vars, params, return types)
+        "type" => {
+            // Extract the identifier inside the type node
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "identifier" {
+                    let name = base.get_node_text(&child);
+                    let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
+                    base.create_identifier(
+                        &child,
+                        name,
+                        IdentifierKind::TypeUsage,
+                        containing_symbol_id,
+                    );
+                    break;
                 }
             }
         }

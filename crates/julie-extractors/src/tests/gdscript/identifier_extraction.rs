@@ -254,4 +254,180 @@ func process():
             "Duplicate calls should have different line numbers"
         );
     }
+
+    // ========================================================================
+    // Type annotation identifier extraction (Bug fix: GDScript type refs)
+    // ========================================================================
+
+    #[test]
+    fn test_gdscript_extends_creates_type_usage_identifier() {
+        let gdscript_code = r#"
+extends PandoraEntity
+
+class_name PandoraCategory
+
+func get_name() -> String:
+    return _name
+"#;
+
+        let tree = init_parser(gdscript_code, "gdscript");
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = GDScriptExtractor::new(
+            "gdscript".to_string(),
+            "test.gd".to_string(),
+            gdscript_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // extends PandoraEntity should create a TypeUsage identifier
+        let extends_ref = identifiers
+            .iter()
+            .find(|id| id.name == "PandoraEntity" && id.kind == IdentifierKind::TypeUsage);
+        assert!(
+            extends_ref.is_some(),
+            "Should extract 'PandoraEntity' as TypeUsage from extends clause.\n\
+             Found identifiers: {:?}",
+            identifiers
+                .iter()
+                .map(|id| format!("{}:{:?}", id.name, id.kind))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_gdscript_variable_type_annotation_creates_identifier() {
+        let gdscript_code = r#"
+extends Node
+
+var _property: PandoraProperty
+var _backend: PandoraEntityBackend
+var _count: int = 0
+"#;
+
+        let tree = init_parser(gdscript_code, "gdscript");
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = GDScriptExtractor::new(
+            "gdscript".to_string(),
+            "test.gd".to_string(),
+            gdscript_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        let type_usages: Vec<_> = identifiers
+            .iter()
+            .filter(|id| id.kind == IdentifierKind::TypeUsage)
+            .collect();
+
+        // Should find PandoraProperty, PandoraEntityBackend, int, and Node (from extends)
+        let property_ref = type_usages.iter().find(|id| id.name == "PandoraProperty");
+        assert!(
+            property_ref.is_some(),
+            "Should extract 'PandoraProperty' TypeUsage from var type annotation.\n\
+             Found type usages: {:?}",
+            type_usages
+                .iter()
+                .map(|id| &id.name)
+                .collect::<Vec<_>>()
+        );
+
+        let backend_ref = type_usages.iter().find(|id| id.name == "PandoraEntityBackend");
+        assert!(
+            backend_ref.is_some(),
+            "Should extract 'PandoraEntityBackend' TypeUsage from var type annotation"
+        );
+    }
+
+    #[test]
+    fn test_gdscript_function_param_and_return_type_creates_identifier() {
+        let gdscript_code = r#"
+extends Node
+
+func create_entity(name: String, category: PandoraCategory) -> PandoraEntity:
+    pass
+"#;
+
+        let tree = init_parser(gdscript_code, "gdscript");
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = GDScriptExtractor::new(
+            "gdscript".to_string(),
+            "test.gd".to_string(),
+            gdscript_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        let type_usages: Vec<_> = identifiers
+            .iter()
+            .filter(|id| id.kind == IdentifierKind::TypeUsage)
+            .collect();
+
+        // Parameter types
+        let string_ref = type_usages.iter().find(|id| id.name == "String");
+        assert!(
+            string_ref.is_some(),
+            "Should extract 'String' TypeUsage from parameter type.\n\
+             Found type usages: {:?}",
+            type_usages
+                .iter()
+                .map(|id| &id.name)
+                .collect::<Vec<_>>()
+        );
+
+        let category_ref = type_usages.iter().find(|id| id.name == "PandoraCategory");
+        assert!(
+            category_ref.is_some(),
+            "Should extract 'PandoraCategory' TypeUsage from parameter type"
+        );
+
+        // Return type
+        let return_ref = type_usages.iter().find(|id| id.name == "PandoraEntity");
+        assert!(
+            return_ref.is_some(),
+            "Should extract 'PandoraEntity' TypeUsage from return type"
+        );
+    }
+
+    #[test]
+    fn test_gdscript_type_usage_has_containing_symbol() {
+        let gdscript_code = r#"
+extends Node
+
+func process(entity: PandoraEntity) -> void:
+    var prop: PandoraProperty = entity.get_property("name")
+"#;
+
+        let tree = init_parser(gdscript_code, "gdscript");
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = GDScriptExtractor::new(
+            "gdscript".to_string(),
+            "test.gd".to_string(),
+            gdscript_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        // Type annotations inside a function should have the function as containing symbol
+        let prop_type = identifiers
+            .iter()
+            .find(|id| id.name == "PandoraProperty" && id.kind == IdentifierKind::TypeUsage);
+        assert!(prop_type.is_some(), "Should extract PandoraProperty TypeUsage");
+
+        let process_func = symbols.iter().find(|s| s.name == "process").unwrap();
+        let prop_type = prop_type.unwrap();
+        assert_eq!(
+            prop_type.containing_symbol_id.as_ref(),
+            Some(&process_func.id),
+            "Type annotation inside function should have function as containing symbol"
+        );
+    }
 }

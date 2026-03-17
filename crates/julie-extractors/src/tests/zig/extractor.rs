@@ -28,6 +28,70 @@ pub fn main() void {
 }
 
 #[test]
+fn test_zig_type_annotations_create_type_usage_identifiers() {
+    let code = r#"const Server = @This();
+const DocumentStore = @import("DocumentStore.zig");
+
+document_store: DocumentStore,
+config: Config,
+
+pub fn create(server: *Server) !DocumentStore {
+    var store: DocumentStore = undefined;
+    return store;
+}
+"#;
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_zig::LANGUAGE.into())
+        .unwrap();
+    let tree = parser.parse(code, None).unwrap();
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = ZigExtractor::new(
+        "zig".to_string(),
+        "test.zig".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+    let type_usages: Vec<_> = identifiers
+        .iter()
+        .filter(|id| id.kind == crate::base::IdentifierKind::TypeUsage)
+        .collect();
+    let type_names: Vec<&str> = type_usages.iter().map(|id| id.name.as_str()).collect();
+
+    // Field type: document_store: DocumentStore
+    assert!(
+        type_names.contains(&"DocumentStore"),
+        "Should extract 'DocumentStore' TypeUsage from container_field type.\nFound: {:?}",
+        type_names
+    );
+
+    // Field type: config: Config
+    assert!(
+        type_names.contains(&"Config"),
+        "Should extract 'Config' TypeUsage from container_field type.\nFound: {:?}",
+        type_names
+    );
+
+    // Parameter type: server: *Server
+    assert!(
+        type_names.contains(&"Server"),
+        "Should extract 'Server' TypeUsage from parameter pointer type.\nFound: {:?}",
+        type_names
+    );
+
+    // Return type: !DocumentStore (already counted above, but verify count >= 2)
+    let doc_store_count = type_names.iter().filter(|n| **n == "DocumentStore").count();
+    assert!(
+        doc_store_count >= 2,
+        "Should extract 'DocumentStore' from both field type and return type/var decl, got {} occurrences",
+        doc_store_count
+    );
+}
+
+#[test]
 fn test_zig_struct_extraction() {
     let code = r#"
 pub const Point = struct {

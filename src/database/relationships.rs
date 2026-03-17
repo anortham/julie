@@ -281,6 +281,31 @@ impl SymbolDatabase {
             [],
         )?;
 
+        // Step 1b: Boost centrality from identifier references (cross-file only).
+        // Languages reference types through type annotations (var x: Foo, extends Foo)
+        // and imports (const Foo = @import("Foo.zig"), import { Foo } from "./foo").
+        // These are captured as identifiers but not always as relationships,
+        // so without this step, heavily-imported/referenced types would have zero centrality.
+        // Weight: type_usage=1.0, import=2.0 (same as relationship weights).
+        self.conn.execute(
+            "UPDATE symbols SET reference_score = reference_score + COALESCE(
+                (SELECT SUM(
+                    CASE i.kind
+                        WHEN 'import' THEN 2.0
+                        WHEN 'type_usage' THEN 1.0
+                        ELSE 0.0
+                    END
+                )
+                 FROM identifiers i
+                 WHERE i.name = symbols.name
+                   AND i.kind IN ('type_usage', 'import')
+                   AND i.file_path != symbols.file_path),
+                0.0
+            )
+            WHERE kind IN ('class', 'struct', 'enum', 'interface', 'trait', 'type', 'module', 'namespace', 'constant')",
+            [],
+        )?;
+
         // Step 2: Propagate centrality from interfaces/base classes to implementations.
         // When class Foo implements IBar, Foo gets 70% of IBar's centrality added.
         // This fixes C# DI patterns where all references go through interfaces,
