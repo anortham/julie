@@ -46,7 +46,7 @@ pub struct FastSearchTool {
     /// Search target: "content" (default) or "definitions"
     #[serde(default = "default_search_target")]
     pub search_target: String,
-    /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
+    /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "scala", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
     #[serde(default)]
     pub language: Option<String>,
     /// File pattern filter (glob syntax)

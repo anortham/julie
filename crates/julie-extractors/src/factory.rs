@@ -277,6 +277,26 @@ pub fn extract_symbols_and_relationships(
                 types: convert_types_map(types, language),
             })
         }
+        "scala" => {
+            let mut ext = crate::scala::ScalaExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                pending_relationships: pending,
+                identifiers,
+                types: convert_types_map(types, language),
+            })
+        }
         "dart" => {
             let mut ext = crate::dart::DartExtractor::new(
                 language.to_string(),

@@ -1,15 +1,12 @@
 //! Scala Extractor
 //!
-//! Implementation of Scala extractor, templated from the Kotlin extractor (JVM sibling).
-//!
-//! This extractor handles comprehensive Scala symbol extraction including:
+//! Comprehensive Scala symbol extraction including:
 //! - Classes, case classes, abstract classes, sealed classes
 //! - Traits, objects, companion objects
-//! - Enums (Scala 3) with cases
-//! - Functions, methods, extension methods
-//! - Imports, packages, type aliases
-//! - Val/var properties, lazy vals
-//! - Given instances, extension definitions (Scala 3)
+//! - Functions/methods, vals, vars
+//! - Enums (Scala 3), type aliases
+//! - Given instances, extension methods
+//! - Imports, packages
 
 mod declarations;
 mod helpers;
@@ -66,7 +63,6 @@ impl ScalaExtractor {
         let mut new_parent_id = parent_id.clone();
 
         match node.kind() {
-            // Types (types.rs)
             "class_definition" => {
                 symbol = types::extract_class(&mut self.base, &node, parent_id.as_deref());
             }
@@ -74,19 +70,24 @@ impl ScalaExtractor {
                 symbol = types::extract_trait(&mut self.base, &node, parent_id.as_deref());
             }
             "object_definition" => {
-                symbol = types::extract_object(&mut self.base, &node, parent_id.as_deref());
+                symbol =
+                    types::extract_object(&mut self.base, &node, symbols, parent_id.as_deref());
             }
             "enum_definition" => {
                 symbol = types::extract_enum(&mut self.base, &node, parent_id.as_deref());
             }
-            // Enum cases are extracted as children of enum_definition
             "simple_enum_case" | "full_enum_case" => {
                 symbol = types::extract_enum_case(&mut self.base, &node, parent_id.as_deref());
             }
-            // Declarations (declarations.rs)
             "function_definition" | "function_declaration" => {
                 symbol =
                     declarations::extract_function(&mut self.base, &node, parent_id.as_deref());
+            }
+            "val_definition" | "val_declaration" => {
+                symbol = properties::extract_val(&mut self.base, &node, parent_id.as_deref());
+            }
+            "var_definition" | "var_declaration" => {
+                symbol = properties::extract_var(&mut self.base, &node, parent_id.as_deref());
             }
             "import_declaration" => {
                 symbol =
@@ -107,15 +108,6 @@ impl ScalaExtractor {
             "extension_definition" => {
                 symbol =
                     declarations::extract_extension(&mut self.base, &node, parent_id.as_deref());
-            }
-            // Properties (properties.rs)
-            "val_definition" | "val_declaration" => {
-                symbol =
-                    properties::extract_val(&mut self.base, &node, parent_id.as_deref());
-            }
-            "var_definition" | "var_declaration" => {
-                symbol =
-                    properties::extract_var(&mut self.base, &node, parent_id.as_deref());
             }
             _ => {}
         }
@@ -161,7 +153,8 @@ impl ScalaExtractor {
         relationships: &mut Vec<Relationship>,
     ) {
         match node.kind() {
-            "class_definition" | "trait_definition" | "object_definition" | "enum_definition" => {
+            "class_definition" | "trait_definition" | "object_definition"
+            | "enum_definition" => {
                 relationships::extract_inheritance_relationships(
                     self,
                     &node,
@@ -185,6 +178,10 @@ impl ScalaExtractor {
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(&mut self.base, tree, symbols)
     }
+
+    // ========================================================================
+    // Accessors for sub-modules
+    // ========================================================================
 
     pub(crate) fn base(&self) -> &BaseExtractor {
         &self.base

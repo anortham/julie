@@ -211,6 +211,7 @@ pub mod language {
                 "rb" => Some("ruby"),
                 "swift" => Some("swift"),
                 "kt" => Some("kotlin"),
+                "scala" | "sc" => Some("scala"),
                 "lua" => Some("lua"),
                 "gd" => Some("gdscript"),
                 "vue" => Some("vue"),
