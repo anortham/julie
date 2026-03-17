@@ -72,7 +72,8 @@ pub fn is_test_symbol(
     match language {
         "rust" => detect_rust(attributes),
         "python" => detect_python(name, decorators),
-        "java" | "kotlin" => detect_java_kotlin(decorators, attributes),
+        "java" | "kotlin" | "scala" => detect_java_kotlin(decorators, attributes),
+        "elixir" => detect_elixir(name, file_path),
         "csharp" | "razor" => detect_csharp(attributes),
         "go" => detect_go(name, file_path),
         "javascript" | "typescript" => detect_js_ts(name, file_path),
@@ -180,6 +181,11 @@ fn detect_swift(name: &str) -> bool {
     // XCTest convention: test* prefix for methods/functions + lifecycle methods
     name.starts_with("test")
         || matches!(name, "setUp" | "tearDown" | "setUpWithError" | "tearDownWithError")
+}
+
+fn detect_elixir(name: &str, file_path: &str) -> bool {
+    // ExUnit convention: test_ prefix or test/ directory
+    name.starts_with("test_") || name.starts_with("test ") || is_test_path(file_path)
 }
 
 fn detect_dart(name: &str, file_path: &str, decorators: &[String]) -> bool {

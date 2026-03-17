@@ -44,7 +44,11 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         "ruby" => Ok(tree_sitter_ruby::LANGUAGE.into()),
         "swift" => Ok(tree_sitter_swift::LANGUAGE.into()),
         "kotlin" => Ok(tree_sitter_kotlin_ng::LANGUAGE.into()),
+        "scala" => Ok(tree_sitter_scala::LANGUAGE.into()),
         "dart" => Ok(harper_tree_sitter_dart::LANGUAGE.into()),
+
+        // Functional languages
+        "elixir" => Ok(tree_sitter_elixir::LANGUAGE.into()),
 
         // Scripting languages
         "lua" => Ok(tree_sitter_lua::LANGUAGE.into()),
@@ -66,7 +70,7 @@ pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language>
         "yaml" => Ok(tree_sitter_yaml::LANGUAGE.into()),
 
         _ => Err(anyhow::anyhow!(
-            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, r, python, java, csharp, php, ruby, swift, kotlin, dart, lua, bash, powershell, gdscript, razor, sql, regex, markdown, json, toml, yaml",
+            "Unsupported language: '{}'. Supported languages: rust, c, cpp, go, zig, typescript, javascript, html, css, vue, qml, r, python, java, csharp, php, ruby, swift, kotlin, scala, elixir, dart, lua, bash, powershell, gdscript, razor, sql, regex, markdown, json, toml, yaml",
             language
         )),
     }
@@ -91,8 +95,10 @@ pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
         "php" => Some("php"),
         "swift" => Some("swift"),
         "kt" | "kts" => Some("kotlin"),
+        "scala" | "sc" => Some("scala"),
         "dart" => Some("dart"),
         "gd" => Some("gdscript"),
+        "ex" | "exs" => Some("elixir"),
         "lua" => Some("lua"),
         "qml" => Some("qml"),
         "r" | "R" => Some("r"),
@@ -136,6 +142,8 @@ pub fn get_function_node_kinds(language: &str) -> Vec<&'static str> {
         "ruby" => vec!["method", "singleton_method"],
         "swift" => vec!["function_declaration"],
         "kotlin" => vec!["function_declaration"],
+        "scala" => vec!["function_definition", "function_declaration"],
+        "elixir" => vec!["call"],
         "dart" => vec!["function_signature", "method_signature"],
         "lua" => vec!["function_declaration"],
         "bash" => vec!["function_definition"],
@@ -159,6 +167,8 @@ pub fn get_import_node_kinds(language: &str) -> Vec<&'static str> {
         "ruby" => vec!["call"], // require/require_relative are function calls
         "swift" => vec!["import_declaration"],
         "kotlin" => vec!["import_header"],
+        "scala" => vec!["import_declaration"],
+        "elixir" => vec!["call"],
         "dart" => vec!["import_or_export"],
         "cpp" | "c" => vec!["preproc_include"],
         _ => vec!["import"], // Generic fallback
@@ -232,6 +242,15 @@ pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
             "object_declaration",
             "interface_declaration",
         ],
+        "scala" => vec![
+            "function_definition",
+            "class_definition",
+            "trait_definition",
+            "object_definition",
+            "enum_definition",
+            "type_definition",
+        ],
+        "elixir" => vec!["call"],
         "dart" => vec!["function_signature", "method_signature", "class_definition"],
         "lua" => vec!["function_declaration", "local_function"],
         _ => vec!["function", "class", "method"], // Generic fallback
@@ -245,7 +264,8 @@ pub fn get_symbol_node_kinds(language: &str) -> Vec<&'static str> {
 pub fn get_symbol_name_field(language: &str) -> &'static str {
     match language {
         "rust" | "typescript" | "tsx" | "javascript" | "python" | "java" | "go" | "csharp"
-        | "php" | "ruby" | "swift" | "kotlin" | "dart" | "lua" | "bash" | "powershell" => "name",
+        | "php" | "ruby" | "swift" | "kotlin" | "scala" | "elixir" | "dart" | "lua" | "bash"
+        | "powershell" => "name",
         "cpp" | "c" => "declarator", // C/C++ use nested declarator nodes
         _ => "name",                 // Generic fallback
     }

@@ -49,6 +49,10 @@ harper-tree-sitter-dart = "0.0.5"  # ⚠️ DO NOT CHANGE - REQUIRES TREE-SITTER
 tree-sitter-sequel = "0.3.10"
 tree-sitter-zig = "1.1.2"
 
+# Scala and Elixir language support (#28-29)
+tree-sitter-scala = "0.23"
+tree-sitter-elixir = "0.3"
+
 # Documentation and configuration languages (extractors #28-31)
 tree-sitter-md = "0.5.1"
 tree-sitter-json = "0.24.8"

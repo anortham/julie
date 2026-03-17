@@ -7,7 +7,7 @@
 use crate::language::*;
 
 #[test]
-fn test_all_27_languages_supported() {
+fn test_all_29_languages_supported() {
     let languages = vec![
         "rust",
         "c",
@@ -28,6 +28,8 @@ fn test_all_27_languages_supported() {
         "ruby",
         "swift",
         "kotlin",
+        "scala",
+        "elixir",
         "dart",
         "lua",
         "bash",
@@ -46,7 +48,7 @@ fn test_all_27_languages_supported() {
         );
     }
 
-    assert_eq!(languages.len(), 27, "Should have exactly 27 languages");
+    assert_eq!(languages.len(), 29, "Should have exactly 29 languages");
 }
 
 #[test]

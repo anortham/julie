@@ -217,6 +217,46 @@ pub fn extract_symbols_and_relationships(
                 types: convert_types_map(types, language),
             })
         }
+        "scala" => {
+            let mut ext = crate::scala::ScalaExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                pending_relationships: pending,
+                identifiers,
+                types: convert_types_map(types, language),
+            })
+        }
+        "elixir" => {
+            let mut ext = crate::elixir::ElixirExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            let symbols = ext.extract_symbols(tree);
+            let relationships = ext.extract_relationships(tree, &symbols);
+            let identifiers = ext.extract_identifiers(tree, &symbols);
+            let types = ext.infer_types(&symbols);
+            let pending = ext.get_pending_relationships();
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                pending_relationships: pending,
+                identifiers,
+                types: convert_types_map(types, language),
+            })
+        }
         "kotlin" => {
             let mut ext = crate::kotlin::KotlinExtractor::new(
                 language.to_string(),
@@ -687,8 +727,8 @@ mod factory_consistency_tests {
         // Verify we have all 27 languages
         assert_eq!(
             supported.len(),
-            29,
-            "Expected 29 language entries (27 languages, 2 with aliases)"
+            31,
+            "Expected 31 language entries (29 languages, 2 with aliases)"
         );
 
         let workspace_root = PathBuf::from("/tmp/test");

@@ -110,6 +110,24 @@ pub(crate) fn extract_identifiers_for_language(
             );
             Ok(extractor.extract_identifiers(tree, symbols))
         }
+        "scala" => {
+            let mut extractor = crate::scala::ScalaExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                &tmp_path,
+            );
+            Ok(extractor.extract_identifiers(tree, symbols))
+        }
+        "elixir" => {
+            let mut extractor = crate::elixir::ElixirExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                &tmp_path,
+            );
+            Ok(extractor.extract_identifiers(tree, symbols))
+        }
         "c" => {
             let mut extractor = crate::c::CExtractor::new(
                 language.to_string(),

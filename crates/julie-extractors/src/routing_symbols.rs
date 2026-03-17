@@ -126,6 +126,24 @@ pub(crate) fn extract_symbols_for_language(
             );
             Ok(extractor.extract_symbols(tree))
         }
+        "scala" => {
+            let mut extractor = crate::scala::ScalaExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            Ok(extractor.extract_symbols(tree))
+        }
+        "elixir" => {
+            let mut extractor = crate::elixir::ElixirExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
+            Ok(extractor.extract_symbols(tree))
+        }
         "dart" => {
             let mut extractor = crate::dart::DartExtractor::new(
                 language.to_string(),
