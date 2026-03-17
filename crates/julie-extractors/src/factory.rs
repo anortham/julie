@@ -277,26 +277,6 @@ pub fn extract_symbols_and_relationships(
                 types: convert_types_map(types, language),
             })
         }
-        "scala" => {
-            let mut ext = crate::scala::ScalaExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = ext.extract_symbols(tree);
-            let relationships = ext.extract_relationships(tree, &symbols);
-            let identifiers = ext.extract_identifiers(tree, &symbols);
-            let types = ext.infer_types(&symbols);
-            let pending = ext.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers,
-                types: convert_types_map(types, language),
-            })
-        }
         "dart" => {
             let mut ext = crate::dart::DartExtractor::new(
                 language.to_string(),
@@ -539,26 +519,6 @@ pub fn extract_symbols_and_relationships(
         // ─── Languages with rels + pending + identifiers but no types ───
         "ruby" => {
             let mut ext = crate::ruby::RubyExtractor::new(
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = ext.extract_symbols(tree);
-            let relationships = ext.extract_relationships(tree, &symbols);
-            let identifiers = ext.extract_identifiers(tree, &symbols);
-            let types = convert_types_map(ext.infer_types(&symbols), language);
-            let pending = ext.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers,
-                types,
-            })
-        }
-        "elixir" => {
-            let mut ext = crate::elixir::ElixirExtractor::new(
-                language.to_string(),
                 file_path.to_string(),
                 content.to_string(),
                 workspace_root,
