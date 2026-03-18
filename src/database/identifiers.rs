@@ -8,7 +8,7 @@
 
 use super::*;
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tracing::debug;
 
 /// Lightweight identifier reference — just the fields fast_refs needs.
@@ -201,6 +201,102 @@ impl SymbolDatabase {
             names.len(),
             kind
         );
+        Ok(results)
+    }
+
+    /// Check which (file_path, name) pairs have matching identifiers.
+    ///
+    /// Returns a HashSet of (file_path, name) pairs that exist in the identifiers table.
+    /// Used by the resolver to detect if a caller file references a candidate's parent type.
+    pub fn get_identifier_presence(
+        &self,
+        file_paths: &[&str],
+        names: &[&str],
+    ) -> Result<HashSet<(String, String)>> {
+        if file_paths.is_empty() || names.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let file_placeholders: String = (1..=file_paths.len())
+            .map(|i| format!("?{}", i))
+            .collect::<Vec<_>>()
+            .join(",");
+        let name_offset = file_paths.len();
+        let name_placeholders: String = (1..=names.len())
+            .map(|i| format!("?{}", name_offset + i))
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let query = format!(
+            "SELECT DISTINCT file_path, name FROM identifiers \
+             WHERE file_path IN ({}) AND name IN ({})",
+            file_placeholders, name_placeholders
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let mut params: Vec<&dyn rusqlite::types::ToSql> = Vec::new();
+        for fp in file_paths {
+            params.push(fp as &dyn rusqlite::types::ToSql);
+        }
+        for n in names {
+            params.push(n as &dyn rusqlite::types::ToSql);
+        }
+
+        let mut results = HashSet::new();
+        let rows = stmt.query_map(&*params, |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        for row in rows {
+            let (file_path, name) = row?;
+            results.insert((file_path, name));
+        }
+
+        debug!(
+            "Identifier presence check: {} files x {} names → {} matches",
+            file_paths.len(),
+            names.len(),
+            results.len()
+        );
+        Ok(results)
+    }
+
+    /// Check which files have at least one identifier in the database.
+    ///
+    /// Used to distinguish "we checked and found no match" from "we have no data"
+    /// when applying negative filtering for phantom call edges.
+    pub fn has_identifiers_for_files(
+        &self,
+        file_paths: &[&str],
+    ) -> Result<HashSet<String>> {
+        if file_paths.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let placeholders: String = (1..=file_paths.len())
+            .map(|i| format!("?{}", i))
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let query = format!(
+            "SELECT DISTINCT file_path FROM identifiers WHERE file_path IN ({})",
+            placeholders
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = file_paths
+            .iter()
+            .map(|fp| fp as &dyn rusqlite::types::ToSql)
+            .collect();
+
+        let mut results = HashSet::new();
+        let rows = stmt.query_map(&*params, |row| row.get::<_, String>(0))?;
+
+        for row in rows {
+            results.insert(row?);
+        }
+
         Ok(results)
     }
 }

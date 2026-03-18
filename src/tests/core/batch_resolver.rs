@@ -6,7 +6,8 @@
 
 use crate::database::{FileInfo, SymbolDatabase};
 use crate::extractors::base::{
-    PendingRelationship, RelationshipKind, Symbol, SymbolKind, Visibility,
+    Identifier, IdentifierKind, PendingRelationship, RelationshipKind, Symbol, SymbolKind,
+    Visibility,
 };
 use crate::tools::workspace::indexing::resolver;
 use tempfile::TempDir;
@@ -220,7 +221,11 @@ fn test_resolve_batch_matches_sequential_resolution() {
                     seq_stats.no_candidates += 1;
                     continue;
                 }
-                if let Some(target) = resolver::select_best_candidate(&candidates, p) {
+                if let Some(target) = resolver::select_best_candidate(
+                    &candidates,
+                    p,
+                    &resolver::ParentReferenceContext::empty(),
+                ) {
                     seq_resolved.push(resolver::build_resolved_relationship(p, target));
                     seq_stats.resolved += 1;
                 } else {
@@ -241,4 +246,212 @@ fn test_resolve_batch_matches_sequential_resolution() {
         assert_eq!(b.to_symbol_id, s.to_symbol_id);
         assert_eq!(b.kind, s.kind);
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Import-constrained disambiguation (resolve_batch + identifiers)
+// ─────────────────────────────────────────────────────────────────────
+
+/// Helper: symbol with a parent_id
+fn child_sym(
+    id: &str,
+    name: &str,
+    kind: SymbolKind,
+    lang: &str,
+    file_path: &str,
+    parent_id: &str,
+) -> Symbol {
+    let mut s = sym(id, name, kind, lang, file_path);
+    s.parent_id = Some(parent_id.to_string());
+    s
+}
+
+/// Helper: create a minimal Identifier for testing
+fn make_identifier(name: &str, kind: IdentifierKind, file_path: &str, lang: &str) -> Identifier {
+    Identifier {
+        id: format!("id_{}_{}", name, file_path.replace('/', "_")),
+        name: name.to_string(),
+        kind,
+        language: lang.to_string(),
+        file_path: file_path.to_string(),
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: name.len() as u32,
+        start_byte: 0,
+        end_byte: name.len() as u32,
+        containing_symbol_id: None,
+        target_symbol_id: None,
+        confidence: 1.0,
+        code_context: None,
+    }
+}
+
+#[test]
+fn test_resolve_batch_parent_reference_disambiguation() {
+    // The LabHandbookV2 bug: two types have a method named "Success",
+    // but the caller file only references AuthenticateResult.
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Set up files
+    for (path, lang) in &[
+        ("Auth/AuthenticateResult.cs", "csharp"),
+        ("Api/ApiResponse.cs", "csharp"),
+        ("Controllers/AuthController.cs", "csharp"),
+    ] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: lang.to_string(),
+            hash: "h".to_string(),
+            size: 100,
+            last_modified: 1000,
+            last_indexed: 0,
+            symbol_count: 2,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    // Two parent classes + two "Success" methods with different parents
+    let symbols = vec![
+        sym(
+            "auth_result_class",
+            "AuthenticateResult",
+            SymbolKind::Class,
+            "csharp",
+            "Auth/AuthenticateResult.cs",
+        ),
+        child_sym(
+            "auth_success",
+            "Success",
+            SymbolKind::Method,
+            "csharp",
+            "Auth/AuthenticateResult.cs",
+            "auth_result_class",
+        ),
+        sym(
+            "api_response_class",
+            "ApiResponse",
+            SymbolKind::Class,
+            "csharp",
+            "Api/ApiResponse.cs",
+        ),
+        child_sym(
+            "api_success",
+            "Success",
+            SymbolKind::Method,
+            "csharp",
+            "Api/ApiResponse.cs",
+            "api_response_class",
+        ),
+    ];
+    db.store_symbols_transactional(&symbols).unwrap();
+
+    // Caller file has a TypeUsage identifier for "AuthenticateResult"
+    // (e.g., from a variable declaration or type annotation)
+    let identifiers = vec![make_identifier(
+        "AuthenticateResult",
+        IdentifierKind::TypeUsage,
+        "Controllers/AuthController.cs",
+        "csharp",
+    )];
+    db.bulk_store_identifiers(&identifiers, "test_workspace")
+        .unwrap();
+
+    // Resolve: caller in AuthController.cs calls "Success"
+    let pendings = vec![pending(
+        "caller_method",
+        "Success",
+        "Controllers/AuthController.cs",
+    )];
+
+    let (resolved, stats) = resolver::resolve_batch(&pendings, &db);
+
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.resolved, 1, "Should resolve the pending relationship");
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(
+        resolved[0].to_symbol_id, "auth_success",
+        "Should resolve to AuthenticateResult.Success, not ApiResponse.Success"
+    );
+}
+
+#[test]
+fn test_resolve_batch_no_identifiers_falls_back_gracefully() {
+    // Same setup as above but WITHOUT identifiers — should still resolve
+    // (just picks based on normal language/proximity heuristics)
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for (path, lang) in &[
+        ("Auth/AuthenticateResult.cs", "csharp"),
+        ("Api/ApiResponse.cs", "csharp"),
+        ("Controllers/AuthController.cs", "csharp"),
+    ] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: lang.to_string(),
+            hash: "h".to_string(),
+            size: 100,
+            last_modified: 1000,
+            last_indexed: 0,
+            symbol_count: 2,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    let symbols = vec![
+        sym(
+            "auth_result_class",
+            "AuthenticateResult",
+            SymbolKind::Class,
+            "csharp",
+            "Auth/AuthenticateResult.cs",
+        ),
+        child_sym(
+            "auth_success",
+            "Success",
+            SymbolKind::Method,
+            "csharp",
+            "Auth/AuthenticateResult.cs",
+            "auth_result_class",
+        ),
+        sym(
+            "api_response_class",
+            "ApiResponse",
+            SymbolKind::Class,
+            "csharp",
+            "Api/ApiResponse.cs",
+        ),
+        child_sym(
+            "api_success",
+            "Success",
+            SymbolKind::Method,
+            "csharp",
+            "Api/ApiResponse.cs",
+            "api_response_class",
+        ),
+    ];
+    db.store_symbols_transactional(&symbols).unwrap();
+
+    // No identifiers stored — resolver should still work
+    let pendings = vec![pending(
+        "caller_method",
+        "Success",
+        "Controllers/AuthController.cs",
+    )];
+
+    let (resolved, stats) = resolver::resolve_batch(&pendings, &db);
+
+    assert_eq!(stats.total, 1);
+    assert_eq!(
+        stats.resolved, 1,
+        "Should still resolve even without identifier data"
+    );
+    assert_eq!(resolved.len(), 1);
+    // Without import context, either candidate is acceptable — just verify resolution happened
 }

@@ -6,11 +6,13 @@
 #[cfg(test)]
 mod resolver_tests {
     use crate::tools::workspace::indexing::resolver::{
-        ResolutionStats, build_resolved_relationship, select_best_candidate,
+        ParentReferenceContext, ResolutionStats, build_resolved_relationship,
+        select_best_candidate,
     };
     use julie_extractors::base::{
         PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind, Visibility,
     };
+    use std::collections::{HashMap, HashSet};
 
     /// Helper to create a minimal Symbol for testing
     fn make_symbol(name: &str, kind: SymbolKind, language: &str, file_path: &str) -> Symbol {
@@ -65,7 +67,7 @@ mod resolver_tests {
         )];
         let pending = make_pending("caller_1", "process", "src/main.rs");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(
             result.is_none(),
             "Import symbols should not be valid resolution targets"
@@ -82,7 +84,7 @@ mod resolver_tests {
         )];
         let pending = make_pending("caller_1", "process", "src/main.ts");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(
             result.is_none(),
             "Export symbols should not be valid resolution targets"
@@ -97,7 +99,7 @@ mod resolver_tests {
         ];
         let pending = make_pending("caller_1", "process", "src/main.rs");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(result.is_some());
         assert_eq!(result.unwrap().kind, SymbolKind::Function);
     }
@@ -120,7 +122,7 @@ mod resolver_tests {
             confidence: 0.8,
         };
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(
             result.is_some(),
             "Class symbols should be valid resolution targets"
@@ -144,7 +146,7 @@ mod resolver_tests {
             confidence: 0.9,
         };
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(
             result.is_some(),
             "Trait symbols should be valid resolution targets"
@@ -165,7 +167,7 @@ mod resolver_tests {
         ];
         let pending = make_pending("caller_1", "process", "src/main.rs");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(result.is_some());
         assert_eq!(result.unwrap().language, "rust");
     }
@@ -181,7 +183,7 @@ mod resolver_tests {
         )];
         let pending = make_pending("caller_1", "analyze", "src/main.rs");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(
             result.is_some(),
             "Should fall back to different-language candidate when same-language unavailable"
@@ -211,7 +213,7 @@ mod resolver_tests {
         ];
         let pending = make_pending("caller_1", "helper", "src/utils/main.rs");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(result.is_some());
         assert_eq!(result.unwrap().file_path, "src/utils/helper.rs");
     }
@@ -225,7 +227,7 @@ mod resolver_tests {
         // Caller is in src/tools/main.rs — src/config.rs is a parent dir, tests/ is unrelated
         let pending = make_pending("caller_1", "config", "src/tools/main.rs");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(result.is_some());
         assert_eq!(result.unwrap().file_path, "src/config.rs");
     }
@@ -243,7 +245,7 @@ mod resolver_tests {
         ];
         let pending = make_pending("caller_1", "Process", "src/main.rs");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(result.is_some());
         assert_eq!(result.unwrap().kind, SymbolKind::Function);
     }
@@ -275,7 +277,7 @@ mod resolver_tests {
             confidence: 0.9,
         };
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(result.is_some());
         assert_eq!(
             result.unwrap().kind,
@@ -297,7 +299,7 @@ mod resolver_tests {
         ];
         let pending = make_pending("caller_1", "parse", "src/main.rs");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(result.is_some());
         // Rust candidate should win even though Python is in the same directory
         assert_eq!(result.unwrap().language, "rust");
@@ -308,7 +310,7 @@ mod resolver_tests {
         let candidates: Vec<Symbol> = vec![];
         let pending = make_pending("caller_1", "nonexistent", "src/main.rs");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(result.is_none());
     }
 
@@ -321,7 +323,7 @@ mod resolver_tests {
         ];
         let pending = make_pending("caller_1", "foo", "src/main.rs");
 
-        let result = select_best_candidate(&candidates, &pending);
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
         assert!(result.is_none());
     }
 
@@ -342,5 +344,254 @@ mod resolver_tests {
         assert_eq!(resolved.file_path, "src/caller.rs");
         assert_eq!(resolved.line_number, 42);
         assert!(resolved.id.contains("resolved"));
+    }
+
+    // =========================================================================
+    // Parent reference disambiguation (import-constrained call edges)
+    // =========================================================================
+
+    /// Helper to create a Symbol with a parent_id
+    fn make_child_symbol(
+        name: &str,
+        kind: SymbolKind,
+        language: &str,
+        file_path: &str,
+        parent_id: &str,
+    ) -> Symbol {
+        let mut sym = make_symbol(name, kind, language, file_path);
+        sym.parent_id = Some(parent_id.to_string());
+        sym
+    }
+
+    /// Build a ParentReferenceContext for testing.
+    /// Derives files_with_identifiers from file_ref_entries (any file in refs has identifiers).
+    fn make_parent_ctx(
+        parent_entries: &[(&str, &str)],
+        file_ref_entries: &[(&str, &str)],
+    ) -> ParentReferenceContext {
+        let parent_names: HashMap<String, String> = parent_entries
+            .iter()
+            .map(|(id, name)| (id.to_string(), name.to_string()))
+            .collect();
+        let file_refs: HashSet<(String, String)> = file_ref_entries
+            .iter()
+            .map(|(file, name)| (file.to_string(), name.to_string()))
+            .collect();
+        let files_with_identifiers: HashSet<String> = file_ref_entries
+            .iter()
+            .map(|(file, _)| file.to_string())
+            .collect();
+        ParentReferenceContext::new(parent_names, file_refs, files_with_identifiers)
+    }
+
+    /// Build a ParentReferenceContext with explicit files_with_identifiers.
+    /// Use when testing negative filtering (file has identifiers but no parent match).
+    fn make_parent_ctx_with_files(
+        parent_entries: &[(&str, &str)],
+        file_ref_entries: &[(&str, &str)],
+        files_with_ids: &[&str],
+    ) -> ParentReferenceContext {
+        let parent_names: HashMap<String, String> = parent_entries
+            .iter()
+            .map(|(id, name)| (id.to_string(), name.to_string()))
+            .collect();
+        let file_refs: HashSet<(String, String)> = file_ref_entries
+            .iter()
+            .map(|(file, name)| (file.to_string(), name.to_string()))
+            .collect();
+        let files_with_identifiers: HashSet<String> =
+            files_with_ids.iter().map(|f| f.to_string()).collect();
+        ParentReferenceContext::new(parent_names, file_refs, files_with_identifiers)
+    }
+
+    #[test]
+    fn test_parent_reference_boosts_correct_candidate() {
+        // Two methods named "Success" — one on AuthenticateResult, one on ApiResponse.
+        // Caller file references AuthenticateResult → that candidate should win.
+        let candidates = vec![
+            make_child_symbol(
+                "Success",
+                SymbolKind::Method,
+                "csharp",
+                "Auth/AuthenticateResult.cs",
+                "auth_result_class",
+            ),
+            make_child_symbol(
+                "Success",
+                SymbolKind::Method,
+                "csharp",
+                "Api/ApiResponse.cs",
+                "api_response_class",
+            ),
+        ];
+        let pending = make_pending("caller_1", "Success", "Controllers/AuthController.cs");
+
+        let parent_ctx = make_parent_ctx(
+            &[
+                ("auth_result_class", "AuthenticateResult"),
+                ("api_response_class", "ApiResponse"),
+            ],
+            &[("Controllers/AuthController.cs", "AuthenticateResult")],
+        );
+
+        let result = select_best_candidate(&candidates, &pending, &parent_ctx);
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap().file_path,
+            "Auth/AuthenticateResult.cs",
+            "Should prefer the candidate whose parent type is referenced by the caller file"
+        );
+    }
+
+    #[test]
+    fn test_parent_reference_dominates_path_proximity() {
+        // Import-backed candidate is in a distant directory.
+        // Non-import candidate is in the same directory.
+        // Import signal (+200) should still dominate path proximity (+50).
+        let candidates = vec![
+            make_child_symbol(
+                "Parse",
+                SymbolKind::Method,
+                "csharp",
+                "src/utils/Parser.cs",
+                "wrong_parser_class",
+            ),
+            make_child_symbol(
+                "Parse",
+                SymbolKind::Method,
+                "csharp",
+                "lib/deep/nested/RealParser.cs",
+                "real_parser_class",
+            ),
+        ];
+        // Caller is in src/utils/ — same dir as the wrong candidate
+        let pending = make_pending("caller_1", "Parse", "src/utils/handler.cs");
+
+        let parent_ctx = make_parent_ctx(
+            &[
+                ("wrong_parser_class", "WrongParser"),
+                ("real_parser_class", "RealParser"),
+            ],
+            // Caller references RealParser, not WrongParser
+            &[("src/utils/handler.cs", "RealParser")],
+        );
+
+        let result = select_best_candidate(&candidates, &pending, &parent_ctx);
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap().file_path,
+            "lib/deep/nested/RealParser.cs",
+            "Import-backed candidate should win despite being in a distant directory"
+        );
+    }
+
+    #[test]
+    fn test_no_parent_reference_falls_back_to_normal() {
+        // Empty parent context — scoring should work exactly as before
+        let candidates = vec![
+            make_child_symbol(
+                "Run",
+                SymbolKind::Method,
+                "csharp",
+                "src/Runner.cs",
+                "runner_class",
+            ),
+            make_child_symbol(
+                "Run",
+                SymbolKind::Method,
+                "csharp",
+                "tests/TestRunner.cs",
+                "test_runner_class",
+            ),
+        ];
+        let pending = make_pending("caller_1", "Run", "src/main.cs");
+
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
+        assert!(result.is_some());
+        // With no import context, same-directory candidate should win via path proximity
+        assert_eq!(result.unwrap().file_path, "src/Runner.cs");
+    }
+
+    #[test]
+    fn test_parent_reference_no_parent_id_no_crash() {
+        // Candidate has no parent_id — should score normally without panic
+        let candidates = vec![make_symbol(
+            "helper",
+            SymbolKind::Function,
+            "rust",
+            "src/utils.rs",
+        )];
+        let pending = make_pending("caller_1", "helper", "src/main.rs");
+
+        let parent_ctx = make_parent_ctx(
+            &[("some_class", "SomeClass")],
+            &[("src/main.rs", "SomeClass")],
+        );
+
+        let result = select_best_candidate(&candidates, &pending, &parent_ctx);
+        assert!(
+            result.is_some(),
+            "Candidates without parent_id should still resolve normally"
+        );
+    }
+
+    // =========================================================================
+    // Negative filtering: reject phantom edges to unrelated types
+    // =========================================================================
+
+    #[test]
+    fn test_unmatched_parent_rejected_when_caller_has_identifiers() {
+        // The LabHandbookV2 phantom edge: caller file has identifiers (we have data)
+        // but the only "Success" candidate's parent (ApiResponse) is NOT referenced.
+        // The real target (AuthenticateResult.Success) is an external framework type.
+        // Candidate should be rejected (score 0) to prevent a false edge.
+        let candidates = vec![make_child_symbol(
+            "Success",
+            SymbolKind::Method,
+            "csharp",
+            "Api/ApiResponse.cs",
+            "api_response_class",
+        )];
+        let pending = make_pending("caller_1", "Success", "Controllers/AuthController.cs");
+
+        // Caller file HAS identifiers, but NONE match ApiResponse
+        let parent_ctx = make_parent_ctx_with_files(
+            &[("api_response_class", "ApiResponse")],
+            &[], // no file_refs — no parent matches
+            &["Controllers/AuthController.cs"], // but file has identifier data
+        );
+
+        let result = select_best_candidate(&candidates, &pending, &parent_ctx);
+        assert!(
+            result.is_none(),
+            "Should reject candidate whose parent type the caller doesn't reference"
+        );
+    }
+
+    #[test]
+    fn test_unmatched_parent_allowed_when_no_identifier_data() {
+        // Same setup but caller file has NO identifiers (we have no data).
+        // Should resolve normally — we can't make negative judgments without evidence.
+        let candidates = vec![make_child_symbol(
+            "Success",
+            SymbolKind::Method,
+            "csharp",
+            "Api/ApiResponse.cs",
+            "api_response_class",
+        )];
+        let pending = make_pending("caller_1", "Success", "Controllers/AuthController.cs");
+
+        // Caller file has NO identifier data (not in files_with_identifiers)
+        let parent_ctx = make_parent_ctx_with_files(
+            &[("api_response_class", "ApiResponse")],
+            &[],
+            &[], // empty — no identifier data for this file
+        );
+
+        let result = select_best_candidate(&candidates, &pending, &parent_ctx);
+        assert!(
+            result.is_some(),
+            "Should allow resolution when we have no identifier data to make a judgment"
+        );
     }
 }
