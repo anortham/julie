@@ -2382,7 +2382,10 @@ fn test_compute_reference_scores_includes_type_usage_identifiers() {
     let mut db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert two files
-    for (path, lang) in [("model/entity.gd", "gdscript"), ("backend/api.gd", "gdscript")] {
+    for (path, lang) in [
+        ("model/entity.gd", "gdscript"),
+        ("backend/api.gd", "gdscript"),
+    ] {
         db.store_file_info(&FileInfo {
             path: path.to_string(),
             language: lang.to_string(),
@@ -2578,7 +2581,11 @@ fn test_compute_reference_scores_includes_import_identifiers() {
         .unwrap();
 
     // Import identifiers from 3 different files (weight 2.0 each)
-    for (id, file) in [("imp1", "src/a.zig"), ("imp2", "src/b.zig"), ("imp3", "src/c.zig")] {
+    for (id, file) in [
+        ("imp1", "src/a.zig"),
+        ("imp2", "src/b.zig"),
+        ("imp3", "src/c.zig"),
+    ] {
         db.conn
             .execute(
                 "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col)
@@ -2784,5 +2791,285 @@ fn test_compute_reference_scores_escapes_like_wildcards() {
         userxid_score > 0.0,
         "userXid should be boosted by 'models.userXid' qualified ref. Got score: {}",
         userxid_score
+    );
+}
+
+/// Test that symbols in test files get de-weighted during centrality computation.
+/// Reproduces the Flask problem: tests/test_config.py defines `class Flask(flask.Flask)`
+/// which steals centrality from the real `src/flask/app.py::Flask` because both share
+/// the name and the test subclass accumulates references from test files.
+#[test]
+fn test_centrality_deweights_test_file_symbols() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    // Real source file
+    db.store_file_info(&FileInfo {
+        path: "src/flask/app.py".to_string(),
+        language: "python".to_string(),
+        hash: "real".to_string(),
+        size: 5000,
+        last_modified: 1,
+        last_indexed: 0,
+        symbol_count: 1,
+        content: None,
+    })
+    .unwrap();
+
+    // Test file that defines a Flask subclass
+    db.store_file_info(&FileInfo {
+        path: "tests/test_config.py".to_string(),
+        language: "python".to_string(),
+        hash: "test".to_string(),
+        size: 1000,
+        last_modified: 1,
+        last_indexed: 0,
+        symbol_count: 1,
+        content: None,
+    })
+    .unwrap();
+
+    // Additional test files that reference Flask
+    for i in 0..5 {
+        db.store_file_info(&FileInfo {
+            path: format!("tests/test_app_{}.py", i),
+            language: "python".to_string(),
+            hash: format!("testhash{}", i),
+            size: 500,
+            last_modified: 1,
+            last_indexed: 0,
+            symbol_count: 1,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    // A real source file that references Flask
+    db.store_file_info(&FileInfo {
+        path: "src/flask/views.py".to_string(),
+        language: "python".to_string(),
+        hash: "views".to_string(),
+        size: 2000,
+        last_modified: 1,
+        last_indexed: 0,
+        symbol_count: 1,
+        content: None,
+    })
+    .unwrap();
+
+    // Real Flask class in source
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('real_flask', 'Flask', 'class', 'python', 'src/flask/app.py', 1, 500, 0, 1, 0, 10000)",
+            [],
+        )
+        .unwrap();
+
+    // Test Flask subclass in test file
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('test_flask', 'Flask', 'class', 'python', 'tests/test_config.py', 1, 50, 0, 1, 0, 1000)",
+            [],
+        )
+        .unwrap();
+
+    // Caller symbols in test files
+    for i in 0..5 {
+        db.conn
+            .execute(
+                &format!(
+                    "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+                     VALUES ('test_caller_{}', 'test_func_{}', 'function', 'python', 'tests/test_app_{}.py', 1, 10, 0, 1, 0, 100)",
+                    i, i, i
+                ),
+                [],
+            )
+            .unwrap();
+    }
+
+    // Caller in real source file
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('real_caller', 'create_app', 'function', 'python', 'src/flask/views.py', 1, 10, 0, 1, 0, 200)",
+            [],
+        )
+        .unwrap();
+
+    // 5 test files reference the test Flask (instantiates, weight=2 each => 10 total)
+    for i in 0..5 {
+        db.conn
+            .execute(
+                &format!(
+                    "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+                     VALUES ('r_test_{}', 'test_caller_{}', 'test_flask', 'instantiates')",
+                    i, i
+                ),
+                [],
+            )
+            .unwrap();
+    }
+
+    // 1 real source file references real Flask (instantiates, weight=2)
+    db.conn
+        .execute(
+            "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+             VALUES ('r_real', 'real_caller', 'real_flask', 'instantiates')",
+            [],
+        )
+        .unwrap();
+
+    db.compute_reference_scores().unwrap();
+
+    let real_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'real_flask'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let test_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'test_flask'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    // Real Flask should have HIGHER centrality than test Flask
+    assert!(
+        real_score > test_score,
+        "Real Flask (score={}) should have higher centrality than test Flask (score={}). \
+         Test-file symbols should be de-weighted.",
+        real_score,
+        test_score
+    );
+
+    // Test Flask score should be significantly reduced (at most 50% of raw score)
+    assert!(
+        test_score < 5.0,
+        "Test Flask score ({}) should be significantly reduced from raw 10.0",
+        test_score
+    );
+}
+
+/// C/C++ header/implementation centrality split: header declarations accumulate all
+/// reference_score (via #include) while implementations in .c/.cpp get zero.
+/// Step 5 propagates 70% of header centrality to same-named implementations.
+#[test]
+fn test_compute_reference_scores_propagates_header_to_implementation() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for (path, lang) in [
+        ("jq.h", "c"),
+        ("execute.c", "c"),
+        ("main.c", "c"),
+        ("parser.c", "c"),
+    ] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: lang.to_string(),
+            hash: "abc123".to_string(),
+            size: 1000,
+            last_modified: 1234567890,
+            last_indexed: 0,
+            symbol_count: 5,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    // Header declaration: jq_next in jq.h
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('jq_next_h', 'jq_next', 'function', 'c', 'jq.h', 10, 10, 0, 30, 100, 130)",
+            [],
+        )
+        .unwrap();
+
+    // Implementation: jq_next in execute.c
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('jq_next_c', 'jq_next', 'function', 'c', 'execute.c', 50, 120, 0, 1, 500, 2500)",
+            [],
+        )
+        .unwrap();
+
+    // Callers that reference the header declaration
+    for (id, name, file) in [
+        ("caller_main", "main", "main.c"),
+        ("caller_parse", "parse_input", "parser.c"),
+        ("caller_run", "run_program", "main.c"),
+    ] {
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+                 VALUES (?1, ?2, 'function', 'c', ?3, 1, 20, 0, 1, 0, 300)",
+                rusqlite::params![id, name, file],
+            )
+            .unwrap();
+    }
+
+    // Relationships: callers -> header declaration
+    for (rel_id, from_id, kind) in [
+        ("rel_1", "caller_main", "calls"),
+        ("rel_2", "caller_parse", "calls"),
+        ("rel_3", "caller_run", "uses"),
+    ] {
+        db.conn
+            .execute(
+                "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind)
+                 VALUES (?1, ?2, 'jq_next_h', ?3)",
+                rusqlite::params![rel_id, from_id, kind],
+            )
+            .unwrap();
+    }
+
+    db.compute_reference_scores().unwrap();
+
+    let header_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'jq_next_h'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        header_score > 0.0,
+        "Header declaration should have centrality from callers, got {}",
+        header_score
+    );
+
+    let impl_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'jq_next_c'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        impl_score > 0.0,
+        "Implementation should get propagated centrality from header, got {}",
+        impl_score
+    );
+
+    let expected_impl_score = header_score * 0.7;
+    assert!(
+        (impl_score - expected_impl_score).abs() < 0.01,
+        "Implementation should get exactly 70% of header score (header={}, expected={}, got={})",
+        header_score,
+        expected_impl_score,
+        impl_score
     );
 }

@@ -33,6 +33,9 @@ pub struct DartExtractor {
     pub(crate) base: BaseExtractor,
     pending_relationships: Vec<PendingRelationship>,
     same_file_calls: Vec<(String, String, u32)>,
+    /// Byte offsets of `block` nodes already consumed as Dart 3 modifier class bodies.
+    /// Prevents double-visiting when the program-level iteration hits the same block.
+    consumed_blocks: HashSet<usize>,
 }
 
 impl DartExtractor {
@@ -46,6 +49,7 @@ impl DartExtractor {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             pending_relationships: Vec::new(),
             same_file_calls: Vec::new(),
+            consumed_blocks: HashSet::new(),
         }
     }
 
@@ -60,6 +64,11 @@ impl DartExtractor {
 
     fn visit_node(&mut self, node: Node, symbols: &mut Vec<Symbol>, parent_id: Option<&str>) {
         if node.kind().is_empty() {
+            return;
+        }
+
+        // Skip block nodes already consumed as Dart 3 modifier class bodies
+        if node.kind() == "block" && self.consumed_blocks.contains(&node.start_byte()) {
             return;
         }
 
@@ -158,10 +167,37 @@ impl DartExtractor {
                 );
             }
             "ERROR" | "expression_statement" => {
-                // harper-tree-sitter-dart misparsees enhanced enums: the body after the first
-                // enum_constant spills into ERROR and expression_statement siblings at
-                // program level. Recover symbols generically by detecting enum context.
                 if node.parent().map_or(false, |p| p.kind() == "program") {
+                    // Dart 3 class modifier recovery: harper-tree-sitter-dart doesn't
+                    // support base/sealed/final/interface modifiers and produces ERROR
+                    // nodes for them. Recover class symbols from the ERROR content.
+                    if let Some(class_sym) = recover_dart3_modifier_class(
+                        &mut self.base,
+                        &node,
+                        current_parent_id.as_deref(),
+                    ) {
+                        let class_id = class_sym.id.clone();
+                        symbols.push(class_sym);
+
+                        // The class body is the sibling `block` node immediately after this ERROR.
+                        // Recurse into it with the class as parent so members are parented correctly.
+                        // Mark the block as consumed to prevent double-visiting during program iteration.
+                        if let Some(sibling) = node.next_sibling() {
+                            if sibling.kind() == "block" {
+                                self.consumed_blocks.insert(sibling.start_byte());
+                                let mut cursor = sibling.walk();
+                                for child in sibling.children(&mut cursor) {
+                                    self.visit_node(child, symbols, Some(&class_id));
+                                }
+                            }
+                        }
+                        // Skip normal child recursion for this ERROR node — we handled it
+                        return;
+                    }
+
+                    // harper-tree-sitter-dart misparsees enhanced enums: the body after the first
+                    // enum_constant spills into ERROR and expression_statement siblings at
+                    // program level. Recover symbols generically by detecting enum context.
                     if let Some(enum_id) = find_enum_context_parent(&node, symbols) {
                         recover_enum_symbols_from_error(
                             &mut self.base,
@@ -266,6 +302,112 @@ impl DartExtractor {
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.pending_relationships.push(pending);
     }
+}
+
+// === Dart 3 Class Modifier Recovery ===
+//
+// harper-tree-sitter-dart (v0.0.5) doesn't support Dart 3 class modifiers
+// (base, sealed, final, interface). These produce ERROR nodes with a
+// recognizable internal structure:
+//
+//   ERROR[type_identifier("base"), identifier("class"), identifier("ClassName")]
+//   ERROR[final_builtin("final"), type_identifier("class"), ..., identifier("ClassName")]
+//
+// The class body `{}` appears as a sibling `block` node.
+
+/// Dart 3 class modifier keywords that the grammar doesn't support.
+const DART3_CLASS_MODIFIERS: &[&str] = &["base", "sealed", "final", "interface"];
+
+/// Attempt to recover a class symbol from an ERROR node that represents a
+/// Dart 3 modifier class (base/sealed/final/interface class).
+///
+/// Returns `Some(Symbol)` if the ERROR node matches the pattern, `None` otherwise.
+fn recover_dart3_modifier_class(
+    base: &mut BaseExtractor,
+    node: &Node,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    if node.kind() != "ERROR" {
+        return None;
+    }
+
+    // Collect children info: we're looking for a pattern like
+    //   [modifier_node] [class_keyword_node] [class_name_node] [optional extends/implements ...]
+    let mut cursor = node.walk();
+    let children: Vec<_> = node.children(&mut cursor).collect();
+
+    if children.len() < 2 {
+        return None;
+    }
+
+    // Find the modifier and "class" keyword.
+    // Patterns observed:
+    //   base:      type_identifier("base") identifier("class") identifier("Name")
+    //   sealed:    type_identifier("sealed") identifier("class") identifier("Name")
+    //   interface: type_identifier("interface") identifier("class") identifier("Name")
+    //   final:     final_builtin("final") type_identifier("class") ERROR("Name ...") | identifier("Name")
+    let mut modifier: Option<String> = None;
+    let mut class_name: Option<String> = None;
+    let mut class_name_node: Option<Node> = None;
+    let mut saw_class_keyword = false;
+
+    for child in &children {
+        let text = get_node_text(child);
+
+        if modifier.is_none() && DART3_CLASS_MODIFIERS.contains(&text.as_str()) {
+            modifier = Some(text);
+            continue;
+        }
+
+        if modifier.is_some() && !saw_class_keyword && text == "class" {
+            saw_class_keyword = true;
+            continue;
+        }
+
+        if saw_class_keyword && class_name.is_none() {
+            // The class name. For `final class`, tree-sitter sometimes wraps
+            // "Name extends/implements ..." in a nested ERROR node, so check
+            // for an identifier child inside it.
+            if child.kind() == "identifier" || child.kind() == "type_identifier" {
+                class_name = Some(text);
+                class_name_node = Some(*child);
+            } else if child.kind() == "ERROR" {
+                // Nested ERROR: look for first identifier-like child
+                let mut inner_cursor = child.walk();
+                for grandchild in child.children(&mut inner_cursor) {
+                    let gtext = get_node_text(&grandchild);
+                    if (grandchild.kind() == "identifier" || grandchild.kind() == "type_identifier")
+                        && gtext.chars().next().map_or(false, |c| c.is_uppercase())
+                    {
+                        class_name = Some(gtext);
+                        class_name_node = Some(grandchild);
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    let modifier = modifier?;
+    let name = class_name?;
+    let name_node = class_name_node?;
+
+    // Build signature: e.g. "sealed class Sealed"
+    let signature = format!("{} class {}", modifier, name);
+
+    Some(base.create_symbol(
+        &name_node,
+        name,
+        SymbolKind::Class,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(|id| id.to_string()),
+            metadata: Some(HashMap::new()),
+            ..Default::default()
+        },
+    ))
 }
 
 // === Generic Enhanced Enum Error Recovery ===

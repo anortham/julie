@@ -250,6 +250,9 @@ impl SymbolDatabase {
     /// - Propagates centrality from interfaces/base classes to implementations (70%).
     /// - Propagates constructor centrality to parent class (70%), fixing DI patterns
     ///   where all references target the constructor, leaving the class at zero.
+    /// - De-weights symbols in test files by 90%, preventing test doubles/subclasses
+    ///   from stealing centrality from real production definitions.
+    /// - Propagates centrality from C/C++ header declarations to implementations (70%).
     pub fn compute_reference_scores(&self) -> Result<()> {
         // Step 1: Compute direct reference scores from incoming relationships
         self.conn.execute(
@@ -354,6 +357,90 @@ impl SymbolDatabase {
                   WHERE ctor.parent_id = symbols.id
                     AND ctor.kind = 'constructor'
                     AND ctor.reference_score > 0
+              )",
+            [],
+        )?;
+
+        // Step 4: De-weight symbols located in test files.
+        // Test files often contain test doubles, subclasses, or mocks that share names
+        // with real production symbols. Without de-weighting, these test symbols can
+        // steal centrality from the real definitions (e.g., a test Flask subclass
+        // accumulating more references than the real Flask class).
+        //
+        // Language-agnostic test path patterns (matches Rust, Python, JS/TS, C#, Java,
+        // Go, Ruby, Swift, etc.):
+        //   Directory segments: test, tests, spec, specs, __tests__, .Tests, .Test
+        //   File prefixes: test_*.py
+        //   File suffixes: _test.go, .test.ts, .spec.ts, etc.
+        self.conn.execute(
+            "UPDATE symbols SET reference_score = reference_score * 0.1
+             WHERE reference_score > 0
+               AND (
+                   -- Directory-based: /test/, /tests/, /spec/, /specs/, /__tests__/
+                   file_path LIKE '%/test/%'
+                   OR file_path LIKE '%/tests/%'
+                   OR file_path LIKE '%/spec/%'
+                   OR file_path LIKE '%/specs/%'
+                   OR file_path LIKE '%/__tests__/%'
+                   -- Starts with test/ or tests/ (no leading slash)
+                   OR file_path LIKE 'test/%'
+                   OR file_path LIKE 'tests/%'
+                   OR file_path LIKE 'spec/%'
+                   OR file_path LIKE 'specs/%'
+                   OR file_path LIKE '__tests__/%'
+                   -- C# convention: MyProject.Tests/ or MyProject.Test/
+                   OR file_path LIKE '%.Tests/%'
+                   OR file_path LIKE '%.Test/%'
+                   -- Python: test_*.py files
+                   OR file_path LIKE '%/test\\_%'
+                   OR file_path LIKE 'test\\_%'
+                   -- Go: *_test.go
+                   OR file_path LIKE '%\\_test.go'
+                   -- JS/TS: *.test.ts, *.test.tsx, *.test.js, *.test.jsx
+                   OR file_path LIKE '%.test.ts'
+                   OR file_path LIKE '%.test.tsx'
+                   OR file_path LIKE '%.test.js'
+                   OR file_path LIKE '%.test.jsx'
+                   -- JS/TS: *.spec.ts, *.spec.tsx, *.spec.js, *.spec.jsx
+                   OR file_path LIKE '%.spec.ts'
+                   OR file_path LIKE '%.spec.tsx'
+                   OR file_path LIKE '%.spec.js'
+                   OR file_path LIKE '%.spec.jsx'
+               )",
+            [],
+        )?;
+
+        // Step 5: Propagate centrality from C/C++ header declarations to implementations.
+        // In C/C++, .h declarations accumulate all refs (via #include) while .c/.cpp
+        // implementations get zero. Give implementations 70% of their declaration's score.
+        // Same propagation factor as interface→implementation (Step 2).
+        self.conn.execute(
+            "UPDATE symbols SET reference_score = reference_score + COALESCE(
+                (SELECT MAX(header_sym.reference_score) * 0.7
+                 FROM symbols header_sym
+                 WHERE header_sym.name = symbols.name
+                   AND header_sym.kind = symbols.kind
+                   AND header_sym.id != symbols.id
+                   AND (header_sym.file_path LIKE '%.h'
+                        OR header_sym.file_path LIKE '%.hpp'
+                        OR header_sym.file_path LIKE '%.hh')
+                   AND header_sym.reference_score > 0
+                ), 0.0
+            )
+            WHERE reference_score = 0.0
+              AND (file_path LIKE '%.c'
+                   OR file_path LIKE '%.cpp'
+                   OR file_path LIKE '%.cc'
+                   OR file_path LIKE '%.cxx')
+              AND kind = 'function'
+              AND EXISTS (
+                  SELECT 1 FROM symbols header_sym
+                  WHERE header_sym.name = symbols.name
+                    AND header_sym.kind = symbols.kind
+                    AND (header_sym.file_path LIKE '%.h'
+                         OR header_sym.file_path LIKE '%.hpp'
+                         OR header_sym.file_path LIKE '%.hh')
+                    AND header_sym.reference_score > 0
               )",
             [],
         )?;

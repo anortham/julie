@@ -9,10 +9,12 @@ use super::SwiftExtractor;
 impl SwiftExtractor {
     /// Implementation of extractClass method with full Swift class support
     pub(super) fn extract_class(&mut self, node: Node, parent_id: Option<&str>) -> Option<Symbol> {
-        // Swift parser uses class_declaration for classes
+        // tree-sitter-swift uses class_declaration for class, struct, enum, extension, and actor.
+        // The name field can be type_identifier, user_type, array_type, dictionary_type,
+        // tuple_type, protocol_composition_type, etc. Use the grammar's field accessor
+        // instead of searching by child kind, which misses non-standard name types.
         let name = node
-            .children(&mut node.walk())
-            .find(|c| c.kind() == "type_identifier" || c.kind() == "user_type")
+            .child_by_field_name("name")
             .map(|n| self.base.get_node_text(&n))?;
 
         // Check what type this actually is

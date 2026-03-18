@@ -124,6 +124,28 @@ impl KotlinExtractor {
                 symbol =
                     declarations::extract_type_alias(&mut self.base, &node, parent_id.as_deref());
             }
+            // ERROR recovery: when tree-sitter can't fully parse a class declaration
+            // (e.g., due to unsupported syntax like `class Foo\nprivate constructor(...)`),
+            // it wraps the entire class in an ERROR node. The ERROR node's children still
+            // contain the class structure (modifiers, "class" keyword, identifier, body),
+            // so we can pass it to the same extraction functions.
+            "ERROR" => {
+                let has_class_keyword = node
+                    .children(&mut node.walk())
+                    .any(|n| !n.is_named() && self.base.get_node_text(&n) == "class");
+                let has_interface_keyword = node
+                    .children(&mut node.walk())
+                    .any(|n| !n.is_named() && self.base.get_node_text(&n) == "interface");
+                let has_identifier = node
+                    .children(&mut node.walk())
+                    .any(|n| n.kind() == "identifier");
+
+                if has_class_keyword && has_identifier {
+                    symbol = types::extract_class(&mut self.base, &node, parent_id.as_deref());
+                } else if has_interface_keyword && has_identifier {
+                    symbol = types::extract_interface(&mut self.base, &node, parent_id.as_deref());
+                }
+            }
             _ => {}
         }
 

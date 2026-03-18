@@ -2086,6 +2086,77 @@ class Config(val name: String, val count: Int) {
             }
         }
     }
+
+    /// Regression: when tree-sitter wraps a class_declaration in an ERROR node
+    /// (due to unsupported syntax in the class body), the class and all its members
+    /// are lost. The extractor must recover class declarations from ERROR nodes.
+    ///
+    /// Real-world example: square/moshi's JsonReader.kt — the tree-sitter-kotlin-ng
+    /// grammar can't parse `class Options\nprivate constructor(...)` (constructor on
+    /// separate line), so the entire enclosing `sealed class JsonReader` becomes an
+    /// ERROR node. Its ~30 member functions become orphaned top-level symbols.
+    #[test]
+    fn test_sealed_class_with_supertype_extracted() {
+        // The trigger: a nested class with `private constructor` on a separate line.
+        // tree-sitter-kotlin-ng 1.1.0 can't parse this valid Kotlin syntax, causing
+        // the entire outer class to be wrapped in an ERROR node.
+        // Minimal reproduction: class with nested class that has private constructor
+        // on a separate line. tree-sitter-kotlin-ng wraps the outer class in ERROR.
+        let code = r#"
+public sealed class JsonReader : Closeable {
+    @Throws(IOException::class) public abstract fun beginArray()
+    @Throws(IOException::class) public abstract fun endArray()
+    @Throws(IOException::class) public abstract fun nextName(): String
+
+    public class Options
+    private constructor(
+        internal val strings: Array<out String>,
+    ) {
+        fun strings(): List<String> { return emptyList() }
+    }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        // Verify this triggers an ERROR node wrapping the class (the whole point)
+        let root = tree.root_node();
+        assert!(
+            root.children(&mut root.walk()).any(|c| c.kind() == "ERROR"),
+            "Expected ERROR node at root level — if the grammar is fixed, this \
+             test needs revision to use a different trigger"
+        );
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "JsonReader.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // The sealed class itself MUST be extracted even from an ERROR node
+        let json_reader = symbols.iter().find(|s| s.name == "JsonReader");
+        assert!(
+            json_reader.is_some(),
+            "sealed class JsonReader must be extracted even when tree-sitter \
+             wraps it in an ERROR node. Found symbols: {:?}",
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+        assert_eq!(json_reader.unwrap().kind, SymbolKind::Class);
+
+        // Member functions must be parented to JsonReader, not orphaned
+        let begin_array = symbols.iter().find(|s| s.name == "beginArray");
+        assert!(begin_array.is_some(), "beginArray should be extracted");
+        assert_eq!(
+            begin_array.unwrap().parent_id,
+            Some(json_reader.unwrap().id.clone()),
+            "beginArray should be a child of JsonReader, not orphaned"
+        );
+    }
 }
 mod cross_file_relationships;
 mod identifiers;

@@ -2446,5 +2446,105 @@ class MyHomePage extends StatefulWidget {
             assert_eq!(name, "dart:convert");
         }
     }
+
+    mod dart3_class_modifiers {
+        use super::*;
+
+        #[test]
+        fn test_dart3_base_sealed_final_interface_classes_extracted() {
+            let code = r#"
+class Regular {}
+abstract class Abstract {}
+base class BaseOnly {
+  void doStuff() {}
+}
+sealed class Sealed {}
+final class Final {}
+interface class InterfaceClass {}
+mixin class MixinClass {}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let classes: Vec<_> = symbols
+                .iter()
+                .filter(|s| s.kind == SymbolKind::Class)
+                .collect();
+
+            let class_names: Vec<&str> = classes.iter().map(|s| s.name.as_str()).collect();
+
+            // Regular and abstract classes already work
+            assert!(
+                class_names.contains(&"Regular"),
+                "Should extract Regular class, got: {:?}",
+                class_names
+            );
+            assert!(
+                class_names.contains(&"Abstract"),
+                "Should extract Abstract class, got: {:?}",
+                class_names
+            );
+
+            // Dart 3 modifier classes - these are the NEW assertions
+            assert!(
+                class_names.contains(&"BaseOnly"),
+                "Should extract base class BaseOnly, got: {:?}",
+                class_names
+            );
+            assert!(
+                class_names.contains(&"Sealed"),
+                "Should extract sealed class Sealed, got: {:?}",
+                class_names
+            );
+            assert!(
+                class_names.contains(&"Final"),
+                "Should extract final class Final, got: {:?}",
+                class_names
+            );
+            assert!(
+                class_names.contains(&"InterfaceClass"),
+                "Should extract interface class InterfaceClass, got: {:?}",
+                class_names
+            );
+
+            // Verify base class members are parented correctly
+            let base_class = classes.iter().find(|s| s.name == "BaseOnly").unwrap();
+            let base_methods: Vec<_> = symbols
+                .iter()
+                .filter(|s| {
+                    s.parent_id.as_deref() == Some(&base_class.id) && s.kind == SymbolKind::Method
+                })
+                .collect();
+            assert!(
+                base_methods.iter().any(|m| m.name == "doStuff"),
+                "base class members should be parented to the class, got methods: {:?}",
+                base_methods.iter().map(|m| &m.name).collect::<Vec<_>>()
+            );
+
+            // Verify signatures include the modifier
+            let base_sig = base_class.signature.as_deref().unwrap_or("");
+            assert!(
+                base_sig.contains("base"),
+                "base class signature should include 'base', got: {}",
+                base_sig
+            );
+
+            let sealed_class = classes.iter().find(|s| s.name == "Sealed").unwrap();
+            let sealed_sig = sealed_class.signature.as_deref().unwrap_or("");
+            assert!(
+                sealed_sig.contains("sealed"),
+                "sealed class signature should include 'sealed', got: {}",
+                sealed_sig
+            );
+        }
+    }
 }
 mod types; // Phase 4: Type extraction verification tests

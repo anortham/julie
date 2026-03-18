@@ -207,7 +207,20 @@ impl RubyExtractor {
             }
             "constant" => {
                 // Skip constants that are assignment targets (assignment handler creates the symbol)
-                if !helpers::is_assignment_target(&node) {
+                // Skip constants that are class/module names — already extracted as Class/Module symbols
+                // Skip constants that are superclass references (e.g., `class Child < Base`)
+                let skip = node.parent().is_some_and(|p| {
+                    match p.kind() {
+                        // Direct child of class/module: the name field
+                        "class" | "module" => p
+                            .child_by_field_name("name")
+                            .is_some_and(|n| n.id() == node.id()),
+                        // Child of a superclass node (e.g., `< Base` in `class Child < Base`)
+                        "superclass" => true,
+                        _ => false,
+                    }
+                });
+                if !skip && !helpers::is_assignment_target(&node) {
                     symbol_opt = Some(symbols::extract_constant(
                         &mut self.base,
                         node,

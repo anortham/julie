@@ -176,6 +176,121 @@ public class Car: Vehicle {
                     .contains("override")
             );
         }
+
+        #[test]
+        fn test_extract_class_with_unchecked_sendable() {
+            // Verifies: open class Session: @unchecked Sendable is extracted correctly
+            // Pattern from Alamofire's Session.swift
+            let swift_code = r#"
+open class Session: @unchecked Sendable {
+    func doSomething() {}
+
+    public func request(_ url: String) -> String {
+        return url
+    }
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(swift_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            // Session class must be extracted
+            let session = symbols.iter().find(|s| s.name == "Session");
+            assert!(
+                session.is_some(),
+                "Should extract 'Session' from 'open class Session: @unchecked Sendable'. Got symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind))
+                    .collect::<Vec<_>>()
+            );
+            let session = session.unwrap();
+            assert_eq!(session.kind, SymbolKind::Class);
+
+            // Methods must be children of Session, not top-level orphans
+            let do_something = symbols.iter().find(|s| s.name == "doSomething");
+            assert!(do_something.is_some(), "Should extract doSomething method");
+            assert_eq!(
+                do_something.unwrap().parent_id,
+                Some(session.id.clone()),
+                "doSomething should be a child of Session, not orphaned"
+            );
+
+            let request = symbols.iter().find(|s| s.name == "request");
+            assert!(request.is_some(), "Should extract request method");
+            assert_eq!(
+                request.unwrap().parent_id,
+                Some(session.id.clone()),
+                "request should be a child of Session, not orphaned"
+            );
+        }
+
+        #[test]
+        fn test_extract_extension_with_complex_types() {
+            // tree-sitter-swift uses class_declaration for ALL type declarations
+            // (class, struct, enum, extension, actor). The name field can be
+            // array_type, dictionary_type, tuple_type, protocol_composition_type,
+            // etc. — not just type_identifier/user_type.
+            // Uses child_by_field_name("name") instead of kind-based find().
+            let swift_code = r#"
+extension [Int] {
+    func sum() -> Int { return 0 }
+}
+
+extension [String: Int] {
+    func keys() -> [String] { return [] }
+}
+
+extension (Int, String) {
+    func first() -> Int { return 0 }
+}
+"#;
+
+            let (mut extractor, tree) = create_extractor_and_parse(swift_code);
+            let symbols = extractor.extract_symbols(&tree);
+
+            // extension [Int] should be extracted with name "[Int]"
+            let ext_array = symbols.iter().find(|s| s.name == "[Int]");
+            assert!(
+                ext_array.is_some(),
+                "Should extract extension [Int]. Got symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind))
+                    .collect::<Vec<_>>()
+            );
+
+            // extension [String: Int] should be extracted
+            let ext_dict = symbols.iter().find(|s| s.name == "[String: Int]");
+            assert!(
+                ext_dict.is_some(),
+                "Should extract extension [String: Int]. Got symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind))
+                    .collect::<Vec<_>>()
+            );
+
+            // extension (Int, String) should be extracted
+            let ext_tuple = symbols.iter().find(|s| s.name == "(Int, String)");
+            assert!(
+                ext_tuple.is_some(),
+                "Should extract extension (Int, String). Got symbols: {:?}",
+                symbols
+                    .iter()
+                    .map(|s| (&s.name, &s.kind))
+                    .collect::<Vec<_>>()
+            );
+
+            // Methods should be children of their respective extensions
+            let sum_fn = symbols.iter().find(|s| s.name == "sum");
+            assert!(sum_fn.is_some());
+            assert_eq!(
+                sum_fn.unwrap().parent_id,
+                Some(ext_array.unwrap().id.clone()),
+                "sum() should be a child of extension [Int]"
+            );
+        }
     }
 
     mod protocol_and_extension_extraction {
