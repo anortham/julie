@@ -49,6 +49,7 @@ pub mod core {
     pub mod windows_embedding_policy; // Windows ORT policy + DirectML adapter selection tests
     pub mod workspace_init; // Workspace root detection and initialization tests // Batch pending relationship resolution tests
     pub mod incremental_update_atomic; // incremental_update_atomic write path tests (TDD)
+    pub mod bulk_store_types_tests; // bulk_store_types integration tests (TDD)
 }
 
 // ============================================================================
