@@ -205,6 +205,51 @@ Security Risk: HIGH (0.84) — calls execute; public; accepts string params
   untested: yes
 ```
 
+## Skills
+
+Julie ships with 10 pre-built skills — reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/codehealth`) in harnesses that support them, or used as system prompt instructions.
+
+### Report Skills
+
+| Skill | Description |
+|-------|-------------|
+| `/codehealth` | Risk hotspots, test gaps, dead code candidates, and prioritized recommendations |
+| `/security-audit` | Security risk analysis with plain-language explanations of risky patterns |
+| `/architecture` | Architecture overview — entry points, module map, dependency flow, suggested reading order |
+
+### Navigation & Analysis Skills
+
+| Skill | Description |
+|-------|-------------|
+| `/explore-area` | Orient on an unfamiliar area with token-budgeted exploration |
+| `/call-trace` | Trace the call path between two functions |
+| `/logic-flow` | Step-by-step explanation of a function's logic and control flow |
+| `/impact-analysis` | Analyze blast radius of changing a symbol — callers grouped by risk |
+| `/dependency-graph` | Show module dependencies by analyzing imports and cross-references |
+| `/type-flow` | Trace how types flow through a function — parameters, transforms, returns |
+
+### Debugging Skills
+
+| Skill | Description |
+|-------|-------------|
+| `/search-debug` | Diagnose why a search returns unexpected results (for Julie development) |
+
+### Installing Skills
+
+Skills ship as Markdown files in `.claude/skills/`. Each harness has its own location for custom instructions:
+
+| Harness | Skill Location | Notes |
+|---------|---------------|-------|
+| **Claude Code** | `.claude/skills/` | Works automatically — skills are detected on startup |
+| **VS Code / GitHub Copilot** | `.github/copilot-instructions.md` | Paste skill content into this file, or reference with `@file` syntax |
+| **Cursor** | `.cursor/rules/*.mdc` | Create one `.mdc` file per skill in the rules directory |
+| **Windsurf** | `.windsurf/rules/*.md` | Place skill files in the rules directory, or use `.windsurfrules` at project root |
+| **Gemini CLI** | `GEMINI.md` | Paste skill content into project-level `GEMINI.md`; supports `@file.md` imports |
+| **Codex CLI** | `AGENTS.md` | Paste skill content into project-level `AGENTS.md` |
+| **OpenCode** | Via `instructions` config | Add skill file paths to the `instructions` array in `opencode.json` |
+
+To use Julie's skills in a non-Claude-Code harness, copy the skill files from `.claude/skills/*/SKILL.md` to the appropriate location for your tool. Each skill file is self-contained and includes the tool calls and output format needed.
+
 ## Architecture
 
 - **Tree-sitter parsers** for accurate symbol extraction across all languages
