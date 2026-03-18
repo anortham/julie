@@ -260,3 +260,511 @@ fn test_relative_path_canonicalization() {
     // Cleanup
     std::fs::remove_dir_all(&temp_dir).unwrap();
 }
+
+// ---------------------------------------------------------------------------
+// get_node_text tests
+// ---------------------------------------------------------------------------
+
+/// Helper: parse Rust source and return the tree + a parser (caller owns the tree)
+fn parse_rust(content: &str) -> tree_sitter::Tree {
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_rust::LANGUAGE.into())
+        .expect("Error loading Rust grammar");
+    parser.parse(content, None).unwrap()
+}
+
+#[test]
+fn test_get_node_text_normal_function_name() {
+    // Parse a simple Rust function and extract the function name identifier node
+    let content = "fn hello() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    // root -> function_item -> name (identifier)
+    let func_item = root.child(0).expect("should have function_item");
+    assert_eq!(func_item.kind(), "function_item");
+
+    // Find the identifier child (the function name "hello")
+    let mut name_node = None;
+    for i in 0..func_item.child_count() {
+        let child = func_item.child(i).unwrap();
+        if child.kind() == "identifier" {
+            name_node = Some(child);
+            break;
+        }
+    }
+    let name_node = name_node.expect("function_item should have an identifier child");
+
+    let text = extractor.get_node_text(&name_node);
+    assert_eq!(text, "hello");
+}
+
+#[test]
+fn test_get_node_text_entire_function() {
+    // get_node_text should return the full text for a broader node
+    let content = "fn add(a: i32) -> i32 { a + 1 }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+
+    let text = extractor.get_node_text(&func_item);
+    assert_eq!(text, content);
+}
+
+#[test]
+fn test_get_node_text_empty_content() {
+    // Extractor with empty content — any node's byte range will be out of bounds
+    // We parse "fn x() {}" to get a real node, but the extractor holds ""
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        "".to_string(), // empty content
+        &workspace_root,
+    );
+
+    let tree = parse_rust("fn x() {}");
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+
+    // Node's byte range [0..10) exceeds empty content → should return ""
+    let text = extractor.get_node_text(&func_item);
+    assert_eq!(text, "");
+}
+
+#[test]
+fn test_get_node_text_unicode_content() {
+    // Rust supports Unicode identifiers in raw identifiers, but let's use a
+    // string literal to guarantee Unicode bytes in the content, then test
+    // that get_node_text handles multi-byte characters correctly.
+    let content = "fn café() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    // tree-sitter-rust may parse "café" as an ERROR node or identifier depending
+    // on version. Either way, get_node_text should return the bytes without panic.
+    // Let's just get the root text — that's the whole content.
+    let text = extractor.get_node_text(&root);
+    assert!(
+        text.contains("café"),
+        "Should contain the Unicode identifier: got '{}'",
+        text
+    );
+}
+
+#[test]
+fn test_get_node_text_out_of_bounds_node() {
+    // Simulate a node whose byte range exceeds the extractor's content.
+    // We parse a longer string to get a node with large byte offsets,
+    // then use an extractor with shorter content.
+    let short_content = "fn a() {}";
+    let long_content = "fn a_very_long_function_name_that_goes_way_beyond() { let _ = 42; }";
+
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        short_content.to_string(),
+        &workspace_root,
+    );
+
+    // Parse the long content to get a node with end_byte > short_content.len()
+    let tree = parse_rust(long_content);
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+
+    // func_item spans [0..67) but extractor content is only 9 bytes
+    assert!(func_item.end_byte() > short_content.len());
+
+    let text = extractor.get_node_text(&func_item);
+    assert_eq!(text, "", "Out-of-bounds node should return empty string");
+}
+
+// ---------------------------------------------------------------------------
+// create_symbol tests (also indirectly tests find_doc_comment)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_create_symbol_basic_function() {
+    let content = "fn hello() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).expect("should have function_item");
+
+    let symbol = extractor.create_symbol(
+        &func_item,
+        "hello".to_string(),
+        SymbolKind::Function,
+        SymbolOptions::default(),
+    );
+
+    assert_eq!(symbol.name, "hello");
+    assert_eq!(symbol.kind, SymbolKind::Function);
+    assert_eq!(symbol.language, "rust");
+    assert!(symbol.file_path.ends_with("test.rs"));
+    assert_eq!(symbol.start_line, 1); // 1-based
+    assert_eq!(symbol.end_line, 1);
+    assert_eq!(symbol.id.len(), 32); // MD5 hash
+    assert!(symbol.code_context.is_some());
+    assert!(symbol.content_type.is_none()); // Not markdown
+    assert!(symbol.doc_comment.is_none()); // No doc comment above
+}
+
+#[test]
+fn test_create_symbol_with_visibility() {
+    let content = "pub fn visible() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+
+    let options = SymbolOptions {
+        visibility: Some(Visibility::Public),
+        ..Default::default()
+    };
+
+    let symbol = extractor.create_symbol(
+        &func_item,
+        "visible".to_string(),
+        SymbolKind::Function,
+        options,
+    );
+
+    assert_eq!(symbol.visibility, Some(Visibility::Public));
+}
+
+#[test]
+fn test_create_symbol_with_parent_id() {
+    let content = "fn child() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+
+    let options = SymbolOptions {
+        parent_id: Some("parent_sym_id_abc".to_string()),
+        ..Default::default()
+    };
+
+    let symbol = extractor.create_symbol(
+        &func_item,
+        "child".to_string(),
+        SymbolKind::Method,
+        options,
+    );
+
+    assert_eq!(symbol.parent_id, Some("parent_sym_id_abc".to_string()));
+    assert_eq!(symbol.kind, SymbolKind::Method);
+}
+
+#[test]
+fn test_create_symbol_with_signature() {
+    let content = "fn greet(name: &str) -> String { name.to_string() }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+
+    let options = SymbolOptions {
+        signature: Some("fn greet(name: &str) -> String".to_string()),
+        ..Default::default()
+    };
+
+    let symbol = extractor.create_symbol(
+        &func_item,
+        "greet".to_string(),
+        SymbolKind::Function,
+        options,
+    );
+
+    assert_eq!(
+        symbol.signature,
+        Some("fn greet(name: &str) -> String".to_string())
+    );
+}
+
+#[test]
+fn test_create_symbol_markdown_content_type() {
+    // Markdown extractors set language="markdown" → content_type should be "documentation"
+    let content = "# Hello World";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "markdown".to_string(),
+        "README.md".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    // Parse as markdown to get a real node
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(&tree_sitter_md::LANGUAGE.into())
+        .expect("Error loading Markdown grammar");
+    let tree = parser.parse(content, None).unwrap();
+    let root = tree.root_node();
+    // Use the root node (section or document)
+    let first_child = root.child(0).unwrap_or(root);
+
+    let symbol = extractor.create_symbol(
+        &first_child,
+        "Hello World".to_string(),
+        SymbolKind::Module,
+        SymbolOptions::default(),
+    );
+
+    assert_eq!(symbol.content_type, Some("documentation".to_string()));
+}
+
+#[test]
+fn test_create_symbol_inserted_into_symbol_map() {
+    let content = "fn mapped() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    assert!(extractor.symbol_map.is_empty());
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+
+    let symbol = extractor.create_symbol(
+        &func_item,
+        "mapped".to_string(),
+        SymbolKind::Function,
+        SymbolOptions::default(),
+    );
+
+    assert_eq!(extractor.symbol_map.len(), 1);
+    assert_eq!(extractor.symbol_map.get(&symbol.id).unwrap().name, "mapped");
+}
+
+// ---------------------------------------------------------------------------
+// find_doc_comment tests (indirectly through create_symbol)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_find_doc_comment_rust_triple_slash() {
+    // Rust /// doc comment above a function should be captured
+    let content = "/// This is a doc comment\nfn documented() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+
+    // Find the function_item node (it should be the last named child after the comment)
+    let mut func_node = None;
+    for i in 0..root.named_child_count() {
+        let child = root.named_child(i).unwrap();
+        if child.kind() == "function_item" {
+            func_node = Some(child);
+            break;
+        }
+    }
+    let func_node = func_node.expect("should find function_item");
+
+    let symbol = extractor.create_symbol(
+        &func_node,
+        "documented".to_string(),
+        SymbolKind::Function,
+        SymbolOptions::default(),
+    );
+
+    assert!(
+        symbol.doc_comment.is_some(),
+        "Should capture /// doc comment"
+    );
+    let doc = symbol.doc_comment.unwrap();
+    assert!(
+        doc.contains("This is a doc comment"),
+        "Doc comment should contain the text, got: '{}'",
+        doc
+    );
+}
+
+#[test]
+fn test_find_doc_comment_none_when_absent() {
+    // No doc comment → doc_comment should be None
+    let content = "fn undocumented() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_node = root.child(0).unwrap();
+
+    let symbol = extractor.create_symbol(
+        &func_node,
+        "undocumented".to_string(),
+        SymbolKind::Function,
+        SymbolOptions::default(),
+    );
+
+    assert!(
+        symbol.doc_comment.is_none(),
+        "Should have no doc comment, got: {:?}",
+        symbol.doc_comment
+    );
+}
+
+#[test]
+fn test_find_doc_comment_multiline() {
+    // Multiple /// lines should be joined
+    let content = "/// First line\n/// Second line\n/// Third line\nfn multi_doc() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+
+    let mut func_node = None;
+    for i in 0..root.named_child_count() {
+        let child = root.named_child(i).unwrap();
+        if child.kind() == "function_item" {
+            func_node = Some(child);
+            break;
+        }
+    }
+    let func_node = func_node.expect("should find function_item");
+
+    let symbol = extractor.create_symbol(
+        &func_node,
+        "multi_doc".to_string(),
+        SymbolKind::Function,
+        SymbolOptions::default(),
+    );
+
+    assert!(symbol.doc_comment.is_some(), "Should capture multi-line doc comments");
+    let doc = symbol.doc_comment.unwrap();
+    assert!(
+        doc.contains("First line"),
+        "Should contain first line, got: '{}'",
+        doc
+    );
+    assert!(
+        doc.contains("Second line"),
+        "Should contain second line, got: '{}'",
+        doc
+    );
+    assert!(
+        doc.contains("Third line"),
+        "Should contain third line, got: '{}'",
+        doc
+    );
+}
+
+#[test]
+fn test_find_doc_comment_explicit_option_overrides_auto_detection() {
+    // If SymbolOptions provides a doc_comment, it should be used instead of auto-detection
+    let content = "/// Auto-detected comment\nfn overridden() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+
+    let mut func_node = None;
+    for i in 0..root.named_child_count() {
+        let child = root.named_child(i).unwrap();
+        if child.kind() == "function_item" {
+            func_node = Some(child);
+            break;
+        }
+    }
+    let func_node = func_node.expect("should find function_item");
+
+    let options = SymbolOptions {
+        doc_comment: Some("Manually provided doc".to_string()),
+        ..Default::default()
+    };
+
+    let symbol = extractor.create_symbol(
+        &func_node,
+        "overridden".to_string(),
+        SymbolKind::Function,
+        options,
+    );
+
+    assert_eq!(
+        symbol.doc_comment,
+        Some("Manually provided doc".to_string()),
+        "Explicit doc_comment in options should override auto-detection"
+    );
+}
