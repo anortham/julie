@@ -45,7 +45,7 @@ pub struct QueryMetricsTool {
     /// Minimum risk level filter: "LOW", "MEDIUM", or "HIGH" (applies to security_risk or change_risk)
     #[serde(default)]
     pub min_risk: Option<String>,
-    /// Filter by test status: true = only untested symbols, false = only tested symbols
+    /// Filter by test status: true = only tested symbols, false = only untested symbols
     #[serde(
         default,
         deserialize_with = "crate::utils::serde_lenient::deserialize_option_bool_lenient"
