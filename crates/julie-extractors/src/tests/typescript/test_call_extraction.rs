@@ -101,10 +101,7 @@ describe("UserService", () => {
     );
 
     let it_delete = symbols.iter().find(|s| s.name == "should delete a user");
-    assert!(
-        it_delete.is_some(),
-        "Should extract second 'it' block"
-    );
+    assert!(it_delete.is_some(), "Should extract second 'it' block");
 
     // Should extract beforeEach
     let before_each = symbols.iter().find(|s| s.name == "beforeEach");
@@ -137,7 +134,10 @@ describe("UserService", () => {
         test_call_symbols.len(),
         4,
         "Should extract exactly 4 test call symbols (describe + beforeEach + 2 it). Got: {:?}",
-        test_call_symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        test_call_symbols
+            .iter()
+            .map(|s| &s.name)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -202,16 +202,11 @@ it("should process", () => {
     );
 
     // processPayment() is unknown/imported — should produce a PendingRelationship
-    let process_pending = pending
-        .iter()
-        .find(|p| p.callee_name == "processPayment");
+    let process_pending = pending.iter().find(|p| p.callee_name == "processPayment");
     assert!(
         process_pending.is_some(),
         "Should have a pending relationship for processPayment(). Pending: {:?}",
-        pending
-            .iter()
-            .map(|p| &p.callee_name)
-            .collect::<Vec<_>>()
+        pending.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
     );
     let process_pending = process_pending.unwrap();
     assert_eq!(

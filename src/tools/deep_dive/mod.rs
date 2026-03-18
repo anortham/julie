@@ -13,9 +13,7 @@ use tracing::debug;
 
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
-use crate::tools::navigation::resolution::{
-    WorkspaceTarget, resolve_workspace_filter,
-};
+use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
 
 fn default_depth() -> String {
     "overview".to_string()
@@ -83,7 +81,9 @@ impl DeepDiveTool {
         match workspace_target {
             WorkspaceTarget::Reference(ref_workspace_id) => {
                 // Reference workspace: use handler helper for DB access
-                let db_arc = handler.get_database_for_workspace(&ref_workspace_id).await?;
+                let db_arc = handler
+                    .get_database_for_workspace(&ref_workspace_id)
+                    .await?;
 
                 let result = tokio::task::spawn_blocking(move || -> Result<String> {
                     let db = db_arc
@@ -109,10 +109,11 @@ impl DeepDiveTool {
         }
 
         // Primary workspace: use shared database via Arc<Mutex>
-        let workspace = handler
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first."))?;
+        let workspace = handler.get_workspace().await?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "No workspace initialized. Run manage_workspace(operation=\"index\") first."
+            )
+        })?;
 
         let db_arc = workspace
             .db

@@ -2,7 +2,11 @@ use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "julie-server", version, about = "Julie - Code Intelligence Server")]
+#[command(
+    name = "julie-server",
+    version,
+    about = "Julie - Code Intelligence Server"
+)]
 pub struct Cli {
     /// Workspace root path (overrides JULIE_WORKSPACE env var)
     #[arg(long)]
@@ -53,10 +57,7 @@ pub fn resolve_workspace_root(cli_workspace: Option<PathBuf>) -> PathBuf {
             );
             return canonical;
         } else {
-            eprintln!(
-                "Warning: JULIE_WORKSPACE path does not exist: {:?}",
-                path
-            );
+            eprintln!("Warning: JULIE_WORKSPACE path does not exist: {:?}", path);
         }
     }
 

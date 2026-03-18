@@ -2414,7 +2414,10 @@ mod blazor_extraction_tests {
                     sym.name,
                     sym.kind,
                     parent_id,
-                    symbols.iter().map(|s| format!("{}:{:?}({})", s.name, s.kind, s.id)).collect::<Vec<_>>()
+                    symbols
+                        .iter()
+                        .map(|s| format!("{}:{:?}({})", s.name, s.kind, s.id))
+                        .collect::<Vec<_>>()
                 );
             }
         }

@@ -5,9 +5,9 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::embeddings::metadata::{
-        format_symbol_metadata, has_simple_default_literal, is_embeddable_kind,
-        is_embeddable_language, prepare_batch_for_embedding, select_budgeted_variables,
-        VariableEmbeddingPolicy,
+        VariableEmbeddingPolicy, format_symbol_metadata, has_simple_default_literal,
+        is_embeddable_kind, is_embeddable_language, prepare_batch_for_embedding,
+        select_budgeted_variables,
     };
     use crate::extractors::{Symbol, SymbolKind};
 

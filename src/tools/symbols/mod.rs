@@ -49,13 +49,19 @@ pub struct GetSymbolsTool {
     /// File path (relative to workspace root)
     pub file_path: String,
     /// Maximum nesting depth (default: 1). 0=top-level, 1=include methods, 2+=deeper
-    #[serde(default = "default_max_depth", deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient")]
+    #[serde(
+        default = "default_max_depth",
+        deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
+    )]
     pub max_depth: u32,
     /// Filter to specific symbol name (supports partial matching)
     #[serde(default)]
     pub target: Option<String>,
     /// Maximum symbols to return (default: 50)
-    #[serde(default = "default_limit", deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient")]
+    #[serde(
+        default = "default_limit",
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient"
+    )]
     pub limit: Option<u32>,
     /// Reading mode: "structure", "minimal" (default), or "full"
     /// - "structure": Symbol names/signatures only (no code bodies)

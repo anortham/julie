@@ -22,7 +22,7 @@ fn is_test_path(file_path: &str) -> bool {
     for segment in file_path.split('/') {
         match segment {
             "test" | "tests" | "Test" | "Tests" | "spec" | "Spec" | "__tests__" | "autotests" => {
-                return true
+                return true;
             }
             _ => {}
         }
@@ -115,12 +115,7 @@ fn detect_python(name: &str, decorators: &[String]) -> bool {
     name.starts_with("test_")
 }
 
-fn detect_scala(
-    name: &str,
-    file_path: &str,
-    decorators: &[String],
-    attributes: &[String],
-) -> bool {
+fn detect_scala(name: &str, file_path: &str, decorators: &[String], attributes: &[String]) -> bool {
     // JUnit-style: @Test annotation (used by some Scala projects)
     if detect_java_kotlin(decorators, attributes) {
         return true;
@@ -137,9 +132,17 @@ fn detect_scala(
 
 fn detect_java_kotlin(decorators: &[String], attributes: &[String]) -> bool {
     let test_annotations = [
-        "Test", "ParameterizedTest", "RepeatedTest",
-        "BeforeEach", "AfterEach", "BeforeAll", "AfterAll",
-        "Before", "After", "BeforeClass", "AfterClass",
+        "Test",
+        "ParameterizedTest",
+        "RepeatedTest",
+        "BeforeEach",
+        "AfterEach",
+        "BeforeAll",
+        "AfterAll",
+        "Before",
+        "After",
+        "BeforeClass",
+        "AfterClass",
     ];
     decorators
         .iter()
@@ -149,9 +152,18 @@ fn detect_java_kotlin(decorators: &[String], attributes: &[String]) -> bool {
 
 fn detect_csharp(attributes: &[String]) -> bool {
     let test_attrs = [
-        "Test", "TestMethod", "Fact", "Theory",
-        "SetUp", "TearDown", "OneTimeSetUp", "OneTimeTearDown",
-        "TestInitialize", "TestCleanup", "ClassInitialize", "ClassCleanup",
+        "Test",
+        "TestMethod",
+        "Fact",
+        "Theory",
+        "SetUp",
+        "TearDown",
+        "OneTimeSetUp",
+        "OneTimeTearDown",
+        "TestInitialize",
+        "TestCleanup",
+        "ClassInitialize",
+        "ClassCleanup",
     ];
     attributes.iter().any(|a| {
         // C# extractors may produce bracketed attributes like "[Fact]" or bare "Fact".
@@ -176,9 +188,8 @@ fn detect_js_ts(name: &str, file_path: &str) -> bool {
     // Must be a test runner function AND in a test/spec file
     let is_test_fn = matches!(name, "describe" | "it" | "test");
     let file_name = file_path.rsplit('/').next().unwrap_or(file_path);
-    let in_test_file = file_name.contains(".test.")
-        || file_name.contains(".spec.")
-        || is_test_path(file_path);
+    let in_test_file =
+        file_name.contains(".test.") || file_name.contains(".spec.") || is_test_path(file_path);
     is_test_fn && in_test_file
 }
 
@@ -204,7 +215,10 @@ fn detect_ruby(name: &str, file_path: &str) -> bool {
 fn detect_swift(name: &str) -> bool {
     // XCTest convention: test* prefix for methods/functions + lifecycle methods
     name.starts_with("test")
-        || matches!(name, "setUp" | "tearDown" | "setUpWithError" | "tearDownWithError")
+        || matches!(
+            name,
+            "setUp" | "tearDown" | "setUpWithError" | "tearDownWithError"
+        )
 }
 
 fn detect_elixir(name: &str, file_path: &str) -> bool {

@@ -11,7 +11,7 @@ pub use runner::{
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 pub fn workspace_root() -> PathBuf {
     resolve_workspace_root(env!("CARGO_MANIFEST_DIR"))
@@ -53,8 +53,10 @@ mod tests {
     fn manifest_tests_workspace_root_from_rejects_path_without_parent() {
         let error = resolve_workspace_root("/").unwrap_err();
 
-        assert!(error
-            .to_string()
-            .contains("expected xtask manifest dir to have a parent"));
+        assert!(
+            error
+                .to_string()
+                .contains("expected xtask manifest dir to have a parent")
+        );
     }
 }

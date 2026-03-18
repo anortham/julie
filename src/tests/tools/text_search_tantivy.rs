@@ -538,8 +538,11 @@ pub fn lookup_user_profile(id: u32) -> String {
 
 /// Create a shared fixture with both production and test functions.
 /// Returns (workspace_path, temp_dir) so the caller holds the TempDir alive.
-async fn setup_workspace_with_test_and_prod_symbols(
-) -> Result<(std::path::PathBuf, TempDir, crate::handler::JulieServerHandler)> {
+async fn setup_workspace_with_test_and_prod_symbols() -> Result<(
+    std::path::PathBuf,
+    TempDir,
+    crate::handler::JulieServerHandler,
+)> {
     let temp_dir = TempDir::new()?;
     let workspace_path = temp_dir.path().to_path_buf();
     let src_dir = workspace_path.join("src");
@@ -801,7 +804,10 @@ async fn test_exclude_tests_path_based_excludes_interface_from_test_file() -> Re
         !has_test_interface,
         "exclude_tests=true should filter MockPaymentGateway from .test.ts file via path-based detection; \
          results: {:?}",
-        results.iter().map(|s| (&s.name, &s.file_path)).collect::<Vec<_>>()
+        results
+            .iter()
+            .map(|s| (&s.name, &s.file_path))
+            .collect::<Vec<_>>()
     );
 
     // Production interface should still be found
@@ -809,7 +815,10 @@ async fn test_exclude_tests_path_based_excludes_interface_from_test_file() -> Re
     assert!(
         has_prod_interface,
         "PaymentGateway (production symbol) should still appear; results: {:?}",
-        results.iter().map(|s| (&s.name, &s.file_path)).collect::<Vec<_>>()
+        results
+            .iter()
+            .map(|s| (&s.name, &s.file_path))
+            .collect::<Vec<_>>()
     );
 
     Ok(())

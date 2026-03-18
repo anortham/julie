@@ -310,7 +310,9 @@ impl ManageWorkspaceTool {
                 );
                 if let Some(ws_id) = indexed_workspace_id {
                     if skip_embeddings {
-                        info!("Skipping embeddings in auto-index mode (use explicit `manage_workspace index` to embed)");
+                        info!(
+                            "Skipping embeddings in auto-index mode (use explicit `manage_workspace index` to embed)"
+                        );
                     } else {
                         let embed_count =
                             crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(

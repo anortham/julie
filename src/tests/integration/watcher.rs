@@ -15,10 +15,22 @@ fn test_supported_extensions() {
     assert!(extensions.contains("ts"));
     assert!(extensions.contains("py"));
     assert!(extensions.contains("java"));
-    assert!(extensions.contains("scala"), "Scala missing from supported extensions");
-    assert!(extensions.contains("sc"), "Scala .sc missing from supported extensions");
-    assert!(extensions.contains("ex"), "Elixir .ex missing from supported extensions");
-    assert!(extensions.contains("exs"), "Elixir .exs missing from supported extensions");
+    assert!(
+        extensions.contains("scala"),
+        "Scala missing from supported extensions"
+    );
+    assert!(
+        extensions.contains("sc"),
+        "Scala .sc missing from supported extensions"
+    );
+    assert!(
+        extensions.contains("ex"),
+        "Elixir .ex missing from supported extensions"
+    );
+    assert!(
+        extensions.contains("exs"),
+        "Elixir .exs missing from supported extensions"
+    );
 
     // Test that unsupported extensions are not included
     assert!(!extensions.contains("txt"));

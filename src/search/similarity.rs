@@ -137,7 +137,8 @@ mod tests {
                 last_indexed: 0,
                 symbol_count: 2,
                 content: None,
-            }).unwrap();
+            })
+            .unwrap();
         }
 
         (tmp, db)
@@ -172,7 +173,13 @@ mod tests {
     fn test_find_similar_returns_results_above_threshold() {
         let (_tmp, mut db) = setup_db();
 
-        let sym_a = make_symbol("sym-a", "process_data", SymbolKind::Function, "src/a.rs", 10);
+        let sym_a = make_symbol(
+            "sym-a",
+            "process_data",
+            SymbolKind::Function,
+            "src/a.rs",
+            10,
+        );
         let sym_b = make_symbol("sym-b", "handle_data", SymbolKind::Function, "src/b.rs", 20);
         db.store_symbols(&[sym_a.clone(), sym_b.clone()]).unwrap();
 
@@ -180,10 +187,8 @@ mod tests {
         let emb_a: Vec<f32> = (0..384).map(|i| (i as f32) * 0.01).collect();
         let mut emb_b = emb_a.clone();
         emb_b[0] += 0.001;
-        db.store_embeddings(&[
-            ("sym-a".to_string(), emb_a),
-            ("sym-b".to_string(), emb_b),
-        ]).unwrap();
+        db.store_embeddings(&[("sym-a".to_string(), emb_a), ("sym-b".to_string(), emb_b)])
+            .unwrap();
 
         let results = find_similar_symbols(&db, &sym_a, 5, MIN_SIMILARITY_SCORE).unwrap();
         assert_eq!(results.len(), 1);
@@ -195,17 +200,27 @@ mod tests {
     fn test_find_similar_filters_below_threshold() {
         let (_tmp, mut db) = setup_db();
 
-        let sym_a = make_symbol("sym-a", "process_data", SymbolKind::Function, "src/a.rs", 10);
-        let sym_b = make_symbol("sym-b", "totally_unrelated", SymbolKind::Function, "src/b.rs", 20);
+        let sym_a = make_symbol(
+            "sym-a",
+            "process_data",
+            SymbolKind::Function,
+            "src/a.rs",
+            10,
+        );
+        let sym_b = make_symbol(
+            "sym-b",
+            "totally_unrelated",
+            SymbolKind::Function,
+            "src/b.rs",
+            20,
+        );
         db.store_symbols(&[sym_a.clone(), sym_b.clone()]).unwrap();
 
         // Distant embeddings -> low similarity score -> should be filtered out
         let emb_a: Vec<f32> = (0..384).map(|i| (i as f32) * 0.01).collect();
         let emb_b: Vec<f32> = (0..384).map(|i| ((383 - i) as f32) * 0.01).collect();
-        db.store_embeddings(&[
-            ("sym-a".to_string(), emb_a),
-            ("sym-b".to_string(), emb_b),
-        ]).unwrap();
+        db.store_embeddings(&[("sym-a".to_string(), emb_a), ("sym-b".to_string(), emb_b)])
+            .unwrap();
 
         let results = find_similar_symbols(&db, &sym_a, 5, MIN_SIMILARITY_SCORE).unwrap();
         assert!(

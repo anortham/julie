@@ -41,7 +41,10 @@ pub struct FastRefsTool {
     #[serde(default = "default_true")]
     pub include_definition: bool,
     /// Maximum references (default: 10, range: 1-500)
-    #[serde(default = "default_limit", deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient")]
+    #[serde(
+        default = "default_limit",
+        deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
+    )]
     pub limit: u32,
     /// Workspace filter: "primary" (default) or a reference workspace ID
     #[serde(default = "default_workspace")]
@@ -71,8 +74,8 @@ impl FastRefsTool {
     /// Returns formatted semantic results or empty string.
     /// Skips for reference workspace queries (may lack embeddings).
     async fn try_semantic_fallback(&self, handler: &JulieServerHandler) -> String {
-        use crate::search::similarity;
         use super::formatting::format_semantic_fallback;
+        use crate::search::similarity;
 
         let workspace = match handler.get_workspace().await {
             Ok(Some(w)) => w,
@@ -92,8 +95,7 @@ impl FastRefsTool {
         };
 
         // Use the correct DB: reference workspace DB if specified, primary otherwise
-        let is_reference = self.workspace.is_some()
-            && self.workspace.as_deref() != Some("primary");
+        let is_reference = self.workspace.is_some() && self.workspace.as_deref() != Some("primary");
 
         // Use a lower threshold than MIN_SIMILARITY_SCORE (0.5) because we're
         // comparing a raw symbol name against rich metadata embeddings (kind +
@@ -115,7 +117,10 @@ impl FastRefsTool {
                 Err(_) => return String::new(),
             };
             let similar = match similarity::find_similar_by_query(
-                &db_guard, &query_vector, 5, QUERY_SIMILARITY_THRESHOLD,
+                &db_guard,
+                &query_vector,
+                5,
+                QUERY_SIMILARITY_THRESHOLD,
             ) {
                 Ok(results) => results,
                 Err(e) => {
@@ -134,7 +139,10 @@ impl FastRefsTool {
                 Err(_) => return String::new(),
             };
             let similar = match similarity::find_similar_by_query(
-                &db_guard, &query_vector, 5, QUERY_SIMILARITY_THRESHOLD,
+                &db_guard,
+                &query_vector,
+                5,
+                QUERY_SIMILARITY_THRESHOLD,
             ) {
                 Ok(results) => results,
                 Err(_) => return String::new(),
@@ -147,23 +155,23 @@ impl FastRefsTool {
         debug!("Finding references for: {}", self.symbol);
 
         // Resolve workspace target (primary or reference workspace)
-        let workspace_target =
-            resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+        let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
 
         // Find references (workspace resolution is handled by workspace_target)
-        let (definitions, references) =
-            self.find_references_and_definitions(handler, workspace_target).await?;
+        let (definitions, references) = self
+            .find_references_and_definitions(handler, workspace_target)
+            .await?;
 
         if definitions.is_empty() && references.is_empty() {
             // Attempt semantic fallback (works for both primary and reference workspaces)
             let semantic_section = self.try_semantic_fallback(handler).await;
 
             let empty_names = HashMap::new();
-            let mut result_text = format_lean_refs_results(
-                &self.symbol, &[], &[], &empty_names,
-            );
+            let mut result_text = format_lean_refs_results(&self.symbol, &[], &[], &empty_names);
             result_text.push_str(&semantic_section);
-            return Ok(CallToolResult::text_content(vec![Content::text(result_text)]));
+            return Ok(CallToolResult::text_content(vec![Content::text(
+                result_text,
+            )]));
         }
 
         // Resolve from_symbol_id → name for each reference so the formatter
@@ -265,44 +273,46 @@ impl FastRefsTool {
                 let parent_filter_clone = parent_filter.clone();
                 let db_arc = db.clone();
 
-                definitions = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<Symbol>> {
-                    let db_lock = super::lock_db(&db_arc, "fast_refs exact lookup");
-                    let mut defs = db_lock.get_symbols_by_name(&symbol)?;
+                definitions =
+                    tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<Symbol>> {
+                        let db_lock = super::lock_db(&db_arc, "fast_refs exact lookup");
+                        let mut defs = db_lock.get_symbols_by_name(&symbol)?;
 
-                    // If a parent filter is specified, filter definitions to those
-                    // whose parent symbol has the matching name
-                    if let Some(ref parent_name) = parent_filter_clone {
-                        let parent_ids: Vec<String> = defs
-                            .iter()
-                            .filter_map(|s| s.parent_id.clone())
-                            .collect::<std::collections::HashSet<_>>()
-                            .into_iter()
-                            .collect();
-
-                        if !parent_ids.is_empty() {
-                            let parents = db_lock.get_symbols_by_ids(&parent_ids)?;
-                            let matching_parent_ids: std::collections::HashSet<String> = parents
+                        // If a parent filter is specified, filter definitions to those
+                        // whose parent symbol has the matching name
+                        if let Some(ref parent_name) = parent_filter_clone {
+                            let parent_ids: Vec<String> = defs
+                                .iter()
+                                .filter_map(|s| s.parent_id.clone())
+                                .collect::<std::collections::HashSet<_>>()
                                 .into_iter()
-                                .filter(|p| p.name == *parent_name)
-                                .map(|p| p.id)
                                 .collect();
 
-                            defs.retain(|s| {
-                                s.parent_id
-                                    .as_deref()
-                                    .map(|pid| matching_parent_ids.contains(pid))
-                                    .unwrap_or(false)
-                            });
-                        } else {
-                            // No definitions have parent_id — qualified search finds nothing
-                            defs.clear();
-                        }
-                    }
+                            if !parent_ids.is_empty() {
+                                let parents = db_lock.get_symbols_by_ids(&parent_ids)?;
+                                let matching_parent_ids: std::collections::HashSet<String> =
+                                    parents
+                                        .into_iter()
+                                        .filter(|p| p.name == *parent_name)
+                                        .map(|p| p.id)
+                                        .collect();
 
-                    Ok(defs)
-                })
-                .await
-                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
+                                defs.retain(|s| {
+                                    s.parent_id
+                                        .as_deref()
+                                        .map(|pid| matching_parent_ids.contains(pid))
+                                        .unwrap_or(false)
+                                });
+                            } else {
+                                // No definitions have parent_id — qualified search finds nothing
+                                defs.clear();
+                            }
+                        }
+
+                        Ok(defs)
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
 
                 debug!("⚡ SQLite found {} exact matches", definitions.len());
             }

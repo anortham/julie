@@ -43,7 +43,10 @@ mod tests {
     fn test_compute_line_changes_no_changes() {
         let content = "fn foo() {}\n";
         let changes = compute_line_changes(content, content);
-        assert!(changes.is_empty(), "identical content should produce no changes");
+        assert!(
+            changes.is_empty(),
+            "identical content should produce no changes"
+        );
     }
 
     #[test]

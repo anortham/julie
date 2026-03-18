@@ -210,10 +210,16 @@ impl SmartRefactorTool {
                 preview_lines.push(format!("  {} ({} changes):", file_path, line_changes.len()));
                 for change in changes.iter().take(5) {
                     if change.line_number > 0 {
-                        preview_lines
-                            .push(format!("    L{}: - {}", change.line_number, change.old_line.trim()));
-                        preview_lines
-                            .push(format!("    L{}: + {}", change.line_number, change.new_line.trim()));
+                        preview_lines.push(format!(
+                            "    L{}: - {}",
+                            change.line_number,
+                            change.old_line.trim()
+                        ));
+                        preview_lines.push(format!(
+                            "    L{}: + {}",
+                            change.line_number,
+                            change.new_line.trim()
+                        ));
                     } else {
                         preview_lines.push(format!("    {}", change.old_line)); // import update note
                     }

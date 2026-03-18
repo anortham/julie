@@ -59,10 +59,7 @@ mod tests {
             t.Fatal("should not reach here")
         "#;
         let metrics = analyze_test_body(body);
-        assert_eq!(
-            metrics.assertion_count, 2,
-            "Go require.Equal + t.Fatal = 2"
-        );
+        assert_eq!(metrics.assertion_count, 2, "Go require.Equal + t.Fatal = 2");
     }
 
     #[test]
@@ -88,10 +85,7 @@ mod tests {
             Expect(result).To.BeGreaterThan(0);
         "#;
         let metrics = analyze_test_body(body);
-        assert_eq!(
-            metrics.assertion_count, 2,
-            "C# Should + Expect( = 2"
-        );
+        assert_eq!(metrics.assertion_count, 2, "C# Should + Expect( = 2");
     }
 
     #[test]
@@ -160,10 +154,7 @@ mod tests {
             service.get_user.returns(42);
         "#;
         let metrics = analyze_test_body(body);
-        assert_eq!(
-            metrics.mock_count, 3,
-            "mock + jest.fn( + spy = 3"
-        );
+        assert_eq!(metrics.mock_count, 3, "mock + jest.fn( + spy = 3");
     }
 
     #[test]
@@ -176,10 +167,7 @@ mod tests {
             Mockito.when(service.getUser(1)).thenReturn(user);
         "#;
         let metrics = analyze_test_body(body);
-        assert_eq!(
-            metrics.mock_count, 3,
-            "@Mock + @InjectMocks + Mockito = 3"
-        );
+        assert_eq!(metrics.mock_count, 3, "@Mock + @InjectMocks + Mockito = 3");
     }
 
     #[test]
@@ -196,10 +184,7 @@ mod tests {
         // not a word boundary. Wait, underscore IS a word character. So \bmock\b won't match
         // "mock_service". It will only match standalone "mock".
         // But patch( matches.
-        assert!(
-            metrics.mock_count >= 1,
-            "Python patch( should be detected"
-        );
+        assert!(metrics.mock_count >= 1, "Python patch( should be detected");
     }
 
     #[test]
@@ -221,10 +206,7 @@ mod tests {
         let metrics = analyze_test_body(body);
         // Moq + mock (in mockService? no, "mockService" — \bmock\b won't match)
         // Actually "Moq" matches \bMoq\b. And "Mock" in "Moq.Mock" matches \bMock\b.
-        assert!(
-            metrics.mock_count >= 2,
-            "C# Moq + Mock should be detected"
-        );
+        assert!(metrics.mock_count >= 2, "C# Moq + Mock should be detected");
     }
 
     // =========================================================================
@@ -550,7 +532,10 @@ mod tests {
 
         // Verify stats
         assert_eq!(stats.total_tests, 1, "Should have analyzed 1 test symbol");
-        assert_eq!(stats.adequate, 1, "2 assertions, no mocks, no error testing = adequate");
+        assert_eq!(
+            stats.adequate, 1,
+            "2 assertions, no mocks, no error testing = adequate"
+        );
 
         // Verify metadata was updated on the test symbol
         let updated_metadata: String = db
@@ -563,10 +548,19 @@ mod tests {
             .unwrap();
 
         let meta: serde_json::Value = serde_json::from_str(&updated_metadata).unwrap();
-        assert!(meta["is_test"].as_bool().unwrap(), "is_test should still be true");
-        assert!(meta["test_quality"].is_object(), "test_quality should be added");
+        assert!(
+            meta["is_test"].as_bool().unwrap(),
+            "is_test should still be true"
+        );
+        assert!(
+            meta["test_quality"].is_object(),
+            "test_quality should be added"
+        );
         assert_eq!(meta["test_quality"]["assertion_count"].as_u64().unwrap(), 2);
-        assert_eq!(meta["test_quality"]["quality_tier"].as_str().unwrap(), "adequate");
+        assert_eq!(
+            meta["test_quality"]["quality_tier"].as_str().unwrap(),
+            "adequate"
+        );
 
         // Verify non-test symbol was NOT modified
         let non_test_metadata: String = db
@@ -618,7 +612,10 @@ mod tests {
 
         let stats = compute_test_quality_metrics(&db).unwrap();
         assert_eq!(stats.total_tests, 1);
-        assert_eq!(stats.no_body, 1, "Symbol with NULL code_context should be counted as no_body");
+        assert_eq!(
+            stats.no_body, 1,
+            "Symbol with NULL code_context should be counted as no_body"
+        );
         assert_eq!(stats.stub, 1, "No body means stub tier");
     }
 
@@ -673,7 +670,10 @@ mod tests {
             "keep_me",
             "Existing metadata should be preserved"
         );
-        assert!(meta["test_quality"].is_object(), "test_quality should be added");
+        assert!(
+            meta["test_quality"].is_object(),
+            "test_quality should be added"
+        );
     }
 
     // =========================================================================

@@ -444,15 +444,7 @@ mod tests {
 
         // No relationships -- only identifiers of different kinds
         insert_identifier(&db, "Config", "call", "src/user.rs", 20, None, 0.8);
-        insert_identifier(
-            &db,
-            "Config",
-            "type_usage",
-            "src/types.rs",
-            5,
-            None,
-            0.7,
-        );
+        insert_identifier(&db, "Config", "type_usage", "src/types.rs", 5, None, 0.7);
 
         // Filter by "call" -- should only get the call identifier
         let (_, refs_call) = find_refs_in_db(&db, "Config", 100, Some("call"));
@@ -496,15 +488,7 @@ mod tests {
 
         // No relationships -- only identifiers
         insert_identifier(&db, "process", "call", "src/main.rs", 25, None, 0.9);
-        insert_identifier(
-            &db,
-            "process",
-            "call",
-            "src/handler.rs",
-            42,
-            None,
-            0.85,
-        );
+        insert_identifier(&db, "process", "call", "src/handler.rs", 42, None, 0.85);
 
         let (defs, refs) = find_refs_in_db(&db, "process", 100, None);
         assert_eq!(defs.len(), 1);
@@ -620,13 +604,7 @@ mod tests {
 
     #[test]
     fn test_reference_workspace_combined_limit_and_kind_filter() {
-        let files = &[
-            "src/lib.rs",
-            "src/a.rs",
-            "src/b.rs",
-            "src/c.rs",
-            "src/d.rs",
-        ];
+        let files = &["src/lib.rs", "src/a.rs", "src/b.rs", "src/c.rs", "src/d.rs"];
         let (_tmp, mut db) = setup_db(files);
 
         let target = make_symbol("sym-handler", "handler", "src/lib.rs", 1);
@@ -636,23 +614,11 @@ mod tests {
         insert_identifier(&db, "handler", "call", "src/a.rs", 10, None, 0.9);
         insert_identifier(&db, "handler", "call", "src/b.rs", 20, None, 0.8);
         insert_identifier(&db, "handler", "call", "src/c.rs", 30, None, 0.7);
-        insert_identifier(
-            &db,
-            "handler",
-            "type_usage",
-            "src/d.rs",
-            5,
-            None,
-            0.95,
-        );
+        insert_identifier(&db, "handler", "type_usage", "src/d.rs", 5, None, 0.95);
 
         // Filter by "call" with limit=2 -- should get top 2 call refs by confidence
         let (_, refs) = find_refs_in_db(&db, "handler", 2, Some("call"));
-        assert_eq!(
-            refs.len(),
-            2,
-            "should get exactly 2 call refs with limit=2"
-        );
+        assert_eq!(refs.len(), 2, "should get exactly 2 call refs with limit=2");
         // All should be calls (no type_usage)
         for r in &refs {
             assert_eq!(
@@ -712,10 +678,7 @@ pub fn caller_two() {
         // Initialize handler
         let handler = JulieServerHandler::new_for_test().await.unwrap();
         handler
-            .initialize_workspace_with_force(
-                Some(primary_path.to_string_lossy().to_string()),
-                true,
-            )
+            .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
             .await
             .unwrap();
 
@@ -728,10 +691,7 @@ pub fn caller_two() {
             workspace_id: None,
             detailed: None,
         };
-        index_tool
-            .call_tool(&handler)
-            .await
-            .expect("index primary");
+        index_tool.call_tool(&handler).await.expect("index primary");
 
         // Add reference workspace
         let add_tool = crate::tools::ManageWorkspaceTool {
@@ -789,10 +749,7 @@ pub fn caller_two() {
     /// Mirror of the qualified-name resolution logic that will be in
     /// `find_references_and_definitions`: parse "Parent::child", look up by child
     /// name only, then retain definitions whose parent symbol name matches.
-    fn find_defs_qualified(
-        db: &SymbolDatabase,
-        symbol: &str,
-    ) -> Vec<Symbol> {
+    fn find_defs_qualified(db: &SymbolDatabase, symbol: &str) -> Vec<Symbol> {
         use crate::tools::navigation::resolution::parse_qualified_name;
 
         let (effective_symbol, parent_filter) = match parse_qualified_name(symbol) {
@@ -800,7 +757,9 @@ pub fn caller_two() {
             None => (symbol.to_string(), None),
         };
 
-        let mut defs = db.get_symbols_by_name(&effective_symbol).unwrap_or_default();
+        let mut defs = db
+            .get_symbols_by_name(&effective_symbol)
+            .unwrap_or_default();
 
         if let Some(ref parent) = parent_filter {
             // Collect parent IDs from definitions that have one
@@ -905,11 +864,22 @@ pub fn caller_two() {
         db.store_symbols(&[engine, pipeline]).unwrap();
 
         // Store "process" methods — one under Engine, one under Pipeline
-        let engine_process =
-            make_method_symbol("method-engine-process", "process", "src/engine.rs", 10, "class-engine");
-        let pipeline_process =
-            make_method_symbol("method-pipeline-process", "process", "src/pipeline.rs", 10, "class-pipeline");
-        db.store_symbols(&[engine_process, pipeline_process]).unwrap();
+        let engine_process = make_method_symbol(
+            "method-engine-process",
+            "process",
+            "src/engine.rs",
+            10,
+            "class-engine",
+        );
+        let pipeline_process = make_method_symbol(
+            "method-pipeline-process",
+            "process",
+            "src/pipeline.rs",
+            10,
+            "class-pipeline",
+        );
+        db.store_symbols(&[engine_process, pipeline_process])
+            .unwrap();
 
         // Unqualified: should find both "process" methods
         let unqualified = find_defs_qualified(&db, "process");

@@ -90,20 +90,17 @@ impl ScalaExtractor {
                 symbol = properties::extract_var(&mut self.base, &node, parent_id.as_deref());
             }
             "import_declaration" => {
-                symbol =
-                    declarations::extract_import(&mut self.base, &node, parent_id.as_deref());
+                symbol = declarations::extract_import(&mut self.base, &node, parent_id.as_deref());
             }
             "package_clause" => {
-                symbol =
-                    declarations::extract_package(&mut self.base, &node, parent_id.as_deref());
+                symbol = declarations::extract_package(&mut self.base, &node, parent_id.as_deref());
             }
             "type_definition" => {
                 symbol =
                     declarations::extract_type_alias(&mut self.base, &node, parent_id.as_deref());
             }
             "given_definition" => {
-                symbol =
-                    declarations::extract_given(&mut self.base, &node, parent_id.as_deref());
+                symbol = declarations::extract_given(&mut self.base, &node, parent_id.as_deref());
             }
             "extension_definition" => {
                 symbol =
@@ -153,8 +150,7 @@ impl ScalaExtractor {
         relationships: &mut Vec<Relationship>,
     ) {
         match node.kind() {
-            "class_definition" | "trait_definition" | "object_definition"
-            | "enum_definition" => {
+            "class_definition" | "trait_definition" | "object_definition" | "enum_definition" => {
                 relationships::extract_inheritance_relationships(
                     self,
                     &node,

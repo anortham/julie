@@ -66,10 +66,7 @@ fn try_uv_venv(venv_path: &Path) -> Option<Result<()>> {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     suppress_console_window(&mut install_cmd);
-    let install_ok = install_cmd
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
+    let install_ok = install_cmd.status().map(|s| s.success()).unwrap_or(false);
 
     if !install_ok {
         warn!("uv python install 3.{preferred} failed");
@@ -174,7 +171,9 @@ fn detect_bootstrap_python_interpreter() -> Result<OsString> {
         if !command_exists(&candidate) {
             continue;
         }
-        if let Some((_major, minor)) = super::sidecar_supervisor::python_version_from_program(&candidate) {
+        if let Some((_major, minor)) =
+            super::sidecar_supervisor::python_version_from_program(&candidate)
+        {
             if SUPPORTED_PYTHON_MINORS.contains(&minor) {
                 return Ok(candidate);
             }

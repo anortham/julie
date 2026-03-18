@@ -11,7 +11,10 @@ async fn handler_construction_sets_workspace_root() -> Result<()> {
     assert!(handler.workspace_root.is_absolute() || handler.workspace_root.as_os_str() == ".");
     // workspace should start as None (lazy init)
     let ws = handler.workspace.read().await;
-    assert!(ws.is_none(), "workspace should be None before initialization");
+    assert!(
+        ws.is_none(),
+        "workspace should be None before initialization"
+    );
     Ok(())
 }
 
@@ -21,7 +24,10 @@ async fn checkpoint_active_workspace_wal_returns_none_before_initialization() ->
 
     let checkpoint = crate::startup::checkpoint_active_workspace_wal(&handler).await?;
 
-    assert!(checkpoint.is_none(), "no workspace should mean no checkpoint");
+    assert!(
+        checkpoint.is_none(),
+        "no workspace should mean no checkpoint"
+    );
     Ok(())
 }
 

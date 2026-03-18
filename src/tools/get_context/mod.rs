@@ -30,7 +30,10 @@ pub struct GetContextTool {
     pub query: String,
 
     /// Maximum token budget for the response (default: auto-scaled based on result count)
-    #[serde(default, deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient")]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient"
+    )]
     pub max_tokens: Option<u32>,
 
     /// Workspace filter: "primary" (default) or a reference workspace ID

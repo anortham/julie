@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::database::{SymbolDatabase, LATEST_SCHEMA_VERSION};
+    use crate::database::{LATEST_SCHEMA_VERSION, SymbolDatabase};
     use tempfile::TempDir;
 
     /// Helper: create a fresh SymbolDatabase in a temp directory.
@@ -316,7 +316,10 @@ mod tests {
 
         // Verify schema version was bumped
         let version = db.get_schema_version().unwrap();
-        assert_eq!(version, LATEST_SCHEMA_VERSION, "Schema version should be latest");
+        assert_eq!(
+            version, LATEST_SCHEMA_VERSION,
+            "Schema version should be latest"
+        );
     }
 
     #[test]

@@ -208,7 +208,11 @@ pub(super) fn extract_annotations(node: &Node) -> Vec<String> {
 
         if sibling.kind() == "annotation" {
             // Strip leading @ and trim whitespace
-            let name = sibling_text.trim().strip_prefix('@').unwrap_or(&sibling_text).to_string();
+            let name = sibling_text
+                .trim()
+                .strip_prefix('@')
+                .unwrap_or(&sibling_text)
+                .to_string();
             if !name.is_empty() {
                 annotations.push(name);
             }

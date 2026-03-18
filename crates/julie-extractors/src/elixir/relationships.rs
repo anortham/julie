@@ -44,8 +44,8 @@ fn walk_for_relationships(
                         extract_impl_relationship(extractor, &node, symbols, relationships);
                     }
                     // Skip definition macros for call relationships
-                    "defmodule" | "def" | "defp" | "defmacro" | "defmacrop"
-                    | "defprotocol" | "defstruct" | "import" | "alias" | "require" => {}
+                    "defmodule" | "def" | "defp" | "defmacro" | "defmacrop" | "defprotocol"
+                    | "defstruct" | "import" | "alias" | "require" => {}
                     _ => {
                         // Regular function call → Calls relationship
                         extract_call_relationship(
@@ -90,9 +90,10 @@ fn extract_use_relationship(
 
     // Try to find the used module in symbols — only match definition symbols,
     // not Import/Export symbols (which are created for the `use` statement itself)
-    if let Some(to_symbol) = symbols.iter().find(|s| {
-        s.name == target && !matches!(s.kind, SymbolKind::Import | SymbolKind::Export)
-    }) {
+    if let Some(to_symbol) = symbols
+        .iter()
+        .find(|s| s.name == target && !matches!(s.kind, SymbolKind::Import | SymbolKind::Export))
+    {
         relationships.push(Relationship {
             id: format!(
                 "{}_{}_Uses_{}",
@@ -292,8 +293,7 @@ fn find_containing_function<'a>(
         if n.kind() == "call" {
             if let Some(target_name) = helpers::extract_call_target_name(&extractor.base, &n) {
                 if matches!(target_name.as_str(), "def" | "defp") {
-                    if let Some((fn_name, _)) =
-                        helpers::extract_function_head(&extractor.base, &n)
+                    if let Some((fn_name, _)) = helpers::extract_function_head(&extractor.base, &n)
                     {
                         if let Some(sym) = symbol_map.get(&fn_name) {
                             return Some((*sym).clone());
@@ -306,4 +306,3 @@ fn find_containing_function<'a>(
     }
     None
 }
-

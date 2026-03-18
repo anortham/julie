@@ -137,8 +137,16 @@ fn test_hybrid_search_nl_query_improves_over_keyword_only() {
 
     // ── Hybrid search (keyword + semantic via RRF) ─────────────────────
     let profile = crate::search::weights::SearchWeightProfile::fast_search();
-    let hybrid_results = hybrid_search(query, &filter, 10, &search_index, &db, Some(&provider), Some(profile))
-        .expect("hybrid_search should succeed");
+    let hybrid_results = hybrid_search(
+        query,
+        &filter,
+        10,
+        &search_index,
+        &db,
+        Some(&provider),
+        Some(profile),
+    )
+    .expect("hybrid_search should succeed");
 
     println!("\n=== Hybrid search results for '{}' ===", query);
     for (i, r) in hybrid_results.results.iter().enumerate() {

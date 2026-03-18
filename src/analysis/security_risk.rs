@@ -41,30 +41,61 @@ pub struct SecurityRiskStats {
 
 /// Category A: Command/code execution sinks.
 pub(crate) const EXECUTION_SINKS: &[&str] = &[
-    "exec", "eval", "system", "popen", "spawn", "fork",
-    "shell_exec", "child_process", "subprocess", "shellexecute", "createprocess",
+    "exec",
+    "eval",
+    "system",
+    "popen",
+    "spawn",
+    "fork",
+    "shell_exec",
+    "child_process",
+    "subprocess",
+    "shellexecute",
+    "createprocess",
 ];
 
 /// Category B: Database/query operation sinks.
 pub(crate) const DATABASE_SINKS: &[&str] = &[
     // Raw SQL execution
-    "execute", "raw_sql", "exec_query", "executequery",
-    "executeupdate", "rawquery", "runsql",
+    "execute",
+    "raw_sql",
+    "exec_query",
+    "executequery",
+    "executeupdate",
+    "rawquery",
+    "runsql",
     // EF Core / .NET (include Async variants for exact matching)
-    "savechanges", "savechangesasync",
-    "executedelete", "executedeleteasync",
-    "executesqlraw", "executesqlrawasync",
-    "executesqlinterpolated", "executesqlinterpolatedasync",
-    "fromsqlraw", "fromsql",
+    "savechanges",
+    "savechangesasync",
+    "executedelete",
+    "executedeleteasync",
+    "executesqlraw",
+    "executesqlrawasync",
+    "executesqlinterpolated",
+    "executesqlinterpolatedasync",
+    "fromsqlraw",
+    "fromsql",
     // Django / SQLAlchemy / Python ORMs
-    "raw", "commit", "cursor",
+    "raw",
+    "commit",
+    "cursor",
     // Rails / ActiveRecord
-    "destroy", "find_by_sql", "update_all", "delete_all",
+    "destroy",
+    "find_by_sql",
+    "update_all",
+    "delete_all",
     // Prisma / TypeORM / JS ORMs
-    "findmany", "findunique", "createmany", "deletemany",
-    "getrepository", "createquerybuilder",
+    "findmany",
+    "findunique",
+    "createmany",
+    "deletemany",
+    "getrepository",
+    "createquerybuilder",
     // JPA / Hibernate
-    "persist", "merge", "createquery", "createnativequery",
+    "persist",
+    "merge",
+    "createquery",
+    "createnativequery",
 ];
 
 /// All sink patterns combined (lowercase for case-insensitive matching).
@@ -81,14 +112,34 @@ fn all_sink_patterns() -> Vec<&'static str> {
 
 const INPUT_PATTERNS: &[&str] = &[
     // Web request types
-    "Request", "HttpRequest", "HttpServletRequest", "ActionContext",
-    "req:", "request:", "ctx:",
+    "Request",
+    "HttpRequest",
+    "HttpServletRequest",
+    "ActionContext",
+    "req:",
+    "request:",
+    "ctx:",
     // Query/form/body parameter types
-    "Query", "Form", "Body", "Params", "FormData", "MultipartFile",
-    "QueryString", "RouteParams",
+    "Query",
+    "Form",
+    "Body",
+    "Params",
+    "FormData",
+    "MultipartFile",
+    "QueryString",
+    "RouteParams",
     // Raw string/byte types in parameter position
-    "&str", "String", "string", "str,", "str)", "bytes",
-    "[]byte", "InputStream", "ByteArray", "Vec<u8>", "&[u8]",
+    "&str",
+    "String",
+    "string",
+    "str,",
+    "str)",
+    "bytes",
+    "[]byte",
+    "InputStream",
+    "ByteArray",
+    "Vec<u8>",
+    "&[u8]",
 ];
 
 // =============================================================================
@@ -99,9 +150,15 @@ const INPUT_PATTERNS: &[&str] = &[
 /// These are stripped from the parameter portion before checking INPUT_PATTERNS
 /// to avoid false positives (e.g., `RequestDelegate` matching `Request`).
 const DI_EXCLUSION_PATTERNS: &[&str] = &[
-    "RequestDelegate", "ILogger", "IOptions", "IConfiguration",
-    "IServiceProvider", "IHostEnvironment", "IWebHostEnvironment",
-    "IMemoryCache", "CancellationToken",
+    "RequestDelegate",
+    "ILogger",
+    "IOptions",
+    "IConfiguration",
+    "IServiceProvider",
+    "IHostEnvironment",
+    "IWebHostEnvironment",
+    "IMemoryCache",
+    "CancellationToken",
 ];
 
 // =============================================================================
@@ -113,14 +170,27 @@ const DI_EXCLUSION_PATTERNS: &[&str] = &[
 /// Returns None for Import/Export (excluded from scoring).
 pub fn security_kind_weight(kind: &SymbolKind) -> Option<f64> {
     match kind {
-        SymbolKind::Function | SymbolKind::Method | SymbolKind::Constructor
-        | SymbolKind::Destructor | SymbolKind::Operator => Some(1.0),
-        SymbolKind::Class | SymbolKind::Struct | SymbolKind::Interface
-        | SymbolKind::Trait | SymbolKind::Enum | SymbolKind::Union
-        | SymbolKind::Module | SymbolKind::Namespace | SymbolKind::Type
+        SymbolKind::Function
+        | SymbolKind::Method
+        | SymbolKind::Constructor
+        | SymbolKind::Destructor
+        | SymbolKind::Operator => Some(1.0),
+        SymbolKind::Class
+        | SymbolKind::Struct
+        | SymbolKind::Interface
+        | SymbolKind::Trait
+        | SymbolKind::Enum
+        | SymbolKind::Union
+        | SymbolKind::Module
+        | SymbolKind::Namespace
+        | SymbolKind::Type
         | SymbolKind::Delegate => Some(0.3),
-        SymbolKind::Variable | SymbolKind::Constant | SymbolKind::Property
-        | SymbolKind::Field | SymbolKind::EnumMember | SymbolKind::Event => Some(0.1),
+        SymbolKind::Variable
+        | SymbolKind::Constant
+        | SymbolKind::Property
+        | SymbolKind::Field
+        | SymbolKind::EnumMember
+        | SymbolKind::Event => Some(0.1),
         SymbolKind::Import | SymbolKind::Export => None,
     }
 }
@@ -150,7 +220,9 @@ pub fn has_input_handling(signature: Option<&str>) -> bool {
     // Extract parameter portion only (before return type delimiter)
     let param_portion = extract_parameter_portion(sig);
 
-    let has_match = INPUT_PATTERNS.iter().any(|pattern| param_portion.contains(pattern));
+    let has_match = INPUT_PATTERNS
+        .iter()
+        .any(|pattern| param_portion.contains(pattern));
     if !has_match {
         return false;
     }
@@ -161,7 +233,9 @@ pub fn has_input_handling(signature: Option<&str>) -> bool {
     for excl in DI_EXCLUSION_PATTERNS {
         remaining = remaining.replace(excl, "");
     }
-    INPUT_PATTERNS.iter().any(|pattern| remaining.contains(pattern))
+    INPUT_PATTERNS
+        .iter()
+        .any(|pattern| remaining.contains(pattern))
 }
 
 /// Extract the parameter portion of a signature, excluding return type.
@@ -205,7 +279,10 @@ pub fn compute_sink_signal(
 ) -> (f64, Vec<String>) {
     let mut matched_sinks: HashSet<String> = HashSet::new();
 
-    for callee in callees_from_identifiers.iter().chain(callees_from_relationships.iter()) {
+    for callee in callees_from_identifiers
+        .iter()
+        .chain(callees_from_relationships.iter())
+    {
         if let Some(sink_name) = matches_sink_pattern(callee, patterns) {
             matched_sinks.insert(sink_name);
         }
@@ -234,15 +311,29 @@ pub fn normalize_blast_radius(reference_score: f64, p95: f64) -> f64 {
 }
 
 /// Compute final security risk score.
-pub fn compute_score(exposure: f64, input_handling: f64, sink_calls: f64, blast_radius: f64, untested: f64) -> f64 {
-    W_EXPOSURE * exposure + W_INPUT_HANDLING * input_handling + W_SINK_CALLS * sink_calls + W_BLAST_RADIUS * blast_radius + W_UNTESTED * untested
+pub fn compute_score(
+    exposure: f64,
+    input_handling: f64,
+    sink_calls: f64,
+    blast_radius: f64,
+    untested: f64,
+) -> f64 {
+    W_EXPOSURE * exposure
+        + W_INPUT_HANDLING * input_handling
+        + W_SINK_CALLS * sink_calls
+        + W_BLAST_RADIUS * blast_radius
+        + W_UNTESTED * untested
 }
 
 /// Map score to tier label.
 pub fn risk_label(score: f64) -> &'static str {
-    if score >= 0.7 { "HIGH" }
-    else if score >= 0.4 { "MEDIUM" }
-    else { "LOW" }
+    if score >= 0.7 {
+        "HIGH"
+    } else if score >= 0.4 {
+        "MEDIUM"
+    } else {
+        "LOW"
+    }
 }
 
 /// Compute structural security risk for all non-test, non-import symbols.
@@ -254,17 +345,20 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
     let sink_patterns = all_sink_patterns();
 
     // Pre-load P95 for blast radius normalization
-    let p95: f64 = db.conn.query_row(
-        "SELECT COALESCE(
+    let p95: f64 = db
+        .conn
+        .query_row(
+            "SELECT COALESCE(
             (SELECT reference_score FROM symbols
              WHERE reference_score > 0
              ORDER BY reference_score DESC
              LIMIT 1 OFFSET (SELECT MAX(0, CAST(COUNT(*) * 0.05 AS INTEGER))
                              FROM symbols WHERE reference_score > 0)),
             0.0)",
-        [],
-        |row| row.get(0),
-    ).unwrap_or(0.0);
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0.0);
 
     debug!("Security risk P95 reference_score: {:.2}", p95);
 
@@ -276,7 +370,7 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
         "SELECT r.from_symbol_id, s_callee.name
          FROM relationships r
          JOIN symbols s_callee ON r.to_symbol_id = s_callee.id
-         WHERE r.kind = 'calls'"
+         WHERE r.kind = 'calls'",
     )?;
     let mut relationship_callees: HashMap<String, Vec<String>> = HashMap::new();
     let rel_rows = rel_stmt.query_map([], |row| {
@@ -284,7 +378,10 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
     })?;
     for row in rel_rows {
         let (from_id, callee_name) = row?;
-        relationship_callees.entry(from_id).or_default().push(callee_name);
+        relationship_callees
+            .entry(from_id)
+            .or_default()
+            .push(callee_name);
     }
 
     debug!(
@@ -298,10 +395,17 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
         "SELECT id, kind, visibility, reference_score, signature, metadata
          FROM symbols
          WHERE (json_extract(metadata, '$.is_test') IS NULL
-                OR json_extract(metadata, '$.is_test') != 1)"
+                OR json_extract(metadata, '$.is_test') != 1)",
     )?;
 
-    let rows: Vec<(String, String, Option<String>, f64, Option<String>, Option<String>)> = stmt
+    let rows: Vec<(
+        String,
+        String,
+        Option<String>,
+        f64,
+        Option<String>,
+        Option<String>,
+    )> = stmt
         .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -327,11 +431,22 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
 
             // Compute signals
             let exposure = exposure_score(vis.as_deref(), &kind);
-            let input_handling = if has_input_handling(signature.as_deref()) { 1.0 } else { 0.0 };
+            let input_handling = if has_input_handling(signature.as_deref()) {
+                1.0
+            } else {
+                0.0
+            };
 
-            let ident_callees = call_identifiers.get(id.as_str()).map(|v| v.as_slice()).unwrap_or(&[]);
-            let rel_callees = relationship_callees.get(id.as_str()).map(|v| v.as_slice()).unwrap_or(&[]);
-            let (sink_score, sink_names) = compute_sink_signal(ident_callees, rel_callees, &sink_patterns);
+            let ident_callees = call_identifiers
+                .get(id.as_str())
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            let rel_callees = relationship_callees
+                .get(id.as_str())
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            let (sink_score, sink_names) =
+                compute_sink_signal(ident_callees, rel_callees, &sink_patterns);
 
             // Scoring gate: skip if no security-relevant signals
             if exposure < 0.5 && input_handling == 0.0 && sink_score == 0.0 {
@@ -342,7 +457,8 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
             let blast_radius = normalize_blast_radius(*ref_score, p95);
 
             // Untested signal: binary
-            let untested = metadata_json.as_ref()
+            let untested = metadata_json
+                .as_ref()
                 .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
                 .and_then(|v| v.get("test_coverage").cloned())
                 .map(|_| 0.0) // has test_coverage → not untested
@@ -391,7 +507,9 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
     })();
 
     match result {
-        Ok(()) => { db.conn.execute_batch("COMMIT")?; }
+        Ok(()) => {
+            db.conn.execute_batch("COMMIT")?;
+        }
         Err(e) => {
             let _ = db.conn.execute_batch("ROLLBACK");
             return Err(e);
@@ -400,7 +518,11 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
 
     info!(
         "Security risk computed: {} scored ({} HIGH, {} MEDIUM, {} LOW), {} skipped (no signals)",
-        stats.total_scored, stats.high_risk, stats.medium_risk, stats.low_risk, stats.skipped_no_signals
+        stats.total_scored,
+        stats.high_risk,
+        stats.medium_risk,
+        stats.low_risk,
+        stats.skipped_no_signals
     );
 
     Ok(stats)

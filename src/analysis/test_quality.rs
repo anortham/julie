@@ -189,7 +189,12 @@ pub fn analyze_test_body(body: &str) -> TestQualityMetrics {
     };
 
     // Classify quality tier
-    let quality_tier = classify_tier(assertion_count, mock_count, has_error_testing, assertion_density);
+    let quality_tier = classify_tier(
+        assertion_count,
+        mock_count,
+        has_error_testing,
+        assertion_density,
+    );
 
     TestQualityMetrics {
         assertion_count,
@@ -319,12 +324,7 @@ pub fn compute_test_quality_metrics(db: &SymbolDatabase) -> Result<TestQualitySt
 
     info!(
         "Test quality metrics: {} total, {} thorough, {} adequate, {} thin, {} stub, {} no_body",
-        stats.total_tests,
-        stats.thorough,
-        stats.adequate,
-        stats.thin,
-        stats.stub,
-        stats.no_body
+        stats.total_tests, stats.thorough, stats.adequate, stats.thin, stats.stub, stats.no_body
     );
 
     Ok(stats)

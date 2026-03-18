@@ -130,10 +130,7 @@ fn find_type_symbol<'a>(
         s.name == name
             && matches!(
                 s.kind,
-                SymbolKind::Class
-                    | SymbolKind::Trait
-                    | SymbolKind::Interface
-                    | SymbolKind::Enum
+                SymbolKind::Class | SymbolKind::Trait | SymbolKind::Interface | SymbolKind::Enum
             )
             && s.file_path == base.file_path
     })
@@ -273,10 +270,7 @@ fn find_containing_function(
         if matches!(n.kind(), "function_definition" | "function_declaration") {
             let function_name = n
                 .child_by_field_name("name")
-                .or_else(|| {
-                    n.children(&mut n.walk())
-                        .find(|c| c.kind() == "identifier")
-                })
+                .or_else(|| n.children(&mut n.walk()).find(|c| c.kind() == "identifier"))
                 .map(|c| base.get_node_text(&c));
 
             if let Some(name) = function_name {

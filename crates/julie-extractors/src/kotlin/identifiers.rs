@@ -154,7 +154,12 @@ fn find_containing_symbol_id(
 /// - Kotlin/JVM primitive and base types — ubiquitous in every file
 fn is_kotlin_noise_type(name: &str) -> bool {
     // Single-letter uppercase names are almost always generic type parameters.
-    if name.len() == 1 && name.chars().next().map_or(false, |c| c.is_ascii_uppercase()) {
+    if name.len() == 1
+        && name
+            .chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_uppercase())
+    {
         return true;
     }
 

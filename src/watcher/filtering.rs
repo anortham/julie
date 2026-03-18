@@ -40,7 +40,7 @@ pub fn build_ignore_patterns() -> Result<Vec<glob::Pattern>> {
         "**/.nuxt/**", // Nuxt.js build cache
         // Version control
         "**/.git/**",
-        "**/.worktrees/**",  // Git worktrees (separate working contexts)
+        "**/.worktrees/**",        // Git worktrees (separate working contexts)
         "**/.claude/worktrees/**", // Claude Code agent worktrees (temporary checkouts)
         // Julie's own data
         "**/.julie/**",    // Don't watch our own data directory

@@ -80,9 +80,11 @@ commands = ["cargo test --lib tests::cli_tests"]
     )
     .unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("references missing bucket 'missing'"));
+    assert!(
+        error
+            .to_string()
+            .contains("references missing bucket 'missing'")
+    );
 }
 
 #[test]
@@ -100,9 +102,11 @@ commands = ["cargo test --lib tests::cli_tests"]
     )
     .unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("tier 'dev' must define at least one bucket"));
+    assert!(
+        error
+            .to_string()
+            .contains("tier 'dev' must define at least one bucket")
+    );
 }
 
 #[test]
@@ -120,9 +124,11 @@ commands = []
     )
     .unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("must define at least one command"));
+    assert!(
+        error
+            .to_string()
+            .contains("must define at least one command")
+    );
 }
 
 #[test]
@@ -176,9 +182,11 @@ commands = ["cargo test --lib tests::cli_tests"]
     )
     .unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("timeout_seconds must be >= expected_seconds"));
+    assert!(
+        error
+            .to_string()
+            .contains("timeout_seconds must be >= expected_seconds")
+    );
 }
 
 #[test]

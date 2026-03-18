@@ -11,10 +11,10 @@
 //! at runtime.
 
 use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::csharp::CSharpExtractor;
 use crate::csharp::member_type_relationships::{
     extract_type_name_from_node, find_containing_class,
 };
-use crate::csharp::CSharpExtractor;
 
 /// DI registration method names that we recognize.
 /// These are the standard Microsoft.Extensions.DependencyInjection methods.

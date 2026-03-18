@@ -7,9 +7,9 @@
 //! `Instantiates` relationships from these registrations, we give DI-registered
 //! types the centrality they deserve in search rankings.
 
+use crate::ExtractionResults;
 use crate::base::{RelationshipKind, SymbolKind};
 use crate::factory::extract_symbols_and_relationships;
-use crate::ExtractionResults;
 use std::path::PathBuf;
 use tree_sitter::Parser;
 

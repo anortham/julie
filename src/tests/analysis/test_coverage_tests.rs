@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::analysis::test_coverage::{tier_rank, TestCoverageInfo};
+    use crate::analysis::test_coverage::{TestCoverageInfo, tier_rank};
     use crate::database::SymbolDatabase;
     use tempfile::TempDir;
 
@@ -69,7 +69,10 @@ mod tests {
         let (_temp, db) = setup_test_db();
         let stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
 
-        assert_eq!(stats.symbols_covered, 1, "One production symbol should be covered");
+        assert_eq!(
+            stats.symbols_covered, 1,
+            "One production symbol should be covered"
+        );
         assert!(stats.total_linkages >= 2, "Two test→prod relationships");
 
         // Verify metadata was written
@@ -107,13 +110,19 @@ mod tests {
         "#).unwrap();
 
         let stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
-        assert_eq!(stats.symbols_covered, 1, "Identifier-only linkage should create coverage");
+        assert_eq!(
+            stats.symbols_covered, 1,
+            "Identifier-only linkage should create coverage"
+        );
 
         let prod = db.get_symbol_by_id("prod_u").unwrap().unwrap();
         let meta = prod.metadata.unwrap();
         let coverage = meta.get("test_coverage").unwrap();
         assert_eq!(coverage.get("test_count").unwrap().as_u64().unwrap(), 1);
-        assert_eq!(coverage.get("best_tier").unwrap().as_str().unwrap(), "adequate");
+        assert_eq!(
+            coverage.get("best_tier").unwrap().as_str().unwrap(),
+            "adequate"
+        );
     }
 
     #[test]
@@ -133,7 +142,10 @@ mod tests {
 
         let sym = db.get_symbol_by_id("lonely").unwrap().unwrap();
         if let Some(meta) = &sym.metadata {
-            assert!(meta.get("test_coverage").is_none(), "Uncovered symbol should not have test_coverage key");
+            assert!(
+                meta.get("test_coverage").is_none(),
+                "Uncovered symbol should not have test_coverage key"
+            );
         }
     }
 
@@ -156,7 +168,10 @@ mod tests {
         "#).unwrap();
 
         let stats = crate::analysis::test_coverage::compute_test_coverage(&db).unwrap();
-        assert_eq!(stats.symbols_covered, 0, "Test-to-test calls should not create coverage");
+        assert_eq!(
+            stats.symbols_covered, 0,
+            "Test-to-test calls should not create coverage"
+        );
     }
 
     #[test]
@@ -185,9 +200,16 @@ mod tests {
         let meta = prod.metadata.unwrap();
         let coverage = meta.get("test_coverage").unwrap();
         let names = coverage.get("covering_tests").unwrap().as_array().unwrap();
-        assert!(names.len() <= 5, "covering_tests should be capped at 5, got {}", names.len());
+        assert!(
+            names.len() <= 5,
+            "covering_tests should be capped at 5, got {}",
+            names.len()
+        );
         let count = coverage.get("test_count").unwrap().as_u64().unwrap();
-        assert_eq!(count, 7, "test_count should reflect all 7 tests even though names are capped");
+        assert_eq!(
+            count, 7,
+            "test_count should reflect all 7 tests even though names are capped"
+        );
     }
 
     #[test]
@@ -222,13 +244,19 @@ mod tests {
             "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'prod_labtest'",
             [], |row| row.get(0)
         ).unwrap();
-        assert!(cov.is_some(), "LabTestService.ListAsync should have test coverage");
+        assert!(
+            cov.is_some(),
+            "LabTestService.ListAsync should have test coverage"
+        );
 
         let no_cov: Option<String> = db.conn.query_row(
             "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'prod_media'",
             [], |row| row.get(0)
         ).unwrap();
-        assert!(no_cov.is_none(), "MediaService.ListAsync should NOT have test coverage from LabTestServiceTests");
+        assert!(
+            no_cov.is_none(),
+            "MediaService.ListAsync should NOT have test coverage from LabTestServiceTests"
+        );
     }
 
     #[test]
@@ -267,7 +295,10 @@ mod tests {
             "SELECT json_extract(metadata, '$.test_coverage') FROM symbols WHERE id = 'class_1'",
             [], |row| row.get(0)
         ).unwrap();
-        assert!(class_cov.is_some(), "Class should inherit test coverage from its methods");
+        assert!(
+            class_cov.is_some(),
+            "Class should inherit test coverage from its methods"
+        );
     }
 
     #[test]
@@ -286,6 +317,9 @@ mod tests {
         let meta = prod.metadata.unwrap();
         let coverage = meta.get("test_coverage").unwrap();
         let count = coverage.get("test_count").unwrap().as_u64().unwrap();
-        assert_eq!(count, 2, "Duplicate test_1→prod_1 from identifier should be deduped");
+        assert_eq!(
+            count, 2,
+            "Duplicate test_1→prod_1 from identifier should be deduped"
+        );
     }
 }

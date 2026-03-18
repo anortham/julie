@@ -35,7 +35,9 @@ pub const LIFECYCLE_BLOCKS: &[&str] = &[
 pub fn is_test_runner_call(name: &str) -> bool {
     // Split on '.' to handle it.skip, describe.only, test.todo, etc.
     let base = name.split('.').next().unwrap_or(name);
-    TEST_BLOCKS.contains(&base) || CONTAINER_BLOCKS.contains(&base) || LIFECYCLE_BLOCKS.contains(&base)
+    TEST_BLOCKS.contains(&base)
+        || CONTAINER_BLOCKS.contains(&base)
+        || LIFECYCLE_BLOCKS.contains(&base)
 }
 
 /// Extract a test call expression node into a Symbol.
@@ -80,10 +82,7 @@ pub fn extract_test_call(
     // For test/container blocks: extract name from first string argument
     // For lifecycle blocks: use the callee name itself
     let (symbol_name, signature) = if is_lifecycle {
-        (
-            base_name.to_string(),
-            format!("{}()", full_callee),
-        )
+        (base_name.to_string(), format!("{}()", full_callee))
     } else {
         // Find first string argument
         let mut cursor = args_node.walk();

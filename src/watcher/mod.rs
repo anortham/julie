@@ -307,11 +307,13 @@ impl IncrementalIndexer {
                                 &embedding_provider,
                                 crate::utils::paths::to_relative_unix_style(&to, &workspace_root),
                             ) {
-                                if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(
-                                    &db,
-                                    provider.as_ref(),
-                                    &rel_to,
-                                ) {
+                                if let Err(e) =
+                                    crate::embeddings::pipeline::reembed_symbols_for_file(
+                                        &db,
+                                        provider.as_ref(),
+                                        &rel_to,
+                                    )
+                                {
                                     warn!("Incremental embedding failed for {}: {}", rel_to, e);
                                 }
                             }

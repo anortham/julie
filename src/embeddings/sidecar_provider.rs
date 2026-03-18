@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 
 use super::sidecar_protocol::{
     EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, RequestEnvelope,
-    ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
-    validate_batch_response, validate_query_response, validate_response_envelope,
+    ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION, validate_batch_response,
+    validate_query_response, validate_response_envelope,
 };
 use super::sidecar_supervisor::{SidecarLaunchConfig, build_sidecar_launch_config};
 use super::{DeviceInfo, EmbeddingProvider};

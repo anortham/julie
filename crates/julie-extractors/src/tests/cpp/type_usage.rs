@@ -80,7 +80,10 @@ void use_types(Widget w, Config c) {
             .collect();
 
         // Widget appears as class declaration (skip) AND parameter type (keep)
-        let widget_usages: Vec<_> = type_usages.iter().filter(|id| id.name == "Widget").collect();
+        let widget_usages: Vec<_> = type_usages
+            .iter()
+            .filter(|id| id.name == "Widget")
+            .collect();
         assert_eq!(
             widget_usages.len(),
             1,
@@ -89,12 +92,23 @@ void use_types(Widget w, Config c) {
         );
 
         // Config: same -- declaration should be skipped, parameter kept
-        let config_usages: Vec<_> = type_usages.iter().filter(|id| id.name == "Config").collect();
-        assert_eq!(config_usages.len(), 1, "Config should appear once as type usage (param)");
+        let config_usages: Vec<_> = type_usages
+            .iter()
+            .filter(|id| id.name == "Config")
+            .collect();
+        assert_eq!(
+            config_usages.len(),
+            1,
+            "Config should appear once as type usage (param)"
+        );
 
         // Color: declaration skipped, local var type kept
         let color_usages: Vec<_> = type_usages.iter().filter(|id| id.name == "Color").collect();
-        assert_eq!(color_usages.len(), 1, "Color should appear once as type usage (local var)");
+        assert_eq!(
+            color_usages.len(),
+            1,
+            "Color should appear once as type usage (local var)"
+        );
     }
 
     #[test]

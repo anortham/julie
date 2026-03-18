@@ -86,7 +86,10 @@ impl SymbolDatabase {
     /// Groups results by name. Chunks queries to stay within SQLite's parameter limit.
     /// This is O(unique_names) instead of O(total_lookups) — critical for pending
     /// relationship resolution where many relationships share the same callee name.
-    pub fn find_symbols_by_names_batch(&self, names: &[String]) -> Result<HashMap<String, Vec<Symbol>>> {
+    pub fn find_symbols_by_names_batch(
+        &self,
+        names: &[String],
+    ) -> Result<HashMap<String, Vec<Symbol>>> {
         if names.is_empty() {
             return Ok(HashMap::new());
         }
@@ -94,7 +97,11 @@ impl SymbolDatabase {
         // Deduplicate input names
         let unique_names: Vec<&str> = {
             let mut seen = std::collections::HashSet::new();
-            names.iter().filter(|n| seen.insert(n.as_str())).map(|n| n.as_str()).collect()
+            names
+                .iter()
+                .filter(|n| seen.insert(n.as_str()))
+                .map(|n| n.as_str())
+                .collect()
         };
 
         let mut result: HashMap<String, Vec<Symbol>> = HashMap::new();
@@ -102,7 +109,9 @@ impl SymbolDatabase {
         // Process in chunks of 500 (well within SQLite's 999 parameter limit)
         const CHUNK_SIZE: usize = 500;
         for chunk in unique_names.chunks(CHUNK_SIZE) {
-            let placeholders: String = chunk.iter().enumerate()
+            let placeholders: String = chunk
+                .iter()
+                .enumerate()
                 .map(|(i, _)| format!("?{}", i + 1))
                 .collect::<Vec<_>>()
                 .join(",");

@@ -145,10 +145,7 @@ impl SymbolDatabase {
 
         let mut grouped: HashMap<String, Vec<String>> = HashMap::new();
         let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-            ))
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
 
         for row in rows {
@@ -156,7 +153,8 @@ impl SymbolDatabase {
             grouped.entry(symbol_id).or_default().push(callee_name);
         }
 
-        debug!("Loaded {} call identifiers across {} symbols",
+        debug!(
+            "Loaded {} call identifiers across {} symbols",
             grouped.values().map(|v| v.len()).sum::<usize>(),
             grouped.len()
         );

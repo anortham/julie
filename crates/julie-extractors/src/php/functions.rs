@@ -111,20 +111,18 @@ pub(super) fn extract_function(
         json_metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
     }
 
-    Some(
-        extractor.get_base_mut().create_symbol(
-            &node,
-            name,
-            symbol_kind,
-            SymbolOptions {
-                signature: Some(signature),
-                visibility: Some(determine_visibility(&modifiers)),
-                parent_id: parent_id.map(|s| s.to_string()),
-                metadata: Some(json_metadata),
-                doc_comment,
-            },
-        ),
-    )
+    Some(extractor.get_base_mut().create_symbol(
+        &node,
+        name,
+        symbol_kind,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(determine_visibility(&modifiers)),
+            parent_id: parent_id.map(|s| s.to_string()),
+            metadata: Some(json_metadata),
+            doc_comment,
+        },
+    ))
 }
 
 /// Find return type node after colon

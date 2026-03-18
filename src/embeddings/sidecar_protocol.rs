@@ -134,9 +134,11 @@ pub fn validate_batch_response(
         );
     }
 
-    if let Some((index, actual)) = resp.vectors.iter().enumerate().find_map(|(idx, vector)| {
-        (vector.len() != expected_dims).then_some((idx, vector.len()))
-    }) {
+    if let Some((index, actual)) =
+        resp.vectors.iter().enumerate().find_map(|(idx, vector)| {
+            (vector.len() != expected_dims).then_some((idx, vector.len()))
+        })
+    {
         bail!(
             "sidecar batch embedding vector length mismatch at index {}: expected {}, got {}",
             index,

@@ -46,12 +46,12 @@ pub const BLACKLISTED_FILENAMES: &[&str] = &[
     // Package manager lockfiles (extension-based blacklist misses these)
     "pnpm-lock.yaml",
     "package-lock.json",
-    "composer.lock",  // PHP (also caught by .lock ext, but explicit is clearer)
-    "Pipfile.lock",   // Python
-    "poetry.lock",    // Python
-    "Gemfile.lock",   // Ruby
-    "yarn.lock",      // JS/TS (also caught by .lock ext)
-    "bun.lockb",      // Bun (binary, also caught by .lockb not being indexable)
+    "composer.lock", // PHP (also caught by .lock ext, but explicit is clearer)
+    "Pipfile.lock",  // Python
+    "poetry.lock",   // Python
+    "Gemfile.lock",  // Ruby
+    "yarn.lock",     // JS/TS (also caught by .lock ext)
+    "bun.lockb",     // Bun (binary, also caught by .lockb not being indexable)
     "shrinkwrap.json",
     // Other generated files with common extensions
     "npm-shrinkwrap.json",
@@ -98,8 +98,8 @@ pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
     "tmp",
     "temp",
     // Windows system/app data directories (defense-in-depth for home dir indexing)
-    "AppData",           // Windows: AppData\Local, AppData\Roaming, AppData\LocalLow
-    "Application Data",  // Windows: legacy name for AppData
+    "AppData",          // Windows: AppData\Local, AppData\Roaming, AppData\LocalLow
+    "Application Data", // Windows: legacy name for AppData
     // Our own directories
     ".julie",
     ".coa",
@@ -124,18 +124,52 @@ pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
 /// Used by: deep_dive (callee filtering), get_context (neighbor filtering).
 pub const NOISE_CALLEE_NAMES: &[&str] = &[
     // Constructors / converters — every language has these
-    "new", "default", "from", "into", "try_from", "try_into",
+    "new",
+    "default",
+    "from",
+    "into",
+    "try_from",
+    "try_into",
     // Accessors — too generic to resolve
-    "as_ref", "as_mut", "borrow", "borrow_mut", "get", "set",
+    "as_ref",
+    "as_mut",
+    "borrow",
+    "borrow_mut",
+    "get",
+    "set",
     // Unwrapping / error handling
-    "unwrap", "expect", "ok", "err",
+    "unwrap",
+    "expect",
+    "ok",
+    "err",
     // Trait / protocol boilerplate
-    "clone", "to_string", "fmt", "eq", "ne", "cmp", "partial_cmp",
-    "hash", "drop", "deref", "deref_mut",
+    "clone",
+    "to_string",
+    "fmt",
+    "eq",
+    "ne",
+    "cmp",
+    "partial_cmp",
+    "hash",
+    "drop",
+    "deref",
+    "deref_mut",
     // Collection / iterator plumbing
-    "is_empty", "len", "iter", "into_iter", "collect",
-    "map", "filter", "push", "pop", "insert", "remove",
-    "with_capacity", "and_then", "or_else", "push_str",
+    "is_empty",
+    "len",
+    "iter",
+    "into_iter",
+    "collect",
+    "map",
+    "filter",
+    "push",
+    "pop",
+    "insert",
+    "remove",
+    "with_capacity",
+    "and_then",
+    "or_else",
+    "push_str",
 ];
 
 /// File extensions that are likely to contain code and should be indexed

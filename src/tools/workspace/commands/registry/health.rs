@@ -54,7 +54,6 @@ impl ManageWorkspaceTool {
         let overall_status = self.assess_overall_health(&primary_workspace).await?;
         health_report.push_str(&overall_status);
 
-
         Ok(CallToolResult::text_content(vec![Content::text(
             health_report,
         )]))

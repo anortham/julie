@@ -42,7 +42,11 @@ Rectangle {
         assert_eq!(components[0].name, "test");
         // Base type preserved in signature
         assert!(
-            components[0].signature.as_deref().unwrap_or("").contains("Rectangle"),
+            components[0]
+                .signature
+                .as_deref()
+                .unwrap_or("")
+                .contains("Rectangle"),
             "Signature should contain base type 'Rectangle'"
         );
 
@@ -124,7 +128,11 @@ Window {
         // File-derived name from default "test.qml"
         assert_eq!(components[0].name, "test");
         assert!(
-            components[0].signature.as_deref().unwrap_or("").contains("Window"),
+            components[0]
+                .signature
+                .as_deref()
+                .unwrap_or("")
+                .contains("Window"),
             "Signature should contain base type 'Window'"
         );
     }

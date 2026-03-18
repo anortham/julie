@@ -146,14 +146,20 @@ pub fn select_pivots_with_code_fallback_for_query(
 }
 
 /// Apply exact-name boost to results where the symbol name matches the query.
-fn apply_exact_name_boost(query: &str, results: Vec<SymbolSearchResult>) -> Vec<SymbolSearchResult> {
+fn apply_exact_name_boost(
+    query: &str,
+    results: Vec<SymbolSearchResult>,
+) -> Vec<SymbolSearchResult> {
     let query_lower = query.to_lowercase();
-    results.into_iter().map(|mut r| {
-        if r.name.to_lowercase() == query_lower {
-            r.score *= EXACT_NAME_MATCH_BOOST;
-        }
-        r
-    }).collect()
+    results
+        .into_iter()
+        .map(|mut r| {
+            if r.name.to_lowercase() == query_lower {
+                r.score *= EXACT_NAME_MATCH_BOOST;
+            }
+            r
+        })
+        .collect()
 }
 
 /// Select pivots with a code-first fallback pass.

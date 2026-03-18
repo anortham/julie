@@ -5,12 +5,12 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::Result;
-use xtask::cli::{parse_test_command, validate_test_command, TestCommand};
+use xtask::cli::{TestCommand, parse_test_command, validate_test_command};
 use xtask::manifest::TestManifest;
 use xtask::runner::{
-    render_bucket_result, render_manifest_listing, render_summary, run_bucket, run_tier,
     BucketResult, BucketStatus, CommandExecutor, CommandOutcome, ProcessCommandExecutor,
-    RunSummary,
+    RunSummary, render_bucket_result, render_manifest_listing, render_summary, run_bucket,
+    run_tier,
 };
 
 #[test]
@@ -141,9 +141,11 @@ fn runner_tests_cli_rejects_unsupported_subcommands() {
     let parsed = parse_test_command(["xtask", "test", "weird"]).unwrap();
     let error = validate_test_command(&sample_manifest(), parsed).unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("unsupported xtask test command `weird`"));
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported xtask test command `weird`")
+    );
 }
 
 #[test]
@@ -167,18 +169,22 @@ fn runner_tests_cli_validation_accepts_manifest_defined_tiers_without_hardcoded_
 fn runner_tests_cli_rejects_missing_bucket_name() {
     let error = parse_test_command(["xtask", "test", "bucket"]).unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("missing bucket name for `cargo xtask test bucket <name>`"));
+    assert!(
+        error
+            .to_string()
+            .contains("missing bucket name for `cargo xtask test bucket <name>`")
+    );
 }
 
 #[test]
 fn runner_tests_cli_rejects_extra_args_after_tier() {
     let error = parse_test_command(["xtask", "test", "smoke", "oops"]).unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("expected optional `--timeout-multiplier <n>`"));
+    assert!(
+        error
+            .to_string()
+            .contains("expected optional `--timeout-multiplier <n>`")
+    );
 }
 
 #[test]
@@ -186,9 +192,11 @@ fn runner_tests_cli_rejects_extra_args_after_bucket() {
     let error =
         parse_test_command(["xtask", "test", "bucket", "tools-search", "oops"]).unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("expected optional `--timeout-multiplier <n>`"));
+    assert!(
+        error
+            .to_string()
+            .contains("expected optional `--timeout-multiplier <n>`")
+    );
 }
 
 #[test]
@@ -196,9 +204,11 @@ fn runner_tests_cli_rejects_invalid_timeout_multiplier() {
     let error =
         parse_test_command(["xtask", "test", "smoke", "--timeout-multiplier", "nope"]).unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("invalid `--timeout-multiplier` value `nope`"));
+    assert!(
+        error
+            .to_string()
+            .contains("invalid `--timeout-multiplier` value `nope`")
+    );
 }
 
 #[test]
@@ -213,9 +223,11 @@ fn runner_tests_cli_rejects_zero_timeout_multiplier() {
     ])
     .unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("timeout multiplier must be greater than zero"));
+    assert!(
+        error
+            .to_string()
+            .contains("timeout multiplier must be greater than zero")
+    );
 }
 
 #[test]

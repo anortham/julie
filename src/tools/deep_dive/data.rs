@@ -63,9 +63,7 @@ pub fn find_symbol(
     // where "Phoenix.Channel" is a single symbol name, not a parent/child relationship.
     if name.contains('.') || name.contains("::") {
         let mut full_name_results = db.find_symbols_by_name(name)?;
-        full_name_results.retain(|s| {
-            s.kind != SymbolKind::Import && s.kind != SymbolKind::Export
-        });
+        full_name_results.retain(|s| s.kind != SymbolKind::Import && s.kind != SymbolKind::Export);
         // Only use these if we found actual definitions (Module, Class, Trait, Function, etc.)
         let definitions: Vec<Symbol> = full_name_results
             .iter()
@@ -361,7 +359,10 @@ fn build_test_refs(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<RefEntry>
     test_refs.retain(|r| {
         let key = (
             r.file_path.clone(),
-            r.symbol.as_ref().map(|s| s.name.clone()).unwrap_or_default(),
+            r.symbol
+                .as_ref()
+                .map(|s| s.name.clone())
+                .unwrap_or_default(),
         );
         seen.insert(key)
     });

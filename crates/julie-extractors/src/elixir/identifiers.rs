@@ -123,9 +123,9 @@ fn is_in_definition_context(node: &Node) -> bool {
             if let Some(target) = n.child_by_field_name("target") {
                 if target.kind() == "identifier" {
                     // Check if the alias is a direct argument of a definition call
-                    let parent_is_args = node
-                        .parent()
-                        .is_some_and(|p| p.kind() == "arguments" && p.parent().is_some_and(|pp| pp.id() == n.id()));
+                    let parent_is_args = node.parent().is_some_and(|p| {
+                        p.kind() == "arguments" && p.parent().is_some_and(|pp| pp.id() == n.id())
+                    });
                     if parent_is_args {
                         return true;
                     }

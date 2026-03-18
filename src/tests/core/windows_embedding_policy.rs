@@ -3,12 +3,12 @@
 #[cfg(test)]
 mod tests {
     use crate::embeddings::{
-        resolve_backend_preference, BackendResolverCapabilities, EmbeddingBackend,
+        BackendResolverCapabilities, EmbeddingBackend, resolve_backend_preference,
     };
 
     #[cfg(feature = "embeddings-ort")]
     use crate::embeddings::ort_provider::{
-        ort_runtime_signal_for_directml_device, run_with_cpu_fallback, OrtRuntimeState,
+        OrtRuntimeState, ort_runtime_signal_for_directml_device, run_with_cpu_fallback,
     };
     #[cfg(feature = "embeddings-ort")]
     use std::cell::Cell;
@@ -16,7 +16,7 @@ mod tests {
     use std::sync::Mutex;
 
     #[cfg(feature = "embeddings-ort")]
-    use crate::embeddings::windows_directml::{select_best_adapter, DirectMlAdapterInfo};
+    use crate::embeddings::windows_directml::{DirectMlAdapterInfo, select_best_adapter};
 
     #[test]
     fn test_windows_auto_prefers_ort_even_when_sidecar_is_compiled() {
@@ -167,10 +167,12 @@ mod tests {
 
         assert_eq!(state.device, "CPU");
         assert!(!state.accelerated);
-        assert!(state
-            .degraded_reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("GPU device removed")));
+        assert!(
+            state
+                .degraded_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("GPU device removed"))
+        );
     }
 
     #[cfg(feature = "embeddings-ort")]
@@ -200,9 +202,11 @@ mod tests {
         assert_eq!(result, vec![1.0_f32, 2.0, 3.0]);
         assert_eq!(state.device, "CPU");
         assert!(!state.accelerated);
-        assert!(state
-            .degraded_reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("DirectML device removed")));
+        assert!(
+            state
+                .degraded_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("DirectML device removed"))
+        );
     }
 }

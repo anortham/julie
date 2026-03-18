@@ -99,9 +99,9 @@ impl SymbolDatabase {
 
     /// Count symbols grouped by kind, sorted by count descending.
     pub fn count_symbols_by_kind(&self) -> Result<Vec<(String, i64)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT kind, COUNT(*) as cnt FROM symbols GROUP BY kind ORDER BY cnt DESC",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT kind, COUNT(*) as cnt FROM symbols GROUP BY kind ORDER BY cnt DESC")?;
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
         })?;

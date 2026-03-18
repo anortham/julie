@@ -61,8 +61,8 @@ pub(super) fn extract_function_head(
                 // The function head is itself a call: `add(a, b)`
                 let fn_name_node = child.child_by_field_name("target")?;
                 let fn_name = base.get_node_text(&fn_name_node);
-                let params = find_child_by_type(&child, "arguments")
-                    .map(|a| base.get_node_text(&a));
+                let params =
+                    find_child_by_type(&child, "arguments").map(|a| base.get_node_text(&a));
                 return Some((fn_name, params));
             }
             "identifier" => {
@@ -141,10 +141,7 @@ fn extract_keyword_from_keywords(
 }
 
 /// Extract the protocol name from defimpl's first argument
-pub(super) fn extract_impl_protocol_name(
-    base: &BaseExtractor,
-    node: &Node,
-) -> Option<String> {
+pub(super) fn extract_impl_protocol_name(base: &BaseExtractor, node: &Node) -> Option<String> {
     let args = find_child_by_type(node, "arguments")?;
     let mut cursor = args.walk();
     for child in args.children(&mut cursor) {
@@ -157,10 +154,7 @@ pub(super) fn extract_impl_protocol_name(
 
 /// Extract struct field names from defstruct's argument list.
 /// Returns (field_name, start_byte, end_byte) tuples.
-pub(super) fn extract_struct_fields(
-    base: &BaseExtractor,
-    node: &Node,
-) -> Vec<(String, u32, u32)> {
+pub(super) fn extract_struct_fields(base: &BaseExtractor, node: &Node) -> Vec<(String, u32, u32)> {
     let mut fields = Vec::new();
     let Some(args) = find_child_by_type(node, "arguments") else {
         return fields;
@@ -170,11 +164,7 @@ pub(super) fn extract_struct_fields(
     fields
 }
 
-fn collect_atom_fields(
-    base: &BaseExtractor,
-    node: &Node,
-    fields: &mut Vec<(String, u32, u32)>,
-) {
+fn collect_atom_fields(base: &BaseExtractor, node: &Node, fields: &mut Vec<(String, u32, u32)>) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "atom" {

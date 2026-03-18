@@ -8,9 +8,7 @@ use std::collections::HashMap;
 
 use serde::Serialize;
 
-use crate::search::index::{
-    ContentSearchResults, SearchFilter, SearchIndex, SymbolSearchResult,
-};
+use crate::search::index::{ContentSearchResults, SearchFilter, SearchIndex, SymbolSearchResult};
 use crate::search::scoring::{
     self, CENTRALITY_WEIGHT, NL_PATH_BOOST_SRC, NL_PATH_PENALTY_DOCS, NL_PATH_PENALTY_FIXTURES,
     NL_PATH_PENALTY_TESTS,
@@ -130,10 +128,7 @@ pub fn enrich_symbol_result(
     let bm25_score = final_score / (pattern_boost * nl_path_boost);
 
     // Look up centrality
-    let centrality_score = reference_scores
-        .get(&result.id)
-        .copied()
-        .unwrap_or(0.0);
+    let centrality_score = reference_scores.get(&result.id).copied().unwrap_or(0.0);
 
     // Compute what centrality boost would be (note: centrality is NOT applied
     // inside search_symbols — it's applied separately by callers like text_search_impl).

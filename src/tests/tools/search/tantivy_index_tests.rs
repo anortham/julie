@@ -1120,7 +1120,9 @@ fn test_same_tokenizer_search_works() {
 /// to the current version (which uses `id`, `name`, `code` tokenizer).
 #[test]
 fn test_schema_migration_recreates_stale_index() {
-    use tantivy::schema::{IndexRecordOption, Schema, TextFieldIndexing, TextOptions, STORED, STRING};
+    use tantivy::schema::{
+        IndexRecordOption, STORED, STRING, Schema, TextFieldIndexing, TextOptions,
+    };
     use tantivy::tokenizer::TextAnalyzer;
 
     let temp_dir = TempDir::new().unwrap();
@@ -1139,7 +1141,7 @@ fn test_schema_migration_recreates_stale_index() {
             .set_stored();
 
         builder.add_text_field("doc_type", STRING | STORED);
-        builder.add_text_field("symbol_id", STRING | STORED);   // old name for "id"
+        builder.add_text_field("symbol_id", STRING | STORED); // old name for "id"
         builder.add_text_field("file_path", STRING | STORED);
         builder.add_text_field("language", STRING | STORED);
         builder.add_text_field("symbol_name", old_text_options); // old name for "name"
@@ -1152,7 +1154,8 @@ fn test_schema_migration_recreates_stale_index() {
             TextAnalyzer::builder(crate::search::tokenizer::CodeTokenizer::with_default_patterns())
                 .build(),
         );
-        let mut writer: tantivy::IndexWriter<tantivy::TantivyDocument> = old_index.writer(15_000_000).unwrap();
+        let mut writer: tantivy::IndexWriter<tantivy::TantivyDocument> =
+            old_index.writer(15_000_000).unwrap();
         writer.commit().unwrap();
         // Index with old schema now exists on disk
     }
@@ -1189,7 +1192,9 @@ fn test_schema_migration_recreates_stale_index() {
 /// (used by `handler.rs` when loading existing workspaces at startup).
 #[test]
 fn test_schema_migration_via_open_path() {
-    use tantivy::schema::{IndexRecordOption, Schema, TextFieldIndexing, TextOptions, STORED, STRING};
+    use tantivy::schema::{
+        IndexRecordOption, STORED, STRING, Schema, TextFieldIndexing, TextOptions,
+    };
     use tantivy::tokenizer::TextAnalyzer;
 
     let temp_dir = TempDir::new().unwrap();
@@ -1202,13 +1207,16 @@ fn test_schema_migration_via_open_path() {
         builder.add_text_field("doc_type", STRING | STORED);
         builder.add_text_field("symbol_id", STRING | STORED);
         builder.add_text_field("file_path", STRING | STORED);
-        builder.add_text_field("symbol_name", TextOptions::default()
-            .set_indexing_options(
-                TextFieldIndexing::default()
-                    .set_tokenizer("code_aware")
-                    .set_index_option(IndexRecordOption::WithFreqsAndPositions),
-            )
-            .set_stored());
+        builder.add_text_field(
+            "symbol_name",
+            TextOptions::default()
+                .set_indexing_options(
+                    TextFieldIndexing::default()
+                        .set_tokenizer("code_aware")
+                        .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+                )
+                .set_stored(),
+        );
         let old_schema = builder.build();
 
         let old_index = tantivy::Index::create_in_dir(&index_path, old_schema).unwrap();
@@ -1217,7 +1225,8 @@ fn test_schema_migration_via_open_path() {
             TextAnalyzer::builder(crate::search::tokenizer::CodeTokenizer::with_default_patterns())
                 .build(),
         );
-        let mut writer: tantivy::IndexWriter<tantivy::TantivyDocument> = old_index.writer(15_000_000).unwrap();
+        let mut writer: tantivy::IndexWriter<tantivy::TantivyDocument> =
+            old_index.writer(15_000_000).unwrap();
         writer.commit().unwrap();
     }
 

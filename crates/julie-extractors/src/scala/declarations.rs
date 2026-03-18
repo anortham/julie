@@ -31,7 +31,11 @@ pub(super) fn extract_function(
     if !sig_modifiers.is_empty() {
         signature = format!(
             "{} {}",
-            sig_modifiers.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" "),
+            sig_modifiers
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
             signature
         );
     }
@@ -217,7 +221,12 @@ pub(super) fn extract_given(
 ) -> Option<Symbol> {
     let name = helpers::get_name(base, node).unwrap_or_else(|| "<anonymous>".to_string());
     let full_text = base.get_node_text(node);
-    let signature = full_text.lines().next().unwrap_or(&full_text).trim().to_string();
+    let signature = full_text
+        .lines()
+        .next()
+        .unwrap_or(&full_text)
+        .trim()
+        .to_string();
 
     let doc_comment = base.find_doc_comment(node);
 
@@ -245,7 +254,12 @@ pub(super) fn extract_extension(
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
     let full_text = base.get_node_text(node);
-    let signature = full_text.lines().next().unwrap_or(&full_text).trim().to_string();
+    let signature = full_text
+        .lines()
+        .next()
+        .unwrap_or(&full_text)
+        .trim()
+        .to_string();
 
     // Try to extract name from the extension parameter type
     let name = helpers::get_name(base, node).unwrap_or_else(|| "extension".to_string());

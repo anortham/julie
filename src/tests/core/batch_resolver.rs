@@ -75,12 +75,30 @@ fn setup_test_db() -> (TempDir, SymbolDatabase) {
     }
 
     let symbols = vec![
-        sym("s1", "authenticate", SymbolKind::Function, "rust", "src/auth.rs"),
-        sym("s2", "hash_password", SymbolKind::Function, "rust", "src/auth.rs"),
+        sym(
+            "s1",
+            "authenticate",
+            SymbolKind::Function,
+            "rust",
+            "src/auth.rs",
+        ),
+        sym(
+            "s2",
+            "hash_password",
+            SymbolKind::Function,
+            "rust",
+            "src/auth.rs",
+        ),
         sym("s3", "query", SymbolKind::Function, "rust", "src/db.rs"),
         sym("s4", "connect", SymbolKind::Function, "rust", "src/db.rs"),
         // Same-named symbol in a different language (disambiguation test)
-        sym("s5", "authenticate", SymbolKind::Function, "typescript", "src/utils.ts"),
+        sym(
+            "s5",
+            "authenticate",
+            SymbolKind::Function,
+            "typescript",
+            "src/utils.ts",
+        ),
     ];
     db.store_symbols_transactional(&symbols).unwrap();
 

@@ -98,9 +98,7 @@ impl ElixirExtractor {
                 // Not a definition call — fall through to traverse children
             }
             "unary_operator" => {
-                if let Some(symbol) =
-                    attributes::extract_attribute(self, node, parent_id)
-                {
+                if let Some(symbol) = attributes::extract_attribute(self, node, parent_id) {
                     symbols.push(symbol);
                     return;
                 }

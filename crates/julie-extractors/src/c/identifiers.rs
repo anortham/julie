@@ -75,16 +75,10 @@ fn extract_identifier_from_node(
                     // without a body/field_declaration_list child).
                     "struct_specifier" | "union_specifier" => {
                         // It's a definition if the struct/union has a body
-                        parent
-                            .child_by_field_name("body")
-                            .is_some()
+                        parent.child_by_field_name("body").is_some()
                     }
                     // `enum Color { ... }` — "Color" is the tag being defined
-                    "enum_specifier" => {
-                        parent
-                            .child_by_field_name("body")
-                            .is_some()
-                    }
+                    "enum_specifier" => parent.child_by_field_name("body").is_some(),
                     // `typedef int MyInt;` — "MyInt" is the alias being defined.
                     // In C's tree-sitter grammar, the typedef alias is the
                     // `declarator` field of `type_definition`.

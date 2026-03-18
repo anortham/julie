@@ -456,8 +456,16 @@ mod orchestrator_tests {
         };
 
         let provider = StaticProvider;
-        let results =
-            hybrid_search("process_data", &filter, 10, &index, &db, Some(&provider), None).unwrap();
+        let results = hybrid_search(
+            "process_data",
+            &filter,
+            10,
+            &index,
+            &db,
+            Some(&provider),
+            None,
+        )
+        .unwrap();
 
         assert!(!results.results.is_empty(), "expected at least one result");
         assert!(
@@ -565,16 +573,20 @@ mod weighted_rrf_tests {
         let semantic = vec![make_result("b", "beta", 0.9)];
 
         // Heavy keyword weight
-        let results =
-            weighted_rrf_merge(tantivy.clone(), semantic.clone(), 60, 10, 2.0, 1.0);
+        let results = weighted_rrf_merge(tantivy.clone(), semantic.clone(), 60, 10, 2.0, 1.0);
 
         // "a" should rank higher because keyword weight is 2x
-        assert_eq!(results[0].id, "a", "keyword result should rank first with 2x weight");
+        assert_eq!(
+            results[0].id, "a",
+            "keyword result should rank first with 2x weight"
+        );
 
         // Now flip: heavy semantic weight
-        let results2 =
-            weighted_rrf_merge(tantivy, semantic, 60, 10, 1.0, 2.0);
-        assert_eq!(results2[0].id, "b", "semantic result should rank first with 2x weight");
+        let results2 = weighted_rrf_merge(tantivy, semantic, 60, 10, 1.0, 2.0);
+        assert_eq!(
+            results2[0].id, "b",
+            "semantic result should rank first with 2x weight"
+        );
     }
 
     #[test]
@@ -583,9 +595,7 @@ mod weighted_rrf_tests {
             make_result("a", "alpha", 10.0),
             make_result("b", "beta", 8.0),
         ];
-        let semantic = vec![
-            make_result("c", "gamma", 0.9),
-        ];
+        let semantic = vec![make_result("c", "gamma", 0.9)];
 
         // Zero semantic weight — only keyword results should have nonzero scores
         let results = weighted_rrf_merge(tantivy, semantic, 60, 10, 1.0, 0.0);
@@ -602,12 +612,21 @@ mod weighted_rrf_tests {
     #[test]
     fn test_search_weight_presets_have_expected_values() {
         let code = SearchWeightProfile::fast_search();
-        assert!(code.keyword_weight >= 1.0, "fast_search should weight keywords strongly");
-        assert!(code.semantic_weight > 0.0, "fast_search should still use semantic");
+        assert!(
+            code.keyword_weight >= 1.0,
+            "fast_search should weight keywords strongly"
+        );
+        assert!(
+            code.semantic_weight > 0.0,
+            "fast_search should still use semantic"
+        );
 
         let recall = SearchWeightProfile::recall();
         assert!(recall.keyword_weight > 0.0, "recall should use keywords");
-        assert!(recall.semantic_weight >= 0.8, "recall should weight semantic strongly");
+        assert!(
+            recall.semantic_weight >= 0.8,
+            "recall should weight semantic strongly"
+        );
 
         let balanced = SearchWeightProfile::get_context();
         assert!(balanced.keyword_weight > 0.0);

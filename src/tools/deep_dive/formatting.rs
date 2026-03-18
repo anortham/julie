@@ -176,14 +176,22 @@ fn format_test_quality_info(out: &mut String, symbol: &crate::extractors::base::
 
 /// Format change risk section for production symbols.
 /// Skipped for test symbols (they have quality tiers instead).
-fn format_change_risk_info(out: &mut String, symbol: &crate::extractors::base::Symbol, incoming_count: usize) {
+fn format_change_risk_info(
+    out: &mut String,
+    symbol: &crate::extractors::base::Symbol,
+    incoming_count: usize,
+) {
     let metadata = match &symbol.metadata {
         Some(m) => m,
         None => return,
     };
 
     // Skip test symbols
-    if metadata.get("is_test").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if metadata
+        .get("is_test")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         return;
     }
 
@@ -210,7 +218,10 @@ fn format_change_risk_info(out: &mut String, symbol: &crate::extractors::base::S
     let test_summary = match coverage {
         Some(tc) => {
             let count = tc.get("test_count").and_then(|v| v.as_u64()).unwrap_or(0);
-            let best = tc.get("best_tier").and_then(|v| v.as_str()).unwrap_or("none");
+            let best = tc
+                .get("best_tier")
+                .and_then(|v| v.as_str())
+                .unwrap_or("none");
             if count > 0 {
                 format!("{} tests", best)
             } else {
@@ -228,14 +239,26 @@ fn format_change_risk_info(out: &mut String, symbol: &crate::extractors::base::S
     // Detail lines
     if let Some(f) = factors {
         let centrality = f.get("centrality").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        out.push_str(&format!("  centrality: {:.2} ({} incoming refs)\n", centrality, incoming_count));
+        out.push_str(&format!(
+            "  centrality: {:.2} ({} incoming refs)\n",
+            centrality, incoming_count
+        ));
         out.push_str(&format!("  visibility: {}\n", vis));
 
         if let Some(tc) = coverage {
             let count = tc.get("test_count").and_then(|v| v.as_u64()).unwrap_or(0);
-            let best = tc.get("best_tier").and_then(|v| v.as_str()).unwrap_or("none");
-            let worst = tc.get("worst_tier").and_then(|v| v.as_str()).unwrap_or("none");
-            out.push_str(&format!("  test coverage: {} tests (best: {}, worst: {})\n", count, best, worst));
+            let best = tc
+                .get("best_tier")
+                .and_then(|v| v.as_str())
+                .unwrap_or("none");
+            let worst = tc
+                .get("worst_tier")
+                .and_then(|v| v.as_str())
+                .unwrap_or("none");
+            out.push_str(&format!(
+                "  test coverage: {} tests (best: {}, worst: {})\n",
+                count, best, worst
+            ));
         } else {
             out.push_str("  test coverage: untested\n");
         }
@@ -246,14 +269,22 @@ fn format_change_risk_info(out: &mut String, symbol: &crate::extractors::base::S
 
 /// Format security risk section for production symbols.
 /// Only shown when metadata contains security_risk key.
-fn format_security_risk_info(out: &mut String, symbol: &crate::extractors::base::Symbol, incoming_count: usize) {
+fn format_security_risk_info(
+    out: &mut String,
+    symbol: &crate::extractors::base::Symbol,
+    incoming_count: usize,
+) {
     let metadata = match &symbol.metadata {
         Some(m) => m,
         None => return,
     };
 
     // Skip test symbols
-    if metadata.get("is_test").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if metadata
+        .get("is_test")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         return;
     }
 
@@ -262,8 +293,14 @@ fn format_security_risk_info(out: &mut String, symbol: &crate::extractors::base:
         None => return,
     };
 
-    let score = security.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let label = security.get("label").and_then(|v| v.as_str()).unwrap_or("LOW");
+    let score = security
+        .get("score")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let label = security
+        .get("label")
+        .and_then(|v| v.as_str())
+        .unwrap_or("LOW");
     let signals = security.get("signals");
 
     // Build summary: "Security Risk: HIGH (0.85) — calls execute, raw_sql; public; accepts string params"
@@ -287,7 +324,12 @@ fn format_security_risk_info(out: &mut String, symbol: &crate::extractors::base:
                 summary_parts.push("public".to_string());
             }
         }
-        if sigs.get("input_handling").and_then(|v| v.as_f64()).unwrap_or(0.0) > 0.0 {
+        if sigs
+            .get("input_handling")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0)
+            > 0.0
+        {
             summary_parts.push("accepts string params".to_string());
         }
     }
@@ -306,10 +348,16 @@ fn format_security_risk_info(out: &mut String, symbol: &crate::extractors::base:
     // Detail lines
     if let Some(sigs) = signals {
         let exposure = sigs.get("exposure").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let vis_label = sigs.get("visibility").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let vis_label = sigs
+            .get("visibility")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         out.push_str(&format!("  exposure: {} ({:.2})\n", vis_label, exposure));
 
-        let input = sigs.get("input_handling").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let input = sigs
+            .get("input_handling")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         if input > 0.0 {
             out.push_str("  input handling: yes (signature contains input type patterns)\n");
         }
@@ -321,11 +369,23 @@ fn format_security_risk_info(out: &mut String, symbol: &crate::extractors::base:
             }
         }
 
-        let blast = sigs.get("blast_radius").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        out.push_str(&format!("  blast radius: {:.2} ({} dependents)\n", blast, incoming_count));
+        let blast = sigs
+            .get("blast_radius")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        out.push_str(&format!(
+            "  blast radius: {:.2} ({} dependents)\n",
+            blast, incoming_count
+        ));
 
-        let untested = sigs.get("untested").and_then(|v| v.as_bool()).unwrap_or(false);
-        out.push_str(&format!("  untested: {}\n", if untested { "yes" } else { "no" }));
+        let untested = sigs
+            .get("untested")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        out.push_str(&format!(
+            "  untested: {}\n",
+            if untested { "yes" } else { "no" }
+        ));
     }
 }
 
@@ -714,10 +774,7 @@ fn format_ref_section(
                         }
                     }
                 } else {
-                    out.push_str(&format!(
-                        "  {}:{} ({})\n",
-                        r.file_path, r.line_number, kind
-                    ));
+                    out.push_str(&format!("  {}:{} ({})\n", r.file_path, r.line_number, kind));
                 }
             }
             "context" => {
@@ -729,10 +786,7 @@ fn format_ref_section(
                         r.file_path, r.line_number, name, kind
                     ));
                 } else {
-                    out.push_str(&format!(
-                        "  {}:{} ({})\n",
-                        r.file_path, r.line_number, kind
-                    ));
+                    out.push_str(&format!("  {}:{} ({})\n", r.file_path, r.line_number, kind));
                 }
             }
             _ => {
@@ -743,10 +797,7 @@ fn format_ref_section(
                         r.file_path, r.line_number, sym.name, kind
                     ));
                 } else {
-                    out.push_str(&format!(
-                        "  {}:{} ({})\n",
-                        r.file_path, r.line_number, kind
-                    ));
+                    out.push_str(&format!("  {}:{} ({})\n", r.file_path, r.line_number, kind));
                 }
             }
         }

@@ -366,9 +366,7 @@ impl JulieWorkspace {
                     julie_dir
                         .canonicalize()
                         .unwrap_or_else(|_| julie_dir.clone())
-                        == home
-                            .canonicalize()
-                            .unwrap_or_else(|_| home.clone())
+                        == home.canonicalize().unwrap_or_else(|_| home.clone())
                 });
                 if is_global {
                     debug!(

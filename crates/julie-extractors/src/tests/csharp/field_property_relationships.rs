@@ -8,10 +8,10 @@
 //! Without these relationships, important classes like `LuceneIndexService` get
 //! `ref_score: 0` while generic methods like `GetFileName` dominate centrality.
 
+use crate::ExtractionResults;
 use crate::base::{PendingRelationship, RelationshipKind, SymbolKind};
 use crate::csharp::CSharpExtractor;
 use crate::factory::extract_symbols_and_relationships;
-use crate::ExtractionResults;
 use std::path::PathBuf;
 use tree_sitter::Parser;
 

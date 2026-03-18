@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::database::{SymbolDatabase, LATEST_SCHEMA_VERSION};
+    use crate::database::{LATEST_SCHEMA_VERSION, SymbolDatabase};
     use tempfile::TempDir;
 
     fn create_test_db() -> (SymbolDatabase, TempDir) {

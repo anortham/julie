@@ -71,9 +71,7 @@ impl ManageWorkspaceTool {
             julie_dir_path
                 .canonicalize()
                 .unwrap_or_else(|_| julie_dir_path.to_path_buf())
-                == home
-                    .canonicalize()
-                    .unwrap_or_else(|_| home.clone())
+                == home.canonicalize().unwrap_or_else(|_| home.clone())
         })
     }
 

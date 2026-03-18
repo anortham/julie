@@ -351,8 +351,7 @@ impl JavaScriptExtractor {
                                     && s.end_byte >= node.end_byte() as u32
                             })
                             .map(|s| s.id.as_str());
-                        symbol =
-                            crate::test_calls::extract_test_call(&mut self.base, node, parent);
+                        symbol = crate::test_calls::extract_test_call(&mut self.base, node, parent);
                     }
                 }
             }

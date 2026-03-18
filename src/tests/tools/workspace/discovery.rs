@@ -4,7 +4,9 @@
 // on first workspace scan. Ensures patterns are detected correctly and formatted
 // properly for the ignore matcher.
 
-use crate::tools::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS, BLACKLISTED_FILENAMES};
+use crate::tools::shared::{
+    BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS, BLACKLISTED_FILENAMES,
+};
 use crate::tools::workspace::ManageWorkspaceTool;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -76,7 +78,9 @@ fn test_analyze_vendor_patterns_does_not_flag_libs_directory() {
         .expect("Failed to analyze patterns");
 
     assert!(
-        !patterns.iter().any(|p| p == "libs" || p.starts_with("libs/")),
+        !patterns
+            .iter()
+            .any(|p| p == "libs" || p.starts_with("libs/")),
         "libs/ must NOT be flagged as vendor — it's the standard source dir in Nx/Angular monorepos. Got: {:?}",
         patterns,
     );

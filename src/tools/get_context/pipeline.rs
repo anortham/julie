@@ -13,9 +13,9 @@ use tracing::debug;
 
 use crate::database::SymbolDatabase;
 use crate::extractors::base::{RelationshipKind, Symbol};
-use crate::tools::shared::NOISE_CALLEE_NAMES;
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::resolution::{WorkspaceTarget, resolve_workspace_filter};
+use crate::tools::shared::NOISE_CALLEE_NAMES;
 
 /// Direction of a neighbor relative to the pivot symbol.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,8 +204,11 @@ pub fn run_pipeline(
     let ref_scores = db.get_reference_scores(&result_ids)?;
 
     // 3. Select pivots using centrality-weighted scoring (with exact-name boost)
-    let pivots =
-        super::scoring::select_pivots_with_code_fallback_for_query(query, search_results.results, &ref_scores);
+    let pivots = super::scoring::select_pivots_with_code_fallback_for_query(
+        query,
+        search_results.results,
+        &ref_scores,
+    );
 
     // 4. Expand graph from pivots
     let expansion = expand_graph(&pivots, db)?;
@@ -389,21 +392,27 @@ fn build_pivot_entries(
             .copied()
             .unwrap_or(0.0);
 
-        let risk_label = batch.full_symbols.get(&pivot.result.id)
+        let risk_label = batch
+            .full_symbols
+            .get(&pivot.result.id)
             .and_then(|sym| sym.metadata.as_ref())
             .and_then(|m| m.get("change_risk"))
             .and_then(|r| r.get("label"))
             .and_then(|l| l.as_str())
             .map(String::from);
 
-        let security_label = batch.full_symbols.get(&pivot.result.id)
+        let security_label = batch
+            .full_symbols
+            .get(&pivot.result.id)
             .and_then(|sym| sym.metadata.as_ref())
             .and_then(|m| m.get("security_risk"))
             .and_then(|r| r.get("label"))
             .and_then(|l| l.as_str())
             .map(String::from);
 
-        let test_quality_label = batch.full_symbols.get(&pivot.result.id)
+        let test_quality_label = batch
+            .full_symbols
+            .get(&pivot.result.id)
             .and_then(|sym| sym.metadata.as_ref())
             .and_then(|m| m.get("test_quality"))
             .and_then(|tq| tq.get("quality_tier"))
@@ -551,10 +560,11 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
         }
         WorkspaceTarget::Primary => {
             // Primary workspace: use shared DB and SearchIndex via Arc<Mutex>
-            let workspace = handler
-                .get_workspace()
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first."))?;
+            let workspace = handler.get_workspace().await?.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No workspace initialized. Run manage_workspace(operation=\"index\") first."
+                )
+            })?;
 
             let search_index = workspace
                 .search_index
@@ -565,7 +575,11 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             let db = workspace
                 .db
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Database not initialized. Run manage_workspace(operation=\"index\") first."))?
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Database not initialized. Run manage_workspace(operation=\"index\") first."
+                    )
+                })?
                 .clone();
 
             let embedding_provider = workspace.embedding_provider.clone();

@@ -93,9 +93,8 @@ fn extract_dir_recursive(dir: &Dir, target: &Path) -> Result<()> {
                 }
 
                 let sub_target = target.join(sub_dir.path());
-                std::fs::create_dir_all(&sub_target).with_context(|| {
-                    format!("creating directory {}", sub_target.display())
-                })?;
+                std::fs::create_dir_all(&sub_target)
+                    .with_context(|| format!("creating directory {}", sub_target.display()))?;
                 extract_dir_recursive(sub_dir, target)?;
             }
             include_dir::DirEntry::File(file) => {
@@ -105,9 +104,8 @@ fn extract_dir_recursive(dir: &Dir, target: &Path) -> Result<()> {
                         format!("creating parent directory {}", parent.display())
                     })?;
                 }
-                std::fs::write(&file_target, file.contents()).with_context(|| {
-                    format!("writing file {}", file_target.display())
-                })?;
+                std::fs::write(&file_target, file.contents())
+                    .with_context(|| format!("writing file {}", file_target.display()))?;
             }
         }
     }

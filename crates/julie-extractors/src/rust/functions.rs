@@ -121,7 +121,15 @@ pub(super) fn extract_function(
 
     let mut metadata = HashMap::new();
 
-    if is_test_symbol("rust", &name, &base.file_path, &kind, &[], &attributes, None) {
+    if is_test_symbol(
+        "rust",
+        &name,
+        &base.file_path,
+        &kind,
+        &[],
+        &attributes,
+        None,
+    ) {
         metadata.insert("is_test".to_string(), Value::Bool(true));
     }
 

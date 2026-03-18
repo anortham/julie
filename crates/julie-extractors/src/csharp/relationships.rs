@@ -1,11 +1,11 @@
 // C# Relationship Extraction
 
 use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::csharp::CSharpExtractor;
 use crate::csharp::member_type_relationships::{
     extract_field_type_relationships, extract_parameter_type_name,
     extract_property_type_relationships, find_containing_class,
 };
-use crate::csharp::CSharpExtractor;
 use tree_sitter::Tree;
 
 /// Extract relationships from the tree

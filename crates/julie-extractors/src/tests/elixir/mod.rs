@@ -80,11 +80,7 @@ end"#;
         fn debug_print_tree(node: tree_sitter::Node, source: &str, depth: usize) {
             let indent = "  ".repeat(depth);
             let text = node.utf8_text(source.as_bytes()).unwrap_or("<err>");
-            let short = if text.len() > 80 {
-                &text[..77]
-            } else {
-                text
-            };
+            let short = if text.len() > 80 { &text[..77] } else { text };
             let field_name = node
                 .parent()
                 .and_then(|p| {
@@ -215,7 +211,10 @@ end"#;
 
         // Check metadata
         let meta = impls[0].metadata.as_ref().unwrap();
-        assert_eq!(meta.get("protocol_impl").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            meta.get("protocol_impl").and_then(|v| v.as_bool()),
+            Some(true)
+        );
     }
 
     #[test]
@@ -237,9 +236,21 @@ end"#;
             .filter(|s| s.kind == SymbolKind::Field)
             .collect();
         let field_names: Vec<_> = fields.iter().map(|f| f.name.as_str()).collect();
-        assert!(field_names.contains(&"name"), "Expected 'name' field, got: {:?}", field_names);
-        assert!(field_names.contains(&"email"), "Expected 'email' field, got: {:?}", field_names);
-        assert!(field_names.contains(&"age"), "Expected 'age' field, got: {:?}", field_names);
+        assert!(
+            field_names.contains(&"name"),
+            "Expected 'name' field, got: {:?}",
+            field_names
+        );
+        assert!(
+            field_names.contains(&"email"),
+            "Expected 'email' field, got: {:?}",
+            field_names
+        );
+        assert!(
+            field_names.contains(&"age"),
+            "Expected 'age' field, got: {:?}",
+            field_names
+        );
     }
 
     #[test]
@@ -526,7 +537,10 @@ end"#;
 
         // Check key symbols exist
         let names: Vec<_> = symbols.iter().map(|s| s.name.as_str()).collect();
-        assert!(names.contains(&"MyApp.Calculator"), "Missing MyApp.Calculator");
+        assert!(
+            names.contains(&"MyApp.Calculator"),
+            "Missing MyApp.Calculator"
+        );
         assert!(names.contains(&"add"), "Missing add");
         assert!(names.contains(&"multiply"), "Missing multiply");
         assert!(names.contains(&"Printable"), "Missing Printable");

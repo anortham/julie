@@ -330,13 +330,12 @@ var _count: int = 0
             property_ref.is_some(),
             "Should extract 'PandoraProperty' TypeUsage from var type annotation.\n\
              Found type usages: {:?}",
-            type_usages
-                .iter()
-                .map(|id| &id.name)
-                .collect::<Vec<_>>()
+            type_usages.iter().map(|id| &id.name).collect::<Vec<_>>()
         );
 
-        let backend_ref = type_usages.iter().find(|id| id.name == "PandoraEntityBackend");
+        let backend_ref = type_usages
+            .iter()
+            .find(|id| id.name == "PandoraEntityBackend");
         assert!(
             backend_ref.is_some(),
             "Should extract 'PandoraEntityBackend' TypeUsage from var type annotation"
@@ -375,10 +374,7 @@ func create_entity(name: String, category: PandoraCategory) -> PandoraEntity:
             string_ref.is_some(),
             "Should extract 'String' TypeUsage from parameter type.\n\
              Found type usages: {:?}",
-            type_usages
-                .iter()
-                .map(|id| &id.name)
-                .collect::<Vec<_>>()
+            type_usages.iter().map(|id| &id.name).collect::<Vec<_>>()
         );
 
         let category_ref = type_usages.iter().find(|id| id.name == "PandoraCategory");
@@ -420,7 +416,10 @@ func process(entity: PandoraEntity) -> void:
         let prop_type = identifiers
             .iter()
             .find(|id| id.name == "PandoraProperty" && id.kind == IdentifierKind::TypeUsage);
-        assert!(prop_type.is_some(), "Should extract PandoraProperty TypeUsage");
+        assert!(
+            prop_type.is_some(),
+            "Should extract PandoraProperty TypeUsage"
+        );
 
         let process_func = symbols.iter().find(|s| s.name == "process").unwrap();
         let prop_type = prop_type.unwrap();

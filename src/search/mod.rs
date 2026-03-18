@@ -6,13 +6,13 @@
 pub mod debug;
 mod error;
 pub mod expansion;
-pub mod similarity;
 pub mod hybrid;
 pub mod index;
 pub mod language_config;
 pub mod query;
 pub mod schema;
 pub mod scoring;
+pub mod similarity;
 pub mod tokenizer;
 pub mod weights;
 

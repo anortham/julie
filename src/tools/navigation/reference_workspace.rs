@@ -111,7 +111,9 @@ pub async fn find_references_in_reference_workspace(
                 .get_identifiers_by_names_and_kind(&all_names, kind)
                 .unwrap_or_default()
         } else {
-            ref_db.get_identifiers_by_names(&all_names).unwrap_or_default()
+            ref_db
+                .get_identifiers_by_names(&all_names)
+                .unwrap_or_default()
         };
 
         // Build dedup set from existing relationships AND definitions

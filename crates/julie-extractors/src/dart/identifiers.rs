@@ -63,7 +63,12 @@ fn extract_identifier_from_node(
             let name = get_node_text(&node);
 
             // Skip single-letter generic type parameters (T, K, V, E, S, R, etc.)
-            if name.len() == 1 && name.chars().next().map_or(false, |c| c.is_ascii_uppercase()) {
+            if name.len() == 1
+                && name
+                    .chars()
+                    .next()
+                    .map_or(false, |c| c.is_ascii_uppercase())
+            {
                 return;
             }
 

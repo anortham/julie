@@ -224,8 +224,7 @@ fn variable_noise_penalty(symbol: &Symbol) -> f64 {
     // Noise-name and short-name penalties are mutually exclusive — no double-dipping.
     // Known noise names get one consolidated penalty; unknown short names get a smaller one.
     const NOISE_NAMES: &[&str] = &[
-        "i", "j", "k", "x", "y", "z", "n", "tmp", "temp", "var", "val", "obj", "data", "res",
-        "req",
+        "i", "j", "k", "x", "y", "z", "n", "tmp", "temp", "var", "val", "obj", "data", "res", "req",
     ];
 
     if NOISE_NAMES.contains(&lower.as_str()) {
@@ -263,8 +262,7 @@ pub(crate) fn has_simple_default_literal(signature: &str) -> bool {
         let rhs_lower = rhs.to_lowercase();
         if LITERALS.iter().any(|lit| {
             rhs_lower.starts_with(lit)
-                && !rhs_lower[lit.len()..]
-                    .starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                && !rhs_lower[lit.len()..].starts_with(|c: char| c.is_alphanumeric() || c == '_')
         }) {
             return true;
         }

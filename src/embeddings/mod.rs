@@ -16,13 +16,13 @@ pub mod metadata;
 pub mod ort_provider;
 pub mod pipeline;
 #[cfg(feature = "embeddings-sidecar")]
-pub mod sidecar_protocol;
-#[cfg(feature = "embeddings-sidecar")]
-pub mod sidecar_provider;
-#[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_bootstrap;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_embedded;
+#[cfg(feature = "embeddings-sidecar")]
+pub mod sidecar_protocol;
+#[cfg(feature = "embeddings-sidecar")]
+pub mod sidecar_provider;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_supervisor;
 #[cfg(feature = "embeddings-ort")]
@@ -139,9 +139,8 @@ pub use ort_provider::{
 #[cfg(feature = "embeddings-sidecar")]
 pub use sidecar_protocol::{
     EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, ProtocolError,
-    RequestEnvelope, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA,
-    SIDECAR_PROTOCOL_VERSION, validate_batch_response, validate_query_response,
-    validate_response_envelope,
+    RequestEnvelope, ResponseEnvelope, SIDECAR_PROTOCOL_SCHEMA, SIDECAR_PROTOCOL_VERSION,
+    validate_batch_response, validate_query_response, validate_response_envelope,
 };
 #[cfg(feature = "embeddings-sidecar")]
 pub use sidecar_provider::SidecarEmbeddingProvider;

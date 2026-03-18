@@ -70,7 +70,7 @@ pub fn kind_weight(kind: &SymbolKind) -> Option<f64> {
 /// Higher = worse coverage = more risk.
 pub fn test_weakness_score(best_tier: Option<&str>) -> f64 {
     match best_tier {
-        None => 1.0,              // Untested
+        None => 1.0, // Untested
         Some("stub") => 0.8,
         Some("thin") => 0.6,
         Some("adequate") => 0.3,

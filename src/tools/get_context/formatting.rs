@@ -145,13 +145,19 @@ fn format_context_readable(data: &ContextData) -> String {
             "\u{2500}\u{2500} Pivot: {} \u{2500}\u{2500}\u{2500}\n",
             pivot.name
         ));
-        let risk_tag = pivot.risk_label.as_ref()
+        let risk_tag = pivot
+            .risk_label
+            .as_ref()
             .map(|l| format!("  [{} risk]", l))
             .unwrap_or_default();
-        let security_tag = pivot.security_label.as_ref()
+        let security_tag = pivot
+            .security_label
+            .as_ref()
             .map(|l| format!("  [{} security]", l))
             .unwrap_or_default();
-        let quality_tag = pivot.test_quality_label.as_ref()
+        let quality_tag = pivot
+            .test_quality_label
+            .as_ref()
             .map(|l| format!("  [{} quality]", l))
             .unwrap_or_default();
         out.push_str(&format!(
@@ -190,9 +196,7 @@ fn format_context_readable(data: &ContextData) -> String {
     // --- Neighbors section ---
     if !data.neighbors.is_empty() {
         out.push('\n');
-        out.push_str(
-            "\u{2500}\u{2500} Neighbors \u{2500}\u{2500}\u{2500}\n",
-        );
+        out.push_str("\u{2500}\u{2500} Neighbors \u{2500}\u{2500}\u{2500}\n");
         for neighbor in &data.neighbors {
             format_neighbor(&mut out, neighbor, &data.allocation.neighbor_mode);
         }
@@ -222,18 +226,31 @@ fn format_context_compact(data: &ContextData) -> String {
 
     for pivot in &data.pivots {
         let label = centrality_label(pivot.reference_score);
-        let risk_tag = pivot.risk_label.as_ref()
+        let risk_tag = pivot
+            .risk_label
+            .as_ref()
             .map(|l| format!(" risk={}", l))
             .unwrap_or_default();
-        let security_tag = pivot.security_label.as_ref()
+        let security_tag = pivot
+            .security_label
+            .as_ref()
             .map(|l| format!(" security={}", l))
             .unwrap_or_default();
-        let quality_tag = pivot.test_quality_label.as_ref()
+        let quality_tag = pivot
+            .test_quality_label
+            .as_ref()
             .map(|l| format!(" quality={}", l))
             .unwrap_or_default();
         out.push_str(&format!(
             "PIVOT {} {}:{} kind={} centrality={}{}{}{}\n",
-            pivot.name, pivot.file_path, pivot.start_line, pivot.kind, label, risk_tag, security_tag, quality_tag
+            pivot.name,
+            pivot.file_path,
+            pivot.start_line,
+            pivot.kind,
+            label,
+            risk_tag,
+            security_tag,
+            quality_tag
         ));
         for line in pivot.content.lines() {
             out.push_str("  ");
@@ -333,4 +350,3 @@ fn count_unique_files(data: &ContextData) -> usize {
     }
     files.len()
 }
-

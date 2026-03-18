@@ -63,10 +63,11 @@ pub async fn line_mode_search(
     let all_line_matches: Vec<LineMatch> = match workspace_target {
         WorkspaceTarget::Primary => {
             // Search primary workspace using Tantivy index + shared DB for content
-            let workspace_struct = handler
-                .get_workspace()
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first."))?;
+            let workspace_struct = handler.get_workspace().await?.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No workspace initialized. Run manage_workspace(operation=\"index\") first."
+                )
+            })?;
 
             let db = workspace_struct
                 .db
@@ -74,9 +75,7 @@ pub async fn line_mode_search(
                 .ok_or_else(|| anyhow::anyhow!("No database available for line search"))?;
 
             let search_index = workspace_struct.search_index.as_ref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Search index not initialized. Run 'manage_workspace index' first."
-                )
+                anyhow::anyhow!("Search index not initialized. Run 'manage_workspace index' first.")
             })?;
 
             let search_index = search_index.clone();
@@ -94,8 +93,7 @@ pub async fn line_mode_search(
                         poisoned.into_inner()
                     }
                 };
-                let file_results =
-                    index.search_content(&query, &filter, fetch_limit)?.results;
+                let file_results = index.search_content(&query, &filter, fetch_limit)?.results;
                 drop(index);
 
                 let db_lock = match db.lock() {
@@ -133,9 +131,7 @@ pub async fn line_mode_search(
                         continue;
                     }
 
-                    if let Some(content) =
-                        db_lock.get_file_content(&file_result.file_path)?
-                    {
+                    if let Some(content) = db_lock.get_file_content(&file_result.file_path)? {
                         collect_line_matches(
                             &mut matches,
                             &content,
@@ -152,12 +148,8 @@ pub async fn line_mode_search(
         }
         WorkspaceTarget::Reference(ref_id) => {
             // Search reference workspace using handler helpers for DB + SearchIndex access
-            let db_arc = handler
-                .get_database_for_workspace(ref_id)
-                .await?;
-            let si_arc = handler
-                .get_search_index_for_workspace(ref_id)
-                .await?;
+            let db_arc = handler.get_database_for_workspace(ref_id).await?;
+            let si_arc = handler.get_search_index_for_workspace(ref_id).await?;
 
             let query_clone = query.to_string();
             let strategy = match_strategy.clone();
@@ -172,9 +164,9 @@ pub async fn line_mode_search(
                         return Ok(Vec::new());
                     }
                 };
-                let ref_index = si_arc.lock().map_err(|e| {
-                    anyhow::anyhow!("Search index lock error: {}", e)
-                })?;
+                let ref_index = si_arc
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
                 let ref_filter = SearchFilter {
                     language: ref_language.clone(),
                     kind: None,
@@ -190,9 +182,9 @@ pub async fn line_mode_search(
                     return Ok(Vec::new());
                 }
 
-                let ref_db = db_arc.lock().map_err(|e| {
-                    anyhow::anyhow!("Database lock error: {}", e)
-                })?;
+                let ref_db = db_arc
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
                 let mut matches = Vec::new();
                 for file_result in file_results {
                     if matches.len() >= base_limit {
@@ -220,9 +212,7 @@ pub async fn line_mode_search(
                         continue;
                     }
 
-                    if let Some(content) =
-                        ref_db.get_file_content(&file_result.file_path)?
-                    {
+                    if let Some(content) = ref_db.get_file_content(&file_result.file_path)? {
                         collect_line_matches(
                             &mut matches,
                             &content,
@@ -236,9 +226,7 @@ pub async fn line_mode_search(
                 Ok(matches)
             })
             .await
-            .map_err(|e| {
-                anyhow::anyhow!("Failed to spawn reference workspace search: {}", e)
-            })??
+            .map_err(|e| anyhow::anyhow!("Failed to spawn reference workspace search: {}", e))??
         }
     };
 

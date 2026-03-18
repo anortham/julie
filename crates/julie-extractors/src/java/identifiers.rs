@@ -175,7 +175,11 @@ fn is_type_declaration_name(node: &Node) -> bool {
 fn is_java_noise_type(name: &str) -> bool {
     // Single-letter names are almost always generic type parameters used in scope.
     // Even when they appear as references (e.g. `: T`), they carry no cross-file signal.
-    name.len() == 1 && name.chars().next().map_or(false, |c| c.is_ascii_uppercase())
+    name.len() == 1
+        && name
+            .chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_uppercase())
 }
 
 /// Find the ID of the symbol that contains this node

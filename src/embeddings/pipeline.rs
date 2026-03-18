@@ -7,15 +7,15 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use tracing::{info, warn};
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::metadata::{
-    prepare_batch_for_embedding, select_budgeted_variables, VariableEmbeddingPolicy,
-    NON_EMBEDDABLE_LANGUAGES,
-};
 use crate::embeddings::EmbeddingProvider;
+use crate::embeddings::metadata::{
+    NON_EMBEDDABLE_LANGUAGES, VariableEmbeddingPolicy, prepare_batch_for_embedding,
+    select_budgeted_variables,
+};
 use crate::extractors::SymbolKind;
 
 /// Batch size for embedding generation (symbols per batch).

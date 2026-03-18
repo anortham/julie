@@ -146,15 +146,11 @@ pub fn supported_extensions() -> &'static [&'static str] {
         // Web
         "ts", "mts", "cts", "tsx", "js", "jsx", "mjs", "cjs", "html", "htm", "css", "vue",
         // Backend
-        "py", "pyi", "pyw", "java", "cs", "php", "phtml", "rb", "rbw",
-        "swift", "kt", "kts", "scala", "sc", "dart",
-        // Functional
-        "ex", "exs",
-        // Scripting
-        "lua", "qml", "r", "R", "sh", "bash", "ps1", "psm1", "psd1",
-        // Specialized
-        "gd", "razor", "cshtml", "sql", "regex",
-        // Documentation and config
+        "py", "pyi", "pyw", "java", "cs", "php", "phtml", "rb", "rbw", "swift", "kt", "kts",
+        "scala", "sc", "dart", // Functional
+        "ex", "exs", // Scripting
+        "lua", "qml", "r", "R", "sh", "bash", "ps1", "psm1", "psd1", // Specialized
+        "gd", "razor", "cshtml", "sql", "regex", // Documentation and config
         "md", "markdown", "json", "jsonl", "jsonc", "toml", "yml", "yaml",
     ]
 }
@@ -166,19 +162,46 @@ pub fn supported_extensions() -> &'static [&'static str] {
 pub fn supported_languages() -> &'static [&'static str] {
     &[
         // Systems
-        "rust", "c", "cpp", "go", "zig",
+        "rust",
+        "c",
+        "cpp",
+        "go",
+        "zig",
         // Web
-        "typescript", "tsx", "javascript", "html", "css", "vue",
+        "typescript",
+        "tsx",
+        "javascript",
+        "html",
+        "css",
+        "vue",
         // Backend
-        "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "scala", "dart",
+        "python",
+        "java",
+        "csharp",
+        "php",
+        "ruby",
+        "swift",
+        "kotlin",
+        "scala",
+        "dart",
         // Functional
         "elixir",
         // Scripting
-        "lua", "qml", "r", "bash", "powershell",
+        "lua",
+        "qml",
+        "r",
+        "bash",
+        "powershell",
         // Specialized
-        "gdscript", "razor", "sql", "regex",
+        "gdscript",
+        "razor",
+        "sql",
+        "regex",
         // Documentation and config
-        "markdown", "json", "toml", "yaml",
+        "markdown",
+        "json",
+        "toml",
+        "yaml",
     ]
 }
 

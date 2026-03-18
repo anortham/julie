@@ -186,10 +186,7 @@ impl super::RazorExtractor {
                         serde_json::Value::String(attributes.join(", ")),
                     );
                     if is_test {
-                        metadata.insert(
-                            "is_test".to_string(),
-                            serde_json::Value::Bool(true),
-                        );
+                        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
                     }
                     metadata
                 }),

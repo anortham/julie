@@ -38,8 +38,7 @@ mod tests {
         );
 
         // Marker content should match the install marker version exactly
-        let marker = fs::read_to_string(target.join(".embedded-version"))
-            .expect("read marker");
+        let marker = fs::read_to_string(target.join(".embedded-version")).expect("read marker");
         assert_eq!(
             marker.trim(),
             INSTALL_MARKER_VERSION,
@@ -87,14 +86,12 @@ mod tests {
         extract_embedded_sidecar(target).expect("first extraction");
 
         // Tamper with the version marker
-        fs::write(target.join(".embedded-version"), "stale-version")
-            .expect("tamper marker");
+        fs::write(target.join(".embedded-version"), "stale-version").expect("tamper marker");
 
         // Second extraction — should re-extract because version mismatches
         extract_embedded_sidecar(target).expect("re-extraction after tamper");
 
-        let marker = fs::read_to_string(target.join(".embedded-version"))
-            .expect("read marker");
+        let marker = fs::read_to_string(target.join(".embedded-version")).expect("read marker");
         assert_eq!(
             marker.trim(),
             INSTALL_MARKER_VERSION,
@@ -129,7 +126,7 @@ mod tests {
     #[test]
     #[serial_test::serial(embedding_env)]
     fn test_sidecar_root_path_env_override_wins() {
-        use crate::embeddings::sidecar_supervisor::{sidecar_root_path, SIDECAR_ROOT_ENV};
+        use crate::embeddings::sidecar_supervisor::{SIDECAR_ROOT_ENV, sidecar_root_path};
 
         let fake_path = "/tmp/julie-test-sidecar-override";
 
@@ -155,7 +152,8 @@ mod tests {
         use crate::embeddings::sidecar_supervisor::sidecar_root_path;
 
         // Running from source checkout, so priority 3 (CARGO_MANIFEST_DIR) should match
-        let path = sidecar_root_path().expect("sidecar_root_path should succeed from source checkout");
+        let path =
+            sidecar_root_path().expect("sidecar_root_path should succeed from source checkout");
         let path_str = path.to_string_lossy().replace('\\', "/");
         assert!(
             path_str.contains("python/embeddings_sidecar"),

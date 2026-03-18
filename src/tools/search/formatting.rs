@@ -179,4 +179,3 @@ fn is_definition_name_match(symbol_name: &str, query_lower: &str) -> bool {
     }
     false
 }
-

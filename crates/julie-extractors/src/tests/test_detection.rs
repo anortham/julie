@@ -18,7 +18,15 @@ fn check(
     attributes: &[String],
     doc_comment: Option<&str>,
 ) -> bool {
-    is_test_symbol(language, name, file_path, kind, decorators, attributes, doc_comment)
+    is_test_symbol(
+        language,
+        name,
+        file_path,
+        kind,
+        decorators,
+        attributes,
+        doc_comment,
+    )
 }
 
 fn s(val: &str) -> String {
@@ -660,32 +668,80 @@ fn generic_test_capital_prefix_in_test_path() {
 
 #[test]
 fn csharp_setup_is_test() {
-    assert!(check("csharp", "SetUp", "Tests/MyTests.cs", &SymbolKind::Method, &[], &[s("SetUp")], None));
+    assert!(check(
+        "csharp",
+        "SetUp",
+        "Tests/MyTests.cs",
+        &SymbolKind::Method,
+        &[],
+        &[s("SetUp")],
+        None
+    ));
 }
 
 #[test]
 fn csharp_teardown_is_test() {
-    assert!(check("csharp", "TearDown", "Tests/MyTests.cs", &SymbolKind::Method, &[], &[s("TearDown")], None));
+    assert!(check(
+        "csharp",
+        "TearDown",
+        "Tests/MyTests.cs",
+        &SymbolKind::Method,
+        &[],
+        &[s("TearDown")],
+        None
+    ));
 }
 
 #[test]
 fn csharp_onetime_setup_is_test() {
-    assert!(check("csharp", "Initialize", "Tests/MyTests.cs", &SymbolKind::Method, &[], &[s("OneTimeSetUp")], None));
+    assert!(check(
+        "csharp",
+        "Initialize",
+        "Tests/MyTests.cs",
+        &SymbolKind::Method,
+        &[],
+        &[s("OneTimeSetUp")],
+        None
+    ));
 }
 
 #[test]
 fn java_before_each_is_test() {
-    assert!(check("java", "setup", "src/test/MyTest.java", &SymbolKind::Method, &[s("BeforeEach")], &[], None));
+    assert!(check(
+        "java",
+        "setup",
+        "src/test/MyTest.java",
+        &SymbolKind::Method,
+        &[s("BeforeEach")],
+        &[],
+        None
+    ));
 }
 
 #[test]
 fn python_setup_is_test() {
-    assert!(check("python", "setUp", "tests/test_foo.py", &SymbolKind::Method, &[], &[], None));
+    assert!(check(
+        "python",
+        "setUp",
+        "tests/test_foo.py",
+        &SymbolKind::Method,
+        &[],
+        &[],
+        None
+    ));
 }
 
 #[test]
 fn swift_setup_is_test() {
-    assert!(check("swift", "setUp", "Tests/MyTests.swift", &SymbolKind::Method, &[], &[], None));
+    assert!(check(
+        "swift",
+        "setUp",
+        "Tests/MyTests.swift",
+        &SymbolKind::Method,
+        &[],
+        &[],
+        None
+    ));
 }
 
 // ===========================================================================
@@ -876,9 +932,7 @@ def helper_function():
 "#;
     let symbols = extract_symbols_for("python", "tests/test_payment.py", code);
 
-    let test_fn = symbols
-        .iter()
-        .find(|s| s.name == "test_payment_processing");
+    let test_fn = symbols.iter().find(|s| s.name == "test_payment_processing");
     assert!(test_fn.is_some(), "Should extract test_payment_processing");
     assert!(
         has_is_test(test_fn.unwrap()),
@@ -961,7 +1015,10 @@ pub fn add(a: u32, b: u32) u32 {
     let symbols = extract_symbols_for("zig", "tests/math_test.zig", code);
 
     let test_block = symbols.iter().find(|s| s.name == "basic addition");
-    assert!(test_block.is_some(), "Should extract test block 'basic addition'");
+    assert!(
+        test_block.is_some(),
+        "Should extract test block 'basic addition'"
+    );
     assert!(
         has_is_test(test_block.unwrap()),
         "Zig test block should have is_test=true"

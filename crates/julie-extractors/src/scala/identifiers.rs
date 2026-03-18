@@ -89,12 +89,7 @@ fn extract_identifier_from_node(
 
             if let Some((name_node, name)) = extract_rightmost_identifier(base, &node) {
                 let containing = find_containing_symbol_id(base, node, symbol_map);
-                base.create_identifier(
-                    &name_node,
-                    name,
-                    IdentifierKind::MemberAccess,
-                    containing,
-                );
+                base.create_identifier(&name_node, name, IdentifierKind::MemberAccess, containing);
             }
         }
 
@@ -144,7 +139,12 @@ fn is_type_declaration_name(node: &Node) -> bool {
 /// - Scala primitive/base types — ubiquitous in every file
 fn is_scala_noise_type(name: &str) -> bool {
     // Single-letter uppercase names are almost always generic type parameters.
-    if name.len() == 1 && name.chars().next().map_or(false, |c| c.is_ascii_uppercase()) {
+    if name.len() == 1
+        && name
+            .chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_uppercase())
+    {
         return true;
     }
 
@@ -182,7 +182,5 @@ fn extract_rightmost_identifier<'a>(
         .filter(|n| n.kind() == "identifier")
         .collect();
 
-    identifiers
-        .last()
-        .map(|n| (*n, base.get_node_text(n)))
+    identifiers.last().map(|n| (*n, base.get_node_text(n)))
 }

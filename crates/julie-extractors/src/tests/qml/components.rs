@@ -285,8 +285,7 @@ Kirigami.ScrollablePage {
 }
 "#;
 
-        let symbols =
-            extract_symbols_with_path(qml_code, "src/controls/SettingsPage.qml");
+        let symbols = extract_symbols_with_path(qml_code, "src/controls/SettingsPage.qml");
 
         let components: Vec<&Symbol> = symbols
             .iter()

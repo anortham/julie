@@ -16,10 +16,7 @@ impl SymbolDatabase {
     /// Deletes existing embeddings for the same checkpoint_ids first (vec0 virtual
     /// tables don't support INSERT OR REPLACE), then inserts fresh embeddings.
     /// Returns the number of embeddings stored.
-    pub fn store_memory_embeddings(
-        &mut self,
-        embeddings: &[(String, Vec<f32>)],
-    ) -> Result<usize> {
+    pub fn store_memory_embeddings(&mut self, embeddings: &[(String, Vec<f32>)]) -> Result<usize> {
         if embeddings.is_empty() {
             return Ok(0);
         }
@@ -28,11 +25,9 @@ impl SymbolDatabase {
         let mut count = 0;
 
         {
-            let mut del_stmt =
-                tx.prepare("DELETE FROM memory_vectors WHERE checkpoint_id = ?")?;
-            let mut ins_stmt = tx.prepare(
-                "INSERT INTO memory_vectors(checkpoint_id, embedding) VALUES (?, ?)",
-            )?;
+            let mut del_stmt = tx.prepare("DELETE FROM memory_vectors WHERE checkpoint_id = ?")?;
+            let mut ins_stmt =
+                tx.prepare("INSERT INTO memory_vectors(checkpoint_id, embedding) VALUES (?, ?)")?;
 
             for (checkpoint_id, vector) in embeddings {
                 del_stmt.execute([checkpoint_id])?;

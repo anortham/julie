@@ -35,9 +35,8 @@ fn test_resolve_workspace_root_with_existing_path() {
 #[test]
 fn test_resolve_workspace_root_with_nonexistent_path_falls_through() {
     // Non-existent CLI path should fall through to env var or cwd
-    let result = resolve_workspace_root(Some(PathBuf::from(
-        "/nonexistent/path/that/does/not/exist",
-    )));
+    let result =
+        resolve_workspace_root(Some(PathBuf::from("/nonexistent/path/that/does/not/exist")));
     // Should fall through to current directory
     assert!(result.exists());
 }

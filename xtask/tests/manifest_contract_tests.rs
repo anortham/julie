@@ -56,7 +56,9 @@ fn manifest_contract_tests_checked_in_manifest_includes_rebalancing_hints() {
     let contents = fs::read_to_string(manifest_path()).unwrap();
 
     assert!(contents.contains("# Fast local confidence buckets."));
-    assert!(contents.contains("# Expected seconds are first-pass estimates for later rebalancing."));
+    assert!(
+        contents.contains("# Expected seconds are first-pass estimates for later rebalancing.")
+    );
     assert!(contents.contains("# Smoke: keep this tiny for frequent local runs."));
     assert!(contents.contains("# System coverage kept separate from fast local buckets."));
     assert!(contents.contains("# Dogfood stays isolated because it is the long pole."));
@@ -140,10 +142,7 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 5,
                 timeout_seconds: 30,
-                commands: &[
-                    "cargo test --lib tests::cli_tests",
-                    "cargo test -p xtask",
-                ],
+                commands: &["cargo test --lib tests::cli_tests", "cargo test -p xtask"],
             },
         ),
         (
@@ -277,7 +276,9 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
             ExpectedBucket {
                 expected_seconds: 360,
                 timeout_seconds: 480,
-                commands: &["cargo test --lib tests::core::workspace_init -- --skip search_quality"],
+                commands: &[
+                    "cargo test --lib tests::core::workspace_init -- --skip search_quality",
+                ],
             },
         ),
     ])

@@ -1,9 +1,9 @@
+use super::ElixirExtractor;
 /// Core call dispatch for Elixir extraction.
 ///
 /// In tree-sitter-elixir, nearly every definition is a `call` node.
 /// This module inspects the call target and dispatches to the appropriate handler.
 use super::helpers;
-use super::ElixirExtractor;
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use crate::test_detection::is_test_symbol;
 use serde_json::Value;
@@ -95,7 +95,7 @@ fn extract_def(
     let (fn_name, params) = helpers::extract_function_head(&extractor.base, node)?;
 
     let signature = match &params {
-        Some(p) => format!("def {}{}",  fn_name, p),
+        Some(p) => format!("def {}{}", fn_name, p),
         None => format!("def {}", fn_name),
     };
     let doc_comment = extractor.base.find_doc_comment(node);
@@ -227,8 +227,7 @@ fn extract_defimpl(
     parent_id: Option<&str>,
 ) -> Option<(Symbol, bool)> {
     let protocol_name = helpers::extract_impl_protocol_name(&extractor.base, node)?;
-    let for_type =
-        helpers::extract_keyword_value(&extractor.base, node, "for").unwrap_or_default();
+    let for_type = helpers::extract_keyword_value(&extractor.base, node, "for").unwrap_or_default();
 
     let impl_name = if for_type.is_empty() {
         protocol_name.clone()

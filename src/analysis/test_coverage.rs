@@ -59,7 +59,7 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
          WHERE json_extract(s_test.metadata, '$.is_test') = 1
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
                 OR json_extract(s_prod.metadata, '$.is_test') != 1)
-           AND r.kind IN ('calls', 'uses', 'references', 'instantiates', 'imports')"
+           AND r.kind IN ('calls', 'uses', 'references', 'instantiates', 'imports')",
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -73,10 +73,16 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
 
     for row in rows {
         let (prod_id, test_id, test_name, tier) = row?;
-        linkages.entry(prod_id).or_default().insert((test_id, test_name, tier));
+        linkages
+            .entry(prod_id)
+            .or_default()
+            .insert((test_id, test_name, tier));
     }
 
-    debug!("Step 1 (relationships): {} production symbols linked", linkages.len());
+    debug!(
+        "Step 1 (relationships): {} production symbols linked",
+        linkages.len()
+    );
 
     // Step 2: Identifier-based linkage — precise (target_symbol_id set)
     let mut stmt2 = db.conn.prepare(
@@ -88,7 +94,7 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
          WHERE json_extract(s_test.metadata, '$.is_test') = 1
            AND i.target_symbol_id IS NOT NULL
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
-                OR json_extract(s_prod.metadata, '$.is_test') != 1)"
+                OR json_extract(s_prod.metadata, '$.is_test') != 1)",
     )?;
 
     let rows2 = stmt2.query_map([], |row| {
@@ -102,7 +108,10 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
 
     for row in rows2 {
         let (prod_id, test_id, test_name, tier) = row?;
-        linkages.entry(prod_id).or_default().insert((test_id, test_name, tier));
+        linkages
+            .entry(prod_id)
+            .or_default()
+            .insert((test_id, test_name, tier));
     }
 
     // Step 2b: Identifier-based linkage — name-match fallback
@@ -127,7 +136,7 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
            AND i.target_symbol_id IS NULL
            AND (json_extract(s_prod.metadata, '$.is_test') IS NULL
                 OR json_extract(s_prod.metadata, '$.is_test') != 1)
-           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')"
+           AND s_prod.kind NOT IN ('import', 'export', 'module', 'namespace')",
     )?;
 
     // Group by (test_id, identifier_name) → pick best prod match by directory proximity
@@ -151,7 +160,17 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
     })?;
 
     for row in rows3 {
-        let (prod_id, prod_path, test_id, test_name, test_path, tier, ident_name, test_lang, prod_lang) = row?;
+        let (
+            prod_id,
+            prod_path,
+            test_id,
+            test_name,
+            test_path,
+            tier,
+            ident_name,
+            test_lang,
+            prod_lang,
+        ) = row?;
         // Language filter: skip cross-language matches (e.g. Python test → Rust symbol)
         if test_lang != prod_lang {
             continue;
@@ -168,30 +187,32 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
         if candidates.is_empty() {
             continue;
         }
-        let best = candidates.iter().max_by_key(|(_, prod_path, test_path, _, _)| {
-            let dir_score = common_directory_depth(prod_path, test_path) * 10;
-            let test_file_stem = test_path
-                .rsplit('/')
-                .next()
-                .unwrap_or("")
-                .split('.')
-                .next()
-                .unwrap_or("");
-            let prod_file_stem = prod_path
-                .rsplit('/')
-                .next()
-                .unwrap_or("")
-                .split('.')
-                .next()
-                .unwrap_or("");
-            let name_bonus =
-                if !prod_file_stem.is_empty() && test_file_stem.contains(prod_file_stem) {
-                    100
-                } else {
-                    0
-                };
-            dir_score + name_bonus
-        });
+        let best = candidates
+            .iter()
+            .max_by_key(|(_, prod_path, test_path, _, _)| {
+                let dir_score = common_directory_depth(prod_path, test_path) * 10;
+                let test_file_stem = test_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("")
+                    .split('.')
+                    .next()
+                    .unwrap_or("");
+                let prod_file_stem = prod_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("")
+                    .split('.')
+                    .next()
+                    .unwrap_or("");
+                let name_bonus =
+                    if !prod_file_stem.is_empty() && test_file_stem.contains(prod_file_stem) {
+                        100
+                    } else {
+                        0
+                    };
+                dir_score + name_bonus
+            });
         if let Some((prod_id, _, _, tier, test_name)) = best {
             linkages.entry(prod_id.clone()).or_default().insert((
                 test_id.clone(),
@@ -301,9 +322,11 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
 
     for row in parent_rows {
         let (parent_id, child_count, child_best, child_worst) = row?;
-        let entry = parent_coverage
-            .entry(parent_id)
-            .or_insert((0, "stub".to_string(), "thorough".to_string()));
+        let entry = parent_coverage.entry(parent_id).or_insert((
+            0,
+            "stub".to_string(),
+            "thorough".to_string(),
+        ));
         entry.0 += child_count;
         if tier_rank(&child_best) > tier_rank(&entry.1) {
             entry.1 = child_best;

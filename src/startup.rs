@@ -25,9 +25,9 @@ pub async fn checkpoint_active_workspace_wal(
     };
 
     tokio::task::spawn_blocking(move || -> Result<Option<(i32, i32, i32)>> {
-        let mut db = db_arc
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Could not acquire database lock for checkpoint: {}", e))?;
+        let mut db = db_arc.lock().map_err(|e| {
+            anyhow::anyhow!("Could not acquire database lock for checkpoint: {}", e)
+        })?;
         Ok(Some(db.checkpoint_wal()?))
     })
     .await

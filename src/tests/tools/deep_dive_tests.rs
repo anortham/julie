@@ -1245,11 +1245,9 @@ mod formatting_tests {
         // Count exact occurrences of "Change Risk:" in the output
         let count = output.matches("Change Risk:").count();
         assert_eq!(
-            count,
-            1,
+            count, 1,
             "Change Risk: should appear exactly once, but appeared {} times.\nOutput:\n{}",
-            count,
-            output
+            count, output
         );
     }
 
@@ -1608,7 +1606,11 @@ mod data_tests {
 
         // Qualified lookup should resolve to exactly one symbol
         let found = find_symbol(&db, "Engine::process", None).unwrap();
-        assert_eq!(found.len(), 1, "qualified name should resolve to exactly one symbol");
+        assert_eq!(
+            found.len(),
+            1,
+            "qualified name should resolve to exactly one symbol"
+        );
         assert_eq!(found[0].file_path, "src/engine.rs");
         assert_eq!(found[0].parent_id, Some("sym-parent-a".to_string()));
 

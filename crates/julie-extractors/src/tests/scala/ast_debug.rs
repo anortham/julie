@@ -13,11 +13,7 @@ fn init_parser() -> Parser {
 fn debug_print_tree(node: tree_sitter::Node, source: &str, depth: usize) {
     let indent = "  ".repeat(depth);
     let text = node.utf8_text(source.as_bytes()).unwrap_or("<err>");
-    let short = if text.len() > 60 {
-        &text[..57]
-    } else {
-        text
-    };
+    let short = if text.len() > 60 { &text[..57] } else { text };
     println!(
         "{}{} [{}]: {}",
         indent,

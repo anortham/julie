@@ -130,7 +130,6 @@ mod formatting_tests {
             output.contains("Neighbors"),
             "should have Neighbors section"
         );
-
     }
 
     // === Test 3: Centrality hints ===

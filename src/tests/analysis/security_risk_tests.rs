@@ -40,12 +40,16 @@ mod tests {
 
     #[test]
     fn test_input_handling_rust_str_param() {
-        assert!(has_input_handling(Some("pub fn process(input: &str) -> Result<()>")));
+        assert!(has_input_handling(Some(
+            "pub fn process(input: &str) -> Result<()>"
+        )));
     }
 
     #[test]
     fn test_input_handling_java_request() {
-        assert!(has_input_handling(Some("public void handle(HttpServletRequest req, HttpServletResponse resp)")));
+        assert!(has_input_handling(Some(
+            "public void handle(HttpServletRequest req, HttpServletResponse resp)"
+        )));
     }
 
     #[test]
@@ -55,13 +59,17 @@ mod tests {
 
     #[test]
     fn test_input_handling_no_match() {
-        assert!(!has_input_handling(Some("pub fn compute(count: u32) -> u64")));
+        assert!(!has_input_handling(Some(
+            "pub fn compute(count: u32) -> u64"
+        )));
     }
 
     #[test]
     fn test_input_handling_return_type_not_matched() {
         // String is in return type, not params — should NOT match
-        assert!(!has_input_handling(Some("pub fn get_name(id: u32) -> String")));
+        assert!(!has_input_handling(Some(
+            "pub fn get_name(id: u32) -> String"
+        )));
     }
 
     #[test]
@@ -77,7 +85,9 @@ mod tests {
     #[test]
     fn test_input_handling_request_delegate_excluded() {
         // RequestDelegate is a DI type, not actual HTTP request handling
-        assert!(!has_input_handling(Some("(RequestDelegate next, ILogger<RoleClaimsMiddleware> logger)")));
+        assert!(!has_input_handling(Some(
+            "(RequestDelegate next, ILogger<RoleClaimsMiddleware> logger)"
+        )));
     }
 
     #[test]
@@ -88,7 +98,9 @@ mod tests {
     #[test]
     fn test_input_handling_ilogger_excluded() {
         // ILogger<String> and IOptions<Foo> are DI types — String inside them is not user input
-        assert!(!has_input_handling(Some("(ILogger<Foo> logger, IOptions<Bar> opts)")));
+        assert!(!has_input_handling(Some(
+            "(ILogger<Foo> logger, IOptions<Bar> opts)"
+        )));
     }
 
     // =========================================================================
@@ -98,25 +110,37 @@ mod tests {
     #[test]
     fn test_sink_match_exact() {
         let patterns = &["exec", "eval", "execute"];
-        assert_eq!(matches_sink_pattern("exec", patterns), Some("exec".to_string()));
+        assert_eq!(
+            matches_sink_pattern("exec", patterns),
+            Some("exec".to_string())
+        );
     }
 
     #[test]
     fn test_sink_match_qualified_name() {
         let patterns = &["exec", "eval", "execute"];
-        assert_eq!(matches_sink_pattern("db.execute", patterns), Some("execute".to_string()));
+        assert_eq!(
+            matches_sink_pattern("db.execute", patterns),
+            Some("execute".to_string())
+        );
     }
 
     #[test]
     fn test_sink_match_rust_qualified() {
         let patterns = &["exec", "eval", "execute"];
-        assert_eq!(matches_sink_pattern("conn::execute", patterns), Some("execute".to_string()));
+        assert_eq!(
+            matches_sink_pattern("conn::execute", patterns),
+            Some("execute".to_string())
+        );
     }
 
     #[test]
     fn test_sink_match_case_insensitive() {
         let patterns = &["exec", "eval", "execute"];
-        assert_eq!(matches_sink_pattern("db.Exec", patterns), Some("exec".to_string()));
+        assert_eq!(
+            matches_sink_pattern("db.Exec", patterns),
+            Some("exec".to_string())
+        );
     }
 
     #[test]
@@ -134,7 +158,11 @@ mod tests {
     #[test]
     fn test_sink_match_efcore_savechanges() {
         let callees = vec!["SaveChangesAsync".to_string()];
-        let patterns: Vec<&str> = EXECUTION_SINKS.iter().chain(DATABASE_SINKS.iter()).copied().collect();
+        let patterns: Vec<&str> = EXECUTION_SINKS
+            .iter()
+            .chain(DATABASE_SINKS.iter())
+            .copied()
+            .collect();
         let (score, matched) = compute_sink_signal(&callees, &[], &patterns);
         assert!(score > 0.0, "SaveChangesAsync should match a sink pattern");
         assert!(!matched.is_empty());
@@ -142,21 +170,33 @@ mod tests {
 
     #[test]
     fn test_sink_match_django_raw() {
-        let patterns: Vec<&str> = EXECUTION_SINKS.iter().chain(DATABASE_SINKS.iter()).copied().collect();
+        let patterns: Vec<&str> = EXECUTION_SINKS
+            .iter()
+            .chain(DATABASE_SINKS.iter())
+            .copied()
+            .collect();
         let (score, _) = compute_sink_signal(&["queryset.raw".to_string()], &[], &patterns);
         assert!(score > 0.0, "Django raw() should match a sink pattern");
     }
 
     #[test]
     fn test_sink_match_prisma_findmany() {
-        let patterns: Vec<&str> = EXECUTION_SINKS.iter().chain(DATABASE_SINKS.iter()).copied().collect();
+        let patterns: Vec<&str> = EXECUTION_SINKS
+            .iter()
+            .chain(DATABASE_SINKS.iter())
+            .copied()
+            .collect();
         let (score, _) = compute_sink_signal(&["prisma.findMany".to_string()], &[], &patterns);
         assert!(score > 0.0, "Prisma findMany should match a sink pattern");
     }
 
     #[test]
     fn test_sink_match_jpa_persist() {
-        let patterns: Vec<&str> = EXECUTION_SINKS.iter().chain(DATABASE_SINKS.iter()).copied().collect();
+        let patterns: Vec<&str> = EXECUTION_SINKS
+            .iter()
+            .chain(DATABASE_SINKS.iter())
+            .copied()
+            .collect();
         let (score, _) = compute_sink_signal(&["em.persist".to_string()], &[], &patterns);
         assert!(score > 0.0, "JPA persist should match a sink pattern");
     }
@@ -174,9 +214,7 @@ mod tests {
 
     #[test]
     fn test_sink_signal_one_match() {
-        let (score, names) = compute_sink_signal(
-            &["db.execute".into()], &[], &["exec", "execute"],
-        );
+        let (score, names) = compute_sink_signal(&["db.execute".into()], &[], &["exec", "execute"]);
         assert!((score - 0.7).abs() < 0.01);
         assert_eq!(names, vec!["execute"]);
     }
@@ -184,7 +222,9 @@ mod tests {
     #[test]
     fn test_sink_signal_multiple_matches() {
         let (score, names) = compute_sink_signal(
-            &["db.execute".into(), "os.exec".into()], &[], &["exec", "execute"],
+            &["db.execute".into(), "os.exec".into()],
+            &[],
+            &["exec", "execute"],
         );
         assert_eq!(score, 1.0);
         assert_eq!(names.len(), 2);
@@ -286,15 +326,29 @@ mod tests {
         let pub_sym = db.get_symbol_by_id("pub_fn").unwrap().unwrap();
         let pub_meta = pub_sym.metadata.unwrap();
         let pub_sec = pub_meta.get("security_risk").unwrap();
-        let pub_vis = pub_sec.pointer("/signals/visibility").unwrap().as_str().unwrap();
-        assert_eq!(pub_vis, "public", "public symbol should store visibility: 'public'");
+        let pub_vis = pub_sec
+            .pointer("/signals/visibility")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        assert_eq!(
+            pub_vis, "public",
+            "public symbol should store visibility: 'public'"
+        );
 
         // Check protected symbol stores visibility: "protected"
         let prot_sym = db.get_symbol_by_id("prot_fn").unwrap().unwrap();
         let prot_meta = prot_sym.metadata.unwrap();
         let prot_sec = prot_meta.get("security_risk").unwrap();
-        let prot_vis = prot_sec.pointer("/signals/visibility").unwrap().as_str().unwrap();
-        assert_eq!(prot_vis, "protected", "protected symbol should store visibility: 'protected'");
+        let prot_vis = prot_sec
+            .pointer("/signals/visibility")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        assert_eq!(
+            prot_vis, "protected",
+            "protected symbol should store visibility: 'protected'"
+        );
     }
 
     // =========================================================================
@@ -402,8 +456,10 @@ mod tests {
 
         let sym = db.get_symbol_by_id("safe").unwrap().unwrap();
         if let Some(meta) = &sym.metadata {
-            assert!(meta.get("security_risk").is_none(),
-                "Symbol with no security signals should not have security_risk key");
+            assert!(
+                meta.get("security_risk").is_none(),
+                "Symbol with no security signals should not have security_risk key"
+            );
         }
     }
 

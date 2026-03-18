@@ -28,7 +28,13 @@ pub(super) fn extract_class(
         .filter(|m| !matches!(m.as_str(), "private" | "protected"))
         .collect();
     if !sig_modifiers.is_empty() {
-        sig_parts.push(sig_modifiers.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" "));
+        sig_parts.push(
+            sig_modifiers
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
     }
 
     sig_parts.push(format!("class {}", name));
@@ -81,7 +87,13 @@ pub(super) fn extract_trait(
         .filter(|m| !matches!(m.as_str(), "private" | "protected"))
         .collect();
     if !sig_modifiers.is_empty() {
-        sig_parts.push(sig_modifiers.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" "));
+        sig_parts.push(
+            sig_modifiers
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
     }
 
     sig_parts.push(format!("trait {}", name));
@@ -128,7 +140,10 @@ pub(super) fn extract_object(
     // Check if companion (matches an existing class/trait name)
     let is_companion = symbols.iter().any(|s| {
         s.name == name
-            && matches!(s.kind, SymbolKind::Class | SymbolKind::Trait | SymbolKind::Enum)
+            && matches!(
+                s.kind,
+                SymbolKind::Class | SymbolKind::Trait | SymbolKind::Enum
+            )
     });
 
     let mut sig_parts = Vec::new();
@@ -137,7 +152,13 @@ pub(super) fn extract_object(
         .filter(|m| !matches!(m.as_str(), "private" | "protected"))
         .collect();
     if !sig_modifiers.is_empty() {
-        sig_parts.push(sig_modifiers.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" "));
+        sig_parts.push(
+            sig_modifiers
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
     }
 
     sig_parts.push(format!("object {}", name));

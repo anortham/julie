@@ -152,8 +152,7 @@ mod tests {
 
         let stats = crate::analysis::change_risk::compute_change_risk_scores(&db).unwrap();
         assert_eq!(
-            stats.total_scored,
-            2,
+            stats.total_scored, 2,
             "Should score s1 and s2 only (not test or import)"
         );
         assert!(stats.high_risk >= 1, "important_func should be HIGH risk");

@@ -6,8 +6,8 @@ use tracing::{debug, info, warn};
 use super::query::matches_glob_pattern;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
-use crate::search::scoring::{apply_centrality_boost, is_test_path, promote_exact_name_matches};
 use crate::search::SearchFilter;
+use crate::search::scoring::{apply_centrality_boost, is_test_path, promote_exact_name_matches};
 
 // Re-export for tests
 #[cfg(test)]
@@ -38,10 +38,11 @@ pub async fn text_search_impl(
     )
     .await;
 
-    let workspace = handler
-        .get_workspace()
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first."))?;
+    let workspace = handler.get_workspace().await?.ok_or_else(|| {
+        anyhow::anyhow!(
+            "No workspace initialized. Run manage_workspace(operation=\"index\") first."
+        )
+    })?;
 
     // Determine if we're targeting a reference workspace
     let ref_workspace_id = if let Some(ref ids) = workspace_ids {
@@ -320,8 +321,7 @@ fn definition_search_with_index(
 
         // Apply centrality boost + exact-name promotion on Tantivy results
         if let Some(db) = db {
-            let symbol_ids: Vec<&str> =
-                filtered_results.iter().map(|r| r.id.as_str()).collect();
+            let symbol_ids: Vec<&str> = filtered_results.iter().map(|r| r.id.as_str()).collect();
             if let Ok(ref_scores) = db.get_reference_scores(&symbol_ids) {
                 apply_centrality_boost(&mut filtered_results, &ref_scores);
             }
@@ -347,42 +347,46 @@ fn definition_search_with_index(
         if let Some(db) = db {
             match db.find_definitions_by_name_component(query, filter.language.as_deref(), 5) {
                 Err(e) => {
-                    tracing::warn!("find_definitions_by_name_component('{}') error: {}", query, e);
+                    tracing::warn!(
+                        "find_definitions_by_name_component('{}') error: {}",
+                        query,
+                        e
+                    );
                 }
                 Ok(db_defs) => {
-                let existing_ids: std::collections::HashSet<String> =
-                    symbols.iter().map(|s| s.id.clone()).collect();
-                let mut prepend: Vec<Symbol> = db_defs
-                    .into_iter()
-                    .filter(|s| !existing_ids.contains(&s.id))
-                    .map(|s| {
-                        let sym = tantivy_symbol_to_symbol(
-                            crate::search::index::SymbolSearchResult {
-                                id: s.id,
-                                name: s.name,
-                                signature: s.signature.unwrap_or_default(),
-                                doc_comment: s.doc_comment.unwrap_or_default(),
-                                file_path: s.file_path,
-                                kind: format!("{:?}", s.kind).to_lowercase(),
-                                language: s.language,
-                                start_line: s.start_line,
-                                score: 100.0, // high score to signal these are DB-promoted
-                            },
-                        );
-                        // Enrich from DB for code_context etc.
-                        let mut single = vec![sym];
-                        enrich_symbols_from_db(&mut single, db);
-                        single.remove(0)
-                    })
-                    .collect();
-                if !prepend.is_empty() {
-                    // Apply same test filter as main results
-                    filter_test_symbols(&mut prepend, filter.exclude_tests);
-                    prepend.append(&mut symbols);
-                    symbols = prepend;
-                    symbols.truncate(limit);
+                    let existing_ids: std::collections::HashSet<String> =
+                        symbols.iter().map(|s| s.id.clone()).collect();
+                    let mut prepend: Vec<Symbol> = db_defs
+                        .into_iter()
+                        .filter(|s| !existing_ids.contains(&s.id))
+                        .map(|s| {
+                            let sym = tantivy_symbol_to_symbol(
+                                crate::search::index::SymbolSearchResult {
+                                    id: s.id,
+                                    name: s.name,
+                                    signature: s.signature.unwrap_or_default(),
+                                    doc_comment: s.doc_comment.unwrap_or_default(),
+                                    file_path: s.file_path,
+                                    kind: format!("{:?}", s.kind).to_lowercase(),
+                                    language: s.language,
+                                    start_line: s.start_line,
+                                    score: 100.0, // high score to signal these are DB-promoted
+                                },
+                            );
+                            // Enrich from DB for code_context etc.
+                            let mut single = vec![sym];
+                            enrich_symbols_from_db(&mut single, db);
+                            single.remove(0)
+                        })
+                        .collect();
+                    if !prepend.is_empty() {
+                        // Apply same test filter as main results
+                        filter_test_symbols(&mut prepend, filter.exclude_tests);
+                        prepend.append(&mut symbols);
+                        symbols = prepend;
+                        symbols.truncate(limit);
+                    }
                 }
-            }
             }
         }
 
@@ -465,9 +469,7 @@ fn content_search_with_index(
 // ---------------------------------------------------------------------------
 
 /// Convert a Tantivy SymbolSearchResult into an extractors Symbol.
-pub(crate) fn tantivy_symbol_to_symbol(
-    result: crate::search::index::SymbolSearchResult,
-) -> Symbol {
+pub(crate) fn tantivy_symbol_to_symbol(result: crate::search::index::SymbolSearchResult) -> Symbol {
     Symbol {
         id: result.id,
         name: result.name,

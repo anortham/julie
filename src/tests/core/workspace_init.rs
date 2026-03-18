@@ -536,8 +536,7 @@ fn test_resolve_workspace_path_respects_env_var() {
     // With handler_root, it should take priority over env var
     let handler_root_dir = setup_test_workspace();
     fs::create_dir_all(handler_root_dir.path().join(".git")).expect("Failed to create .git");
-    let resolved_with_root =
-        tool.resolve_workspace_path(None, Some(handler_root_dir.path()));
+    let resolved_with_root = tool.resolve_workspace_path(None, Some(handler_root_dir.path()));
     assert!(resolved_with_root.is_ok());
     assert_eq!(
         resolved_with_root.unwrap(),
@@ -691,12 +690,11 @@ fn test_find_workspace_root_rejects_home_julie_dir() {
         .path()
         .canonicalize()
         .unwrap_or_else(|_| fake_home.path().to_path_buf());
-    let result_canonical = result
-        .canonicalize()
-        .unwrap_or_else(|_| result.clone());
+    let result_canonical = result.canonicalize().unwrap_or_else(|_| result.clone());
 
     assert_ne!(
-        result_canonical, fake_home_canonical,
+        result_canonical,
+        fake_home_canonical,
         "find_workspace_root must NOT treat ~/.julie/ global config as a workspace marker. \
          Expected working_dir or similar, got home dir: {}",
         result.display()

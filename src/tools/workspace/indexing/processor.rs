@@ -54,10 +54,11 @@ impl ManageWorkspaceTool {
         // Primary workspace uses the existing handler.get_workspace().db connection
         let ref_workspace_db = if !is_primary_workspace {
             // This is a REFERENCE workspace - open its separate database
-            let primary_workspace = handler
-                .get_workspace()
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first."))?;
+            let primary_workspace = handler.get_workspace().await?.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No workspace initialized. Run manage_workspace(operation=\"index\") first."
+                )
+            })?;
 
             let ref_db_path = primary_workspace.workspace_db_path(&workspace_id);
             debug!(
@@ -457,7 +458,10 @@ impl ManageWorkspaceTool {
                 }
 
                 stats.log_summary();
-                info!("⏱️  resolve_pending_relationships: {:.2}s", resolution_start.elapsed().as_secs_f64());
+                info!(
+                    "⏱️  resolve_pending_relationships: {:.2}s",
+                    resolution_start.elapsed().as_secs_f64()
+                );
 
                 drop(db_lock);
             }
@@ -481,35 +485,50 @@ impl ManageWorkspaceTool {
                 if let Err(e) = db_lock.compute_reference_scores() {
                     warn!("Failed to compute reference scores: {}", e);
                 }
-                info!("⏱️  compute_reference_scores: {:.2}s", t.elapsed().as_secs_f64());
+                info!(
+                    "⏱️  compute_reference_scores: {:.2}s",
+                    t.elapsed().as_secs_f64()
+                );
 
                 // Compute test quality metrics for all test symbols
                 let t = std::time::Instant::now();
                 if let Err(e) = crate::analysis::compute_test_quality_metrics(&db_lock) {
                     warn!("Failed to compute test quality metrics: {}", e);
                 }
-                info!("⏱️  compute_test_quality_metrics: {:.2}s", t.elapsed().as_secs_f64());
+                info!(
+                    "⏱️  compute_test_quality_metrics: {:.2}s",
+                    t.elapsed().as_secs_f64()
+                );
 
                 // Compute test-to-code coverage linkage
                 let t = std::time::Instant::now();
                 if let Err(e) = crate::analysis::compute_test_coverage(&db_lock) {
                     warn!("Failed to compute test coverage: {}", e);
                 }
-                info!("⏱️  compute_test_coverage: {:.2}s", t.elapsed().as_secs_f64());
+                info!(
+                    "⏱️  compute_test_coverage: {:.2}s",
+                    t.elapsed().as_secs_f64()
+                );
 
                 // Compute change risk scores
                 let t = std::time::Instant::now();
                 if let Err(e) = crate::analysis::compute_change_risk_scores(&db_lock) {
                     warn!("Failed to compute change risk scores: {}", e);
                 }
-                info!("⏱️  compute_change_risk_scores: {:.2}s", t.elapsed().as_secs_f64());
+                info!(
+                    "⏱️  compute_change_risk_scores: {:.2}s",
+                    t.elapsed().as_secs_f64()
+                );
 
                 // Compute structural security risk scores
                 let t = std::time::Instant::now();
                 if let Err(e) = crate::analysis::compute_security_risk(&db_lock) {
                     warn!("Failed to compute security risk: {}", e);
                 }
-                info!("⏱️  compute_security_risk: {:.2}s", t.elapsed().as_secs_f64());
+                info!(
+                    "⏱️  compute_security_risk: {:.2}s",
+                    t.elapsed().as_secs_f64()
+                );
             }
 
             let bulk_duration = bulk_start.elapsed();

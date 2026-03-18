@@ -30,6 +30,7 @@ pub mod main_error_handling; // MCP server initialization and runtime error hand
 // CORE SYSTEM TESTS - Database, handlers, language support
 // ============================================================================
 pub mod core {
+    pub mod batch_resolver;
     pub mod database; // Database operations and SQLite tests
     pub mod database_lightweight_query; // Lightweight query optimization tests
     pub mod embedding_deps; // Embedding dependency smoke tests (fastembed + sqlite-vec)
@@ -37,17 +38,16 @@ pub mod core {
     pub mod embedding_provider; // EmbeddingProvider trait + OrtEmbeddingProvider tests
     pub mod embedding_sidecar_protocol; // Sidecar protocol contracts + validation tests
     pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
-    pub mod windows_embedding_policy; // Windows ORT policy + DirectML adapter selection tests
     pub mod handler; // MCP handler tests
     pub mod language; // Language detection and support tests
-    pub mod tracing; // Tracing and logging tests
-    pub mod vector_storage; // sqlite-vec vector storage CRUD tests
     pub mod memory_vectors; // Memory embedding vector storage (migration 012 + CRUD + KNN)
-    pub mod workspace_init; // Workspace root detection and initialization tests
     pub mod paths; // Path utility tests (display_path, UNC handling)
     pub mod sidecar_embedding_tests; // Embedded sidecar extraction + root path fallback tests
     pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
-    pub mod batch_resolver; // Batch pending relationship resolution tests
+    pub mod tracing; // Tracing and logging tests
+    pub mod vector_storage; // sqlite-vec vector storage CRUD tests
+    pub mod windows_embedding_policy; // Windows ORT policy + DirectML adapter selection tests
+    pub mod workspace_init; // Workspace root detection and initialization tests // Batch pending relationship resolution tests
 }
 
 // ============================================================================

@@ -41,7 +41,9 @@ where
         }
 
         fn visit_str<E: de::Error>(self, v: &str) -> Result<u32, E> {
-            v.trim().parse().map_err(|_| E::custom(format!("invalid u32 string: \"{v}\"")))
+            v.trim()
+                .parse()
+                .map_err(|_| E::custom(format!("invalid u32 string: \"{v}\"")))
         }
     }
 

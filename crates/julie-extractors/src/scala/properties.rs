@@ -28,7 +28,11 @@ pub(super) fn extract_val(
     if !sig_modifiers.is_empty() {
         signature = format!(
             "{} {}",
-            sig_modifiers.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" "),
+            sig_modifiers
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
             signature
         );
     }
@@ -85,7 +89,11 @@ pub(super) fn extract_var(
     if !sig_modifiers.is_empty() {
         signature = format!(
             "{} {}",
-            sig_modifiers.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" "),
+            sig_modifiers
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(" "),
             signature
         );
     }

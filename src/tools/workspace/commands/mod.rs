@@ -119,8 +119,13 @@ impl ManageWorkspaceTool {
 
         match self.operation.as_str() {
             "index" => {
-                self.handle_index_command(handler, self.path.clone(), self.force.unwrap_or(false), false)
-                    .await
+                self.handle_index_command(
+                    handler,
+                    self.path.clone(),
+                    self.force.unwrap_or(false),
+                    false,
+                )
+                .await
             }
             "add" => {
                 let path = self.path.as_ref().ok_or_else(|| {

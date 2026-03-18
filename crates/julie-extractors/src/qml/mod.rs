@@ -55,9 +55,9 @@ impl QmlExtractor {
                         parent_id: parent_id.clone(),
                         ..Default::default()
                     };
-                    let symbol =
-                        self.base
-                            .create_symbol(&node, name, SymbolKind::Import, options);
+                    let symbol = self
+                        .base
+                        .create_symbol(&node, name, SymbolKind::Import, options);
                     self.symbols.push(symbol);
                 }
             }
@@ -217,10 +217,7 @@ impl QmlExtractor {
                         &[],
                         None,
                     ) {
-                        metadata.insert(
-                            "is_test".to_string(),
-                            serde_json::Value::Bool(true),
-                        );
+                        metadata.insert("is_test".to_string(), serde_json::Value::Bool(true));
                     }
                     let options = SymbolOptions {
                         parent_id: parent_id.clone(),

@@ -89,8 +89,7 @@ pub async fn resolve_workspace_filter(
                 match registry_service.get_workspace(workspace_id).await? {
                     Some(_) => Ok(WorkspaceTarget::Reference(workspace_id.to_string())),
                     None => {
-                        let all_workspaces =
-                            registry_service.get_all_workspaces().await?;
+                        let all_workspaces = registry_service.get_all_workspaces().await?;
                         let workspace_ids: Vec<&str> =
                             all_workspaces.iter().map(|w| w.id.as_str()).collect();
                         suggest_closest_workspace(workspace_id, &workspace_ids)

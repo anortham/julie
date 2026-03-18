@@ -205,8 +205,7 @@ impl TypeScriptExtractor {
                                 }
                             }
                             // For lifecycle (no string arg), look up by callee name
-                            let base_name =
-                                callee.split('.').next().unwrap_or(&callee).to_string();
+                            let base_name = callee.split('.').next().unwrap_or(&callee).to_string();
                             if let Some(symbol) = symbol_map.get(&base_name) {
                                 return Some(symbol);
                             }

@@ -75,7 +75,10 @@ impl JulieServerHandler {
     /// `workspace_root` is the resolved root path for this server session,
     /// determined by the caller (main.rs) via CLI args / env var / cwd.
     pub async fn new(workspace_root: PathBuf) -> Result<Self> {
-        info!("Initializing Julie server handler (workspace_root: {:?})", workspace_root);
+        info!(
+            "Initializing Julie server handler (workspace_root: {:?})",
+            workspace_root
+        );
 
         Ok(Self {
             workspace_root,
@@ -385,8 +388,7 @@ impl JulieServerHandler {
 
         tokio::task::spawn_blocking(move || {
             let configs = crate::search::LanguageConfigs::load_embedded();
-            let index =
-                SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+            let index = SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
             Ok(Some(Arc::new(std::sync::Mutex::new(index))))
         })
         .await?
@@ -396,19 +398,14 @@ impl JulieServerHandler {
     ///
     /// Looks up the workspace entry in the primary workspace's
     /// registry and returns `WorkspaceEntry.original_path`.
-    pub async fn get_workspace_root_for_target(
-        &self,
-        workspace_id: &str,
-    ) -> Result<PathBuf> {
+    pub async fn get_workspace_root_for_target(&self, workspace_id: &str) -> Result<PathBuf> {
         let primary = self
             .get_workspace()
             .await?
             .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
 
         let registry_service =
-            crate::workspace::registry_service::WorkspaceRegistryService::new(
-                primary.root.clone(),
-            );
+            crate::workspace::registry_service::WorkspaceRegistryService::new(primary.root.clone());
         let entry = registry_service
             .get_workspace(workspace_id)
             .await?
@@ -601,7 +598,6 @@ impl JulieServerHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("manage_workspace failed: {}", e), None))
     }
-
 }
 
 /// ServerHandler implementation with tool_handler macro

@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use crate::extractors::base::{RelationshipKind, SymbolKind, Visibility};
 use crate::extractors::{Relationship, Symbol};
+use crate::search::similarity::SimilarEntry;
 use crate::tools::navigation::formatting::{format_lean_refs_results, format_semantic_fallback};
 use crate::tools::navigation::resolution::parse_qualified_name;
-use crate::search::similarity::SimilarEntry;
 
 fn make_test_symbol(file_path: &str, line: u32, kind: SymbolKind, sig: Option<&str>) -> Symbol {
     Symbol {
@@ -382,5 +382,8 @@ fn test_format_semantic_fallback_with_results() {
 #[test]
 fn test_format_semantic_fallback_empty() {
     let output = format_semantic_fallback("IUser", &[]);
-    assert!(output.is_empty(), "Should return empty string for no results");
+    assert!(
+        output.is_empty(),
+        "Should return empty string for no results"
+    );
 }

@@ -1,10 +1,10 @@
 use std::io::{self, Write};
 
 use anyhow::anyhow;
-use xtask::cli::{parse_test_command, validate_test_command, TestCommand};
+use xtask::cli::{TestCommand, parse_test_command, validate_test_command};
 use xtask::manifest::TestManifest;
 use xtask::runner::{
-    render_manifest_listing, render_summary, run_bucket, run_tier, ProcessCommandExecutor,
+    ProcessCommandExecutor, render_manifest_listing, render_summary, run_bucket, run_tier,
 };
 use xtask::workspace_root;
 

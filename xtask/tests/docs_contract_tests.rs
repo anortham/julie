@@ -19,8 +19,7 @@ fn docs_contract_tests_agents_md_defaults_to_xtask_dev_tier() {
     let contents = read_repo_file("AGENTS.md");
 
     assert!(contents.contains("cargo xtask test dev"));
-    assert!(contents
-        .contains("Use raw cargo filters only to narrow failures"));
+    assert!(contents.contains("Use raw cargo filters only to narrow failures"));
     assert!(!contents.contains("cargo test --lib -- --skip search_quality"));
 }
 

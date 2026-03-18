@@ -158,7 +158,12 @@ fn is_cpp_type_declaration_name(node: &Node) -> bool {
 fn is_cpp_noise_type(name: &str) -> bool {
     // Single-letter uppercase names are almost always template type parameters.
     // Even when they appear as references (e.g. `T value`), they carry no cross-file signal.
-    if name.len() == 1 && name.chars().next().map_or(false, |c| c.is_ascii_uppercase()) {
+    if name.len() == 1
+        && name
+            .chars()
+            .next()
+            .map_or(false, |c| c.is_ascii_uppercase())
+    {
         return true;
     }
 

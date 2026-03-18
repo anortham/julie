@@ -68,11 +68,7 @@ type StringList = List[String]
 fn debug_print_tree(node: tree_sitter::Node, source: &str, depth: usize) {
     let indent = "  ".repeat(depth);
     let text = node.utf8_text(source.as_bytes()).unwrap_or("<err>");
-    let short = if text.len() > 60 {
-        &text[..57]
-    } else {
-        text
-    };
+    let short = if text.len() > 60 { &text[..57] } else { text };
     println!(
         "{}{} [{}]: {}",
         indent,
@@ -98,7 +94,10 @@ sealed trait Animal {
 }
 "#;
     let symbols = extract_symbols(code);
-    let traits: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Trait).collect();
+    let traits: Vec<_> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::Trait)
+        .collect();
     assert_eq!(traits.len(), 1, "Expected 1 trait, found {:?}", traits);
     assert_eq!(traits[0].name, "Animal");
     assert!(
@@ -116,11 +115,17 @@ case class Dog(name: String) extends Animal {
 }
 "#;
     let symbols = extract_symbols(code);
-    let classes: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Class).collect();
+    let classes: Vec<_> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::Class)
+        .collect();
     assert!(
         !classes.is_empty(),
         "Expected at least 1 class, got: {:?}",
-        symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        symbols
+            .iter()
+            .map(|s| (&s.name, &s.kind))
+            .collect::<Vec<_>>()
     );
     let dog = classes.iter().find(|s| s.name == "Dog");
     assert!(dog.is_some(), "Expected Dog class");
@@ -164,7 +169,10 @@ sealed trait Animal {
     assert!(
         !methods.is_empty(),
         "Expected at least 1 method, got: {:?}",
-        symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        symbols
+            .iter()
+            .map(|s| (&s.name, &s.kind))
+            .collect::<Vec<_>>()
     );
     let speak = methods.iter().find(|s| s.name == "speak");
     assert!(speak.is_some(), "Expected 'speak' method");
@@ -180,8 +188,15 @@ val pi: Double = 3.14159
         .iter()
         .filter(|s| s.kind == SymbolKind::Constant)
         .collect();
-    assert_eq!(vals.len(), 1, "Expected 1 val, got: {:?}",
-        symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>());
+    assert_eq!(
+        vals.len(),
+        1,
+        "Expected 1 val, got: {:?}",
+        symbols
+            .iter()
+            .map(|s| (&s.name, &s.kind))
+            .collect::<Vec<_>>()
+    );
     assert_eq!(vals[0].name, "pi");
 }
 
@@ -195,8 +210,15 @@ var count: Int = 0
         .iter()
         .filter(|s| s.kind == SymbolKind::Variable)
         .collect();
-    assert_eq!(vars.len(), 1, "Expected 1 var, got: {:?}",
-        symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>());
+    assert_eq!(
+        vars.len(),
+        1,
+        "Expected 1 var, got: {:?}",
+        symbols
+            .iter()
+            .map(|s| (&s.name, &s.kind))
+            .collect::<Vec<_>>()
+    );
     assert_eq!(vars[0].name, "count");
 }
 
@@ -210,8 +232,15 @@ import scala.collection.mutable.ListBuffer
         .iter()
         .filter(|s| s.kind == SymbolKind::Import)
         .collect();
-    assert_eq!(imports.len(), 1, "Expected 1 import, got: {:?}",
-        symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>());
+    assert_eq!(
+        imports.len(),
+        1,
+        "Expected 1 import, got: {:?}",
+        symbols
+            .iter()
+            .map(|s| (&s.name, &s.kind))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -224,8 +253,15 @@ package com.example
         .iter()
         .filter(|s| s.kind == SymbolKind::Namespace)
         .collect();
-    assert_eq!(packages.len(), 1, "Expected 1 package, got: {:?}",
-        symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>());
+    assert_eq!(
+        packages.len(),
+        1,
+        "Expected 1 package, got: {:?}",
+        symbols
+            .iter()
+            .map(|s| (&s.name, &s.kind))
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -238,8 +274,15 @@ type StringList = List[String]
         .iter()
         .filter(|s| s.kind == SymbolKind::Type)
         .collect();
-    assert_eq!(type_aliases.len(), 1, "Expected 1 type alias, got: {:?}",
-        symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>());
+    assert_eq!(
+        type_aliases.len(),
+        1,
+        "Expected 1 type alias, got: {:?}",
+        symbols
+            .iter()
+            .map(|s| (&s.name, &s.kind))
+            .collect::<Vec<_>>()
+    );
     assert_eq!(type_aliases[0].name, "StringList");
 }
 
@@ -258,7 +301,10 @@ abstract class Shape(val sides: Int) {
     assert!(
         !classes.is_empty(),
         "Expected at least 1 class, got: {:?}",
-        symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        symbols
+            .iter()
+            .map(|s| (&s.name, &s.kind))
+            .collect::<Vec<_>>()
     );
     let shape = classes.iter().find(|s| s.name == "Shape");
     assert!(shape.is_some(), "Expected Shape class");
@@ -297,7 +343,11 @@ object Dog {
         .as_ref()
         .and_then(|m| m.get("companion"))
         .and_then(|v| v.as_bool());
-    assert_eq!(companion, Some(true), "Dog object should be marked as companion");
+    assert_eq!(
+        companion,
+        Some(true),
+        "Dog object should be marked as companion"
+    );
 }
 
 #[test]
@@ -334,7 +384,10 @@ enum Color {
 "#;
     let symbols = extract_symbols(code);
 
-    let enums: Vec<_> = symbols.iter().filter(|s| s.kind == SymbolKind::Enum).collect();
+    let enums: Vec<_> = symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::Enum)
+        .collect();
     assert_eq!(enums.len(), 1, "Expected 1 enum");
     assert_eq!(enums[0].name, "Color");
 
@@ -379,8 +432,16 @@ case class Dog(name: String) extends Animal {
     let symbols = extract_symbols(code);
     let dog = symbols.iter().find(|s| s.name == "Dog").unwrap();
     let sig = dog.signature.as_ref().unwrap();
-    assert!(sig.contains("case"), "Signature should contain 'case': {}", sig);
-    assert!(sig.contains("class Dog"), "Signature should contain 'class Dog': {}", sig);
+    assert!(
+        sig.contains("case"),
+        "Signature should contain 'case': {}",
+        sig
+    );
+    assert!(
+        sig.contains("class Dog"),
+        "Signature should contain 'class Dog': {}",
+        sig
+    );
     assert!(
         sig.contains("extends"),
         "Signature should contain 'extends': {}",
@@ -465,7 +526,10 @@ case class Dog(name: String) extends Animal {
     assert!(
         !relationships.is_empty(),
         "Expected at least 1 relationship, got 0. Symbols: {:?}",
-        symbols.iter().map(|s| (&s.name, &s.kind)).collect::<Vec<_>>()
+        symbols
+            .iter()
+            .map(|s| (&s.name, &s.kind))
+            .collect::<Vec<_>>()
     );
 
     let dog_rel = relationships.iter().find(|r| {
@@ -514,7 +578,10 @@ object Main {
     assert!(
         !call_idents.is_empty(),
         "Expected call identifiers, got none. All identifiers: {:?}",
-        identifiers.iter().map(|i| (&i.name, &i.kind)).collect::<Vec<_>>()
+        identifiers
+            .iter()
+            .map(|i| (&i.name, &i.kind))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -613,9 +680,7 @@ fn test_scala_full_fixture() {
 // Identifier Extraction Tests
 // ========================================================================
 
-fn extract_identifiers(
-    code: &str,
-) -> Vec<crate::base::Identifier> {
+fn extract_identifiers(code: &str) -> Vec<crate::base::Identifier> {
     let mut parser = init_parser();
     let tree = parser.parse(code, None).unwrap();
     let workspace_root = PathBuf::from("/tmp/test");
