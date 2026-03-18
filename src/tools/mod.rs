@@ -12,10 +12,12 @@ pub mod refactoring;
 pub mod search;
 pub mod symbols; // Symbol overview tools
 pub mod workspace;
+pub mod metrics; // Code health metrics query tool
 
 // Re-export all tools for external use
 pub use deep_dive::DeepDiveTool;
 pub use get_context::GetContextTool;
+pub use metrics::QueryMetricsTool;
 pub use navigation::FastRefsTool;
 pub use refactoring::RenameSymbolTool;
 pub use search::FastSearchTool;
