@@ -46,7 +46,10 @@ pub struct QueryMetricsTool {
     #[serde(default)]
     pub min_risk: Option<String>,
     /// Filter by test status: true = only untested symbols, false = only tested symbols
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_bool_lenient"
+    )]
     pub has_tests: Option<bool>,
     /// Filter by symbol kind: "function", "class", "method", etc.
     #[serde(default)]
@@ -58,7 +61,10 @@ pub struct QueryMetricsTool {
     #[serde(default)]
     pub language: Option<String>,
     /// Exclude test files from results (default: true)
-    #[serde(default = "default_exclude_tests")]
+    #[serde(
+        default = "default_exclude_tests",
+        deserialize_with = "crate::utils::serde_lenient::deserialize_bool_lenient"
+    )]
     pub exclude_tests: bool,
     /// Maximum results to return (default: 20)
     #[serde(

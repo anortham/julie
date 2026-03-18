@@ -1,8 +1,8 @@
 //! Lenient serde deserializers for MCP tool parameters.
 //!
-//! Some MCP clients serialize numeric values as strings (e.g. `"30"` instead
-//! of `30`). These helpers accept both representations so Julie doesn't reject
-//! valid tool calls.
+//! Some MCP clients serialize values as strings (e.g. `"30"` instead of `30`,
+//! `"true"` instead of `true`). These helpers accept both representations so
+//! Julie doesn't reject valid tool calls.
 
 use std::fmt;
 
@@ -110,4 +110,84 @@ where
     }
 
     deserializer.deserialize_any(OptionU32OrString)
+}
+
+/// Deserializes a `bool` that may arrive as a JSON boolean or a string.
+///
+/// Accepts: `true`, `false`, `"true"`, `"false"`, `"1"`, `"0"`.
+/// Use with `#[serde(deserialize_with = "deserialize_bool_lenient")]`.
+pub fn deserialize_bool_lenient<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    struct BoolOrString;
+
+    impl<'de> de::Visitor<'de> for BoolOrString {
+        type Value = bool;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("bool or string-encoded bool")
+        }
+
+        fn visit_bool<E: de::Error>(self, v: bool) -> Result<bool, E> {
+            Ok(v)
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<bool, E> {
+            match v.trim().to_lowercase().as_str() {
+                "true" | "1" | "yes" => Ok(true),
+                "false" | "0" | "no" => Ok(false),
+                _ => Err(E::custom(format!("invalid bool string: \"{v}\""))),
+            }
+        }
+    }
+
+    deserializer.deserialize_any(BoolOrString)
+}
+
+/// Deserializes an `Option<bool>` that may arrive as a JSON boolean, string, or null.
+///
+/// Use with `#[serde(default, deserialize_with = "deserialize_option_bool_lenient")]`.
+pub fn deserialize_option_bool_lenient<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    struct OptionBoolOrString;
+
+    impl<'de> de::Visitor<'de> for OptionBoolOrString {
+        type Value = Option<bool>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("bool, string-encoded bool, or null")
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Option<bool>, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Option<bool>, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D2: de::Deserializer<'de>>(
+            self,
+            deserializer: D2,
+        ) -> Result<Option<bool>, D2::Error> {
+            deserialize_bool_lenient(deserializer).map(Some)
+        }
+
+        fn visit_bool<E: de::Error>(self, v: bool) -> Result<Option<bool>, E> {
+            Ok(Some(v))
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Option<bool>, E> {
+            match v.trim().to_lowercase().as_str() {
+                "true" | "1" | "yes" => Ok(Some(true)),
+                "false" | "0" | "no" => Ok(Some(false)),
+                _ => Err(E::custom(format!("invalid bool string: \"{v}\""))),
+            }
+        }
+    }
+
+    deserializer.deserialize_any(OptionBoolOrString)
 }
