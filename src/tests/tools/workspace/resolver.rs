@@ -594,4 +594,68 @@ mod resolver_tests {
             "Should allow resolution when we have no identifier data to make a judgment"
         );
     }
+
+    // =========================================================================
+    // Test-file penalty: production symbols beat test subclasses
+    // =========================================================================
+
+    #[test]
+    fn test_select_best_candidate_prefers_production_over_test_subclass() {
+        // Real-world scenario: Flask project has `class Flask` in src/flask/app.py
+        // and `class Flask(flask.Flask)` in tests/test_config.py.
+        // When a call from tests/test_views.py references "Flask", without the
+        // test-file penalty the test subclass wins via path proximity (both in tests/).
+        // The penalty should ensure the production class wins instead.
+        let candidates = vec![
+            make_symbol("Flask", SymbolKind::Class, "python", "src/flask/app.py"),
+            make_symbol(
+                "Flask",
+                SymbolKind::Class,
+                "python",
+                "tests/test_config.py",
+            ),
+        ];
+        let pending = PendingRelationship {
+            from_symbol_id: "test_fn".to_string(),
+            callee_name: "Flask".to_string(),
+            kind: RelationshipKind::Calls,
+            file_path: "tests/test_views.py".to_string(),
+            line_number: 15,
+            confidence: 0.8,
+        };
+
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap().file_path,
+            "src/flask/app.py",
+            "Production class should win over test subclass even when caller is in tests/"
+        );
+    }
+
+    #[test]
+    fn test_select_best_candidate_test_only_still_resolves() {
+        // Edge case: when the only candidate is in a test file, it should still
+        // resolve (score > 0) rather than being rejected entirely.
+        let candidates = vec![make_symbol(
+            "TestHelper",
+            SymbolKind::Function,
+            "python",
+            "tests/conftest.py",
+        )];
+        let pending = PendingRelationship {
+            from_symbol_id: "caller_1".to_string(),
+            callee_name: "TestHelper".to_string(),
+            kind: RelationshipKind::Calls,
+            file_path: "tests/test_main.py".to_string(),
+            line_number: 5,
+            confidence: 0.8,
+        };
+
+        let result = select_best_candidate(&candidates, &pending, &ParentReferenceContext::empty());
+        assert!(
+            result.is_some(),
+            "Test-only candidate should still resolve when it's the only option"
+        );
+    }
 }

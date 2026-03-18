@@ -10,6 +10,8 @@
 //! 3. **Same language** (+100) — strongly preferred (cross-language calls within a project are rare)
 //! 4. **Path proximity** (+50/+25) — prefer symbols closer to the caller's directory
 //! 5. **Kind match** (+10) — prefer callable kinds for Calls, type kinds for Instantiates
+//! 6. **Test-file penalty** (−75) — candidates in test paths are penalized to prevent
+//!    test subclasses from stealing centrality from production symbols
 
 use crate::database::SymbolDatabase;
 use julie_extractors::base::{
@@ -173,6 +175,15 @@ fn score_candidate(
         // the caller file, but the caller doesn't reference this parent. This is likely
         // a phantom edge — the real target is an external/framework type not in the index.
         return 0;
+    }
+
+    // Penalize candidates in test files. Test subclasses (e.g., `class Flask(flask.Flask)`
+    // in tests/test_config.py) can otherwise win disambiguation via path proximity when
+    // the caller is also in a test directory, causing centrality to accumulate on the
+    // wrong symbol. The -75 penalty is strong enough to override proximity (+50) but
+    // not parent-reference context (+200).
+    if crate::search::scoring::is_test_path(&candidate.file_path) {
+        score = score.saturating_sub(75);
     }
 
     score
