@@ -3,7 +3,7 @@
 //! This module provides utilities for determining which files should be indexed
 //! based on extension and ignore patterns.
 
-use crate::tools::shared::BLACKLISTED_FILENAMES;
+use crate::tools::shared::{BLACKLISTED_DIRECTORIES, BLACKLISTED_FILENAMES};
 use anyhow::Result;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::collections::HashSet;
@@ -111,6 +111,35 @@ pub fn build_gitignore_matcher(workspace_root: &Path) -> Result<Gitignore> {
     builder
         .build()
         .map_err(|e| anyhow::anyhow!("Failed to build gitignore matcher: {}", e))
+}
+
+/// Check if any component of the path is a blacklisted directory name.
+///
+/// This catches directories like `node_modules`, `.git`, `target`, `bin`, `obj`, etc.
+/// regardless of where they appear in the path hierarchy.
+pub fn contains_blacklisted_directory(path: &Path) -> bool {
+    path.components().any(|c| {
+        if let std::path::Component::Normal(name) = c {
+            if let Some(s) = name.to_str() {
+                return BLACKLISTED_DIRECTORIES.contains(&s);
+            }
+        }
+        false
+    })
+}
+
+/// Check if a path is ignored by the gitignore matcher.
+///
+/// Strips the workspace root prefix and checks the relative path against
+/// the gitignore rules (including parent directory matching).
+pub fn is_gitignored(path: &Path, gitignore: &Gitignore, workspace_root: &Path) -> bool {
+    let rel_path = match path.strip_prefix(workspace_root) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    gitignore
+        .matched_path_or_any_parents(rel_path, path.is_dir())
+        .is_ignore()
 }
 
 /// Check if a file should be indexed based on extension and ignore patterns
@@ -439,5 +468,80 @@ mod tests {
                 .is_ignore(),
             "normal files should not be ignored"
         );
+    }
+
+    #[test]
+    fn test_contains_blacklisted_directory() {
+        // Blacklisted directories
+        assert!(contains_blacklisted_directory(Path::new(
+            "/repo/node_modules/foo/bar.js"
+        )));
+        assert!(contains_blacklisted_directory(Path::new(
+            "/repo/src/.git/config"
+        )));
+        assert!(contains_blacklisted_directory(Path::new(
+            "/repo/target/debug/build.rs"
+        )));
+        assert!(contains_blacklisted_directory(Path::new(
+            "/repo/obj/Debug/net9.0/app.dll"
+        )));
+        assert!(contains_blacklisted_directory(Path::new(
+            "/repo/bin/Release/app.exe"
+        )));
+        assert!(contains_blacklisted_directory(Path::new(
+            "/repo/__pycache__/module.pyc"
+        )));
+        assert!(contains_blacklisted_directory(Path::new(
+            "/repo/.idea/workspace.xml"
+        )));
+
+        // Non-blacklisted directories
+        assert!(!contains_blacklisted_directory(Path::new(
+            "/repo/src/main.rs"
+        )));
+        assert!(!contains_blacklisted_directory(Path::new(
+            "/repo/lib/utils.py"
+        )));
+        assert!(!contains_blacklisted_directory(Path::new(
+            "/repo/packages/core/index.ts"
+        )));
+    }
+
+    #[test]
+    fn test_is_gitignored() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        fs::write(root.join(".gitignore"), "build/\n*.log\n").unwrap();
+        let matcher = build_gitignore_matcher(root).unwrap();
+
+        // Ignored by .gitignore
+        assert!(is_gitignored(
+            &root.join("build/output.js"),
+            &matcher,
+            root
+        ));
+        assert!(is_gitignored(&root.join("debug.log"), &matcher, root));
+        assert!(is_gitignored(
+            &root.join("nested/deep.log"),
+            &matcher,
+            root
+        ));
+
+        // Not ignored
+        assert!(!is_gitignored(&root.join("src/main.rs"), &matcher, root));
+        assert!(!is_gitignored(
+            &root.join("lib/utils.py"),
+            &matcher,
+            root
+        ));
+
+        // Path outside workspace root returns false (not ignored)
+        assert!(!is_gitignored(
+            Path::new("/completely/different/path.rs"),
+            &matcher,
+            root
+        ));
     }
 }
