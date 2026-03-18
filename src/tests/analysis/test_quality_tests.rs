@@ -218,10 +218,9 @@ mod tests {
         let body = r#"
             let result = compute(-1);
             assert!(result.is_err());
-            // should_err pattern
+            result.should_err();
         "#;
         let metrics = analyze_test_body(body);
-        // "should_err" matches error testing pattern
         assert!(
             metrics.has_error_testing,
             "Rust should_err should be detected"
@@ -374,7 +373,7 @@ mod tests {
         let body = r#"
             let result = compute(-1);
             assert!(result.is_err());
-            // should_err
+            result.should_err();
         "#;
         let metrics = analyze_test_body(body);
         assert!(metrics.has_error_testing);
@@ -673,6 +672,69 @@ mod tests {
         assert!(
             meta["test_quality"].is_object(),
             "test_quality should be added"
+        );
+    }
+
+    // =========================================================================
+    // Comment/string stripping — false positive prevention
+    // =========================================================================
+
+    #[test]
+    fn test_comment_assertions_not_counted() {
+        let body = r#"
+            let result = do_something();
+            // assert_eq!(result, expected)  <-- commented out
+            // should_err is just a note
+            println!("done");
+        "#;
+        let metrics = analyze_test_body(body);
+        assert_eq!(
+            metrics.assertion_count, 0,
+            "commented-out assertions should not count"
+        );
+    }
+
+    #[test]
+    fn test_string_literal_mocks_not_counted() {
+        let body = r#"
+            let name = "mock_function_name";
+            let desc = "when(something).thenReturn(value)";
+            do_real_work();
+        "#;
+        let metrics = analyze_test_body(body);
+        assert_eq!(
+            metrics.mock_count, 0,
+            "mock patterns inside strings should not count"
+        );
+    }
+
+    #[test]
+    fn test_block_comment_assertions_not_counted() {
+        let body = r#"
+            let x = 1;
+            /* assert_eq!(x, 1);
+               expect(x).toBe(1); */
+            println!("test");
+        "#;
+        let metrics = analyze_test_body(body);
+        assert_eq!(
+            metrics.assertion_count, 0,
+            "block-commented assertions should not count"
+        );
+    }
+
+    #[test]
+    fn test_real_assertions_still_counted_after_stripping() {
+        let body = r#"
+            // This test checks authentication
+            let result = authenticate();
+            assert_eq!(result, true);
+            assert!(result.is_ok());
+        "#;
+        let metrics = analyze_test_body(body);
+        assert_eq!(
+            metrics.assertion_count, 2,
+            "real assertions should still count after stripping comments"
         );
     }
 

@@ -547,4 +547,139 @@ end"#;
         assert!(names.contains(&"MyApp.User"), "Missing MyApp.User");
         assert!(names.contains(&"MyApp.Service"), "Missing MyApp.Service");
     }
+
+    // ========================================================================
+    // ExUnit test/describe block extraction
+    // ========================================================================
+
+    #[test]
+    fn test_elixir_exunit_test_extraction() {
+        let code = r#"defmodule MyApp.AuthTest do
+  use ExUnit.Case
+
+  test "authenticates user" do
+    assert true
+  end
+
+  test "rejects invalid password" do
+    refute false
+  end
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Should find 2 test symbols
+        let tests: Vec<_> = symbols
+            .iter()
+            .filter(|s| {
+                s.kind == SymbolKind::Function
+                    && s.metadata
+                        .as_ref()
+                        .and_then(|m| m.get("is_test"))
+                        .and_then(|v| v.as_bool())
+                        == Some(true)
+            })
+            .collect();
+        assert_eq!(tests.len(), 2, "Expected 2 test symbols, got: {:?}", tests);
+
+        let test_names: Vec<_> = tests.iter().map(|t| t.name.as_str()).collect();
+        assert!(
+            test_names.contains(&"authenticates user"),
+            "Expected 'authenticates user' test, got: {:?}",
+            test_names
+        );
+        assert!(
+            test_names.contains(&"rejects invalid password"),
+            "Expected 'rejects invalid password' test, got: {:?}",
+            test_names
+        );
+
+        // Tests should be private (not public API)
+        for t in &tests {
+            assert_eq!(
+                t.visibility,
+                Some(Visibility::Private),
+                "Test '{}' should be Private",
+                t.name
+            );
+        }
+
+        // Tests should have signature like `test "description"`
+        let auth_test = tests.iter().find(|t| t.name == "authenticates user").unwrap();
+        assert_eq!(
+            auth_test.signature.as_deref(),
+            Some("test \"authenticates user\"")
+        );
+
+        // Test should be parented to the module
+        let module = symbols
+            .iter()
+            .find(|s| s.kind == SymbolKind::Module)
+            .unwrap();
+        assert_eq!(
+            auth_test.parent_id,
+            Some(module.id.clone()),
+            "Test should be parented to module"
+        );
+    }
+
+    #[test]
+    fn test_elixir_exunit_describe_extraction() {
+        let code = r#"defmodule MyApp.AuthTest do
+  use ExUnit.Case
+
+  describe "authentication" do
+    test "valid credentials" do
+      assert true
+    end
+
+    test "invalid credentials" do
+      refute false
+    end
+  end
+end"#;
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        // Should find a describe Namespace
+        let describes: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Namespace)
+            .collect();
+        assert_eq!(
+            describes.len(),
+            1,
+            "Expected 1 describe namespace, got: {:?}",
+            describes
+        );
+        assert_eq!(describes[0].name, "authentication");
+        assert_eq!(
+            describes[0].signature.as_deref(),
+            Some("describe \"authentication\"")
+        );
+
+        // Should find 2 test symbols nested under describe
+        let tests: Vec<_> = symbols
+            .iter()
+            .filter(|s| {
+                s.kind == SymbolKind::Function
+                    && s.metadata
+                        .as_ref()
+                        .and_then(|m| m.get("is_test"))
+                        .and_then(|v| v.as_bool())
+                        == Some(true)
+            })
+            .collect();
+        assert_eq!(tests.len(), 2, "Expected 2 test symbols, got: {:?}", tests);
+
+        // Tests should be parented to the describe block
+        for t in &tests {
+            assert_eq!(
+                t.parent_id,
+                Some(describes[0].id.clone()),
+                "Test '{}' should be parented to describe",
+                t.name
+            );
+        }
+    }
 }

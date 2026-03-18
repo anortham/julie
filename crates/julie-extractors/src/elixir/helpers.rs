@@ -179,6 +179,24 @@ fn collect_atom_fields(base: &BaseExtractor, node: &Node, fields: &mut Vec<(Stri
     }
 }
 
+/// Extract the text content of the first string argument in a call's `(arguments)`.
+///
+/// Used for ExUnit constructs like `test "description" do ... end` and
+/// `describe "context" do ... end`, where the first argument is a string literal.
+/// Returns the string content with surrounding quotes stripped.
+pub(super) fn extract_first_string_arg(base: &BaseExtractor, node: &Node) -> Option<String> {
+    let args = find_child_by_type(node, "arguments")?;
+    let mut cursor = args.walk();
+    for child in args.children(&mut cursor) {
+        if child.kind() == "string" {
+            let text = base.get_node_text(&child);
+            // Strip surrounding double quotes
+            return Some(text.trim_matches('"').to_string());
+        }
+    }
+    None
+}
+
 /// Extract the first argument of import/use/alias/require as the module name
 pub(super) fn extract_import_target(base: &BaseExtractor, node: &Node) -> Option<String> {
     let args = find_child_by_type(node, "arguments")?;

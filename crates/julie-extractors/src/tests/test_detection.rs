@@ -745,6 +745,70 @@ fn swift_setup_is_test() {
 }
 
 // ===========================================================================
+// PHP — path guard for name-prefix detection
+// ===========================================================================
+
+#[test]
+fn php_test_prefix_in_production_code_returns_false() {
+    // testConnection() in a production PHP service should NOT be flagged as a test
+    assert!(!check(
+        "php",
+        "testConnection",
+        "src/services/database.php",
+        &SymbolKind::Method,
+        &[],
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn php_test_annotation_in_production_code_returns_true() {
+    // @test doc annotation is a genuine test marker regardless of file path
+    assert!(check(
+        "php",
+        "someMethod",
+        "src/services/database.php",
+        &SymbolKind::Method,
+        &[],
+        &[],
+        Some("/** @test */"),
+    ));
+}
+
+// ===========================================================================
+// Swift — path guard for name-prefix detection
+// ===========================================================================
+
+#[test]
+fn swift_test_prefix_in_production_code_returns_false() {
+    // testConnection() in a production Swift file should NOT be flagged as a test
+    assert!(!check(
+        "swift",
+        "testConnection",
+        "Sources/App/Database.swift",
+        &SymbolKind::Method,
+        &[],
+        &[],
+        None,
+    ));
+}
+
+#[test]
+fn swift_setup_in_production_code_returns_false() {
+    // setUp() outside a test directory is NOT a test lifecycle method
+    assert!(!check(
+        "swift",
+        "setUp",
+        "Sources/App/Database.swift",
+        &SymbolKind::Method,
+        &[],
+        &[],
+        None,
+    ));
+}
+
+// ===========================================================================
 // False positive prevention
 // ===========================================================================
 

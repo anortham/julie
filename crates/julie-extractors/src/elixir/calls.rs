@@ -35,6 +35,8 @@ pub(super) fn dispatch_call(
         "use" => extract_use_call(extractor, node, parent_id),
         "alias" => extract_alias_call(extractor, node, parent_id),
         "require" => extract_require_call(extractor, node, parent_id),
+        "test" => extract_test(extractor, node, parent_id),
+        "describe" => extract_describe(extractor, node, symbols, parent_id),
         _ => None,
     }
 }
@@ -391,4 +393,70 @@ fn extract_directive(
     );
 
     Some((symbol, false))
+}
+
+// ========================================================================
+// ExUnit: test / describe
+// ========================================================================
+
+/// Extract an ExUnit `test "description" do ... end` block as a Function symbol.
+fn extract_test(
+    extractor: &mut ElixirExtractor,
+    node: &Node,
+    parent_id: Option<&str>,
+) -> Option<(Symbol, bool)> {
+    let description = helpers::extract_first_string_arg(&extractor.base, node)?;
+    let signature = format!("test \"{}\"", description);
+
+    let mut metadata = HashMap::new();
+    metadata.insert("is_test".to_string(), Value::Bool(true));
+
+    let symbol = extractor.base.create_symbol(
+        node,
+        description,
+        SymbolKind::Function,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Private),
+            parent_id: parent_id.map(String::from),
+            metadata: Some(metadata),
+            doc_comment: None,
+        },
+    );
+
+    Some((symbol, false))
+}
+
+/// Extract an ExUnit `describe "context" do ... end` block as a Namespace symbol.
+/// Traverses child nodes to extract nested test definitions.
+fn extract_describe(
+    extractor: &mut ElixirExtractor,
+    node: &Node,
+    symbols: &mut Vec<Symbol>,
+    parent_id: Option<&str>,
+) -> Option<(Symbol, bool)> {
+    let description = helpers::extract_first_string_arg(&extractor.base, node)?;
+    let signature = format!("describe \"{}\"", description);
+
+    let symbol = extractor.base.create_symbol(
+        node,
+        description,
+        SymbolKind::Namespace,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Private),
+            parent_id: parent_id.map(String::from),
+            metadata: None,
+            doc_comment: None,
+        },
+    );
+
+    let sym_id = symbol.id.clone();
+
+    // Visit do_block children to extract nested test definitions
+    if let Some(do_block) = helpers::extract_do_block(node) {
+        extractor.traverse_children(&do_block, symbols, Some(&sym_id));
+    }
+
+    Some((symbol, true)) // children already visited
 }

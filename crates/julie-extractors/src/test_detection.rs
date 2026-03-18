@@ -81,9 +81,9 @@ pub fn is_test_symbol(
         "csharp" | "razor" => detect_csharp(attributes),
         "go" => detect_go(name, file_path),
         "javascript" | "typescript" => detect_js_ts(name, file_path),
-        "php" => detect_php(name, doc_comment),
+        "php" => detect_php(name, file_path, doc_comment),
         "ruby" => detect_ruby(name, file_path),
-        "swift" => detect_swift(name),
+        "swift" => detect_swift(name, file_path),
         "dart" => detect_dart(name, file_path, decorators),
         _ => detect_generic(name, file_path),
     }
@@ -193,18 +193,16 @@ fn detect_js_ts(name: &str, file_path: &str) -> bool {
     is_test_fn && in_test_file
 }
 
-/// No path guard: intentional. Matches PHPUnit convention where `testX()` methods are tests
-/// if they're in a TestCase subclass, but we can't check subclass here so we accept the
-/// name prefix alone.
-fn detect_php(name: &str, doc_comment: Option<&str>) -> bool {
-    // @test annotation in doc comment
+fn detect_php(name: &str, file_path: &str, doc_comment: Option<&str>) -> bool {
+    // @test annotation in doc comment — genuine test marker regardless of path
     if let Some(doc) = doc_comment {
         if doc.contains("@test") {
             return true;
         }
     }
-    // Name prefix
-    name.starts_with("test")
+    // Name prefix — requires test path to avoid false positives on production code
+    // (e.g. testConnection() in a service class)
+    name.starts_with("test") && is_test_path(file_path)
 }
 
 fn detect_ruby(name: &str, file_path: &str) -> bool {
@@ -212,13 +210,15 @@ fn detect_ruby(name: &str, file_path: &str) -> bool {
     name.starts_with("test_") && is_test_path(file_path)
 }
 
-fn detect_swift(name: &str) -> bool {
-    // XCTest convention: test* prefix for methods/functions + lifecycle methods
-    name.starts_with("test")
-        || matches!(
-            name,
-            "setUp" | "tearDown" | "setUpWithError" | "tearDownWithError"
-        )
+fn detect_swift(name: &str, file_path: &str) -> bool {
+    // XCTest convention: test* prefix + lifecycle methods — all require test path
+    // to avoid false positives on production code with similarly-named methods
+    is_test_path(file_path)
+        && (name.starts_with("test")
+            || matches!(
+                name,
+                "setUp" | "tearDown" | "setUpWithError" | "tearDownWithError"
+            ))
 }
 
 fn detect_elixir(name: &str, file_path: &str) -> bool {

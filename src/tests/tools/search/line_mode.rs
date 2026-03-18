@@ -581,6 +581,120 @@ def python_function():
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn test_fast_search_line_mode_exclude_tests() -> Result<()> {
+        unsafe {
+            std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");
+        }
+
+        let temp_dir = TempDir::new()?;
+        let workspace_path = temp_dir.path().to_path_buf();
+
+        // Create production source file
+        let src_dir = workspace_path.join("src");
+        fs::create_dir_all(&src_dir)?;
+
+        let prod_file = src_dir.join("auth.rs");
+        fs::write(
+            &prod_file,
+            r#"/// Authenticate a user with the given credentials
+fn authenticate_user(username: &str, password: &str) -> bool {
+    // authenticate logic here
+    username.len() > 0 && password.len() > 0
+}
+"#,
+        )?;
+
+        // Create test file in a test directory (is_test_path checks for "tests" segment)
+        let test_dir = workspace_path.join("src").join("tests");
+        fs::create_dir_all(&test_dir)?;
+
+        let test_file = test_dir.join("auth_test.rs");
+        fs::write(
+            &test_file,
+            r#"#[test]
+fn test_authenticate_user() {
+    // authenticate test logic
+    assert!(authenticate_user("admin", "secret"));
+}
+"#,
+        )?;
+
+        let handler = JulieServerHandler::new_for_test().await?;
+        handler
+            .initialize_workspace_with_force(
+                Some(workspace_path.to_string_lossy().to_string()),
+                true,
+            )
+            .await?;
+
+        let index_tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            path: Some(workspace_path.to_string_lossy().to_string()),
+            force: Some(false),
+            name: None,
+            workspace_id: None,
+            detailed: None,
+        };
+        index_tool.call_tool(&handler).await?;
+        sleep(Duration::from_secs(2)).await;
+        mark_index_ready(&handler).await;
+
+        // Test 1: Search WITHOUT exclude_tests — should find results from BOTH files
+        let search_all = FastSearchTool {
+            query: "authenticate".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 20,
+            workspace: Some("primary".to_string()),
+            search_target: "content".to_string(),
+            context_lines: None,
+            exclude_tests: None,
+        };
+
+        let result_all = search_all.call_tool(&handler).await?;
+        let text_all = extract_text_from_result(&result_all);
+
+        assert!(
+            text_all.contains("src/auth.rs"),
+            "Without exclude_tests, should find production file. Got: {}",
+            text_all
+        );
+        assert!(
+            text_all.contains("src/tests/auth_test.rs"),
+            "Without exclude_tests, should find test file. Got: {}",
+            text_all
+        );
+
+        // Test 2: Search WITH exclude_tests: Some(true) — should ONLY find production file
+        let search_no_tests = FastSearchTool {
+            query: "authenticate".to_string(),
+            language: None,
+            file_pattern: None,
+            limit: 20,
+            workspace: Some("primary".to_string()),
+            search_target: "content".to_string(),
+            context_lines: None,
+            exclude_tests: Some(true),
+        };
+
+        let result_no_tests = search_no_tests.call_tool(&handler).await?;
+        let text_no_tests = extract_text_from_result(&result_no_tests);
+
+        assert!(
+            text_no_tests.contains("src/auth.rs"),
+            "With exclude_tests, should still find production file. Got: {}",
+            text_no_tests
+        );
+        assert!(
+            !text_no_tests.contains("src/tests/auth_test.rs"),
+            "With exclude_tests, should NOT find test file. Got: {}",
+            text_no_tests
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn test_fast_search_line_mode_combined_filters() -> Result<()> {
         unsafe {
             std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "0");

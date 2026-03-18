@@ -156,30 +156,189 @@ fn error_testing_patterns() -> &'static [Regex] {
 }
 
 // =============================================================================
+// Comment/string stripping (prevents false-positive pattern matches)
+// =============================================================================
+
+/// State machine for stripping comments and string literal contents.
+///
+/// Replaces content inside comments and strings with spaces, preserving
+/// newlines so that line counts remain accurate. Language-agnostic: handles
+/// the common comment/string syntaxes across all 33 supported languages.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum StripState {
+    Normal,
+    SingleLineComment,
+    BlockComment,
+    DoubleQuoteString,
+    SingleQuoteString,
+}
+
+/// Strip comment and string literal contents from source text.
+///
+/// Walks the text char-by-char with a simple state machine.
+/// - Single-line comments (`//`, `#`, `--`): content replaced with spaces
+/// - Block comments (`/* ... */`): content replaced with spaces (newlines preserved)
+/// - String literals (`"..."`, `'...'`): content replaced with spaces (delimiters kept)
+/// - Escaped quotes (`\"`, `\'`) within strings are handled
+///
+/// This doesn't need to be perfect for every language edge case — it just
+/// prevents the most common false positives (assertions in comments, mock
+/// patterns in string literals).
+fn strip_comments_and_strings(body: &str) -> String {
+    let chars: Vec<char> = body.chars().collect();
+    let len = chars.len();
+    let mut result = String::with_capacity(body.len());
+    let mut state = StripState::Normal;
+    let mut i = 0;
+
+    while i < len {
+        let c = chars[i];
+        let next = if i + 1 < len { Some(chars[i + 1]) } else { None };
+
+        match state {
+            StripState::Normal => {
+                // Detect start of block comment: /*
+                if c == '/' && next == Some('*') {
+                    result.push(' ');
+                    result.push(' ');
+                    state = StripState::BlockComment;
+                    i += 2;
+                }
+                // Detect start of single-line comment: //
+                else if c == '/' && next == Some('/') {
+                    result.push(' ');
+                    result.push(' ');
+                    state = StripState::SingleLineComment;
+                    i += 2;
+                }
+                // Detect start of single-line comment: # (Python, Ruby, Bash, etc.)
+                else if c == '#' {
+                    result.push(' ');
+                    state = StripState::SingleLineComment;
+                    i += 1;
+                }
+                // Detect start of single-line comment: -- (Lua, SQL, Haskell)
+                else if c == '-' && next == Some('-') {
+                    result.push(' ');
+                    result.push(' ');
+                    state = StripState::SingleLineComment;
+                    i += 2;
+                }
+                // Detect start of double-quoted string
+                else if c == '"' {
+                    result.push(c); // keep delimiter
+                    state = StripState::DoubleQuoteString;
+                    i += 1;
+                }
+                // Detect start of single-quoted string
+                else if c == '\'' {
+                    result.push(c); // keep delimiter
+                    state = StripState::SingleQuoteString;
+                    i += 1;
+                }
+                // Normal character — keep as-is
+                else {
+                    result.push(c);
+                    i += 1;
+                }
+            }
+
+            StripState::SingleLineComment => {
+                if c == '\n' {
+                    result.push('\n');
+                    state = StripState::Normal;
+                } else {
+                    result.push(' ');
+                }
+                i += 1;
+            }
+
+            StripState::BlockComment => {
+                if c == '*' && next == Some('/') {
+                    result.push(' ');
+                    result.push(' ');
+                    state = StripState::Normal;
+                    i += 2;
+                } else if c == '\n' {
+                    result.push('\n');
+                    i += 1;
+                } else {
+                    result.push(' ');
+                    i += 1;
+                }
+            }
+
+            StripState::DoubleQuoteString => {
+                if c == '\\' && next.is_some() {
+                    // Escaped character — replace both with spaces
+                    result.push(' ');
+                    result.push(' ');
+                    i += 2;
+                } else if c == '"' {
+                    result.push(c); // keep closing delimiter
+                    state = StripState::Normal;
+                    i += 1;
+                } else if c == '\n' {
+                    result.push('\n');
+                    i += 1;
+                } else {
+                    result.push(' ');
+                    i += 1;
+                }
+            }
+
+            StripState::SingleQuoteString => {
+                if c == '\\' && next.is_some() {
+                    // Escaped character — replace both with spaces
+                    result.push(' ');
+                    result.push(' ');
+                    i += 2;
+                } else if c == '\'' {
+                    result.push(c); // keep closing delimiter
+                    state = StripState::Normal;
+                    i += 1;
+                } else if c == '\n' {
+                    result.push('\n');
+                    i += 1;
+                } else {
+                    result.push(' ');
+                    i += 1;
+                }
+            }
+        }
+    }
+
+    result
+}
+
+// =============================================================================
 // Core analysis function
 // =============================================================================
 
 /// Analyze a test function body and return quality metrics.
 ///
+/// Strips comments and string literal contents before scanning for patterns,
+/// preventing false positives from assertion/mock keywords in comments or strings.
 /// Counts assertions, mocks, error-testing patterns, computes density,
-/// and assigns a quality tier. Works on raw source text of the function body.
+/// and assigns a quality tier.
 pub fn analyze_test_body(body: &str) -> TestQualityMetrics {
-    let non_empty_lines: Vec<&str> = body
+    let stripped = strip_comments_and_strings(body);
+    let non_empty_lines: Vec<&str> = stripped
         .lines()
         .filter(|line| !line.trim().is_empty())
         .collect();
     let body_lines = non_empty_lines.len() as u32;
 
-    // Count assertion matches across all patterns
-    let assertion_count = count_pattern_matches(body, assertion_patterns());
+    // Count assertion matches across all patterns (on stripped text)
+    let assertion_count = count_pattern_matches(&stripped, assertion_patterns());
 
-    // Count mock matches
-    let mock_count = count_pattern_matches(body, mock_patterns());
+    // Count mock matches (on stripped text)
+    let mock_count = count_pattern_matches(&stripped, mock_patterns());
 
-    // Check for error testing
+    // Check for error testing (on stripped text)
     let has_error_testing = error_testing_patterns()
         .iter()
-        .any(|pat| pat.is_match(body));
+        .any(|pat| pat.is_match(&stripped));
 
     // Compute density
     let assertion_density = if body_lines > 0 {
