@@ -5,8 +5,10 @@
 
 use crate::tools::shared::BLACKLISTED_FILENAMES;
 use anyhow::Result;
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::collections::HashSet;
 use std::path::Path;
+use tracing::warn;
 
 /// Build set of supported file extensions.
 ///
@@ -66,6 +68,49 @@ pub fn build_ignore_patterns() -> Result<Vec<glob::Pattern>> {
             glob::Pattern::new(p).map_err(|e| anyhow::anyhow!("Invalid glob pattern {}: {}", p, e))
         })
         .collect()
+}
+
+/// Build a gitignore-based matcher that layers:
+/// 1. `.gitignore` patterns (if present in workspace root)
+/// 2. `.julieignore` patterns (if present in workspace root)
+/// 3. Synthetic patterns for Julie's own directories and common noise
+pub fn build_gitignore_matcher(workspace_root: &Path) -> Result<Gitignore> {
+    let mut builder = GitignoreBuilder::new(workspace_root);
+
+    let gitignore_path = workspace_root.join(".gitignore");
+    if gitignore_path.is_file() {
+        if let Some(err) = builder.add(&gitignore_path) {
+            warn!("Partial error reading {}: {}", gitignore_path.display(), err);
+        }
+    }
+
+    let julieignore_path = workspace_root.join(".julieignore");
+    if julieignore_path.is_file() {
+        if let Some(err) = builder.add(&julieignore_path) {
+            warn!(
+                "Partial error reading {}: {}",
+                julieignore_path.display(),
+                err
+            );
+        }
+    }
+
+    let synthetics = [
+        ".julie/",
+        ".memories/",
+        "cmake-build-*/",
+        "*.min.js",
+        "*.bundle.js",
+    ];
+    for pattern in &synthetics {
+        builder
+            .add_line(None, pattern)
+            .map_err(|e| anyhow::anyhow!("Invalid synthetic pattern '{}': {}", pattern, e))?;
+    }
+
+    builder
+        .build()
+        .map_err(|e| anyhow::anyhow!("Failed to build gitignore matcher: {}", e))
 }
 
 /// Check if a file should be indexed based on extension and ignore patterns
@@ -225,5 +270,174 @@ mod tests {
 
         fs::remove_file(&lockfile).ok();
         fs::remove_file(&lockfile2).ok();
+    }
+
+    #[test]
+    fn test_build_gitignore_matcher_with_gitignore_file() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Write a .gitignore with patterns and a negation
+        fs::write(
+            root.join(".gitignore"),
+            "node_modules/\ntarget/\n!target/keep.rs\n",
+        )
+        .unwrap();
+
+        let matcher = build_gitignore_matcher(root).unwrap();
+
+        // .gitignore patterns
+        assert!(
+            matcher
+                .matched_path_or_any_parents("node_modules/foo.js", false)
+                .is_ignore(),
+            "node_modules should be ignored"
+        );
+        assert!(
+            matcher
+                .matched_path_or_any_parents("target/debug/build.rs", false)
+                .is_ignore(),
+            "target dir should be ignored"
+        );
+
+        // Negation: !target/keep.rs should whitelist it
+        assert!(
+            !matcher
+                .matched_path_or_any_parents("target/keep.rs", false)
+                .is_ignore(),
+            "negated pattern should not be ignored"
+        );
+
+        // Directory patterns from .gitignore
+        assert!(
+            matcher
+                .matched_path_or_any_parents("node_modules/package/index.js", false)
+                .is_ignore(),
+            "nested under ignored directory"
+        );
+
+        // Synthetic patterns
+        assert!(
+            matcher
+                .matched_path_or_any_parents(".julie/logs/test.log", false)
+                .is_ignore(),
+            ".julie/ synthetic should be ignored"
+        );
+        assert!(
+            matcher
+                .matched_path_or_any_parents(".memories/checkpoint.md", false)
+                .is_ignore(),
+            ".memories/ synthetic should be ignored"
+        );
+        assert!(
+            matcher
+                .matched_path_or_any_parents("cmake-build-debug/CMakeCache.txt", false)
+                .is_ignore(),
+            "cmake-build-* synthetic should be ignored"
+        );
+        assert!(
+            matcher
+                .matched_path_or_any_parents("dist/app.min.js", false)
+                .is_ignore(),
+            "*.min.js synthetic should be ignored"
+        );
+
+        // Non-ignored path
+        assert!(
+            !matcher
+                .matched_path_or_any_parents("src/main.rs", false)
+                .is_ignore(),
+            "normal source file should not be ignored"
+        );
+    }
+
+    #[test]
+    fn test_build_gitignore_matcher_no_gitignore_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // No .gitignore or .julieignore written
+
+        let matcher = build_gitignore_matcher(root).unwrap();
+
+        // Synthetic patterns still work
+        assert!(
+            matcher
+                .matched_path_or_any_parents(".julie/db/symbols.db", false)
+                .is_ignore(),
+            ".julie/ should be ignored via synthetics"
+        );
+        assert!(
+            matcher
+                .matched_path_or_any_parents("lib/app.bundle.js", false)
+                .is_ignore(),
+            "*.bundle.js should be ignored via synthetics"
+        );
+
+        // Normal files pass through
+        assert!(
+            !matcher
+                .matched_path_or_any_parents("src/lib.rs", false)
+                .is_ignore(),
+            "normal source files should not be ignored"
+        );
+        assert!(
+            !matcher
+                .matched_path_or_any_parents("node_modules/foo.js", false)
+                .is_ignore(),
+            "without .gitignore, node_modules is NOT ignored"
+        );
+    }
+
+    #[test]
+    fn test_build_gitignore_matcher_merges_julieignore() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // .gitignore ignores node_modules
+        fs::write(root.join(".gitignore"), "node_modules/\n").unwrap();
+        // .julieignore adds custom vendor pattern
+        fs::write(root.join(".julieignore"), "generated/\ndata/*.csv\n").unwrap();
+
+        let matcher = build_gitignore_matcher(root).unwrap();
+
+        // .gitignore pattern
+        assert!(
+            matcher
+                .matched_path_or_any_parents("node_modules/foo.js", false)
+                .is_ignore(),
+            ".gitignore patterns should apply"
+        );
+
+        // .julieignore patterns
+        assert!(
+            matcher
+                .matched_path_or_any_parents("generated/output.rs", false)
+                .is_ignore(),
+            ".julieignore generated/ should be ignored"
+        );
+        assert!(
+            matcher
+                .matched_path_or_any_parents("data/users.csv", false)
+                .is_ignore(),
+            ".julieignore data/*.csv should be ignored"
+        );
+
+        // Synthetic patterns still present
+        assert!(
+            matcher
+                .matched_path_or_any_parents(".julie/logs/test.log", false)
+                .is_ignore(),
+            "synthetic patterns should still work"
+        );
+
+        // Unmatched files pass through
+        assert!(
+            !matcher
+                .matched_path_or_any_parents("src/main.rs", false)
+                .is_ignore(),
+            "normal files should not be ignored"
+        );
     }
 }
