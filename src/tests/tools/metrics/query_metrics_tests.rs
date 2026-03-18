@@ -312,4 +312,110 @@ mod tests {
         let output = format_metrics_output(&[], "security_risk", "desc");
         assert_eq!(output, "No symbols match the query filters.");
     }
+
+    #[test]
+    fn test_query_language_filter() {
+        let (_tmp, db) = setup_test_db();
+        let results = query_by_metrics(
+            &db,
+            "centrality",
+            "desc",
+            None,
+            None,
+            None,
+            None,
+            Some("python"),
+            true,
+            10,
+        )
+        .unwrap();
+
+        // Only s3 (format_name) is Python
+        assert_eq!(results.len(), 1, "Should have 1 Python result");
+        assert_eq!(results[0].name, "format_name");
+    }
+
+    #[test]
+    fn test_query_has_tests_true_filter() {
+        let (_tmp, db) = setup_test_db();
+        // Only symbols WITH test coverage
+        let results = query_by_metrics(
+            &db,
+            "security_risk",
+            "desc",
+            None,
+            Some(true), // tested only
+            None,
+            None,
+            None,
+            true,
+            10,
+        )
+        .unwrap();
+
+        // s1 (test_count=3) and s2 (test_count=1) are tested
+        assert_eq!(results.len(), 2, "Should have 2 tested results");
+        for r in &results {
+            assert!(
+                r.test_count.unwrap_or(0) > 0,
+                "Expected tested symbol, got test_count={:?} for {}",
+                r.test_count,
+                r.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_format_change_risk_output() {
+        let (_tmp, db) = setup_test_db();
+        let results = query_by_metrics(
+            &db, "change_risk", "desc", None, None, None, None, None, true, 5,
+        )
+        .unwrap();
+
+        let output = format_metrics_output(&results, "change_risk", "desc");
+
+        // Header should reflect change_risk sort
+        assert!(
+            output.contains("sorted by change_risk DESC"),
+            "Output should reflect change_risk sort"
+        );
+
+        // Should include change risk labels
+        assert!(
+            output.contains("Change risk: HIGH"),
+            "Should contain change risk label"
+        );
+
+        // Should include centrality for each result
+        assert!(
+            output.contains("Centrality:"),
+            "Should include centrality"
+        );
+    }
+
+    #[test]
+    fn test_exclude_tests_false_includes_test_symbols() {
+        let (_tmp, db) = setup_test_db();
+        let results = query_by_metrics(
+            &db,
+            "centrality",
+            "asc",
+            None,
+            None,
+            None,
+            None,
+            None,
+            false, // include tests
+            10,
+        )
+        .unwrap();
+
+        // Should include test_auth_flow (s6) when exclude_tests=false
+        let has_test_symbol = results.iter().any(|r| r.name == "test_auth_flow");
+        assert!(
+            has_test_symbol,
+            "With exclude_tests=false, test symbols should be included"
+        );
+    }
 }
