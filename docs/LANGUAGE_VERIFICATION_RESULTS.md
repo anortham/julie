@@ -16,20 +16,22 @@
 | GDScript | bitbrain/pandora | PASS | PASS | PASS* | PASS* | PASS | PASS* | PASS | PASS | 2026-03-17 |
 | Zig | zigtools/zls | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-17 |
 | TypeScript | colinhacks/zod | PASS | PASS | PASS* | PASS* | PASS* | PASS | PASS* | PASS* | 2026-03-17 |
-| Python | pallets/flask | PASS | PASS | PASS | FAIL | FAIL | PASS | PASS* | PASS | 2026-03-18 |
+| Python | pallets/flask | PASS | PASS | PASS | PASS | PASS | PASS | PASS* | PASS | 2026-03-18 |
 | Go | spf13/cobra | PASS | PASS | PASS | PASS | PARTIAL | PASS | PASS | PASS | 2026-03-18 |
 | Java | google/gson | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
 | PHP | slimphp/Slim | PASS | FAIL | PARTIAL | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
 | Ruby | sinatra/sinatra | PASS | PASS | PASS | MIXED | PASS | PASS | PASS | PASS | 2026-03-18 |
 | C# | JamesNK/Newtonsoft.Json | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | 2026-03-18 |
-| Swift | Alamofire/Alamofire | PARTIAL | PASS | PASS | PARTIAL | PASS | PARTIAL | PASS | PASS | 2026-03-18 |
-| Kotlin | square/moshi | PARTIAL | PASS | PASS | PASS* | PASS | PARTIAL | PASS | PASS | 2026-03-18 |
+| Swift | Alamofire/Alamofire | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | 2026-03-18 |
+| Kotlin | square/moshi | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
 | C | jqlang/jq | PASS | PASS | PASS | PARTIAL | PASS | PASS | PASS | FAIL* | 2026-03-18 |
 | C++ | nlohmann/json | PASS | FAIL | PASS* | FAIL | PASS | FAIL | PASS | PASS | 2026-03-18 |
-| Dart | rrousselGit/riverpod | PARTIAL | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
+| Dart | rrousselGit/riverpod | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
 | Lua | rxi/lite | PASS | PASS | PASS | FAIL | PARTIAL | PARTIAL | PARTIAL | N/A | 2026-03-18 |
 | Scala | typelevel/cats | PASS | PASS | PASS* | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
 | Elixir | phoenixframework/phoenix | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | 2026-03-18 |
+| Rust | julie (self) | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | 2026-03-18 |
+| JavaScript | expressjs/express | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
 
 ### Specialized Tier (9 languages)
 
@@ -37,23 +39,23 @@
 |----------|------------------|-----------|---------------|--------------|------------------|------|
 | QML | KDE/kirigami | PASS* | PASS* | PASS* | PASS* | 2026-03-17 |
 | Razor | dotnet/blazor-samples (9.0) | PASS* | PASS | PASS | N/A | 2026-03-17 |
-| Bash | — | — | — | — | — | — |
-| PowerShell | — | — | — | — | — | — |
-| Vue | — | — | — | — | — | — |
-| R | — | — | — | — | — | — |
-| SQL | — | — | — | — | — | — |
-| HTML | — | — | — | — | — | — |
-| CSS | — | — | — | — | — | — |
+| Bash | fixture: system-admin-script.sh | PASS | PASS | PASS | N/A | 2026-03-18 |
+| PowerShell | fixture: system-health-check.ps1 | PASS | PASS | PASS | N/A | 2026-03-18 |
+| Vue | fixture: App.vue | PASS | PASS | PASS | N/A | 2026-03-18 |
+| R | fixture: ggplot2-geom-point.R | PASS | PASS | PASS | N/A | 2026-03-18 |
+| SQL | fixture: postgresql-migrations.sql | PASS | PASS | PASS | N/A | 2026-03-18 |
+| HTML | fixture: popup-info-web-component.html | PASS* | N/A | N/A | N/A | 2026-03-18 |
+| CSS | fixture: flexbox-grid.css | PASS* | N/A | N/A | N/A | 2026-03-18 |
 
 ### Data/Docs Tier (5 languages)
 
 | Language | Reference Project | 1. Symbols | Date |
 |----------|------------------|-----------|------|
-| Markdown | — | — | — |
-| JSON | — | — | — |
-| TOML | — | — | — |
-| YAML | — | — | — |
-| Regex | — | — | — |
+| Markdown | julie: docs/ARCHITECTURE.md | PASS | 2026-03-18 |
+| JSON | julie: .claude/hooks/hooks.json | PASS* | 2026-03-18 |
+| TOML | julie: Cargo.toml | PASS | 2026-03-18 |
+| YAML | julie: .github/workflows/release.yml | PASS | 2026-03-18 |
+| Regex | fixture: validation_patterns.regex | PASS | 2026-03-18 |
 
 ---
 
