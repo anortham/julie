@@ -1180,3 +1180,295 @@ fn test_find_doc_comment_function_first_in_file() {
         symbol.doc_comment
     );
 }
+
+// ---------------------------------------------------------------------------
+// find_containing_symbol tests
+// ---------------------------------------------------------------------------
+
+/// Helper: build a minimal Symbol with the position fields needed for containment checks.
+fn make_symbol(
+    name: &str,
+    kind: SymbolKind,
+    start_line: u32,
+    start_column: u32,
+    end_line: u32,
+    end_column: u32,
+    start_byte: u32,
+    end_byte: u32,
+) -> Symbol {
+    Symbol {
+        id: format!("sym_{}", name),
+        name: name.to_string(),
+        kind,
+        language: "rust".to_string(),
+        file_path: "test.rs".to_string(),
+        start_line,
+        start_column,
+        end_line,
+        end_column,
+        start_byte,
+        end_byte,
+        signature: None,
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    }
+}
+
+#[test]
+fn test_find_containing_symbol_node_inside_function() {
+    // Content: a function with a call inside it
+    //          0         1         2
+    // line 1:  fn outer() { call(); }
+    let content = "fn outer() { call(); }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+
+    // Navigate to the call_expression's identifier ("call") inside the function body
+    let func_item = root.child(0).expect("function_item");
+    let block = func_item.child_by_field_name("body").expect("body");
+    let mut call_node = None;
+    let mut cursor = block.walk();
+    for child in block.children(&mut cursor) {
+        if child.kind() == "expression_statement" {
+            let mut inner = child.walk();
+            for c in child.children(&mut inner) {
+                if c.kind() == "call_expression" {
+                    if let Some(callee) = c.named_child(0) {
+                        call_node = Some(callee);
+                    }
+                }
+            }
+        }
+    }
+    let call_node = call_node.expect("should find call identifier");
+
+    // Build a symbol spanning the entire function: line 1, col 0 -> line 1, col 22
+    // (tree-sitter rows are 0-based, but Symbol uses 1-based lines)
+    let symbols = vec![make_symbol(
+        "outer",
+        SymbolKind::Function,
+        1,  // start_line (1-based)
+        0,  // start_column
+        1,  // end_line
+        22, // end_column (length of the line)
+        0,  // start_byte
+        22, // end_byte
+    )];
+
+    let result = extractor.find_containing_symbol(&call_node, &symbols);
+    assert!(result.is_some(), "call node should be inside outer()");
+    assert_eq!(result.unwrap().name, "outer");
+}
+
+#[test]
+fn test_find_containing_symbol_nested_returns_innermost() {
+    // Content:
+    // line 1: fn outer() {
+    // line 2:     fn inner() {
+    // line 3:         let _ = 42;
+    // line 4:     }
+    // line 5: }
+    let content = "fn outer() {\n    fn inner() {\n        let _ = 42;\n    }\n}";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+
+    // Find the `let _ = 42;` statement (on line 3)
+    // Navigate: source_file > function_item(outer) > block > function_item(inner) > block > let_declaration
+    let outer_fn = root.child(0).expect("outer function_item");
+    let outer_block = outer_fn.child_by_field_name("body").expect("outer body");
+    let mut inner_fn = None;
+    let mut cursor = outer_block.walk();
+    for child in outer_block.children(&mut cursor) {
+        if child.kind() == "function_item" {
+            inner_fn = Some(child);
+        }
+    }
+    let inner_fn = inner_fn.expect("should find inner function_item");
+    let inner_block = inner_fn.child_by_field_name("body").expect("inner body");
+    let mut let_node = None;
+    let mut cursor2 = inner_block.walk();
+    for child in inner_block.children(&mut cursor2) {
+        if child.kind() == "let_declaration" {
+            let_node = Some(child);
+        }
+    }
+    let let_node = let_node.expect("should find let_declaration");
+
+    // Build symbols for outer (lines 1-5) and inner (lines 2-4)
+    let symbols = vec![
+        make_symbol(
+            "outer",
+            SymbolKind::Function,
+            1,
+            0,
+            5,
+            1,
+            0,
+            content.len() as u32,
+        ),
+        make_symbol(
+            "inner",
+            SymbolKind::Function,
+            2,
+            4,
+            4,
+            5,
+            // inner starts at "    fn inner..." which is offset 13 in the content
+            13,
+            // inner ends at "    }" which is at offset 52
+            52,
+        ),
+    ];
+
+    let result = extractor.find_containing_symbol(&let_node, &symbols);
+    assert!(result.is_some(), "let node should be inside inner()");
+    assert_eq!(
+        result.unwrap().name,
+        "inner",
+        "Should return the innermost (narrowest) containing symbol"
+    );
+}
+
+#[test]
+fn test_find_containing_symbol_node_at_top_level() {
+    // Content: just a let statement at the top level
+    let content = "let _ = 42;";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    // Get the first child node (the let statement or error node)
+    let node = root.child(0).expect("should have a child node");
+
+    // No symbols at all — the node is at the top level
+    let symbols = vec![make_symbol(
+        "elsewhere",
+        SymbolKind::Function,
+        10, // far away from line 1
+        0,
+        15,
+        1,
+        200,
+        300,
+    )];
+
+    let result = extractor.find_containing_symbol(&node, &symbols);
+    assert!(
+        result.is_none(),
+        "Node at top level (not within any symbol's range) should return None"
+    );
+}
+
+#[test]
+fn test_find_containing_symbol_empty_symbols_list() {
+    let content = "fn hello() {}";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).expect("function_item");
+
+    let symbols: Vec<Symbol> = vec![];
+    let result = extractor.find_containing_symbol(&func_item, &symbols);
+    assert!(result.is_none(), "Empty symbols list should return None");
+}
+
+#[test]
+fn test_find_containing_symbol_single_line_column_checks() {
+    // Content: fn a() { fn b() {} }
+    // Both functions are on a single line. The "b" function starts at col 9 and ends at col 19.
+    // A node at col 12 should be inside b, not a.
+    let content = "fn a() { fn b() {} }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+
+    // Navigate to inner function "b"
+    let outer_fn = root.child(0).expect("outer function_item");
+    let outer_block = outer_fn.child_by_field_name("body").expect("body");
+    let mut inner_fn = None;
+    let mut cursor = outer_block.walk();
+    for child in outer_block.children(&mut cursor) {
+        if child.kind() == "function_item" {
+            inner_fn = Some(child);
+        }
+    }
+    let inner_fn = inner_fn.expect("should find inner function_item b");
+    let inner_block = inner_fn.child_by_field_name("body").expect("inner body");
+
+    // The inner block `{}` is empty but exists — use the block node itself as our target.
+    // It sits inside b's span.
+
+    // Both symbols are on line 1. a spans col 0..20, b spans col 9..18.
+    let symbols = vec![
+        make_symbol(
+            "a",
+            SymbolKind::Function,
+            1,
+            0,
+            1,
+            20,
+            0,  // start_byte
+            20, // end_byte
+        ),
+        make_symbol(
+            "b",
+            SymbolKind::Function,
+            1,
+            9,
+            1,
+            18,
+            9,  // start_byte
+            18, // end_byte
+        ),
+    ];
+
+    let result = extractor.find_containing_symbol(&inner_block, &symbols);
+    assert!(result.is_some(), "inner block should be contained");
+    assert_eq!(
+        result.unwrap().name,
+        "b",
+        "Should return b (narrower) not a, since both are on line 1 but b has smaller byte range"
+    );
+}

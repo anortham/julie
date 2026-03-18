@@ -39,4 +39,5 @@ pub mod yaml;
 pub mod zig;
 
 // Cross-cutting concerns
+pub mod factory_tests;
 pub mod test_detection;

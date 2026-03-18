@@ -14,7 +14,7 @@ use std::path::Path;
 /// Currently all extracted types are marked as inferred with no generic params,
 /// constraints, or metadata. This is the single place to enrich type extraction
 /// when we're ready (see Task #1 in the audit plan).
-fn convert_types_map(types: HashMap<String, String>, language: &str) -> HashMap<String, TypeInfo> {
+pub(crate) fn convert_types_map(types: HashMap<String, String>, language: &str) -> HashMap<String, TypeInfo> {
     types
         .into_iter()
         .map(|(symbol_id, type_string)| {
