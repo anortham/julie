@@ -20,7 +20,7 @@ use tokio::sync::RwLock;
 // Import tool parameter types
 use crate::tools::{
     DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
-    ManageWorkspaceTool, RenameSymbolTool,
+    ManageWorkspaceTool, QueryMetricsTool, RenameSymbolTool,
 };
 
 /// Tracks which indexes are ready for search operations
@@ -597,6 +597,30 @@ impl JulieServerHandler {
             .call_tool(self)
             .await
             .map_err(|e| McpError::internal_error(format!("manage_workspace failed: {}", e), None))
+    }
+
+    // ========== Metrics & Reporting Tools ==========
+
+    #[tool(
+        name = "query_metrics",
+        description = "Query symbols ranked by analysis metadata (security risk, change risk, test coverage, centrality). Use to find the riskiest code, untested functions, dead code, or highest-centrality entry points.",
+        annotations(
+            title = "Query Code Metrics",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    async fn query_metrics(
+        &self,
+        Parameters(params): Parameters<QueryMetricsTool>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("📊 Query metrics: {:?}", params);
+        params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("query_metrics failed: {}", e), None))
     }
 }
 
