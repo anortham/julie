@@ -824,3 +824,49 @@ fn test_analyze_vendor_patterns_does_not_flag_packages_directory() {
         patterns,
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tests: BLACKLISTED_FILENAMES — Doc config files excluded from indexing
+// ═══════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_doc_config_files_in_blacklisted_filenames() {
+    assert!(BLACKLISTED_FILENAMES.contains(&"mkdocs.yml"));
+    assert!(BLACKLISTED_FILENAMES.contains(&"mkdocs.yaml"));
+    assert!(BLACKLISTED_FILENAMES.contains(&".readthedocs.yml"));
+    assert!(BLACKLISTED_FILENAMES.contains(&".readthedocs.yaml"));
+    assert!(BLACKLISTED_FILENAMES.contains(&"book.toml"));
+    assert!(BLACKLISTED_FILENAMES.contains(&"_config.yml"));
+}
+
+#[test]
+fn test_should_index_file_rejects_blacklisted_filenames() {
+    let tool = create_tool();
+    let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
+    let max_file_size = 1024 * 1024;
+    let temp_dir = tempfile::TempDir::new().unwrap();
+
+    for filename in &["mkdocs.yml", "book.toml", "_config.yml"] {
+        let path = temp_dir.path().join(filename);
+        std::fs::write(&path, "key: value\n").unwrap();
+        let result = tool.should_index_file(&path, &blacklisted_exts, max_file_size, false);
+        assert!(result.is_ok());
+        assert!(!result.unwrap(), "{} should be rejected", filename);
+    }
+}
+
+#[test]
+fn test_should_index_file_accepts_normal_yaml_toml() {
+    let tool = create_tool();
+    let blacklisted_exts: HashSet<&str> = BLACKLISTED_EXTENSIONS.iter().copied().collect();
+    let max_file_size = 1024 * 1024;
+    let temp_dir = tempfile::TempDir::new().unwrap();
+
+    for filename in &["config.yml", "Cargo.toml"] {
+        let path = temp_dir.path().join(filename);
+        std::fs::write(&path, "key: value\n").unwrap();
+        let result = tool.should_index_file(&path, &blacklisted_exts, max_file_size, false);
+        assert!(result.is_ok());
+        assert!(result.unwrap(), "{} should be accepted", filename);
+    }
+}

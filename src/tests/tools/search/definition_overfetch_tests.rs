@@ -24,6 +24,16 @@ mod tests {
         score: f32,
         kind: &str,
     ) -> SymbolSearchResult {
+        make_result_full(name, file_path, score, kind, "rust")
+    }
+
+    fn make_result_full(
+        name: &str,
+        file_path: &str,
+        score: f32,
+        kind: &str,
+        language: &str,
+    ) -> SymbolSearchResult {
         SymbolSearchResult {
             id: format!("id_{}_{}", name, file_path.replace('/', "_")),
             name: name.to_string(),
@@ -31,7 +41,7 @@ mod tests {
             doc_comment: String::new(),
             file_path: file_path.to_string(),
             kind: kind.to_string(),
-            language: "rust".to_string(),
+            language: language.to_string(),
             start_line: 1,
             score,
         }
@@ -295,5 +305,84 @@ mod tests {
         // Phoenix.Router matches (component), RouterHelper does not
         assert_eq!(results[0].name, "Phoenix.Router");
         assert_eq!(results[1].name, "RouterHelper");
+    }
+
+    // ── Doc-language demotion tests ───────────────────────────────────
+
+    #[test]
+    fn test_code_definition_ranks_above_markdown_heading() {
+        // Reproduces: in spf13/cobra, searching "Command" without language filter
+        // returns a markdown heading (module) above the actual Go struct.
+        // Markdown heading has higher score (centrality=1.0) but should be demoted
+        // because it's a documentation language, not a code definition.
+        let mut results = vec![
+            make_result_full(
+                "Command",
+                "site/content/completions/powershell.md",
+                12.0, // higher score from centrality boost
+                "module",
+                "markdown",
+            ),
+            make_result_full(
+                "Command",
+                "command.go",
+                10.0, // lower score but actual code definition
+                "class",
+                "go",
+            ),
+        ];
+
+        promote_exact_name_matches(&mut results, "Command");
+
+        // The Go struct should rank above the markdown heading
+        assert_eq!(
+            results[0].language, "go",
+            "Code definition should rank above markdown heading in definition search"
+        );
+        assert_eq!(results[0].file_path, "command.go");
+        assert_eq!(results[1].language, "markdown");
+    }
+
+    #[test]
+    fn test_doc_languages_all_demoted_below_code() {
+        // All doc languages (markdown, json, toml, yaml) should rank below code definitions
+        let doc_languages = vec!["markdown", "json", "toml", "yaml"];
+
+        for doc_lang in &doc_languages {
+            let mut results = vec![
+                make_result_full("Config", "docs/config.md", 15.0, "module", doc_lang),
+                make_result_full("Config", "src/config.rs", 5.0, "struct", "rust"),
+            ];
+
+            promote_exact_name_matches(&mut results, "Config");
+
+            assert_eq!(
+                results[0].language, "rust",
+                "Code definition should rank above {} heading",
+                doc_lang
+            );
+        }
+    }
+
+    #[test]
+    fn test_doc_language_demotion_preserves_within_group_order() {
+        // Within code definitions, order by score descending (existing behavior).
+        // Within doc definitions, order by score descending.
+        // Code group always before doc group.
+        let mut results = vec![
+            make_result_full("Command", "README.md", 20.0, "module", "markdown"),
+            make_result_full("Command", "api.yaml", 18.0, "module", "yaml"),
+            make_result_full("Command", "command.go", 10.0, "class", "go"),
+            make_result_full("Command", "cmd.py", 8.0, "class", "python"),
+        ];
+
+        promote_exact_name_matches(&mut results, "Command");
+
+        // Code definitions first (sorted by score desc)
+        assert_eq!(results[0].file_path, "command.go");
+        assert_eq!(results[1].file_path, "cmd.py");
+        // Doc definitions after (sorted by score desc)
+        assert_eq!(results[2].file_path, "README.md");
+        assert_eq!(results[3].file_path, "api.yaml");
     }
 }

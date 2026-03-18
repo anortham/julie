@@ -2447,4 +2447,148 @@ mod data_tests {
             "overview should not populate test_refs"
         );
     }
+
+    // === Same-file overload auto-selection tests ===
+
+    #[test]
+    fn test_deep_dive_auto_selects_class_from_same_file_overloads() {
+        let (_tmp, mut db) = setup_db();
+
+        // Register a C++ header file
+        db.store_file_info(&FileInfo {
+            path: "include/foo.hpp".to_string(),
+            language: "cpp".to_string(),
+            hash: "hash_foo_hpp".to_string(),
+            size: 5000,
+            last_modified: 1000000,
+            last_indexed: 0,
+            symbol_count: 8,
+            content: None,
+        })
+        .unwrap();
+
+        // Create 8 symbols named "Foo" in the same file:
+        // 1 class definition + 7 constructor overloads (Function kind)
+        let class_sym = make_symbol(
+            "sym-foo-class",
+            "Foo",
+            SymbolKind::Class,
+            "include/foo.hpp",
+            77,
+            None,
+            Some("class Foo"),
+            Some(Visibility::Public),
+            None,
+        );
+
+        let mut all_symbols = vec![class_sym];
+        for i in 0..7 {
+            all_symbols.push(make_symbol(
+                &format!("sym-foo-ctor-{}", i),
+                "Foo",
+                SymbolKind::Function,
+                "include/foo.hpp",
+                100 + i * 20,
+                Some("sym-foo-class"),
+                Some(&format!("Foo(arg{})", i)),
+                Some(Visibility::Public),
+                None,
+            ));
+        }
+        db.store_symbols(&all_symbols).unwrap();
+
+        // Call deep_dive_query — 8 symbols > DISAMBIGUATION_THRESHOLD (5), all in same file
+        // Should auto-select the class, not return disambiguation list
+        let result = deep_dive_query(&db, "Foo", None, "overview", 10, 10).unwrap();
+
+        // Should contain the auto-selection note
+        assert!(
+            result.contains("Auto-selected"),
+            "Should contain auto-selection note, got:\n{}",
+            result
+        );
+
+        // Should contain the class symbol's signature (proof we picked the class)
+        assert!(
+            result.contains("class Foo"),
+            "Should show the class definition signature, got:\n{}",
+            result
+        );
+
+        // Should contain the class's file:line location
+        assert!(
+            result.contains("include/foo.hpp:77"),
+            "Should show class location, got:\n{}",
+            result
+        );
+
+        // Should NOT contain the disambiguation prompt
+        assert!(
+            !result.contains("Use context_file to disambiguate"),
+            "Should NOT ask for disambiguation when auto-selecting, got:\n{}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_deep_dive_still_disambiguates_when_results_span_multiple_files() {
+        let (_tmp, mut db) = setup_db();
+
+        // Register extra files
+        let files = [
+            "src/engine.rs",
+            "src/main.rs",
+            "src/handler.rs",
+            "lib/a.rs",
+            "lib/b.rs",
+            "lib/c.rs",
+        ];
+        for file in &files {
+            // Some files already registered by setup_db; store_file_info is idempotent
+            let _ = db.store_file_info(&FileInfo {
+                path: file.to_string(),
+                language: "rust".to_string(),
+                hash: format!("hash_{}", file),
+                size: 100,
+                last_modified: 1000000,
+                last_indexed: 0,
+                symbol_count: 1,
+                content: None,
+            });
+        }
+
+        // Create 6 symbols in 6 different files — no file dominates
+        let symbols: Vec<Symbol> = files
+            .iter()
+            .enumerate()
+            .map(|(i, file)| {
+                make_symbol(
+                    &format!("sym-multi-{}", i),
+                    "handle",
+                    SymbolKind::Function,
+                    file,
+                    10,
+                    None,
+                    Some("fn handle()"),
+                    Some(Visibility::Public),
+                    None,
+                )
+            })
+            .collect();
+        db.store_symbols(&symbols).unwrap();
+
+        // 6 symbols across 6 files — should get normal disambiguation list
+        let result = deep_dive_query(&db, "handle", None, "overview", 10, 10).unwrap();
+
+        assert!(
+            result.contains("Use context_file to disambiguate"),
+            "Should ask for disambiguation when results span multiple files, got:\n{}",
+            result
+        );
+        assert!(
+            !result.contains("Auto-selected"),
+            "Should NOT auto-select when results span multiple files, got:\n{}",
+            result
+        );
+    }
 }

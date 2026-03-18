@@ -55,6 +55,13 @@ pub const BLACKLISTED_FILENAMES: &[&str] = &[
     "shrinkwrap.json",
     // Other generated files with common extensions
     "npm-shrinkwrap.json",
+    // Documentation build config files (produce spurious symbols from nav entries)
+    "mkdocs.yml",
+    "mkdocs.yaml",
+    ".readthedocs.yml",
+    ".readthedocs.yaml",
+    "book.toml",
+    "_config.yml",
 ];
 
 /// Blacklisted directory names - directories to exclude from indexing

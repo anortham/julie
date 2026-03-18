@@ -291,6 +291,11 @@ const DEFINITION_KINDS: &[&str] = &[
     "delegate",
 ];
 
+/// Documentation/markup languages whose symbols should rank below code definitions.
+/// When a markdown heading and a Go struct both match "Command" as definitions,
+/// the Go struct is almost certainly what the user wants.
+const DOC_LANGUAGES: &[&str] = &["markdown", "json", "toml", "yaml"];
+
 /// Promote exact name matches to the top of results using a three-tier stable partition.
 ///
 /// When `search_target="definitions"`, the actual definition of a symbol may rank
@@ -329,13 +334,18 @@ pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, 
         }
     }
 
-    // Within definitions tier, sort by score descending (centrality-boosted).
-    // This ensures high-centrality component matches (e.g. Phoenix.Router with centrality 1.0)
-    // outrank zero-centrality exact matches (e.g. test stubs named "Router").
+    // Within definitions tier, sort code-language symbols above doc-language symbols,
+    // then by score descending within each group. This prevents markdown headings
+    // (extracted as "module" symbols) from outranking actual code definitions like
+    // Go structs or Python classes when no language filter is applied.
     definitions.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        let a_is_doc = DOC_LANGUAGES.contains(&a.language.as_str());
+        let b_is_doc = DOC_LANGUAGES.contains(&b.language.as_str());
+        a_is_doc.cmp(&b_is_doc).then_with(|| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
 
     results.extend(definitions);

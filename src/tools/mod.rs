@@ -24,7 +24,8 @@ pub use workspace::ManageWorkspaceTool;
 
 // Re-export shared types and helpers
 pub use shared::{
-    BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS, KNOWN_CODE_EXTENSIONS, OptimizedResponse,
+    BLACKLISTED_DIRECTORIES, BLACKLISTED_EXTENSIONS, BLACKLISTED_FILENAMES, KNOWN_CODE_EXTENSIONS,
+    OptimizedResponse,
 };
 
 // Note: Tool registration now handled by rmcp #[tool_router] macro in handler.rs

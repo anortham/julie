@@ -3,15 +3,18 @@
 /// Post-processes symbols to detect Lua class patterns:
 /// - Tables with metatable setup (local Class = {})
 /// - Variables created with setmetatable (local Dog = setmetatable({}, Animal))
+/// - Variables created with :extend() call (middleclass, classic, 30log patterns)
 /// - Tables with __index pattern (Class.__index = Class)
 /// - Tables with new and colon methods (Class.new, Class:method)
 use crate::base::{Symbol, SymbolKind};
 use regex::Regex;
 use std::sync::LazyLock;
 
-// Static regex compiled once for performance
+// Static regexes compiled once for performance
 static SETMETATABLE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"setmetatable\(\s*\{\s*\}\s*,\s*(\w+)\s*\)").unwrap());
+
+static EXTEND_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+):extend\(").unwrap());
 
 /// Detect and upgrade Lua class patterns
 ///
@@ -40,9 +43,19 @@ pub(crate) fn detect_lua_classes(symbols: &mut Vec<Symbol>) {
                 .map(|s| s.contains("setmetatable("))
                 .unwrap_or(false);
 
-            // Only check class patterns for tables or setmetatable creations
-            if is_table || is_setmetatable {
-                // Look for metatable patterns that indicate this is a class
+            // Pattern 3: Variables created with :extend() call (middleclass, classic, 30log patterns)
+            // e.g., local Doc = Object:extend()
+            let is_extend = symbol
+                .signature
+                .as_ref()
+                .map(|s| s.contains(":extend("))
+                .unwrap_or(false);
+
+            if is_extend {
+                // :extend() alone is sufficient evidence of class creation
+                class_upgrades.push((index, is_setmetatable, is_extend, symbol.signature.clone()));
+            } else if is_table || is_setmetatable {
+                // For tables and setmetatable, check for additional class patterns
                 let has_index_pattern = symbols.iter().any(|s| {
                     s.signature
                         .as_ref()
@@ -70,14 +83,19 @@ pub(crate) fn detect_lua_classes(symbols: &mut Vec<Symbol>) {
 
                 // If it has metatable patterns, upgrade to Class
                 if has_index_pattern || (has_new_method && has_colon_methods) || is_setmetatable {
-                    class_upgrades.push((index, is_setmetatable, symbol.signature.clone()));
+                    class_upgrades.push((
+                        index,
+                        is_setmetatable,
+                        is_extend,
+                        symbol.signature.clone(),
+                    ));
                 }
             }
         }
     }
 
     // Apply class upgrades
-    for (index, is_setmetatable, signature) in class_upgrades {
+    for (index, is_setmetatable, is_extend, signature) in class_upgrades {
         symbols[index].kind = SymbolKind::Class;
 
         // Extract inheritance information from setmetatable pattern
@@ -89,6 +107,34 @@ pub(crate) fn detect_lua_classes(symbols: &mut Vec<Symbol>) {
                     let parent_exists = symbols.iter().any(|s| {
                         s.name == parent_class_name
                             && (s.kind == SymbolKind::Class
+                                || s.metadata
+                                    .as_ref()
+                                    .and_then(|m| m.get("dataType"))
+                                    .map(|dt| dt.as_str() == Some("table"))
+                                    .unwrap_or(false))
+                    });
+
+                    if parent_exists {
+                        let metadata = symbols[index]
+                            .metadata
+                            .get_or_insert_with(std::collections::HashMap::new);
+                        metadata.insert("baseClass".to_string(), parent_class_name.into());
+                    }
+                }
+            }
+        }
+
+        // Extract inheritance information from :extend() pattern
+        // e.g., "local Doc = Object:extend()" -> parent is "Object"
+        if is_extend {
+            if let Some(captures) = signature.as_ref().and_then(|s| EXTEND_RE.captures(s)) {
+                if let Some(parent_class_name) = captures.get(1) {
+                    let parent_class_name = parent_class_name.as_str();
+                    // Verify the parent class exists in our symbols
+                    let parent_exists = symbols.iter().any(|s| {
+                        s.name == parent_class_name
+                            && (s.kind == SymbolKind::Class
+                                || s.kind == SymbolKind::Variable
                                 || s.metadata
                                     .as_ref()
                                     .and_then(|m| m.get("dataType"))
