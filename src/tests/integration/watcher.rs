@@ -39,19 +39,23 @@ fn test_supported_extensions() {
 
 #[test]
 fn test_ignore_patterns() {
-    let patterns = filtering::build_ignore_patterns().unwrap();
+    use std::fs;
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join(".gitignore"), "**/node_modules/**\n*.log\n").unwrap();
 
-    // Test that patterns are created successfully
-    assert!(!patterns.is_empty());
+    let gitignore = filtering::build_gitignore_matcher(dir.path()).unwrap();
 
-    // Test some key patterns work
-    let node_modules_pattern = patterns
-        .iter()
-        .find(|p| p.as_str().contains("node_modules"))
-        .expect("Should have node_modules pattern");
-
-    assert!(node_modules_pattern.matches("src/node_modules/package.json"));
-    assert!(node_modules_pattern.matches("frontend/node_modules/react/index.js"));
+    // Test that gitignore patterns work
+    assert!(
+        gitignore
+            .matched_path_or_any_parents("src/node_modules/package.json", false)
+            .is_ignore()
+    );
+    assert!(
+        gitignore
+            .matched_path_or_any_parents("frontend/node_modules/react/index.js", false)
+            .is_ignore()
+    );
 }
 
 #[test]
@@ -221,7 +225,7 @@ async fn test_remove_event_queued_for_deleted_file() {
 
     let mut extensions = HashSet::new();
     extensions.insert("rs".to_string());
-    let ignore_patterns: Vec<glob::Pattern> = vec![];
+    let gitignore = filtering::build_gitignore_matcher(temp_dir.path()).unwrap();
     let queue: Arc<TokioMutex<VecDeque<crate::watcher::types::FileChangeEvent>>> =
         Arc::new(TokioMutex::new(VecDeque::new()));
 
@@ -231,9 +235,15 @@ async fn test_remove_event_queued_for_deleted_file() {
         attrs: Default::default(),
     };
 
-    process_file_system_event(&extensions, &ignore_patterns, queue.clone(), event)
-        .await
-        .expect("Event processing should succeed");
+    process_file_system_event(
+        &extensions,
+        &gitignore,
+        temp_dir.path(),
+        queue.clone(),
+        event,
+    )
+    .await
+    .expect("Event processing should succeed");
 
     let queue_lock = queue.lock().await;
     assert_eq!(
