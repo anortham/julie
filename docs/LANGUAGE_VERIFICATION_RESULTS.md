@@ -386,3 +386,22 @@
   - lite project includes C/SDL source code — C symbols dominate centrality (SDL_SCANCODE_TO_KEYCODE: 507.0)
   - No test framework in this project — Check 8 is N/A
   - Lua function extraction works well (`:` and `.` method syntax both captured)
+
+---
+
+## Known Limitations (Accepted)
+
+These are unfixed issues that are either language-inherent or low-severity. They do not block usage but may affect specific features for these languages.
+
+| Language | Limitation | Workaround |
+|----------|-----------|------------|
+| **C++** | Zero cross-file references in header-only projects (e.g., nlohmann/json) | Most C++ projects with separate `.cpp` files work correctly |
+| **C** | Centrality splits between header declaration and implementation | Header gets the references; use `context_file` parameter to reach the implementation |
+| **PHP** | Class-level relationship tracking weak for namespace-heavy codebases | Method-level references work; use `language` filter for better results |
+| **Ruby** | Centrality accumulates on `constant` symbol instead of `class` | Class is still found via search; centrality ranking is affected |
+| **Lua** | Class-like tables stored as `variable` kind (no `class` keyword) | Lua metatables are semantically classes but syntactically variables |
+| **Go** | Markdown headings can outrank Go structs in def search without language filter | Use `language="go"` for accurate definition search results |
+| **HTML** | Structural language — no navigable symbols extracted | HTML elements are indexed for full-text search but not symbol navigation |
+| **CSS** | Structural language — no navigable symbols extracted | CSS selectors are indexed for full-text search but not symbol navigation |
+| **JavaScript** | CommonJS `require()` patterns produce fewer relationship edges than ES modules | Centrality may be lower than expected; symbol extraction works correctly |
+| **JSON** | Flat config files may produce no symbols | Structured JSON with nested objects extracts correctly |
