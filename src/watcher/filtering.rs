@@ -142,42 +142,80 @@ pub fn is_gitignored(path: &Path, gitignore: &Gitignore, workspace_root: &Path) 
         .is_ignore()
 }
 
-/// Check if a file should be indexed based on extension and ignore patterns
-#[allow(dead_code)]
+/// Check if a file should be indexed based on extension, blacklists, and gitignore.
+///
+/// Layers (in order):
+/// 1. Must be an existing file on disk
+/// 2. Filename must not be blacklisted (lockfiles, etc.)
+/// 3. Extension must be in supported set
+/// 4. No path component may be a blacklisted directory
+/// 5. Must not match gitignore/julieignore/synthetic patterns
 pub fn should_index_file(
     path: &Path,
     supported_extensions: &HashSet<String>,
-    ignore_patterns: &[glob::Pattern],
+    gitignore: &Gitignore,
+    workspace_root: &Path,
 ) -> bool {
-    // Check if it's a file
     if !path.is_file() {
         return false;
     }
-
-    // Skip blacklisted filenames (lockfiles with non-blacklisted extensions)
     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
         if BLACKLISTED_FILENAMES.contains(&file_name) {
             return false;
         }
     }
-
-    // Check extension
     if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
         if !supported_extensions.contains(ext) {
             return false;
         }
     } else {
-        return false; // No extension
+        return false;
     }
+    if contains_blacklisted_directory(path) {
+        return false;
+    }
+    if is_gitignored(path, gitignore, workspace_root) {
+        return false;
+    }
+    true
+}
 
-    // Check ignore patterns
-    let path_str = path.to_string_lossy();
-    for pattern in ignore_patterns {
-        if pattern.matches(&path_str) {
+/// Check if a deletion event should be processed.
+///
+/// Same filtering as `should_index_file` but:
+/// - Skips the `is_file()` check (the file is already gone)
+/// - Hardcodes `is_dir: false` for gitignore matching (deleted paths are treated as files)
+pub fn should_process_deletion(
+    path: &Path,
+    supported_extensions: &HashSet<String>,
+    gitignore: &Gitignore,
+    workspace_root: &Path,
+) -> bool {
+    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        if BLACKLISTED_FILENAMES.contains(&file_name) {
             return false;
         }
     }
-
+    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+        if !supported_extensions.contains(ext) {
+            return false;
+        }
+    } else {
+        return false;
+    }
+    if contains_blacklisted_directory(path) {
+        return false;
+    }
+    let rel_path = match path.strip_prefix(workspace_root) {
+        Ok(p) => p,
+        Err(_) => return true,
+    };
+    if gitignore
+        .matched_path_or_any_parents(rel_path, false)
+        .is_ignore()
+    {
+        return false;
+    }
     true
 }
 
@@ -279,26 +317,24 @@ mod tests {
     #[test]
     fn test_should_index_file_skips_lockfiles() {
         use std::fs;
-        let dir = std::env::temp_dir();
-        let lockfile = dir.join("pnpm-lock.yaml");
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let lockfile = root.join("pnpm-lock.yaml");
         fs::write(&lockfile, "lockfileVersion: '9.0'").unwrap();
 
         let extensions = build_supported_extensions();
-        let patterns = build_ignore_patterns().unwrap();
+        let gitignore = build_gitignore_matcher(root).unwrap();
 
         assert!(
-            !should_index_file(&lockfile, &extensions, &patterns),
+            !should_index_file(&lockfile, &extensions, &gitignore, root),
             "pnpm-lock.yaml must not be indexed by watcher"
         );
-        let lockfile2 = dir.join("package-lock.json");
+        let lockfile2 = root.join("package-lock.json");
         fs::write(&lockfile2, "{}").unwrap();
         assert!(
-            !should_index_file(&lockfile2, &extensions, &patterns),
+            !should_index_file(&lockfile2, &extensions, &gitignore, root),
             "package-lock.json must not be indexed by watcher"
         );
-
-        fs::remove_file(&lockfile).ok();
-        fs::remove_file(&lockfile2).ok();
     }
 
     #[test]
@@ -541,6 +577,131 @@ mod tests {
         assert!(!is_gitignored(
             Path::new("/completely/different/path.rs"),
             &matcher,
+            root
+        ));
+    }
+
+    #[test]
+    fn test_should_index_file_with_gitignore() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Create .gitignore
+        fs::write(root.join(".gitignore"), "vendor/\n*.log\n").unwrap();
+
+        // Create test files
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("vendor")).unwrap();
+        fs::create_dir_all(root.join("node_modules")).unwrap();
+        fs::write(root.join("src/main.rs"), "fn main() {}").unwrap();
+        fs::write(root.join("vendor/lib.rs"), "// vendor").unwrap();
+        fs::write(root.join("node_modules/foo.js"), "// nm").unwrap();
+        fs::write(root.join("debug.log"), "log line").unwrap();
+        fs::write(root.join("src/app.txt"), "not code").unwrap();
+        fs::create_dir_all(root.join(".julie/db")).unwrap();
+        fs::write(root.join(".julie/db/test.rs"), "// julie data").unwrap();
+
+        let extensions = build_supported_extensions();
+        let gitignore = build_gitignore_matcher(root).unwrap();
+
+        // Normal source file — accepted
+        assert!(should_index_file(
+            &root.join("src/main.rs"),
+            &extensions,
+            &gitignore,
+            root
+        ));
+
+        // Gitignored vendor/ — rejected
+        assert!(!should_index_file(
+            &root.join("vendor/lib.rs"),
+            &extensions,
+            &gitignore,
+            root
+        ));
+
+        // Blacklisted directory node_modules/ — rejected
+        assert!(!should_index_file(
+            &root.join("node_modules/foo.js"),
+            &extensions,
+            &gitignore,
+            root
+        ));
+
+        // Unsupported extension — rejected
+        assert!(!should_index_file(
+            &root.join("src/app.txt"),
+            &extensions,
+            &gitignore,
+            root
+        ));
+
+        // Synthetic pattern .julie/ — rejected
+        assert!(!should_index_file(
+            &root.join(".julie/db/test.rs"),
+            &extensions,
+            &gitignore,
+            root
+        ));
+    }
+
+    #[test]
+    fn test_should_process_deletion_with_gitignore() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        fs::write(root.join(".gitignore"), "build/\n").unwrap();
+
+        let extensions = build_supported_extensions();
+        let gitignore = build_gitignore_matcher(root).unwrap();
+
+        // Normal source file (doesn't exist on disk — that's fine for deletion)
+        assert!(should_process_deletion(
+            &root.join("src/main.rs"),
+            &extensions,
+            &gitignore,
+            root
+        ));
+
+        // Gitignored path — skip deletion processing
+        assert!(!should_process_deletion(
+            &root.join("build/output.rs"),
+            &extensions,
+            &gitignore,
+            root
+        ));
+
+        // Blacklisted directory — skip
+        assert!(!should_process_deletion(
+            &root.join("node_modules/foo.js"),
+            &extensions,
+            &gitignore,
+            root
+        ));
+
+        // Blacklisted filename — skip
+        assert!(!should_process_deletion(
+            &root.join("pnpm-lock.yaml"),
+            &extensions,
+            &gitignore,
+            root
+        ));
+
+        // Unsupported extension — skip
+        assert!(!should_process_deletion(
+            &root.join("readme.txt"),
+            &extensions,
+            &gitignore,
+            root
+        ));
+
+        // Path outside workspace root — should be processed (returns true)
+        assert!(should_process_deletion(
+            Path::new("/other/repo/main.rs"),
+            &extensions,
+            &gitignore,
             root
         ));
     }
