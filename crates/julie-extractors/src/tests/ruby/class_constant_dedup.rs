@@ -260,4 +260,94 @@ end
             "Class name 'Application' should not be duplicated as Constant"
         );
     }
+
+    #[test]
+    fn test_constant_references_not_extracted_as_symbols() {
+        let code = r#"
+module Sinatra
+  class Base
+    def call(env)
+    end
+  end
+
+  class Application < Base
+    include Helpers
+  end
+
+  def self.register(klass)
+    Sinatra::Base.register(klass)
+  end
+end
+"#;
+
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let constant_symbols: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Constant)
+            .map(|s| s.name.clone())
+            .collect();
+
+        assert!(
+            constant_symbols.is_empty(),
+            "Expected no Constant symbols (all constants are references), but found: {:?}",
+            constant_symbols
+        );
+
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "Sinatra" && s.kind == SymbolKind::Module),
+            "Module Sinatra should exist"
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "Base" && s.kind == SymbolKind::Class),
+            "Class Base should exist"
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "Application" && s.kind == SymbolKind::Class),
+            "Class Application should exist"
+        );
+    }
+
+    #[test]
+    fn test_real_constant_definitions_still_extracted() {
+        let code = r#"
+module Config
+  MAX_SIZE = 100
+  VERSION = "1.0"
+  DEFAULT_OPTIONS = { timeout: 30 }
+end
+"#;
+
+        let (mut extractor, tree) = create_extractor_and_parse(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let constant_names: Vec<_> = symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::Constant)
+            .map(|s| s.name.clone())
+            .collect();
+
+        assert!(
+            constant_names.contains(&"MAX_SIZE".to_string()),
+            "MAX_SIZE should be extracted as a Constant, got: {:?}",
+            constant_names
+        );
+        assert!(
+            constant_names.contains(&"VERSION".to_string()),
+            "VERSION should be extracted as a Constant, got: {:?}",
+            constant_names
+        );
+        assert!(
+            constant_names.contains(&"DEFAULT_OPTIONS".to_string()),
+            "DEFAULT_OPTIONS should be extracted as a Constant, got: {:?}",
+            constant_names
+        );
+    }
 }

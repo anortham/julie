@@ -8,7 +8,7 @@ use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::search::SearchFilter;
 use crate::search::scoring::{
-    apply_centrality_boost, is_test_path, promote_exact_name_matches, DOC_LANGUAGES,
+    DOC_LANGUAGES, apply_centrality_boost, is_test_path, promote_exact_name_matches,
 };
 
 // Re-export for tests

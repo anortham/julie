@@ -3073,3 +3073,111 @@ fn test_compute_reference_scores_propagates_header_to_implementation() {
         impl_score
     );
 }
+
+/// Step 1b excludes test-file symbols from the name-based identifier boost.
+/// Two class symbols named "Flask" — one in production, one in tests — should
+/// receive very different centrality when cross-file type_usage identifiers exist.
+#[test]
+fn test_step1b_identifier_boost_excludes_test_file_symbols() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    for (path, lang) in [
+        ("src/app.py", "python"),
+        ("tests/test_config.py", "python"),
+        ("src/routes.py", "python"),
+        ("src/views.py", "python"),
+        ("src/auth.py", "python"),
+        ("src/models.py", "python"),
+        ("src/forms.py", "python"),
+        ("src/cli.py", "python"),
+        ("src/utils.py", "python"),
+        ("src/admin.py", "python"),
+        ("src/api.py", "python"),
+        ("src/middleware.py", "python"),
+    ] {
+        db.store_file_info(&FileInfo {
+            path: path.to_string(),
+            language: lang.to_string(),
+            hash: "abc".to_string(),
+            size: 100,
+            last_modified: 0,
+            last_indexed: 0,
+            symbol_count: 1,
+            content: None,
+        })
+        .unwrap();
+    }
+
+    // Production Flask class
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('flask_prod', 'Flask', 'class', 'python', 'src/app.py', 109, 500, 0, 1, 0, 10000)",
+            [],
+        )
+        .unwrap();
+
+    // Test Flask class
+    db.conn
+        .execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, start_line, end_line, start_col, end_col, start_byte, end_byte)
+             VALUES ('flask_test', 'Flask', 'class', 'python', 'tests/test_config.py', 202, 250, 0, 1, 0, 5000)",
+            [],
+        )
+        .unwrap();
+
+    // Add type_usage identifiers named "Flask" from 10 non-test files
+    let source_files = [
+        "src/routes.py",
+        "src/views.py",
+        "src/auth.py",
+        "src/models.py",
+        "src/forms.py",
+        "src/cli.py",
+        "src/utils.py",
+        "src/admin.py",
+        "src/api.py",
+        "src/middleware.py",
+    ];
+    for (i, file) in source_files.iter().enumerate() {
+        db.conn
+            .execute(
+                "INSERT INTO identifiers (id, name, kind, language, file_path, start_line, start_col, end_line, end_col)
+                 VALUES (?1, 'Flask', 'type_usage', 'python', ?2, 1, 0, 1, 10)",
+                rusqlite::params![format!("id_type_{}", i), file],
+            )
+            .unwrap();
+    }
+
+    db.compute_reference_scores().unwrap();
+
+    let prod_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'flask_prod'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let test_score: f64 = db
+        .conn
+        .query_row(
+            "SELECT reference_score FROM symbols WHERE id = 'flask_test'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert!(
+        prod_score > 0.0,
+        "Production Flask should receive Step 1b identifier boost, got {}",
+        prod_score
+    );
+    assert!(
+        (test_score - 0.0).abs() < f64::EPSILON,
+        "Test-file Flask should NOT receive Step 1b identifier boost, got {}",
+        test_score
+    );
+}

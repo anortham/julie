@@ -207,20 +207,39 @@ impl RubyExtractor {
             }
             "constant" => {
                 // Skip constants that are assignment targets (assignment handler creates the symbol)
-                // Skip constants that are class/module names — already extracted as Class/Module symbols
-                // Skip constants that are superclass references (e.g., `class Child < Base`)
-                let skip = node.parent().is_some_and(|p| {
+                // and constants that are REFERENCES rather than DEFINITIONS.
+                let is_reference = node.parent().is_some_and(|p| {
                     match p.kind() {
-                        // Direct child of class/module: the name field
+                        // Class/module name field — already extracted by class/module handler
                         "class" | "module" => p
                             .child_by_field_name("name")
                             .is_some_and(|n| n.id() == node.id()),
-                        // Child of a superclass node (e.g., `< Base` in `class Child < Base`)
+                        // Superclass reference: class Foo < Bar
                         "superclass" => true,
+                        // Scope resolution: Sinatra::Base
+                        "scope_resolution" => true,
+                        // Method call receiver/target: Base.new(), include Helpers
+                        "call" => true,
+                        // Method argument: method(Base)
+                        "argument_list" => true,
+                        // Element reference: hash[Base]
+                        "element_reference" => true,
+                        // Hash pair: { key: Base }
+                        "pair" => true,
+                        // Binary expression: x == Base, x < Base
+                        "binary" => true,
+                        // Ternary: Base ? x : y
+                        "conditional" => true,
+                        // Parenthesized: (Base)
+                        "parenthesized_statements" => true,
+                        // Array literal: [Base, Other]
+                        "array" => true,
+                        // Return/yield: return Base
+                        "return" | "yield" => true,
                         _ => false,
                     }
                 });
-                if !skip && !helpers::is_assignment_target(&node) {
+                if !is_reference && !helpers::is_assignment_target(&node) {
                     symbol_opt = Some(symbols::extract_constant(
                         &mut self.base,
                         node,

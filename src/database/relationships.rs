@@ -311,7 +311,15 @@ impl SymbolDatabase {
                    AND i.file_path != symbols.file_path),
                 0.0
             )
-            WHERE kind IN ('class', 'struct', 'enum', 'interface', 'trait', 'type', 'module', 'namespace', 'constant')",
+            WHERE kind IN ('class', 'struct', 'enum', 'interface', 'trait', 'type', 'module', 'namespace', 'constant')
+              AND NOT (
+                  file_path LIKE '%/test/%' OR file_path LIKE '%/tests/%'
+                  OR file_path LIKE 'test/%' OR file_path LIKE 'tests/%'
+                  OR file_path LIKE '%/spec/%' OR file_path LIKE '%/specs/%'
+                  OR file_path LIKE 'spec/%' OR file_path LIKE 'specs/%'
+                  OR file_path LIKE '%/__tests__/%' OR file_path LIKE '__tests__/%'
+                  OR file_path LIKE '%.Tests/%' OR file_path LIKE '%.Test/%'
+              )",
             [],
         )?;
 
