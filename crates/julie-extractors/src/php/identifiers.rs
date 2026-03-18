@@ -1,4 +1,4 @@
-// PHP Extractor - Identifier extraction (function calls, member access)
+// PHP Extractor - Identifier extraction (function calls, member access, type usage)
 
 use super::PhpExtractor;
 use crate::base::{IdentifierKind, Symbol};
@@ -66,6 +66,68 @@ pub(super) fn extract_identifier_from_node(
                     IdentifierKind::MemberAccess,
                     containing_symbol_id,
                 );
+            }
+        }
+
+        // Type annotations: parameter types, return types, property types.
+        // PHP tree-sitter uses `named_type` for class/interface type references
+        // (e.g., Request, Response, App) and `primitive_type` for builtins
+        // (e.g., int, string, void). We only create type_usage for named_type.
+        //
+        // named_type appears in:
+        //   - Parameter types:  function handle(Request $req)
+        //   - Return types:     function handle(): Response
+        //   - Property types:   public Request $request
+        //   - Union types:      string|Request  (named_type inside union_type)
+        //   - Optional types:   ?Request        (named_type inside optional_type)
+        "named_type" => {
+            let name = extractor.get_base().get_node_text(&node);
+
+            // Skip single-letter type params (rare in PHP, but possible)
+            if name.len() <= 1 {
+                return;
+            }
+
+            let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
+
+            extractor.get_base_mut().create_identifier(
+                &node,
+                name,
+                IdentifierKind::TypeUsage,
+                containing_symbol_id,
+            );
+        }
+
+        // instanceof expressions: $obj instanceof Router
+        // PHP tree-sitter represents this as binary_expression with an
+        // "instanceof" anonymous child. The type name after instanceof is
+        // a `name` node.
+        "binary_expression" => {
+            let mut cursor = node.walk();
+            let mut found_instanceof = false;
+            for child in node.children(&mut cursor) {
+                if found_instanceof && child.is_named() {
+                    let name = extractor.get_base().get_node_text(&child);
+
+                    // Skip single-letter names
+                    if name.len() <= 1 {
+                        return;
+                    }
+
+                    let containing_symbol_id =
+                        find_containing_symbol_id(extractor, node, symbol_map);
+
+                    extractor.get_base_mut().create_identifier(
+                        &child,
+                        name,
+                        IdentifierKind::TypeUsage,
+                        containing_symbol_id,
+                    );
+                    return;
+                }
+                if child.kind() == "instanceof" {
+                    found_instanceof = true;
+                }
             }
         }
 

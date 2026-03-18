@@ -1,7 +1,7 @@
-//! Identifier extraction for function calls and member access
+//! Identifier extraction for function calls, member access, and type references
 //!
-//! This module handles extraction of identifier usages within C code, such as function calls
-//! and member/field access operations.
+//! This module handles extraction of identifier usages within C code, such as function calls,
+//! member/field access operations, and type_identifier references (TypeUsage).
 
 use crate::base::{Identifier, IdentifierKind, Symbol};
 use crate::c::CExtractor;
@@ -61,6 +61,53 @@ fn extract_identifier_from_node(
                     IdentifierKind::Call,
                     containing_symbol_id,
                 );
+            }
+        }
+
+        // Type references: typedef names, struct tags, enum tags in type positions.
+        // C's tree-sitter grammar uses `type_identifier` for user-defined types
+        // appearing in declarations, parameters, field types, casts, sizeof, etc.
+        "type_identifier" => {
+            if let Some(parent) = node.parent() {
+                let is_definition_site = match parent.kind() {
+                    // `struct Foo { ... }` — "Foo" is the tag being defined
+                    // But `struct Foo*` in a parameter is a USAGE (struct_specifier
+                    // without a body/field_declaration_list child).
+                    "struct_specifier" | "union_specifier" => {
+                        // It's a definition if the struct/union has a body
+                        parent
+                            .child_by_field_name("body")
+                            .is_some()
+                    }
+                    // `enum Color { ... }` — "Color" is the tag being defined
+                    "enum_specifier" => {
+                        parent
+                            .child_by_field_name("body")
+                            .is_some()
+                    }
+                    // `typedef int MyInt;` — "MyInt" is the alias being defined.
+                    // In C's tree-sitter grammar, the typedef alias is the
+                    // `declarator` field of `type_definition`.
+                    "type_definition" => {
+                        // The type_identifier is the declarator (the new name)
+                        node.parent()
+                            .and_then(|p| p.child_by_field_name("declarator"))
+                            .is_some_and(|d| d.id() == node.id())
+                    }
+                    _ => false,
+                };
+
+                if !is_definition_site {
+                    let name = extractor.base.get_node_text(&node);
+                    let containing_symbol_id =
+                        find_containing_symbol_id(extractor, node, symbol_map);
+                    extractor.base.create_identifier(
+                        &node,
+                        name,
+                        IdentifierKind::TypeUsage,
+                        containing_symbol_id,
+                    );
+                }
             }
         }
 

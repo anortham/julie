@@ -181,6 +181,14 @@ pub(crate) fn is_test_path(path: &str) -> bool {
         return true;
     }
 
+    // C/C++: jq_test.c, parser_test.cpp
+    if (file_name.ends_with("_test.c")
+        || file_name.ends_with("_test.cc")
+        || file_name.ends_with("_test.cpp"))
+    {
+        return true;
+    }
+
     // JS/TS: Auth.test.tsx, Auth.spec.ts, etc.
     let test_spec_extensions = [
         ".test.ts",

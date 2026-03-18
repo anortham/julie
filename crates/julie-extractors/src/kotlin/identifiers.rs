@@ -74,6 +74,33 @@ fn extract_identifier_from_node(
             }
         }
 
+        // Type references in type positions: val x: Foo, fun f(a: Foo): Bar,
+        // class Foo(service: Bar), typealias A = Foo
+        // Kotlin uses `user_type` for type annotations. It contains an
+        // `identifier` child for the type name. Unlike Scala/Java,
+        // class/interface/object declaration names use `identifier`
+        // directly (not inside `user_type`), so we don't need to filter
+        // declaration names here.
+        "user_type" => {
+            // Extract the first identifier child — that's the type name.
+            // Kotlin tree-sitter uses `identifier` (not `simple_identifier`)
+            // inside `user_type` nodes.
+            let name_node = node
+                .children(&mut node.walk())
+                .find(|n| n.kind() == "identifier" || n.kind() == "simple_identifier");
+
+            if let Some(name_node) = name_node {
+                let name = base.get_node_text(&name_node);
+
+                if is_kotlin_noise_type(&name) {
+                    return;
+                }
+
+                let containing = find_containing_symbol_id(base, node, symbol_map);
+                base.create_identifier(&name_node, name, IdentifierKind::TypeUsage, containing);
+            }
+        }
+
         // Member access: object.property
         "navigation_expression" => {
             // Only extract if it's NOT part of a call_expression
@@ -117,6 +144,39 @@ fn find_containing_symbol_id(
 
     base.find_containing_symbol(&node, &file_symbols)
         .map(|s| s.id.clone())
+}
+
+/// Returns true for Kotlin types that are too common to be meaningful
+/// type references for centrality scoring.
+///
+/// Includes:
+/// - Single-letter type params (T, K, V, E, R) — generic type parameters
+/// - Kotlin/JVM primitive and base types — ubiquitous in every file
+fn is_kotlin_noise_type(name: &str) -> bool {
+    // Single-letter uppercase names are almost always generic type parameters.
+    if name.len() == 1 && name.chars().next().map_or(false, |c| c.is_ascii_uppercase()) {
+        return true;
+    }
+
+    matches!(
+        name,
+        // Kotlin primitive types
+        "Int"
+            | "Long"
+            | "Short"
+            | "Byte"
+            | "Float"
+            | "Double"
+            | "Char"
+            | "Boolean"
+            | "Unit"
+            // Kotlin top types
+            | "Any"
+            | "Nothing"
+            // JVM interop
+            | "String"
+            | "Object"
+    )
 }
 
 /// Helper to extract the rightmost identifier in a navigation_expression

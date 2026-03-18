@@ -1,12 +1,13 @@
 //! Identifier Extraction Tests for PHP
 //!
-//! Tests for extracting identifiers (function calls, member access, chained access)
-//! from PHP code. Validates that identifier extraction correctly:
+//! Tests for extracting identifiers (function calls, member access, chained access,
+//! type usages) from PHP code. Validates that identifier extraction correctly:
 //! - Finds function calls
 //! - Finds member access patterns
 //! - Handles chained member access
 //! - Tracks containing symbols
 //! - Avoids duplicate identifiers at same location
+//! - Extracts type_usage identifiers for type annotations
 
 use crate::base::IdentifierKind;
 use crate::php::PhpExtractor;
@@ -278,5 +279,103 @@ class Test {
     assert_ne!(
         process_calls[0].start_line, process_calls[1].start_line,
         "Duplicate calls should have different line numbers"
+    );
+}
+
+#[test]
+fn test_php_type_usage_identifiers() {
+    // PHP type annotations should produce type_usage identifiers for class types.
+    // This is what drives centrality scores for types like Request, Response, App.
+    let php_code = r#"<?php
+
+class UserService {
+    public Request $request;
+
+    public function handle(Request $req, int $count): Response {
+        $x = $obj instanceof Router;
+        return new Response();
+    }
+}
+
+function standalone(App $app): void {
+    $app->run();
+}
+"#;
+
+    let mut parser = init_parser();
+    let tree = parser.parse(php_code, None).unwrap();
+
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = PhpExtractor::new(
+        "php".to_string(),
+        "test.php".to_string(),
+        php_code.to_string(),
+        &workspace_root,
+    );
+
+    let symbols = extractor.extract_symbols(&tree);
+    let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+    // Collect all type_usage identifiers
+    let type_usages: Vec<_> = identifiers
+        .iter()
+        .filter(|id| id.kind == IdentifierKind::TypeUsage)
+        .collect();
+
+    let type_names: Vec<&str> = type_usages.iter().map(|id| id.name.as_str()).collect();
+
+    // Property type: public Request $request
+    assert!(
+        type_names.contains(&"Request"),
+        "Should extract 'Request' type_usage from property type and parameter type. Got: {:?}",
+        type_names
+    );
+
+    // Return type: ): Response
+    assert!(
+        type_names.contains(&"Response"),
+        "Should extract 'Response' type_usage from return type. Got: {:?}",
+        type_names
+    );
+
+    // instanceof: $obj instanceof Router
+    assert!(
+        type_names.contains(&"Router"),
+        "Should extract 'Router' type_usage from instanceof. Got: {:?}",
+        type_names
+    );
+
+    // Standalone function parameter: App $app
+    assert!(
+        type_names.contains(&"App"),
+        "Should extract 'App' type_usage from function parameter. Got: {:?}",
+        type_names
+    );
+
+    // Request appears twice (property type + parameter type)
+    let request_count = type_usages.iter().filter(|id| id.name == "Request").count();
+    assert!(
+        request_count >= 2,
+        "Request should appear at least twice (property + parameter). Got: {}",
+        request_count
+    );
+
+    // Builtin types should NOT appear as type_usage: int, void
+    assert!(
+        !type_names.contains(&"int"),
+        "Builtin 'int' should not be a type_usage identifier"
+    );
+    assert!(
+        !type_names.contains(&"void"),
+        "Builtin 'void' should not be a type_usage identifier"
+    );
+
+    // Verify containing symbols are set correctly
+    let app_usage = type_usages.iter().find(|id| id.name == "App").unwrap();
+    let standalone_fn = symbols.iter().find(|s| s.name == "standalone").unwrap();
+    assert_eq!(
+        app_usage.containing_symbol_id.as_ref(),
+        Some(&standalone_fn.id),
+        "App type_usage should be contained within standalone function"
     );
 }

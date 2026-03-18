@@ -2088,4 +2088,5 @@ class Config(val name: String, val count: Int) {
     }
 }
 mod cross_file_relationships;
+mod identifiers;
 mod types; // Phase 4: Type extraction verification tests // Cross-file relationship resolution tests

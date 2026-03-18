@@ -214,6 +214,182 @@ void execute(User* user) {
     }
 
     #[test]
+    fn test_c_type_usage_identifiers() {
+        // C type references should produce TypeUsage identifiers.
+        // Same bug fixed in TypeScript, Scala, GDScript, Zig extractors.
+        let c_code = r#"
+typedef struct {
+    int x;
+    int y;
+} Point;
+
+typedef struct {
+    Point center;       // field type → TypeUsage for Point
+    float radius;
+} Circle;
+
+// struct tag used in a typed parameter
+struct NodeData {
+    int value;
+};
+
+// function using user types in params, return type, locals, and casts
+Circle* make_circle(Point origin, float r) {
+    Circle* c = (Circle*)malloc(sizeof(Circle));
+    c->center = origin;
+    c->radius = r;
+    return c;
+}
+
+void process(struct NodeData* data) {
+    Point p;
+    p.x = data->value;
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(c_code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CExtractor::new(
+            "c".to_string(),
+            "test.c".to_string(),
+            c_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        let type_usages: Vec<_> = identifiers
+            .iter()
+            .filter(|id| id.kind == IdentifierKind::TypeUsage)
+            .collect();
+        let type_names: Vec<&str> = type_usages.iter().map(|id| id.name.as_str()).collect();
+
+        // Field type: Point center → TypeUsage for "Point"
+        assert!(
+            type_names.contains(&"Point"),
+            "Should extract 'Point' TypeUsage from field type.\nFound: {:?}",
+            type_names
+        );
+
+        // Return type: Circle* make_circle → TypeUsage for "Circle"
+        assert!(
+            type_names.contains(&"Circle"),
+            "Should extract 'Circle' TypeUsage from return type / params.\nFound: {:?}",
+            type_names
+        );
+
+        // Parameter type: Point origin → TypeUsage for "Point"
+        // Local variable type: Point p → TypeUsage for "Point"
+        let point_count = type_names.iter().filter(|n| **n == "Point").count();
+        assert!(
+            point_count >= 2,
+            "Should extract 'Point' TypeUsage from field, param, and local var (got {})\nFound: {:?}",
+            point_count,
+            type_names
+        );
+
+        // Cast expression: (Circle*) → TypeUsage for "Circle"
+        // sizeof(Circle) → TypeUsage for "Circle"
+        let circle_count = type_names.iter().filter(|n| **n == "Circle").count();
+        assert!(
+            circle_count >= 2,
+            "Should extract multiple 'Circle' TypeUsage (return, param decl, cast, sizeof) (got {})\nFound: {:?}",
+            circle_count,
+            type_names
+        );
+
+        // Struct declaration tag names should NOT appear as TypeUsage.
+        // "Point" and "Circle" are typedef aliases of anonymous structs, so no tag name.
+        // "NodeData" IS a struct tag — it appears in `struct NodeData { ... }` as a definition.
+        // But `struct NodeData*` in the parameter is a usage — the parent there is
+        // `struct_specifier` in a type position, not at declaration level.
+        // We skip tag names only when the struct_specifier is the BODY of a declaration
+        // (i.e., when its parent is a `type_definition` or at top-level `declaration`
+        // and the struct has a body).
+        // For now: NodeData in `struct NodeData { ... }` definition should be skipped.
+        // NodeData in `struct NodeData*` parameter usage is fine to include.
+        let nodedata_usages: Vec<_> = type_usages
+            .iter()
+            .filter(|id| id.name == "NodeData")
+            .collect();
+        // At minimum, the parameter usage of `struct NodeData*` should produce a TypeUsage
+        assert!(
+            !nodedata_usages.is_empty(),
+            "Should extract 'NodeData' TypeUsage from parameter `struct NodeData*`.\nFound type_usages: {:?}",
+            type_names
+        );
+    }
+
+    #[test]
+    fn test_c_type_usage_skips_declaration_tags() {
+        // Struct/enum/union tags at DEFINITION sites should NOT produce TypeUsage
+        let c_code = r#"
+struct MyStruct {
+    int value;
+};
+
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+};
+
+union Data {
+    int i;
+    float f;
+};
+
+typedef int MyInt;
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(c_code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CExtractor::new(
+            "c".to_string(),
+            "test.c".to_string(),
+            c_code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+        let type_usages: Vec<_> = identifiers
+            .iter()
+            .filter(|id| id.kind == IdentifierKind::TypeUsage)
+            .collect();
+        let type_names: Vec<&str> = type_usages.iter().map(|id| id.name.as_str()).collect();
+
+        // These are all DEFINITIONS, not usages — none should appear as TypeUsage
+        assert!(
+            !type_names.contains(&"MyStruct"),
+            "Struct definition tag should NOT be TypeUsage.\nFound: {:?}",
+            type_names
+        );
+        assert!(
+            !type_names.contains(&"Color"),
+            "Enum definition tag should NOT be TypeUsage.\nFound: {:?}",
+            type_names
+        );
+        assert!(
+            !type_names.contains(&"Data"),
+            "Union definition tag should NOT be TypeUsage.\nFound: {:?}",
+            type_names
+        );
+        // typedef alias name (MyInt) should NOT be TypeUsage
+        assert!(
+            !type_names.contains(&"MyInt"),
+            "Typedef alias name should NOT be TypeUsage.\nFound: {:?}",
+            type_names
+        );
+    }
+
+    #[test]
     fn test_no_duplicate_identifiers() {
         let c_code = r#"
 void process() {
