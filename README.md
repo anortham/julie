@@ -1,5 +1,7 @@
 # Julie
 
+**[Website](https://anortham.github.io/julie/)** · **[Installation](#installation)** · **[Tools](#tools-8)** · **[Skills](#skills)** · **[33 Languages](#supported-languages-33)**
+
 A cross-platform code intelligence server built in Rust, providing LSP-quality features across 33 programming languages via the Model Context Protocol (MCP).
 
 ## Why Julie?
