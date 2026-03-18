@@ -7,7 +7,9 @@ use super::query::matches_glob_pattern;
 use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::search::SearchFilter;
-use crate::search::scoring::{apply_centrality_boost, is_test_path, promote_exact_name_matches};
+use crate::search::scoring::{
+    apply_centrality_boost, is_test_path, promote_exact_name_matches, DOC_LANGUAGES,
+};
 
 // Re-export for tests
 #[cfg(test)]
@@ -359,6 +361,10 @@ fn definition_search_with_index(
                     let mut prepend: Vec<Symbol> = db_defs
                         .into_iter()
                         .filter(|s| !existing_ids.contains(&s.id))
+                        // Don't prepend doc-language definitions (markdown headings, YAML keys)
+                        // — they're never the "rescued high-centrality definitions" this step
+                        // targets, and prepending them overrides promote_exact_name_matches sorting.
+                        .filter(|s| !DOC_LANGUAGES.contains(&s.language.as_str()))
                         .map(|s| {
                             let sym = tantivy_symbol_to_symbol(
                                 crate::search::index::SymbolSearchResult {

@@ -294,7 +294,7 @@ const DEFINITION_KINDS: &[&str] = &[
 /// Documentation/markup languages whose symbols should rank below code definitions.
 /// When a markdown heading and a Go struct both match "Command" as definitions,
 /// the Go struct is almost certainly what the user wants.
-const DOC_LANGUAGES: &[&str] = &["markdown", "json", "toml", "yaml"];
+pub(crate) const DOC_LANGUAGES: &[&str] = &["markdown", "json", "toml", "yaml"];
 
 /// Promote exact name matches to the top of results using a three-tier stable partition.
 ///
