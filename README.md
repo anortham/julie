@@ -236,19 +236,21 @@ Julie ships with 10 pre-built skills — reusable prompt workflows that combine 
 
 ### Installing Skills
 
-Skills ship as Markdown files in `.claude/skills/`. Each harness has its own location for custom instructions:
+Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harnesses now support the same skill format — just copy the skill directories to the right location:
 
-| Harness | Skill Location | Notes |
-|---------|---------------|-------|
-| **Claude Code** | `.claude/skills/` | Works automatically — skills are detected on startup |
-| **VS Code / GitHub Copilot** | `.github/copilot-instructions.md` | Paste skill content into this file, or reference with `@file` syntax |
-| **Cursor** | `.cursor/rules/*.mdc` | Create one `.mdc` file per skill in the rules directory |
-| **Windsurf** | `.windsurf/rules/*.md` | Place skill files in the rules directory, or use `.windsurfrules` at project root |
-| **Gemini CLI** | `GEMINI.md` | Paste skill content into project-level `GEMINI.md`; supports `@file.md` imports |
-| **Codex CLI** | `AGENTS.md` | Paste skill content into project-level `AGENTS.md` |
+| Harness | Skills Directory | Notes |
+|---------|-----------------|-------|
+| **Claude Code** | `.claude/skills/` | Works automatically — skills are already here |
+| **VS Code / GitHub Copilot** | `.claude/skills/` or `.github/skills/` | Reads `.claude/skills/` natively — no copying needed |
+| **Gemini CLI** | `.gemini/skills/` or `.agents/skills/` | Copy skill directories; same `SKILL.md` format |
+| **Windsurf** | `.windsurf/skills/` | Copy skill directories to `.windsurf/skills/` |
+| **Cursor** | `.cursor/rules/` | Copy `SKILL.md` content into `.mdc` files in the rules directory |
+| **Codex CLI** | `.agents/skills/` | Copy skill directories; reads `SKILL.md` format |
 | **OpenCode** | Via `instructions` config | Add skill file paths to the `instructions` array in `opencode.json` |
 
-To use Julie's skills in a non-Claude-Code harness, copy the skill files from `.claude/skills/*/SKILL.md` to the appropriate location for your tool. Each skill file is self-contained and includes the tool calls and output format needed.
+**For harnesses that read `.claude/skills/` natively** (Claude Code, VS Code/Copilot): skills work out of the box when Julie's repo is cloned.
+
+**For other harnesses:** copy `.claude/skills/*/` directories to the harness-specific skills directory listed above. Each skill is a self-contained directory with a `SKILL.md` file.
 
 ## Architecture
 
