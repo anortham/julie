@@ -182,9 +182,9 @@ pub(crate) fn is_test_path(path: &str) -> bool {
     }
 
     // C/C++: jq_test.c, parser_test.cpp
-    if (file_name.ends_with("_test.c")
+    if file_name.ends_with("_test.c")
         || file_name.ends_with("_test.cc")
-        || file_name.ends_with("_test.cpp"))
+        || file_name.ends_with("_test.cpp")
     {
         return true;
     }

@@ -254,6 +254,7 @@ impl super::RazorExtractor {
     }
 
     /// Extract code blocks (@code, @functions, @{...})
+    #[allow(dead_code)]
     pub(super) fn extract_code_block(
         &mut self,
         node: Node,
@@ -299,6 +300,7 @@ impl super::RazorExtractor {
     }
 
     /// Determine code block type from node content
+    #[allow(dead_code)]
     pub(super) fn get_code_block_type(&self, node: Node) -> String {
         let text = self.base.get_node_text(&node);
         if text.contains("@code") {
