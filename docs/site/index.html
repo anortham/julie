@@ -40,6 +40,7 @@
         <a href="#reference-graph">Reference Graph</a>
         <a href="#code-health">Code Health</a>
         <a href="#embeddings">Embeddings</a>
+        <a href="#skills">Skills</a>
         <a href="#tools">Tools</a>
         <a href="#languages">Languages</a>
         <a href="#install">Install</a>
@@ -284,7 +285,52 @@
     <p class="section-subtitle" style="margin-top: 32px; text-align: center; max-width: 100%;"><em>Every symbol scored. Every risk surfaced. Before you touch the code.</em></p>
   </section>
 
-  <!-- Section 6: Embeddings -->
+  <!-- Section 6: Skills -->
+  <section id="skills" class="section">
+    <h2 class="section-title">Skills</h2>
+    <p class="section-subtitle">10 pre-built workflows that combine tools into higher-level capabilities.</p>
+
+    <div class="card-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="card tool-card animate-on-scroll" data-delay="0">
+        <div class="tool-name">/codehealth</div>
+        <div class="tool-desc">Risk hotspots, test gaps, and prioritized recommendations</div>
+        <div class="terminal">
+          <div><span class="prompt">$ </span><span class="command">/codehealth</span></div>
+          <div><span class="result">Risk hotspots: </span><span class="risk-high">3 HIGH</span><span class="result">, 7 MEDIUM</span></div>
+          <div><span class="result">Untested high-centrality: </span><span class="warn">5 symbols</span></div>
+          <div><span class="highlight">→ Recommendation: test store_embeddings first</span></div>
+        </div>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="100">
+        <div class="tool-name">/security-audit</div>
+        <div class="tool-desc">Security risk analysis with plain-language explanations</div>
+        <div class="terminal">
+          <div><span class="prompt">$ </span><span class="command">/security-audit</span></div>
+          <div><span class="result">Security signals: </span><span class="risk-high">22 HIGH</span><span class="result">, 8 MEDIUM</span></div>
+          <div><span class="result">Untested security code: </span><span class="warn">6 symbols</span></div>
+          <div><span class="highlight">→ All SQL uses parameterized queries ✓</span></div>
+        </div>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="200">
+        <div class="tool-name">/architecture</div>
+        <div class="tool-desc">Architecture overview with entry points and dependency flow</div>
+        <div class="terminal">
+          <div><span class="prompt">$ </span><span class="command">/architecture</span></div>
+          <div><span class="result">Entry points: 15 high-centrality symbols</span></div>
+          <div><span class="result">Modules: 8 groups by responsibility</span></div>
+          <div><span class="highlight">→ Reading order: handler.rs → tools/ → database/</span></div>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-subtitle" style="margin-top: 24px; text-align: left; max-width: 720px; margin-left: auto; margin-right: auto;">
+      <strong>Also included:</strong> <code>/explore-area</code>, <code>/call-trace</code>, <code>/logic-flow</code>, <code>/impact-analysis</code>, <code>/dependency-graph</code>, <code>/type-flow</code>, <code>/search-debug</code>
+    </p>
+  </section>
+
+  <!-- Section 7: Embeddings -->
   <section id="embeddings" class="section">
     <h2 class="section-title">Semantic Embeddings</h2>
     <p class="section-subtitle">Find what you mean, not just what you typed.</p>
@@ -324,7 +370,7 @@
   <!-- Section 7: Tools -->
   <section id="tools" class="section">
     <h2 class="section-title">Tools</h2>
-    <p class="section-subtitle">7 tools. Each one replaces dozens of file reads.</p>
+    <p class="section-subtitle">8 tools. Each one replaces dozens of file reads.</p>
 
     <div class="card-grid">
       <div class="card tool-card animate-on-scroll" data-delay="0">
@@ -409,6 +455,18 @@
           <div><span class="comment">&nbsp; 1.8s</span></div>
         </div>
         <span class="token-badge">~100 tokens</span>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="700">
+        <div class="tool-name">query_metrics</div>
+        <div class="tool-desc">Query pre-computed code health metrics</div>
+        <div class="terminal" aria-label="query_metrics showing top 3 symbols by security risk">
+          <div><span class="prompt">$ </span><span class="command">query_metrics(sort_by="security_risk", limit=3)</span></div>
+          <div><span class="highlight">1.</span> <span class="result">store_embeddings</span> <span class="risk-high">HIGH (0.90)</span></div>
+          <div><span class="highlight">2.</span> <span class="result">bulk_store_symbols</span> <span class="risk-high">HIGH (0.90)</span></div>
+          <div><span class="highlight">3.</span> <span class="result">handle_index_cmd</span> <span class="risk-high">HIGH (0.87)</span></div>
+        </div>
+        <span class="token-badge">~300 tokens</span>
       </div>
     </div>
   </section>
@@ -513,6 +571,8 @@
         <button class="install-tab" role="tab" aria-selected="false" data-tab="vscode">VS Code</button>
         <button class="install-tab" role="tab" aria-selected="false" data-tab="opencode">OpenCode</button>
         <button class="install-tab" role="tab" aria-selected="false" data-tab="cursor">Cursor / Other</button>
+        <button class="install-tab" role="tab" aria-selected="false" data-tab="gemini">Gemini CLI</button>
+        <button class="install-tab" role="tab" aria-selected="false" data-tab="codex">Codex CLI</button>
       </div>
 
       <div id="panel-claude-code" class="install-panel active" role="tabpanel">
@@ -573,6 +633,37 @@
           <div><span class="result">}</span></div>
         </div>
       </div>
+
+      <div id="panel-gemini" class="install-panel" role="tabpanel">
+        <div class="terminal install-terminal" style="position:relative;" aria-label="Configuration for Gemini CLI">
+          <button class="copy-btn" data-copy="gemini" aria-label="Copy to clipboard">Copy</button>
+          <div><span class="comment"># GEMINI.md (project root)</span></div>
+          <div><span class="comment"># Julie MCP server is configured separately</span></div>
+          <div><span class="comment"># in ~/.gemini/settings.json</span></div>
+          <div style="margin-top: 8px;"><span class="prompt"># </span><span class="command">Add to ~/.gemini/settings.json:</span></div>
+          <div><span class="result">{</span></div>
+          <div><span class="result">&nbsp; "mcpServers": {</span></div>
+          <div><span class="result">&nbsp; &nbsp; "julie": {</span></div>
+          <div><span class="result">&nbsp; &nbsp; &nbsp; "command": </span><span class="highlight">"/path/to/julie-server"</span></div>
+          <div><span class="result">&nbsp; &nbsp; }</span></div>
+          <div><span class="result">&nbsp; }</span></div>
+          <div><span class="result">}</span></div>
+        </div>
+      </div>
+
+      <div id="panel-codex" class="install-panel" role="tabpanel">
+        <div class="terminal install-terminal" style="position:relative;" aria-label="Configuration for Codex CLI">
+          <button class="copy-btn" data-copy="codex" aria-label="Copy to clipboard">Copy</button>
+          <div><span class="comment"># codex.json or ~/.codex/config.toml</span></div>
+          <div><span class="result">{</span></div>
+          <div><span class="result">&nbsp; "mcpServers": {</span></div>
+          <div><span class="result">&nbsp; &nbsp; "julie": {</span></div>
+          <div><span class="result">&nbsp; &nbsp; &nbsp; "command": </span><span class="highlight">"/path/to/julie-server"</span></div>
+          <div><span class="result">&nbsp; &nbsp; }</span></div>
+          <div><span class="result">&nbsp; }</span></div>
+          <div><span class="result">}</span></div>
+        </div>
+      </div>
     </div>
 
     <p class="section-subtitle" style="margin-top: 24px; max-width: 100%;">Julie indexes your workspace automatically on first connection (~2-5s for most projects).</p>
@@ -587,7 +678,7 @@
       <span class="footer-sep">·</span>
       <span>Built in Rust with tree-sitter and Tantivy</span>
       <span class="footer-sep">·</span>
-      <span>v5.2.5</span>
+      <span>v5.3.0</span>
     </div>
   </footer>
 
