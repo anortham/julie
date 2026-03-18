@@ -110,6 +110,7 @@ pub mod tools {
     pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
 
     pub mod formatting_tests; // Navigation formatting tests (lean refs, qualified name parsing)
+    pub mod metrics; // QueryMetricsTool metrics query tests
     pub mod reference_workspace_fast_refs_tests; // Reference workspace fast_refs parity (limit, reference_kind, identifiers)
 }
 
