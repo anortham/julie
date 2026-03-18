@@ -334,18 +334,34 @@ pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, 
         }
     }
 
-    // Within definitions tier, sort code-language symbols above doc-language symbols,
-    // then by score descending within each group. This prevents markdown headings
-    // (extracted as "module" symbols) from outranking actual code definitions like
-    // Go structs or Python classes when no language filter is applied.
+    // Within definitions tier, sort by composite key:
+    //   1. Full-name match > component match (preserves qualified name priority)
+    //   2. Source code > test code > doc language (demotes test doubles and markdown)
+    //   3. Score descending (tie-breaker)
     definitions.sort_by(|a, b| {
-        let a_is_doc = DOC_LANGUAGES.contains(&a.language.as_str());
-        let b_is_doc = DOC_LANGUAGES.contains(&b.language.as_str());
-        a_is_doc.cmp(&b_is_doc).then_with(|| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        let is_full_match = |r: &SymbolSearchResult| -> bool {
+            r.name.to_lowercase() == query_lower
+        };
+        let file_tier = |r: &SymbolSearchResult| -> u8 {
+            if DOC_LANGUAGES.contains(&r.language.as_str()) {
+                2 // doc language — lowest priority
+            } else if is_test_path(&r.file_path) {
+                1 // test file — middle priority
+            } else {
+                0 // source code — highest priority
+            }
+        };
+        // Full matches first (false < true, so negate: !true=false < !false=true)
+        let a_full = !is_full_match(a);
+        let b_full = !is_full_match(b);
+        a_full
+            .cmp(&b_full)
+            .then_with(|| file_tier(a).cmp(&file_tier(b)))
+            .then_with(|| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     });
 
     results.extend(definitions);
