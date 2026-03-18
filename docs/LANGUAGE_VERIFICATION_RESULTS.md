@@ -16,20 +16,20 @@
 | GDScript | bitbrain/pandora | PASS | PASS | PASS* | PASS* | PASS | PASS* | PASS | PASS | 2026-03-17 |
 | Zig | zigtools/zls | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-17 |
 | TypeScript | colinhacks/zod | PASS | PASS | PASS* | PASS* | PASS* | PASS | PASS* | PASS* | 2026-03-17 |
-| Python | — | — | — | — | — | — | — | — | — | — |
-| Go | — | — | — | — | — | — | — | — | — | — |
-| Java | — | — | — | — | — | — | — | — | — | — |
-| PHP | — | — | — | — | — | — | — | — | — | — |
-| Ruby | — | — | — | — | — | — | — | — | — | — |
-| C# | — | — | — | — | — | — | — | — | — | — |
-| Swift | — | — | — | — | — | — | — | — | — | — |
-| Kotlin | — | — | — | — | — | — | — | — | — | — |
-| C | — | — | — | — | — | — | — | — | — | — |
-| C++ | — | — | — | — | — | — | — | — | — | — |
-| Dart | — | — | — | — | — | — | — | — | — | — |
-| Lua | — | — | — | — | — | — | — | — | — | — |
-| Scala | typelevel/cats | — | — | PASS* | PASS* | — | PASS | — | — | — |
-| Elixir | — | — | — | — | — | — | — | — | — | — |
+| Python | pallets/flask | PASS | PASS | PASS | FAIL | FAIL | PASS | PASS* | PASS | 2026-03-18 |
+| Go | spf13/cobra | PASS | PASS | PASS | PASS | PARTIAL | PASS | PASS | PASS | 2026-03-18 |
+| Java | google/gson | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
+| PHP | slimphp/Slim | PASS | FAIL | PARTIAL | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
+| Ruby | sinatra/sinatra | PASS | PASS | PASS | MIXED | PASS | PASS | PASS | PASS | 2026-03-18 |
+| C# | JamesNK/Newtonsoft.Json | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | 2026-03-18 |
+| Swift | Alamofire/Alamofire | PARTIAL | PASS | PASS | PARTIAL | PASS | PARTIAL | PASS | PASS | 2026-03-18 |
+| Kotlin | square/moshi | PARTIAL | PASS | PASS | PASS* | PASS | PARTIAL | PASS | PASS | 2026-03-18 |
+| C | jqlang/jq | PASS | PASS | PASS | PARTIAL | PASS | PASS | PASS | FAIL* | 2026-03-18 |
+| C++ | nlohmann/json | PASS | FAIL | PASS* | FAIL | PASS | FAIL | PASS | PASS | 2026-03-18 |
+| Dart | rrousselGit/riverpod | PARTIAL | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
+| Lua | rxi/lite | PASS | PASS | PASS | FAIL | PARTIAL | PARTIAL | PARTIAL | N/A | 2026-03-18 |
+| Scala | typelevel/cats | PASS | PASS | PASS* | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
+| Elixir | phoenixframework/phoenix | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | 2026-03-18 |
 
 ### Specialized Tier (9 languages)
 
@@ -208,21 +208,179 @@
   - Multi-letter generic param references (`Input`, `Output`) still appear as TypeUsage in reference positions — acceptable, would require scope analysis to filter
   - The relationships table for TypeScript has 0 rows for ZodType — all 94 "dependents" live in the identifiers table (type_usage). Relationships only capture imports and extends/implements edges.
 
-### Scala (Partial — bugs fixed, full checklist not yet run)
+### Scala
 - **Reference project:** typelevel/cats (934 files, 22336 symbols, 12236 relationships)
-- **Date verified:** 2026-03-17 (partial)
-- **Checks completed:** 3. Identifiers (unit tests), 4. Centrality (deep_dive), 6. deep_dive
-- **Checks NOT yet run:** 1. Symbols (get_symbols), 2. Relationships (cross-file fast_refs), 5. Def Search, 7. get_context, 8. Test Detection
-- **Issues found (2 — all fixed):**
-  - **FIXED: Zero type_usage identifiers** — Same bug as TypeScript. Scala `identifiers.rs` only handled `call_expression` and `field_expression`. Added `type_identifier` handler. Commit `f90f7350`.
-  - **FIXED: Type alias declaration names not filtered** — `type_definition.name` uses `type_identifier` in Scala. Added `is_type_declaration_name()`. Simpler than TS: class/trait/object names use `identifier` (not `type_identifier`), so only `type_definition` needs filtering. Commit `f90f7350`.
-  - **FIXED: Noise types not filtered** — Added `is_scala_noise_type()` for single-letter generics (T, A, B, F) and Scala primitives (Int, String, Boolean, Any, Unit, AnyVal, AnyRef, Nothing, Null, Object). Commit `f90f7350`.
-  - **FIXED: Factory consistency test count stale** — `test_all_languages_in_factory` expected 31 entries but Scala+Elixir brought it to 34. Pre-existing failure, fixed opportunistically. Commit `f90f7350`.
+- **Date verified:** 2026-03-18 (full sweep)
+- **All 8 checks: PASS**
+- **Issues found (4 — all fixed):**
+  - **FIXED: Zero type_usage identifiers** — Scala `identifiers.rs` only handled `call_expression` and `field_expression`. Added `type_identifier` handler. Commit `f90f7350`.
+  - **FIXED: Type alias declaration names not filtered** — `type_definition.name` uses `type_identifier` in Scala. Added `is_type_declaration_name()`. Commit `f90f7350`.
+  - **FIXED: Noise types not filtered** — Added `is_scala_noise_type()` for single-letter generics and Scala primitives. Commit `f90f7350`.
+  - **FIXED: Factory consistency test count stale** — Expected 31 but had 34 after Scala+Elixir. Commit `f90f7350`.
 - **Live verification results:**
-  - Functor trait: centrality **1.00** (465 incoming refs) — was 0.00 before type_usage fix
-  - Monad trait: centrality **1.00** (366 incoming refs) — was 0.00 before type_usage fix
-  - deep_dive: Shows extends hierarchy (Monad → FlatMap + Applicative), implementations, companion objects
+  - Functor: centrality **1.00** (465+ refs), Monad: centrality **1.00** (366+ refs)
+  - 26 symbols from Functor.scala (trait + companion + 17 methods + nested types)
+  - Extends chains correctly detected (Apply, Traverse, CoflatMap)
+  - 153 neighbors in get_context across 51 files spanning entire type class hierarchy
+  - FunctorSuite/MonadSuite correctly excluded with `exclude_tests=true`
 - **Notes:**
   - `*` on Identifiers and Centrality indicates PASS after fixes
-  - Scala class/trait/object names use `identifier` node (not `type_identifier`) — declaration names naturally excluded for those kinds
-  - Generic type parameter declarations use `identifier` in `type_parameters`/`covariant_type_parameter`/`contravariant_type_parameter` — won't appear as `type_identifier` in declaration position
+  - Wildcard imports in cats means import-kind refs return 0 for individual symbols (not a bug)
+
+### Elixir
+- **Reference project:** phoenixframework/phoenix (456 files, 14705 symbols, 4236 relationships)
+- **Date verified:** 2026-03-18
+- **All 8 checks: PASS**
+- **No bugs found.**
+- **Live verification results:**
+  - Phoenix.Socket: centrality **1.00** (118 refs), Phoenix.Router: **1.00** (65 refs), Phoenix.Controller: **1.00** (59 refs)
+  - Qualified names (`Phoenix.Router`) correctly preserved as full dot-separated names
+  - Both qualified and unqualified searches find module definitions as top result
+  - 28 public exports for Phoenix.Router, semantic similarity working (0.83 for Route)
+  - `test/` directory files correctly excluded
+- **Notes:**
+  - `defmacro` mapped to kind=`function` (acceptable — Elixir macros are syntactically similar)
+  - `use` mapped to import reference kind (correct for Elixir's module inclusion semantics)
+
+### Python
+- **Reference project:** pallets/flask (227 files, 4297 symbols, 1952 relationships)
+- **Date verified:** 2026-03-18
+- **6/8 PASS, 2 FAIL (Centrality, Def Search)**
+- **Issues found (2 — not yet fixed):**
+  - **UNFIXED: Test subclass steals centrality** — `tests/test_config.py` defines `class Flask(flask.Flask)` (a test subclass). Pending relationship resolution picks this test Flask (raw score 213) over the real `src/flask/app.py` Flask (raw score 1.4). The real Flask class gets almost zero centrality despite 125 dependents.
+  - **UNFIXED: Def search ranking affected** — Test Flask subclass ranks #1 above real Flask class (cascade from centrality issue).
+- **Live verification results:**
+  - Check 1 (Symbols): 142 symbols for Flask class, 35 methods, correct types
+  - Check 2 (Relationships): 60 refs for Flask, cross-file imports/calls, `extends` captured
+  - Check 3 (Identifiers): 125 dependents via identifiers
+  - Check 6 (deep_dive): 35 methods, `extends App`, 125 dependents shown
+  - Check 7 (get_context): 10 neighbors showing request handling pipeline
+  - Check 8 (Test Detection): `tests/` directory correctly excluded
+- **Notes:**
+  - `request` global proxy variable has centrality 0.00 (92 refs) — `variable` kind excluded from Step 1b
+  - `route` method has highest raw centrality (495.0) — expected for the most-called decorator
+  - `__init__.py` re-exports all captured correctly (39 import symbols)
+
+### Go
+- **Reference project:** spf13/cobra (65 files, 1441 symbols, 1590 relationships)
+- **Date verified:** 2026-03-18
+- **7/8 PASS, 1 PARTIAL (Def Search)**
+- **Issues found (1 — minor):**
+  - **Markdown headings outrank Go struct** — Without `language` filter, `fast_search("Command", search_target="definitions")` returns markdown doc headings above the actual `Command` struct. With `language="go"`, ranks correctly at #1.
+- **Live verification results:**
+  - Command: centrality **1.00** (correct gradient: Execute=0.69, SetErrPrefix=0.43)
+  - 118 symbols from command.go, correct kinds (class/field/method/constant/namespace)
+  - `*_test.go` functions correctly detected and excluded
+  - 3 high-centrality pivots in get_context, 21 neighbors
+
+### Java
+- **Reference project:** google/gson (305 files, 8511 symbols, 7327 relationships)
+- **Date verified:** 2026-03-18
+- **All 8 checks: PASS** (after type_usage fix)
+- **Issues found (1 — fixed):**
+  - **FIXED: Centrality 0.00 for all core classes** — Java identifier extractor had no `type_identifier` handler. Added handler + `is_type_declaration_name()` + single-letter generic filter. Commit `90bffa2a`.
+- **Live verification results:**
+  - Gson: centrality **1.00** (673 incoming refs) — was 0.00 before fix
+  - 92 symbols from Gson.java, 26 fields, 35 methods, generics preserved
+  - `src/test/java/` layout correctly recognized, `exclude_tests` filtering works
+  - `extends`/`implements` relationships properly detected
+
+### PHP
+- **Reference project:** slimphp/Slim (145 files, 4031 symbols, 1555 relationships)
+- **Date verified:** 2026-03-18
+- **5/8 PASS, 2 FAIL, 1 PARTIAL** (after type_usage fix)
+- **Issues found (3):**
+  - **FIXED: No type_usage identifiers** — Added `named_type` + `instanceof_expression` handlers. App centrality 0.00 → 0.24. Commit `90bffa2a`.
+  - **UNFIXED: Class-level relationship tracking weak** — `new ClassName()`, `use` imports, `extends`/`implements` not fully tracked as incoming references at class level. Method-level refs work.
+  - **UNFIXED: `reference_kind` filter ignored** — All kinds return identical results (downstream of relationship issue).
+- **Notes:**
+  - PHP's interface-heavy architecture (Slim uses PSR interfaces) naturally limits direct class references
+  - `get_symbols` target filter duplicates methods (106 instead of 55) — display bug
+
+### Ruby
+- **Reference project:** sinatra/sinatra (289 files, 6919 symbols, 1661 relationships)
+- **Date verified:** 2026-03-18
+- **7/8 PASS, 1 MIXED (Centrality)**
+- **Issues found (1):**
+  - **UNFIXED: Centrality on constant, not class** — Ruby class definitions produce both a `class` and `constant` symbol at the same line. Centrality accumulates on the wrong one (`Sinatra::Base` class = 0.00, but `route` method = 1.00).
+- **Notes:**
+  - Module nesting (`Sinatra::Base`, `Sinatra::Helpers`) correctly represented
+  - attr_accessor, attr_reader, aliases, includes/extends all captured
+  - 21 disambiguation candidates for `Base` in deep_dive (class/constant duplication)
+
+### C#
+- **Reference project:** JamesNK/Newtonsoft.Json (1160 files, 21062 symbols, 17049 relationships)
+- **Date verified:** 2026-03-18
+- **All 8 checks: PASS**
+- **No bugs found.**
+- **Live verification results:**
+  - JsonConvert: centrality **1.00** (786 dependents), JsonReader: 0.43, JToken: 0.35
+  - 69 methods, 8 fields in JsonConvert, correct kinds
+  - `.Tests` project convention correctly detected and excluded
+  - 2 pivots + 38 neighbors in get_context across 11 files
+
+### Swift
+- **Reference project:** Alamofire/Alamofire (521 files, 20552 symbols, 2932 relationships)
+- **Date verified:** 2026-03-18
+- **5/8 PASS, 3 PARTIAL**
+- **Issues found (1 — not yet fixed):**
+  - **UNFIXED: Primary `Session` class missing from symbols** — `open class Session: @unchecked Sendable` at `Source/Core/Session.swift:30` is absent from the symbol table. Its ~80 methods are extracted as orphaned top-level functions. `extract_class()` in `swift/types.rs` looks for `type_identifier`/`user_type` child but returns `None` for this file. Other classes with `@unchecked Sendable` ARE extracted correctly.
+- **Notes:**
+  - Protocol/extension extraction works well (URLConvertible, URLRequestConvertible)
+  - Session extensions have wildly different centrality (0.00 to 1.00)
+  - Test detection works correctly for Swift `Tests/` directory
+
+### Kotlin
+- **Reference project:** square/moshi (182 files, 6602 symbols, 5767 relationships)
+- **Date verified:** 2026-03-18
+- **6/8 PASS, 2 PARTIAL** (after type_usage fix)
+- **Issues found (2):**
+  - **FIXED: Centrality 0.00 for all core classes** — Added `user_type` handler for Kotlin type annotations. Commit `90bffa2a`.
+  - **UNFIXED: Sealed class `JsonReader` not extracted** — `sealed class JsonReader` completely absent from symbols. 30+ member functions extracted as orphaned top-level symbols. `JsonWriter` (also sealed) IS extracted correctly.
+- **Notes:**
+  - Nested class extraction works well (Builder, LookupChain, companion objects)
+  - Cross-language references (Java importing Kotlin) tracked correctly
+  - Missing space in `Moshi` class signature: `Moshiprivate constructor(builder: Builder)`
+
+### C
+- **Reference project:** jqlang/jq (358 files, 12361 symbols, 3639 relationships)
+- **Date verified:** 2026-03-18
+- **5/8 PASS, 1 PARTIAL, 1 FAIL** (after type_usage + test detection fix)
+- **Issues found (2):**
+  - **FIXED: No type_usage identifiers for typedefs** — Added `type_identifier` handler with struct/enum/typedef declaration filter. Commit `90bffa2a`.
+  - **FIXED: `*_test.c` not detected** — Added `_test.c`/`_test.cc`/`_test.cpp` to `is_test_path()`. Commit `90bffa2a`.
+  - **UNFIXED: Centrality split between header and implementation** — `jq_next` in `execute.c` has centrality 0.00 (26 refs) while the `jq.h` declaration gets 0.80. Ref attribution goes to header, not implementation.
+
+### C++
+- **Reference project:** nlohmann/json (1136 files, 15701 symbols, 2342 relationships)
+- **Date verified:** 2026-03-18
+- **5/8 PASS, 1 PARTIAL, 2 FAIL** (after type_usage fix)
+- **Issues found (3):**
+  - **FIXED: No type_usage identifiers** — Added `type_identifier` handler + template_type_parameter filter. Commit `90bffa2a`.
+  - **UNFIXED: `deep_dive` can't disambiguate constructor overloads** — `basic_json` has 10+ constructors in same file. `context_file` only helps across files, not within.
+  - **UNFIXED: Zero cross-file references** — Tests use `json` typedef, not `basic_json` directly. Header-only architecture means most code is in one file.
+- **Notes:**
+  - YAML false positive: `mkdocs.yml` nav entries indexed as variable definitions
+  - Template functions with SFINAE constraints have full signatures preserved
+
+### Dart
+- **Reference project:** rrousselGit/riverpod (1805 files, 28106 symbols, 3373 relationships)
+- **Date verified:** 2026-03-18
+- **6/8 PASS, 2 PARTIAL** (after type_usage fix)
+- **Issues found (2):**
+  - **FIXED: No type_usage identifiers** — Added `type_identifier` handler with type_alias declaration filter. Commit `90bffa2a`.
+  - **UNFIXED: Dart 3 class modifiers dropped** — `ProviderContainer` (`base class`) and `AsyncValue` (`sealed class`) not extracted as class symbols. Extractor only matches `class_definition`; Dart 3's `base`/`sealed`/`final`/`interface` modifiers produce different AST node types.
+- **Notes:**
+  - Standard `abstract class` and plain `class` declarations extracted correctly
+  - Test detection correctly handles `test/` directory for Dart
+
+### Lua
+- **Reference project:** rxi/lite (404 files, 27858 symbols, 9167 relationships)
+- **Date verified:** 2026-03-18
+- **4/8 PASS, 3 PARTIAL, 1 N/A**
+- **Issues found (1):**
+  - **UNFIXED: Class-like tables stored as `variable` kind** — Lua has no `class` keyword; classes are `Doc = Object:extend()`. These are stored as `variable` kind, which is excluded from centrality Step 1b. The `exit` method (132.0) and `doc` function (36.0) DO get centrality via Step 1a relationships.
+- **Notes:**
+  - lite project includes C/SDL source code — C symbols dominate centrality (SDL_SCANCODE_TO_KEYCODE: 507.0)
+  - No test framework in this project — Check 8 is N/A
+  - Lua function extraction works well (`:` and `.` method syntax both captured)
