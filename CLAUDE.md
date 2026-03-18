@@ -329,6 +329,16 @@ Use Julie's code intelligence tools to find detailed docs on-demand: `fast_searc
 
 Key docs: `WORKSPACE_ARCHITECTURE.md`, `TESTING_GUIDE.md`, `SEARCH_FLOW.md`, `ARCHITECTURE.md`, `INTELLIGENCE_LAYER.md`, `DEVELOPMENT.md`, `PERFORMANCE.md`, `DEPENDENCIES.md`
 
+### 🔴 CRITICAL: Web Search Before Writing Harness Documentation
+
+**ALWAYS use web search to verify current paths, formats, and configuration before writing documentation about AI coding harnesses** (VS Code/Copilot, Cursor, Windsurf, Gemini CLI, Codex CLI, OpenCode, etc.). The ecosystem changes rapidly — skill directories, config file formats, and settings locations shift between versions. Never rely on training data or prior knowledge for harness-specific instructions. Verify first, write second.
+
+Key things that change frequently:
+- Skill/rules directory paths (e.g., `.cursor/rules/` vs `.cursorrules`)
+- Config file formats (e.g., Cursor's `.mdc` vs standard Markdown)
+- MCP server configuration syntax per harness
+- Which harnesses read `.claude/skills/` natively vs requiring copies
+
 ---
 
 ## 📝 Source-Controlled Artifacts
@@ -341,4 +351,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-03-17 | **Status:** Production Ready (v5.3.0)
+**Last Updated:** 2026-03-18 | **Status:** Production Ready (v5.4.0)
