@@ -1,12 +1,7 @@
-//! File system event processing pipeline
-//!
-//! This module handles the conversion of notify::Event instances into
-//! FileChangeEvent entries queued for processing.
-
-use crate::tools::shared::BLACKLISTED_FILENAMES;
-use crate::watcher::types::FileChangeEvent;
-use crate::watcher::types::FileChangeType;
+use crate::watcher::filtering;
+use crate::watcher::types::{FileChangeEvent, FileChangeType};
 use anyhow::Result;
+use ignore::gitignore::Gitignore;
 use notify::{Event, EventKind};
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;
@@ -17,7 +12,8 @@ use tracing::debug;
 /// Process a file system event and queue any relevant changes
 pub async fn process_file_system_event(
     supported_extensions: &HashSet<String>,
-    ignore_patterns: &[glob::Pattern],
+    gitignore: &Gitignore,
+    workspace_root: &Path,
     index_queue: std::sync::Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
     event: Event,
 ) -> Result<()> {
@@ -26,7 +22,12 @@ pub async fn process_file_system_event(
     match event.kind {
         EventKind::Create(_) => {
             for path in event.paths {
-                if should_index_file(&path, supported_extensions, ignore_patterns) {
+                if filtering::should_index_file(
+                    &path,
+                    supported_extensions,
+                    gitignore,
+                    workspace_root,
+                ) {
                     let change_event = FileChangeEvent {
                         path: path.clone(),
                         change_type: FileChangeType::Created,
@@ -38,7 +39,12 @@ pub async fn process_file_system_event(
         }
         EventKind::Modify(_) => {
             for path in event.paths {
-                if should_index_file(&path, supported_extensions, ignore_patterns) {
+                if filtering::should_index_file(
+                    &path,
+                    supported_extensions,
+                    gitignore,
+                    workspace_root,
+                ) {
                     let change_event = FileChangeEvent {
                         path: path.clone(),
                         change_type: FileChangeType::Modified,
@@ -50,9 +56,12 @@ pub async fn process_file_system_event(
         }
         EventKind::Remove(_) => {
             for path in event.paths {
-                // For deletions, the file no longer exists on disk so we cannot
-                // use `is_file()`. Check extension and ignore patterns only.
-                if should_process_deletion(&path, supported_extensions, ignore_patterns) {
+                if filtering::should_process_deletion(
+                    &path,
+                    supported_extensions,
+                    gitignore,
+                    workspace_root,
+                ) {
                     let change_event = FileChangeEvent {
                         path: path.clone(),
                         change_type: FileChangeType::Deleted,
@@ -63,87 +72,11 @@ pub async fn process_file_system_event(
             }
         }
         _ => {
-            // Handle other events like renames if needed
             debug!("Ignoring event kind: {:?}", event.kind);
         }
     }
 
     Ok(())
-}
-
-/// Check if a file should be indexed (local helper using filtering module functions)
-fn should_index_file(
-    path: &Path,
-    supported_extensions: &HashSet<String>,
-    ignore_patterns: &[glob::Pattern],
-) -> bool {
-    // Check if it's a file
-    if !path.is_file() {
-        return false;
-    }
-
-    // Skip blacklisted filenames (lockfiles with non-blacklisted extensions)
-    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-        if BLACKLISTED_FILENAMES.contains(&file_name) {
-            return false;
-        }
-    }
-
-    // Check extension
-    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-        if !supported_extensions.contains(ext) {
-            return false;
-        }
-    } else {
-        return false; // No extension
-    }
-
-    // Check ignore patterns
-    let path_str = path.to_string_lossy();
-    for pattern in ignore_patterns {
-        if pattern.matches(&path_str) {
-            return false;
-        }
-    }
-
-    true
-}
-
-/// Check if a Remove event should be queued for processing.
-///
-/// Unlike `should_index_file`, this does NOT check `path.is_file()` because
-/// the file no longer exists on disk after deletion. We only verify that the
-/// path has a supported extension and doesn't match ignore patterns.
-fn should_process_deletion(
-    path: &Path,
-    supported_extensions: &HashSet<String>,
-    ignore_patterns: &[glob::Pattern],
-) -> bool {
-    // Skip blacklisted filenames (lockfiles with non-blacklisted extensions)
-    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-        if BLACKLISTED_FILENAMES.contains(&file_name) {
-            return false;
-        }
-    }
-
-    // Check extension (the file is gone, but the path still has its extension)
-    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-        if !supported_extensions.contains(ext) {
-            return false;
-        }
-    } else {
-        return false; // No extension
-    }
-
-    // Check ignore patterns
-    let path_str = path.to_string_lossy();
-    for pattern in ignore_patterns {
-        if pattern.matches(&path_str) {
-            return false;
-        }
-    }
-
-    true
 }
 
 /// Queue a file change event for processing
@@ -152,7 +85,6 @@ async fn queue_file_change(
     event: FileChangeEvent,
 ) {
     debug!("Queueing file change: {:?}", event);
-
     let mut queue = index_queue.lock().await;
     queue.push_back(event);
 }

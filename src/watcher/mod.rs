@@ -17,6 +17,7 @@ pub mod handlers; // Public for tests
 pub mod types;
 
 use anyhow::{Context, Result};
+use ignore::gitignore::Gitignore;
 use notify::Watcher;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -50,7 +51,7 @@ pub struct IncrementalIndexer {
 
     // File filters
     supported_extensions: HashSet<String>,
-    ignore_patterns: Vec<glob::Pattern>,
+    gitignore: Gitignore,
 
     // Configuration
     workspace_root: PathBuf,
@@ -69,7 +70,7 @@ impl IncrementalIndexer {
         embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
     ) -> Result<Self> {
         let supported_extensions = filtering::build_supported_extensions();
-        let ignore_patterns = filtering::build_ignore_patterns()?;
+        let gitignore = filtering::build_gitignore_matcher(&workspace_root)?;
 
         Ok(Self {
             watcher: None,
@@ -80,7 +81,7 @@ impl IncrementalIndexer {
             index_queue: Arc::new(TokioMutex::new(VecDeque::new())),
             last_processed: Arc::new(TokioMutex::new(HashMap::new())),
             supported_extensions,
-            ignore_patterns,
+            gitignore,
             workspace_root,
             cancel_flag: Arc::new(AtomicBool::new(false)),
         })
@@ -112,7 +113,8 @@ impl IncrementalIndexer {
         // Start the event processing task
         // Clone the necessary components that are Sync
         let supported_extensions = self.supported_extensions.clone();
-        let ignore_patterns = self.ignore_patterns.clone();
+        let gitignore = self.gitignore.clone();
+        let workspace_root_for_events = self.workspace_root.clone();
         let index_queue = self.index_queue.clone();
         let cancel_flag_events = self.cancel_flag.clone();
 
@@ -128,7 +130,8 @@ impl IncrementalIndexer {
                         debug!("File system event detected: {:?}", event);
                         if let Err(e) = events::process_file_system_event(
                             &supported_extensions,
-                            &ignore_patterns,
+                            &gitignore,
+                            &workspace_root_for_events,
                             index_queue.clone(),
                             event,
                         )
@@ -492,8 +495,16 @@ mod tests {
     }
 
     #[test]
-    fn test_ignore_patterns() {
-        let patterns = filtering::build_ignore_patterns().unwrap();
-        assert!(!patterns.is_empty());
+    fn test_gitignore_matcher() {
+        use std::fs;
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(".gitignore"), "*.log\nvendor/\n").unwrap();
+
+        let gitignore = filtering::build_gitignore_matcher(dir.path()).unwrap();
+        assert!(
+            gitignore
+                .matched_path_or_any_parents("debug.log", false)
+                .is_ignore()
+        );
     }
 }
