@@ -768,3 +768,415 @@ fn test_find_doc_comment_explicit_option_overrides_auto_detection() {
         "Explicit doc_comment in options should override auto-detection"
     );
 }
+
+// ---------------------------------------------------------------------------
+// create_identifier tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_create_identifier_basic_call() {
+    // Parse `fn foo() { bar(); }` and create an identifier for the `bar` call
+    let content = "fn foo() { bar(); }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+
+    // Navigate: source_file > function_item > block > expression_statement > call_expression > identifier("bar")
+    let func_item = root.child(0).expect("should have function_item");
+    let block = func_item
+        .child_by_field_name("body")
+        .expect("function should have body");
+
+    // Find the call expression's identifier node ("bar")
+    let mut bar_node = None;
+    let mut cursor = block.walk();
+    for child in block.children(&mut cursor) {
+        // Walk into expression_statement -> call_expression -> function identifier
+        if child.kind() == "expression_statement" {
+            let mut inner_cursor = child.walk();
+            for inner in child.children(&mut inner_cursor) {
+                if inner.kind() == "call_expression" {
+                    // The function being called is the first named child
+                    if let Some(callee) = inner.named_child(0) {
+                        if callee.kind() == "identifier" {
+                            bar_node = Some(callee);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let bar_node = bar_node.expect("should find 'bar' identifier node in call");
+
+    let identifier = extractor.create_identifier(
+        &bar_node,
+        "bar".to_string(),
+        IdentifierKind::Call,
+        None,
+    );
+
+    assert_eq!(identifier.name, "bar");
+    assert_eq!(identifier.kind, IdentifierKind::Call);
+    assert_eq!(identifier.language, "rust");
+    assert!(identifier.file_path.ends_with("test.rs"));
+    assert_eq!(identifier.start_line, 1); // 1-based
+    assert_eq!(identifier.containing_symbol_id, None);
+    assert_eq!(identifier.target_symbol_id, None); // Unresolved
+    assert_eq!(identifier.confidence, 1.0);
+    assert_eq!(identifier.id.len(), 32); // MD5 hash
+    assert!(identifier.code_context.is_some());
+}
+
+#[test]
+fn test_create_identifier_with_containing_symbol_id() {
+    let content = "fn foo() { bar(); }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+    let block = func_item.child_by_field_name("body").unwrap();
+
+    // Find `bar` identifier
+    let mut bar_node = None;
+    let mut cursor = block.walk();
+    for child in block.children(&mut cursor) {
+        if child.kind() == "expression_statement" {
+            let mut inner_cursor = child.walk();
+            for inner in child.children(&mut inner_cursor) {
+                if inner.kind() == "call_expression" {
+                    if let Some(callee) = inner.named_child(0) {
+                        if callee.kind() == "identifier" {
+                            bar_node = Some(callee);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let bar_node = bar_node.unwrap();
+
+    let parent_id = Some("parent_sym_abc123".to_string());
+    let identifier = extractor.create_identifier(
+        &bar_node,
+        "bar".to_string(),
+        IdentifierKind::Call,
+        parent_id.clone(),
+    );
+
+    assert_eq!(
+        identifier.containing_symbol_id, parent_id,
+        "Parent linkage should be preserved"
+    );
+}
+
+#[test]
+fn test_create_identifier_without_containing_symbol_id() {
+    let content = "fn foo() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+
+    // Use the function name node as the identifier target (just to test None path)
+    let mut name_node = None;
+    for i in 0..func_item.child_count() {
+        let child = func_item.child(i).unwrap();
+        if child.kind() == "identifier" {
+            name_node = Some(child);
+            break;
+        }
+    }
+    let name_node = name_node.unwrap();
+
+    let identifier = extractor.create_identifier(
+        &name_node,
+        "foo".to_string(),
+        IdentifierKind::VariableRef,
+        None,
+    );
+
+    assert_eq!(
+        identifier.containing_symbol_id, None,
+        "None should be preserved when no containing symbol"
+    );
+}
+
+#[test]
+fn test_create_identifier_type_usage_kind() {
+    let content = "fn foo() -> String { String::new() }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+
+    // Find the return type identifier ("String" in -> String)
+    let mut type_node = None;
+    let mut cursor = func_item.walk();
+    for child in func_item.children(&mut cursor) {
+        if child.kind() == "type_identifier" {
+            type_node = Some(child);
+            break;
+        }
+    }
+    let type_node = type_node.expect("should find type_identifier for return type");
+
+    let identifier = extractor.create_identifier(
+        &type_node,
+        "String".to_string(),
+        IdentifierKind::TypeUsage,
+        None,
+    );
+
+    assert_eq!(identifier.kind, IdentifierKind::TypeUsage);
+    assert_eq!(identifier.name, "String");
+}
+
+#[test]
+fn test_create_identifier_stored_in_identifiers_vec() {
+    let content = "fn foo() { bar(); baz(); }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    assert!(
+        extractor.identifiers.is_empty(),
+        "identifiers should start empty"
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_item = root.child(0).unwrap();
+
+    // Use the function name node to create two identifiers
+    let mut name_node = None;
+    for i in 0..func_item.child_count() {
+        let child = func_item.child(i).unwrap();
+        if child.kind() == "identifier" {
+            name_node = Some(child);
+            break;
+        }
+    }
+    let name_node = name_node.unwrap();
+
+    extractor.create_identifier(
+        &name_node,
+        "bar".to_string(),
+        IdentifierKind::Call,
+        None,
+    );
+    assert_eq!(extractor.identifiers.len(), 1);
+
+    extractor.create_identifier(
+        &name_node,
+        "baz".to_string(),
+        IdentifierKind::Call,
+        None,
+    );
+    assert_eq!(
+        extractor.identifiers.len(),
+        2,
+        "Each create_identifier call should push to the vec"
+    );
+
+    assert_eq!(extractor.identifiers[0].name, "bar");
+    assert_eq!(extractor.identifiers[1].name, "baz");
+}
+
+// ---------------------------------------------------------------------------
+// find_doc_comment edge case tests (indirectly through create_symbol)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_find_doc_comment_block_comment() {
+    // Rust /** block doc comment */ should be captured via block_comment node
+    let content = "/** block doc comment */\nfn foo() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+
+    // Find the function_item node
+    let mut func_node = None;
+    for i in 0..root.named_child_count() {
+        let child = root.named_child(i).unwrap();
+        if child.kind() == "function_item" {
+            func_node = Some(child);
+            break;
+        }
+    }
+    let func_node = func_node.expect("should find function_item");
+
+    let symbol = extractor.create_symbol(
+        &func_node,
+        "foo".to_string(),
+        SymbolKind::Function,
+        SymbolOptions::default(),
+    );
+
+    assert!(
+        symbol.doc_comment.is_some(),
+        "Should capture /** block comment */"
+    );
+    let doc = symbol.doc_comment.unwrap();
+    assert!(
+        doc.contains("block doc comment"),
+        "Block comment text should be captured, got: '{}'",
+        doc
+    );
+}
+
+#[test]
+fn test_find_doc_comment_attribute_doc_not_captured() {
+    // #[doc = "..."] is parsed as attribute_item (not a comment node), so
+    // find_doc_comment won't capture it — the loop stops at non-comment siblings
+    let content = "#[doc = \"attr doc\"]\nfn bar() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+
+    let mut func_node = None;
+    for i in 0..root.named_child_count() {
+        let child = root.named_child(i).unwrap();
+        if child.kind() == "function_item" {
+            func_node = Some(child);
+            break;
+        }
+    }
+    let func_node = func_node.expect("should find function_item");
+
+    let symbol = extractor.create_symbol(
+        &func_node,
+        "bar".to_string(),
+        SymbolKind::Function,
+        SymbolOptions::default(),
+    );
+
+    // attribute_item is NOT a comment kind, so find_doc_comment skips it
+    assert!(
+        symbol.doc_comment.is_none(),
+        "#[doc = ...] attribute should not be captured by find_doc_comment, got: {:?}",
+        symbol.doc_comment
+    );
+}
+
+#[test]
+fn test_find_doc_comment_blank_line_separated_still_captured() {
+    // In tree-sitter Rust, a `///` comment separated by a blank line from the function
+    // is still the prev_named_sibling. find_doc_comment walks siblings, not lines,
+    // so it WILL capture the comment. This test documents that behavior.
+    let content = "/// Separated comment\n\nfn separated() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+
+    let mut func_node = None;
+    for i in 0..root.named_child_count() {
+        let child = root.named_child(i).unwrap();
+        if child.kind() == "function_item" {
+            func_node = Some(child);
+            break;
+        }
+    }
+    let func_node = func_node.expect("should find function_item");
+
+    let symbol = extractor.create_symbol(
+        &func_node,
+        "separated".to_string(),
+        SymbolKind::Function,
+        SymbolOptions::default(),
+    );
+
+    // find_doc_comment walks prev_named_sibling, which IS the comment even with blank line
+    assert!(
+        symbol.doc_comment.is_some(),
+        "Blank-line-separated comment is still prev_named_sibling in tree-sitter, so it's captured"
+    );
+    let doc = symbol.doc_comment.unwrap();
+    assert!(
+        doc.contains("Separated comment"),
+        "Should contain the comment text, got: '{}'",
+        doc
+    );
+}
+
+#[test]
+fn test_find_doc_comment_function_first_in_file() {
+    // A function at the very start of the file has no preceding siblings
+    let content = "fn first() { }";
+    let workspace_root = std::path::PathBuf::from("/tmp/test");
+    let mut extractor = BaseExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        content.to_string(),
+        &workspace_root,
+    );
+
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func_node = root.child(0).expect("should have function_item");
+
+    let symbol = extractor.create_symbol(
+        &func_node,
+        "first".to_string(),
+        SymbolKind::Function,
+        SymbolOptions::default(),
+    );
+
+    assert!(
+        symbol.doc_comment.is_none(),
+        "Function with no preceding siblings should have no doc comment, got: {:?}",
+        symbol.doc_comment
+    );
+}
