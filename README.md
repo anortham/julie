@@ -1,6 +1,6 @@
 # Julie
 
-A cross-platform code intelligence server built in Rust, providing LSP-quality features across 31 programming languages via the Model Context Protocol (MCP).
+A cross-platform code intelligence server built in Rust, providing LSP-quality features across 33 programming languages via the Model Context Protocol (MCP).
 
 ## Why Julie?
 
@@ -20,7 +20,7 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 ## Features
 
 - **Fast symbol search** with code-aware tokenization (CamelCase/snake_case splitting, stemming, <5ms)
-- **Cross-language code navigation** (go-to-definition, find-references) across 31 languages
+- **Cross-language code navigation** (go-to-definition, find-references) across 33 languages
 - **Code Health Intelligence** — automatic test detection, test quality metrics, change risk scores, and security risk signals computed at index time and surfaced in tool output
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Multi-workspace support** for indexing and searching related codebases
@@ -49,15 +49,17 @@ Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings on m
 - `JULIE_EMBEDDING_STRICT_ACCEL`: `1` to disable embeddings when no GPU is available
 - See `docs/operations/embedding-sidecar.md` for all env vars and troubleshooting
 
-## Supported Languages (31)
+## Supported Languages (33)
 
-**Core:** Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin
+**Core:** Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Ruby, Swift, Kotlin, Scala
 
 **Systems:** C, C++, Go, Lua, Zig
 
+**Functional:** Elixir
+
 **Specialized:** GDScript, Vue, QML, R, Razor, SQL, HTML, CSS, Regex, Bash, PowerShell, Dart
 
-**Documentation:** Markdown, JSON, JSONL, TOML, YAML
+**Documentation:** Markdown, JSON, TOML, YAML
 
 ## Installation
 
@@ -106,7 +108,7 @@ claude mcp add julie -- /path/to/julie/target/release/julie-server
 
 Julie indexes your workspace automatically on first connection (~2-5s for most projects). All search capabilities are available immediately after indexing completes.
 
-## Tools (7)
+## Tools (8)
 
 ### Search & Navigation
 
@@ -144,6 +146,13 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
 
 - `manage_workspace` - Index, add, remove, refresh, and clean workspaces
 
+### Code Health & Metrics
+
+- `query_metrics` - Query pre-computed code health metrics
+  - Sort by security risk, change risk, centrality, or test coverage
+  - Filter by risk level, test status, symbol kind, file pattern, and language
+  - Powers the `/codehealth`, `/security-audit`, and `/architecture` skills
+
 **Default Ignore Patterns** - Julie automatically excludes common build artifacts and dependencies to prevent indexing noise:
 
 - **Build outputs**: `target/`, `build/`, `dist/`, `out/`, `obj/`, `bin/`
@@ -173,7 +182,7 @@ Julie automatically analyzes your codebase for test coverage quality and structu
 
 ### Test Intelligence
 
-- **Test detection** across all 31 languages — recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and language-specific test patterns
+- **Test detection** across all 33 languages — recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and language-specific test patterns
 - **Test quality metrics** — assertion density, mock usage, error path coverage, classified as thorough/adequate/thin/stub
 - **Test-to-code linkage** — maps which tests exercise each production function via call graph and identifier analysis
 - **Smart test filtering** — `fast_search` supports `exclude_tests` parameter to filter test symbols from results
@@ -273,7 +282,7 @@ src/
 ├── handler.rs       # MCP tool handler (rmcp ServerHandler)
 ├── startup.rs       # Workspace initialization and staleness detection
 ├── cli.rs           # CLI argument parsing
-├── extractors/      # Language-specific symbol extraction (31 languages)
+├── extractors/      # Language-specific symbol extraction (33 languages)
 ├── analysis/        # Post-indexing analysis (test quality, coverage, risk scoring)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer
