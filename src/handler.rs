@@ -22,7 +22,7 @@ use crate::tools::{
     DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
     ManageWorkspaceTool, QueryMetricsTool, RenameSymbolTool,
 };
-use crate::tools::metrics::session::{SessionMetrics, ToolCallReport, ToolKind};
+use crate::tools::metrics::session::{SessionMetrics, ToolCallReport, ToolKind, extract_source_paths};
 
 /// Tracks which indexes are ready for search operations
 #[derive(Debug)]
@@ -302,7 +302,8 @@ impl JulieServerHandler {
         Ok(())
     }
 
-    /// Record a completed tool call. Bumps in-memory atomics and spawns async SQLite write.
+    /// Record a completed tool call. Bumps in-memory atomics synchronously,
+    /// then spawns async task for source_bytes lookup + SQLite write.
     pub(crate) fn record_tool_call(
         &self,
         tool_name: &str,
@@ -310,22 +311,22 @@ impl JulieServerHandler {
         report: &ToolCallReport,
     ) {
         let duration_us = duration.as_micros() as u64;
-        let source_bytes = report.source_bytes.unwrap_or(0);
+        let output_bytes = report.output_bytes;
 
-        // Bump in-memory atomics (synchronous, ~50ns)
+        // Bump in-memory atomics synchronously (source_bytes=0 for now, updated async)
         if let Some(kind) = ToolKind::from_name(tool_name) {
             self.session_metrics
-                .record(kind, duration_us, source_bytes, report.output_bytes);
+                .record(kind, duration_us, 0, output_bytes);
         }
 
-        // Async SQLite write (fire-and-forget, non-blocking)
+        // Async: look up source file sizes + write to SQLite (fire-and-forget)
         let workspace = self.workspace.clone();
+        let session_metrics = self.session_metrics.clone();
         let session_id = self.session_metrics.session_id.clone();
         let tool_name = tool_name.to_string();
         let duration_ms = duration.as_secs_f64() * 1000.0;
         let result_count = report.result_count;
-        let source_bytes_opt = report.source_bytes;
-        let output_bytes = report.output_bytes;
+        let source_file_paths = report.source_file_paths.clone();
         let metadata = report.metadata.to_string();
         let metadata_str = if metadata == "null" {
             None
@@ -338,12 +339,29 @@ impl JulieServerHandler {
             if let Some(ws) = guard.as_ref() {
                 if let Some(db_arc) = &ws.db {
                     if let Ok(db) = db_arc.lock() {
+                        // Look up source file sizes from the index
+                        let source_bytes = if !source_file_paths.is_empty() {
+                            let path_refs: Vec<&str> =
+                                source_file_paths.iter().map(|s| s.as_str()).collect();
+                            db.get_total_file_sizes(&path_refs).ok()
+                        } else {
+                            None
+                        };
+
+                        // Bump source_bytes atomics (deferred from synchronous path)
+                        if let Some(sb) = source_bytes {
+                            session_metrics.total_source_bytes.fetch_add(
+                                sb,
+                                std::sync::atomic::Ordering::Relaxed,
+                            );
+                        }
+
                         let _ = db.insert_tool_call(
                             &session_id,
                             &tool_name,
                             duration_ms,
                             result_count,
-                            source_bytes_opt,
+                            source_bytes,
                             Some(output_bytes),
                             true,
                             metadata_str.as_deref(),
@@ -362,6 +380,18 @@ impl JulieServerHandler {
             .filter_map(|c| c.as_text())
             .map(|t| t.text.len() as u64)
             .sum()
+    }
+
+    /// Extract file paths from a CallToolResult's text content.
+    fn extract_paths_from_result(result: &CallToolResult) -> Vec<String> {
+        let text: String = result
+            .content
+            .iter()
+            .filter_map(|c| c.as_text())
+            .map(|t| t.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        extract_source_paths(&text)
     }
 
     /// Run auto-indexing in background (called after MCP handshake)
@@ -530,11 +560,14 @@ impl JulieServerHandler {
             .call_tool(self)
             .await
             .map_err(|e| McpError::internal_error(format!("fast_search failed: {}", e), None))?;
+        let output_bytes = Self::output_bytes_from_result(&result);
+        let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
             source_bytes: None,
-            output_bytes: Self::output_bytes_from_result(&result),
+            output_bytes,
             metadata,
+            source_file_paths,
         };
         self.record_tool_call("fast_search", start.elapsed(), &report);
         Ok(result)
@@ -562,11 +595,14 @@ impl JulieServerHandler {
             .call_tool(self)
             .await
             .map_err(|e| McpError::internal_error(format!("fast_refs failed: {}", e), None))?;
+        let output_bytes = Self::output_bytes_from_result(&result);
+        let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
             source_bytes: None,
-            output_bytes: Self::output_bytes_from_result(&result),
+            output_bytes,
             metadata,
+            source_file_paths,
         };
         self.record_tool_call("fast_refs", start.elapsed(), &report);
         Ok(result)
@@ -594,6 +630,7 @@ impl JulieServerHandler {
             "mode": params.mode,
             "target": params.target,
         });
+        let source_file_paths = vec![params.file_path.clone()];
         let result = params
             .call_tool(self)
             .await
@@ -603,6 +640,7 @@ impl JulieServerHandler {
             source_bytes: None,
             output_bytes: Self::output_bytes_from_result(&result),
             metadata,
+            source_file_paths,
         };
         self.record_tool_call("get_symbols", start.elapsed(), &report);
         Ok(result)
@@ -633,11 +671,14 @@ impl JulieServerHandler {
             .call_tool(self)
             .await
             .map_err(|e| McpError::internal_error(format!("deep_dive failed: {}", e), None))?;
+        let output_bytes = Self::output_bytes_from_result(&result);
+        let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
             source_bytes: None,
-            output_bytes: Self::output_bytes_from_result(&result),
+            output_bytes,
             metadata,
+            source_file_paths,
         };
         self.record_tool_call("deep_dive", start.elapsed(), &report);
         Ok(result)
@@ -667,11 +708,14 @@ impl JulieServerHandler {
             .call_tool(self)
             .await
             .map_err(|e| McpError::internal_error(format!("get_context failed: {}", e), None))?;
+        let output_bytes = Self::output_bytes_from_result(&result);
+        let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
             source_bytes: None,
-            output_bytes: Self::output_bytes_from_result(&result),
+            output_bytes,
             metadata,
+            source_file_paths,
         };
         self.record_tool_call("get_context", start.elapsed(), &report);
         Ok(result)
@@ -705,11 +749,14 @@ impl JulieServerHandler {
             .call_tool(self)
             .await
             .map_err(|e| McpError::internal_error(format!("rename_symbol failed: {}", e), None))?;
+        let output_bytes = Self::output_bytes_from_result(&result);
+        let source_file_paths = Self::extract_paths_from_result(&result);
         let report = ToolCallReport {
             result_count: None,
             source_bytes: None,
-            output_bytes: Self::output_bytes_from_result(&result),
+            output_bytes,
             metadata,
+            source_file_paths,
         };
         self.record_tool_call("rename_symbol", start.elapsed(), &report);
         Ok(result)
@@ -746,6 +793,7 @@ impl JulieServerHandler {
             source_bytes: None,
             output_bytes: Self::output_bytes_from_result(&result),
             metadata,
+            source_file_paths: Vec::new(),
         };
         self.record_tool_call("manage_workspace", start.elapsed(), &report);
         Ok(result)
@@ -780,6 +828,7 @@ impl JulieServerHandler {
             source_bytes: None,
             output_bytes: Self::output_bytes_from_result(&result),
             metadata,
+            source_file_paths: Vec::new(),
         };
         self.record_tool_call("query_metrics", start.elapsed(), &report);
         Ok(result)

@@ -74,6 +74,8 @@ pub struct ToolCallReport {
     pub source_bytes: Option<u64>,
     pub output_bytes: u64,
     pub metadata: serde_json::Value,
+    /// File paths touched by this tool call (for deferred source_bytes lookup).
+    pub source_file_paths: Vec<String>,
 }
 
 impl ToolCallReport {
@@ -83,8 +85,52 @@ impl ToolCallReport {
             source_bytes: None,
             output_bytes: 0,
             metadata: serde_json::Value::Null,
+            source_file_paths: Vec::new(),
         }
     }
+}
+
+/// Extract file paths from Julie's formatted tool output.
+/// Looks for patterns like `src/foo/bar.rs:42` or `src/foo/bar.rs` in the text.
+pub fn extract_source_paths(text: &str) -> Vec<String> {
+    use std::collections::HashSet;
+    let mut seen = HashSet::new();
+    let mut paths = Vec::new();
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        // Skip empty lines and header/decoration lines
+        if trimmed.is_empty() || trimmed.starts_with("──") || trimmed.starts_with("NOTE:") {
+            continue;
+        }
+        // Look for tokens that look like file paths: contain '/' and end with a known extension
+        for token in trimmed.split_whitespace() {
+            // Strip trailing punctuation and line:col suffixes
+            let clean = token.trim_end_matches(|c: char| c == ',' || c == ')' || c == ']');
+            // Split off :line_number if present
+            let path_part = if let Some(idx) = clean.find(':') {
+                let after = &clean[idx + 1..];
+                if after.chars().all(|c| c.is_ascii_digit() || c == '-') {
+                    &clean[..idx]
+                } else {
+                    clean
+                }
+            } else {
+                clean
+            };
+            // Must contain '/' and have a file extension
+            if path_part.contains('/')
+                && !path_part.starts_with("http")
+                && path_part.contains('.')
+            {
+                let p = path_part.to_string();
+                if seen.insert(p.clone()) {
+                    paths.push(p);
+                }
+            }
+        }
+    }
+    paths
 }
 
 /// Session-wide metrics. Wrapped in Arc on the handler.
