@@ -404,6 +404,57 @@ fn test_get_node_text_out_of_bounds_node() {
 }
 
 // ---------------------------------------------------------------------------
+// Free-standing find_child_by_type / find_child_by_types tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_free_find_child_by_type_finds_match() {
+    let content = "fn hello(x: i32) -> bool { true }";
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func = root.child(0).unwrap();
+    assert_eq!(func.kind(), "function_item");
+
+    let params = crate::base::find_child_by_type(&func, "parameters");
+    assert!(params.is_some(), "should find parameters child");
+    assert_eq!(params.unwrap().kind(), "parameters");
+}
+
+#[test]
+fn test_free_find_child_by_type_returns_none_for_missing() {
+    let content = "fn hello() {}";
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func = root.child(0).unwrap();
+
+    let result = crate::base::find_child_by_type(&func, "class_definition");
+    assert!(result.is_none(), "should return None for nonexistent child type");
+}
+
+#[test]
+fn test_free_find_child_by_types_finds_first_match() {
+    let content = "fn hello(x: i32) -> bool { true }";
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func = root.child(0).unwrap();
+
+    let result = crate::base::find_child_by_types(&func, &["class_definition", "parameters"]);
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().kind(), "parameters");
+}
+
+#[test]
+fn test_free_find_child_by_types_returns_none_when_no_match() {
+    let content = "fn hello() {}";
+    let tree = parse_rust(content);
+    let root = tree.root_node();
+    let func = root.child(0).unwrap();
+
+    let result = crate::base::find_child_by_types(&func, &["class_definition", "import"]);
+    assert!(result.is_none());
+}
+
+// ---------------------------------------------------------------------------
 // create_symbol tests (also indirectly tests find_doc_comment)
 // ---------------------------------------------------------------------------
 

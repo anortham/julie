@@ -8,7 +8,7 @@
 ## Tech Debt
 
 - [ ] **Run embedding benchmark** — baseline vs candidate on `LabHandbookV2` reference workspace, record quality/overhead deltas
-- [ ] **Consolidate per-language helper duplicates** — `get_node_text` and `find_child_by_type` are copy-pasted across dart, go, vue, gdscript, and razor extractors with near-identical logic. The canonical `BaseExtractor::get_node_text` is tested — moving the copies to `base/` would reduce ~10 untested duplicates to 1 tested shared function. Low urgency but reduces future maintenance surface.
+- [x] **Consolidate `find_child_by_type` duplicates** — 8 copies across dart, gdscript, elixir, lua, razor consolidated to free functions in `base/tree_methods.rs`. 4 new tests added. `get_node_text` copies remain (dart uses thread-local cache, vue takes different args; not worth forcing into shared pattern).
 
 ## Performance
 
