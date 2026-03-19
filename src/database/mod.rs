@@ -25,6 +25,8 @@ mod type_queries;
 pub mod types;
 pub mod vectors;
 mod workspace;
+mod tool_calls;
+pub use tool_calls::{ToolCallSummary, HistorySummary};
 
 /// Register sqlite-vec extension as a global auto-extension (once per process).
 static SQLITE_VEC_INIT: Once = Once::new();
