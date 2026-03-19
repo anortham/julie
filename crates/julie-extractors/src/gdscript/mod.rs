@@ -65,7 +65,7 @@ impl GDScriptExtractor {
         for i in 0..root_node.child_count() {
             if let Some(child) = root_node.child(i) {
                 if child.kind() == "extends_statement" {
-                    if let Some(type_node) = helpers::find_child_by_type(child, "type") {
+                    if let Some(type_node) = helpers::find_child_by_type(&child, "type") {
                         let base_class_name = self.base.get_node_text(&type_node);
 
                         // Create implicit class based on file name

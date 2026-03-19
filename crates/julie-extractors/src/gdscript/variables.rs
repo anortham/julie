@@ -146,7 +146,7 @@ pub(super) fn extract_variable_from_statement(
     symbols: &[Symbol],
 ) -> Option<Symbol> {
     // For variable_statement nodes, find the var child and extract from there
-    let var_node = find_child_by_type(node, "var")?;
+    let var_node = find_child_by_type(&node, "var")?;
 
     // Check if we should use class_name class as parent instead of implicit class
     let actual_parent_id = if let Some(node_parent) = node.parent() {
@@ -208,7 +208,7 @@ pub(super) fn find_closest_class_name_parent(
     for i in (0..var_index).rev() {
         if let Some(child) = source_parent.child(i) {
             if child.kind() == "class_name_statement" {
-                if let Some(name_node) = find_child_by_type(child, "name") {
+                if let Some(name_node) = find_child_by_type(&child, "name") {
                     let class_name = base.get_node_text(&name_node);
                     if let Some(matching_class) =
                         class_name_classes.iter().find(|c| c.name == class_name)

@@ -1,6 +1,6 @@
 //! Enum extraction for GDScript
 
-use crate::base::{BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{find_child_by_type, BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility};
 use tree_sitter::Node;
 
 /// Extract enum definition
@@ -10,7 +10,7 @@ pub(super) fn extract_enum_definition(
     parent_id: Option<&String>,
 ) -> Option<Symbol> {
     // For enum_definition nodes, find the identifier child directly
-    let name = if let Some(name_node) = find_child_by_type(node, "identifier") {
+    let name = if let Some(name_node) = find_child_by_type(&node, "identifier") {
         base.get_node_text(&name_node)
     } else {
         // Try to extract name from the text pattern: "enum Name { ... }"
@@ -97,18 +97,6 @@ fn find_enum_parent<'a>(node: Node, symbols: &'a [Symbol]) -> Option<&'a Symbol>
             });
         }
         current = parent;
-    }
-    None
-}
-
-/// Helper to find a child node of a specific type
-fn find_child_by_type<'a>(node: Node<'a>, child_type: &str) -> Option<Node<'a>> {
-    for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
-            if child.kind() == child_type {
-                return Some(child);
-            }
-        }
     }
     None
 }

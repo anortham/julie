@@ -3,21 +3,10 @@
 /// Handles @type, @typep, @opaque, @callback, @spec, @behaviour, @moduledoc, @doc.
 /// In tree-sitter-elixir, attributes parse as `unary_operator` with `@` operator.
 use super::ElixirExtractor;
-use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{find_child_by_type, Symbol, SymbolKind, SymbolOptions, Visibility};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;
-
-/// Find the first child of a given type
-fn find_child_by_type<'a>(node: &Node<'a>, kind: &str) -> Option<Node<'a>> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == kind {
-            return Some(child);
-        }
-    }
-    None
-}
 
 /// Extract a module attribute from a unary_operator node with `@` operator.
 pub(super) fn extract_attribute(

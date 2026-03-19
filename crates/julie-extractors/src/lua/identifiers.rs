@@ -53,7 +53,7 @@ fn extract_identifier_from_node(
         // Function calls: foo(), require("module")
         "function_call" => {
             // Try to get the function name from the identifier child
-            if let Some(name_node) = helpers::find_child_by_type(node, "identifier") {
+            if let Some(name_node) = helpers::find_child_by_type(&node, "identifier") {
                 let name = extractor.base().get_node_text(&name_node);
                 let containing_symbol_id = find_containing_symbol_id(extractor, node, symbol_map);
 
@@ -66,10 +66,10 @@ fn extract_identifier_from_node(
             }
             // If no direct identifier, check for dot_index_expression (like math.sqrt())
             else if let Some(dot_index) =
-                helpers::find_child_by_type(node, "dot_index_expression")
+                helpers::find_child_by_type(&node, "dot_index_expression")
             {
                 // Extract the rightmost identifier (the method name)
-                if let Some(_method_node) = helpers::find_child_by_type(dot_index, "identifier") {
+                if let Some(_method_node) = helpers::find_child_by_type(&dot_index, "identifier") {
                     // Get all identifiers and use the last one (rightmost)
                     let mut cursor = dot_index.walk();
                     let identifiers: Vec<Node> = dot_index

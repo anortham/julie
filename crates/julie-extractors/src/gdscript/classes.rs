@@ -13,7 +13,7 @@ pub(super) fn extract_class_name_statement(
     node: Node,
     parent_id: Option<&String>,
 ) -> Option<Symbol> {
-    let name_node = find_child_by_type(node, "name")?;
+    let name_node = find_child_by_type(&node, "name")?;
     let name = base.get_node_text(&name_node);
 
     // Include preceding annotations in signature
@@ -147,11 +147,11 @@ pub(super) fn collect_inheritance_info(
                 && next_child.kind() == "extends_statement"
             {
                 if let (Some(name_node), Some(type_node)) = (
-                    find_child_by_type(current_child, "name"),
-                    find_child_by_type(next_child, "type"),
+                    find_child_by_type(&current_child, "name"),
+                    find_child_by_type(&next_child, "type"),
                 ) {
                     let class_name = base.get_node_text(&name_node);
-                    if let Some(identifier_node) = find_child_by_type(type_node, "identifier") {
+                    if let Some(identifier_node) = find_child_by_type(&type_node, "identifier") {
                         let base_class_name = base.get_node_text(&identifier_node);
                         pending_inheritance.insert(class_name, base_class_name);
                     }
@@ -163,11 +163,11 @@ pub(super) fn collect_inheritance_info(
                 && next_child.kind() == "class_name_statement"
             {
                 if let (Some(type_node), Some(name_node)) = (
-                    find_child_by_type(current_child, "type"),
-                    find_child_by_type(next_child, "name"),
+                    find_child_by_type(&current_child, "type"),
+                    find_child_by_type(&next_child, "name"),
                 ) {
                     let class_name = base.get_node_text(&name_node);
-                    if let Some(identifier_node) = find_child_by_type(type_node, "identifier") {
+                    if let Some(identifier_node) = find_child_by_type(&type_node, "identifier") {
                         let base_class_name = base.get_node_text(&identifier_node);
                         pending_inheritance.insert(class_name, base_class_name);
                     }

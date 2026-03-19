@@ -7,20 +7,7 @@
 use crate::base::BaseExtractor;
 use tree_sitter::Node;
 
-/// Find a child node by type
-///
-/// Searches immediate children for a node of the specified type.
-/// Uses manual loop instead of iterator for borrow checker compatibility.
-#[allow(clippy::manual_find)]
-pub(crate) fn find_child_by_type<'a>(node: Node<'a>, node_type: &str) -> Option<Node<'a>> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == node_type {
-            return Some(child);
-        }
-    }
-    None
-}
+pub(crate) use crate::base::find_child_by_type;
 
 /// Check if a node contains a function definition child
 pub(crate) fn contains_function_definition(node: Node) -> bool {
@@ -47,7 +34,7 @@ pub(crate) fn infer_type_from_expression(base: &BaseExtractor, node: Node) -> St
         "table_constructor" | "table" => "table".to_string(),
         "function_call" => {
             // Check if this is a require() call
-            if let Some(identifier) = find_child_by_type(node, "identifier") {
+            if let Some(identifier) = find_child_by_type(&node, "identifier") {
                 if base.get_node_text(&identifier) == "require" {
                     return "import".to_string();
                 }

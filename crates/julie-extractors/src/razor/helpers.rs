@@ -5,35 +5,21 @@ use tree_sitter::Node;
 /// Common helper methods for finding and extracting node information
 impl super::RazorExtractor {
     /// Find the first child node of a specific type
-    #[allow(clippy::manual_find)] // Manual loop required for borrow checker
     pub(super) fn find_child_by_type<'a>(
         &self,
         node: Node<'a>,
         child_type: &str,
     ) -> Option<Node<'a>> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == child_type {
-                return Some(child);
-            }
-        }
-        None
+        crate::base::find_child_by_type(&node, child_type)
     }
 
     /// Find the first child node matching any of the provided types
-    #[allow(clippy::manual_find)] // Manual loop required for borrow checker
     pub(super) fn find_child_by_types<'a>(
         &self,
         node: Node<'a>,
         child_types: &[&str],
     ) -> Option<Node<'a>> {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child_types.contains(&child.kind()) {
-                return Some(child);
-            }
-        }
-        None
+        crate::base::find_child_by_types(&node, child_types)
     }
 
     /// Extract modifier keywords from a node (public, private, static, etc.)

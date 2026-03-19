@@ -2,16 +2,7 @@
 use crate::base::BaseExtractor;
 use tree_sitter::Node;
 
-/// Find the first child of a given type
-fn find_child_by_type<'a>(node: &Node<'a>, kind: &str) -> Option<Node<'a>> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == kind {
-            return Some(child);
-        }
-    }
-    None
-}
+pub(super) use crate::base::find_child_by_type;
 
 /// Extract the target name of a call node (e.g., "defmodule", "def", "use")
 ///

@@ -141,9 +141,9 @@ pub(super) fn extract_local_variable_declaration(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    let assignment_statement = helpers::find_child_by_type(node, "assignment_statement")?;
-    let variable_list = helpers::find_child_by_type(assignment_statement, "variable_list")?;
-    let expression_list = helpers::find_child_by_type(assignment_statement, "expression_list");
+    let assignment_statement = helpers::find_child_by_type(&node, "assignment_statement")?;
+    let variable_list = helpers::find_child_by_type(&assignment_statement, "variable_list")?;
+    let expression_list = helpers::find_child_by_type(&assignment_statement, "expression_list");
 
     let signature = base.get_node_text(&node);
     let mut cursor = variable_list.walk();
@@ -160,7 +160,7 @@ pub(super) fn extract_local_variable_declaration(
         let name_node = if var_node.kind() == "identifier" {
             Some(*var_node)
         } else if var_node.kind() == "variable" {
-            helpers::find_child_by_type(*var_node, "identifier")
+            helpers::find_child_by_type(var_node, "identifier")
         } else {
             None
         };
@@ -229,7 +229,7 @@ pub(super) fn extract_assignment_statement(
             } else if var_node.kind() == "dot_index_expression" {
                 *var_node
             } else {
-                helpers::find_child_by_type(*var_node, "identifier")?
+                helpers::find_child_by_type(var_node, "identifier")?
             };
 
             let name = base.get_node_text(&name_node);
@@ -309,7 +309,7 @@ pub(super) fn extract_assignment_statement(
                 doc_comment,
                 None,
             );
-        } else if let Some(name_node) = helpers::find_child_by_type(left, "identifier") {
+        } else if let Some(name_node) = helpers::find_child_by_type(&left, "identifier") {
             // Simple identifier assignment: PI = 3.14159
             let name = base.get_node_text(&name_node);
             let (kind, data_type) = infer_kind_and_type(base, right, false);
@@ -342,8 +342,8 @@ pub(super) fn extract_variable_assignment(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    let variable_list = helpers::find_child_by_type(node, "variable_list")?;
-    let expression_list = helpers::find_child_by_type(node, "expression_list");
+    let variable_list = helpers::find_child_by_type(&node, "variable_list")?;
+    let expression_list = helpers::find_child_by_type(&node, "expression_list");
 
     let signature = base.get_node_text(&node);
     let mut var_cursor = variable_list.walk();
@@ -381,7 +381,7 @@ pub(super) fn extract_variable_assignment(
                 None, // doc_comment handled by create_symbol fallback
                 expression,
             );
-        } else if let Some(name_node) = helpers::find_child_by_type(*var_node, "identifier") {
+        } else if let Some(name_node) = helpers::find_child_by_type(var_node, "identifier") {
             // Simple variable: PI = 3.14159
             let name = base.get_node_text(&name_node);
 

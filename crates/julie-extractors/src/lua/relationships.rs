@@ -22,14 +22,14 @@ fn traverse_tree_for_relationships<'a>(
 ) {
     if node.kind() == "function_call" {
         // Handle simple function calls: foo()
-        if let Some(identifier) = helpers::find_child_by_type(node, "identifier") {
+        if let Some(identifier) = helpers::find_child_by_type(&node, "identifier") {
             let callee_name = extractor.base().get_node_text(&identifier);
             process_function_call(extractor, node, &callee_name, symbol_map);
         }
         // Handle method calls: obj:method() or obj.method()
         else if let Some(method_expr) =
-            helpers::find_child_by_type(node, "method_index_expression")
-                .or_else(|| helpers::find_child_by_type(node, "dot_index_expression"))
+            helpers::find_child_by_type(&node, "method_index_expression")
+                .or_else(|| helpers::find_child_by_type(&node, "dot_index_expression"))
         {
             let full_expr = extractor.base().get_node_text(&method_expr);
             // Extract the method name (everything after : or .)
@@ -101,7 +101,7 @@ fn find_enclosing_function<'a>(
             | "function_definition_statement"
             | "local_function_declaration"
             | "local_function_definition_statement" => {
-                if let Some(identifier) = helpers::find_child_by_type(parent, "identifier") {
+                if let Some(identifier) = helpers::find_child_by_type(&parent, "identifier") {
                     let caller_name = base.get_node_text(&identifier);
                     if let Some(symbol) = symbol_map.get(caller_name.as_str()) {
                         return Some(*symbol);

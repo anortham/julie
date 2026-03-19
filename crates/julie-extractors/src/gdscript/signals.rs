@@ -10,7 +10,7 @@ pub(super) fn extract_signal_statement(
     node: Node,
     parent_id: Option<&String>,
 ) -> Option<Symbol> {
-    let name_node = find_child_by_type(node, "name")?;
+    let name_node = find_child_by_type(&node, "name")?;
     let name = base.get_node_text(&name_node);
     let signature = base.get_node_text(&node);
 

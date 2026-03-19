@@ -3,17 +3,7 @@
 use crate::base::BaseExtractor;
 use tree_sitter::Node;
 
-/// Helper to find a child node of a specific type
-pub(super) fn find_child_by_type<'a>(node: Node<'a>, child_type: &str) -> Option<Node<'a>> {
-    for i in 0..node.child_count() {
-        if let Some(child) = node.child(i) {
-            if child.kind() == child_type {
-                return Some(child);
-            }
-        }
-    }
-    None
-}
+pub(super) use crate::base::find_child_by_type;
 
 /// Helper to find multiple annotations preceding a node at the source level
 pub(super) fn extract_variable_annotations(

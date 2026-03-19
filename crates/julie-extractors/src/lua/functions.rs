@@ -20,7 +20,7 @@ pub(super) fn extract_function_definition_statement(
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
     // Handle both regular functions and colon syntax methods
-    let mut name_node = helpers::find_child_by_type(node, "identifier");
+    let mut name_node = helpers::find_child_by_type(&node, "identifier");
     let name: String;
     let mut kind = SymbolKind::Function;
     let mut method_parent_id = None;
@@ -29,9 +29,9 @@ pub(super) fn extract_function_definition_statement(
         name = base.get_node_text(&name_n);
     } else {
         // Check for colon syntax: function obj:method() or dot syntax: function obj.method()
-        if let Some(variable_node) = helpers::find_child_by_type(node, "variable")
-            .or_else(|| helpers::find_child_by_type(node, "dot_index_expression"))
-            .or_else(|| helpers::find_child_by_type(node, "method_index_expression"))
+        if let Some(variable_node) = helpers::find_child_by_type(&node, "variable")
+            .or_else(|| helpers::find_child_by_type(&node, "dot_index_expression"))
+            .or_else(|| helpers::find_child_by_type(&node, "method_index_expression"))
         {
             let full_name = base.get_node_text(&variable_node);
 
@@ -133,7 +133,7 @@ pub(super) fn extract_local_function_definition_statement(
     node: Node,
     parent_id: Option<&str>,
 ) -> Option<Symbol> {
-    let name_node = helpers::find_child_by_type(node, "identifier")?;
+    let name_node = helpers::find_child_by_type(&node, "identifier")?;
     let name = base.get_node_text(&name_node);
     let signature = base.get_node_text(&node);
 

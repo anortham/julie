@@ -27,7 +27,7 @@ pub(super) fn extract_variable_type(
     for i in (name_index + 1)..parent_node.child_count() {
         if let Some(child) = parent_node.child(i) {
             if child.kind() == "type" {
-                if let Some(identifier_node) = find_child_by_type(child, "identifier") {
+                if let Some(identifier_node) = find_child_by_type(&child, "identifier") {
                     return Some(base.get_node_text(&identifier_node));
                 } else {
                     // Handle complex types (e.g., Array[String])
@@ -68,7 +68,7 @@ pub(super) fn infer_type_from_expression(base: &mut BaseExtractor, node: Node) -
             }
         }
         "call_expression" => {
-            if let Some(callee_node) = find_child_by_type(node, "identifier") {
+            if let Some(callee_node) = find_child_by_type(&node, "identifier") {
                 let callee_text = base.get_node_text(&callee_node);
                 // Common Godot constructors
                 if ["Vector2", "Vector3", "Color", "Rect2", "Transform2D"]

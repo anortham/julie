@@ -38,7 +38,7 @@ fn test_find_child_by_type_returns_none_for_missing_type() {
     let root = tree.root_node();
 
     // Should return None when child type doesn't exist
-    let result = find_child_by_type(root, "nonexistent_type");
+    let result = find_child_by_type(&root, "nonexistent_type");
     assert!(result.is_none());
 }
 
@@ -202,7 +202,7 @@ end
     let mut cursor = root.walk();
     for child in root.children(&mut cursor) {
         // The helpers should be accessible and usable
-        let result = find_child_by_type(child, "identifier");
+        let result = find_child_by_type(&child, "identifier");
         if result.is_some() {
             found_something = true;
         }

@@ -4,17 +4,7 @@
 
 use tree_sitter::Node;
 
-/// Find a child node by its type/kind
-#[allow(clippy::manual_find)]
-pub(super) fn find_child_by_type<'a>(node: &Node<'a>, node_type: &str) -> Option<Node<'a>> {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == node_type {
-            return Some(child);
-        }
-    }
-    None
-}
+pub(super) use crate::base::find_child_by_type;
 
 /// Get text content of a node - THREAD-SAFE PER-THREAD CACHE
 /// Uses thread-local storage to avoid race conditions in parallel tests

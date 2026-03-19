@@ -158,3 +158,31 @@ impl BaseExtractor {
         self.find_doc_comment(node)
     }
 }
+
+// Free-standing tree helpers for use without a BaseExtractor instance.
+// These are the canonical implementations; per-extractor copies should
+// import from here instead of reimplementing.
+
+/// Find the first child node matching `child_type`.
+pub fn find_child_by_type<'a>(node: &Node<'a>, child_type: &str) -> Option<Node<'a>> {
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            if child.kind() == child_type {
+                return Some(child);
+            }
+        }
+    }
+    None
+}
+
+/// Find the first child node matching any of `types`.
+pub fn find_child_by_types<'a>(node: &Node<'a>, types: &[&str]) -> Option<Node<'a>> {
+    for i in 0..node.child_count() {
+        if let Some(child) = node.child(i) {
+            if types.contains(&child.kind()) {
+                return Some(child);
+            }
+        }
+    }
+    None
+}
