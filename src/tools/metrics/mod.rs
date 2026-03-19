@@ -5,6 +5,7 @@
 //! metadata by the analysis pipeline.
 
 pub(crate) mod query;
+pub mod session;
 
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
