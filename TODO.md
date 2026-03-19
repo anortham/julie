@@ -2,8 +2,9 @@
 
 ## Bugs
 
-- [ ] **workspace_init is pre-existing red + pathological** — `tests::core::workspace_init::test_find_workspace_root_rejects_home_julie_dir` fails on both `main` and `feat/test-runner-tiering`, and the `workspace-init` bucket still times out even with a `480s` budget; this currently blocks treating `cargo xtask test system` / `full` as green-by-default (`src/tests/core/workspace_init.rs`)
-- [ ] **F4. Embedding KNN smoke test may be red** — `test_pipeline_knn_works_after_embedding` asserts `authenticate_user` ranks above `DatabaseConnection` for an auth query; needs verification run (`src/tests/integration/embedding_pipeline.rs`)
+- [x] **workspace_init is pre-existing red + pathological** — Verified 2026-03-19: all 11 tests pass (including `test_find_workspace_root_rejects_home_julie_dir`), no timeout. Likely fixed during 2026-03-16/17 bugfix sessions.
+- [x] **F4. Embedding KNN smoke test may be red** — Verified 2026-03-19: `test_pipeline_knn_works_after_embedding` passes.
+- [x] **Watcher: incremental indexing Tantivy content test was missing commit** — Test called handler directly without committing (production path batch-commits via `process_pending_changes`). Added explicit `idx.commit()` after handler call. Fixed 2026-03-19. System tier now fully green (124 pass, 0 fail).
 
 ## Tech Debt
 

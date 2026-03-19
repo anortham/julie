@@ -811,9 +811,15 @@ fn render_rich_text_field() {
     .await
     .expect("Incremental indexing should succeed");
 
-    // CRITICAL: Verify content search STILL works after incremental update
-    // BUG: Before fix, this fails because remove_by_file_path() deleted the content doc
-    // and only symbol docs were re-added
+    // The handler intentionally defers Tantivy commit (production caller
+    // process_pending_changes batch-commits after processing all events).
+    // We must commit here to make the changes visible to the reader.
+    {
+        let idx = search_index.lock().unwrap();
+        idx.commit().unwrap();
+    }
+
+    // Verify content search STILL works after incremental update
     {
         let idx = search_index.lock().unwrap();
         let results = idx
@@ -822,10 +828,7 @@ fn render_rich_text_field() {
             .results;
         assert!(
             !results.is_empty(),
-            "BUG: Content search for 'RichTextField' returns nothing after file modification! \
-             The file watcher's incremental update deletes file content documents from Tantivy \
-             (via remove_by_file_path) but never re-adds them (missing add_file_content call). \
-             This causes content search to progressively degrade over a session."
+            "Content search for 'RichTextField' should still work after file modification"
         );
         assert_eq!(
             results[0].file_path, "rich_component.rs",
