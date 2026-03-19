@@ -22,6 +22,7 @@ use crate::tools::{
     DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
     ManageWorkspaceTool, QueryMetricsTool, RenameSymbolTool,
 };
+use crate::tools::metrics::session::{SessionMetrics, ToolCallReport, ToolKind};
 
 /// Tracks which indexes are ready for search operations
 #[derive(Debug)]
@@ -65,6 +66,8 @@ pub struct JulieServerHandler {
     pub is_indexed: Arc<RwLock<bool>>,
     /// Tracks which indexes are ready for search operations
     pub indexing_status: Arc<IndexingStatus>,
+    /// Per-session operational metrics (tool call timing, output sizes)
+    pub session_metrics: Arc<SessionMetrics>,
     /// rmcp tool router for handling tool calls
     tool_router: ToolRouter<Self>,
 }
@@ -85,6 +88,7 @@ impl JulieServerHandler {
             workspace: Arc::new(RwLock::new(None)),
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
+            session_metrics: Arc::new(SessionMetrics::new()),
             tool_router: Self::tool_router(),
         })
     }
@@ -296,6 +300,58 @@ impl JulieServerHandler {
             self.initialize_workspace(None).await?;
         }
         Ok(())
+    }
+
+    /// Record a completed tool call. Bumps in-memory atomics and spawns async SQLite write.
+    pub(crate) fn record_tool_call(
+        &self,
+        tool_name: &str,
+        duration: std::time::Duration,
+        report: &ToolCallReport,
+    ) {
+        let duration_us = duration.as_micros() as u64;
+        let source_bytes = report.source_bytes.unwrap_or(0);
+
+        // Bump in-memory atomics (synchronous, ~50ns)
+        if let Some(kind) = ToolKind::from_name(tool_name) {
+            self.session_metrics
+                .record(kind, duration_us, source_bytes, report.output_bytes);
+        }
+
+        // Async SQLite write (fire-and-forget, non-blocking)
+        let workspace = self.workspace.clone();
+        let session_id = self.session_metrics.session_id.clone();
+        let tool_name = tool_name.to_string();
+        let duration_ms = duration.as_secs_f64() * 1000.0;
+        let result_count = report.result_count;
+        let source_bytes_opt = report.source_bytes;
+        let output_bytes = report.output_bytes;
+        let metadata = report.metadata.to_string();
+        let metadata_str = if metadata == "null" {
+            None
+        } else {
+            Some(metadata)
+        };
+
+        tokio::spawn(async move {
+            let guard = workspace.read().await;
+            if let Some(ws) = guard.as_ref() {
+                if let Some(db_arc) = &ws.db {
+                    if let Ok(db) = db_arc.lock() {
+                        let _ = db.insert_tool_call(
+                            &session_id,
+                            &tool_name,
+                            duration_ms,
+                            result_count,
+                            source_bytes_opt,
+                            Some(output_bytes),
+                            true,
+                            metadata_str.as_deref(),
+                        );
+                    }
+                }
+            }
+        });
     }
 
     /// Run auto-indexing in background (called after MCP handshake)

@@ -100,3 +100,12 @@ fn test_tool_call_report_empty() {
     assert_eq!(report.output_bytes, 0);
     assert_eq!(report.metadata, serde_json::Value::Null);
 }
+
+#[tokio::test]
+async fn test_handler_has_session_metrics() {
+    let handler = crate::handler::JulieServerHandler::new_for_test()
+        .await
+        .unwrap();
+    assert_eq!(handler.session_metrics.total_calls(), 0);
+    assert!(!handler.session_metrics.session_id.is_empty());
+}
