@@ -12,6 +12,7 @@ pub struct FileInfo {
     pub last_modified: i64, // Unix timestamp
     pub last_indexed: i64,  // Unix timestamp
     pub symbol_count: i32,
+    pub line_count: i32,
     /// Full file content for Tantivy search
     pub content: Option<String>,
 }

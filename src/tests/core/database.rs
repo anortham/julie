@@ -148,6 +148,7 @@ async fn test_file_info_storage() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 5,
+        line_count: 0,
         content: None,
     };
 
@@ -195,6 +196,7 @@ async fn test_symbol_storage_and_retrieval() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 1,
+        line_count: 0,
         content: None,
     };
     db.store_file_info(&file_info).unwrap();
@@ -345,6 +347,7 @@ async fn test_relationship_with_id_field() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 2,
+        line_count: 0,
         content: None,
     };
     db.store_file_info(&file_info).unwrap();
@@ -486,6 +489,7 @@ async fn test_cross_language_semantic_grouping() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 1,
+        line_count: 0,
         content: None,
     };
     db.store_file_info(&ts_file_info).unwrap();
@@ -498,6 +502,7 @@ async fn test_cross_language_semantic_grouping() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 1,
+        line_count: 0,
         content: None,
     };
     db.store_file_info(&rust_file_info).unwrap();
@@ -533,6 +538,7 @@ async fn test_get_outgoing_relationships_for_symbols_batch() {
         last_modified: 12345,
         last_indexed: 0,
         symbol_count: 4,
+        line_count: 0,
         content: None,
     };
     db.store_file_info(&file_info).unwrap();
@@ -677,6 +683,7 @@ async fn test_extractor_database_integration() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 1,
+        line_count: 0,
         content: None,
     };
     db.store_file_info(&file_info).unwrap();
@@ -712,6 +719,7 @@ async fn test_complete_symbol_field_persistence() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 1,
+        line_count: 0,
         content: None,
     };
     db.store_file_info(&file_info).unwrap();
@@ -1571,6 +1579,7 @@ fn test_reference_score_defaults_to_zero() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 1,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -1617,6 +1626,7 @@ fn test_compute_reference_scores_weighted() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 4,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -1708,6 +1718,7 @@ fn test_compute_reference_scores_excludes_self_refs() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 1,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -1765,6 +1776,7 @@ fn test_get_reference_scores_batch() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 4,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -1824,6 +1836,7 @@ fn test_compute_reference_scores_zero_for_no_incoming() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 2,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -1898,6 +1911,7 @@ fn test_compute_reference_scores_propagates_interface_centrality_to_implementati
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 5,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -1998,6 +2012,7 @@ fn test_compute_reference_scores_propagates_base_class_centrality() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 4,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -2159,6 +2174,7 @@ fn test_get_reference_scores_large_batch() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 0,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -2271,6 +2287,7 @@ fn test_compute_reference_scores_propagates_constructor_centrality() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 5,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -2283,6 +2300,7 @@ fn test_compute_reference_scores_propagates_constructor_centrality() {
         last_modified: 1234567890,
         last_indexed: 0,
         symbol_count: 2,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -2394,6 +2412,7 @@ fn test_compute_reference_scores_includes_type_usage_identifiers() {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 2,
+            line_count: 0,
             content: None,
         })
         .unwrap();
@@ -2480,6 +2499,7 @@ fn test_compute_reference_scores_includes_constants_with_type_usage() {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 2,
+            line_count: 0,
             content: None,
         })
         .unwrap();
@@ -2566,6 +2586,7 @@ fn test_compute_reference_scores_includes_import_identifiers() {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 1,
+            line_count: 0,
             content: None,
         })
         .unwrap();
@@ -2637,6 +2658,7 @@ fn test_compute_reference_scores_qualified_name_identifiers() {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 2,
+            line_count: 0,
             content: None,
         })
         .unwrap();
@@ -2725,6 +2747,7 @@ fn test_compute_reference_scores_escapes_like_wildcards() {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 2,
+            line_count: 0,
             content: None,
         })
         .unwrap();
@@ -2813,6 +2836,7 @@ fn test_centrality_deweights_test_file_symbols() {
         last_modified: 1,
         last_indexed: 0,
         symbol_count: 1,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -2826,6 +2850,7 @@ fn test_centrality_deweights_test_file_symbols() {
         last_modified: 1,
         last_indexed: 0,
         symbol_count: 1,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -2840,6 +2865,7 @@ fn test_centrality_deweights_test_file_symbols() {
             last_modified: 1,
             last_indexed: 0,
             symbol_count: 1,
+            line_count: 0,
             content: None,
         })
         .unwrap();
@@ -2854,6 +2880,7 @@ fn test_centrality_deweights_test_file_symbols() {
         last_modified: 1,
         last_indexed: 0,
         symbol_count: 1,
+        line_count: 0,
         content: None,
     })
     .unwrap();
@@ -2981,6 +3008,7 @@ fn test_compute_reference_scores_propagates_header_to_implementation() {
             last_modified: 1234567890,
             last_indexed: 0,
             symbol_count: 5,
+            line_count: 0,
             content: None,
         })
         .unwrap();
@@ -3105,6 +3133,7 @@ fn test_step1b_identifier_boost_excludes_test_file_symbols() {
             last_modified: 0,
             last_indexed: 0,
             symbol_count: 1,
+            line_count: 0,
             content: None,
         })
         .unwrap();

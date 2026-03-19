@@ -6,7 +6,7 @@ use rusqlite::params;
 use tracing::{debug, info, warn};
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 12;
+pub const LATEST_SCHEMA_VERSION: i32 = 13;
 
 impl SymbolDatabase {
     // ============================================================
@@ -101,6 +101,7 @@ impl SymbolDatabase {
             10 => self.migration_010_add_symbol_vectors()?,
             11 => self.migration_011_add_embedding_config()?,
             12 => self.migration_012_add_memory_vectors()?,
+            13 => self.migration_013_add_tool_calls_and_line_count()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -119,6 +120,9 @@ impl SymbolDatabase {
             8 => "Drop embedding tables (embedding engine removed)",
             9 => "Add reference_score for graph centrality ranking",
             10 => "Add symbol_vectors virtual table for semantic embeddings",
+            11 => "Add embedding config table",
+            12 => "Add memory vectors table",
+            13 => "Add tool_calls table and line_count column",
             _ => "Unknown migration",
         };
 
@@ -697,6 +701,45 @@ impl SymbolDatabase {
         )?;
 
         info!("✅ memory_vectors virtual table created ({dims}-dim float vectors)");
+        Ok(())
+    }
+
+    /// Migration 013: Add tool_calls table for operational metrics and line_count to files.
+    fn migration_013_add_tool_calls_and_line_count(&self) -> Result<()> {
+        info!("Migration 013: Adding tool_calls table and line_count column");
+
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS tool_calls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                tool_name TEXT NOT NULL,
+                duration_ms REAL NOT NULL,
+                result_count INTEGER,
+                source_bytes INTEGER,
+                output_bytes INTEGER,
+                success INTEGER NOT NULL DEFAULT 1,
+                metadata TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_tool_calls_timestamp ON tool_calls(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name);
+            CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id);
+            ",
+        )?;
+
+        // Only ALTER existing files table; fresh databases get line_count from CREATE TABLE
+        let files_exists: bool = self.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='files'",
+            [],
+            |row| row.get::<_, i32>(0).map(|c| c > 0),
+        )?;
+
+        if files_exists && !self.has_column("files", "line_count")? {
+            self.conn
+                .execute("ALTER TABLE files ADD COLUMN line_count INTEGER DEFAULT 0", [])?;
+        }
+
+        info!("Migration 013 complete: tool_calls table and line_count column added");
         Ok(())
     }
 }

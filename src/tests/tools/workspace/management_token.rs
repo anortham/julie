@@ -162,6 +162,7 @@ mod workspace_management_token_tests {
                 last_modified: 1700000000 + i as i64,
                 last_indexed: 1700000000 + i as i64,
                 symbol_count: 50 + (i % 20) as i32,
+                line_count: 0,
                 content: None,
             };
             files.push(file);
@@ -218,6 +219,7 @@ mod workspace_management_token_tests {
                 last_modified: 1700000000,
                 last_indexed: 1700000000,
                 symbol_count: 25,
+                line_count: 0,
                 content: None,
             };
             files.push(file);

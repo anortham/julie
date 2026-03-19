@@ -71,7 +71,8 @@ impl SymbolDatabase {
                 last_indexed INTEGER DEFAULT 0,
                 parse_cache BLOB,
                 symbol_count INTEGER DEFAULT 0,
-                content TEXT  -- CASCADE: Full file content for FTS
+                content TEXT,  -- CASCADE: Full file content for FTS
+                line_count INTEGER DEFAULT 0
             )",
             [],
         )?;

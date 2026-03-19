@@ -33,6 +33,7 @@ mod pipeline_integration_tests {
                 last_modified: 1000000,
                 last_indexed: 0,
                 symbol_count: 1,
+                line_count: 0,
                 content: None,
             })
             .unwrap();
@@ -416,6 +417,7 @@ mod pipeline_integration_tests {
             last_modified: 1000000,
             last_indexed: 0,
             symbol_count: 1,
+            line_count: 0,
             content: None,
         })
         .unwrap();

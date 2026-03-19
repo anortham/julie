@@ -21,8 +21,8 @@ impl SymbolDatabase {
 
         self.conn.execute(
             "INSERT OR REPLACE INTO files
-             (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             (path, language, hash, size, last_modified, last_indexed, symbol_count, content, line_count)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 file_info.path,
                 file_info.language,
@@ -31,7 +31,8 @@ impl SymbolDatabase {
                 file_info.last_modified,
                 now, // Use calculated timestamp instead of unixepoch()
                 file_info.symbol_count,
-                file_info.content.as_deref().unwrap_or("") // Content stored for Tantivy full-text indexing
+                file_info.content.as_deref().unwrap_or(""), // Content stored for Tantivy full-text indexing
+                file_info.line_count,
             ],
         )?;
 
@@ -97,8 +98,8 @@ impl SymbolDatabase {
 
             let mut stmt = tx.prepare(
                 "INSERT OR REPLACE INTO files
-                 (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 (path, language, hash, size, last_modified, last_indexed, symbol_count, content, line_count)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             )?;
 
             for file in files {
@@ -110,7 +111,8 @@ impl SymbolDatabase {
                     file.last_modified,
                     now,
                     file.symbol_count,
-                    file.content.as_deref().unwrap_or("") // CASCADE: Include content
+                    file.content.as_deref().unwrap_or(""), // CASCADE: Include content
+                    file.line_count,
                 ])?;
             }
 
@@ -318,7 +320,7 @@ impl SymbolDatabase {
         let cutoff_time = now - (days as i64 * 86400); // days * seconds_per_day
 
         let mut stmt = self.conn.prepare(
-            "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content
+            "SELECT path, language, hash, size, last_modified, last_indexed, symbol_count, content, line_count
              FROM files
              WHERE last_modified >= ?1
              ORDER BY last_modified DESC
@@ -335,6 +337,7 @@ impl SymbolDatabase {
                 last_indexed: row.get(5)?,
                 symbol_count: row.get(6)?,
                 content: row.get(7)?,
+                line_count: row.get::<_, Option<i32>>(8)?.unwrap_or(0),
             })
         })?;
 
@@ -484,14 +487,20 @@ pub fn create_file_info<P: AsRef<Path>>(
     let relative_path =
         crate::utils::paths::to_relative_unix_style(&canonical_path, workspace_root)?;
 
+    let line_count = content
+        .as_ref()
+        .map(|c| c.lines().count() as i32)
+        .unwrap_or(0);
+
     Ok(FileInfo {
         path: relative_path, // Use relative Unix-style path
         language: language.to_string(),
         hash,
         size: metadata.len() as i64,
         last_modified,
-        last_indexed: 0, // Will be set by database
-        symbol_count: 0, // Will be updated after extraction
-        content,         // File content for Tantivy search indexing
+        last_indexed: 0,    // Will be set by database
+        symbol_count: 0,    // Will be updated after extraction
+        line_count,         // Computed from content
+        content,            // File content for Tantivy search indexing
     })
 }
