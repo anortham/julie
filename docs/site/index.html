@@ -288,7 +288,7 @@
   <!-- Section 6: Skills -->
   <section id="skills" class="section">
     <h2 class="section-title">Skills</h2>
-    <p class="section-subtitle">10 pre-built workflows that combine tools into higher-level capabilities.</p>
+    <p class="section-subtitle">11 pre-built workflows that combine tools into higher-level capabilities.</p>
 
     <div class="card-grid" style="grid-template-columns: repeat(3, 1fr);">
       <div class="card tool-card animate-on-scroll" data-delay="0">
@@ -321,6 +321,17 @@
           <div><span class="result">Entry points: 15 high-centrality symbols</span></div>
           <div><span class="result">Modules: 8 groups by responsibility</span></div>
           <div><span class="highlight">→ Reading order: handler.rs → tools/ → database/</span></div>
+        </div>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="300">
+        <div class="tool-name">/metrics</div>
+        <div class="tool-desc">Session performance and context efficiency report</div>
+        <div class="terminal">
+          <div><span class="prompt">$ </span><span class="command">/metrics</span></div>
+          <div><span class="result">21 calls | avg 10ms</span></div>
+          <div><span class="result">Source examined: </span><span class="highlight">529KB</span></div>
+          <div><span class="highlight">492KB NOT injected into context</span></div>
         </div>
       </div>
     </div>
@@ -459,12 +470,12 @@
 
       <div class="card tool-card animate-on-scroll" data-delay="700">
         <div class="tool-name">query_metrics</div>
-        <div class="tool-desc">Query pre-computed code health metrics</div>
-        <div class="terminal" aria-label="query_metrics showing top 3 symbols by security risk">
-          <div><span class="prompt">$ </span><span class="command">query_metrics(sort_by="security_risk", limit=3)</span></div>
-          <div><span class="highlight">1.</span> <span class="result">store_embeddings</span> <span class="risk-high">HIGH (0.90)</span></div>
-          <div><span class="highlight">2.</span> <span class="result">bulk_store_symbols</span> <span class="risk-high">HIGH (0.90)</span></div>
-          <div><span class="highlight">3.</span> <span class="result">handle_index_cmd</span> <span class="risk-high">HIGH (0.87)</span></div>
+        <div class="tool-desc">Code health metrics + operational performance stats</div>
+        <div class="terminal" aria-label="query_metrics showing session performance and context efficiency">
+          <div><span class="prompt">$ </span><span class="command">query_metrics(category="session")</span></div>
+          <div><span class="result">fast_search</span>  12 calls  avg 4.1ms</div>
+          <div><span class="result">Source examined:</span> <span class="highlight">214KB</span></div>
+          <div><span class="result">NOT injected: </span> <span class="highlight">206KB</span></div>
         </div>
         <span class="token-badge">~300 tokens</span>
       </div>

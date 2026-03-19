@@ -25,6 +25,7 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - **Cross-language code navigation** (go-to-definition, find-references) across 33 languages
 - **Code Health Intelligence** — automatic test detection, test quality metrics, change risk scores, and security risk signals computed at index time and surfaced in tool output
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
+- **Operational metrics** — per-tool timing, context efficiency tracking, "bytes NOT injected" headline metric
 - **Multi-workspace support** for indexing and searching related codebases
 - **Stdio MCP server** — single binary, zero configuration, works with any MCP client
 
@@ -150,10 +151,11 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
 
 ### Code Health & Metrics
 
-- `query_metrics` - Query pre-computed code health metrics
-  - Sort by security risk, change risk, centrality, or test coverage
-  - Filter by risk level, test status, symbol kind, file pattern, and language
-  - Powers the `/codehealth`, `/security-audit`, and `/architecture` skills
+- `query_metrics` - Query code health metrics or operational performance stats
+  - `category: "code_health"` (default) — sort by security risk, change risk, centrality, or test coverage with filters for risk level, test status, symbol kind, file pattern, and language
+  - `category: "session"` — current session stats: per-tool call counts, average latency, output bytes, and context efficiency (source bytes examined vs output returned)
+  - `category: "history"` — cross-session trends: total calls, p95 latencies, cumulative context efficiency
+  - Headline metric: **bytes NOT injected into context** (source_bytes - output_bytes)
 
 **Default Ignore Patterns** - Julie automatically excludes common build artifacts and dependencies to prevent indexing noise:
 
@@ -209,7 +211,7 @@ Security Risk: HIGH (0.84) — calls execute; public; accepts string params
 
 ## Skills
 
-Julie ships with 10 pre-built skills — reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/codehealth`) in harnesses that support them, or used as system prompt instructions.
+Julie ships with 11 pre-built skills — reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/codehealth`) in harnesses that support them, or used as system prompt instructions.
 
 ### Report Skills
 
@@ -218,6 +220,7 @@ Julie ships with 10 pre-built skills — reusable prompt workflows that combine 
 | `/codehealth` | Risk hotspots, test gaps, dead code candidates, and prioritized recommendations |
 | `/security-audit` | Security risk analysis with plain-language explanations of risky patterns |
 | `/architecture` | Architecture overview — entry points, module map, dependency flow, suggested reading order |
+| `/metrics` | Session performance report — tool usage, timing, and context efficiency (bytes NOT injected) |
 
 ### Navigation & Analysis Skills
 
