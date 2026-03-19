@@ -66,7 +66,7 @@ pub struct ManageWorkspaceTool {
     /// Show stats:           {"operation": "stats", "workspace_id": null}
     /// Add workspace:        {"operation": "add", "path": "/path/to/project", "name": "My Project"}
     /// Clean workspaces:     {"operation": "clean"}
-    /// Refresh workspace:    {"operation": "refresh", "workspace_id": "workspace-id"}
+    /// Refresh workspace:    {"operation": "refresh", "workspace_id": "workspace-id", "force": true}
     /// Health check:         {"operation": "health", "detailed": true}
     pub operation: String,
 
@@ -75,7 +75,7 @@ pub struct ManageWorkspaceTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 
-    /// Force complete re-indexing (used by: index)
+    /// Force complete re-indexing (used by: index, refresh)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub force: Option<bool>,
 

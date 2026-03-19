@@ -124,6 +124,25 @@ get_context(query="payment processing")
 **First action in new workspace:** `manage_workspace(operation="index")`
 If search returns zero results unexpectedly, run `health` to diagnose.
 
+**Reference workspaces** (cross-project search):
+```javascript
+// Add a reference workspace (indexes it immediately)
+manage_workspace(operation="add", path="/path/to/other/project", name="My Lib")
+
+// List all workspaces (shows workspace IDs)
+manage_workspace(operation="list")
+
+// Incremental refresh (re-indexes only changed files)
+manage_workspace(operation="refresh", workspace_id="mylib_a1b2c3d4")
+
+// Force full re-index (use when indexing code changed but source files didn't)
+manage_workspace(operation="refresh", workspace_id="mylib_a1b2c3d4", force=true)
+```
+
+**When to use `force=true`:** After Julie's extractor or indexing code changes, source files in a reference workspace may be unchanged on disk but need re-processing. Without `force`, the incremental pipeline sees matching file hashes and reports "Already up-to-date." Use `force=true` to bypass the incremental check and fully re-index.
+
+**Note:** Reference workspaces have no file watcher. Use `refresh` to manually pick up changes.
+
 ---
 
 ## Workflow Patterns

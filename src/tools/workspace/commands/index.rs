@@ -144,7 +144,11 @@ impl ManageWorkspaceTool {
         }
 
         // Check if already indexed and not forcing reindex
-        if !force_reindex {
+        // 🔴 CRITICAL FIX: Skip this guard for reference workspaces!
+        // The is_indexed flag and symbol count belong to the PRIMARY workspace.
+        // Without this check, calling index on a reference workspace path returns
+        // "Workspace already indexed: {primary_symbol_count} symbols" — a silent lie.
+        if !force_reindex && !is_reference_workspace {
             let is_indexed = *handler.is_indexed.read().await;
             if is_indexed {
                 // Get symbol count from database using efficient COUNT(*) query
