@@ -351,4 +351,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-03-19 | **Status:** Production Ready (v5.4.1)
+**Last Updated:** 2026-03-19 | **Status:** Production Ready (v5.5.0)
