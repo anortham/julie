@@ -136,6 +136,7 @@ mod tests {
                 last_modified: 1000000,
                 last_indexed: 0,
                 symbol_count: 2,
+                line_count: 0,
                 content: None,
             })
             .unwrap();

@@ -24,6 +24,7 @@ fn setup_test_db_with_rich_symbols() -> (TempDir, SymbolDatabase) {
         last_modified: 1000000,
         last_indexed: 0,
         symbol_count: 3,
+        line_count: 0,
         content: None,
     };
     db.store_file_info(&file_info).unwrap();

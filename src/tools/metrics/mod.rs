@@ -4,7 +4,9 @@
 //! (security risk, change risk, test coverage, centrality) stored in symbol
 //! metadata by the analysis pipeline.
 
+pub(crate) mod operational;
 pub(crate) mod query;
+pub mod session;
 
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
@@ -13,6 +15,10 @@ use anyhow::Result;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
+
+fn default_category() -> String {
+    "code_health".to_string()
+}
 
 fn default_sort_by() -> String {
     "security_risk".to_string()
@@ -36,6 +42,9 @@ fn default_workspace() -> Option<String> {
 /// test status, symbol kind, file pattern, and language.
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct QueryMetricsTool {
+    /// Metrics category: "code_health" (default), "session", or "history"
+    #[serde(default = "default_category")]
+    pub category: String,
     /// Sort field: "security_risk", "change_risk", "centrality", "test_coverage" (default: "security_risk")
     #[serde(default = "default_sort_by")]
     pub sort_by: String,
@@ -84,65 +93,113 @@ fn default_exclude_tests() -> bool {
 impl QueryMetricsTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         debug!(
-            "Metrics query: sort_by={}, order={}, limit={}",
-            self.sort_by, self.order, self.limit
+            "Metrics query: category={}, sort_by={}, order={}, limit={}",
+            self.category, self.sort_by, self.order, self.limit
         );
 
-        let workspace_target =
-            resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
-
-        let db_arc = match workspace_target {
-            WorkspaceTarget::Primary => {
-                let workspace = handler
-                    .get_workspace()
-                    .await?
-                    .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
-                workspace
-                    .db
-                    .clone()
-                    .ok_or_else(|| anyhow::anyhow!("No database available"))?
+        match self.category.as_str() {
+            "session" => {
+                let output =
+                    operational::format_session_from_metrics(&handler.session_metrics);
+                Ok(CallToolResult::text_content(vec![Content::text(output)]))
             }
-            WorkspaceTarget::Reference(ref id) => {
-                handler.get_database_for_workspace(id).await?
+            "history" => {
+                let workspace_target =
+                    resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+                let db_arc = match workspace_target {
+                    WorkspaceTarget::Primary => {
+                        let workspace = handler
+                            .get_workspace()
+                            .await?
+                            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+                        workspace
+                            .db
+                            .clone()
+                            .ok_or_else(|| anyhow::anyhow!("No database available"))?
+                    }
+                    WorkspaceTarget::Reference(ref id) => {
+                        handler.get_database_for_workspace(id).await?
+                    }
+                };
+
+                let output = tokio::task::spawn_blocking(move || {
+                    let db = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            tracing::warn!(
+                                "Database mutex poisoned in history query, recovering"
+                            );
+                            poisoned.into_inner()
+                        }
+                    };
+                    let history = db.query_history_summary(7)?;
+                    Ok::<String, anyhow::Error>(operational::format_history_output(&history))
+                })
+                .await??;
+
+                Ok(CallToolResult::text_content(vec![Content::text(output)]))
             }
-        };
+            _ => {
+                // Existing code_health logic (unchanged)
+                let workspace_target =
+                    resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
 
-        let sort_by = self.sort_by.clone();
-        let order = self.order.clone();
-        let min_risk = self.min_risk.clone();
-        let has_tests = self.has_tests;
-        let kind = self.kind.clone();
-        let file_pattern = self.file_pattern.clone();
-        let language = self.language.clone();
-        let exclude_tests = self.exclude_tests;
-        let limit = self.limit;
+                let db_arc = match workspace_target {
+                    WorkspaceTarget::Primary => {
+                        let workspace = handler
+                            .get_workspace()
+                            .await?
+                            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+                        workspace
+                            .db
+                            .clone()
+                            .ok_or_else(|| anyhow::anyhow!("No database available"))?
+                    }
+                    WorkspaceTarget::Reference(ref id) => {
+                        handler.get_database_for_workspace(id).await?
+                    }
+                };
 
-        let output = tokio::task::spawn_blocking(move || {
-            let db = match db_arc.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    tracing::warn!("Database mutex poisoned in metrics query, recovering");
-                    poisoned.into_inner()
-                }
-            };
-            let results = query::query_by_metrics(
-                &db,
-                &sort_by,
-                &order,
-                min_risk.as_deref(),
-                has_tests,
-                kind.as_deref(),
-                file_pattern.as_deref(),
-                language.as_deref(),
-                exclude_tests,
-                limit,
-            )?;
-            Ok::<String, anyhow::Error>(query::format_metrics_output(
-                &results, &sort_by, &order,
-            ))
-        })
-        .await??;
+                let sort_by = self.sort_by.clone();
+                let order = self.order.clone();
+                let min_risk = self.min_risk.clone();
+                let has_tests = self.has_tests;
+                let kind = self.kind.clone();
+                let file_pattern = self.file_pattern.clone();
+                let language = self.language.clone();
+                let exclude_tests = self.exclude_tests;
+                let limit = self.limit;
 
-        Ok(CallToolResult::text_content(vec![Content::text(output)]))
+                let output = tokio::task::spawn_blocking(move || {
+                    let db = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            tracing::warn!(
+                                "Database mutex poisoned in metrics query, recovering"
+                            );
+                            poisoned.into_inner()
+                        }
+                    };
+                    let results = query::query_by_metrics(
+                        &db,
+                        &sort_by,
+                        &order,
+                        min_risk.as_deref(),
+                        has_tests,
+                        kind.as_deref(),
+                        file_pattern.as_deref(),
+                        language.as_deref(),
+                        exclude_tests,
+                        limit,
+                    )?;
+                    Ok::<String, anyhow::Error>(query::format_metrics_output(
+                        &results, &sort_by, &order,
+                    ))
+                })
+                .await??;
+
+                Ok(CallToolResult::text_content(vec![Content::text(output)]))
+            }
+        }
     }
 }

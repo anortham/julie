@@ -70,6 +70,7 @@ fn setup_test_db() -> (TempDir, SymbolDatabase) {
             last_modified: 1000,
             last_indexed: 0,
             symbol_count: 2,
+            line_count: 0,
             content: None,
         })
         .unwrap();
@@ -309,6 +310,7 @@ fn test_resolve_batch_parent_reference_disambiguation() {
             last_modified: 1000,
             last_indexed: 0,
             symbol_count: 2,
+            line_count: 0,
             content: None,
         })
         .unwrap();
@@ -399,6 +401,7 @@ fn test_resolve_batch_no_identifiers_falls_back_gracefully() {
             last_modified: 1000,
             last_indexed: 0,
             symbol_count: 2,
+            line_count: 0,
             content: None,
         })
         .unwrap();
