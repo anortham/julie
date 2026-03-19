@@ -354,6 +354,16 @@ impl JulieServerHandler {
         });
     }
 
+    /// Extract output byte count from a CallToolResult.
+    fn output_bytes_from_result(result: &CallToolResult) -> u64 {
+        result
+            .content
+            .iter()
+            .filter_map(|c| c.as_text())
+            .map(|t| t.text.len() as u64)
+            .sum()
+    }
+
     /// Run auto-indexing in background (called after MCP handshake)
     async fn run_auto_indexing(&self) {
         use crate::startup::check_if_indexing_needed;
@@ -511,10 +521,23 @@ impl JulieServerHandler {
         Parameters(params): Parameters<FastSearchTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast search: {:?}", params);
-        params
+        let start = std::time::Instant::now();
+        let metadata = serde_json::json!({
+            "query": params.query,
+            "target": params.search_target,
+        });
+        let result = params
             .call_tool(self)
             .await
-            .map_err(|e| McpError::internal_error(format!("fast_search failed: {}", e), None))
+            .map_err(|e| McpError::internal_error(format!("fast_search failed: {}", e), None))?;
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes: Self::output_bytes_from_result(&result),
+            metadata,
+        };
+        self.record_tool_call("fast_search", start.elapsed(), &report);
+        Ok(result)
     }
 
     #[tool(
@@ -533,10 +556,20 @@ impl JulieServerHandler {
         Parameters(params): Parameters<FastRefsTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast find references: {:?}", params);
-        params
+        let start = std::time::Instant::now();
+        let metadata = serde_json::json!({ "symbol": params.symbol });
+        let result = params
             .call_tool(self)
             .await
-            .map_err(|e| McpError::internal_error(format!("fast_refs failed: {}", e), None))
+            .map_err(|e| McpError::internal_error(format!("fast_refs failed: {}", e), None))?;
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes: Self::output_bytes_from_result(&result),
+            metadata,
+        };
+        self.record_tool_call("fast_refs", start.elapsed(), &report);
+        Ok(result)
     }
 
     #[tool(
@@ -555,10 +588,24 @@ impl JulieServerHandler {
         Parameters(params): Parameters<GetSymbolsTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("📋 Get symbols for file: {:?}", params);
-        params
+        let start = std::time::Instant::now();
+        let metadata = serde_json::json!({
+            "file": params.file_path,
+            "mode": params.mode,
+            "target": params.target,
+        });
+        let result = params
             .call_tool(self)
             .await
-            .map_err(|e| McpError::internal_error(format!("get_symbols failed: {}", e), None))
+            .map_err(|e| McpError::internal_error(format!("get_symbols failed: {}", e), None))?;
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes: Self::output_bytes_from_result(&result),
+            metadata,
+        };
+        self.record_tool_call("get_symbols", start.elapsed(), &report);
+        Ok(result)
     }
 
     #[tool(
@@ -577,10 +624,23 @@ impl JulieServerHandler {
         Parameters(params): Parameters<DeepDiveTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("🔍 Deep dive: {:?}", params);
-        params
+        let start = std::time::Instant::now();
+        let metadata = serde_json::json!({
+            "symbol": params.symbol,
+            "depth": params.depth,
+        });
+        let result = params
             .call_tool(self)
             .await
-            .map_err(|e| McpError::internal_error(format!("deep_dive failed: {}", e), None))
+            .map_err(|e| McpError::internal_error(format!("deep_dive failed: {}", e), None))?;
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes: Self::output_bytes_from_result(&result),
+            metadata,
+        };
+        self.record_tool_call("deep_dive", start.elapsed(), &report);
+        Ok(result)
     }
 
     // ========== Context Tools ==========
@@ -601,10 +661,20 @@ impl JulieServerHandler {
         Parameters(params): Parameters<GetContextTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("📦 Get context: {:?}", params);
-        params
+        let start = std::time::Instant::now();
+        let metadata = serde_json::json!({ "query": params.query });
+        let result = params
             .call_tool(self)
             .await
-            .map_err(|e| McpError::internal_error(format!("get_context failed: {}", e), None))
+            .map_err(|e| McpError::internal_error(format!("get_context failed: {}", e), None))?;
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes: Self::output_bytes_from_result(&result),
+            metadata,
+        };
+        self.record_tool_call("get_context", start.elapsed(), &report);
+        Ok(result)
     }
 
     // ========== Refactoring Tools ==========
@@ -625,10 +695,24 @@ impl JulieServerHandler {
         Parameters(params): Parameters<RenameSymbolTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("✏️ Rename symbol: {:?}", params);
-        params
+        let start = std::time::Instant::now();
+        let metadata = serde_json::json!({
+            "old": params.old_name,
+            "new": params.new_name,
+            "dry_run": params.dry_run,
+        });
+        let result = params
             .call_tool(self)
             .await
-            .map_err(|e| McpError::internal_error(format!("rename_symbol failed: {}", e), None))
+            .map_err(|e| McpError::internal_error(format!("rename_symbol failed: {}", e), None))?;
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes: Self::output_bytes_from_result(&result),
+            metadata,
+        };
+        self.record_tool_call("rename_symbol", start.elapsed(), &report);
+        Ok(result)
     }
 
     // ========== Workspace Management ==========
@@ -649,10 +733,22 @@ impl JulieServerHandler {
         Parameters(params): Parameters<ManageWorkspaceTool>,
     ) -> Result<CallToolResult, McpError> {
         info!("🏗️ Managing workspace: {}", params.operation);
-        params
+        let start = std::time::Instant::now();
+        let metadata = serde_json::json!({ "operation": params.operation });
+        let result = params
             .call_tool(self)
             .await
-            .map_err(|e| McpError::internal_error(format!("manage_workspace failed: {}", e), None))
+            .map_err(|e| {
+                McpError::internal_error(format!("manage_workspace failed: {}", e), None)
+            })?;
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes: Self::output_bytes_from_result(&result),
+            metadata,
+        };
+        self.record_tool_call("manage_workspace", start.elapsed(), &report);
+        Ok(result)
     }
 
     // ========== Metrics & Reporting Tools ==========
@@ -673,10 +769,20 @@ impl JulieServerHandler {
         Parameters(params): Parameters<QueryMetricsTool>,
     ) -> Result<CallToolResult, McpError> {
         debug!("📊 Query metrics: {:?}", params);
-        params
+        let start = std::time::Instant::now();
+        let metadata = serde_json::json!({ "sort_by": params.sort_by });
+        let result = params
             .call_tool(self)
             .await
-            .map_err(|e| McpError::internal_error(format!("query_metrics failed: {}", e), None))
+            .map_err(|e| McpError::internal_error(format!("query_metrics failed: {}", e), None))?;
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes: Self::output_bytes_from_result(&result),
+            metadata,
+        };
+        self.record_tool_call("query_metrics", start.elapsed(), &report);
+        Ok(result)
     }
 }
 
