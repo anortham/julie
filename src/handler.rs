@@ -755,7 +755,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "query_metrics",
-        description = "Query symbols ranked by analysis metadata (security risk, change risk, test coverage, centrality). Use to find the riskiest code, untested functions, dead code, or highest-centrality entry points.",
+        description = "Query metrics: code health (security risk, change risk, test coverage, centrality) or operational metrics (session stats, historical performance). Use category parameter: \"code_health\" (default), \"session\", or \"history\".",
         annotations(
             title = "Query Code Metrics",
             read_only_hint = true,
