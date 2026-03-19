@@ -427,6 +427,23 @@ impl SymbolDatabase {
     }
 
     /// Store symbols in a transaction (regular method for incremental updates)
+    /// Get total file sizes for a set of paths. Used by metrics collection.
+    pub fn get_total_file_sizes(&self, paths: &[&str]) -> Result<u64> {
+        if paths.is_empty() {
+            return Ok(0);
+        }
+        let placeholders: Vec<String> = (1..=paths.len()).map(|i| format!("?{}", i)).collect();
+        let sql = format!(
+            "SELECT COALESCE(SUM(size), 0) FROM files WHERE path IN ({})",
+            placeholders.join(", ")
+        );
+        let params: Vec<&dyn rusqlite::types::ToSql> =
+            paths.iter().map(|p| p as &dyn rusqlite::types::ToSql).collect();
+        let total: i64 = self.conn.query_row(&sql, params.as_slice(), |row| row.get(0))?;
+        Ok(total as u64)
+    }
+
+    /// Store symbols in a transaction (regular method for incremental updates)
     pub fn get_file_hashes_for_workspace(
         &self,
     ) -> Result<std::collections::HashMap<String, String>> {
