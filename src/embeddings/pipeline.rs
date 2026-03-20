@@ -55,7 +55,8 @@ pub fn run_embedding_pipeline(
     };
 
     // Detect model/dimension changes and recreate the vector table if needed.
-    // This handles switching between models (e.g., BGE-small 384d -> CodeRankEmbed 768d).
+    // Any model change (name or dimensions) wipes all vectors and re-embeds from scratch,
+    // because vectors from different models are not comparable even at the same dimensionality.
     {
         let mut db_guard = db
             .lock()
@@ -66,21 +67,17 @@ pub fn run_embedding_pipeline(
         let provider_dims = provider.dimensions();
         let provider_model = provider.device_info().model_name;
 
-        if stored_dims != provider_dims {
+        if stored_dims != provider_dims || stored_model != provider_model {
             info!(
-                "Embedding pipeline: dimension change detected ({stored_dims} -> {provider_dims}), \
+                "Embedding pipeline: model change detected \
+                 ({stored_model} {stored_dims}d -> {provider_model} {provider_dims}d), \
                  recreating vector table and clearing all embeddings"
             );
-            db_guard.recreate_vectors_table(provider_dims)
-                .context("Failed to recreate vectors table for new dimensions")?;
-            db_guard.set_embedding_config(&provider_model, provider_dims)
-                .context("Failed to update embedding config")?;
-        } else if stored_model != provider_model {
-            info!(
-                "Embedding pipeline: model changed ({stored_model} -> {provider_model}), \
-                 updating config (dimensions unchanged at {provider_dims})"
-            );
-            db_guard.set_embedding_config(&provider_model, provider_dims)
+            db_guard
+                .recreate_vectors_table(provider_dims)
+                .context("Failed to recreate vectors table for new model")?;
+            db_guard
+                .set_embedding_config(&provider_model, provider_dims)
                 .context("Failed to update embedding config")?;
         }
     }

@@ -251,6 +251,49 @@ mod tests {
         assert_eq!(count, 2, "Should have 2 embeddings (Trait + Enum)");
     }
 
+    #[test]
+    #[serial(fastembed)]
+    fn test_pipeline_reembeds_on_model_name_change() {
+        let db = setup_db_with_symbols(&[
+            ("s1", "process_data", SymbolKind::Function),
+            ("s2", "UserService", SymbolKind::Class),
+            ("s3", "handle_error", SymbolKind::Method),
+        ]);
+
+        // First run: embed everything with the real provider
+        let provider = create_test_provider();
+        let stats = run_embedding_pipeline(&db, &provider, None).unwrap();
+        assert_eq!(stats.symbols_embedded, 3);
+
+        {
+            let db_guard = db.lock().unwrap();
+            assert_eq!(db_guard.embedding_count().unwrap(), 3);
+        }
+
+        // Simulate a model switch: change stored model name to something different,
+        // keeping the same 384 dimensions (the bug case).
+        {
+            let mut db_guard = db.lock().unwrap();
+            db_guard
+                .set_embedding_config("fake-old-model/v1", 384)
+                .unwrap();
+        }
+
+        // Second run: pipeline should detect model name mismatch, wipe all vectors,
+        // and re-embed everything from scratch.
+        let stats = run_embedding_pipeline(&db, &provider, None).unwrap();
+        assert_eq!(
+            stats.symbols_embedded, 3,
+            "All symbols should be re-embedded after model change, not skipped"
+        );
+
+        let db_guard = db.lock().unwrap();
+        assert_eq!(db_guard.embedding_count().unwrap(), 3);
+        let (model, dims) = db_guard.get_embedding_config().unwrap();
+        assert_eq!(dims, 384);
+        assert_ne!(model, "fake-old-model/v1", "Model name should be updated");
+    }
+
     #[cfg(feature = "embeddings-sidecar")]
     #[test]
     fn test_pipeline_embeds_with_sidecar_provider() {
