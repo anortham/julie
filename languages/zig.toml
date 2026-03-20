@@ -32,3 +32,7 @@ important_patterns = [
     "struct ",
     "test ",
 ]
+
+[embeddings]
+extra_kinds = []  # 4394 constants, but need filtering before embedding
+variable_ratio = 0.30

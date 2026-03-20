@@ -29,3 +29,6 @@ important_patterns = [
     "interface ",
     "struct ",
 ]
+
+[embeddings]
+extra_kinds = ["constructor"]

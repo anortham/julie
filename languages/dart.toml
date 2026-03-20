@@ -36,3 +36,6 @@ important_patterns = [
     "@override",
     "Widget build",
 ]
+
+[embeddings]
+extra_kinds = ["constructor"]  # 473 in Riverpod; named constructors are important

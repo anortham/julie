@@ -50,6 +50,7 @@ Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings on m
 **Runtime controls:**
 - `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`; Windows resolves to `ort`, macOS/Linux prefer `sidecar`)
 - `JULIE_EMBEDDING_STRICT_ACCEL`: `1` to disable embeddings when no GPU is available
+- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: Override the embedding model (default: `BAAI/bge-small-en-v1.5`). For better code similarity, use `nomic-ai/CodeRankEmbed` (768d, requires sidecar). The model downloads once to `~/.cache/huggingface/` and is shared across all projects.
 - See `docs/operations/embedding-sidecar.md` for all env vars and troubleshooting
 
 ## Supported Languages (33)

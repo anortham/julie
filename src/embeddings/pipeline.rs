@@ -17,6 +17,7 @@ use crate::embeddings::metadata::{
     select_budgeted_variables,
 };
 use crate::extractors::SymbolKind;
+use crate::search::language_config::LanguageConfigs;
 
 /// Batch size for embedding generation (symbols per batch).
 const EMBEDDING_BATCH_SIZE: usize = 500;
@@ -44,6 +45,7 @@ pub struct EmbeddingStats {
 pub fn run_embedding_pipeline(
     db: &Arc<Mutex<SymbolDatabase>>,
     provider: &dyn EmbeddingProvider,
+    lang_configs: Option<&LanguageConfigs>,
 ) -> Result<EmbeddingStats> {
     let mut stats = EmbeddingStats {
         symbols_scanned: 0,
@@ -51,6 +53,37 @@ pub fn run_embedding_pipeline(
         symbols_skipped: 0,
         batches_processed: 0,
     };
+
+    // Detect model/dimension changes and recreate the vector table if needed.
+    // This handles switching between models (e.g., BGE-small 384d -> CodeRankEmbed 768d).
+    {
+        let mut db_guard = db
+            .lock()
+            .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
+        let (stored_model, stored_dims) = db_guard
+            .get_embedding_config()
+            .unwrap_or(("unknown".to_string(), 384));
+        let provider_dims = provider.dimensions();
+        let provider_model = provider.device_info().model_name;
+
+        if stored_dims != provider_dims {
+            info!(
+                "Embedding pipeline: dimension change detected ({stored_dims} -> {provider_dims}), \
+                 recreating vector table and clearing all embeddings"
+            );
+            db_guard.recreate_vectors_table(provider_dims)
+                .context("Failed to recreate vectors table for new dimensions")?;
+            db_guard.set_embedding_config(&provider_model, provider_dims)
+                .context("Failed to update embedding config")?;
+        } else if stored_model != provider_model {
+            info!(
+                "Embedding pipeline: model changed ({stored_model} -> {provider_model}), \
+                 updating config (dimensions unchanged at {provider_dims})"
+            );
+            db_guard.set_embedding_config(&provider_model, provider_dims)
+                .context("Failed to update embedding config")?;
+        }
+    }
 
     // Purge embeddings for non-code languages (markdown, json, toml, etc.)
     // before loading the incremental set, so purged symbols aren't in "already_embedded".
@@ -100,7 +133,7 @@ pub fn run_embedding_pipeline(
     info!("Embedding pipeline: {} total symbols loaded", symbols.len());
 
     // Build base prepared symbols (existing embeddable kinds) and merge selected variables.
-    let base_prepared = prepare_batch_for_embedding(&symbols);
+    let base_prepared = prepare_batch_for_embedding(&symbols, lang_configs);
     let candidate_variable_ids: HashSet<String> = symbols
         .iter()
         .filter(|s| s.kind == SymbolKind::Variable)
@@ -111,6 +144,7 @@ pub fn run_embedding_pipeline(
         &variable_reference_scores,
         base_prepared.len(),
         &VARIABLE_EMBEDDING_POLICY,
+        lang_configs,
     );
     let selected_variable_ids: HashSet<String> = selected_variables
         .iter()
@@ -119,35 +153,11 @@ pub fn run_embedding_pipeline(
     let variable_budget_cap =
         ((base_prepared.len() as f64) * VARIABLE_EMBEDDING_POLICY.max_ratio).floor() as usize;
 
-    let stale_variable_ids: Vec<String> = already_embedded
-        .iter()
-        .filter(|id| candidate_variable_ids.contains(*id) && !selected_variable_ids.contains(*id))
-        .cloned()
-        .collect();
-    let stale_deleted = if stale_variable_ids.is_empty() {
-        0
-    } else {
-        match db
-            .lock()
-            .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?
-            .delete_embeddings_for_symbol_ids(&stale_variable_ids)
-        {
-            Ok(deleted) => deleted,
-            Err(err) => {
-                warn!(
-                    "Embedding pipeline: failed to delete stale variable embeddings, continuing: {err:#}"
-                );
-                0
-            }
-        }
-    };
-
     info!(
-        "Embedding pipeline variable policy: candidate_count={}, selected_count={}, budget_cap={}, stale_deleted={}",
+        "Embedding pipeline variable policy: candidate_count={}, selected_count={}, budget_cap={}",
         candidate_variable_ids.len(),
         selected_variable_ids.len(),
         variable_budget_cap,
-        stale_deleted
     );
 
     let mut all_prepared = base_prepared;
@@ -155,6 +165,36 @@ pub fn run_embedding_pipeline(
     if all_prepared.is_empty() {
         info!("Embedding pipeline: no embeddable symbols found, skipping");
         return Ok(stats);
+    }
+
+    // Purge stale embeddings: any previously-embedded symbol that is no longer
+    // in the eligible set (e.g., test symbols after filter change, variables that
+    // dropped below the budget cutoff, deleted symbols).
+    let eligible_ids: HashSet<&str> = all_prepared.iter().map(|(id, _)| id.as_str()).collect();
+    let stale_ids: Vec<String> = already_embedded
+        .iter()
+        .filter(|id| !eligible_ids.contains(id.as_str()))
+        .cloned()
+        .collect();
+    let stale_deleted = if stale_ids.is_empty() {
+        0
+    } else {
+        match db
+            .lock()
+            .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?
+            .delete_embeddings_for_symbol_ids(&stale_ids)
+        {
+            Ok(deleted) => deleted,
+            Err(err) => {
+                warn!(
+                    "Embedding pipeline: failed to delete stale embeddings, continuing: {err:#}"
+                );
+                0
+            }
+        }
+    };
+    if stale_deleted > 0 {
+        info!("Embedding pipeline: purged {stale_deleted} stale embeddings");
     }
 
     // Container symbols always get fresh embeddings because their text includes
@@ -268,6 +308,7 @@ pub fn embed_symbols_for_file(
     db: &Arc<Mutex<SymbolDatabase>>,
     provider: &dyn EmbeddingProvider,
     file_path: &str,
+    lang_configs: Option<&LanguageConfigs>,
 ) -> Result<usize> {
     // Load symbols for this file
     let symbols = {
@@ -282,7 +323,7 @@ pub fn embed_symbols_for_file(
     // Filter and format structural symbols only.
     // Variable embedding is handled globally by `run_embedding_pipeline` at workspace init
     // using budgeted selection. The incremental path skips variables to stay fast (<200ms).
-    let prepared = prepare_batch_for_embedding(&symbols);
+    let prepared = prepare_batch_for_embedding(&symbols, lang_configs);
     if prepared.is_empty() {
         return Ok(0);
     }
@@ -326,6 +367,7 @@ pub fn reembed_symbols_for_file(
     db: &Arc<Mutex<SymbolDatabase>>,
     provider: &dyn EmbeddingProvider,
     file_path: &str,
+    lang_configs: Option<&LanguageConfigs>,
 ) -> Result<usize> {
     {
         let mut db_guard = db
@@ -339,5 +381,5 @@ pub fn reembed_symbols_for_file(
             .context("Failed to delete orphan embeddings before re-embed")?;
     }
 
-    embed_symbols_for_file(db, provider, file_path)
+    embed_symbols_for_file(db, provider, file_path, lang_configs)
 }

@@ -121,18 +121,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
 }
 
 fn expected_blocked_tiers() -> BTreeMap<String, String> {
-    BTreeMap::from([
-        (
-            "full".to_string(),
-            "Blocked by the system tier's pre-existing workspace_init failure/outlier"
-                .to_string(),
-        ),
-        (
-            "system".to_string(),
-            "Pre-existing workspace_init failure/outlier keeps this tier from being green-by-default"
-                .to_string(),
-        ),
-    ])
+    BTreeMap::new()
 }
 
 fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {

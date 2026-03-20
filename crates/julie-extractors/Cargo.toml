@@ -3,7 +3,7 @@ name = "julie-extractors"
 version = "1.21.0"
 edition = "2024"
 authors = ["Alan"]
-description = "Cross-platform code intelligence extractors for 31 programming languages"
+description = "Cross-platform code intelligence extractors for 33 programming languages"
 license = "MIT"
 repository = "https://github.com/your-org/julie"
 keywords = ["tree-sitter", "code-intelligence", "parsing", "extractors"]
@@ -52,7 +52,7 @@ harper-tree-sitter-dart = "0.0.5"  # ⚠️ DO NOT CHANGE - REQUIRES TREE-SITTER
 tree-sitter-sequel = "0.3.10"
 tree-sitter-zig = "1.1.2"
 
-# Documentation and configuration languages (extractors #28-31)
+# Documentation and configuration languages
 tree-sitter-md = "0.5.1"
 tree-sitter-json = "0.24.8"
 tree-sitter-toml-ng = "0.7.0"

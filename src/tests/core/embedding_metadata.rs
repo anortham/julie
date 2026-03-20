@@ -6,8 +6,8 @@ mod tests {
 
     use crate::embeddings::metadata::{
         VariableEmbeddingPolicy, format_symbol_metadata, has_simple_default_literal,
-        is_embeddable_kind, is_embeddable_language, prepare_batch_for_embedding,
-        select_budgeted_variables,
+        is_embeddable_kind, is_embeddable_language, is_test_symbol_for_embedding,
+        prepare_batch_for_embedding, select_budgeted_variables,
     };
     use crate::extractors::{Symbol, SymbolKind};
 
@@ -108,7 +108,7 @@ mod tests {
             make_symbol_with_lang("s5", "SearchTool", SymbolKind::Class, "csharp"),
         ];
 
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
         assert_eq!(batch.len(), 3, "Should filter out markdown and toml");
 
         let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
@@ -328,7 +328,7 @@ mod tests {
             make_symbol("s5", "MyTrait", SymbolKind::Trait, None, None),
         ];
 
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
         assert_eq!(batch.len(), 3, "Should filter to 3 embeddable symbols");
 
         let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_prepare_batch_empty_input() {
-        let batch = prepare_batch_for_embedding(&[]);
+        let batch = prepare_batch_for_embedding(&[], None);
         assert!(batch.is_empty());
     }
 
@@ -349,7 +349,7 @@ mod tests {
             make_symbol("s3", "z", SymbolKind::Import, None, None),
         ];
 
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
         assert!(
             batch.is_empty(),
             "All non-embeddable should produce empty batch"
@@ -383,7 +383,7 @@ mod tests {
         method3.parent_id = Some("c1".to_string());
 
         let symbols = vec![class_sym, method1, method2, method3];
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
 
         // Class + 3 methods = 4 embeddable symbols
         assert_eq!(batch.len(), 4);
@@ -413,7 +413,7 @@ mod tests {
         method2.parent_id = Some("i1".to_string());
 
         let symbols = vec![iface, method1, method2];
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
 
         let iface_entry = batch.iter().find(|(id, _)| id == "i1").unwrap();
         assert!(
@@ -428,7 +428,7 @@ mod tests {
         let func = make_symbol("f1", "standalone_func", SymbolKind::Function, None, None);
 
         let symbols = vec![func];
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
 
         assert_eq!(batch.len(), 1);
         assert_eq!(batch[0].1, "function standalone_func");
@@ -457,7 +457,7 @@ mod tests {
             symbols.push(method);
         }
 
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
         let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
 
         assert!(
@@ -490,7 +490,7 @@ mod tests {
         prop4.parent_id = Some("c1".to_string());
 
         let symbols = vec![class_sym, prop1, prop2, prop3, prop4];
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
 
         // Only the class should be embedded (properties are not embeddable kinds)
         assert_eq!(batch.len(), 1);
@@ -528,7 +528,7 @@ mod tests {
         field3.parent_id = Some("i1".to_string());
 
         let symbols = vec![iface, field1, field2, field3];
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
 
         assert_eq!(batch.len(), 1);
 
@@ -557,7 +557,7 @@ mod tests {
         prop.parent_id = Some("c1".to_string());
 
         let symbols = vec![class_sym, method, prop];
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
 
         let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
         assert!(
@@ -597,7 +597,7 @@ mod tests {
         field3.parent_id = Some("s1".to_string());
 
         let symbols = vec![struct_sym, field1, field2, field3];
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
 
         let struct_entry = batch.iter().find(|(id, _)| id == "s1").unwrap();
         assert!(
@@ -631,7 +631,7 @@ mod tests {
         v3.parent_id = Some("e1".to_string());
 
         let symbols = vec![enum_sym, v1, v2, v3];
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
 
         // Only the enum itself should be embedded (EnumMember is not an embeddable kind)
         assert_eq!(batch.len(), 1);
@@ -674,7 +674,7 @@ mod tests {
         v3.parent_id = Some("e1".to_string());
 
         let symbols = vec![enum_sym, v1, v2, v3];
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
 
         assert_eq!(batch.len(), 1);
         let enum_entry = &batch[0];
@@ -722,7 +722,7 @@ mod tests {
             symbols.push(prop);
         }
 
-        let batch = prepare_batch_for_embedding(&symbols);
+        let batch = prepare_batch_for_embedding(&symbols, None);
         let class_entry = &batch[0];
 
         // With a reasonable limit, a class with 12 properties should retain most of them
@@ -829,11 +829,11 @@ mod tests {
         };
 
         assert!(
-            select_budgeted_variables(&symbols, &reference_scores, 10, &disabled).is_empty(),
+            select_budgeted_variables(&symbols, &reference_scores, 10, &disabled, None).is_empty(),
             "Disabled policy should return no variables"
         );
         assert!(
-            select_budgeted_variables(&symbols, &reference_scores, 10, &zero_cap).is_empty(),
+            select_budgeted_variables(&symbols, &reference_scores, 10, &zero_cap, None).is_empty(),
             "Zero cap policy should return no variables"
         );
     }
@@ -863,7 +863,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy, None);
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].0, "var_1");
         assert!(selected[0].1.contains("order_total"));
@@ -898,7 +898,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy, None);
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].0, "var_high_ref");
     }
@@ -929,7 +929,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &HashMap::new(), 1, &policy);
+        let selected = select_budgeted_variables(&symbols, &HashMap::new(), 1, &policy, None);
         assert_eq!(selected.len(), 1);
         assert_eq!(
             selected[0].0, "var_descriptive",
@@ -965,7 +965,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy, None);
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].0, "var_signal");
     }
@@ -997,7 +997,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy, None);
         assert_eq!(selected.len(), 1, "Expected exactly one selected variable");
         assert_eq!(selected[0].0, "var_high");
     }
@@ -1025,7 +1025,7 @@ mod tests {
 
         let base_count = 11;
         let cap = ((base_count as f64) * policy.max_ratio).floor() as usize;
-        let selected = select_budgeted_variables(&symbols, &reference_scores, base_count, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, base_count, &policy, None);
 
         assert_eq!(
             selected.len(),
@@ -1057,7 +1057,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 3, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 3, &policy, None);
         let selected_ids: Vec<&str> = selected.iter().map(|(id, _)| id.as_str()).collect();
 
         assert_eq!(selected_ids, vec!["var_top", "var_a", "var_b"]);
@@ -1094,7 +1094,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy, None);
         assert_eq!(selected.len(), 1);
         assert_eq!(
             selected[0].0, "var_snake",
@@ -1141,7 +1141,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 2, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 2, &policy, None);
         let selected_ids: Vec<&str> = selected.iter().map(|(id, _)| id.as_str()).collect();
 
         assert_eq!(selected_ids.len(), 2);
@@ -1184,7 +1184,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy, None);
         assert_eq!(selected.len(), 1);
         assert_eq!(selected[0].0, "var_non_english");
     }
@@ -1234,7 +1234,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 1, &policy, None);
         assert_eq!(selected.len(), 1);
         assert_eq!(
             selected[0].0, "var_no_default",
@@ -1277,7 +1277,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 2, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 2, &policy, None);
         // Both should be selected, but "i" must rank FIRST (higher score).
         // Under the old double-dip bug, "i" would score -0.10 and rank below baseline.
         assert_eq!(selected.len(), 2);
@@ -1322,7 +1322,7 @@ mod tests {
             max_ratio: 1.0,
         };
 
-        let selected = select_budgeted_variables(&symbols, &reference_scores, 2, &policy);
+        let selected = select_budgeted_variables(&symbols, &reference_scores, 2, &policy, None);
         assert_eq!(selected.len(), 2);
         assert_eq!(
             selected[0].0, "var_short",
@@ -1372,5 +1372,104 @@ mod tests {
         assert!(!has_simple_default_literal("x = 0x1234"));
         assert!(!has_simple_default_literal("x = 42"));
         assert!(!has_simple_default_literal("no assignment here"));
+    }
+
+    // =========================================================================
+    // Test symbol exclusion from embeddings
+    // =========================================================================
+
+    #[test]
+    fn test_is_test_symbol_by_metadata() {
+        let mut sym = make_symbol("t1", "test_add", SymbolKind::Function, None, None);
+        sym.metadata = Some(HashMap::from([(
+            "is_test".to_string(),
+            serde_json::Value::Bool(true),
+        )]));
+
+        assert!(is_test_symbol_for_embedding(&sym));
+    }
+
+    #[test]
+    fn test_is_test_symbol_by_path() {
+        let mut sym = make_symbol("t2", "MyHelper", SymbolKind::Class, None, None);
+        sym.file_path = "test/helpers/my_helper.rb".to_string();
+
+        assert!(is_test_symbol_for_embedding(&sym));
+    }
+
+    #[test]
+    fn test_is_test_symbol_by_path_csharp_convention() {
+        let mut sym = make_symbol("t3", "SerializerTests", SymbolKind::Class, None, None);
+        sym.file_path = "MyProject.Tests/SerializerTests.cs".to_string();
+
+        assert!(is_test_symbol_for_embedding(&sym));
+    }
+
+    #[test]
+    fn test_is_not_test_symbol_for_source_code() {
+        let sym = make_symbol("s1", "Router", SymbolKind::Module, None, None);
+        assert!(!is_test_symbol_for_embedding(&sym));
+    }
+
+    #[test]
+    fn test_is_not_test_symbol_metadata_false() {
+        let mut sym = make_symbol("s2", "run", SymbolKind::Function, None, None);
+        sym.metadata = Some(HashMap::from([(
+            "is_test".to_string(),
+            serde_json::Value::Bool(false),
+        )]));
+
+        assert!(!is_test_symbol_for_embedding(&sym));
+    }
+
+    #[test]
+    fn test_prepare_batch_excludes_test_symbols() {
+        let mut test_func = make_symbol("t1", "test_add", SymbolKind::Function, None, None);
+        test_func.metadata = Some(HashMap::from([(
+            "is_test".to_string(),
+            serde_json::Value::Bool(true),
+        )]));
+
+        let mut test_class = make_symbol("t2", "RouterTest", SymbolKind::Class, None, None);
+        test_class.file_path = "tests/router_test.rs".to_string();
+
+        let source_func = make_symbol("s1", "add", SymbolKind::Function, None, None);
+        let source_class = make_symbol("s2", "Router", SymbolKind::Class, None, None);
+
+        let symbols = vec![test_func, test_class, source_func, source_class];
+        let batch = prepare_batch_for_embedding(&symbols, None);
+
+        assert_eq!(batch.len(), 2, "Should exclude both test symbols");
+        let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
+        assert!(ids.contains(&"s1"));
+        assert!(ids.contains(&"s2"));
+        assert!(!ids.contains(&"t1"));
+        assert!(!ids.contains(&"t2"));
+    }
+
+    #[test]
+    fn test_select_budgeted_variables_excludes_test_variables() {
+        let source_var = make_symbol("v1", "config_path", SymbolKind::Variable, None, None);
+
+        let mut test_var = make_symbol("v2", "test_config", SymbolKind::Variable, None, None);
+        test_var.file_path = "tests/test_config.rs".to_string();
+
+        let mut test_var_meta = make_symbol("v3", "mock_data", SymbolKind::Variable, None, None);
+        test_var_meta.metadata = Some(HashMap::from([(
+            "is_test".to_string(),
+            serde_json::Value::Bool(true),
+        )]));
+
+        let symbols = vec![source_var, test_var, test_var_meta];
+        let ref_scores = HashMap::new();
+        let policy = VariableEmbeddingPolicy {
+            enabled: true,
+            max_ratio: 1.0, // generous budget to not cap
+        };
+
+        let selected = select_budgeted_variables(&symbols, &ref_scores, 10, &policy, None);
+
+        assert_eq!(selected.len(), 1, "Should only include source variable");
+        assert_eq!(selected[0].0, "v1");
     }
 }

@@ -15,6 +15,8 @@ pub struct LanguageConfig {
     pub variants: VariantsConfig,
     #[serde(default)]
     pub scoring: ScoringConfig,
+    #[serde(default)]
+    pub embeddings: EmbeddingsConfig,
 }
 
 /// Tokenizer configuration for code-aware text processing.
@@ -44,6 +46,25 @@ pub struct ScoringConfig {
     pub important_patterns: Vec<String>,
 }
 
+/// Configuration for embedding generation per language.
+///
+/// Controls which additional symbol kinds get embedded and the variable budget
+/// ratio. The global `EMBEDDABLE_KINDS` list always applies; `extra_kinds` adds
+/// to it on a per-language basis.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct EmbeddingsConfig {
+    /// Additional symbol kinds to embed beyond the global EMBEDDABLE_KINDS.
+    /// Valid values: "constructor", "constant", "export", "destructor", "operator"
+    #[serde(default)]
+    pub extra_kinds: Vec<String>,
+
+    /// Override the variable embedding budget ratio (global default: 0.20).
+    /// Languages with many function-like variables (JS/TS/Python) benefit from
+    /// higher ratios (0.40-0.50).
+    #[serde(default)]
+    pub variable_ratio: Option<f64>,
+}
+
 /// Registry of all language configurations.
 #[derive(Clone)]
 pub struct LanguageConfigs {
@@ -63,6 +84,7 @@ impl LanguageConfigs {
             ("csharp", include_str!("../../languages/csharp.toml")),
             ("css", include_str!("../../languages/css.toml")),
             ("dart", include_str!("../../languages/dart.toml")),
+            ("elixir", include_str!("../../languages/elixir.toml")),
             ("gdscript", include_str!("../../languages/gdscript.toml")),
             ("go", include_str!("../../languages/go.toml")),
             ("html", include_str!("../../languages/html.toml")),
@@ -172,5 +194,10 @@ impl LanguageConfigs {
         let mut suffix_vec: Vec<String> = suffixes.into_iter().collect();
         suffix_vec.sort_by_key(|b| std::cmp::Reverse(b.len()));
         (prefix_vec, suffix_vec)
+    }
+
+    /// Get the embeddings config for a specific language.
+    pub fn embeddings_config(&self, language: &str) -> Option<&EmbeddingsConfig> {
+        self.configs.get(language).map(|c| &c.embeddings)
     }
 }

@@ -11,8 +11,6 @@ dogfood = ["search-quality"]
 full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "workspace-init", "integration", "search-quality"]
 
 [blocked_tiers]
-system = "Pre-existing workspace_init failure/outlier keeps this tier from being green-by-default"
-full = "Blocked by the system tier's pre-existing workspace_init failure/outlier"
 
 [buckets.cli]
 # Single focused CLI module; use as the floor for quick sanity checks.

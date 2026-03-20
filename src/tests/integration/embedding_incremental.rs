@@ -124,7 +124,7 @@ mod tests {
         );
 
         let provider = create_test_provider();
-        let count = embed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
+        let count = embed_symbols_for_file(&db, &provider, "src/lib.rs", None).unwrap();
 
         assert_eq!(count, 2, "Should embed 2 of 3 symbols (skip variable)");
 
@@ -143,7 +143,7 @@ mod tests {
         );
 
         let provider = create_test_provider();
-        let count = embed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
+        let count = embed_symbols_for_file(&db, &provider, "src/lib.rs", None).unwrap();
 
         assert_eq!(
             count, 0,
@@ -162,7 +162,7 @@ mod tests {
         );
 
         let provider = create_test_provider();
-        embed_symbols_for_file(&db, &provider, "src/main.rs").unwrap();
+        embed_symbols_for_file(&db, &provider, "src/main.rs", None).unwrap();
 
         {
             let db_guard = db.lock().unwrap();
@@ -185,7 +185,7 @@ mod tests {
         let db = setup_db_with_file(dir.path(), "src/lib.rs", &[("s1", "old_func", "function")]);
 
         let provider = create_test_provider();
-        embed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
+        embed_symbols_for_file(&db, &provider, "src/lib.rs", None).unwrap();
 
         {
             let db_guard = db.lock().unwrap();
@@ -203,7 +203,7 @@ mod tests {
                 .unwrap();
         }
 
-        let count = embed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
+        let count = embed_symbols_for_file(&db, &provider, "src/lib.rs", None).unwrap();
         assert_eq!(count, 1, "Should re-embed the updated symbol");
 
         let db_guard = db.lock().unwrap();
@@ -217,7 +217,7 @@ mod tests {
         let db = setup_db_with_file(dir.path(), "src/lib.rs", &[("s1", "old_func", "function")]);
 
         let provider = create_test_provider();
-        embed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
+        embed_symbols_for_file(&db, &provider, "src/lib.rs", None).unwrap();
 
         {
             let mut db_guard = db.lock().unwrap();
@@ -239,7 +239,7 @@ mod tests {
                 .unwrap();
         }
 
-        reembed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
+        reembed_symbols_for_file(&db, &provider, "src/lib.rs", None).unwrap();
 
         let db_guard = db.lock().unwrap();
         assert_eq!(
@@ -262,7 +262,7 @@ mod tests {
         );
 
         let provider = ShortBatchProvider;
-        let err = embed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap_err();
+        let err = embed_symbols_for_file(&db, &provider, "src/lib.rs", None).unwrap_err();
 
         assert!(
             err.to_string().contains("Embedding count mismatch"),
@@ -314,7 +314,7 @@ mod tests {
         }
 
         let provider = FixedBatchProvider;
-        run_embedding_pipeline(&db, &provider).unwrap();
+        run_embedding_pipeline(&db, &provider, None).unwrap();
 
         let db_guard = db.lock().unwrap();
         let variable_embedded = ["var_1", "var_2", "var_3"]
@@ -365,7 +365,7 @@ mod tests {
         }
 
         let provider = FixedBatchProvider;
-        run_embedding_pipeline(&db, &provider).unwrap();
+        run_embedding_pipeline(&db, &provider, None).unwrap();
 
         let db_guard = db.lock().unwrap();
         assert!(db_guard.get_embedding("var_high").unwrap().is_some());
@@ -409,7 +409,7 @@ mod tests {
                 .unwrap();
         }
 
-        run_embedding_pipeline(&db, &provider).unwrap();
+        run_embedding_pipeline(&db, &provider, None).unwrap();
 
         {
             let db_guard = db.lock().unwrap();
@@ -438,7 +438,7 @@ mod tests {
                 .unwrap();
         }
 
-        run_embedding_pipeline(&db, &provider).unwrap();
+        run_embedding_pipeline(&db, &provider, None).unwrap();
 
         let db_guard = db.lock().unwrap();
         assert!(
@@ -481,7 +481,7 @@ mod tests {
 
         // Full pipeline embeds variables under budget policy.
         let provider = FixedBatchProvider;
-        run_embedding_pipeline(&db, &provider).unwrap();
+        run_embedding_pipeline(&db, &provider, None).unwrap();
 
         {
             let db_guard = db.lock().unwrap();
@@ -494,7 +494,7 @@ mod tests {
 
         // Incremental re-embed only handles structural symbols — variables are
         // managed globally by run_embedding_pipeline at workspace init.
-        reembed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
+        reembed_symbols_for_file(&db, &provider, "src/lib.rs", None).unwrap();
 
         let db_guard = db.lock().unwrap();
         assert!(
@@ -527,7 +527,7 @@ mod tests {
         );
 
         let provider = create_test_sidecar_provider();
-        let count = embed_symbols_for_file(&db, &provider, "src/lib.rs").unwrap();
+        let count = embed_symbols_for_file(&db, &provider, "src/lib.rs", None).unwrap();
 
         assert_eq!(count, 2, "Should embed only embeddable symbols");
         let db_guard = db.lock().unwrap();

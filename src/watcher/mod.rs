@@ -247,6 +247,7 @@ impl IncrementalIndexer {
                                         &db,
                                         provider.as_ref(),
                                         rel,
+                                        None,
                                     )
                                 {
                                     warn!("Incremental embedding failed for {}: {}", rel, e);
@@ -315,6 +316,7 @@ impl IncrementalIndexer {
                                         &db,
                                         provider.as_ref(),
                                         &rel_to,
+                                        None,
                                     )
                                 {
                                     warn!("Incremental embedding failed for {}: {}", rel_to, e);
@@ -381,6 +383,7 @@ impl IncrementalIndexer {
                             &self.db,
                             provider.as_ref(),
                             rel,
+                            None,
                         ) {
                             warn!("Incremental embedding failed for {}: {}", rel, e);
                         }
@@ -438,6 +441,7 @@ impl IncrementalIndexer {
                             &self.db,
                             provider.as_ref(),
                             &rel_to,
+                            None,
                         ) {
                             warn!("Incremental embedding failed for {}: {}", rel_to, e);
                         }

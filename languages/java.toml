@@ -39,3 +39,6 @@ important_patterns = [
     "public static",
     "@Override",
 ]
+
+[embeddings]
+extra_kinds = ["constructor"]  # 3696 in Guava; DI injection, factory patterns

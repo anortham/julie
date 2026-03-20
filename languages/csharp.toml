@@ -40,3 +40,6 @@ important_patterns = [
     "async Task",
     "[ApiController]",
 ]
+
+[embeddings]
+extra_kinds = ["constructor"]  # DI patterns, 595 in Newtonsoft.Json

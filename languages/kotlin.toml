@@ -36,3 +36,6 @@ important_patterns = [
     "interface ",
     "suspend fun",
 ]
+
+[embeddings]
+extra_kinds = ["constructor"]

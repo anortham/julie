@@ -25,3 +25,7 @@ important_patterns = [
     "kind:",
     "name:",
 ]
+
+[embeddings]
+# Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
+extra_kinds = []

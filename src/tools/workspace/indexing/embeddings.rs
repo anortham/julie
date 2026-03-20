@@ -138,8 +138,9 @@ pub(crate) async fn spawn_workspace_embedding(
     tokio::spawn(async move {
         info!("Starting workspace embedding for {workspace_id} ({total_symbols} symbols)...");
         let db_clone = db_arc.clone();
+        let lang_configs = crate::search::language_config::LanguageConfigs::load_embedded();
         let result = tokio::task::spawn_blocking(move || {
-            run_embedding_pipeline(&db_clone, provider.as_ref())
+            run_embedding_pipeline(&db_clone, provider.as_ref(), Some(&lang_configs))
         })
         .await;
 

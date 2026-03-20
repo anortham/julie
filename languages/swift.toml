@@ -38,3 +38,6 @@ important_patterns = [
     "@objc",
     "public",
 ]
+
+[embeddings]
+extra_kinds = ["constructor"]  # 129 in Alamofire; init methods

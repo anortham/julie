@@ -36,7 +36,7 @@ File system event (OS)
           -> Handler: re-extract symbols, update SQLite + Tantivy
 ```
 
-1. **Filtering** (`src/watcher/filtering.rs`): Events are checked against supported file extensions (31 languages) and ignore patterns (`.git/`, `node_modules/`, `target/`, etc.). Unrecognized extensions and ignored paths are dropped immediately.
+1. **Filtering** (`src/watcher/filtering.rs`): Events are checked against supported file extensions (33 languages) and ignore patterns (`.git/`, `node_modules/`, `target/`, etc.). Unrecognized extensions and ignored paths are dropped immediately.
 
 2. **Debouncing**: Per-file deduplication prevents redundant re-indexing when editors write the same file multiple times in quick succession (e.g., auto-save, format-on-save). If a file was processed within the last 1 second, subsequent events for that file are skipped.
 

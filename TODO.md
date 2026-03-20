@@ -8,7 +8,7 @@
 
 ## Tech Debt
 
-- [ ] **Run embedding benchmark** — baseline vs candidate on `LabHandbookV2` reference workspace, record quality/overhead deltas
+- [x] **Run embedding benchmark** — Completed 2026-03-20. Benchmarked 19 workspaces (18 languages, 93k source embeddings). Results in `benchmarks/results/`. Test exclusion saves 47% of embedding budget. CodeRankEmbed shows +10% namespace overlap, +20% cross-language vs BGE-small.
 - [x] **Consolidate `find_child_by_type` duplicates** — 8 copies across dart, gdscript, elixir, lua, razor consolidated to free functions in `base/tree_methods.rs`. 4 new tests added. `get_node_text` copies remain (dart uses thread-local cache, vue takes different args; not worth forcing into shared pattern).
 
 ## Performance
@@ -24,7 +24,12 @@
 
 ## Enhancements
 
+- [ ] **Upgrade to ORT rc.12 and test auto-device on Mac** — `ort` crate 2.0.0-rc.12 adds `SessionBuilder::with_auto_device` (ONNX Runtime 1.22+) which auto-selects NPU when available. On Apple Silicon, the Neural Engine is an NPU. If this routes to CoreML/ANE without the 13GB memory bloat we saw before, it would give us GPU-class acceleration via ORT natively, eliminating the Mac sidecar dependency for ONNX models. Also ships CUDA 13 builds. Caveat: maintainer says "expect little to no macOS support" after losing Hackintosh VM.
+- [ ] **Evaluate CodeRankEmbed ONNX export** — Track [fastembed issue #587](https://github.com/qdrant/fastembed/issues/587). Once an ONNX export exists, CodeRankEmbed (currently sidecar-only, best quality) could run via ORT natively on all platforms with DirectML/CoreML/CUDA acceleration. This would make it viable as the default model everywhere without requiring the Python sidecar.
+- [ ] **Embedding model selection** — Currently BGE-small-en-v1.5 (384d) is the default everywhere. CodeRankEmbed (768d, nomic-ai) is available as opt-in via `JULIE_EMBEDDING_SIDECAR_MODEL_ID=nomic-ai/CodeRankEmbed`. Benchmark results: +10% namespace overlap, +20% cross-language, 2.5x slower (375 vs 928 sym/s on MPS). Jina-code-v2 is broken on the sidecar (transformers 5.x incompatibility) but works via ORT. Decision deferred until either: (a) CodeRankEmbed gets ONNX export, or (b) ORT rc.12 auto-device works on Mac. See `benchmarks/results/` for full data.
+- [ ] **Embedding coverage gaps per language** — Constructor kind (45-473 per project) not in EMBEDDABLE_KINDS; significant for C# DI patterns, Dart, Swift. Variable budget (20% cap) too low for JS/TS/Python/Ruby/PHP where 30-50% of symbols are Variables (arrow functions, const exports). Zig has 4,394 constants not embedded. See `docs/LANGUAGE_VERIFICATION_CHECKLIST.md` Check 9 baseline table.
 - [ ] **Windows Python launcher versioned probing** — `python_interpreter_candidates()` now lists `py` first on Windows, but doesn't try `py -3.12` / `py -3.13` syntax (the standard way to request a specific Python version via the Windows launcher). These require passing args, not just a binary name, so the current `Vec<OsString>` approach needs rework. (`src/embeddings/sidecar_bootstrap.rs:196-213`)
+- [ ] **Worktree agent metrics are lost on cleanup** — Worktree agents spawn their own Julie MCP server instance with a separate `.julie/` directory. When the worktree is cleaned up, those metrics are deleted. Even if the worktree persists, metrics don't merge back (`.julie/` is gitignored). Fix: route metrics writes to the primary workspace's database regardless of which worktree Julie is running in, or consolidate metrics post-merge.
 - [ ] **Verify reference workspace coverage** — Test quality metrics run per-workspace during indexing via `process_files_optimized`, which handles both primary and reference workspaces. Verify with an integration test that indexes a reference workspace and confirms `is_test` metadata and `test_quality` metrics are present. Key files: `src/tools/workspace/indexing/processor.rs`, `src/tests/integration/reference_workspace.rs`
 
 ## Review Notes

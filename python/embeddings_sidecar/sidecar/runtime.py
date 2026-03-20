@@ -5,7 +5,10 @@ from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, Callable, Sequence
 
-EXPECTED_DIMS = 384
+# Dimensions are now model-driven (reported via protocol handshake).
+# Previously hardcoded to 384 for BGE-small; removed to support code models
+# like CodeRankEmbed (768d) and Jina-code-v2 (768d).
+_SUPPORTED_DIMS = frozenset({384, 768, 1024})
 DEFAULT_MODEL_ID = "BAAI/bge-small-en-v1.5"
 
 
@@ -206,9 +209,9 @@ class SentenceTransformerRuntime:
         return dims
 
     def _guard_dims(self, dims: int, *, context: str) -> None:
-        if dims != EXPECTED_DIMS:
+        if dims not in _SUPPORTED_DIMS:
             raise ValueError(
-                f"embedding dimensions must be {EXPECTED_DIMS}, "
+                f"embedding dimensions must be one of {sorted(_SUPPORTED_DIMS)}, "
                 f"got {dims} during {context}"
             )
 
@@ -245,7 +248,7 @@ def build_runtime(
     else:
         sentence_transformers = _import_module("sentence_transformers")
         model = sentence_transformers.SentenceTransformer(
-            model_id, device=backend_device
+            model_id, device=backend_device, trust_remote_code=True
         )
 
     return SentenceTransformerRuntime(

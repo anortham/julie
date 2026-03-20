@@ -30,3 +30,7 @@ important_patterns = [
     "Component",
     "Item {",
 ]
+
+[embeddings]
+# Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
+extra_kinds = []

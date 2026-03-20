@@ -1,4 +1,4 @@
-//! Shared extractor factory - Single source of truth for all 30 languages
+//! Shared extractor factory - Single source of truth for all 33 languages
 //!
 //! This module provides the centralized factory function for all language extractors.
 //! It ensures consistency across the codebase and prevents bugs from missing languages

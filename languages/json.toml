@@ -14,3 +14,7 @@ strip_suffixes = [".json"]
 
 [scoring]
 important_patterns = []
+
+[embeddings]
+# Default: global EMBEDDABLE_KINDS only, variable_ratio = 0.20
+extra_kinds = []

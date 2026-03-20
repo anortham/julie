@@ -41,3 +41,7 @@ important_patterns = [
     "async function",
     "class ",
 ]
+
+[embeddings]
+extra_kinds = ["export"]
+variable_ratio = 0.50  # arrow functions, const exports

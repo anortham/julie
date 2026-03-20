@@ -141,7 +141,7 @@ form is also emitted for exact-match scoring.
 
 `CodeTokenizer` can be initialized from `LanguageConfigs`, which collects
 preserve_patterns, meaningful_affixes, and strip_prefixes/strip_suffixes from
-all 31 language TOML files in `languages/*.toml`. These are embedded in the
+all language TOML files in `languages/*.toml`. These are embedded in the
 binary via `include_str!`.
 
 Example (`languages/rust.toml`):

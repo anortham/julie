@@ -7,6 +7,8 @@
 use std::collections::HashMap;
 
 use crate::extractors::{Symbol, SymbolKind};
+use crate::search::language_config::LanguageConfigs;
+use crate::search::scoring::is_test_path;
 
 /// Maximum characters for the embedding input text.
 /// BGE-small handles up to 512 tokens (~2000 chars). With enrichment (methods,
@@ -34,6 +36,26 @@ pub fn is_embeddable_kind(kind: &SymbolKind) -> bool {
     EMBEDDABLE_KINDS.contains(kind)
 }
 
+/// Returns true if this symbol kind is embeddable for its specific language.
+/// Checks the global EMBEDDABLE_KINDS first, then the per-language `extra_kinds`
+/// from the language TOML config.
+pub fn is_embeddable_for_language(
+    kind: &SymbolKind,
+    language: &str,
+    lang_configs: Option<&LanguageConfigs>,
+) -> bool {
+    if EMBEDDABLE_KINDS.contains(kind) {
+        return true;
+    }
+    if let Some(configs) = lang_configs {
+        if let Some(emb_config) = configs.embeddings_config(language) {
+            let kind_str = kind.to_string();
+            return emb_config.extra_kinds.iter().any(|k| k == &kind_str);
+        }
+    }
+    false
+}
+
 /// Languages that are structural/configuration rather than code logic.
 /// These shouldn't compete with code symbols in the semantic vector space.
 pub const NON_EMBEDDABLE_LANGUAGES: &[&str] = &[
@@ -52,6 +74,26 @@ pub struct VariableEmbeddingPolicy {
 /// that dominate NL queries due to their natural-language headings.
 pub fn is_embeddable_language(language: &str) -> bool {
     !NON_EMBEDDABLE_LANGUAGES.contains(&language)
+}
+
+/// Check whether a symbol is test code that should be excluded from embeddings.
+///
+/// Uses the same two-tier detection as search filtering:
+/// 1. Extractor-set `is_test` metadata (set by `is_test_symbol()` during extraction)
+/// 2. Path-based fallback via `is_test_path()` for symbols extractors don't annotate
+pub fn is_test_symbol_for_embedding(symbol: &Symbol) -> bool {
+    // Check extractor-set metadata first (most precise)
+    if let Some(ref meta) = symbol.metadata {
+        if meta
+            .get("is_test")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+    // Fall back to path-based detection
+    is_test_path(&symbol.file_path)
 }
 
 /// Format a symbol's metadata into a natural language string for embedding.
@@ -107,7 +149,10 @@ const CONTAINER_KINDS: &[SymbolKind] = &[
     SymbolKind::Enum,
 ];
 
-pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> {
+pub fn prepare_batch_for_embedding(
+    symbols: &[Symbol],
+    lang_configs: Option<&LanguageConfigs>,
+) -> Vec<(String, String)> {
     // Build parent_id → child method names mapping for container enrichment.
     let mut methods_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
     let mut properties_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -140,7 +185,7 @@ pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> 
 
     symbols
         .iter()
-        .filter(|s| is_embeddable_kind(&s.kind) && is_embeddable_language(&s.language))
+        .filter(|s| is_embeddable_for_language(&s.kind, &s.language, lang_configs) && is_embeddable_language(&s.language) && !is_test_symbol_for_embedding(s))
         .map(|s| {
             let mut text = format_symbol_metadata(s);
 
@@ -169,40 +214,66 @@ pub fn prepare_batch_for_embedding(symbols: &[Symbol]) -> Vec<(String, String)> 
 }
 
 /// Select variable symbols under a configurable embedding budget.
+///
+/// Uses per-language `variable_ratio` from TOML configs when available,
+/// falling back to `policy.max_ratio` (global default: 0.20).
 pub fn select_budgeted_variables(
     symbols: &[Symbol],
     reference_scores: &HashMap<String, f64>,
     base_count: usize,
     policy: &VariableEmbeddingPolicy,
+    lang_configs: Option<&LanguageConfigs>,
 ) -> Vec<(String, String)> {
     if !policy.enabled {
         return Vec::new();
     }
 
-    let cap = ((base_count as f64) * policy.max_ratio).floor() as usize;
-    if cap == 0 {
-        return Vec::new();
+    // Group variables by language to apply per-language ratios.
+    let mut by_language: HashMap<&str, Vec<(&Symbol, f64)>> = HashMap::new();
+    for sym in symbols
+        .iter()
+        .filter(|s| s.kind == SymbolKind::Variable && !is_test_symbol_for_embedding(s))
+    {
+        let reference_score = *reference_scores.get(&sym.id).unwrap_or(&0.0);
+        let score = reference_score + variable_signal_boost(sym) - variable_noise_penalty(sym);
+        by_language
+            .entry(sym.language.as_str())
+            .or_default()
+            .push((sym, score));
     }
 
-    let mut ranked: Vec<(&Symbol, f64)> = symbols
-        .iter()
-        .filter(|s| s.kind == SymbolKind::Variable)
-        .map(|s| {
-            let reference_score = *reference_scores.get(&s.id).unwrap_or(&0.0);
-            let score = reference_score + variable_signal_boost(s) - variable_noise_penalty(s);
-            (s, score)
-        })
-        .collect();
+    let mut all_selected: Vec<(&Symbol, f64)> = Vec::new();
 
-    ranked.sort_by(|(a_sym, a_score), (b_sym, b_score)| {
+    for (language, mut vars) in by_language {
+        // Use per-language ratio if configured, otherwise fall back to global
+        let ratio = lang_configs
+            .and_then(|lc| lc.embeddings_config(language))
+            .and_then(|ec| ec.variable_ratio)
+            .unwrap_or(policy.max_ratio);
+
+        let cap = ((base_count as f64) * ratio).floor() as usize;
+        if cap == 0 {
+            continue;
+        }
+
+        vars.sort_by(|(a_sym, a_score), (b_sym, b_score)| {
+            b_score
+                .total_cmp(a_score)
+                .then_with(|| a_sym.id.cmp(&b_sym.id))
+        });
+
+        all_selected.extend(vars.into_iter().take(cap));
+    }
+
+    // Final sort: by score descending, then ID for determinism (matches original behavior)
+    all_selected.sort_by(|(a_sym, a_score), (b_sym, b_score)| {
         b_score
             .total_cmp(a_score)
             .then_with(|| a_sym.id.cmp(&b_sym.id))
     });
 
-    ranked
+    all_selected
         .into_iter()
-        .take(cap)
         .map(|(s, _)| (s.id.clone(), format_symbol_metadata(s)))
         .collect()
 }

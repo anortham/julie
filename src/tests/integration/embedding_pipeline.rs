@@ -71,7 +71,7 @@ mod tests {
         ]);
 
         let provider = create_test_provider();
-        let stats = run_embedding_pipeline(&db, &provider).unwrap();
+        let stats = run_embedding_pipeline(&db, &provider, None).unwrap();
 
         assert_eq!(stats.symbols_scanned, 5, "Should scan all 5 symbols");
         assert_eq!(
@@ -158,7 +158,7 @@ mod tests {
         ]);
 
         let provider = create_test_provider();
-        run_embedding_pipeline(&db, &provider).unwrap();
+        run_embedding_pipeline(&db, &provider, None).unwrap();
 
         // Search for something semantically related to authentication
         let query_vec = provider.embed_query("login and user verification").unwrap();
@@ -183,7 +183,7 @@ mod tests {
         let db = Arc::new(Mutex::new(db));
 
         let provider = create_test_provider();
-        let stats = run_embedding_pipeline(&db, &provider).unwrap();
+        let stats = run_embedding_pipeline(&db, &provider, None).unwrap();
 
         assert_eq!(stats.symbols_scanned, 0);
         assert_eq!(stats.symbols_embedded, 0);
@@ -214,7 +214,7 @@ mod tests {
         // always re-embedded because child method enrichment may change).
         // s1 (Function) is skipped because it's already embedded and not a container.
         let provider = create_test_provider();
-        let stats = run_embedding_pipeline(&db, &provider).unwrap();
+        let stats = run_embedding_pipeline(&db, &provider, None).unwrap();
 
         assert_eq!(
             stats.symbols_embedded, 2,
@@ -239,7 +239,7 @@ mod tests {
         ]);
 
         let provider = create_test_provider();
-        let stats = run_embedding_pipeline(&db, &provider).unwrap();
+        let stats = run_embedding_pipeline(&db, &provider, None).unwrap();
 
         let db_guard = db.lock().unwrap();
         let count = db_guard.embedding_count().unwrap();
@@ -261,7 +261,7 @@ mod tests {
         ]);
 
         let provider = create_test_sidecar_provider();
-        let stats = run_embedding_pipeline(&db, &provider).unwrap();
+        let stats = run_embedding_pipeline(&db, &provider, None).unwrap();
 
         assert_eq!(stats.symbols_embedded, 2);
         let db_guard = db.lock().unwrap();

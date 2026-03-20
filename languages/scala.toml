@@ -39,3 +39,6 @@ important_patterns = [
     "given ",
     "extension ",
 ]
+
+[embeddings]
+extra_kinds = ["constructor"]  # companion object apply methods

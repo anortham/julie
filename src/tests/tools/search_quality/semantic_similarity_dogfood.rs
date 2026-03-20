@@ -59,7 +59,7 @@ fn setup_similarity_fixture() -> SymbolDatabase {
 
     let db_arc = Arc::new(Mutex::new(db));
     let stats =
-        run_embedding_pipeline(&db_arc, &provider).expect("Embedding pipeline should succeed");
+        run_embedding_pipeline(&db_arc, &provider, None).expect("Embedding pipeline should succeed");
     println!(
         "Embedding pipeline: {}/{} symbols embedded in {} batches",
         stats.symbols_embedded, stats.symbols_scanned, stats.batches_processed

@@ -7,16 +7,31 @@
 
 For each language, index a real-world project as a reference workspace and run the verification queries below. A language passes when all applicable checks produce correct results.
 
-**Pick representative projects:**
-- Rust: Julie itself, ripgrep, or tokio
-- TypeScript: Next.js, Prisma, or tRPC
-- Python: FastAPI, Django, or Flask
-- Elixir: Phoenix framework
-- Scala: Cats, Akka, or Play
-- Go: Kubernetes, Docker, or Hugo
-- Java: Spring Boot, Guava
-- C#: ASP.NET Core, Newtonsoft.Json
-- etc.
+**Pick representative projects** (verified projects in `~/source`):
+
+| Language | Verified Project | Alt Projects |
+|----------|-----------------|-------------|
+| Rust | Julie (primary) | ripgrep, tokio |
+| TypeScript | Zod | Next.js, Prisma |
+| JavaScript | Express | |
+| Python | Flask | FastAPI, Django |
+| Elixir | Phoenix | |
+| Scala | Cats | Akka, Play |
+| Go | Cobra | |
+| Java | Guava | Spring Boot |
+| Kotlin | Moshi | |
+| C# | Newtonsoft.Json | ASP.NET Core |
+| PHP | Slim | |
+| Ruby | Sinatra | |
+| Swift | Alamofire | |
+| Dart | Riverpod | |
+| C | jq | |
+| C++ | nlohmann-json | |
+| Zig | ZLS | |
+| Lua | Lite | |
+| Vue | LabHandbookV2 | |
+| Razor | blazor-samples | |
+| QML | Kirigami | |
 
 ---
 
@@ -149,6 +164,67 @@ fast_search(query="<test_function>", exclude_tests=false)
 | **8.3** Test decorators detected | `@test`, `#[test]`, `@Test` annotation marks symbol | Decorated test not detected |
 | **8.4** Auto-exclusion works | `exclude_tests=auto` hides tests for NL queries | Test results polluting definition search |
 
+### 9. Embedding Coverage (Full Tier)
+
+Run the embedding benchmark or query the workspace database directly:
+
+```bash
+# Quick coverage check via sqlite3
+sqlite3 .julie/indexes/<workspace_id>/db/symbols.db "
+  SELECT language, COUNT(*) as total,
+    SUM(CASE WHEN kind IN ('function','method','class','struct','interface',
+         'trait','enum','type','module','namespace','union') THEN 1 ELSE 0 END) as embeddable,
+    SUM(CASE WHEN kind = 'variable' THEN 1 ELSE 0 END) as variables
+  FROM symbols GROUP BY language ORDER BY total DESC;"
+
+# Actual embedded count
+sqlite3 .julie/indexes/<workspace_id>/db/symbols.db \
+  "SELECT COUNT(*) FROM symbol_vectors_rowids;"
+
+# Full benchmark (all workspaces)
+python3 benchmarks/embedding_quality.py --workspace <workspace_id>
+```
+
+| Check | What to verify | Failure example |
+|-------|---------------|-----------------|
+| **9.1** Test symbols excluded | No embeddings for symbols in `test/`, `spec/`, `*_test.*` paths or with `is_test` metadata | Test helper class has embedding, pollutes KNN results |
+| **9.2** Embeddable kinds in expected range | See baseline table below; large deviations indicate extractor kind mapping issues | Elixir `defmodule` stored as Import (0% embeddable instead of 87%) |
+| **9.3** Variables get budget (where applicable) | JS/TS/Python/Ruby/PHP should have embedded variables (up to 20% of base count) | TypeScript project with 1,500 variables, zero embedded |
+| **9.4** Gap kinds identified | Constructor, Constant, Export counts noted; large counts flagged for future inclusion | C# project with 400 constructors (DI patterns) not embedded |
+| **9.5** Similarity results are source-only | `deep_dive(depth="full")` similar symbols section contains no test files | Top-5 similar symbols are all from `tests/` directory |
+| **9.6** Stale embeddings purged on re-index | After force refresh, embedding count matches eligible source symbols | Old test embeddings persist after filter change |
+
+#### Embeddable Kinds Baseline (% of primary language symbols)
+
+These are the expected ranges from real-world verification projects. Large deviations from these baselines suggest extractor kind mapping issues.
+
+| Language | Embeddable % | Variable % | Key Non-embedded | Verified Project |
+|----------|-------------|-----------|-----------------|-----------------|
+| Elixir | **87%** | 0% | Imports only | Phoenix |
+| Rust | **82%** | 0% | Imports, constants | Julie |
+| Scala | **69%** | 1% | Constructors (4k) | Cats |
+| Dart | **66%** | 0% | Fields, constructors | Riverpod |
+| Go | **55%** | 8% | Properties, constructors | Cobra |
+| Java | **53%** | 0% | Properties (enriched), constructors | Guava |
+| JavaScript | **50%** | 30% | Properties (enriched) | Express |
+| C# | **49%** | 0% | Properties (enriched), constructors | Newtonsoft.Json |
+| Python | **42%** | 36% | Imports | Flask |
+| Ruby | **32%** | 50% | Variables dominate | Sinatra |
+| TypeScript | **32%** | 50% | Variables (arrow functions) | Zod |
+| Swift | **31%** | 0% | Properties (enriched) dominate | Alamofire |
+| C | **31%** | 14% | Constants, variables | jq |
+| Kotlin | **30%** | 0% | Properties (enriched) dominate | Moshi |
+| C++ | **26%** | 28% | Variables, properties | nlohmann-json |
+| PHP | **25%** | 50% | Variables dominate | Slim |
+| Zig | **21%** | 16% | Constants (4.4k!) | ZLS |
+| Lua | **20%** | 3% | Functions stored differently | Lite |
+
+**Reading this table:**
+- "Embeddable %" = symbols in EMBEDDABLE_KINDS / total symbols for that language
+- "Variable %" = Variable-kind symbols / total (these get budget-capped at 20% of base)
+- "Properties (enriched)" = not directly embedded but their names are included in the parent class/struct embedding text, so they ARE represented in the vector space indirectly
+- Languages with high variable % (JS, TS, Python, Ruby, PHP) have lower embeddable % because arrow functions, `const` exports, and assignment patterns create Variable-kind symbols that are semantically functions
+
 ---
 
 ## Language-Specific Gotchas
@@ -184,10 +260,10 @@ manage_workspace(operation="stats", workspace_id="project_XXXX")
 ```
 
 **Passing criteria:**
-- **Full Tier**: All 8 check groups pass (30 individual checks)
+- **Full Tier**: All 9 check groups pass (36 individual checks)
 - **Specialized Tier**: Checks 1, 3, 5, 8 pass (where applicable)
 - **Data/Docs Tier**: Check 1 passes
 
 ---
 
-*Last updated: 2026-03-17 | Created from dogfood testing of Scala (Cats) and Elixir (Phoenix)*
+*Last updated: 2026-03-20 | Check 9 (Embedding Coverage) added from benchmark of 19 workspaces across 18 languages*
