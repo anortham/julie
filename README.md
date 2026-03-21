@@ -40,7 +40,7 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 
 ### Embeddings Runtime
 
-Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings on macOS and Linux, and ONNX Runtime with DirectML on Windows (BGE-small-en-v1.5, 384 dimensions).
+Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings on macOS and Linux, and ONNX Runtime with DirectML on Windows. All platforms default to BGE-small-en-v1.5 (384 dimensions).
 
 - **Auto-provisioning**: If `uv` is available and no compatible Python 3.10-3.13 is found, Julie installs one via `uv python install` and creates a managed venv with `uv venv`
 - **GPU acceleration**: Uses CUDA via the Python sidecar on Linux, MPS via the Python sidecar on macOS, and DirectML via ONNX Runtime on Windows — falls back to CPU if no GPU is available
@@ -48,9 +48,9 @@ Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings on m
 - **Zero configuration**: Works out of the box on systems with `uv` or a compatible Python on PATH
 
 **Runtime controls:**
-- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`; Windows resolves to `ort`, macOS/Linux prefer `sidecar`)
+- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`; Windows defaults to `ort` for DirectML GPU acceleration, macOS/Linux prefer `sidecar`). Windows users can set `sidecar` to use CodeRankEmbed or other sidecar-only models.
 - `JULIE_EMBEDDING_STRICT_ACCEL`: `1` to disable embeddings when no GPU is available
-- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: Override the embedding model (default: `BAAI/bge-small-en-v1.5`). For better code similarity, use `nomic-ai/CodeRankEmbed` (768d, requires sidecar). The model downloads once to `~/.cache/huggingface/` and is shared across all projects. Switching models automatically wipes and re-embeds all vectors on the next indexing run; no manual cleanup needed.
+- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: Override the sidecar embedding model (default: `BAAI/bge-small-en-v1.5`). For better code similarity, use `nomic-ai/CodeRankEmbed` (768d, requires sidecar). The model downloads once to `~/.cache/huggingface/` and is shared across all projects. Switching models automatically wipes and re-embeds all vectors on the next indexing run; no manual cleanup needed.
 - See `docs/operations/embedding-sidecar.md` for all env vars and troubleshooting
 
 ## Supported Languages (33)

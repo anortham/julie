@@ -34,7 +34,7 @@ mod tests {
     }
 
     #[test]
-    fn test_windows_explicit_sidecar_is_rejected() {
+    fn test_windows_explicit_sidecar_is_allowed() {
         let capabilities = BackendResolverCapabilities {
             sidecar_available: true,
             ort_available: true,
@@ -42,12 +42,10 @@ mod tests {
             target_arch: "x86_64",
         };
 
-        let err = resolve_backend_preference(EmbeddingBackend::Sidecar, &capabilities)
-            .expect_err("windows sidecar should be rejected");
-        let message = err.to_string();
+        let resolved = resolve_backend_preference(EmbeddingBackend::Sidecar, &capabilities)
+            .expect("windows explicit sidecar should be allowed");
 
-        assert!(message.contains("Windows"), "unexpected error: {message}");
-        assert!(message.contains("sidecar"), "unexpected error: {message}");
+        assert_eq!(resolved, EmbeddingBackend::Sidecar);
     }
 
     #[cfg(feature = "embeddings-ort")]
