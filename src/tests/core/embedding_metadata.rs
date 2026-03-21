@@ -785,7 +785,7 @@ mod tests {
     }
 
     #[test]
-    fn test_first_sentence_extraction() {
+    fn test_format_includes_multi_sentence_doc_excerpt() {
         let sym = make_symbol(
             "id11",
             "foo",
@@ -796,11 +796,31 @@ mod tests {
         let text = format_symbol_metadata(&sym);
         assert!(
             text.contains("Handles authentication."),
-            "Should extract first sentence: {text}"
+            "Should include first sentence: {text}"
         );
         assert!(
-            !text.contains("Also does"),
-            "Should not include second sentence: {text}"
+            text.contains("Also does authorization"),
+            "Should now include subsequent sentences: {text}"
+        );
+    }
+
+    #[test]
+    fn test_format_includes_multiple_doc_sentences() {
+        let sym = make_symbol(
+            "id_multi_doc",
+            "record_tool_call",
+            SymbolKind::Method,
+            Some("pub(crate) fn record_tool_call(&self, tool_name: &str, duration: Duration, report: &ToolCallReport)"),
+            Some("/// Record a completed tool call. Bumps in-memory atomics synchronously, then spawns async task for source_bytes lookup + SQLite write."),
+        );
+        let text = format_symbol_metadata(&sym);
+        assert!(
+            text.contains("SQLite write"),
+            "Should include second sentence with database signal: {text}"
+        );
+        assert!(
+            text.contains("Record a completed tool call"),
+            "Should still include first sentence: {text}"
         );
     }
 

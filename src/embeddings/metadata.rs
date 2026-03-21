@@ -124,10 +124,10 @@ pub fn format_symbol_metadata(symbol: &Symbol) -> String {
         }
     }
 
-    // Doc comment excerpt (first sentence or first line)
+    // Doc comment excerpt (multi-sentence for embedding richness)
     let doc_excerpt;
     if let Some(ref doc) = symbol.doc_comment {
-        doc_excerpt = first_sentence(doc);
+        doc_excerpt = extract_doc_excerpt(doc);
         if !doc_excerpt.is_empty() {
             parts.push(&doc_excerpt);
         }
@@ -409,6 +409,49 @@ pub fn first_sentence(doc: &str) -> String {
     } else {
         cleaned
     }
+}
+
+/// Maximum characters for the doc excerpt in embedding input.
+const MAX_DOC_EXCERPT_CHARS: usize = 300;
+
+/// Extract a multi-sentence doc comment excerpt for embedding input.
+///
+/// Unlike `first_sentence()` (used for compact display), this collects multiple
+/// doc lines to capture richer semantic context for the embedding model.
+/// Stops at `MAX_DOC_EXCERPT_CHARS` on a word boundary.
+///
+/// Cleans doc comment prefixes (`///`, `//!`, `/** */`, `# `, etc.) and XML tags.
+pub fn extract_doc_excerpt(doc: &str) -> String {
+    let cleaned: String = doc
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let stripped = trimmed
+                .strip_prefix("///")
+                .or_else(|| trimmed.strip_prefix("//!"))
+                .or_else(|| trimmed.strip_prefix("/**"))
+                .or_else(|| trimmed.strip_prefix("*/"))
+                .or_else(|| trimmed.strip_prefix("* "))
+                .or_else(|| trimmed.strip_prefix("*"))
+                .or_else(|| trimmed.strip_prefix("# "))
+                .or_else(|| trimmed.strip_prefix("## "))
+                .or_else(|| trimmed.strip_prefix("### "))
+                .unwrap_or(trimmed)
+                .trim();
+
+            let without_tags = strip_xml_tags(stripped);
+            let content = without_tags.trim();
+
+            if content.is_empty() {
+                None
+            } else {
+                Some(content.to_string())
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    truncate_on_word_boundary(&cleaned, MAX_DOC_EXCERPT_CHARS)
 }
 
 /// Strip XML tags from text, preserving content between tags.
