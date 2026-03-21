@@ -256,24 +256,36 @@ pub fn run_embedding_pipeline(
         info!("Embedding pipeline: purged {stale_deleted} stale embeddings");
     }
 
-    // Container symbols always get fresh embeddings because their text includes
-    // child method names (via enrichment), which change when children are added/removed.
-    let container_ids: HashSet<&str> = symbols
+    // Symbols with relationship-based enrichment must be re-embedded when
+    // relationships change. Containers get child enrichment, functions/methods
+    // get callee enrichment.
+    //
+    // For containers: always re-embed (children may have changed).
+    // For functions/methods: only re-embed if they have callees in the map
+    //   (most functions have no callees, so this avoids re-embedding ~70% of symbols).
+    let enriched_ids: HashSet<&str> = symbols
         .iter()
         .filter(|s| {
-            matches!(
-                s.kind,
-                SymbolKind::Class | SymbolKind::Struct | SymbolKind::Interface | SymbolKind::Trait
-            )
+            match s.kind {
+                SymbolKind::Class
+                | SymbolKind::Struct
+                | SymbolKind::Interface
+                | SymbolKind::Trait
+                | SymbolKind::Enum => true,
+                SymbolKind::Function | SymbolKind::Method => {
+                    callees_by_symbol.contains_key(&s.id)
+                }
+                _ => false,
+            }
         })
         .map(|s| s.id.as_str())
         .collect();
 
     // Skip symbols that already have embeddings (incremental),
-    // EXCEPT container symbols which always get re-embedded with enriched child names.
+    // EXCEPT enriched symbols which always get re-embedded.
     let prepared: Vec<_> = all_prepared
         .into_iter()
-        .filter(|(id, _)| !already_embedded.contains(id) || container_ids.contains(id.as_str()))
+        .filter(|(id, _)| !already_embedded.contains(id) || enriched_ids.contains(id.as_str()))
         .collect();
 
     stats.symbols_skipped = already_embedded.len();

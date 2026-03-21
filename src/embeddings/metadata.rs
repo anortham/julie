@@ -11,10 +11,12 @@ use crate::search::language_config::LanguageConfigs;
 use crate::search::scoring::is_test_path;
 
 /// Maximum characters for the embedding input text.
-/// BGE-small handles up to 512 tokens (~2000 chars). With enrichment (methods,
-/// properties, variants), containers need more room to fit their semantic
-/// fingerprint. 600 chars ≈ 120-150 tokens — still well within model capacity.
-const MAX_METADATA_CHARS: usize = 600;
+/// Jina-code-v2 and CodeRankEmbed handle up to 8192 tokens (~32K chars).
+/// BGE-small handles up to 512 tokens (~2000 chars).
+/// 1200 chars is ~240-300 tokens, safe for all supported models, and 2x the
+/// previous budget. Gives room for multi-sentence docs + callee names
+/// without approaching any model's limit.
+const MAX_METADATA_CHARS: usize = 1200;
 
 /// Symbol kinds worth embedding — structural definitions that carry semantic meaning.
 const EMBEDDABLE_KINDS: &[SymbolKind] = &[

@@ -444,12 +444,12 @@ mod tests {
             Some("/// A very large class with many methods for comprehensive testing"),
         );
 
-        // Create 30 child methods with long names
+        // Create 50 child methods with long names to exceed the 1200-char budget
         let mut symbols = vec![class_sym];
-        for i in 0..30 {
+        for i in 0..50 {
             let mut method = make_symbol_with_lang(
                 &format!("m{i}"),
-                &format!("VeryLongMethodName{i}ForTesting"),
+                &format!("VeryLongMethodNameNumbered{i}ForComprehensiveTesting"),
                 SymbolKind::Method,
                 "rust",
             );
@@ -461,8 +461,8 @@ mod tests {
         let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
 
         assert!(
-            class_entry.1.len() <= 600,
-            "Enriched text should be within 600 chars, got {}",
+            class_entry.1.len() <= 1200,
+            "Enriched text should be within 1200 chars, got {}",
             class_entry.1.len()
         );
     }
@@ -1580,6 +1580,46 @@ mod tests {
         assert!(
             !text.contains("calls:"),
             "Container symbols should NOT get callee enrichment: {text}"
+        );
+    }
+
+    #[test]
+    fn test_enriched_function_with_callees_uses_expanded_budget() {
+        let long_doc = "/// Orchestrates a complex multi-stage data processing pipeline that coordinates extraction from multiple sources. Manages transformation rules, validates intermediate results against business constraints, and loads final output into the target database system. Implements comprehensive retry logic for transient failures with exponential backoff.";
+        let func = make_symbol(
+            "f1",
+            "orchestrate_complex_pipeline",
+            SymbolKind::Function,
+            Some("pub async fn orchestrate_complex_pipeline(handler: &JulieServerHandler, config: &PipelineConfig, options: &ProcessingOptions) -> Result<PipelineOutput>"),
+            Some(long_doc),
+        );
+        let symbols = vec![func];
+        let mut callees = HashMap::new();
+        callees.insert("f1".to_string(), vec![
+            "connect_to_source_database".to_string(),
+            "extract_source_records".to_string(),
+            "transform_with_business_rules".to_string(),
+            "validate_intermediate_output".to_string(),
+            "load_into_target_database".to_string(),
+            "retry_with_exponential_backoff".to_string(),
+        ]);
+
+        let batch = prepare_batch_for_embedding(&symbols, None, &callees);
+        let (_, text) = &batch[0];
+
+        // Verify the last callee is present (would be truncated at 600 chars)
+        assert!(
+            text.contains("retry_with_exponential_backoff"),
+            "Last callee should not be truncated with expanded budget: {text}"
+        );
+        assert!(
+            text.contains("loads final output"),
+            "Multi-sentence doc should survive within budget: {text}"
+        );
+        assert!(
+            text.len() > 600,
+            "Text should exceed old 600-char limit: len={}, text: {text}",
+            text.len()
         );
     }
 }
