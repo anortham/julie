@@ -77,11 +77,30 @@ cargo build --release
 
 ### Connect Your AI Tool
 
-**Claude Code:**
+**Claude Code** (user-level, available in all projects):
 
 ```bash
-claude mcp add julie -- /path/to/julie/target/release/julie-server
+claude mcp add --scope user julie -- /path/to/julie-server
 ```
+
+Or edit `~/.claude.json` directly for more control (e.g., model override):
+
+```json
+{
+  "mcpServers": {
+    "julie": {
+      "type": "stdio",
+      "command": "/path/to/julie-server",
+      "args": [],
+      "env": {
+        "JULIE_EMBEDDING_SIDECAR_MODEL_ID": "nomic-ai/CodeRankEmbed"
+      }
+    }
+  }
+}
+```
+
+For project-level only, use `--scope project` or omit the scope flag.
 
 **VS Code with GitHub Copilot** (`.vscode/mcp.json`):
 
@@ -102,11 +121,16 @@ claude mcp add julie -- /path/to/julie/target/release/julie-server
 {
   "mcpServers": {
     "julie": {
-      "command": "/path/to/julie/target/release/julie-server"
+      "command": "/path/to/julie-server",
+      "env": {
+        "JULIE_EMBEDDING_SIDECAR_MODEL_ID": "nomic-ai/CodeRankEmbed"
+      }
     }
   }
 }
 ```
+
+The `env` block is optional. Without it, Julie defaults to `BAAI/bge-small-en-v1.5` (384d).
 
 **First Use:**
 
