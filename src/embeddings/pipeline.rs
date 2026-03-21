@@ -16,7 +16,7 @@ use crate::embeddings::metadata::{
     NON_EMBEDDABLE_LANGUAGES, VariableEmbeddingPolicy, prepare_batch_for_embedding,
     select_budgeted_variables,
 };
-use crate::extractors::SymbolKind;
+use crate::extractors::{RelationshipKind, Symbol, SymbolKind};
 use crate::search::language_config::LanguageConfigs;
 
 /// Batch size for embedding generation (symbols per batch).
@@ -38,6 +38,55 @@ pub struct EmbeddingStats {
     pub symbols_embedded: usize,
     pub symbols_skipped: usize,
     pub batches_processed: usize,
+}
+
+/// Build a map of symbol_id -> callee names from the relationship graph.
+/// Only includes `Calls` relationships to avoid noise from imports/type refs.
+fn build_callee_map(
+    db: &SymbolDatabase,
+    symbols: &[Symbol],
+) -> HashMap<String, Vec<String>> {
+    let func_ids: Vec<String> = symbols
+        .iter()
+        .filter(|s| matches!(s.kind, SymbolKind::Function | SymbolKind::Method))
+        .map(|s| s.id.clone())
+        .collect();
+
+    if func_ids.is_empty() {
+        return HashMap::new();
+    }
+
+    let relationships = match db.get_outgoing_relationships_for_symbols(&func_ids) {
+        Ok(rels) => rels,
+        Err(err) => {
+            tracing::warn!("Failed to load callees for embedding enrichment: {err:#}");
+            return HashMap::new();
+        }
+    };
+
+    let id_to_name: HashMap<&str, &str> = symbols
+        .iter()
+        .map(|s| (s.id.as_str(), s.name.as_str()))
+        .collect();
+
+    let mut callees: HashMap<String, Vec<String>> = HashMap::new();
+    for rel in &relationships {
+        if rel.kind == RelationshipKind::Calls {
+            if let Some(name) = id_to_name.get(rel.to_symbol_id.as_str()) {
+                callees
+                    .entry(rel.from_symbol_id.clone())
+                    .or_default()
+                    .push(name.to_string());
+            }
+        }
+    }
+
+    for names in callees.values_mut() {
+        names.sort();
+        names.dedup();
+    }
+
+    callees
 }
 
 /// Run the full embedding pipeline: load symbols → filter → embed → store.
@@ -134,8 +183,16 @@ pub fn run_embedding_pipeline(
     stats.symbols_scanned = symbols.len();
     info!("Embedding pipeline: {} total symbols loaded", symbols.len());
 
+    // Build callee map for function/method enrichment.
+    let callees_by_symbol = {
+        let db_guard = db
+            .lock()
+            .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
+        build_callee_map(&db_guard, &symbols)
+    };
+
     // Build base prepared symbols (existing embeddable kinds) and merge selected variables.
-    let base_prepared = prepare_batch_for_embedding(&symbols, lang_configs);
+    let base_prepared = prepare_batch_for_embedding(&symbols, lang_configs, &callees_by_symbol);
     let candidate_variable_ids: HashSet<String> = symbols
         .iter()
         .filter(|s| s.kind == SymbolKind::Variable)
@@ -322,10 +379,18 @@ pub fn embed_symbols_for_file(
             .context("Failed to load symbols for file")?
     };
 
+    // Build callee map for function/method enrichment.
+    let callees_by_symbol = {
+        let db_guard = db
+            .lock()
+            .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
+        build_callee_map(&db_guard, &symbols)
+    };
+
     // Filter and format structural symbols only.
     // Variable embedding is handled globally by `run_embedding_pipeline` at workspace init
     // using budgeted selection. The incremental path skips variables to stay fast (<200ms).
-    let prepared = prepare_batch_for_embedding(&symbols, lang_configs);
+    let prepared = prepare_batch_for_embedding(&symbols, lang_configs, &callees_by_symbol);
     if prepared.is_empty() {
         return Ok(0);
     }

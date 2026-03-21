@@ -152,6 +152,7 @@ const CONTAINER_KINDS: &[SymbolKind] = &[
 pub fn prepare_batch_for_embedding(
     symbols: &[Symbol],
     lang_configs: Option<&LanguageConfigs>,
+    callees_by_symbol: &HashMap<String, Vec<String>>,
 ) -> Vec<(String, String)> {
     // Build parent_id → child method names mapping for container enrichment.
     let mut methods_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -206,6 +207,17 @@ pub fn prepare_batch_for_embedding(
                     text.push_str(&suffix);
                 }
                 text = truncate_on_word_boundary(&text, MAX_METADATA_CHARS);
+            }
+
+            // Enrich functions/methods with callee names.
+            if matches!(s.kind, SymbolKind::Function | SymbolKind::Method) {
+                if let Some(callees) = callees_by_symbol.get(&s.id) {
+                    if !callees.is_empty() {
+                        let suffix = format!(" calls: {}", callees.join(", "));
+                        text.push_str(&suffix);
+                        text = truncate_on_word_boundary(&text, MAX_METADATA_CHARS);
+                    }
+                }
             }
 
             (s.id.clone(), text)
