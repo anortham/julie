@@ -540,11 +540,16 @@ mod resolver_tests {
     // =========================================================================
 
     #[test]
-    fn test_unmatched_parent_rejected_when_caller_has_identifiers() {
-        // The LabHandbookV2 phantom edge: caller file has identifiers (we have data)
+    fn test_unmatched_parent_penalized_when_caller_has_identifiers() {
+        // The LabHandbookV2 scenario: caller file has identifiers (we have data)
         // but the only "Success" candidate's parent (ApiResponse) is NOT referenced.
         // The real target (AuthenticateResult.Success) is an external framework type.
-        // Candidate should be rejected (score 0) to prevent a false edge.
+        //
+        // With penalty instead of hard rejection, this single candidate still resolves
+        // (with a lower score). The penalty ensures that when a BETTER candidate exists
+        // (with confirmed parent reference, +200 boost), it wins overwhelmingly.
+        // The false-edge risk is accepted as a tradeoff for not losing legitimate
+        // call edges when parent types are accessed indirectly (generics, wrappers, etc).
         let candidates = vec![make_child_symbol(
             "Success",
             SymbolKind::Method,
@@ -563,8 +568,8 @@ mod resolver_tests {
 
         let result = select_best_candidate(&candidates, &pending, &parent_ctx);
         assert!(
-            result.is_none(),
-            "Should reject candidate whose parent type the caller doesn't reference"
+            result.is_some(),
+            "Should penalize (not reject) candidate with unmatched parent — single candidate still resolves"
         );
     }
 
@@ -592,6 +597,86 @@ mod resolver_tests {
         assert!(
             result.is_some(),
             "Should allow resolution when we have no identifier data to make a judgment"
+        );
+    }
+
+    #[test]
+    fn test_parent_confirmed_candidate_beats_penalized_candidate() {
+        // Two candidates for "Success": one with confirmed parent reference (+200),
+        // one without (-75 penalty). The confirmed one must win even if the other
+        // has better path proximity.
+        let mut confirmed = make_child_symbol(
+            "Success",
+            SymbolKind::Method,
+            "csharp",
+            "Auth/AuthenticateResult.cs",   // farther directory
+            "authenticate_result_class",
+        );
+        confirmed.parent_id = Some("authenticate_result_class".to_string());
+
+        let unconfirmed = make_child_symbol(
+            "Success",
+            SymbolKind::Method,
+            "csharp",
+            "Controllers/ApiResponse.cs",   // closer directory to caller
+            "api_response_class",
+        );
+
+        let candidates = vec![confirmed, unconfirmed];
+        let pending = make_pending("caller_1", "Success", "Controllers/AuthController.cs");
+
+        // Caller file references AuthenticateResult but NOT ApiResponse
+        let parent_ctx = make_parent_ctx_with_files(
+            &[
+                ("authenticate_result_class", "AuthenticateResult"),
+                ("api_response_class", "ApiResponse"),
+            ],
+            &[("Controllers/AuthController.cs", "AuthenticateResult")],
+            &["Controllers/AuthController.cs"],
+        );
+
+        let result = select_best_candidate(&candidates, &pending, &parent_ctx);
+        assert!(result.is_some());
+        assert_eq!(
+            result.unwrap().file_path, "Auth/AuthenticateResult.cs",
+            "Confirmed parent reference should beat penalized candidate"
+        );
+    }
+
+    #[test]
+    fn test_unmatched_parent_penalized_not_rejected_for_unique_callee() {
+        // record_tool_call calls db.insert_tool_call() in handler.rs.
+        // insert_tool_call is a method on SymbolDatabase (has parent_id).
+        // handler.rs has identifiers but doesn't reference "SymbolDatabase" by name
+        // (accesses it through Arc<Mutex<SymbolDatabase>> via workspace abstraction).
+        //
+        // The old hard rejection (return 0) would drop this entirely, losing the
+        // callee relationship. With a penalty instead, the unique candidate still
+        // resolves (with lower score), preserving the call edge.
+        let candidates = vec![make_child_symbol(
+            "insert_tool_call",
+            SymbolKind::Method,
+            "rust",
+            "src/database/tool_calls.rs",
+            "symbol_database_struct",
+        )];
+        let pending = make_pending(
+            "record_tool_call_id",
+            "insert_tool_call",
+            "src/handler.rs",
+        );
+
+        // Caller file HAS identifiers but does NOT reference SymbolDatabase
+        let parent_ctx = make_parent_ctx_with_files(
+            &[("symbol_database_struct", "SymbolDatabase")],
+            &[], // no parent reference match
+            &["src/handler.rs"], // but file has identifier data
+        );
+
+        let result = select_best_candidate(&candidates, &pending, &parent_ctx);
+        assert!(
+            result.is_some(),
+            "Unique callee with unmatched parent should still resolve (penalized, not rejected)"
         );
     }
 

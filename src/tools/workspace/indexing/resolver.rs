@@ -171,10 +171,14 @@ fn score_candidate(
     } else if candidate.parent_id.is_some()
         && parent_ctx.caller_has_identifiers(&pending.file_path)
     {
-        // Negative filtering: candidate has a parent type, we have identifier data for
-        // the caller file, but the caller doesn't reference this parent. This is likely
-        // a phantom edge — the real target is an external/framework type not in the index.
-        return 0;
+        // Caller has identifiers but doesn't reference this candidate's parent type.
+        // Apply a penalty (not a hard rejection) so that:
+        // - When multiple candidates exist, the one with parent confirmation (+200) wins
+        // - When only one candidate exists (unique method name), it still resolves
+        // Hard rejection here was too aggressive: methods accessed through generics,
+        // Arc<Mutex<T>>, trait objects, or re-exports wouldn't have explicit parent
+        // references in the caller file, causing legitimate call edges to be dropped.
+        score = score.saturating_sub(75);
     }
 
     // Penalize candidates in test files. Test subclasses (e.g., `class Flask(flask.Flask)`

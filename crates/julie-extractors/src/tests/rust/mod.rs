@@ -1401,6 +1401,65 @@ fn run() {
                 "Duplicate calls should be on different lines"
             );
         }
+
+        #[test]
+        fn test_rust_calls_inside_closure_have_containing_symbol() {
+            let rust_code = r#"
+fn insert_tool_call(session_id: &str) {}
+fn get_total_file_sizes(paths: &[&str]) {}
+
+fn record_tool_call(tool_name: &str) {
+    let tool_name = tool_name.to_string();
+    tokio::spawn(async move {
+        insert_tool_call(&tool_name);
+        get_total_file_sizes(&[]);
+    });
+}
+"#;
+
+            let mut parser = init_parser();
+            let tree = parser.parse(rust_code, None).unwrap();
+
+            let workspace_root = test_workspace_root();
+            let mut extractor = RustExtractor::new(
+                "rust".to_string(),
+                "test.rs".to_string(),
+                rust_code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let identifiers = extractor.extract_identifiers(&tree, &symbols);
+
+            let record_sym = symbols.iter().find(|s| s.name == "record_tool_call").unwrap();
+
+            // Check if insert_tool_call is extracted as a Call identifier
+            let insert_call = identifiers
+                .iter()
+                .find(|id| id.name == "insert_tool_call" && id.kind == IdentifierKind::Call);
+            assert!(
+                insert_call.is_some(),
+                "Should extract insert_tool_call call inside tokio::spawn closure. All identifiers: {:?}",
+                identifiers.iter().map(|id| (&id.name, &id.kind)).collect::<Vec<_>>()
+            );
+
+            // Check if it's assigned to record_tool_call as containing symbol
+            let insert_call = insert_call.unwrap();
+            assert_eq!(
+                insert_call.containing_symbol_id.as_ref(),
+                Some(&record_sym.id),
+                "insert_tool_call inside closure should have record_tool_call as containing symbol"
+            );
+
+            // Check get_total_file_sizes too
+            let get_sizes_call = identifiers
+                .iter()
+                .find(|id| id.name == "get_total_file_sizes" && id.kind == IdentifierKind::Call);
+            assert!(
+                get_sizes_call.is_some(),
+                "Should extract get_total_file_sizes call inside closure"
+            );
+        }
     }
 
     // ========================================================================
