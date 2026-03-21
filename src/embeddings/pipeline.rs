@@ -89,6 +89,18 @@ fn build_callee_map(
     callees
 }
 
+/// Build a map of symbol_id -> field access names from the identifiers table.
+/// Captures domain vocabulary from member accesses like `self.session_metrics` or `this.db`.
+fn build_field_access_map(db: &SymbolDatabase) -> HashMap<String, Vec<String>> {
+    match db.get_member_access_identifiers_grouped() {
+        Ok(fields) => fields,
+        Err(err) => {
+            tracing::warn!("Failed to load field accesses for embedding enrichment: {err:#}");
+            HashMap::new()
+        }
+    }
+}
+
 /// Run the full embedding pipeline: load symbols → filter → embed → store.
 ///
 /// This is designed to run in a `spawn_blocking` context since both the
@@ -100,6 +112,17 @@ pub fn run_embedding_pipeline(
     db: &Arc<Mutex<SymbolDatabase>>,
     provider: &dyn EmbeddingProvider,
     lang_configs: Option<&LanguageConfigs>,
+) -> Result<EmbeddingStats> {
+    run_embedding_pipeline_cancellable(db, provider, lang_configs, None)
+}
+
+/// Cancellable variant. When `cancel` is set to `true`, the pipeline stops
+/// after the current batch and returns what it has so far.
+pub fn run_embedding_pipeline_cancellable(
+    db: &Arc<Mutex<SymbolDatabase>>,
+    provider: &dyn EmbeddingProvider,
+    lang_configs: Option<&LanguageConfigs>,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<EmbeddingStats> {
     let mut stats = EmbeddingStats {
         symbols_scanned: 0,
@@ -183,16 +206,16 @@ pub fn run_embedding_pipeline(
     stats.symbols_scanned = symbols.len();
     info!("Embedding pipeline: {} total symbols loaded", symbols.len());
 
-    // Build callee map for function/method enrichment.
-    let callees_by_symbol = {
+    // Build callee map and field access map for function/method enrichment.
+    let (callees_by_symbol, fields_by_symbol) = {
         let db_guard = db
             .lock()
             .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
-        build_callee_map(&db_guard, &symbols)
+        (build_callee_map(&db_guard, &symbols), build_field_access_map(&db_guard))
     };
 
     // Build base prepared symbols (existing embeddable kinds) and merge selected variables.
-    let base_prepared = prepare_batch_for_embedding(&symbols, lang_configs, &callees_by_symbol);
+    let base_prepared = prepare_batch_for_embedding(&symbols, lang_configs, &callees_by_symbol, &fields_by_symbol);
     let candidate_variable_ids: HashSet<String> = symbols
         .iter()
         .filter(|s| s.kind == SymbolKind::Variable)
@@ -256,13 +279,12 @@ pub fn run_embedding_pipeline(
         info!("Embedding pipeline: purged {stale_deleted} stale embeddings");
     }
 
-    // Symbols with relationship-based enrichment must be re-embedded when
-    // relationships change. Containers get child enrichment, functions/methods
-    // get callee enrichment.
+    // Symbols with enrichment data must be re-embedded when their enrichment
+    // changes. Containers get child enrichment, functions/methods get callee
+    // and field access enrichment.
     //
     // For containers: always re-embed (children may have changed).
-    // For functions/methods: only re-embed if they have callees in the map
-    //   (most functions have no callees, so this avoids re-embedding ~70% of symbols).
+    // For functions/methods: re-embed if they have callees or field accesses.
     let enriched_ids: HashSet<&str> = symbols
         .iter()
         .filter(|s| {
@@ -274,6 +296,7 @@ pub fn run_embedding_pipeline(
                 | SymbolKind::Enum => true,
                 SymbolKind::Function | SymbolKind::Method => {
                     callees_by_symbol.contains_key(&s.id)
+                        || fields_by_symbol.contains_key(&s.id)
                 }
                 _ => false,
             }
@@ -307,6 +330,15 @@ pub fn run_embedding_pipeline(
 
     // Process in batches
     for chunk in prepared.chunks(EMBEDDING_BATCH_SIZE) {
+        // Check cancellation between batches (e.g., force reindex aborts old pipeline)
+        if cancel.map_or(false, |c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+            info!(
+                "Embedding pipeline cancelled after {} batches ({} embeddings stored)",
+                stats.batches_processed, stats.symbols_embedded
+            );
+            break;
+        }
+
         let texts: Vec<String> = chunk.iter().map(|(_, text)| text.clone()).collect();
 
         // Generate embeddings — if a batch fails (e.g., DirectML RuntimeError),
@@ -392,17 +424,17 @@ pub fn embed_symbols_for_file(
     };
 
     // Build callee map for function/method enrichment.
-    let callees_by_symbol = {
+    let (callees_by_symbol, fields_by_symbol) = {
         let db_guard = db
             .lock()
             .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
-        build_callee_map(&db_guard, &symbols)
+        (build_callee_map(&db_guard, &symbols), build_field_access_map(&db_guard))
     };
 
     // Filter and format structural symbols only.
     // Variable embedding is handled globally by `run_embedding_pipeline` at workspace init
     // using budgeted selection. The incremental path skips variables to stay fast (<200ms).
-    let prepared = prepare_batch_for_embedding(&symbols, lang_configs, &callees_by_symbol);
+    let prepared = prepare_batch_for_embedding(&symbols, lang_configs, &callees_by_symbol, &fields_by_symbol);
     if prepared.is_empty() {
         return Ok(0);
     }

@@ -120,6 +120,29 @@ impl ManageWorkspaceTool {
                             result.symbols_total,
                             result.relationships_total
                         );
+                        // Force refresh: abort running pipeline, clear embeddings,
+                        // then spawn_workspace_embedding starts fresh.
+                        if force {
+                            {
+                                let mut task_guard = handler.embedding_task.lock().await;
+                                if let Some((cancel_flag, handle)) = task_guard.take() {
+                                    info!("🛑 Cancelling running embedding pipeline for force refresh");
+                                    cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                    handle.abort();
+                                }
+                            }
+                            if let Ok(Some(ws)) = handler.get_workspace().await {
+                                let ref_db_path = ws.workspace_db_path(workspace_id);
+                                if ref_db_path.exists() {
+                                    if let Ok(mut ref_db) = crate::database::SymbolDatabase::new(ref_db_path) {
+                                        if let Err(e) = ref_db.clear_all_embeddings() {
+                                            tracing::warn!("Failed to clear embeddings for force refresh: {e}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         let embed_count = crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
                             handler,
                             workspace_id.to_string(),

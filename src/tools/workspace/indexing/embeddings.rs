@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 
 use crate::database::SymbolDatabase;
-use crate::embeddings::pipeline::run_embedding_pipeline;
+use crate::embeddings::pipeline::run_embedding_pipeline_cancellable;
 use crate::handler::JulieServerHandler;
 
 /// Spawn the embedding pipeline for a workspace (fire-and-forget).
@@ -134,13 +134,35 @@ pub(crate) async fn spawn_workspace_embedding(
 
     let db_arc = Arc::new(Mutex::new(db));
 
-    // Fire-and-forget: spawn the pipeline in the background
-    tokio::spawn(async move {
+    // Cancel and abort any previously running embedding pipeline.
+    // Setting the flag stops the spawn_blocking pipeline between batches;
+    // aborting the handle kills the outer async wrapper.
+    {
+        let mut task_guard = handler.embedding_task.lock().await;
+        if let Some((cancel_flag, handle)) = task_guard.take() {
+            info!("Cancelling previous embedding pipeline before starting new one");
+            cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            handle.abort();
+        }
+    }
+
+    // Create cancellation flag for the new pipeline
+    let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let cancel_for_pipeline = cancel_flag.clone();
+
+    // Spawn the pipeline in the background, storing handle + flag for cancellation.
+    let embedding_task_slot = handler.embedding_task.clone();
+    let handle = tokio::spawn(async move {
         info!("Starting workspace embedding for {workspace_id} ({total_symbols} symbols)...");
         let db_clone = db_arc.clone();
         let lang_configs = crate::search::language_config::LanguageConfigs::load_embedded();
         let result = tokio::task::spawn_blocking(move || {
-            run_embedding_pipeline(&db_clone, provider.as_ref(), Some(&lang_configs))
+            run_embedding_pipeline_cancellable(
+                &db_clone,
+                provider.as_ref(),
+                Some(&lang_configs),
+                Some(&cancel_for_pipeline),
+            )
         })
         .await;
 
@@ -155,10 +177,24 @@ pub(crate) async fn spawn_workspace_embedding(
                 warn!("Workspace {workspace_id} embedding failed: {e:#}");
             }
             Err(e) => {
-                warn!("Workspace {workspace_id} embedding task panicked: {e}");
+                if e.is_cancelled() {
+                    info!("Workspace {workspace_id} embedding task cancelled");
+                } else {
+                    warn!("Workspace {workspace_id} embedding task panicked: {e}");
+                }
             }
         }
+
+        // Clear the stored handle now that we're done
+        let mut slot = embedding_task_slot.lock().await;
+        *slot = None;
     });
+
+    // Store the handle + flag so it can be cancelled by a subsequent force reindex
+    {
+        let mut task_guard = handler.embedding_task.lock().await;
+        *task_guard = Some((cancel_flag, handle));
+    }
 
     total_symbols
 }

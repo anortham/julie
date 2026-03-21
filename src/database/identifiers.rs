@@ -162,6 +162,40 @@ impl SymbolDatabase {
         Ok(grouped)
     }
 
+    /// Get all member_access identifiers grouped by containing_symbol_id.
+    ///
+    /// Returns a HashMap mapping symbol_id -> Vec<field_name>.
+    /// Used by embedding enrichment to capture domain vocabulary from field accesses.
+    pub fn get_member_access_identifiers_grouped(&self) -> Result<HashMap<String, Vec<String>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT containing_symbol_id, name FROM identifiers WHERE kind = 'member_access' AND containing_symbol_id IS NOT NULL"
+        )?;
+
+        let mut grouped: HashMap<String, Vec<String>> = HashMap::new();
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        for row in rows {
+            let (symbol_id, field_name) = row?;
+            grouped.entry(symbol_id).or_default().push(field_name);
+        }
+
+        // Deduplicate within each symbol
+        for names in grouped.values_mut() {
+            names.sort();
+            names.dedup();
+        }
+
+        debug!(
+            "Loaded {} member_access identifiers across {} symbols",
+            grouped.values().map(|v| v.len()).sum::<usize>(),
+            grouped.len()
+        );
+
+        Ok(grouped)
+    }
+
     /// Find identifiers matching any of the given names or qualified forms, filtered by kind.
     /// Used for reference_kind filtering in fast_refs.
     pub fn get_identifiers_by_names_and_kind(

@@ -68,6 +68,12 @@ pub struct JulieServerHandler {
     pub indexing_status: Arc<IndexingStatus>,
     /// Per-session operational metrics (tool call timing, output sizes)
     pub session_metrics: Arc<SessionMetrics>,
+    /// Running embedding pipeline: cancellation flag + task handle.
+    /// Set the flag to stop the pipeline between batches, then abort the task.
+    pub(crate) embedding_task: Arc<tokio::sync::Mutex<Option<(
+        Arc<std::sync::atomic::AtomicBool>,
+        tokio::task::JoinHandle<()>,
+    )>>>,
     /// rmcp tool router for handling tool calls
     tool_router: ToolRouter<Self>,
 }
@@ -89,6 +95,7 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
             session_metrics: Arc::new(SessionMetrics::new()),
+            embedding_task: Arc::new(tokio::sync::Mutex::new(None)),
             tool_router: Self::tool_router(),
         })
     }

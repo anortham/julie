@@ -108,7 +108,7 @@ mod tests {
             make_symbol_with_lang("s5", "SearchTool", SymbolKind::Class, "csharp"),
         ];
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
         assert_eq!(batch.len(), 3, "Should filter out markdown and toml");
 
         let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
@@ -328,7 +328,7 @@ mod tests {
             make_symbol("s5", "MyTrait", SymbolKind::Trait, None, None),
         ];
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
         assert_eq!(batch.len(), 3, "Should filter to 3 embeddable symbols");
 
         let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_prepare_batch_empty_input() {
-        let batch = prepare_batch_for_embedding(&[], None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&[], None, &HashMap::new(), &HashMap::new());
         assert!(batch.is_empty());
     }
 
@@ -349,7 +349,7 @@ mod tests {
             make_symbol("s3", "z", SymbolKind::Import, None, None),
         ];
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
         assert!(
             batch.is_empty(),
             "All non-embeddable should produce empty batch"
@@ -383,7 +383,7 @@ mod tests {
         method3.parent_id = Some("c1".to_string());
 
         let symbols = vec![class_sym, method1, method2, method3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         // Class + 3 methods = 4 embeddable symbols
         assert_eq!(batch.len(), 4);
@@ -413,7 +413,7 @@ mod tests {
         method2.parent_id = Some("i1".to_string());
 
         let symbols = vec![iface, method1, method2];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         let iface_entry = batch.iter().find(|(id, _)| id == "i1").unwrap();
         assert!(
@@ -428,7 +428,7 @@ mod tests {
         let func = make_symbol("f1", "standalone_func", SymbolKind::Function, None, None);
 
         let symbols = vec![func];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         assert_eq!(batch.len(), 1);
         assert_eq!(batch[0].1, "function standalone_func");
@@ -457,7 +457,7 @@ mod tests {
             symbols.push(method);
         }
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
         let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
 
         assert!(
@@ -490,7 +490,7 @@ mod tests {
         prop4.parent_id = Some("c1".to_string());
 
         let symbols = vec![class_sym, prop1, prop2, prop3, prop4];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         // Only the class should be embedded (properties are not embeddable kinds)
         assert_eq!(batch.len(), 1);
@@ -528,7 +528,7 @@ mod tests {
         field3.parent_id = Some("i1".to_string());
 
         let symbols = vec![iface, field1, field2, field3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         assert_eq!(batch.len(), 1);
 
@@ -557,7 +557,7 @@ mod tests {
         prop.parent_id = Some("c1".to_string());
 
         let symbols = vec![class_sym, method, prop];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
         assert!(
@@ -597,7 +597,7 @@ mod tests {
         field3.parent_id = Some("s1".to_string());
 
         let symbols = vec![struct_sym, field1, field2, field3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         let struct_entry = batch.iter().find(|(id, _)| id == "s1").unwrap();
         assert!(
@@ -631,7 +631,7 @@ mod tests {
         v3.parent_id = Some("e1".to_string());
 
         let symbols = vec![enum_sym, v1, v2, v3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         // Only the enum itself should be embedded (EnumMember is not an embeddable kind)
         assert_eq!(batch.len(), 1);
@@ -674,7 +674,7 @@ mod tests {
         v3.parent_id = Some("e1".to_string());
 
         let symbols = vec![enum_sym, v1, v2, v3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         assert_eq!(batch.len(), 1);
         let enum_entry = &batch[0];
@@ -722,7 +722,7 @@ mod tests {
             symbols.push(prop);
         }
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
         let class_entry = &batch[0];
 
         // With a reasonable limit, a class with 12 properties should retain most of them
@@ -1457,7 +1457,7 @@ mod tests {
         let source_class = make_symbol("s2", "Router", SymbolKind::Class, None, None);
 
         let symbols = vec![test_func, test_class, source_func, source_class];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         assert_eq!(batch.len(), 2, "Should exclude both test symbols");
         let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
@@ -1529,7 +1529,7 @@ mod tests {
             vec!["insert_tool_call".to_string(), "get_total_file_sizes".to_string()],
         );
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees_by_symbol);
+        let batch = prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &HashMap::new());
         assert_eq!(batch.len(), 3);
 
         let (_, text) = batch.iter().find(|(id, _)| id == "f1").unwrap();
@@ -1560,7 +1560,7 @@ mod tests {
         let mut callees = HashMap::new();
         callees.insert("m1".to_string(), vec!["save".to_string(), "validate".to_string()]);
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees);
+        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new());
         let (_, text) = &batch[0];
         assert!(
             text.contains("calls: save, validate"),
@@ -1575,7 +1575,7 @@ mod tests {
         let mut callees = HashMap::new();
         callees.insert("c1".to_string(), vec!["something".to_string()]);
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees);
+        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new());
         let (_, text) = &batch[0];
         assert!(
             !text.contains("calls:"),
@@ -1604,7 +1604,7 @@ mod tests {
             "retry_with_exponential_backoff".to_string(),
         ]);
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees);
+        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new());
         let (_, text) = &batch[0];
 
         // Verify the last callee is present (would be truncated at 600 chars)
@@ -1620,6 +1620,93 @@ mod tests {
             text.len() > 600,
             "Text should exceed old 600-char limit: len={}, text: {text}",
             text.len()
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_enriches_function_with_field_accesses() {
+        let func = make_symbol(
+            "f1",
+            "record_tool_call",
+            SymbolKind::Function,
+            Some("pub fn record_tool_call(&self, tool_name: &str)"),
+            Some("/// Record a completed tool call."),
+        );
+        let symbols = vec![func];
+
+        let callees_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
+        let mut fields_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
+        fields_by_symbol.insert(
+            "f1".to_string(),
+            vec![
+                "session_metrics".to_string(),
+                "db".to_string(),
+                "output_bytes".to_string(),
+            ],
+        );
+
+        let batch =
+            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol);
+        assert_eq!(batch.len(), 1);
+
+        let (_, text) = &batch[0];
+        assert!(
+            text.contains("fields:"),
+            "Function should have field access enrichment: {text}"
+        );
+        assert!(
+            text.contains("session_metrics"),
+            "Should contain field name 'session_metrics': {text}"
+        );
+        assert!(
+            text.contains("db"),
+            "Should contain field name 'db': {text}"
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_no_field_enrichment_for_containers() {
+        let class = make_symbol_with_lang("c1", "MyService", SymbolKind::Class, "csharp");
+        let symbols = vec![class];
+
+        let callees_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
+        let mut fields_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
+        fields_by_symbol.insert("c1".to_string(), vec!["some_field".to_string()]);
+
+        let batch =
+            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol);
+        let (_, text) = &batch[0];
+
+        assert!(
+            !text.contains("fields:"),
+            "Containers should NOT get field access enrichment (they use properties:): {text}"
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_field_enrichment_combined_with_callees() {
+        let func = make_symbol(
+            "f1",
+            "process_data",
+            SymbolKind::Method,
+            Some("pub fn process_data(&self)"),
+            None,
+        );
+        let symbols = vec![func];
+
+        let mut callees_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
+        callees_by_symbol.insert("f1".to_string(), vec!["save".to_string()]);
+
+        let mut fields_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
+        fields_by_symbol.insert("f1".to_string(), vec!["config".to_string()]);
+
+        let batch =
+            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol);
+        let (_, text) = &batch[0];
+
+        assert!(
+            text.contains("calls:") && text.contains("fields:"),
+            "Should have both callee and field enrichment: {text}"
         );
     }
 }

@@ -91,6 +91,19 @@ impl ManageWorkspaceTool {
         // Clear existing state if force reindexing
         if force_reindex {
             info!("🔄 Force reindex requested - clearing existing state");
+
+            // Cancel any running embedding pipeline FIRST, before touching the DB.
+            // This prevents GPU errors from concurrent DB access and avoids the
+            // race where a running pipeline writes embeddings back after we clear.
+            {
+                let mut task_guard = handler.embedding_task.lock().await;
+                if let Some((cancel_flag, handle)) = task_guard.take() {
+                    info!("🛑 Cancelling running embedding pipeline for force re-index");
+                    cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                    handle.abort();
+                }
+            }
+
             *handler.is_indexed.write().await = false;
             // Database will be cleared by initialize_workspace_with_force
         }
@@ -318,6 +331,21 @@ impl ManageWorkspaceTool {
                             "Skipping embeddings in auto-index mode (use explicit `manage_workspace index` to embed)"
                         );
                     } else {
+                        // Force re-index: pipeline was already cancelled at the top
+                        // of this function. Clear embeddings so the new pipeline
+                        // re-embeds everything with the latest enrichment text.
+                        if force {
+                            if let Ok(Some(workspace)) = handler.get_workspace().await {
+                                if let Some(ref db) = workspace.db {
+                                    let mut db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
+                                    match db_lock.clear_all_embeddings() {
+                                        Ok(()) => info!("🗑️ Cleared all embeddings for force re-embed"),
+                                        Err(e) => tracing::warn!("Failed to clear embeddings: {e}"),
+                                    }
+                                }
+                            }
+                        }
+
                         let embed_count =
                             crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
                                 handler, ws_id,

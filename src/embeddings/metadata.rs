@@ -155,6 +155,7 @@ pub fn prepare_batch_for_embedding(
     symbols: &[Symbol],
     lang_configs: Option<&LanguageConfigs>,
     callees_by_symbol: &HashMap<String, Vec<String>>,
+    fields_by_symbol: &HashMap<String, Vec<String>>,
 ) -> Vec<(String, String)> {
     // Build parent_id → child method names mapping for container enrichment.
     let mut methods_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -216,6 +217,17 @@ pub fn prepare_batch_for_embedding(
                 if let Some(callees) = callees_by_symbol.get(&s.id) {
                     if !callees.is_empty() {
                         let suffix = format!(" calls: {}", callees.join(", "));
+                        text.push_str(&suffix);
+                        text = truncate_on_word_boundary(&text, MAX_METADATA_CHARS);
+                    }
+                }
+
+                // Enrich with member_access field names for domain vocabulary.
+                // Fields like `self.session_metrics` or `this.db` reveal what a
+                // function operates on, bridging vocabulary gaps in semantic search.
+                if let Some(fields) = fields_by_symbol.get(&s.id) {
+                    if !fields.is_empty() {
+                        let suffix = format!(" fields: {}", fields.join(", "));
                         text.push_str(&suffix);
                         text = truncate_on_word_boundary(&text, MAX_METADATA_CHARS);
                     }
