@@ -1362,7 +1362,7 @@ mod formatting_tests {
 mod data_tests {
     use crate::database::{FileInfo, SymbolDatabase};
     use crate::extractors::base::{Relationship, RelationshipKind, Symbol, SymbolKind, Visibility};
-    use crate::tools::deep_dive::data::{SimilarEntry, build_symbol_context, find_symbol};
+    use crate::tools::deep_dive::data::{build_symbol_context, find_symbol};
     use crate::tools::deep_dive::deep_dive_query;
     use tempfile::TempDir;
 

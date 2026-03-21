@@ -19,7 +19,7 @@ mod tests {
     fn setup_db_with_symbols(symbols: &[(&str, &str, SymbolKind)]) -> Arc<Mutex<SymbolDatabase>> {
         let dir = tempfile::tempdir().expect("temp dir");
         let db_path = dir.path().join("test.db");
-        let mut db = SymbolDatabase::new(&db_path).expect("create db");
+        let db = SymbolDatabase::new(&db_path).expect("create db");
 
         // Insert file record
         db.conn
@@ -92,7 +92,7 @@ mod tests {
     ) -> Arc<Mutex<SymbolDatabase>> {
         let dir = tempfile::tempdir().expect("temp dir");
         let db_path = dir.path().join("test.db");
-        let mut db = SymbolDatabase::new(&db_path).expect("create db");
+        let db = SymbolDatabase::new(&db_path).expect("create db");
 
         db.conn
             .execute(

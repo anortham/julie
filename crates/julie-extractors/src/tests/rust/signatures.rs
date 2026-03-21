@@ -284,11 +284,18 @@ fn test_pub_static_is_constant() {
 // ========================================================================
 
 #[test]
-fn test_macro_invocation_with_name() {
+fn test_expression_macros_are_not_extracted() {
+    // Expression macros inside function bodies are noise — they pollute
+    // the symbol index, waste embedding budget, and degrade search quality.
     let code = r#"
 fn main() {
     println!("hello");
     vec![1, 2, 3];
+    let x = format!("foo {}", bar);
+    matches!(val, Some(_));
+    assert_eq!(a, b);
+    bail!("oops");
+    info!("starting up");
 }
 "#;
 
@@ -305,18 +312,67 @@ fn main() {
 
     let symbols = extractor.extract_symbols(&tree);
 
-    // Macro invocations with names should produce symbols
-    let println_sym = symbols.iter().find(|s| s.name == "println");
+    // None of these expression macros should be extracted
+    let macro_names = ["println", "vec", "format", "matches", "assert_eq", "bail", "info"];
+    for name in &macro_names {
+        let found = symbols.iter().find(|s| s.name == *name);
+        assert!(
+            found.is_none(),
+            "expression macro {}! should NOT be extracted, but was",
+            name
+        );
+    }
+
+    // main function should still be extracted
     assert!(
-        println_sym.is_some(),
-        "println! macro invocation should be extracted"
+        symbols.iter().any(|s| s.name == "main"),
+        "main function should still be extracted"
+    );
+}
+
+#[test]
+fn test_item_position_macros_are_extracted() {
+    // Declarative macros at item position (top-level or in impl/mod) define
+    // named things and ARE worth extracting.
+    let code = r#"
+thread_local! {
+    static CACHE: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+lazy_static! {
+    static ref CONFIG: Config = Config::new();
+}
+
+bitflags! {
+    struct Flags: u32 {
+        const A = 0b0001;
+    }
+}
+"#;
+
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+
+    let workspace_root = test_workspace_root();
+    let mut extractor = RustExtractor::new(
+        "rust".to_string(),
+        "test.rs".to_string(),
+        code.to_string(),
+        &workspace_root,
     );
 
-    let vec_sym = symbols.iter().find(|s| s.name == "vec");
-    assert!(
-        vec_sym.is_some(),
-        "vec! macro invocation should be extracted"
-    );
+    let symbols = extractor.extract_symbols(&tree);
+
+    // Item-position macros should be extracted
+    for name in &["thread_local", "lazy_static", "bitflags"] {
+        let found = symbols.iter().find(|s| s.name == *name);
+        assert!(
+            found.is_some(),
+            "item-position macro {}! should be extracted, but wasn't. Symbols: {:?}",
+            name,
+            symbols.iter().map(|s| &s.name).collect::<Vec<_>>()
+        );
+    }
 }
 
 #[test]

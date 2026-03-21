@@ -35,6 +35,7 @@ mod test_fixtures {
     }
 
     /// Create a TypeScript service call symbol
+    #[allow(dead_code)]
     pub fn create_auth_service_login() -> Symbol {
         Symbol {
             id: "auth_service_login".to_string(),
@@ -89,6 +90,7 @@ mod test_fixtures {
     }
 
     /// Create a C# service method symbol
+    #[allow(dead_code)]
     pub fn create_csharp_user_service() -> Symbol {
         Symbol {
             id: "user_service_authenticate".to_string(),
@@ -359,7 +361,7 @@ mod cross_language_tracing_tests {
         // Confidence should decrease as we move through less certain connections
         for i in 1..trace.steps.len() {
             let prev_confidence = trace.steps[i - 1].confidence;
-            let curr_confidence = trace.steps[i].confidence;
+            let _curr_confidence = trace.steps[i].confidence;
 
             // Overall trace confidence should be reasonable product of step confidences
             assert!(

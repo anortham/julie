@@ -41,6 +41,9 @@ impl BackendResolverCapabilities {
 pub struct EmbeddingConfig {
     pub provider: String,
     pub cache_dir: Option<PathBuf>,
+    /// ORT model override. Maps to fastembed's `EmbeddingModel` enum.
+    /// Recognized values: "jina-code-v2", "bge-small" (default depends on platform).
+    pub ort_model_id: Option<String>,
 }
 
 impl Default for EmbeddingConfig {
@@ -48,6 +51,7 @@ impl Default for EmbeddingConfig {
         Self {
             provider: "auto".to_string(),
             cache_dir: None,
+            ort_model_id: None,
         }
     }
 }
@@ -182,6 +186,7 @@ impl EmbeddingProviderFactory {
                 {
                     return Ok(Arc::new(OrtEmbeddingProvider::try_new(
                         config.cache_dir.clone(),
+                        config.ort_model_id.as_deref(),
                     )?));
                 }
 

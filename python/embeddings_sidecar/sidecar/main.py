@@ -10,16 +10,19 @@ MODEL_ID_ENV = "JULIE_EMBEDDING_SIDECAR_MODEL_ID"
 BATCH_SIZE_ENV = "JULIE_EMBEDDING_SIDECAR_BATCH_SIZE"
 
 
-def _runtime_config_from_env() -> tuple[str, int]:
+def _runtime_config_from_env() -> tuple[str, int | None]:
     model_id = (
         os.environ.get(MODEL_ID_ENV, DEFAULT_MODEL_ID).strip() or DEFAULT_MODEL_ID
     )
-    batch_value = os.environ.get(BATCH_SIZE_ENV, "32").strip()
+    raw = os.environ.get(BATCH_SIZE_ENV, "").strip()
+    if not raw:
+        # No explicit override → let build_runtime auto-detect from VRAM
+        return model_id, None
     try:
-        batch_size = int(batch_value)
+        batch_size = int(raw)
     except ValueError as exc:
         raise ValueError(
-            f"{BATCH_SIZE_ENV} must be a positive integer, got '{batch_value}'"
+            f"{BATCH_SIZE_ENV} must be a positive integer, got '{raw}'"
         ) from exc
     if batch_size <= 0:
         raise ValueError(

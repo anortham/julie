@@ -116,7 +116,31 @@ pub(super) fn extract_associated_type(
     ))
 }
 
-/// Extract macro invocation (for code generation patterns)
+/// Known expression/utility macros that should NOT be extracted as symbols.
+///
+/// These are standard library, tracing, and common crate macros that appear
+/// inside function bodies as expressions/statements. Extracting them pollutes
+/// the symbol index, wastes embedding budget, and degrades search quality.
+const NOISE_MACROS: &[&str] = &[
+    // std — constructors and formatting
+    "vec", "format", "println", "print", "eprintln", "eprint", "write", "writeln",
+    // std — assertions and control flow
+    "matches", "assert", "assert_eq", "assert_ne",
+    "debug_assert", "debug_assert_eq", "debug_assert_ne",
+    "panic", "todo", "unimplemented", "unreachable",
+    // std — compile-time and env
+    "cfg", "env", "concat", "stringify", "include", "include_str", "include_bytes",
+    // tracing / log
+    "info", "warn", "error", "debug", "trace",
+    // anyhow
+    "bail", "anyhow", "ensure",
+];
+
+/// Extract macro invocation — only item-position macros that define named things.
+///
+/// Filters out expression macros (vec!, format!, matches!, etc.) which are just
+/// calls inside function bodies. Only extracts macros at item position: top-level
+/// (`source_file`) or inside declaration lists (mod, impl, extern blocks).
 pub(super) fn extract_macro_invocation(
     extractor: &mut RustExtractor,
     node: Node,
@@ -132,7 +156,21 @@ pub(super) fn extract_macro_invocation(
         return None;
     }
 
-    // Extract all macro invocations as symbols
+    // Skip known expression/utility macros — these are never definitions
+    if NOISE_MACROS.contains(&macro_name.as_str()) {
+        return None;
+    }
+
+    // Only extract macros at item position (top-level or inside mod/impl/extern).
+    // Expression-position macros (inside function bodies, match arms, let bindings)
+    // are just calls, not definitions worth indexing.
+    if let Some(parent) = node.parent() {
+        let parent_kind = parent.kind();
+        if parent_kind != "source_file" && parent_kind != "declaration_list" {
+            return None;
+        }
+    }
+
     let signature = format!("{}!(..)", macro_name);
 
     Some(base.create_symbol(

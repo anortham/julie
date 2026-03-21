@@ -1330,7 +1330,7 @@ fn test_database_drop_checkpoints_wal() {
     let db_path = temp_dir.path().join("drop_test.db");
 
     {
-        let mut db = SymbolDatabase::new(&db_path).unwrap();
+        let db = SymbolDatabase::new(&db_path).unwrap();
 
         // Write some data to create WAL entries
         db.store_file_with_content(
@@ -1568,7 +1568,7 @@ fn test_migration_009_reference_score_column_exists() {
 fn test_reference_score_defaults_to_zero() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file (foreign key requirement)
     db.store_file_info(&FileInfo {
@@ -1615,7 +1615,7 @@ fn test_reference_score_defaults_to_zero() {
 fn test_compute_reference_scores_weighted() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file
     db.store_file_info(&FileInfo {
@@ -1707,7 +1707,7 @@ fn test_compute_reference_scores_weighted() {
 fn test_compute_reference_scores_excludes_self_refs() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file
     db.store_file_info(&FileInfo {
@@ -1765,7 +1765,7 @@ fn test_compute_reference_scores_excludes_self_refs() {
 fn test_get_reference_scores_batch() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file (foreign key requirement)
     db.store_file_info(&FileInfo {
@@ -1825,7 +1825,7 @@ fn test_get_reference_scores_batch() {
 fn test_compute_reference_scores_zero_for_no_incoming() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file
     db.store_file_info(&FileInfo {
@@ -1901,7 +1901,7 @@ fn test_compute_reference_scores_zero_for_no_incoming() {
 fn test_compute_reference_scores_propagates_interface_centrality_to_implementations() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     db.store_file_info(&FileInfo {
         path: "test.cs".to_string(),
@@ -2002,7 +2002,7 @@ fn test_compute_reference_scores_propagates_interface_centrality_to_implementati
 fn test_compute_reference_scores_propagates_base_class_centrality() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     db.store_file_info(&FileInfo {
         path: "test.cs".to_string(),
@@ -2163,7 +2163,7 @@ fn test_delete_embeddings_for_symbol_ids_batches_large_inputs() {
 fn test_get_reference_scores_large_batch() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert a file (foreign key requirement)
     db.store_file_info(&FileInfo {
@@ -2277,7 +2277,7 @@ fn test_migration_011_is_idempotent() {
 fn test_compute_reference_scores_propagates_constructor_centrality() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     db.store_file_info(&FileInfo {
         path: "src/services.cs".to_string(),
@@ -2397,7 +2397,7 @@ fn test_compute_reference_scores_propagates_constructor_centrality() {
 fn test_compute_reference_scores_includes_type_usage_identifiers() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     // Insert two files
     for (path, lang) in [
@@ -2488,7 +2488,7 @@ fn test_compute_reference_scores_includes_type_usage_identifiers() {
 fn test_compute_reference_scores_includes_constants_with_type_usage() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     for (path, lang) in [("src/Server.zig", "zig"), ("src/main.zig", "zig")] {
         db.store_file_info(&FileInfo {
@@ -2574,7 +2574,7 @@ fn test_compute_reference_scores_includes_constants_with_type_usage() {
 fn test_compute_reference_scores_includes_import_identifiers() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     // Create files
     for path in ["src/Store.zig", "src/a.zig", "src/b.zig", "src/c.zig"] {
@@ -2643,7 +2643,7 @@ fn test_compute_reference_scores_includes_import_identifiers() {
 fn test_compute_reference_scores_qualified_name_identifiers() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     for (path, lang) in [
         ("src/controls/ScrollablePage.qml", "qml"),
@@ -2736,7 +2736,7 @@ fn test_compute_reference_scores_escapes_like_wildcards() {
     // `userXid` without escaping. This test verifies proper escaping.
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     for path in ["src/models.py", "src/views.py"] {
         db.store_file_info(&FileInfo {
@@ -2825,7 +2825,7 @@ fn test_compute_reference_scores_escapes_like_wildcards() {
 fn test_centrality_deweights_test_file_symbols() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     // Real source file
     db.store_file_info(&FileInfo {
@@ -2992,7 +2992,7 @@ fn test_centrality_deweights_test_file_symbols() {
 fn test_compute_reference_scores_propagates_header_to_implementation() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     for (path, lang) in [
         ("jq.h", "c"),
@@ -3109,7 +3109,7 @@ fn test_compute_reference_scores_propagates_header_to_implementation() {
 fn test_step1b_identifier_boost_excludes_test_file_symbols() {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
-    let mut db = SymbolDatabase::new(&db_path).unwrap();
+    let db = SymbolDatabase::new(&db_path).unwrap();
 
     for (path, lang) in [
         ("src/app.py", "python"),

@@ -65,10 +65,114 @@ def _patch_directml_inference_mode(torch_module: Any) -> None:
     )
 
 
+def _patch_directml_rotary_embeddings() -> bool:
+    """Patch CodeRankEmbed's rotary embedding for DirectML compatibility.
+
+    The nomic-bert model uses ``einops.repeat`` to expand cos/sin tensors
+    for rotary position embeddings.  The resulting tensors have non-contiguous
+    memory layout that DirectML's broadcasting kernels reject with
+    "The parameter is incorrect".  Adding ``.contiguous()`` after the repeat
+    fixes the layout without changing the math.
+
+    Returns True if the patch was applied, False if the module wasn't loaded.
+    """
+    import sys
+
+    module_key = None
+    for key in sys.modules:
+        if "modeling_hf_nomic_bert" in key:
+            module_key = key
+            break
+    if module_key is None:
+        return False
+
+    mod = sys.modules[module_key]
+    original_fn = getattr(mod, "apply_rotary_emb", None)
+    if original_fn is None or getattr(original_fn, "_directml_patched", False):
+        return False
+
+    from einops import repeat as _repeat
+
+    def _apply_rotary_emb_directml(x, cos, sin, offset=0, interleaved=False):
+        import torch
+
+        ro_dim = cos.shape[-1] * 2
+        assert ro_dim <= x.shape[-1]
+        cos = cos[offset : offset + x.shape[1]]
+        sin = sin[offset : offset + x.shape[1]]
+        pattern = "... d -> ... 1 (2 d)" if not interleaved else "... d -> ... 1 (d 2)"
+        cos = _repeat(cos, pattern).contiguous()
+        sin = _repeat(sin, pattern).contiguous()
+        x_rot = x[..., :ro_dim]
+        x_pass = x[..., ro_dim:]
+        x1, x2 = x_rot.chunk(2, dim=-1)
+        rotated = torch.cat((-x2, x1), dim=-1)
+        return torch.cat([x_rot * cos + rotated * sin, x_pass], dim=-1)
+
+    _apply_rotary_emb_directml._directml_patched = True
+    mod.apply_rotary_emb = _apply_rotary_emb_directml
+    return True
+
+
 def _normalize_device_telemetry(device: str) -> str:
     if device.startswith("privateuseone"):
         return device.replace("privateuseone", "directml", 1)
     return device
+
+
+def _detect_gpu_vram_bytes(telemetry_device: str, torch_module: Any) -> int | None:
+    """Detect total GPU VRAM in bytes (platform-specific).
+
+    Returns None if detection fails — caller should fall back to a safe default.
+    """
+    import sys as _sys
+
+    if telemetry_device == "cpu":
+        return None
+
+    if telemetry_device == "cuda":
+        try:
+            return torch_module.cuda.get_device_properties(0).total_memory
+        except Exception:
+            return None
+
+    if telemetry_device == "mps":
+        try:
+            return torch_module.mps.driver_allocated_memory() or None
+        except Exception:
+            return None
+
+    # DirectML / other — use WMI on Windows
+    if _sys.platform == "win32":
+        try:
+            import wmi  # type: ignore[import-untyped]
+
+            w = wmi.WMI()
+            max_vram = 0
+            for gpu in w.Win32_VideoController():
+                vram = getattr(gpu, "AdapterRAM", None)
+                if vram:
+                    max_vram = max(max_vram, int(vram))
+            return max_vram if max_vram > 0 else None
+        except Exception:
+            return None
+
+    return None
+
+
+def _calculate_batch_size_from_vram(vram_bytes: int) -> int:
+    """Compute GPU batch size from VRAM using Miller's DirectML-safe formula.
+
+    Formula: batch_size = (VRAM_GB / 6.0) * 30, clamped to [16, 128].
+
+    Validated on:
+    - 6GB A1000: batch_size=30 → stable (50 caused OOM crash)
+    - 8GB consumer GPUs: batch_size=40 → stable
+    - 16GB+ workstation GPUs: batch_size=80 → fast and stable
+    """
+    vram_gb = vram_bytes / 1_073_741_824.0
+    calculated = int((vram_gb / 6.0) * 30.0)
+    return max(16, min(128, calculated))
 
 
 def _sanitize_texts(texts: Sequence[Any]) -> list[str]:
@@ -216,17 +320,17 @@ class SentenceTransformerRuntime:
             )
 
 
+_DEFAULT_BATCH_SIZE = 32
+
+
 def build_runtime(
     *,
     model_id: str = DEFAULT_MODEL_ID,
-    batch_size: int = 32,
+    batch_size: int | None = None,
     model_factory: Callable[..., Any] | None = None,
     torch_module: Any | None = None,
     dml_module: Any | None = None,
 ) -> SentenceTransformerRuntime:
-    if not isinstance(batch_size, int) or batch_size <= 0:
-        raise ValueError("batch_size must be a positive integer")
-
     torch = torch_module if torch_module is not None else _import_module("torch")
 
     if dml_module is None:
@@ -237,6 +341,23 @@ def build_runtime(
 
     backend_device = _select_device(torch, dml_module)
     telemetry_device = _normalize_device_telemetry(backend_device)
+
+    # Auto-detect GPU batch size when caller didn't specify one.
+    if batch_size is None:
+        vram = _detect_gpu_vram_bytes(telemetry_device, torch)
+        if vram is not None:
+            batch_size = _calculate_batch_size_from_vram(vram)
+            import sys
+            vram_gb = vram / 1_073_741_824.0
+            print(
+                f"GPU VRAM: {vram_gb:.1f} GB → batch_size={batch_size}",
+                file=sys.stderr,
+            )
+        else:
+            batch_size = _DEFAULT_BATCH_SIZE
+
+    if not isinstance(batch_size, int) or batch_size <= 0:
+        raise ValueError("batch_size must be a positive integer")
 
     # DirectML crashes with torch.inference_mode() — patch before importing
     # sentence_transformers which uses it at import time in decorators.
@@ -250,6 +371,57 @@ def build_runtime(
         model = sentence_transformers.SentenceTransformer(
             model_id, device=backend_device, trust_remote_code=True
         )
+
+    # Probe encode: verify the model can actually produce embeddings on this
+    # device. Some models (e.g., CodeRankEmbed with rotary embeddings) load
+    # fine on DirectML but fail during inference due to unsupported ops.
+    #
+    # Recovery chain for GPU failures:
+    # 1. Try patching DirectML-incompatible ops (e.g., RoPE .contiguous() fix)
+    # 2. If patched GPU still fails, fall back to CPU
+    #
+    # Skip probe when model_factory is provided (test doubles that control
+    # their own failure behavior shouldn't trigger device fallback).
+    if model_factory is None and telemetry_device != "cpu":
+        import sys as _sys
+
+        try:
+            model.encode(["probe"], convert_to_numpy=True)
+        except Exception as probe_err:
+            # Step 1: Try patching and re-probing on GPU
+            patched = _patch_directml_rotary_embeddings()
+            if patched:
+                print(
+                    f"[sidecar] probe failed on {telemetry_device}, "
+                    f"applied RoPE .contiguous() patch — retrying",
+                    file=_sys.stderr,
+                )
+                try:
+                    model.encode(["probe"], convert_to_numpy=True)
+                    print(
+                        f"[sidecar] patched probe succeeded on {telemetry_device}",
+                        file=_sys.stderr,
+                    )
+                except Exception as patched_err:
+                    probe_err = patched_err  # Use the patched error for fallback
+                    patched = False
+
+            # Step 2: If patching didn't help, fall back to CPU
+            if not patched:
+                print(
+                    f"[sidecar] probe encode failed on {telemetry_device}: {probe_err}\n"
+                    f"[sidecar] falling back to CPU for model {model_id}",
+                    file=_sys.stderr,
+                )
+                del model
+                gc.collect()
+
+                model = sentence_transformers.SentenceTransformer(
+                    model_id, device="cpu", trust_remote_code=True
+                )
+                backend_device = "cpu"
+                telemetry_device = "cpu"
+                model.encode(["probe"], convert_to_numpy=True)
 
     return SentenceTransformerRuntime(
         model,

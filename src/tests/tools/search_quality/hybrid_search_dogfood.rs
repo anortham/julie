@@ -82,7 +82,8 @@ fn setup_hybrid_search_fixture() -> (
             .join("fastembed");
 
     let provider =
-        OrtEmbeddingProvider::try_new(Some(cache_dir)).expect("Embedding provider should init");
+        OrtEmbeddingProvider::try_new(Some(cache_dir), Some("bge-small"))
+            .expect("Embedding provider should init");
 
     let db_arc = Arc::new(Mutex::new(db));
     let stats =

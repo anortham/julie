@@ -743,6 +743,7 @@ impl JulieWorkspace {
         config.cache_dir = std::env::var("JULIE_EMBEDDING_CACHE_DIR")
             .ok()
             .map(std::path::PathBuf::from);
+        config.ort_model_id = std::env::var("JULIE_EMBEDDING_ORT_MODEL_ID").ok();
 
         // Allow explicit disabling (e.g. CI, tests, offline environments)
         if matches!(

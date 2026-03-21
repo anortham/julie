@@ -6,11 +6,11 @@
 #[cfg(test)]
 mod resolver_tests {
     use crate::tools::workspace::indexing::resolver::{
-        ParentReferenceContext, ResolutionStats, build_resolved_relationship,
+        ParentReferenceContext, build_resolved_relationship,
         select_best_candidate,
     };
     use julie_extractors::base::{
-        PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind, Visibility,
+        PendingRelationship, RelationshipKind, Symbol, SymbolKind, Visibility,
     };
     use std::collections::{HashMap, HashSet};
 

@@ -2,8 +2,6 @@
 
 #[cfg(test)]
 mod graph_expansion_tests {
-    use std::collections::HashMap;
-
     use tempfile::TempDir;
 
     use crate::database::{FileInfo, SymbolDatabase};

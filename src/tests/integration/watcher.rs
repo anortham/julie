@@ -4,8 +4,6 @@ use crate::language; // Centralized language support
 use crate::watcher::IncrementalIndexer;
 use crate::watcher::filtering;
 use std::fs;
-use tempfile::TempDir;
-
 #[test]
 fn test_supported_extensions() {
     let extensions = filtering::build_supported_extensions();

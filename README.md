@@ -40,17 +40,18 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 
 ### Embeddings Runtime
 
-Julie uses a managed Python sidecar for GPU-accelerated semantic embeddings on macOS and Linux, and ONNX Runtime with DirectML on Windows. All platforms default to BGE-small-en-v1.5 (384 dimensions).
+Julie uses ONNX Runtime with DirectML GPU acceleration on Windows, and a managed Python sidecar (CUDA/MPS) on macOS and Linux.
 
-- **Auto-provisioning**: If `uv` is available and no compatible Python 3.10-3.13 is found, Julie installs one via `uv python install` and creates a managed venv with `uv venv`
-- **GPU acceleration**: Uses CUDA via the Python sidecar on Linux, MPS via the Python sidecar on macOS, and DirectML via ONNX Runtime on Windows — falls back to CPU if no GPU is available
-- **Fallback**: If the preferred accelerated runtime fails to initialize, Julie falls back to an available CPU path — keyword search always remains available
-- **Zero configuration**: Works out of the box on systems with `uv` or a compatible Python on PATH
+- **Windows**: Jina-code-v2 (768d, code-optimized) via ORT with DirectML — GPU-accelerated, zero Python dependencies
+- **macOS/Linux**: BGE-small-en-v1.5 (384d) via Python sidecar with CUDA/MPS — auto-provisions Python and venv via `uv`
+- **Fallback**: If GPU acceleration fails, Julie falls back to CPU — keyword search always remains available
+- **Model switching**: Changing models automatically wipes and re-embeds all vectors on the next indexing run; no manual cleanup needed
 
 **Runtime controls:**
-- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`; Windows defaults to `ort` for DirectML GPU acceleration, macOS/Linux prefer `sidecar`). Windows users can set `sidecar` to use CodeRankEmbed or other sidecar-only models.
+- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`; Windows → `ort`, macOS/Linux → `sidecar`)
+- `JULIE_EMBEDDING_ORT_MODEL_ID`: ORT model — `jina-code-v2` (768d, default on Windows) or `bge-small` (384d)
+- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: Sidecar model — any HuggingFace model ID (default: `BAAI/bge-small-en-v1.5`)
 - `JULIE_EMBEDDING_STRICT_ACCEL`: `1` to disable embeddings when no GPU is available
-- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: Override the sidecar embedding model (default: `BAAI/bge-small-en-v1.5`). For better code similarity, use `nomic-ai/CodeRankEmbed` (768d, requires sidecar). The model downloads once to `~/.cache/huggingface/` and is shared across all projects. Switching models automatically wipes and re-embeds all vectors on the next indexing run; no manual cleanup needed.
 - See `docs/operations/embedding-sidecar.md` for all env vars and troubleshooting
 
 ## Supported Languages (33)
@@ -83,7 +84,7 @@ cargo build --release
 claude mcp add --scope user julie -- /path/to/julie-server
 ```
 
-Or edit `~/.claude.json` directly for more control (e.g., model override):
+Or edit `~/.claude.json` directly for more control (e.g., env vars, model override):
 
 ```json
 {
@@ -93,27 +94,35 @@ Or edit `~/.claude.json` directly for more control (e.g., model override):
       "command": "/path/to/julie-server",
       "args": [],
       "env": {
-        "JULIE_EMBEDDING_SIDECAR_MODEL_ID": "nomic-ai/CodeRankEmbed"
+        "JULIE_WORKSPACE": "/path/to/your/project"
       }
     }
   }
 }
 ```
 
-For project-level only, use `--scope project` or omit the scope flag.
+For project-level only, use `--scope project` or omit the scope flag. When using `claude mcp add`, Julie uses the current directory as the workspace root — `JULIE_WORKSPACE` is only needed if you want to override that.
 
 **VS Code with GitHub Copilot** (`.vscode/mcp.json`):
 
 ```json
 {
   "servers": {
-    "Julie": {
+    "julie": {
       "type": "stdio",
-      "command": "/path/to/julie/target/release/julie-server"
+      "command": "/path/to/julie/target/release/julie-server",
+      "env": {
+        "JULIE_WORKSPACE": "${workspaceFolder}"
+      }
     }
   }
 }
 ```
+
+> **Windows?** Use backslashes in the command path: `"command": "C:\\path\\to\\julie-server.exe"`
+>
+> `${workspaceFolder}` is a VS Code variable that resolves to the root of your open project.
+> All `env` values are optional — see the [env options table](#available-env-options) below for defaults.
 
 **Cursor / Windsurf / Other MCP Clients:**
 
@@ -123,21 +132,24 @@ For project-level only, use `--scope project` or omit the scope flag.
     "julie": {
       "command": "/path/to/julie-server",
       "env": {
-        "JULIE_EMBEDDING_SIDECAR_MODEL_ID": "nomic-ai/CodeRankEmbed"
+        "JULIE_WORKSPACE": "/path/to/your/project"
       }
     }
   }
 }
 ```
 
-The `env` block is optional. Without it, Julie defaults to `BAAI/bge-small-en-v1.5` (384d).
+All `env` values are optional — see the table below for defaults.
 
+<a id="available-env-options"></a>
 **Available env options:**
 
 | Variable | Values | Default | Notes |
 |----------|--------|---------|-------|
-| `JULIE_EMBEDDING_PROVIDER` | `auto`, `sidecar`, `ort` | `auto` | Windows defaults to `ort` (DirectML). Set `sidecar` for CodeRankEmbed on Windows. |
-| `JULIE_EMBEDDING_SIDECAR_MODEL_ID` | Any HuggingFace model ID | `BAAI/bge-small-en-v1.5` | Only applies when using the sidecar backend. |
+| `JULIE_WORKSPACE` | Absolute path to project root | Current working directory | Tells Julie which project to index. Set explicitly if cwd is unreliable. |
+| `JULIE_EMBEDDING_PROVIDER` | `auto`, `sidecar`, `ort` | `auto` | Windows: `ort` (DirectML GPU). macOS/Linux: `sidecar` (CUDA/MPS GPU). |
+| `JULIE_EMBEDDING_ORT_MODEL_ID` | `jina-code-v2`, `bge-small` | Windows: `jina-code-v2`, other: `bge-small` | ORT model selection. Jina-code-v2 (768d) is code-optimized; BGE-small (384d) is smaller/faster. |
+| `JULIE_EMBEDDING_SIDECAR_MODEL_ID` | Any HuggingFace model ID | `BAAI/bge-small-en-v1.5` | Only applies when using the sidecar backend (macOS/Linux). |
 | `JULIE_EMBEDDING_STRICT_ACCEL` | `1` | unset | Disable embeddings entirely when no GPU is available. |
 
 **First Use:**

@@ -6,7 +6,7 @@
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
-use std::sync::atomic::Ordering;
+
 
 /// Search Julie's codebase (file content search)
 pub async fn search_content(
@@ -54,6 +54,7 @@ pub fn assert_contains_path(results: &[Symbol], path_pattern: &str) {
 }
 
 /// Assert that results do NOT contain a file path matching the pattern
+#[allow(dead_code)]
 pub fn assert_not_contains_path(results: &[Symbol], path_pattern: &str) {
     let found = results.iter().any(|r| r.file_path.contains(path_pattern));
     assert!(
@@ -87,6 +88,7 @@ pub fn assert_max_results(results: &[Symbol], max: usize) {
 }
 
 /// Assert exact number of results
+#[allow(dead_code)]
 pub fn assert_exact_count(results: &[Symbol], expected: usize) {
     assert_eq!(
         results.len(),
@@ -110,6 +112,7 @@ pub fn assert_contains_symbol_kind(results: &[Symbol], kind: &str) {
 }
 
 /// Assert that first result matches criteria (for ranking tests)
+#[allow(dead_code)]
 pub fn assert_first_result(results: &[Symbol], path_pattern: &str, name_pattern: Option<&str>) {
     assert!(
         !results.is_empty(),
@@ -173,9 +176,7 @@ fn format_results(results: &[Symbol]) -> String {
 pub async fn setup_handler_with_fixture() -> JulieServerHandler {
     use crate::handler::JulieServerHandler;
     use crate::tests::fixtures::julie_db::JulieTestFixture;
-    use crate::workspace::JulieWorkspace;
     use std::fs;
-    use std::path::PathBuf;
 
     // Load the pre-built fixture (5ms, no indexing)
     let fixture = JulieTestFixture::get_instance();

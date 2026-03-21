@@ -146,8 +146,6 @@ async fn test_get_symbols_with_absolute_path() -> Result<()> {
 /// This is the foundation test - verify Phase 2 storage is working.
 #[tokio::test]
 async fn test_database_stores_relative_unix_paths() -> Result<()> {
-    use crate::database::SymbolDatabase;
-
     // Setup: Create temp workspace
     let temp_dir = TempDir::new()?;
     let src_dir = temp_dir.path().join("src");

@@ -9,7 +9,7 @@ use std::fs;
 use tempfile::TempDir;
 
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::{CallToolResult, CallToolResultExt};
+use crate::mcp_compat::CallToolResult;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
 
 fn extract_text_from_result(result: &CallToolResult) -> String {

@@ -364,7 +364,7 @@ async fn test_colons_in_rust_paths() {
 
     // Query: "std::vec" style patterns
     // Colons should split to OR
-    let results = search_content(&handler, "Result::Ok", 5)
+    let _results = search_content(&handler, "Result::Ok", 5)
         .await
         .expect("Search failed");
 
@@ -445,7 +445,7 @@ async fn test_cross_language_multiple_languages() {
 
     // Should find extractor mentions across different file types
     let has_rust = results.iter().any(|r| r.file_path.ends_with(".rs"));
-    let has_docs = results.iter().any(|r| r.file_path.ends_with(".md"));
+    let _has_docs = results.iter().any(|r| r.file_path.ends_with(".md"));
 
     assert!(has_rust, "Should find extractor in Rust files");
     // Docs might not match depending on content, so don't assert strictly
@@ -457,7 +457,7 @@ async fn test_cross_language_namespace_variants() {
 
     // Query: "SymbolExtractor" (PascalCase)
     // Should work even if stored as different casing
-    let results = search_definitions(&handler, "SymbolExtractor", 5)
+    let _results = search_definitions(&handler, "SymbolExtractor", 5)
         .await
         .expect("Search failed");
 
@@ -491,7 +491,7 @@ async fn test_edge_case_single_character() {
 
     // Query: "i" (single character)
     // Tantivy might have minimum token length, verify graceful handling
-    let results = search_content(&handler, "i", 5)
+    let _results = search_content(&handler, "i", 5)
         .await
         .expect("Search failed");
 
@@ -536,7 +536,7 @@ async fn test_edge_case_special_chars_only() {
 // ============================================================================
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_tokenization_camelCase_splitting() {
+async fn test_tokenization_camel_case_splitting() {
     let handler = setup_handler_with_fixture().await;
 
     // Query: "Symbol" (part of "SymbolDatabase", "SymbolExtractor", etc.)
@@ -587,7 +587,7 @@ async fn test_tokenization_number_handling() {
 
     // Query: "v1" or similar version patterns
     // Numbers in identifiers should be handled
-    let results = search_content(&handler, "0 1 2", 10)
+    let _results = search_content(&handler, "0 1 2", 10)
         .await
         .expect("Search failed");
 

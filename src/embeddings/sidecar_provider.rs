@@ -38,7 +38,16 @@ struct SidecarProcess {
     connection_fatal: bool,
 }
 
-const DEFAULT_SIDECAR_TIMEOUT_MS: u64 = 5000;
+/// Per-request timeout for sidecar embed_batch calls.
+///
+/// This must be generous enough for:
+/// 1. The first batch's DirectML/CUDA graph compilation warm-up (~5-10s)
+/// 2. Processing up to EMBEDDING_BATCH_SIZE texts through the model
+/// 3. Larger models like CodeRankEmbed (768d, ~2x slower than BGE-small 384d)
+///
+/// Embedding is background work — the user isn't waiting on each batch.
+/// Override with JULIE_EMBEDDING_SIDECAR_TIMEOUT_MS if needed.
+const DEFAULT_SIDECAR_TIMEOUT_MS: u64 = 30_000;
 const DEFAULT_SIDECAR_INIT_TIMEOUT_MS: u64 = 120_000;
 const SHUTDOWN_TIMEOUT_MS: u64 = 500;
 

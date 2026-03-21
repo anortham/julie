@@ -15,8 +15,6 @@ mod tests {
     use crate::embeddings::{DeviceInfo, EmbeddingProvider, OrtEmbeddingProvider};
     #[cfg(feature = "embeddings-sidecar")]
     use crate::tests::integration::sidecar_test_helpers::create_test_sidecar_provider;
-    use crate::watcher::handlers;
-
     /// Helper: create a test database with a file and symbols.
     fn setup_db_with_file(
         dir: &std::path::Path,
@@ -24,7 +22,7 @@ mod tests {
         symbols: &[(&str, &str, &str)], // (id, name, kind)
     ) -> Arc<Mutex<SymbolDatabase>> {
         let db_path = dir.join("test.db");
-        let mut db = SymbolDatabase::new(&db_path).expect("create db");
+        let db = SymbolDatabase::new(&db_path).expect("create db");
 
         db.conn
             .execute(
@@ -55,7 +53,8 @@ mod tests {
                 .join(".cache")
                 .join("fastembed");
 
-        OrtEmbeddingProvider::try_new(Some(cache_dir)).expect("provider should init")
+        OrtEmbeddingProvider::try_new(Some(cache_dir), Some("bge-small"))
+            .expect("provider should init")
     }
 
     struct ShortBatchProvider;
@@ -220,7 +219,7 @@ mod tests {
         embed_symbols_for_file(&db, &provider, "src/lib.rs", None).unwrap();
 
         {
-            let mut db_guard = db.lock().unwrap();
+            let db_guard = db.lock().unwrap();
             // Simulate symbol replacement after file modification.
             db_guard
                 .conn

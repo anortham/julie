@@ -221,6 +221,7 @@ src/database/
    - User runs: `cargo build --release`
    - User restarts Claude Code (MCP client spawns new stdio server)
    - Test features in live MCP session
+3. **🔴 Windows Binary Lock**: On Windows, the running `julie-server.exe` process (spawned by the MCP client) holds an exclusive file lock on the release binary. **Do NOT attempt `cargo build --release` while a session is active** — it will fail with "Access is denied" (os error 5). Only `cargo build` (debug) works while the release binary is running. The user must exit their MCP client (Claude Code, VS Code, etc.) before rebuilding release.
 3. **Backward Compatibility**: We don't need it (stdio MCP server, not a public API)
 4. **Target User**: YOU (Claude) and other AI coding agents are the target user
    - Review code from standpoint of you being the user

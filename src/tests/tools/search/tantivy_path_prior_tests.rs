@@ -517,7 +517,7 @@ fn test_generic_fixtures_penalization() {
 
 #[test]
 fn test_is_test_path_detects_various_layouts() {
-    use crate::search::scoring::{is_docs_path, is_fixture_path, is_test_path};
+    use crate::search::scoring::is_test_path;
 
     // Test directories
     assert!(is_test_path("tests/test_auth.py"), "tests/ directory");

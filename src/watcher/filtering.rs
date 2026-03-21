@@ -67,8 +67,25 @@ pub fn build_gitignore_matcher(workspace_root: &Path) -> Result<Gitignore> {
 ///
 /// This catches directories like `node_modules`, `.git`, `target`, `bin`, `obj`, etc.
 /// regardless of where they appear in the path hierarchy.
+///
+/// When `workspace_root` is provided, the check is performed on the relative path
+/// (stripping the root prefix). This avoids false positives from system directories
+/// in the absolute path (e.g., `AppData` on Windows temp paths).
+/// Falls back to checking the full path if the prefix cannot be stripped.
 pub fn contains_blacklisted_directory(path: &Path) -> bool {
-    path.components().any(|c| {
+    contains_blacklisted_directory_relative(path, None)
+}
+
+/// Like [`contains_blacklisted_directory`] but with an explicit workspace root
+/// to relativize the path before checking.
+pub fn contains_blacklisted_directory_relative(
+    path: &Path,
+    workspace_root: Option<&Path>,
+) -> bool {
+    let check_path = workspace_root
+        .and_then(|root| path.strip_prefix(root).ok())
+        .unwrap_or(path);
+    check_path.components().any(|c| {
         if let std::path::Component::Normal(name) = c {
             if let Some(s) = name.to_str() {
                 return BLACKLISTED_DIRECTORIES.contains(&s);
@@ -121,7 +138,7 @@ pub fn should_index_file(
     } else {
         return false;
     }
-    if contains_blacklisted_directory(path) {
+    if contains_blacklisted_directory_relative(path, Some(workspace_root)) {
         return false;
     }
     if is_gitignored(path, gitignore, workspace_root) {
@@ -153,7 +170,7 @@ pub fn should_process_deletion(
     } else {
         return false;
     }
-    if contains_blacklisted_directory(path) {
+    if contains_blacklisted_directory_relative(path, Some(workspace_root)) {
         return false;
     }
     let rel_path = match path.strip_prefix(workspace_root) {

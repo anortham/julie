@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::analysis::test_coverage::{TestCoverageInfo, tier_rank};
+    use crate::analysis::test_coverage::tier_rank;
     use crate::database::SymbolDatabase;
     use tempfile::TempDir;
 

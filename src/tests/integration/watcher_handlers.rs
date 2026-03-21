@@ -9,7 +9,6 @@ use crate::watcher::handlers::{
     handle_file_created_or_modified_static, handle_file_deleted_static, handle_file_renamed_static,
 };
 use std::fs;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 /// Regression test for Bug: File watcher drops identifiers, types, and relationships

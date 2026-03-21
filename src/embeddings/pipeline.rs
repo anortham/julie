@@ -20,7 +20,12 @@ use crate::extractors::SymbolKind;
 use crate::search::language_config::LanguageConfigs;
 
 /// Batch size for embedding generation (symbols per batch).
-const EMBEDDING_BATCH_SIZE: usize = 500;
+///
+/// This controls how many texts are sent in a single JSON-RPC request to the
+/// sidecar. The sidecar processes them internally in smaller GPU batches (default 32).
+/// Smaller values here mean shorter per-request time and less risk of hitting the
+/// response timeout — especially for larger models like CodeRankEmbed (768d).
+const EMBEDDING_BATCH_SIZE: usize = 250;
 const VARIABLE_EMBEDDING_POLICY: VariableEmbeddingPolicy = VariableEmbeddingPolicy {
     enabled: true,
     max_ratio: 0.20,

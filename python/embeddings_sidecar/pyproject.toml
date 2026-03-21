@@ -13,7 +13,9 @@ dependencies = []
 runtime = [
   "torch>=2.2.0",
   "sentence-transformers>=3.0.0",
+  "einops",
   "torch-directml; sys_platform == 'win32'",
+  "wmi; sys_platform == 'win32'",
 ]
 
 [tool.hatch.build.targets.wheel]

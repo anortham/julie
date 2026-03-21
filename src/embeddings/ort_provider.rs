@@ -1,8 +1,8 @@
 //! ONNX Runtime embedding provider using fastembed.
 //!
-//! Wraps `fastembed::TextEmbedding` (BGE-small-en-v1.5, 384-dim) with a `Mutex`
-//! to satisfy the `EmbeddingProvider` trait's `&self` requirement despite fastembed's
-//! `&mut self` on `embed()`.
+//! Supports multiple models via fastembed's `EmbeddingModel` enum:
+//! - **Jina-code-v2** (768d): Code-optimized, default on Windows (DirectML GPU)
+//! - **BGE-small-en-v1.5** (384d): General-purpose, smaller/faster
 //!
 //! GPU acceleration strategy:
 //! - **Windows**: DirectML EP → CPU fallback
@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use fastembed::{EmbeddingModel, ExecutionProviderDispatch, InitOptions, TextEmbedding};
 use ort::execution_providers::CPUExecutionProvider;
 #[cfg(target_os = "windows")]
@@ -21,7 +21,42 @@ use ort::execution_providers::DirectMLExecutionProvider;
 use super::windows_directml::{choose_directml_adapter, directml_device_label};
 use super::{DeviceInfo, EmbeddingProvider};
 
-const BGE_SMALL_DIMENSIONS: usize = 384;
+/// Resolve a model ID string to fastembed enum + dimensions + display name.
+///
+/// Recognized values (case-insensitive):
+/// - `"jina-code-v2"` or `"jinaai/jina-embeddings-v2-base-code"` → Jina code model (768d)
+/// - `"bge-small"` or `"BAAI/bge-small-en-v1.5"` → BGE-small (384d)
+///
+/// Returns `(EmbeddingModel, dimensions, display_name)`.
+fn resolve_ort_model(model_id: Option<&str>) -> Result<(EmbeddingModel, usize, &'static str)> {
+    let id = model_id
+        .map(|s| s.trim().to_ascii_lowercase())
+        .unwrap_or_else(|| platform_default_ort_model().to_string());
+
+    match id.as_str() {
+        "jina-code-v2"
+        | "jinaai/jina-embeddings-v2-base-code"
+        | "jina-embeddings-v2-base-code" => {
+            Ok((EmbeddingModel::JinaEmbeddingsV2BaseCode, 768, "Jina-code-v2"))
+        }
+        "bge-small" | "bge-small-en-v1.5" | "baai/bge-small-en-v1.5" => {
+            Ok((EmbeddingModel::BGESmallENV15, 384, "BGE-small-en-v1.5"))
+        }
+        other => bail!(
+            "Unknown ORT model '{}'. Supported: jina-code-v2, bge-small",
+            other
+        ),
+    }
+}
+
+/// Platform default: Jina-code-v2 on Windows (DirectML GPU), BGE-small elsewhere.
+fn platform_default_ort_model() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "jina-code-v2"
+    } else {
+        "bge-small"
+    }
+}
 
 /// Production embedding provider using ONNX Runtime via fastembed.
 ///
@@ -31,6 +66,7 @@ pub struct OrtEmbeddingProvider {
     model: Mutex<TextEmbedding>,
     runtime_state: Mutex<OrtRuntimeState>,
     cache_dir: PathBuf,
+    embedding_model: EmbeddingModel,
     dimensions: usize,
     model_name: String,
 }
@@ -114,8 +150,12 @@ impl OrtEmbeddingProvider {
     ///
     /// Returns `Err` if model download fails or ONNX runtime can't initialize.
     /// Callers should treat this as non-fatal — keyword search works without embeddings.
-    pub fn try_new(cache_dir: Option<PathBuf>) -> Result<Self> {
+    pub fn try_new(
+        cache_dir: Option<PathBuf>,
+        model_id: Option<&str>,
+    ) -> Result<Self> {
         let cache = cache_dir.unwrap_or_else(default_cache_dir);
+        let (embedding_model, dimensions, model_name) = resolve_ort_model(model_id)?;
         let OrtExecutionProviderPolicy {
             providers,
             signal_on_success,
@@ -123,14 +163,17 @@ impl OrtEmbeddingProvider {
 
         let (model, signal) = if providers.is_empty() {
             // No accelerated EP for this platform — CPU only
-            let model = TextEmbedding::try_new(base_init_options(cache.clone()))
-                .context("Failed to initialize fastembed ONNX model")?;
+            let model = TextEmbedding::try_new(
+                base_init_options(embedding_model.clone(), cache.clone()),
+            )
+            .context("Failed to initialize fastembed ONNX model")?;
             (model, signal_on_success)
         } else {
             // Try accelerated EP first, fall back to CPU
             let requested_device = signal_on_success.device.clone();
             let primary = TextEmbedding::try_new(
-                base_init_options(cache.clone()).with_execution_providers(providers),
+                base_init_options(embedding_model.clone(), cache.clone())
+                    .with_execution_providers(providers),
             );
 
             match primary {
@@ -140,7 +183,7 @@ impl OrtEmbeddingProvider {
                         "ORT DirectML EP failed for {requested_device}, falling back to CPU: {primary_error:#}"
                     );
                     let model = TextEmbedding::try_new(
-                        base_init_options(cache.clone())
+                        base_init_options(embedding_model.clone(), cache.clone())
                             .with_execution_providers(vec![CPUExecutionProvider::default().build()]),
                     )
                     .with_context(|| {
@@ -156,12 +199,15 @@ impl OrtEmbeddingProvider {
             }
         };
 
+        tracing::info!("ORT embedding model: {model_name} ({dimensions}d)");
+
         Ok(Self {
             model: Mutex::new(model),
             runtime_state: Mutex::new(OrtRuntimeState::from_signal(signal)),
             cache_dir: cache,
-            dimensions: BGE_SMALL_DIMENSIONS,
-            model_name: "BGE-small-en-v1.5".to_string(),
+            embedding_model,
+            dimensions,
+            model_name: model_name.to_string(),
         })
     }
 
@@ -170,8 +216,9 @@ impl OrtEmbeddingProvider {
     #[cfg(test)]
     pub fn try_new_cpu_only(cache_dir: Option<PathBuf>) -> Result<Self> {
         let cache = cache_dir.unwrap_or_else(default_cache_dir);
+        // Tests use BGE-small (smaller download, faster, deterministic)
         let model = TextEmbedding::try_new(
-            base_init_options(cache.clone())
+            base_init_options(EmbeddingModel::BGESmallENV15, cache.clone())
                 .with_execution_providers(vec![CPUExecutionProvider::default().build()]),
         )
         .context("Failed to initialize fastembed ONNX model (CPU-only)")?;
@@ -184,14 +231,15 @@ impl OrtEmbeddingProvider {
                 degraded_reason: None,
             }),
             cache_dir: cache,
-            dimensions: BGE_SMALL_DIMENSIONS,
+            embedding_model: EmbeddingModel::BGESmallENV15,
+            dimensions: 384,
             model_name: "BGE-small-en-v1.5".to_string(),
         })
     }
 }
 
-fn base_init_options(cache_dir: PathBuf) -> InitOptions {
-    InitOptions::new(EmbeddingModel::BGESmallENV15)
+fn base_init_options(model: EmbeddingModel, cache_dir: PathBuf) -> InitOptions {
+    InitOptions::new(model)
         .with_cache_dir(cache_dir)
         .with_show_download_progress(false)
 }
@@ -349,7 +397,7 @@ impl EmbeddingProvider for OrtEmbeddingProvider {
             |gpu_err, model| {
                 tracing::warn!("GPU query embedding failed, falling back to CPU: {gpu_err:#}");
                 let mut cpu_model = TextEmbedding::try_new(
-                    base_init_options(self.cache_dir.clone())
+                    base_init_options(self.embedding_model.clone(), self.cache_dir.clone())
                         .with_execution_providers(vec![CPUExecutionProvider::default().build()]),
                 )
                 .context("Failed to initialize CPU fallback embedding model")?;
@@ -393,7 +441,7 @@ impl EmbeddingProvider for OrtEmbeddingProvider {
                 // Once we swap in the CPU model, all subsequent batches use CPU too.
                 tracing::warn!("GPU embedding failed, falling back to CPU: {gpu_err:#}");
                 let mut cpu_model = TextEmbedding::try_new(
-                    base_init_options(self.cache_dir.clone())
+                    base_init_options(self.embedding_model.clone(), self.cache_dir.clone())
                         .with_execution_providers(vec![CPUExecutionProvider::default().build()]),
                 )
                 .context("Failed to initialize CPU fallback embedding model")?;

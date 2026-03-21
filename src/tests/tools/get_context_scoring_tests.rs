@@ -8,7 +8,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::search::index::SymbolSearchResult;
-    use crate::tools::get_context::pipeline::{Pivot, select_pivots};
+    use crate::tools::get_context::pipeline::select_pivots;
     use crate::tools::get_context::scoring::select_pivots_for_query;
 
     /// Helper to create a SymbolSearchResult with a specific kind.

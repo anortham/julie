@@ -578,7 +578,13 @@ while True:
         }
     }
 
-    #[cfg(all(feature = "embeddings-sidecar", feature = "embeddings-ort"))]
+    // On Windows, `auto` resolves directly to ORT (not sidecar), so the
+    // sidecar-bootstrap-failure → ORT-fallback path is never exercised.
+    #[cfg(all(
+        feature = "embeddings-sidecar",
+        feature = "embeddings-ort",
+        not(target_os = "windows")
+    ))]
     #[tokio::test]
     #[serial(embedding_env)]
     async fn test_workspace_init_sidecar_bootstrap_failure_falls_back_to_ort() {
@@ -873,6 +879,7 @@ while True:
         let config = EmbeddingConfig {
             provider: "ort".to_string(),
             cache_dir: Some(cache_dir),
+            ort_model_id: Some("bge-small".to_string()),
         };
 
         let provider = EmbeddingProviderFactory::create(&config).unwrap();
@@ -884,6 +891,7 @@ while True:
         let config = EmbeddingConfig {
             provider: "not-a-real-provider".to_string(),
             cache_dir: None,
+            ort_model_id: None,
         };
 
         let err = match EmbeddingProviderFactory::create(&config) {

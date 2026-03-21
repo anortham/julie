@@ -2,7 +2,7 @@
 
 use crate::embeddings::{DeviceInfo, EmbeddingBackend, EmbeddingProvider, EmbeddingRuntimeStatus};
 use crate::handler::JulieServerHandler;
-use crate::mcp_compat::{CallToolResult, CallToolResultExt};
+use crate::mcp_compat::CallToolResult;
 use crate::tools::workspace::ManageWorkspaceTool;
 #[cfg(feature = "embeddings-sidecar")]
 use crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding;

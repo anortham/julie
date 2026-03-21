@@ -10,6 +10,7 @@
 
 - [x] **Run embedding benchmark** — Completed 2026-03-20. Benchmarked 19 workspaces (18 languages, 93k source embeddings). Results in `benchmarks/results/`. Test exclusion saves 47% of embedding budget. CodeRankEmbed shows +10% namespace overlap, +20% cross-language vs BGE-small.
 - [x] **Consolidate `find_child_by_type` duplicates** — 8 copies across dart, gdscript, elixir, lua, razor consolidated to free functions in `base/tree_methods.rs`. 4 new tests added. `get_node_text` copies remain (dart uses thread-local cache, vue takes different args; not worth forcing into shared pattern).
+- [ ] **Multiple Instances** - we should discuss the implact of having multiple instances of Julie running at the same time, multiple projects, git worktrees, etc.
 
 ## Performance
 
