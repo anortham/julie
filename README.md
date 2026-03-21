@@ -132,6 +132,14 @@ For project-level only, use `--scope project` or omit the scope flag.
 
 The `env` block is optional. Without it, Julie defaults to `BAAI/bge-small-en-v1.5` (384d).
 
+**Available env options:**
+
+| Variable | Values | Default | Notes |
+|----------|--------|---------|-------|
+| `JULIE_EMBEDDING_PROVIDER` | `auto`, `sidecar`, `ort` | `auto` | Windows defaults to `ort` (DirectML). Set `sidecar` for CodeRankEmbed on Windows. |
+| `JULIE_EMBEDDING_SIDECAR_MODEL_ID` | Any HuggingFace model ID | `BAAI/bge-small-en-v1.5` | Only applies when using the sidecar backend. |
+| `JULIE_EMBEDDING_STRICT_ACCEL` | `1` | unset | Disable embeddings entirely when no GPU is available. |
+
 **First Use:**
 
 Julie indexes your workspace automatically on first connection (~2-5s for most projects). All search capabilities are available immediately after indexing completes.
