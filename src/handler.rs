@@ -18,11 +18,13 @@ use crate::workspace::JulieWorkspace;
 use tokio::sync::RwLock;
 
 // Import tool parameter types
+use crate::tools::metrics::session::{
+    SessionMetrics, ToolCallReport, ToolKind, extract_source_paths,
+};
 use crate::tools::{
     DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
     ManageWorkspaceTool, QueryMetricsTool, RenameSymbolTool,
 };
-use crate::tools::metrics::session::{SessionMetrics, ToolCallReport, ToolKind, extract_source_paths};
 
 /// Tracks which indexes are ready for search operations
 #[derive(Debug)]
@@ -70,10 +72,14 @@ pub struct JulieServerHandler {
     pub session_metrics: Arc<SessionMetrics>,
     /// Running embedding pipeline: cancellation flag + task handle.
     /// Set the flag to stop the pipeline between batches, then abort the task.
-    pub(crate) embedding_task: Arc<tokio::sync::Mutex<Option<(
-        Arc<std::sync::atomic::AtomicBool>,
-        tokio::task::JoinHandle<()>,
-    )>>>,
+    pub(crate) embedding_task: Arc<
+        tokio::sync::Mutex<
+            Option<(
+                Arc<std::sync::atomic::AtomicBool>,
+                tokio::task::JoinHandle<()>,
+            )>,
+        >,
+    >,
     /// rmcp tool router for handling tool calls
     tool_router: ToolRouter<Self>,
 }
@@ -93,6 +99,54 @@ impl JulieServerHandler {
             workspace_root,
             workspace: Arc::new(RwLock::new(None)),
             is_indexed: Arc::new(RwLock::new(false)),
+            indexing_status: Arc::new(IndexingStatus::new()),
+            session_metrics: Arc::new(SessionMetrics::new()),
+            embedding_task: Arc::new(tokio::sync::Mutex::new(None)),
+            tool_router: Self::tool_router(),
+        })
+    }
+
+    /// Create a handler for daemon mode, backed by a shared workspace from WorkspacePool.
+    ///
+    /// Each handler gets its own `session_metrics` and `indexing_status` (per-session),
+    /// but the workspace's expensive resources (db, search_index) are shared across
+    /// sessions via their inner `Arc<Mutex<...>>` pointers.
+    ///
+    /// Clone semantics of JulieWorkspace:
+    /// - `db: Arc<Mutex<SqliteDB>>` and `search_index: Arc<Mutex<SearchIndex>>` are
+    ///   shared (Arc clone). This is the whole point: multiple sessions hit one db.
+    /// - `watcher` is `None` in the clone (daemon manages file watchers separately).
+    /// - `embedding_provider` is set to `None` (Phase 3 handles shared embeddings).
+    pub async fn new_with_shared_workspace(
+        workspace: Arc<JulieWorkspace>,
+        workspace_root: PathBuf,
+    ) -> Result<Self> {
+        info!(
+            "Creating daemon-mode handler (workspace_root: {:?})",
+            workspace_root
+        );
+
+        // Clone the workspace out of the Arc. This shares db/search_index via
+        // their inner Arcs, which is correct for multi-session sharing.
+        let mut ws_clone = (*workspace).clone();
+        // Daemon manages embeddings separately (Phase 3).
+        ws_clone.embedding_provider = None;
+
+        // Determine is_indexed by checking if the database already has symbols.
+        // This lets a second session skip auto-indexing when the first has already
+        // indexed the workspace.
+        let already_indexed = if let Some(ref db_arc) = ws_clone.db {
+            let db = db_arc.lock().unwrap();
+            let count = db.count_symbols_for_workspace().unwrap_or(0);
+            count > 0
+        } else {
+            false
+        };
+
+        Ok(Self {
+            workspace_root,
+            workspace: Arc::new(RwLock::new(Some(ws_clone))),
+            is_indexed: Arc::new(RwLock::new(already_indexed)),
             indexing_status: Arc::new(IndexingStatus::new()),
             session_metrics: Arc::new(SessionMetrics::new()),
             embedding_task: Arc::new(tokio::sync::Mutex::new(None)),
@@ -357,10 +411,9 @@ impl JulieServerHandler {
 
                         // Bump source_bytes atomics (deferred from synchronous path)
                         if let Some(sb) = source_bytes {
-                            session_metrics.total_source_bytes.fetch_add(
-                                sb,
-                                std::sync::atomic::Ordering::Relaxed,
-                            );
+                            session_metrics
+                                .total_source_bytes
+                                .fetch_add(sb, std::sync::atomic::Ordering::Relaxed);
                         }
 
                         let _ = db.insert_tool_call(
@@ -789,12 +842,9 @@ impl JulieServerHandler {
         info!("🏗️ Managing workspace: {}", params.operation);
         let start = std::time::Instant::now();
         let metadata = serde_json::json!({ "operation": params.operation });
-        let result = params
-            .call_tool(self)
-            .await
-            .map_err(|e| {
-                McpError::internal_error(format!("manage_workspace failed: {}", e), None)
-            })?;
+        let result = params.call_tool(self).await.map_err(|e| {
+            McpError::internal_error(format!("manage_workspace failed: {}", e), None)
+        })?;
         let report = ToolCallReport {
             result_count: None,
             source_bytes: None,
@@ -861,6 +911,16 @@ impl ServerHandler for JulieServerHandler {
 
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
         info!("MCP connection established - client initialized");
+
+        // Skip auto-indexing if workspace is already indexed (daemon mode: another
+        // session may have already indexed this workspace).
+        {
+            let indexed = self.is_indexed.read().await;
+            if *indexed {
+                info!("Workspace already indexed, skipping auto-indexing");
+                return;
+            }
+        }
 
         // Run auto-indexing in background task
         let handler = self.clone();
