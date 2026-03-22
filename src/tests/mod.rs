@@ -309,6 +309,11 @@ pub mod test_utils;
 pub mod helpers;
 
 // ============================================================================
+// DAEMON TESTS - v6 daemon infrastructure (paths, PID, lifecycle)
+// ============================================================================
+pub mod daemon;
+
+// ============================================================================
 // EXTRACTOR TESTS - Moved to julie-extractors crate
 // ============================================================================
 // All 31 language extractor tests are now in crates/julie-extractors/src/tests/

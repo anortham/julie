@@ -20,6 +20,9 @@ pub mod utils;
 pub mod watcher;
 pub mod workspace;
 
+pub mod daemon;
+pub mod paths;
+
 #[cfg(test)]
 pub mod tests;
 
