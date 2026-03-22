@@ -21,16 +21,25 @@ async fn main() -> anyhow::Result<()> {
             std::process::exit(1);
         }
         Some(Command::Stop) => {
-            eprintln!("Stop not yet implemented (Task 10)");
-            std::process::exit(1);
+            let paths = julie::paths::DaemonPaths::new();
+            julie::daemon::lifecycle::stop_daemon(&paths)?;
+            println!("Daemon stopped");
         }
         Some(Command::Status) => {
-            eprintln!("Status not yet implemented (Task 10)");
-            std::process::exit(1);
+            let paths = julie::paths::DaemonPaths::new();
+            match julie::daemon::lifecycle::check_status(&paths) {
+                julie::daemon::lifecycle::DaemonStatus::Running { pid } => {
+                    println!("Julie daemon running (PID {})", pid);
+                }
+                julie::daemon::lifecycle::DaemonStatus::NotRunning => {
+                    println!("Julie daemon not running");
+                }
+            }
         }
         Some(Command::Restart) => {
-            eprintln!("Restart not yet implemented (Task 10)");
-            std::process::exit(1);
+            let paths = julie::paths::DaemonPaths::new();
+            julie::daemon::lifecycle::stop_daemon(&paths)?;
+            println!("Daemon stopped. Will auto-restart on next tool call.");
         }
         None => {
             // Default: adapter mode (legacy stdio for now, Task 9 replaces this)
