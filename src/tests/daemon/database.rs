@@ -144,6 +144,20 @@ mod tests {
     }
 
     #[test]
+    fn test_session_inherits_references() {
+        // Verifies the lookup the daemon uses when auto-attaching references on connect.
+        let (db, _tmp) = create_test_db();
+
+        db.upsert_workspace("primary_abc", "/proj", "ready").unwrap();
+        db.upsert_workspace("ref_xyz", "/lib", "ready").unwrap();
+        db.add_reference("primary_abc", "ref_xyz").unwrap();
+
+        let refs = db.list_references("primary_abc").unwrap();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].workspace_id, "ref_xyz");
+    }
+
+    #[test]
     fn test_list_references_returns_workspace_row_data() {
         let (db, _tmp) = create_test_db();
         db.upsert_workspace("p1", "/proj", "ready").unwrap();
@@ -218,6 +232,53 @@ mod tests {
         db.upsert_workspace("ws1", "/path", "ready").unwrap();
 
         assert!(db.get_latest_snapshot("ws1").unwrap().is_none());
+    }
+
+    // -------------------------------------------------------------------------
+    // C3: Codehealth Snapshot from SymbolDatabase
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_snapshot_codehealth_from_symbols_db() {
+        use crate::database::SymbolDatabase;
+
+        let (daemon_db, _tmp) = create_test_db();
+        daemon_db.upsert_workspace("ws1", "/path", "ready").unwrap();
+
+        // Create a symbols.db with minimal test data
+        let sym_tmp = TempDir::new().unwrap();
+        let symbols_db = SymbolDatabase::new(sym_tmp.path().join("symbols.db")).unwrap();
+
+        // Insert a file
+        symbols_db
+            .conn
+            .execute(
+                "INSERT INTO files (path, language, hash, size, last_modified) \
+                 VALUES ('foo.rs', 'rust', 'abc', 100, 0)",
+                [],
+            )
+            .unwrap();
+
+        // Insert a symbol with HIGH security risk
+        symbols_db
+            .conn
+            .execute(
+                "INSERT INTO symbols \
+                 (id, name, kind, file_path, start_line, end_line, start_col, end_col, language, metadata) \
+                 VALUES ('s1', 'foo', 'Function', 'foo.rs', 1, 10, 0, 0, 'rust', \
+                 '{\"security_risk\":{\"label\":\"HIGH\",\"score\":0.9}}')",
+                [],
+            )
+            .unwrap();
+
+        daemon_db
+            .snapshot_codehealth_from_db("ws1", &symbols_db)
+            .unwrap();
+
+        let snapshot = daemon_db.get_latest_snapshot("ws1").unwrap().unwrap();
+        assert_eq!(snapshot.total_symbols, 1);
+        assert_eq!(snapshot.security_high, 1);
+        assert_eq!(snapshot.security_medium, 0);
     }
 
     // -------------------------------------------------------------------------

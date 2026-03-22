@@ -198,6 +198,39 @@ async fn handle_ipc_session(
     .await
     .context("Failed to create handler for IPC session")?;
 
+    // Auto-attach reference workspaces registered for this primary workspace.
+    // Each reference is pre-loaded into the pool so its indexes are warm.
+    if let Some(db) = &daemon_db {
+        match db.list_references(&full_workspace_id) {
+            Ok(refs) => {
+                for ref_ws in &refs {
+                    match pool.get_or_init(&ref_ws.workspace_id, PathBuf::from(&ref_ws.path)).await {
+                        Ok(_) => {
+                            info!(
+                                session_id = %session_id,
+                                reference = %ref_ws.workspace_id,
+                                "Auto-attached reference workspace"
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                session_id = %session_id,
+                                reference = %ref_ws.workspace_id,
+                                "Failed to auto-attach reference workspace: {}", e
+                            );
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(
+                    session_id = %session_id,
+                    "Failed to query reference workspaces: {}", e
+                );
+            }
+        }
+    }
+
     // Grab project log before serve() consumes the handler
     let project_log = handler.project_log.clone();
 

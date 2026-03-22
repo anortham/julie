@@ -549,8 +549,9 @@ impl JulieServerHandler {
 
     /// Get the database for a specific workspace by ID.
     ///
-    /// Opens the reference workspace's SQLite database from
-    /// the primary workspace's `.julie/indexes/{workspace_id}/db/symbols.db`.
+    /// In stdio mode: looks in `{project}/.julie/indexes/{workspace_id}/db/symbols.db`.
+    /// In daemon mode: looks in `~/.julie/indexes/{workspace_id}/db/symbols.db`
+    ///   (sibling of the primary workspace's index dir, not nested under it).
     pub async fn get_database_for_workspace(
         &self,
         workspace_id: &str,
@@ -560,7 +561,21 @@ impl JulieServerHandler {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
 
-        let db_path = primary.workspace_db_path(workspace_id);
+        // In daemon mode, index_root_override points to ~/.julie/indexes/{primary_id}.
+        // Reference workspaces are siblings: ~/.julie/indexes/{ref_id}/, not nested.
+        let db_path = if let Some(ref override_root) = primary.index_root_override {
+            override_root
+                .parent()
+                .map(|shared_indexes| {
+                    shared_indexes
+                        .join(workspace_id)
+                        .join("db")
+                        .join("symbols.db")
+                })
+                .unwrap_or_else(|| primary.workspace_db_path(workspace_id))
+        } else {
+            primary.workspace_db_path(workspace_id)
+        };
         if !db_path.exists() {
             return Err(anyhow::anyhow!(
                 "Database not found for workspace '{}' at {}",
@@ -578,8 +593,8 @@ impl JulieServerHandler {
 
     /// Get the search index for a specific workspace by ID.
     ///
-    /// Opens the reference workspace's Tantivy index from
-    /// the primary workspace's `.julie/indexes/{workspace_id}/tantivy/`.
+    /// In stdio mode: looks in `{project}/.julie/indexes/{workspace_id}/tantivy/`.
+    /// In daemon mode: looks in `~/.julie/indexes/{workspace_id}/tantivy/`.
     /// Returns `Ok(None)` if the index directory doesn't exist yet.
     pub async fn get_search_index_for_workspace(
         &self,
@@ -590,7 +605,15 @@ impl JulieServerHandler {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
 
-        let tantivy_path = primary.workspace_tantivy_path(workspace_id);
+        // Mirror the daemon-mode path fix from get_database_for_workspace.
+        let tantivy_path = if let Some(ref override_root) = primary.index_root_override {
+            override_root
+                .parent()
+                .map(|shared_indexes| shared_indexes.join(workspace_id).join("tantivy"))
+                .unwrap_or_else(|| primary.workspace_tantivy_path(workspace_id))
+        } else {
+            primary.workspace_tantivy_path(workspace_id)
+        };
         if !tantivy_path.join("meta.json").exists() {
             return Ok(None);
         }
