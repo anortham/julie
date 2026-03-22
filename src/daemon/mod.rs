@@ -4,6 +4,7 @@
 //! Each connection sends a `WORKSPACE:/path\n` header, then speaks MCP
 //! JSON-RPC over the remaining stream.
 
+pub mod database;
 pub mod ipc;
 pub mod lifecycle;
 pub mod pid;

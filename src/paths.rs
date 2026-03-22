@@ -80,6 +80,11 @@ impl DaemonPaths {
         project_root.join(".julie").join("logs")
     }
 
+    /// Persistent daemon state database (workspaces, codehealth snapshots, tool call history)
+    pub fn daemon_db(&self) -> PathBuf {
+        self.julie_home.join("daemon.db")
+    }
+
     /// Migration state file
     pub fn migration_state(&self) -> PathBuf {
         self.julie_home.join("migration.json")
