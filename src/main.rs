@@ -16,9 +16,36 @@ async fn main() -> anyhow::Result<()> {
     let workspace_root = resolve_workspace_root(cli.workspace);
 
     match cli.command {
-        Some(Command::Daemon { port: _ }) => {
-            eprintln!("Daemon mode not yet implemented (Task 8)");
-            std::process::exit(1);
+        Some(Command::Daemon { port }) => {
+            let paths = julie::paths::DaemonPaths::new();
+
+            // Set up daemon logging (to ~/.julie/daemon.log)
+            let filter = EnvFilter::try_from_default_env()
+                .or_else(|_| EnvFilter::try_new("julie=info"))
+                .map_err(|e| anyhow::anyhow!("Failed to initialize logging filter: {}", e))?;
+
+            let log_dir = paths.julie_home();
+            fs::create_dir_all(&log_dir).unwrap_or_else(|e| {
+                eprintln!("Failed to create log directory at {:?}: {}", log_dir, e);
+            });
+
+            let file_appender = rolling::daily(&log_dir, "daemon.log");
+            let (non_blocking_file, _file_guard) = non_blocking(file_appender);
+
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(
+                    fmt::layer()
+                        .with_writer(non_blocking_file)
+                        .with_target(true)
+                        .with_ansi(false)
+                        .with_file(true)
+                        .with_line_number(true),
+                )
+                .init();
+
+            info!("Starting Julie daemon v{}", env!("CARGO_PKG_VERSION"));
+            julie::daemon::run_daemon(paths, port).await?;
         }
         Some(Command::Stop) => {
             let paths = julie::paths::DaemonPaths::new();
