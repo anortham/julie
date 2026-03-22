@@ -31,6 +31,7 @@ pub mod main_error_handling; // MCP server initialization and runtime error hand
 // ============================================================================
 pub mod core {
     pub mod batch_resolver;
+    pub mod bulk_store_types_tests;
     pub mod database; // Database operations and SQLite tests
     pub mod database_lightweight_query; // Lightweight query optimization tests
     pub mod embedding_deps; // Embedding dependency smoke tests (fastembed + sqlite-vec)
@@ -40,6 +41,7 @@ pub mod core {
     pub mod embedding_sidecar_protocol; // Sidecar protocol contracts + validation tests
     pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
     pub mod handler; // MCP handler tests
+    pub mod incremental_update_atomic; // incremental_update_atomic write path tests (TDD)
     pub mod language; // Language detection and support tests
     pub mod memory_vectors; // Memory embedding vector storage (migration 012 + CRUD + KNN)
     pub mod paths; // Path utility tests (display_path, UNC handling)
@@ -48,9 +50,7 @@ pub mod core {
     pub mod tracing; // Tracing and logging tests
     pub mod vector_storage; // sqlite-vec vector storage CRUD tests
     pub mod windows_embedding_policy; // Windows ORT policy + DirectML adapter selection tests
-    pub mod workspace_init; // Workspace root detection and initialization tests // Batch pending relationship resolution tests
-    pub mod incremental_update_atomic; // incremental_update_atomic write path tests (TDD)
-    pub mod bulk_store_types_tests; // bulk_store_types integration tests (TDD)
+    pub mod workspace_init; // Workspace root detection and initialization tests // Batch pending relationship resolution tests // bulk_store_types integration tests (TDD)
 }
 
 // ============================================================================
@@ -309,9 +309,19 @@ pub mod test_utils;
 pub mod helpers;
 
 // ============================================================================
+// ADAPTER TESTS - v6 adapter (auto-start daemon, byte forwarding)
+// ============================================================================
+pub mod adapter;
+
+// ============================================================================
 // DAEMON TESTS - v6 daemon infrastructure (paths, PID, lifecycle)
 // ============================================================================
 pub mod daemon;
+
+// ============================================================================
+// MIGRATION TESTS - v6 index migration from per-project to centralized
+// ============================================================================
+pub mod migration;
 
 // ============================================================================
 // EXTRACTOR TESTS - Moved to julie-extractors crate

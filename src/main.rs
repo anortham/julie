@@ -69,8 +69,8 @@ async fn main() -> anyhow::Result<()> {
             println!("Daemon stopped. Will auto-restart on next tool call.");
         }
         None => {
-            // Default: adapter mode (legacy stdio for now, Task 9 replaces this)
-            run_stdio_server(workspace_root).await?;
+            // Adapter mode: auto-start daemon, forward stdio to IPC
+            julie::adapter::run_adapter(workspace_root).await?;
         }
     }
 
@@ -79,6 +79,8 @@ async fn main() -> anyhow::Result<()> {
 
 /// Run the legacy stdio MCP server. Contains all the logic that was previously
 /// inline in main(): logging setup, handler creation, stdio serve, shutdown cleanup.
+/// Retained for fallback/testing; the default path now uses the adapter.
+#[allow(dead_code)]
 async fn run_stdio_server(workspace_root: PathBuf) -> anyhow::Result<()> {
     // Initialize logging -- file only, stdout reserved for MCP JSON-RPC
     let filter = EnvFilter::try_from_default_env()
