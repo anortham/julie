@@ -26,7 +26,10 @@ async fn test_get_or_init_creates_workspace_on_first_call() {
 
     // Workspace should have db and search_index initialized
     assert!(ws.db.is_some(), "db should be initialized");
-    assert!(ws.search_index.is_some(), "search_index should be initialized");
+    assert!(
+        ws.search_index.is_some(),
+        "search_index should be initialized"
+    );
 }
 
 #[tokio::test]
@@ -48,7 +51,10 @@ async fn test_get_or_init_returns_same_instance_on_second_call() {
     // Both should point to the same Arc (same db instance)
     let db1 = ws1.db.as_ref().expect("db1 should exist");
     let db2 = ws2.db.as_ref().expect("db2 should exist");
-    assert!(Arc::ptr_eq(db1, db2), "should return the same workspace instance");
+    assert!(
+        Arc::ptr_eq(db1, db2),
+        "should return the same workspace instance"
+    );
 }
 
 #[tokio::test]
@@ -57,7 +63,10 @@ async fn test_get_returns_none_for_unknown_workspace() {
     let pool = WorkspacePool::new(indexes_dir.path().to_path_buf());
 
     let result = pool.get("nonexistent").await;
-    assert!(result.is_none(), "get should return None for unknown workspace");
+    assert!(
+        result.is_none(),
+        "get should return None for unknown workspace"
+    );
 }
 
 #[tokio::test]
@@ -114,7 +123,11 @@ async fn test_active_workspace_count() {
     let indexes_dir = temp_indexes_dir();
     let pool = WorkspacePool::new(indexes_dir.path().to_path_buf());
 
-    assert_eq!(pool.active_count().await, 0, "should start with 0 workspaces");
+    assert_eq!(
+        pool.active_count().await,
+        0,
+        "should start with 0 workspaces"
+    );
 
     let root1 = temp_workspace_root();
     pool.get_or_init("ws1", root1.path().to_path_buf())
@@ -149,20 +162,16 @@ async fn test_concurrent_get_or_init_different_workspaces() {
     let pool2 = pool.clone();
 
     let (r1, r2) = tokio::join!(
-        tokio::spawn(async move {
-            pool1
-                .get_or_init("ws_a", root1_path)
-                .await
-        }),
-        tokio::spawn(async move {
-            pool2
-                .get_or_init("ws_b", root2_path)
-                .await
-        }),
+        tokio::spawn(async move { pool1.get_or_init("ws_a", root1_path).await }),
+        tokio::spawn(async move { pool2.get_or_init("ws_b", root2_path).await }),
     );
 
-    let ws_a = r1.expect("task 1 should not panic").expect("ws_a init should succeed");
-    let ws_b = r2.expect("task 2 should not panic").expect("ws_b init should succeed");
+    let ws_a = r1
+        .expect("task 1 should not panic")
+        .expect("ws_a init should succeed");
+    let ws_b = r2
+        .expect("task 2 should not panic")
+        .expect("ws_b init should succeed");
 
     // Both should be different workspaces
     let db_a = ws_a.db.as_ref().expect("db_a should exist");

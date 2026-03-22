@@ -76,9 +76,7 @@ impl WorkspacePool {
         let workspace = self
             .init_workspace(workspace_id, workspace_root)
             .await
-            .with_context(|| {
-                format!("Failed to initialize workspace '{workspace_id}' in pool")
-            })?;
+            .with_context(|| format!("Failed to initialize workspace '{workspace_id}' in pool"))?;
 
         let ws = Arc::new(workspace);
         guard.insert(
@@ -95,9 +93,7 @@ impl WorkspacePool {
     /// Check whether a workspace has completed its initial indexing pass.
     pub async fn is_indexed(&self, workspace_id: &str) -> bool {
         let guard = self.workspaces.read().await;
-        guard
-            .get(workspace_id)
-            .is_some_and(|entry| entry.indexed)
+        guard.get(workspace_id).is_some_and(|entry| entry.indexed)
     }
 
     /// Mark a workspace as having completed its initial indexing pass.
