@@ -77,7 +77,7 @@ mod tests {
         let ws_root = tempfile::tempdir().expect("tempdir for workspace");
         std::fs::create_dir_all(ws_root.path().join(".julie")).expect("create .julie");
 
-        let pool = WorkspacePool::new(indexes_tmp.path().to_path_buf());
+        let pool = WorkspacePool::new(indexes_tmp.path().to_path_buf(), None);
 
         // First session: get_or_init
         let ws1 = pool

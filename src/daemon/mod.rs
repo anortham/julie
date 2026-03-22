@@ -63,11 +63,28 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
         "Daemon listening for IPC connections"
     );
 
+    // Open persistent daemon database, resetting stale session counts from
+    // any previous run (crash recovery) and pruning old tool call records.
+    let daemon_db: Option<Arc<DaemonDatabase>> = match DaemonDatabase::open(&paths.daemon_db()) {
+        Ok(db) => {
+            if let Err(e) = db.reset_all_session_counts() {
+                warn!("Failed to reset session counts: {}", e);
+            }
+            if let Err(e) = db.prune_tool_calls(90) {
+                warn!("Failed to prune old tool calls: {}", e);
+            }
+            info!("Daemon database ready: {}", paths.daemon_db().display());
+            Some(Arc::new(db))
+        }
+        Err(e) => {
+            warn!("Failed to open daemon.db, continuing without persistence: {}", e);
+            None
+        }
+    };
+
     // Shared state
-    let pool = Arc::new(WorkspacePool::new(paths.indexes_dir()));
+    let pool = Arc::new(WorkspacePool::new(paths.indexes_dir(), daemon_db.clone()));
     let sessions = Arc::new(SessionTracker::new());
-    // Daemon database: opened in A6 (DaemonDatabase::open); None until then.
-    let daemon_db: Option<Arc<DaemonDatabase>> = None;
 
     // Accept loop with graceful shutdown
     let result = tokio::select! {
@@ -212,6 +229,9 @@ async fn handle_ipc_session(
     if let Some(ref log) = project_log {
         log.session_end(session_id);
     }
+
+    // Decrement session count in daemon.db (pool handles the None case gracefully)
+    pool.disconnect_session(&full_workspace_id).await;
 
     result
 }

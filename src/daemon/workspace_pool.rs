@@ -5,6 +5,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use tracing::info;
 
+use crate::daemon::database::DaemonDatabase;
 use crate::workspace::JulieWorkspace;
 
 /// A pool of shared `JulieWorkspace` instances for the daemon.
@@ -16,6 +17,7 @@ use crate::workspace::JulieWorkspace;
 pub struct WorkspacePool {
     workspaces: tokio::sync::RwLock<HashMap<String, WorkspaceEntry>>,
     indexes_dir: PathBuf,
+    daemon_db: Option<Arc<DaemonDatabase>>,
 }
 
 struct WorkspaceEntry {
@@ -28,10 +30,14 @@ impl WorkspacePool {
     ///
     /// `indexes_dir` is the shared root for all workspace indexes,
     /// typically `~/.julie/indexes/`.
-    pub fn new(indexes_dir: PathBuf) -> Self {
+    ///
+    /// `daemon_db` is the persistent registry database. When `Some`, workspace
+    /// state (status, session counts) is persisted across daemon restarts.
+    pub fn new(indexes_dir: PathBuf, daemon_db: Option<Arc<DaemonDatabase>>) -> Self {
         Self {
             workspaces: tokio::sync::RwLock::new(HashMap::new()),
             indexes_dir,
+            daemon_db,
         }
     }
 
@@ -46,6 +52,9 @@ impl WorkspacePool {
     ///
     /// Uses double-checked locking: takes a read lock first (fast path),
     /// then upgrades to a write lock only when initialization is needed.
+    ///
+    /// When `daemon_db` is present, the workspace is registered as `pending` and
+    /// its session count is incremented.
     pub async fn get_or_init(
         &self,
         workspace_id: &str,
@@ -55,6 +64,10 @@ impl WorkspacePool {
         {
             let guard = self.workspaces.read().await;
             if let Some(entry) = guard.get(workspace_id) {
+                // Increment session count even on cache hit (new session reusing pool entry)
+                if let Some(ref db) = self.daemon_db {
+                    let _ = db.increment_session_count(workspace_id);
+                }
                 return Ok(Arc::clone(&entry.workspace));
             }
         }
@@ -64,6 +77,9 @@ impl WorkspacePool {
 
         // Double-check: another task may have initialized while we waited for the write lock
         if let Some(entry) = guard.get(workspace_id) {
+            if let Some(ref db) = self.daemon_db {
+                let _ = db.increment_session_count(workspace_id);
+            }
             return Ok(Arc::clone(&entry.workspace));
         }
 
@@ -72,6 +88,13 @@ impl WorkspacePool {
             root = %workspace_root.display(),
             "Initializing workspace in pool"
         );
+
+        // Register as pending before we start initializing
+        if let Some(ref db) = self.daemon_db {
+            let path_str = workspace_root.to_string_lossy();
+            let _ = db.upsert_workspace(workspace_id, &path_str, "pending");
+            let _ = db.increment_session_count(workspace_id);
+        }
 
         let workspace = self
             .init_workspace(workspace_id, workspace_root)
@@ -97,10 +120,24 @@ impl WorkspacePool {
     }
 
     /// Mark a workspace as having completed its initial indexing pass.
+    ///
+    /// Also updates daemon.db status to "ready".
     pub async fn mark_indexed(&self, workspace_id: &str) {
         let mut guard = self.workspaces.write().await;
         if let Some(entry) = guard.get_mut(workspace_id) {
             entry.indexed = true;
+        }
+        if let Some(ref db) = self.daemon_db {
+            let _ = db.update_workspace_status(workspace_id, "ready");
+        }
+    }
+
+    /// Decrement session count when a session disconnects from a workspace.
+    ///
+    /// Session count is clamped to 0 (never goes negative).
+    pub async fn disconnect_session(&self, workspace_id: &str) {
+        if let Some(ref db) = self.daemon_db {
+            let _ = db.decrement_session_count(workspace_id);
         }
     }
 
