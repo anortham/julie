@@ -1,9 +1,20 @@
 // src/workspace/registry_service.rs
-//! Workspace Registry Service for Julie
+//! Workspace Registry Service for Julie (DEPRECATED — v6 stdio-mode fallback)
 //!
-//! High-performance workspace registry service with async I/O and memory caching.
-//! Provides centralized workspace metadata management with atomic operations,
-//! automatic cleanup, and intelligent workspace lifecycle management.
+//! **Deprecated**: In v6 daemon mode, workspace state is managed by
+//! `DaemonDatabase` (`~/.julie/daemon.db`). This file-based JSON registry
+//! remains as the stdio-mode fallback only.
+//!
+//! Remaining usages as of 2026-03-22:
+//! - `src/startup.rs` — `check_if_indexing_needed` (reads primary workspace ID)
+//! - `src/handler.rs` — `get_workspace_root_for_target` (looks up workspace path)
+//! - `src/health.rs` — health check primary workspace lookup
+//! - `src/tools/refactoring/mod.rs` — workspace entry lookup for refactoring
+//! - `src/tools/search/text_search.rs` — workspace info for search
+//! - `src/tools/workspace/commands/registry/*.rs` — stdio mode manage_workspace fallbacks
+//!
+//! Full removal requires replacing all of the above with `DaemonDatabase` calls,
+//! or gating them on `handler.daemon_db.is_some()` with a graceful fallback.
 
 use super::registry::{current_timestamp, *};
 use anyhow::{Result, anyhow};
