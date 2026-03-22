@@ -1,6 +1,6 @@
 //! Tests for CLI argument parsing (clap) and workspace resolution.
 
-use crate::cli::{Cli, resolve_workspace_root};
+use crate::cli::{Cli, Command, resolve_workspace_root};
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -12,12 +12,61 @@ use std::path::PathBuf;
 fn test_no_args_parses_successfully() {
     let cli = Cli::parse_from(["julie-server"]);
     assert!(cli.workspace.is_none());
+    assert!(cli.command.is_none());
 }
 
 #[test]
 fn test_workspace_flag_parsed() {
     let cli = Cli::parse_from(["julie-server", "--workspace", "/tmp/myproject"]);
     assert_eq!(cli.workspace, Some(PathBuf::from("/tmp/myproject")));
+    assert!(cli.command.is_none());
+}
+
+// ============================================================================
+// SUBCOMMAND PARSING TESTS
+// ============================================================================
+
+#[test]
+fn test_daemon_subcommand_default_port() {
+    let cli = Cli::parse_from(["julie-server", "daemon"]);
+    match cli.command {
+        Some(Command::Daemon { port }) => assert_eq!(port, 0),
+        other => panic!("Expected Daemon subcommand, got {:?}", other.is_some()),
+    }
+}
+
+#[test]
+fn test_daemon_subcommand_custom_port() {
+    let cli = Cli::parse_from(["julie-server", "daemon", "--port", "8080"]);
+    match cli.command {
+        Some(Command::Daemon { port }) => assert_eq!(port, 8080),
+        other => panic!("Expected Daemon subcommand, got {:?}", other.is_some()),
+    }
+}
+
+#[test]
+fn test_stop_subcommand() {
+    let cli = Cli::parse_from(["julie-server", "stop"]);
+    assert!(matches!(cli.command, Some(Command::Stop)));
+}
+
+#[test]
+fn test_status_subcommand() {
+    let cli = Cli::parse_from(["julie-server", "status"]);
+    assert!(matches!(cli.command, Some(Command::Status)));
+}
+
+#[test]
+fn test_restart_subcommand() {
+    let cli = Cli::parse_from(["julie-server", "restart"]);
+    assert!(matches!(cli.command, Some(Command::Restart)));
+}
+
+#[test]
+fn test_workspace_flag_global_with_subcommand() {
+    let cli = Cli::parse_from(["julie-server", "--workspace", "/tmp/proj", "daemon"]);
+    assert_eq!(cli.workspace, Some(PathBuf::from("/tmp/proj")));
+    assert!(matches!(cli.command, Some(Command::Daemon { port: 0 })));
 }
 
 // ============================================================================

@@ -1,16 +1,31 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(
-    name = "julie-server",
-    version,
-    about = "Julie - Code Intelligence Server"
-)]
+#[command(name = "julie-server", version, about = "Julie - Code Intelligence Server")]
 pub struct Cli {
-    /// Workspace root path (overrides JULIE_WORKSPACE env var)
-    #[arg(long)]
+    /// Workspace root directory
+    #[arg(long, global = true)]
     pub workspace: Option<PathBuf>,
+
+    #[command(subcommand)]
+    pub command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+pub enum Command {
+    /// Run as persistent daemon (HTTP + IPC transport)
+    Daemon {
+        /// HTTP port for Streamable HTTP transport (0 = auto-assign)
+        #[arg(long, default_value = "0")]
+        port: u16,
+    },
+    /// Stop the running daemon
+    Stop,
+    /// Check daemon status
+    Status,
+    /// Stop daemon; it will auto-restart on next tool call
+    Restart,
 }
 
 /// Resolve the workspace root path from CLI arg, env var, or current directory.

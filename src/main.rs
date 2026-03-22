@@ -1,11 +1,12 @@
 use std::fs;
+use std::path::PathBuf;
 
 use tracing::{debug, error, info, warn};
 use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use clap::Parser;
-use julie::cli::{Cli, resolve_workspace_root};
+use julie::cli::{Cli, Command, resolve_workspace_root};
 use julie::handler::JulieServerHandler;
 use rmcp::{ServiceExt, transport::stdio};
 
@@ -14,7 +15,36 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let workspace_root = resolve_workspace_root(cli.workspace);
 
-    // Initialize logging — file only, stdout reserved for MCP JSON-RPC
+    match cli.command {
+        Some(Command::Daemon { port: _ }) => {
+            eprintln!("Daemon mode not yet implemented (Task 8)");
+            std::process::exit(1);
+        }
+        Some(Command::Stop) => {
+            eprintln!("Stop not yet implemented (Task 10)");
+            std::process::exit(1);
+        }
+        Some(Command::Status) => {
+            eprintln!("Status not yet implemented (Task 10)");
+            std::process::exit(1);
+        }
+        Some(Command::Restart) => {
+            eprintln!("Restart not yet implemented (Task 10)");
+            std::process::exit(1);
+        }
+        None => {
+            // Default: adapter mode (legacy stdio for now, Task 9 replaces this)
+            run_stdio_server(workspace_root).await?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Run the legacy stdio MCP server. Contains all the logic that was previously
+/// inline in main(): logging setup, handler creation, stdio serve, shutdown cleanup.
+async fn run_stdio_server(workspace_root: PathBuf) -> anyhow::Result<()> {
+    // Initialize logging -- file only, stdout reserved for MCP JSON-RPC
     let filter = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("julie=info"))
         .map_err(|e| anyhow::anyhow!("Failed to initialize logging filter: {}", e))?;
