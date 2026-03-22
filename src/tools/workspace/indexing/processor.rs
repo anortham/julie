@@ -529,6 +529,15 @@ impl ManageWorkspaceTool {
                     "⏱️  compute_security_risk: {:.2}s",
                     t.elapsed().as_secs_f64()
                 );
+
+                // Capture codehealth snapshot in daemon.db (daemon mode only)
+                if let Some(ref daemon_db) = handler.daemon_db {
+                    if let Err(e) = daemon_db.snapshot_codehealth_from_db(&workspace_id, &db_lock) {
+                        warn!("Failed to capture codehealth snapshot: {}", e);
+                    } else {
+                        info!(workspace_id = %workspace_id, "Codehealth snapshot captured");
+                    }
+                }
             }
 
             let bulk_duration = bulk_start.elapsed();

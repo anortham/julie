@@ -583,6 +583,92 @@ impl DaemonDatabase {
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+
+    /// Query aggregate codehealth metrics from a symbols database and store
+    /// a snapshot. Called automatically after each indexing pass completes.
+    pub fn snapshot_codehealth_from_db(
+        &self,
+        workspace_id: &str,
+        symbols_db: &crate::database::SymbolDatabase,
+    ) -> Result<()> {
+        let conn = &symbols_db.conn;
+
+        let total_symbols: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM symbols WHERE kind NOT IN ('import', 'export') \
+                 AND (content_type IS NULL OR content_type != 'documentation')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+
+        let total_files: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+            .unwrap_or(0);
+
+        let (security_high, security_medium, security_low) = conn
+            .query_row(
+                "SELECT \
+                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.security_risk.label') = 'HIGH' THEN 1 ELSE 0 END), 0), \
+                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.security_risk.label') = 'MEDIUM' THEN 1 ELSE 0 END), 0), \
+                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.security_risk.label') = 'LOW' THEN 1 ELSE 0 END), 0) \
+                 FROM symbols WHERE kind NOT IN ('import', 'export')",
+                [],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)),
+            )
+            .unwrap_or((0, 0, 0));
+
+        let (change_high, change_medium, change_low) = conn
+            .query_row(
+                "SELECT \
+                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.change_risk.label') = 'HIGH' THEN 1 ELSE 0 END), 0), \
+                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.change_risk.label') = 'MEDIUM' THEN 1 ELSE 0 END), 0), \
+                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.change_risk.label') = 'LOW' THEN 1 ELSE 0 END), 0) \
+                 FROM symbols WHERE kind NOT IN ('import', 'export')",
+                [],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)),
+            )
+            .unwrap_or((0, 0, 0));
+
+        let (symbols_tested, symbols_untested) = conn
+            .query_row(
+                "SELECT \
+                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.test_coverage.test_count') > 0 THEN 1 ELSE 0 END), 0), \
+                 COALESCE(SUM(CASE WHEN (json_extract(metadata, '$.test_coverage.test_count') = 0 \
+                              OR json_extract(metadata, '$.test_coverage.test_count') IS NULL) THEN 1 ELSE 0 END), 0) \
+                 FROM symbols WHERE kind NOT IN ('import', 'export') \
+                 AND (json_extract(metadata, '$.is_test') IS NULL OR json_extract(metadata, '$.is_test') != 1)",
+                [],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .unwrap_or((0, 0));
+
+        let (avg_centrality, max_centrality) = conn
+            .query_row(
+                "SELECT AVG(reference_score), MAX(reference_score) FROM symbols \
+                 WHERE kind NOT IN ('import', 'export')",
+                [],
+                |r| Ok((r.get::<_, Option<f64>>(0)?, r.get::<_, Option<f64>>(1)?)),
+            )
+            .unwrap_or((None, None));
+
+        let snapshot = CodehealthSnapshot {
+            total_symbols,
+            total_files,
+            security_high: security_high as i32,
+            security_medium: security_medium as i32,
+            security_low: security_low as i32,
+            change_high: change_high as i32,
+            change_medium: change_medium as i32,
+            change_low: change_low as i32,
+            symbols_tested,
+            symbols_untested,
+            avg_centrality,
+            max_centrality,
+        };
+
+        self.insert_codehealth_snapshot(workspace_id, &snapshot)
+    }
 }
 
 // -----------------------------------------------------------------------------
