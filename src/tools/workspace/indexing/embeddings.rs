@@ -152,6 +152,7 @@ pub(crate) async fn spawn_workspace_embedding(
 
     // Spawn the pipeline in the background, storing handle + flag for cancellation.
     let embedding_task_slot = handler.embedding_task.clone();
+    let self_cancel_flag = cancel_flag.clone();
     let handle = tokio::spawn(async move {
         info!("Starting workspace embedding for {workspace_id} ({total_symbols} symbols)...");
         let db_clone = db_arc.clone();
@@ -185,9 +186,15 @@ pub(crate) async fn spawn_workspace_embedding(
             }
         }
 
-        // Clear the stored handle now that we're done
+        // Clear the stored handle only if it's still ours. A newer pipeline may
+        // have replaced the slot between our abort and this cleanup; wiping the
+        // newer handle would make it invisible to future cancellation attempts.
         let mut slot = embedding_task_slot.lock().await;
-        *slot = None;
+        if let Some((ref stored_flag, _)) = *slot {
+            if Arc::ptr_eq(stored_flag, &self_cancel_flag) {
+                *slot = None;
+            }
+        }
     });
 
     // Store the handle + flag so it can be cancelled by a subsequent force reindex

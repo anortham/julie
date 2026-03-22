@@ -7,6 +7,7 @@ No known bugs. All previous issues resolved as of v5.5.4.
 ## Tech Debt
 
 - [ ] **Multiple Instances** - we should discuss the implact of having multiple instances of Julie running at the same time, multiple projects, git worktrees, etc.
+- [ ] **Teams** - we should be investigating https://code.claude.com/docs/en/agent-teams and leveraging this in julie now that it has grown so large. This should help us gring through our TODOs faster.
 
 ## Performance
 

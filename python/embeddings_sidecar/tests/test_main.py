@@ -15,7 +15,7 @@ def test_main_builds_runtime_with_defaults(monkeypatch: pytest.MonkeyPatch) -> N
     captured: dict[str, object] = {}
     fake_runtime = object()
 
-    def _build_runtime(*, model_id: str, batch_size: int):
+    def _build_runtime(*, model_id: str, batch_size: int | None):
         captured["model_id"] = model_id
         captured["batch_size"] = batch_size
         return fake_runtime
@@ -30,8 +30,9 @@ def test_main_builds_runtime_with_defaults(monkeypatch: pytest.MonkeyPatch) -> N
     exit_code = main_module.main()
 
     assert exit_code == 0
-    assert captured["model_id"] == "BAAI/bge-small-en-v1.5"
-    assert captured["batch_size"] == 32
+    assert captured["model_id"] == "nomic-ai/CodeRankEmbed"
+    # No env override means None (auto-detect from VRAM in build_runtime)
+    assert captured["batch_size"] is None
     assert captured["runtime"] is fake_runtime
 
 

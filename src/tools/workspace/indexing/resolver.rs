@@ -116,6 +116,11 @@ fn dir_of(path: &str) -> &str {
 
 /// Score a candidate symbol for disambiguation against a pending relationship.
 /// Higher score = better match. Returns 0 if the candidate should be excluded entirely.
+///
+/// Penalties can stack: a candidate in a test file (-75) with an unmatched parent
+/// (-75) loses 150 points. A same-language candidate (161 base) drops to 11; a
+/// cross-language candidate (26 base) drops to 0 and is excluded. This is
+/// intentional: test files with unmatched parents are almost never the right target.
 fn score_candidate(
     candidate: &Symbol,
     pending: &PendingRelationship,

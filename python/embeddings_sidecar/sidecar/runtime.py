@@ -9,7 +9,7 @@ from typing import Any, Callable, Sequence
 # Previously hardcoded to 384 for BGE-small; removed to support code models
 # like CodeRankEmbed (768d) and Jina-code-v2 (768d).
 _SUPPORTED_DIMS = frozenset({384, 768, 1024})
-DEFAULT_MODEL_ID = "BAAI/bge-small-en-v1.5"
+DEFAULT_MODEL_ID = "nomic-ai/CodeRankEmbed"
 
 
 def _import_module(name: str) -> Any:
@@ -138,12 +138,36 @@ def _detect_gpu_vram_bytes(telemetry_device: str, torch_module: Any) -> int | No
 
     if telemetry_device == "mps":
         try:
-            return torch_module.mps.driver_allocated_memory() or None
+            # recommended_max_working_set_size returns total available GPU memory,
+            # not just what's currently allocated (driver_allocated_memory is wrong
+            # here since it returns near-zero on a fresh process).
+            return torch_module.mps.recommended_max_working_set_size() or None
         except Exception:
             return None
 
-    # DirectML / other — use WMI on Windows
+    # DirectML / other — use WMI on Windows.
+    # IMPORTANT: Win32_VideoController.AdapterRAM is a uint32, so it wraps at
+    # 4 GB. We also try AdapterDACType-adjacent fields and qwMemorySize, but
+    # the most reliable path is nvidia-smi for NVIDIA GPUs.
     if _sys.platform == "win32":
+        try:
+            import subprocess
+
+            # nvidia-smi is the most reliable source for NVIDIA GPUs
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                # Output is in MiB, one line per GPU
+                max_mib = max(int(line.strip()) for line in result.stdout.strip().splitlines() if line.strip())
+                return max_mib * 1_048_576  # MiB to bytes
+        except Exception:
+            pass
+
+        # Fallback: WMI (works for non-NVIDIA, but AdapterRAM wraps at 4 GB)
         try:
             import wmi  # type: ignore[import-untyped]
 
@@ -153,7 +177,8 @@ def _detect_gpu_vram_bytes(telemetry_device: str, torch_module: Any) -> int | No
                 vram = getattr(gpu, "AdapterRAM", None)
                 if vram:
                     max_vram = max(max_vram, int(vram))
-            return max_vram if max_vram > 0 else None
+            # AdapterRAM wraps at 4GB; treat suspiciously small values as wrapped
+            return max_vram if max_vram >= 2_147_483_648 else None  # >= 2GB
         except Exception:
             return None
 
@@ -421,7 +446,20 @@ def build_runtime(
                 )
                 backend_device = "cpu"
                 telemetry_device = "cpu"
-                model.encode(["probe"], convert_to_numpy=True)
+                # Reset batch size: GPU-calibrated sizes (80+) cause memory
+                # pressure on CPU. Use default unless explicitly overridden.
+                if batch_size is None:
+                    batch_size = _DEFAULT_BATCH_SIZE
+                try:
+                    model.encode(["probe"], convert_to_numpy=True)
+                except Exception as cpu_err:
+                    print(
+                        f"[sidecar] FATAL: model {model_id} cannot encode on any device.\n"
+                        f"  GPU error: {probe_err}\n"
+                        f"  CPU error: {cpu_err}",
+                        file=_sys.stderr,
+                    )
+                    raise
 
     return SentenceTransformerRuntime(
         model,

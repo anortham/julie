@@ -283,6 +283,12 @@ pub fn run_embedding_pipeline_cancellable(
     // changes. Containers get child enrichment, functions/methods get callee
     // and field access enrichment.
     //
+    // PERF: This unconditionally re-embeds all enriched symbols on every pipeline
+    // run (~2000 symbols in a typical workspace), even when enrichment hasn't
+    // changed. The correct fix is to store a hash of the enrichment text alongside
+    // the vector and only re-embed when it differs. See TODO.md "Embedding format
+    // versioning" for the tracking item.
+    //
     // For containers: always re-embed (children may have changed).
     // For functions/methods: re-embed if they have callees or field accesses.
     let enriched_ids: HashSet<&str> = symbols
@@ -311,7 +317,12 @@ pub fn run_embedding_pipeline_cancellable(
         .filter(|(id, _)| !already_embedded.contains(id) || enriched_ids.contains(id.as_str()))
         .collect();
 
-    stats.symbols_skipped = already_embedded.len();
+    // Count skipped as symbols that were already embedded AND not being re-embedded
+    let re_embedded_count = prepared
+        .iter()
+        .filter(|(id, _)| already_embedded.contains(id))
+        .count();
+    stats.symbols_skipped = already_embedded.len() - re_embedded_count;
 
     if prepared.is_empty() {
         info!(
@@ -322,13 +333,16 @@ pub fn run_embedding_pipeline_cancellable(
     }
 
     info!(
-        "Embedding pipeline: {} new symbols to embed ({} already embedded, {} total)",
+        "Embedding pipeline: {} to embed ({} new, {} re-enriched, {} skipped, {} total)",
         prepared.len(),
+        prepared.len() - re_embedded_count,
+        re_embedded_count,
         stats.symbols_skipped,
         symbols.len()
     );
 
     // Process in batches
+    let total_batches = (prepared.len() + EMBEDDING_BATCH_SIZE - 1) / EMBEDDING_BATCH_SIZE;
     for chunk in prepared.chunks(EMBEDDING_BATCH_SIZE) {
         // Check cancellation between batches (e.g., force reindex aborts old pipeline)
         if cancel.map_or(false, |c| c.load(std::sync::atomic::Ordering::Relaxed)) {
@@ -341,10 +355,9 @@ pub fn run_embedding_pipeline_cancellable(
 
         let texts: Vec<String> = chunk.iter().map(|(_, text)| text.clone()).collect();
 
-        // Generate embeddings — if a batch fails (e.g., DirectML RuntimeError),
+        // Generate embeddings -- if a batch fails (e.g., DirectML RuntimeError),
         // log the error and stop. Successful batches are already persisted, and
         // the incremental filter will pick up missed symbols on the next run.
-        let total_batches = (prepared.len() + EMBEDDING_BATCH_SIZE - 1) / EMBEDDING_BATCH_SIZE;
         let vectors = match provider.embed_batch(&texts) {
             Ok(v) => v,
             Err(err) => {

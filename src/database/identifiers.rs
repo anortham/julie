@@ -153,6 +153,13 @@ impl SymbolDatabase {
             grouped.entry(symbol_id).or_default().push(callee_name);
         }
 
+        // Deduplicate within each symbol (a function calling process() 5 times
+        // should only list it once in embedding enrichment text).
+        for callees in grouped.values_mut() {
+            callees.sort();
+            callees.dedup();
+        }
+
         debug!(
             "Loaded {} call identifiers across {} symbols",
             grouped.values().map(|v| v.len()).sum::<usize>(),

@@ -60,7 +60,8 @@ fn platform_default_ort_model() -> &'static str {
 
 /// Production embedding provider using ONNX Runtime via fastembed.
 ///
-/// Uses BGE-small-en-v1.5 (384 dimensions, ~30MB model).
+/// Model depends on platform: Jina-code-v2 (768d) on Windows via DirectML,
+/// BGE-small-en-v1.5 (384d) elsewhere. Override with `JULIE_EMBEDDING_ORT_MODEL_ID`.
 /// Thread-safe via internal `Mutex<TextEmbedding>`.
 pub struct OrtEmbeddingProvider {
     model: Mutex<TextEmbedding>,
@@ -142,7 +143,7 @@ impl OrtEmbeddingProvider {
     /// Create a new provider, downloading the model if not cached.
     ///
     /// The model is cached at `cache_dir` (defaults to `~/.cache/fastembed/`).
-    /// First initialization on a machine triggers a ~30MB download.
+    /// First initialization on a machine triggers a model download (~30-270MB).
     ///
     /// On Windows, tries the selected DirectML adapter first.
     /// On macOS/Linux, uses CPU-only ORT.
@@ -496,8 +497,32 @@ impl EmbeddingProvider for OrtEmbeddingProvider {
     }
 }
 
-/// Default cache directory: `~/.cache/fastembed/`
+/// Default cache directory for fastembed model files.
+///
+/// Platform-aware: uses LOCALAPPDATA on Windows (avoids OneDrive-synced
+/// profile dirs), XDG cache on Linux, ~/Library/Caches on macOS.
 fn default_cache_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".cache").join("fastembed")
+    // Windows: LOCALAPPDATA (e.g. C:\Users\X\AppData\Local) is not synced by OneDrive.
+    // Using $HOME/.cache would land in the user profile, triggering OneDrive sync of
+    // hundreds of MB of ONNX model weights.
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        return PathBuf::from(local).join("fastembed");
+    }
+    // macOS: ~/Library/Caches is the standard non-synced cache location.
+    if cfg!(target_os = "macos") {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home)
+                .join("Library")
+                .join("Caches")
+                .join("fastembed");
+        }
+    }
+    // Linux / fallback: XDG_CACHE_HOME or ~/.cache
+    let cache_base = std::env::var("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            PathBuf::from(home).join(".cache")
+        });
+    cache_base.join("fastembed")
 }

@@ -497,17 +497,25 @@ fn strip_xml_tags(s: &str) -> String {
 }
 
 /// Truncate a string on a word boundary, appending no ellipsis.
-fn truncate_on_word_boundary(text: &str, max_chars: usize) -> String {
-    if text.len() <= max_chars {
+/// `max_bytes` is a byte budget (not char count); the function backs up to
+/// the nearest UTF-8 char boundary, then to the last space before that.
+fn truncate_on_word_boundary(text: &str, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
         return text.to_string();
     }
 
-    // Find the last space before the limit
-    let truncated = &text[..max_chars];
+    // Back up to a valid UTF-8 char boundary (avoids panic on multi-byte chars)
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+
+    // Find the last space before the limit for a clean word break
+    let truncated = &text[..end];
     if let Some(pos) = truncated.rfind(' ') {
         truncated[..pos].to_string()
     } else {
-        // No space found — hard truncate (rare for natural text)
+        // No space found, use the char boundary directly (rare for natural text)
         truncated.to_string()
     }
 }

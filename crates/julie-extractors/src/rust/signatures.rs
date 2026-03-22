@@ -124,8 +124,8 @@ pub(super) fn extract_associated_type(
 const NOISE_MACROS: &[&str] = &[
     // std — constructors and formatting
     "vec", "format", "println", "print", "eprintln", "eprint", "write", "writeln",
-    // std — assertions and control flow
-    "matches", "assert", "assert_eq", "assert_ne",
+    // std — assertions, debugging, and control flow
+    "dbg", "matches", "assert", "assert_eq", "assert_ne",
     "debug_assert", "debug_assert_eq", "debug_assert_ne",
     "panic", "todo", "unimplemented", "unreachable",
     // std — compile-time and env
