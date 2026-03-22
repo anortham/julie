@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::daemon::database::DaemonDatabase;
+use crate::daemon::watcher_pool::WatcherPool;
 use crate::workspace::JulieWorkspace;
 
 /// A pool of shared `JulieWorkspace` instances for the daemon.
@@ -18,6 +19,7 @@ pub struct WorkspacePool {
     workspaces: tokio::sync::RwLock<HashMap<String, WorkspaceEntry>>,
     indexes_dir: PathBuf,
     daemon_db: Option<Arc<DaemonDatabase>>,
+    watcher_pool: Option<Arc<WatcherPool>>,
 }
 
 struct WorkspaceEntry {
@@ -33,11 +35,21 @@ impl WorkspacePool {
     ///
     /// `daemon_db` is the persistent registry database. When `Some`, workspace
     /// state (status, session counts) is persisted across daemon restarts.
-    pub fn new(indexes_dir: PathBuf, daemon_db: Option<Arc<DaemonDatabase>>) -> Self {
+    ///
+    /// `watcher_pool` is the shared file watcher registry. When `Some`,
+    /// `IncrementalIndexer` instances are ref-counted across sessions so that
+    /// each workspace has exactly one active file watcher regardless of how
+    /// many sessions are attached.
+    pub fn new(
+        indexes_dir: PathBuf,
+        daemon_db: Option<Arc<DaemonDatabase>>,
+        watcher_pool: Option<Arc<WatcherPool>>,
+    ) -> Self {
         Self {
             workspaces: tokio::sync::RwLock::new(HashMap::new()),
             indexes_dir,
             daemon_db,
+            watcher_pool,
         }
     }
 
@@ -55,21 +67,32 @@ impl WorkspacePool {
     ///
     /// When `daemon_db` is present, the workspace is registered as `pending` and
     /// its session count is incremented.
+    ///
+    /// When `watcher_pool` is present, `attach()` is called to increment the
+    /// watcher ref-count (and start a new `IncrementalIndexer` if needed).
+    /// Watcher failures are non-fatal: a warning is logged and initialization
+    /// continues, since file watching is a convenience, not a hard requirement.
     pub async fn get_or_init(
         &self,
         workspace_id: &str,
         workspace_root: PathBuf,
     ) -> Result<Arc<JulieWorkspace>> {
-        // Fast path: read lock
-        {
+        // Fast path: read lock (drop before any async work to avoid holding across awaits)
+        let cached_ws = {
             let guard = self.workspaces.read().await;
-            if let Some(entry) = guard.get(workspace_id) {
-                // Increment session count even on cache hit (new session reusing pool entry)
-                if let Some(ref db) = self.daemon_db {
-                    let _ = db.increment_session_count(workspace_id);
-                }
-                return Ok(Arc::clone(&entry.workspace));
+            guard.get(workspace_id).map(|e| Arc::clone(&e.workspace))
+        };
+
+        if let Some(ws) = cached_ws {
+            if let Some(ref db) = self.daemon_db {
+                let _ = db.increment_session_count(workspace_id);
             }
+            if let Some(ref wp) = self.watcher_pool {
+                if let Err(e) = wp.attach(workspace_id, &ws).await {
+                    warn!(workspace_id, "Failed to attach watcher on session reuse: {}", e);
+                }
+            }
+            return Ok(ws);
         }
 
         // Slow path: write lock + initialization
@@ -77,10 +100,17 @@ impl WorkspacePool {
 
         // Double-check: another task may have initialized while we waited for the write lock
         if let Some(entry) = guard.get(workspace_id) {
+            let ws = Arc::clone(&entry.workspace);
+            drop(guard);
             if let Some(ref db) = self.daemon_db {
                 let _ = db.increment_session_count(workspace_id);
             }
-            return Ok(Arc::clone(&entry.workspace));
+            if let Some(ref wp) = self.watcher_pool {
+                if let Err(e) = wp.attach(workspace_id, &ws).await {
+                    warn!(workspace_id, "Failed to attach watcher (double-check path): {}", e);
+                }
+            }
+            return Ok(ws);
         }
 
         info!(
@@ -109,6 +139,13 @@ impl WorkspacePool {
                 indexed: false,
             },
         );
+        drop(guard); // release write lock before async watcher attach
+
+        if let Some(ref wp) = self.watcher_pool {
+            if let Err(e) = wp.attach(workspace_id, &ws).await {
+                warn!(workspace_id, "Failed to attach watcher: {}", e);
+            }
+        }
 
         Ok(ws)
     }
@@ -132,12 +169,16 @@ impl WorkspacePool {
         }
     }
 
-    /// Decrement session count when a session disconnects from a workspace.
+    /// Decrement session count and watcher ref when a session disconnects.
     ///
-    /// Session count is clamped to 0 (never goes negative).
+    /// Session count is clamped to 0 (never goes negative). Watcher ref
+    /// decrement starts the grace period when the last session disconnects.
     pub async fn disconnect_session(&self, workspace_id: &str) {
         if let Some(ref db) = self.daemon_db {
             let _ = db.decrement_session_count(workspace_id);
+        }
+        if let Some(ref wp) = self.watcher_pool {
+            wp.detach(workspace_id).await;
         }
     }
 

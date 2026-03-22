@@ -15,6 +15,7 @@ pub mod workspace_pool;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use rmcp::ServiceExt;
@@ -29,6 +30,7 @@ use self::database::DaemonDatabase;
 use self::ipc::IpcListener;
 use self::pid::PidFile;
 use self::session::SessionTracker;
+use self::watcher_pool::WatcherPool;
 use self::workspace_pool::WorkspacePool;
 
 /// Run the Julie daemon: bind IPC socket, accept connections, serve MCP.
@@ -83,7 +85,15 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
     };
 
     // Shared state
-    let pool = Arc::new(WorkspacePool::new(paths.indexes_dir(), daemon_db.clone()));
+    let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
+    let _reaper = watcher_pool.spawn_reaper(Duration::from_secs(60));
+    info!("WatcherPool started (grace=300s, reaper=60s)");
+
+    let pool = Arc::new(WorkspacePool::new(
+        paths.indexes_dir(),
+        daemon_db.clone(),
+        Some(watcher_pool),
+    ));
     let sessions = Arc::new(SessionTracker::new());
 
     // Accept loop with graceful shutdown

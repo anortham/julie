@@ -17,7 +17,7 @@ fn temp_workspace_root() -> tempfile::TempDir {
 async fn test_new_with_shared_workspace_creates_handler() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -42,7 +42,7 @@ async fn test_new_with_shared_workspace_creates_handler() {
 async fn test_shared_workspace_handler_has_own_metrics() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -84,7 +84,7 @@ async fn test_shared_workspace_handler_has_own_metrics() {
 async fn test_shared_workspace_handler_shares_database() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -124,7 +124,7 @@ async fn test_shared_workspace_handler_shares_database() {
 async fn test_handler_is_indexed_when_workspace_has_symbols() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -169,7 +169,7 @@ async fn test_handler_is_indexed_when_workspace_has_symbols() {
 async fn test_handler_not_indexed_when_workspace_empty() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
