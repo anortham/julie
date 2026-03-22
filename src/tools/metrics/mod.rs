@@ -7,6 +7,7 @@
 pub(crate) mod operational;
 pub(crate) mod query;
 pub mod session;
+pub(crate) mod trend;
 
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
@@ -42,7 +43,7 @@ fn default_workspace() -> Option<String> {
 /// test status, symbol kind, file pattern, and language.
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct QueryMetricsTool {
-    /// Metrics category: "code_health" (default), "session", or "history"
+    /// Metrics category: "code_health" (default), "session", "history", or "trend"
     #[serde(default = "default_category")]
     pub category: String,
     /// Sort field: "security_risk", "change_risk", "centrality", "test_coverage" (default: "security_risk")
@@ -101,6 +102,58 @@ impl QueryMetricsTool {
             "session" => {
                 let output =
                     operational::format_session_from_metrics(&handler.session_metrics);
+                Ok(CallToolResult::text_content(vec![Content::text(output)]))
+            }
+            "trend" => {
+                let daemon_db = match &handler.daemon_db {
+                    Some(db) => std::sync::Arc::clone(db),
+                    None => {
+                        return Ok(CallToolResult::text_content(vec![Content::text(
+                            "Trend history is only available in daemon mode.".to_string(),
+                        )]));
+                    }
+                };
+                let workspace_id = match &handler.workspace_id {
+                    Some(id) => id.clone(),
+                    None => {
+                        return Ok(CallToolResult::text_content(vec![Content::text(
+                            "No workspace ID available for trend query.".to_string(),
+                        )]));
+                    }
+                };
+
+                let output = tokio::task::spawn_blocking(move || {
+                    let snapshots = daemon_db.get_snapshot_history(&workspace_id, 10)?;
+                    if snapshots.is_empty() {
+                        return Ok::<String, anyhow::Error>(
+                            "No codehealth history yet. Run an indexing pass first.".to_string(),
+                        );
+                    }
+                    let table = trend::format_trend_table(&snapshots);
+                    if snapshots.len() < 2 {
+                        return Ok(table);
+                    }
+                    // Build a CodehealthSnapshot from the latest row for comparison
+                    let latest = &snapshots[0];
+                    let current = crate::daemon::database::CodehealthSnapshot {
+                        total_symbols: latest.total_symbols,
+                        total_files: latest.total_files,
+                        security_high: latest.security_high,
+                        security_medium: latest.security_medium,
+                        security_low: latest.security_low,
+                        change_high: latest.change_high,
+                        change_medium: latest.change_medium,
+                        change_low: latest.change_low,
+                        symbols_tested: latest.symbols_tested,
+                        symbols_untested: latest.symbols_untested,
+                        avg_centrality: latest.avg_centrality,
+                        max_centrality: latest.max_centrality,
+                    };
+                    let comparison = trend::format_comparison(&current, &snapshots[1]);
+                    Ok(format!("{comparison}\n\n{table}"))
+                })
+                .await??;
+
                 Ok(CallToolResult::text_content(vec![Content::text(output)]))
             }
             "history" => {
