@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use crate::daemon::database::DaemonDatabase;
 use crate::paths::DaemonPaths;
 
 /// Tracks which workspace indexes have been successfully migrated.
@@ -216,6 +218,7 @@ pub fn scan_project_indexes(project_root: &Path) -> Vec<(String, PathBuf)> {
 pub fn run_migration_for_workspace(
     daemon_paths: &DaemonPaths,
     workspace_root: &Path,
+    daemon_db: Option<Arc<DaemonDatabase>>,
 ) -> Result<()> {
     let state_path = daemon_paths.migration_state();
     let mut state = MigrationState::load(&state_path)?;
@@ -246,6 +249,20 @@ pub fn run_migration_for_workspace(
         match migrate_workspace_index(workspace_id, source_path, &destination) {
             Ok(()) => {
                 state.mark_migrated(workspace_id);
+                // Register the migrated workspace in daemon.db so the registry
+                // knows about it without a full disk scan on next startup.
+                if let Some(ref db) = daemon_db {
+                    let path_str = workspace_root.to_string_lossy();
+                    if let Err(e) = db.upsert_workspace(workspace_id, &path_str, "ready") {
+                        tracing::warn!(
+                            workspace_id,
+                            "Failed to register migrated workspace in daemon.db: {:#}",
+                            e
+                        );
+                    } else {
+                        tracing::info!(workspace_id, "Registered migrated workspace in daemon.db");
+                    }
+                }
                 tracing::info!(workspace_id, "Successfully migrated workspace index");
             }
             Err(e) => {

@@ -188,7 +188,7 @@ mod tests {
         std::fs::write(tantivy_dir.join("meta.json"), b"{}").expect("write meta.json");
 
         // Run migration
-        run_migration_for_workspace(&daemon_paths, &project_root).expect("migration");
+        run_migration_for_workspace(&daemon_paths, &project_root, None).expect("migration");
 
         // Index should now exist in the centralized location
         let central = julie_home.join("indexes").join(ws_id);

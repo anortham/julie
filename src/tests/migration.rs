@@ -156,7 +156,7 @@ mod tests {
         create_fake_index(&project_indexes, "myproject_abcd1234");
 
         // Run migration
-        run_migration_for_workspace(&daemon_paths, &project_root).unwrap();
+        run_migration_for_workspace(&daemon_paths, &project_root, None).unwrap();
 
         // Central index should now exist
         let central_index = julie_home.join("indexes/myproject_abcd1234");
