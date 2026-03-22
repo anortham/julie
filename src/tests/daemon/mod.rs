@@ -6,4 +6,5 @@ pub mod paths;
 pub mod pid;
 pub mod server;
 pub mod session;
+pub mod watcher_pool;
 pub mod workspace_pool;

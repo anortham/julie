@@ -10,6 +10,7 @@ pub mod lifecycle;
 pub mod pid;
 pub mod project_log;
 pub mod session;
+pub mod watcher_pool;
 pub mod workspace_pool;
 
 use std::path::PathBuf;
