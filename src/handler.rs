@@ -846,18 +846,17 @@ impl JulieServerHandler {
 #[tool_handler]
 impl ServerHandler for JulieServerHandler {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: rmcp::model::ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation {
-                name: "Julie".into(),
-                version: env!("CARGO_PKG_VERSION").into(),
-                title: Some("Julie - Code Intelligence Server".into()),
-                icons: None,
-                website_url: None,
-            },
-            instructions: self.load_agent_instructions(),
+        let server_info = Implementation::new("Julie", env!("CARGO_PKG_VERSION"))
+            .with_title("Julie - Code Intelligence Server");
+
+        let mut info = ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(server_info);
+
+        if let Some(instructions) = self.load_agent_instructions() {
+            info = info.with_instructions(instructions);
         }
+
+        info
     }
 
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
