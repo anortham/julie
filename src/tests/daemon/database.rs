@@ -157,6 +157,70 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
+    // A5: Codehealth Snapshot Storage
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_snapshot_and_retrieve_codehealth() {
+        use crate::daemon::database::CodehealthSnapshot;
+
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("ws1", "/path", "ready").unwrap();
+
+        let snapshot = CodehealthSnapshot {
+            total_symbols: 7306,
+            total_files: 434,
+            security_high: 14,
+            security_medium: 25,
+            security_low: 100,
+            change_high: 8,
+            change_medium: 30,
+            change_low: 200,
+            symbols_tested: 180,
+            symbols_untested: 47,
+            avg_centrality: Some(0.42),
+            max_centrality: Some(0.95),
+        };
+
+        db.insert_codehealth_snapshot("ws1", &snapshot).unwrap();
+
+        let latest = db.get_latest_snapshot("ws1").unwrap().unwrap();
+        assert_eq!(latest.total_symbols, 7306);
+        assert_eq!(latest.security_high, 14);
+    }
+
+    #[test]
+    fn test_snapshot_history() {
+        use crate::daemon::database::CodehealthSnapshot;
+
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("ws1", "/path", "ready").unwrap();
+
+        for i in 0..3_i64 {
+            let snapshot = CodehealthSnapshot {
+                total_symbols: 7000 + i * 100,
+                total_files: 400,
+                security_high: (14 - i) as i32,
+                ..Default::default()
+            };
+            db.insert_codehealth_snapshot("ws1", &snapshot).unwrap();
+        }
+
+        let history = db.get_snapshot_history("ws1", 10).unwrap();
+        assert_eq!(history.len(), 3);
+        // Most recent first: last inserted has total_symbols = 7200
+        assert_eq!(history[0].total_symbols, 7200);
+    }
+
+    #[test]
+    fn test_get_latest_snapshot_returns_none_when_empty() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("ws1", "/path", "ready").unwrap();
+
+        assert!(db.get_latest_snapshot("ws1").unwrap().is_none());
+    }
+
+    // -------------------------------------------------------------------------
     // A4: Tool Calls and Retention
     // -------------------------------------------------------------------------
 

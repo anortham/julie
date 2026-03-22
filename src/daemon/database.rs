@@ -494,6 +494,95 @@ impl DaemonDatabase {
         let rows = stmt.query_map(params![primary_id], |row| WorkspaceRow::from_row(row))?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
+
+    // -------------------------------------------------------------------------
+    // Codehealth Snapshots
+    // -------------------------------------------------------------------------
+
+    /// Persist a codehealth snapshot for a workspace. Called automatically after
+    /// each indexing pass completes (when `daemon_db` is present on the handler).
+    pub fn insert_codehealth_snapshot(
+        &self,
+        workspace_id: &str,
+        snapshot: &CodehealthSnapshot,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO codehealth_snapshots
+                (workspace_id, timestamp, total_symbols, total_files,
+                 security_high, security_medium, security_low,
+                 change_high, change_medium, change_low,
+                 symbols_tested, symbols_untested,
+                 avg_centrality, max_centrality)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                workspace_id,
+                now_unix(),
+                snapshot.total_symbols,
+                snapshot.total_files,
+                snapshot.security_high,
+                snapshot.security_medium,
+                snapshot.security_low,
+                snapshot.change_high,
+                snapshot.change_medium,
+                snapshot.change_low,
+                snapshot.symbols_tested,
+                snapshot.symbols_untested,
+                snapshot.avg_centrality,
+                snapshot.max_centrality,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Retrieve the most recently inserted snapshot for a workspace, or `None`.
+    pub fn get_latest_snapshot(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Option<CodehealthSnapshotRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, workspace_id, timestamp, total_symbols, total_files,
+                    security_high, security_medium, security_low,
+                    change_high, change_medium, change_low,
+                    symbols_tested, symbols_untested,
+                    avg_centrality, max_centrality
+             FROM codehealth_snapshots
+             WHERE workspace_id = ?1
+             ORDER BY timestamp DESC
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query(params![workspace_id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(CodehealthSnapshotRow::from_row(row)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Retrieve the N most recent snapshots for a workspace, newest first.
+    pub fn get_snapshot_history(
+        &self,
+        workspace_id: &str,
+        limit: u32,
+    ) -> Result<Vec<CodehealthSnapshotRow>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, workspace_id, timestamp, total_symbols, total_files,
+                    security_high, security_medium, security_low,
+                    change_high, change_medium, change_low,
+                    symbols_tested, symbols_untested,
+                    avg_centrality, max_centrality
+             FROM codehealth_snapshots
+             WHERE workspace_id = ?1
+             ORDER BY timestamp DESC
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![workspace_id, limit as i64], |row| {
+            CodehealthSnapshotRow::from_row(row)
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -530,6 +619,68 @@ impl WorkspaceRow {
             vector_count: row.get(8)?,
             created_at: row.get(9)?,
             updated_at: row.get(10)?,
+        })
+    }
+}
+
+/// Metrics captured after a completed indexing pass.
+///
+/// Passed to `DaemonDatabase::insert_codehealth_snapshot`. All risk counts
+/// default to 0 so callers can use struct update syntax (`..Default::default()`).
+#[derive(Debug, Clone, Default)]
+pub struct CodehealthSnapshot {
+    pub total_symbols: i64,
+    pub total_files: i64,
+    pub security_high: i32,
+    pub security_medium: i32,
+    pub security_low: i32,
+    pub change_high: i32,
+    pub change_medium: i32,
+    pub change_low: i32,
+    pub symbols_tested: i64,
+    pub symbols_untested: i64,
+    pub avg_centrality: Option<f64>,
+    pub max_centrality: Option<f64>,
+}
+
+/// A row from the `codehealth_snapshots` table.
+#[derive(Debug, Clone)]
+pub struct CodehealthSnapshotRow {
+    pub id: i64,
+    pub workspace_id: String,
+    pub timestamp: i64,
+    pub total_symbols: i64,
+    pub total_files: i64,
+    pub security_high: i32,
+    pub security_medium: i32,
+    pub security_low: i32,
+    pub change_high: i32,
+    pub change_medium: i32,
+    pub change_low: i32,
+    pub symbols_tested: i64,
+    pub symbols_untested: i64,
+    pub avg_centrality: Option<f64>,
+    pub max_centrality: Option<f64>,
+}
+
+impl CodehealthSnapshotRow {
+    fn from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self {
+            id: row.get(0)?,
+            workspace_id: row.get(1)?,
+            timestamp: row.get(2)?,
+            total_symbols: row.get(3)?,
+            total_files: row.get(4)?,
+            security_high: row.get(5)?,
+            security_medium: row.get(6)?,
+            security_low: row.get(7)?,
+            change_high: row.get(8)?,
+            change_medium: row.get(9)?,
+            change_low: row.get(10)?,
+            symbols_tested: row.get(11)?,
+            symbols_untested: row.get(12)?,
+            avg_centrality: row.get(13)?,
+            max_centrality: row.get(14)?,
         })
     }
 }
