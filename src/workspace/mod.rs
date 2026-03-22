@@ -53,6 +53,11 @@ pub struct JulieWorkspace {
 
     /// Workspace configuration
     pub config: WorkspaceConfig,
+
+    /// Override for the indexes root directory.
+    /// When set, `indexes_root_path()` returns this instead of `{julie_dir}/indexes`.
+    /// Used by the daemon's WorkspacePool to redirect indexes to a shared location.
+    pub index_root_override: Option<PathBuf>,
 }
 
 /// Configuration for a Julie workspace
@@ -146,6 +151,7 @@ impl Clone for JulieWorkspace {
             embedding_provider: self.embedding_provider.clone(),
             embedding_runtime_status: self.embedding_runtime_status.clone(),
             config: self.config.clone(),
+            index_root_override: self.index_root_override.clone(),
         }
     }
 }
@@ -205,6 +211,7 @@ impl JulieWorkspace {
             embedding_provider: None,
             embedding_runtime_status: None,
             config,
+            index_root_override: None,
         };
 
         // Initialize persistent components
@@ -250,6 +257,7 @@ impl JulieWorkspace {
                     embedding_provider: None,
                     embedding_runtime_status: None,
                     config,
+                    index_root_override: None,
                 };
 
                 // Validate workspace structure
@@ -488,9 +496,20 @@ impl JulieWorkspace {
         self.julie_dir.join("db").join("symbols.db")
     }
 
-    /// Get the root indexes directory (contains all workspace indexes)
+    /// Get the root indexes directory (contains all workspace indexes).
+    /// When `index_root_override` is set, returns that path directly instead of
+    /// the default `{julie_dir}/indexes`.
     pub fn indexes_root_path(&self) -> PathBuf {
-        self.julie_dir.join("indexes")
+        self.index_root_override
+            .clone()
+            .unwrap_or_else(|| self.julie_dir.join("indexes"))
+    }
+
+    /// Override the indexes root directory.
+    /// Used by the daemon's WorkspacePool to redirect database/search index
+    /// storage to a shared location (e.g. `~/.julie/indexes/{workspace_id}`).
+    pub fn set_index_root(&mut self, path: PathBuf) {
+        self.index_root_override = Some(path);
     }
 
     /// Get the path to a specific workspace's index directory (SQLite database)
