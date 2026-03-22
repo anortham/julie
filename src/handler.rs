@@ -421,6 +421,13 @@ impl JulieServerHandler {
             Some(metadata)
         };
 
+        // Clone for daemon.db write before values are moved into the first spawn
+        let daemon_db_opt = self.daemon_db.clone();
+        let workspace_id_opt = self.workspace_id.clone();
+        let session_id_d = session_id.clone();
+        let tool_name_d = tool_name.clone();
+        let metadata_str_d = metadata_str.clone();
+
         tokio::spawn(async move {
             let guard = workspace.read().await;
             if let Some(ws) = guard.as_ref() {
@@ -456,6 +463,26 @@ impl JulieServerHandler {
                 }
             }
         });
+
+        // Write to daemon.db if available (daemon mode, fire-and-forget)
+        if let Some(daemon_db) = daemon_db_opt {
+            let workspace_id = workspace_id_opt.unwrap_or_default();
+            tokio::task::spawn_blocking(move || {
+                if let Err(e) = daemon_db.insert_tool_call(
+                    &workspace_id,
+                    &session_id_d,
+                    &tool_name_d,
+                    duration_ms,
+                    result_count,
+                    None,
+                    Some(output_bytes),
+                    true,
+                    metadata_str_d.as_deref(),
+                ) {
+                    warn!("Failed to write tool call to daemon.db: {}", e);
+                }
+            });
+        }
     }
 
     /// Extract output byte count from a CallToolResult.
