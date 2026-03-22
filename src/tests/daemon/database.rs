@@ -90,4 +90,69 @@ mod tests {
         assert_eq!(ws.embedding_model, Some("jina-code-v2".to_string()));
         assert_eq!(ws.vector_count, Some(80));
     }
+
+    // -------------------------------------------------------------------------
+    // A3: Workspace References CRUD
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_add_and_list_references() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("primary1", "/proj", "ready").unwrap();
+        db.upsert_workspace("ref1", "/lib1", "ready").unwrap();
+        db.upsert_workspace("ref2", "/lib2", "ready").unwrap();
+
+        db.add_reference("primary1", "ref1").unwrap();
+        db.add_reference("primary1", "ref2").unwrap();
+
+        let refs = db.list_references("primary1").unwrap();
+        assert_eq!(refs.len(), 2);
+    }
+
+    #[test]
+    fn test_remove_reference() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("p1", "/proj", "ready").unwrap();
+        db.upsert_workspace("r1", "/lib", "ready").unwrap();
+        db.add_reference("p1", "r1").unwrap();
+
+        db.remove_reference("p1", "r1").unwrap();
+        assert_eq!(db.list_references("p1").unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_cascade_delete_removes_references() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("p1", "/proj", "ready").unwrap();
+        db.upsert_workspace("r1", "/lib", "ready").unwrap();
+        db.add_reference("p1", "r1").unwrap();
+
+        db.delete_workspace("r1").unwrap();
+        assert_eq!(db.list_references("p1").unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_add_reference_duplicate_is_ignored() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("p1", "/proj", "ready").unwrap();
+        db.upsert_workspace("r1", "/lib", "ready").unwrap();
+
+        db.add_reference("p1", "r1").unwrap();
+        db.add_reference("p1", "r1").unwrap(); // duplicate -- should not error
+
+        assert_eq!(db.list_references("p1").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_list_references_returns_workspace_row_data() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("p1", "/proj", "ready").unwrap();
+        db.upsert_workspace("r1", "/lib", "ready").unwrap();
+        db.add_reference("p1", "r1").unwrap();
+
+        let refs = db.list_references("p1").unwrap();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].workspace_id, "r1");
+        assert_eq!(refs[0].path, "/lib");
+    }
 }
