@@ -85,6 +85,11 @@ pub struct JulieServerHandler {
     /// Per-project log for daemon mode (writes to {project}/.julie/logs/).
     /// None in stdio mode (tracing handles project logging directly).
     pub(crate) project_log: Option<Arc<crate::daemon::project_log::ProjectLog>>,
+    /// Daemon-level database for persistent metrics and workspace registry.
+    /// None in stdio mode, Some in daemon mode.
+    pub(crate) daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+    /// This session's workspace ID (e.g. "julie_ab12cd34"). None in stdio mode.
+    pub(crate) workspace_id: Option<String>,
 }
 
 impl JulieServerHandler {
@@ -107,6 +112,8 @@ impl JulieServerHandler {
             embedding_task: Arc::new(tokio::sync::Mutex::new(None)),
             tool_router: Self::tool_router(),
             project_log: None,
+            daemon_db: None,
+            workspace_id: None,
         })
     }
 
@@ -124,6 +131,8 @@ impl JulieServerHandler {
     pub async fn new_with_shared_workspace(
         workspace: Arc<JulieWorkspace>,
         workspace_root: PathBuf,
+        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+        workspace_id: Option<String>,
     ) -> Result<Self> {
         info!(
             "Creating daemon-mode handler (workspace_root: {:?})",
@@ -161,6 +170,8 @@ impl JulieServerHandler {
             embedding_task: Arc::new(tokio::sync::Mutex::new(None)),
             tool_router: Self::tool_router(),
             project_log,
+            daemon_db,
+            workspace_id,
         })
     }
 

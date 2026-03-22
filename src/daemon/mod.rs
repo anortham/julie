@@ -25,6 +25,7 @@ use crate::handler::JulieServerHandler;
 use crate::paths::DaemonPaths;
 use crate::workspace::registry::generate_workspace_id;
 
+use self::database::DaemonDatabase;
 use self::ipc::IpcListener;
 use self::pid::PidFile;
 use self::session::SessionTracker;
@@ -65,10 +66,12 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
     // Shared state
     let pool = Arc::new(WorkspacePool::new(paths.indexes_dir()));
     let sessions = Arc::new(SessionTracker::new());
+    // Daemon database: opened in A6 (DaemonDatabase::open); None until then.
+    let daemon_db: Option<Arc<DaemonDatabase>> = None;
 
     // Accept loop with graceful shutdown
     let result = tokio::select! {
-        res = accept_loop(&listener, &pool, &sessions) => res,
+        res = accept_loop(&listener, &pool, &sessions, &daemon_db) => res,
         _ = shutdown_signal() => {
             info!("Shutdown signal received, stopping daemon");
             Ok(())
@@ -97,12 +100,14 @@ async fn accept_loop(
     listener: &IpcListener,
     pool: &Arc<WorkspacePool>,
     sessions: &Arc<SessionTracker>,
+    daemon_db: &Option<Arc<DaemonDatabase>>,
 ) -> Result<()> {
     loop {
         let stream = listener.accept().await.context("IPC accept failed")?;
 
         let pool = Arc::clone(pool);
         let sessions = Arc::clone(sessions);
+        let daemon_db = daemon_db.clone();
         let session_id = sessions.add_session();
 
         info!(
@@ -112,7 +117,7 @@ async fn accept_loop(
         );
 
         tokio::spawn(async move {
-            if let Err(e) = handle_ipc_session(stream, &pool, &session_id).await {
+            if let Err(e) = handle_ipc_session(stream, &pool, &session_id, &daemon_db).await {
                 error!(session_id = %session_id, "IPC session error: {}", e);
             }
 
@@ -131,6 +136,7 @@ async fn handle_ipc_session(
     mut stream: tokio::net::UnixStream,
     pool: &WorkspacePool,
     session_id: &str,
+    daemon_db: &Option<Arc<DaemonDatabase>>,
 ) -> Result<()> {
     // Read the workspace header (byte-by-byte to avoid BufReader buffering issues)
     let workspace_path = read_workspace_header(&mut stream).await?;
@@ -169,6 +175,8 @@ async fn handle_ipc_session(
     let handler = JulieServerHandler::new_with_shared_workspace(
         workspace,
         workspace_path,
+        daemon_db.clone(),
+        Some(full_workspace_id.clone()),
     )
     .await
     .context("Failed to create handler for IPC session")?;

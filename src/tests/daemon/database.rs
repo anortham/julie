@@ -155,4 +155,43 @@ mod tests {
         assert_eq!(refs[0].workspace_id, "r1");
         assert_eq!(refs[0].path, "/lib");
     }
+
+    // -------------------------------------------------------------------------
+    // A4: Tool Calls and Retention
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_insert_and_query_tool_calls() {
+        let (db, _tmp) = create_test_db();
+        db.insert_tool_call("ws1", "sess1", "fast_search", 12.5, Some(10), None, Some(500), true, None).unwrap();
+        db.insert_tool_call("ws1", "sess1", "deep_dive", 45.0, Some(1), None, Some(1200), true, None).unwrap();
+
+        let history = db.query_tool_call_history("ws1", 7).unwrap();
+        assert_eq!(history.total_calls, 2);
+        assert_eq!(history.per_tool.len(), 2);
+    }
+
+    #[test]
+    fn test_prune_old_tool_calls() {
+        let (db, _tmp) = create_test_db();
+        // Insert a call with a very old timestamp (year 2001)
+        {
+            let conn = db.conn_for_test();
+            conn.execute(
+                "INSERT INTO tool_calls (workspace_id, session_id, timestamp, tool_name, duration_ms, success)
+                 VALUES ('ws1', 's1', 1000000, 'old_call', 1.0, 1)",
+                [],
+            ).unwrap();
+        }
+        // Insert a recent call
+        db.insert_tool_call("ws1", "s1", "new_call", 1.0, None, None, None, true, None).unwrap();
+
+        db.prune_tool_calls(90).unwrap();
+
+        let count: i64 = {
+            let conn = db.conn_for_test();
+            conn.query_row("SELECT COUNT(*) FROM tool_calls", [], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(count, 1); // only the recent one survives
+    }
 }

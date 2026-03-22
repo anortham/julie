@@ -9,6 +9,8 @@ use rusqlite::{Connection, params};
 use std::path::Path;
 use tracing::{info, warn};
 
+use crate::database::{HistorySummary, ToolCallSummary};
+
 const DAEMON_SCHEMA_VERSION: i32 = 1;
 
 /// Thread-safe daemon database. Shared across sessions as `Arc<DaemonDatabase>`.
@@ -346,6 +348,135 @@ impl DaemonDatabase {
         )?;
         Ok(())
     }
+
+    // -------------------------------------------------------------------------
+    // Tool Calls
+    // -------------------------------------------------------------------------
+
+    /// Insert one tool call record. `workspace_id` is the primary workspace for
+    /// the session that made the call.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_tool_call(
+        &self,
+        workspace_id: &str,
+        session_id: &str,
+        tool_name: &str,
+        duration_ms: f64,
+        result_count: Option<u32>,
+        source_bytes: Option<u64>,
+        output_bytes: Option<u64>,
+        success: bool,
+        metadata: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO tool_calls
+                (workspace_id, session_id, timestamp, tool_name, duration_ms,
+                 result_count, source_bytes, output_bytes, success, metadata)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                workspace_id,
+                session_id,
+                now_unix(),
+                tool_name,
+                duration_ms,
+                result_count.map(|v| v as i64),
+                source_bytes.map(|v| v as i64),
+                output_bytes.map(|v| v as i64),
+                if success { 1 } else { 0 },
+                metadata,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Query aggregated tool call history for a workspace over the last `days` days.
+    pub fn query_tool_call_history(&self, workspace_id: &str, days: u32) -> Result<HistorySummary> {
+        use std::collections::HashMap;
+
+        let conn = self.conn.lock().unwrap();
+        let cutoff = now_unix() - (days as i64 * 86400);
+
+        let session_count: i64 = conn.query_row(
+            "SELECT COUNT(DISTINCT session_id) FROM tool_calls
+             WHERE workspace_id = ?1 AND timestamp >= ?2",
+            params![workspace_id, cutoff],
+            |row| row.get(0),
+        )?;
+
+        let total_calls: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM tool_calls
+             WHERE workspace_id = ?1 AND timestamp >= ?2",
+            params![workspace_id, cutoff],
+            |row| row.get(0),
+        )?;
+
+        let (total_source, total_output): (i64, i64) = conn.query_row(
+            "SELECT COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
+             FROM tool_calls WHERE workspace_id = ?1 AND timestamp >= ?2",
+            params![workspace_id, cutoff],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        let mut stmt = conn.prepare(
+            "SELECT tool_name, COUNT(*), AVG(duration_ms),
+                    COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
+             FROM tool_calls WHERE workspace_id = ?1 AND timestamp >= ?2
+             GROUP BY tool_name ORDER BY COUNT(*) DESC",
+        )?;
+        let per_tool = stmt
+            .query_map(params![workspace_id, cutoff], |row| {
+                Ok(ToolCallSummary {
+                    tool_name: row.get(0)?,
+                    call_count: row.get::<_, i64>(1)? as u64,
+                    avg_duration_ms: row.get(2)?,
+                    total_source_bytes: row.get::<_, i64>(3)? as u64,
+                    total_output_bytes: row.get::<_, i64>(4)? as u64,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let mut dur_stmt = conn.prepare(
+            "SELECT tool_name, duration_ms FROM tool_calls
+             WHERE workspace_id = ?1 AND timestamp >= ?2
+             ORDER BY tool_name",
+        )?;
+        let mut durations_by_tool: HashMap<String, Vec<f64>> = HashMap::new();
+        let rows = dur_stmt.query_map(params![workspace_id, cutoff], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+        })?;
+        for row in rows {
+            let (name, dur) = row?;
+            durations_by_tool.entry(name).or_default().push(dur);
+        }
+
+        Ok(HistorySummary {
+            session_count: session_count as u64,
+            total_calls: total_calls as u64,
+            total_source_bytes: total_source as u64,
+            total_output_bytes: total_output as u64,
+            per_tool,
+            durations_by_tool,
+        })
+    }
+
+    /// Delete tool call records older than `retention_days`. Called on daemon startup.
+    pub fn prune_tool_calls(&self, retention_days: u32) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let cutoff = now_unix() - (retention_days as i64 * 86400);
+        conn.execute("DELETE FROM tool_calls WHERE timestamp < ?1", params![cutoff])?;
+        Ok(())
+    }
+
+    /// Direct connection access for tests only.
+    #[cfg(test)]
+    pub fn conn_for_test(&self) -> std::sync::MutexGuard<'_, Connection> {
+        self.conn.lock().unwrap()
+    }
+
+    // -------------------------------------------------------------------------
+    // Workspace References CRUD (continued below)
+    // -------------------------------------------------------------------------
 
     /// List all reference workspaces for a given primary workspace, returning
     /// their full `WorkspaceRow` data (JOIN with workspaces table).
