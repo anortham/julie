@@ -7,6 +7,7 @@
 pub mod ipc;
 pub mod lifecycle;
 pub mod pid;
+pub mod project_log;
 pub mod session;
 pub mod workspace_pool;
 
@@ -170,6 +171,14 @@ async fn handle_ipc_session(
     .await
     .context("Failed to create handler for IPC session")?;
 
+    // Grab project log before serve() consumes the handler
+    let project_log = handler.project_log.clone();
+
+    // Log session start to project log
+    if let Some(ref log) = project_log {
+        log.session_start(session_id);
+    }
+
     // Serve MCP over the IPC stream. UnixStream implements AsyncRead + AsyncWrite,
     // so rmcp's blanket IntoTransport impl handles the conversion automatically.
     let service = handler
@@ -178,16 +187,23 @@ async fn handle_ipc_session(
         .map_err(|e| anyhow::anyhow!("MCP serve failed: {}", e))?;
 
     // Block until the MCP session ends (client disconnect or error)
-    match service.waiting().await {
+    let result = match service.waiting().await {
         Ok(_reason) => {
             info!(session_id = %session_id, "MCP session completed normally");
+            Ok(())
         }
         Err(e) => {
             warn!(session_id = %session_id, "MCP session ended with error: {}", e);
+            Err(anyhow::anyhow!("MCP session error: {}", e))
         }
+    };
+
+    // Log session end to project log
+    if let Some(ref log) = project_log {
+        log.session_end(session_id);
     }
 
-    Ok(())
+    result
 }
 
 /// Read the workspace header from an IPC stream.

@@ -82,6 +82,9 @@ pub struct JulieServerHandler {
     >,
     /// rmcp tool router for handling tool calls
     tool_router: ToolRouter<Self>,
+    /// Per-project log for daemon mode (writes to {project}/.julie/logs/).
+    /// None in stdio mode (tracing handles project logging directly).
+    pub(crate) project_log: Option<Arc<crate::daemon::project_log::ProjectLog>>,
 }
 
 impl JulieServerHandler {
@@ -103,6 +106,7 @@ impl JulieServerHandler {
             session_metrics: Arc::new(SessionMetrics::new()),
             embedding_task: Arc::new(tokio::sync::Mutex::new(None)),
             tool_router: Self::tool_router(),
+            project_log: None,
         })
     }
 
@@ -143,6 +147,11 @@ impl JulieServerHandler {
             false
         };
 
+        // Create per-project logger for daemon mode
+        let project_log = Some(Arc::new(
+            crate::daemon::project_log::ProjectLog::new(&workspace_root),
+        ));
+
         Ok(Self {
             workspace_root,
             workspace: Arc::new(RwLock::new(Some(ws_clone))),
@@ -151,6 +160,7 @@ impl JulieServerHandler {
             session_metrics: Arc::new(SessionMetrics::new()),
             embedding_task: Arc::new(tokio::sync::Mutex::new(None)),
             tool_router: Self::tool_router(),
+            project_log,
         })
     }
 
@@ -378,6 +388,11 @@ impl JulieServerHandler {
         if let Some(kind) = ToolKind::from_name(tool_name) {
             self.session_metrics
                 .record(kind, duration_us, 0, output_bytes);
+        }
+
+        // Write to per-project log (daemon mode only)
+        if let Some(ref log) = self.project_log {
+            log.tool_call(tool_name, duration.as_secs_f64() * 1000.0, output_bytes);
         }
 
         // Async: look up source file sizes + write to SQLite (fire-and-forget)
