@@ -300,4 +300,168 @@ mod tests {
 
         Ok(())
     }
+
+    // ---------------------------------------------------------------
+    // Test 6: Phase 2 full data flow — daemon.db + pool + snapshot + tool calls
+    // ---------------------------------------------------------------
+
+    /// Covers the complete Phase 2 shared-workspace flow end-to-end:
+    ///
+    /// 1. `DaemonDatabase` opens and creates daemon.db schema
+    /// 2. `WorkspacePool` is wired to daemon.db
+    /// 3. Two sessions attach to the same workspace; pool shares the db Arc
+    /// 4. Daemon.db records the workspace and tracks session counts
+    /// 5. A reference workspace is added and the relationship is stored
+    /// 6. A codehealth snapshot is captured from the workspace's SymbolDatabase
+    /// 7. Tool calls are recorded in daemon.db
+    /// 8. Sessions disconnect; session count returns to 0
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_phase2_daemon_db_full_flow() -> Result<()> {
+        let tmp = tempfile::tempdir()?;
+        let daemon_db_path = tmp.path().join("daemon.db");
+        let indexes_dir = tmp.path().join("indexes");
+        let ws_root = tempfile::tempdir()?;
+        std::fs::create_dir_all(ws_root.path().join(".julie"))?;
+
+        // Step 1: Open DaemonDatabase (mirrors daemon startup)
+        let daemon_db = Arc::new(crate::daemon::database::DaemonDatabase::open(
+            &daemon_db_path,
+        )?);
+        assert!(daemon_db.table_exists("workspaces"), "schema should be created");
+        assert!(
+            daemon_db.table_exists("codehealth_snapshots"),
+            "snapshots table should be created"
+        );
+
+        // Step 2: Create WorkspacePool with daemon_db
+        let pool = WorkspacePool::new(
+            indexes_dir,
+            Some(Arc::clone(&daemon_db)),
+            None, // no watcher pool for this test
+        );
+
+        // Step 3: Two sessions attach to the same workspace
+        let primary_id = "myproject_deadbeef";
+        let ws1 = pool
+            .get_or_init(primary_id, ws_root.path().to_path_buf())
+            .await?;
+        let ws2 = pool
+            .get_or_init(primary_id, ws_root.path().to_path_buf())
+            .await?;
+
+        // Both sessions should share the same SymbolDatabase Arc
+        assert!(
+            Arc::ptr_eq(ws1.db.as_ref().expect("ws1.db"), ws2.db.as_ref().expect("ws2.db")),
+            "both sessions must share the same database Arc"
+        );
+
+        // Step 4: Workspace registered in daemon.db with session_count=2
+        let ws_row = daemon_db
+            .get_workspace(primary_id)?
+            .expect("workspace should be registered in daemon.db");
+        assert_eq!(
+            ws_row.path,
+            ws_root.path().to_str().unwrap(),
+            "workspace path should match"
+        );
+        assert_eq!(
+            ws_row.session_count, 2,
+            "two sessions should be counted"
+        );
+
+        // Step 5: Add a reference workspace and record the relationship
+        let ref_root = tempfile::tempdir()?;
+        let ref_id = "mylib_cafebabe";
+        daemon_db.upsert_workspace(ref_id, ref_root.path().to_str().unwrap(), "ready")?;
+        daemon_db.add_reference(primary_id, ref_id)?;
+
+        // Reference should be retrievable
+        let refs = daemon_db.list_references(primary_id)?;
+        assert_eq!(refs.len(), 1, "should have one reference workspace");
+        assert_eq!(refs[0].workspace_id, ref_id);
+
+        // Duplicate add_reference should be silently ignored
+        daemon_db.add_reference(primary_id, ref_id)?;
+        assert_eq!(
+            daemon_db.list_references(primary_id)?.len(),
+            1,
+            "duplicate reference should be ignored"
+        );
+
+        // Step 6: Capture codehealth snapshot from the workspace's SymbolDatabase
+        {
+            let db_arc = ws1.db.as_ref().expect("ws1.db");
+            let db = db_arc.lock().unwrap();
+
+            // Insert a file entry (foreign key required by symbols table)
+            db.conn.execute(
+                "INSERT INTO files (path, language, hash, size, last_modified)
+                 VALUES ('src/lib.rs', 'rust', 'abc123', 200, 0)",
+                [],
+            )?;
+
+            // Symbol with HIGH security risk
+            db.conn.execute(
+                "INSERT INTO symbols
+                 (id, name, kind, file_path, start_line, end_line, start_col, end_col, language, metadata)
+                 VALUES ('s1', 'risky_op', 'Function', 'src/lib.rs', 1, 10, 0, 0, 'rust',
+                 '{\"security_risk\":{\"label\":\"HIGH\",\"score\":0.92}}')",
+                [],
+            )?;
+
+            // Ordinary symbol with no risk metadata
+            db.conn.execute(
+                "INSERT INTO symbols
+                 (id, name, kind, file_path, start_line, end_line, start_col, end_col, language)
+                 VALUES ('s2', 'safe_helper', 'Function', 'src/lib.rs', 12, 20, 0, 0, 'rust')",
+                [],
+            )?;
+
+            // Call snapshot_codehealth_from_db while holding the lock
+            daemon_db.snapshot_codehealth_from_db(primary_id, &*db)?;
+        }
+
+        let snapshot = daemon_db
+            .get_latest_snapshot(primary_id)?
+            .expect("snapshot should have been captured");
+        assert_eq!(snapshot.total_symbols, 2, "both symbols should be counted");
+        assert_eq!(snapshot.security_high, 1, "one HIGH security symbol");
+        assert_eq!(snapshot.security_medium, 0, "no MEDIUM security symbols");
+        assert_eq!(snapshot.total_files, 1, "one file indexed");
+
+        // Step 7: Record tool calls in daemon.db
+        daemon_db.insert_tool_call(
+            primary_id, "sess_a", "fast_search",
+            12.5, Some(5), None, Some(800), true, None,
+        )?;
+        daemon_db.insert_tool_call(
+            primary_id, "sess_a", "get_context",
+            88.0, Some(1), None, Some(2000), true, None,
+        )?;
+        daemon_db.insert_tool_call(
+            primary_id, "sess_b", "fast_search",
+            15.0, Some(3), None, Some(600), true, None,
+        )?;
+
+        let history = daemon_db.query_tool_call_history(primary_id, 7)?;
+        assert_eq!(history.total_calls, 3, "three tool calls should be recorded");
+        assert!(
+            history.per_tool.iter().any(|t| t.tool_name == "fast_search"),
+            "fast_search should appear in per-tool breakdown"
+        );
+
+        // Step 8: Sessions disconnect; session count should return to 0
+        pool.disconnect_session(primary_id).await;
+        pool.disconnect_session(primary_id).await;
+
+        let ws_row = daemon_db
+            .get_workspace(primary_id)?
+            .expect("workspace should still exist after disconnect");
+        assert_eq!(
+            ws_row.session_count, 0,
+            "session count should return to 0 after both sessions disconnect"
+        );
+
+        Ok(())
+    }
 }
