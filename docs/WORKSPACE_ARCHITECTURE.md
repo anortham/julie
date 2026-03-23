@@ -1,69 +1,96 @@
 # Workspace Architecture
 
-**Last Updated:** 2025-11-07
-**Status:** Production
+**Last Updated:** 2026-03-22
+**Status:** Production (v6 — stdio + daemon modes)
 
 This document provides detailed information about Julie's workspace architecture, routing, and storage.
 
-## How Workspace Isolation Works
+## Two Operating Modes
 
-Each workspace has its own PHYSICAL database and Tantivy index files:
+Julie runs in two modes with different storage topologies:
+
+### Stdio Mode (default)
+Each MCP session is independent. Indexes live under the project:
 
 ```
-.julie/indexes/
+<project>/.julie/indexes/
 ├── julie_316c0b08/              ← PRIMARY workspace
 │   ├── db/symbols.db            ← SQLite database
 │   └── tantivy/                 ← Tantivy search index
 │
-└── coa-mcp-framework_c77f81e4/  ← REFERENCE workspace
-    ├── db/symbols.db            ← SQLite database
-    └── tantivy/                 ← Tantivy search index
+└── coa-mcp-framework_c77f81e4/  ← REFERENCE workspace (also here)
+    ├── db/symbols.db
+    └── tantivy/
 ```
 
-## Workspace Routing
+Reference workspaces, `add`, `refresh`, and `stats` operations require daemon mode.
 
-Workspace selection happens when opening the DB connection:
-1. Tool → Handler → Workspace Registry → Open DB File
-2. Once DB is open, you're locked to that workspace
-3. Can't query other workspaces from that connection
+### Daemon Mode (`julie daemon`)
+A background process shares indexes across all MCP sessions. Indexes live in the user home:
 
-**Tool-level `workspace` parameters are ESSENTIAL** - they route to the correct DB file.
+```
+~/.julie/
+├── daemon.db                    ← Registry: workspaces, references, snapshots, tool calls
+└── indexes/
+    ├── julie_316c0b08/          ← PRIMARY workspace (shared across sessions)
+    │   ├── db/symbols.db
+    │   └── tantivy/
+    └── coa-mcp-framework_c77f81e4/  ← REFERENCE workspace
+        ├── db/symbols.db
+        └── tantivy/
+```
+
+`daemon.db` is the authoritative registry (replaces the old `registry.json`). It tracks:
+- All workspaces (ID, path, status, file/symbol counts)
+- Reference workspace relationships
+- Per-session codehealth snapshots
+- Tool call history (retained 7 days)
+
+## How Workspace Isolation Works
+
+Each workspace has its own PHYSICAL database and Tantivy index files. Workspace selection happens when opening the DB connection:
+
+1. Tool receives `workspace` parameter
+2. Handler routes to `indexes/{workspace_id}/db/symbols.db`
+3. Connection is locked to that workspace — cannot query others from same connection
+
+**Tool-level `workspace` parameters are ESSENTIAL** — they route to the correct DB file.
 
 ## Primary vs Reference Workspaces
 
 **Primary Workspace:**
-- Where you're actively developing (where you run Julie)
-- Has its own `.julie/` directory at workspace root
-- Stores indexes for ITSELF and ALL reference workspaces
-- Full `JulieWorkspace` object with complete machinery
+- Where you're actively developing
+- Has full `JulieWorkspace` object with indexer, searcher, embedding machinery
+- In daemon mode: its session is tracked in `daemon.db` with session count
 
 **Reference Workspaces:**
-- Other codebases you want to search/reference
+- Other codebases you want to search/reference (daemon mode only)
 - Do NOT have their own `.julie/` directories
-- Indexes stored in primary workspace's `.julie/indexes/{workspace_id}/`
-- Just indexed data - not independent workspace objects
+- Indexed into the same `indexes/` directory as primary
+- Just indexed data — not independent workspace objects
 
-## Storage Location
+## Storage Location Summary
 
-Julie stores workspace data at **project level**, not user home:
-- Primary workspace data: `<project>/.julie/`
-- **NOT** at `~/.julie/` (common mistake!)
+| Mode   | Workspace data            | Registry                |
+|--------|---------------------------|-------------------------|
+| Stdio  | `<project>/.julie/`       | None (ephemeral)        |
+| Daemon | `~/.julie/indexes/`       | `~/.julie/daemon.db`    |
 
 ## Log Location
 
-Logs are PROJECT-LEVEL, not user-level:
+Logs are PROJECT-LEVEL (not user-level) in both modes:
 
 ```bash
 # CORRECT
-/Users/murphy/source/julie/.julie/logs/julie.log.2025-11-07
+/Users/murphy/source/julie/.julie/logs/julie.log.2026-03-22
 
 # WRONG
-~/.julie/logs/  ← THIS DOES NOT EXIST!
+~/.julie/logs/  ← DOES NOT EXIST
 ```
 
 ## Key Benefits
 
-- ✅ Complete workspace isolation - Each workspace has own db/tantivy index
-- ✅ Centralized storage - All indexes in one location (primary workspace)
-- ✅ Trivial deletion - `rm -rf indexes/{workspace_id}/` removes everything
-- ✅ Smaller, faster indexes - Simple single-tier architecture
+- Complete workspace isolation — each workspace has own db/tantivy index
+- Centralized storage — all indexes in one location, trivial deletion
+- Daemon mode enables cross-session sharing and persistent metrics
+- Stdio mode works fully offline with no daemon dependency
