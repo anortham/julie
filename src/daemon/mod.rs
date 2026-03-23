@@ -28,6 +28,7 @@ use crate::paths::DaemonPaths;
 use crate::workspace::registry::generate_workspace_id;
 
 use self::database::DaemonDatabase;
+use self::embedding_service::EmbeddingService;
 use self::ipc::IpcListener;
 use self::pid::PidFile;
 use self::session::SessionTracker;
@@ -85,6 +86,19 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
         }
     };
 
+    // Initialize shared embedding service (blocking: model load / sidecar bootstrap)
+    let embedding_service = Arc::new(
+        tokio::task::spawn_blocking(|| {
+            EmbeddingService::initialize()
+        })
+        .await
+        .context("Embedding service initialization panicked")?
+    );
+    info!(
+        available = embedding_service.is_available(),
+        "Shared embedding service initialized"
+    );
+
     // Shared state
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
     let _reaper = watcher_pool.spawn_reaper(Duration::from_secs(60));
@@ -99,7 +113,7 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
 
     // Accept loop with graceful shutdown
     let result = tokio::select! {
-        res = accept_loop(&listener, &pool, &sessions, &daemon_db) => res,
+        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service) => res,
         _ = shutdown_signal() => {
             info!("Shutdown signal received, stopping daemon");
             Ok(())
@@ -111,6 +125,9 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
         active_sessions = sessions.active_count(),
         "Daemon shutting down"
     );
+
+    embedding_service.shutdown();
+    info!("Embedding service shut down");
 
     #[cfg(unix)]
     listener.cleanup();
@@ -129,6 +146,7 @@ async fn accept_loop(
     pool: &Arc<WorkspacePool>,
     sessions: &Arc<SessionTracker>,
     daemon_db: &Option<Arc<DaemonDatabase>>,
+    embedding_service: &Arc<EmbeddingService>,
 ) -> Result<()> {
     loop {
         let stream = listener.accept().await.context("IPC accept failed")?;
@@ -136,6 +154,7 @@ async fn accept_loop(
         let pool = Arc::clone(pool);
         let sessions = Arc::clone(sessions);
         let daemon_db = daemon_db.clone();
+        let embedding_service = Arc::clone(embedding_service);
         let session_id = sessions.add_session();
 
         info!(
@@ -145,7 +164,7 @@ async fn accept_loop(
         );
 
         tokio::spawn(async move {
-            if let Err(e) = handle_ipc_session(stream, &pool, &session_id, &daemon_db).await {
+            if let Err(e) = handle_ipc_session(stream, &pool, &session_id, &daemon_db, &embedding_service).await {
                 error!(session_id = %session_id, "IPC session error: {}", e);
             }
 
@@ -165,6 +184,7 @@ async fn handle_ipc_session(
     pool: &WorkspacePool,
     session_id: &str,
     daemon_db: &Option<Arc<DaemonDatabase>>,
+    embedding_service: &Arc<EmbeddingService>,
 ) -> Result<()> {
     // Read the workspace header (byte-by-byte to avoid BufReader buffering issues)
     let workspace_path = read_workspace_header(&mut stream).await?;
@@ -201,7 +221,7 @@ async fn handle_ipc_session(
         workspace_path,
         daemon_db.clone(),
         Some(full_workspace_id.clone()),
-        None, // Phase 3: shared embedding service wired in Task 4
+        Some(Arc::clone(embedding_service)),
     )
     .await
     .context("Failed to create handler for IPC session")?;
