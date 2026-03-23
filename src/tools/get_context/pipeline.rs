@@ -533,12 +533,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
                 .get_search_index_for_workspace(&ref_workspace_id)
                 .await?;
 
-            // Get embedding provider from primary workspace (no handler helper for this yet)
-            let embedding_provider = if let Some(workspace) = handler.get_workspace().await? {
-                workspace.embedding_provider.clone()
-            } else {
-                None
-            };
+            let embedding_provider = handler.embedding_provider().await;
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
                 let si = si_arc.ok_or_else(|| {
@@ -582,7 +577,7 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
                 })?
                 .clone();
 
-            let embedding_provider = workspace.embedding_provider.clone();
+            let embedding_provider = handler.embedding_provider().await;
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
                 let index = search_index.lock().unwrap();

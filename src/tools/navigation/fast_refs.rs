@@ -77,13 +77,8 @@ impl FastRefsTool {
         use super::formatting::format_semantic_fallback;
         use crate::search::similarity;
 
-        let workspace = match handler.get_workspace().await {
-            Ok(Some(w)) => w,
-            _ => return String::new(),
-        };
-
-        // Embedding provider comes from the primary workspace (same model for all)
-        let provider = match workspace.embedding_provider.as_ref() {
+        // Embedding provider: prefer daemon shared service, fall back to workspace
+        let provider = match handler.embedding_provider().await {
             Some(p) => p,
             None => return String::new(),
         };
@@ -130,6 +125,10 @@ impl FastRefsTool {
             };
             format_semantic_fallback(&self.symbol, &similar)
         } else {
+            let workspace = match handler.get_workspace().await {
+                Ok(Some(w)) => w,
+                _ => return String::new(),
+            };
             let db = match workspace.db.as_ref() {
                 Some(db) => db,
                 None => return String::new(),

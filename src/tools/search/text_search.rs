@@ -93,7 +93,7 @@ pub async fn text_search_impl(
 
     // Reference workspace: use handler helpers for DB + SearchIndex access
     if let Some(ref_id) = ref_workspace_id {
-        let ref_embedding_provider = workspace.embedding_provider.clone();
+        let ref_embedding_provider = handler.embedding_provider().await;
         let db_arc = handler.get_database_for_workspace(&ref_id).await?;
         let si_arc = handler.get_search_index_for_workspace(&ref_id).await?;
 
@@ -146,7 +146,7 @@ pub async fn text_search_impl(
     })?;
     let search_index_clone = search_index.clone();
     let db_clone = workspace.db.clone();
-    let embedding_provider = workspace.embedding_provider.clone();
+    let embedding_provider = handler.embedding_provider().await;
 
     let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool)> {
         let index = search_index_clone.lock().unwrap();

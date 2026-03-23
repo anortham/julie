@@ -24,74 +24,71 @@ pub(crate) async fn spawn_workspace_embedding(
     handler: &JulieServerHandler,
     workspace_id: String,
 ) -> usize {
-    // Check if provider is already initialized (fast read lock path)
-    let provider = {
-        let ws_guard = handler.workspace.read().await;
-        ws_guard
-            .as_ref()
-            .and_then(|ws| ws.embedding_provider.clone())
-    };
+    // Fast path: check handler (daemon shared service or workspace provider)
+    let provider = if let Some(p) = handler.embedding_provider().await {
+        p
+    } else if handler.embedding_service.is_some() {
+        // Daemon mode but no provider available (e.g., init failed). Don't
+        // attempt the stdio lazy-init path; just skip embeddings.
+        debug!("Daemon mode but no embedding provider available, skipping workspace embedding");
+        return 0;
+    } else {
+        // Stdio mode: provider not yet initialized. Do it now (deferred from
+        // workspace init to avoid blocking symbol extraction and Tantivy indexing).
+        info!("Initializing embedding provider (deferred from workspace startup)...");
 
-    let provider = match provider {
-        Some(p) => p,
-        None => {
-            // Provider not yet initialized - do it now (deferred from workspace init
-            // to avoid blocking symbol extraction and Tantivy indexing).
-            info!("Initializing embedding provider (deferred from workspace startup)...");
-
-            let (workspace_identity_root, workspace_for_init) = {
-                let ws_guard = handler.workspace.read().await;
-                match ws_guard.as_ref() {
-                    Some(ws) => (ws.root.clone(), ws.clone()),
-                    None => return 0,
-                }
-            };
-
-            // Run heavy provider initialization off runtime worker threads.
-            let init_result = tokio::task::spawn_blocking(move || {
-                let mut workspace = workspace_for_init;
-                workspace.initialize_embedding_provider();
-                (
-                    workspace.embedding_provider.clone(),
-                    workspace.embedding_runtime_status.clone(),
-                )
-            })
-            .await;
-
-            let (initialized_provider, initialized_runtime_status) = match init_result {
-                Ok(result) => result,
-                Err(e) => {
-                    warn!("Embedding provider init task panicked: {e}");
-                    return 0;
-                }
-            };
-
-            // Publish initialized state with short write-lock scope.
-            let mut ws_guard = handler.workspace.write().await;
-            let ws = match ws_guard.as_mut() {
-                Some(ws) => ws,
+        let (workspace_identity_root, workspace_for_init) = {
+            let ws_guard = handler.workspace.read().await;
+            match ws_guard.as_ref() {
+                Some(ws) => (ws.root.clone(), ws.clone()),
                 None => return 0,
-            };
-
-            if ws.root != workspace_identity_root {
-                debug!(
-                    expected_workspace_root = %workspace_identity_root.display(),
-                    active_workspace_root = %ws.root.display(),
-                    "Discarding stale embedding init result after workspace switch"
-                );
-            } else if ws.embedding_provider.is_none() {
-                ws.embedding_provider = initialized_provider.clone();
-                ws.embedding_runtime_status = initialized_runtime_status;
             }
+        };
 
-            match ws.embedding_provider.clone() {
-                Some(provider) => provider,
-                None => {
-                    debug!(
-                        "Embedding provider unavailable after init, skipping workspace embedding"
-                    );
-                    return 0;
-                }
+        // Run heavy provider initialization off runtime worker threads.
+        let init_result = tokio::task::spawn_blocking(move || {
+            let mut workspace = workspace_for_init;
+            workspace.initialize_embedding_provider();
+            (
+                workspace.embedding_provider.clone(),
+                workspace.embedding_runtime_status.clone(),
+            )
+        })
+        .await;
+
+        let (initialized_provider, initialized_runtime_status) = match init_result {
+            Ok(result) => result,
+            Err(e) => {
+                warn!("Embedding provider init task panicked: {e}");
+                return 0;
+            }
+        };
+
+        // Publish initialized state with short write-lock scope.
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = match ws_guard.as_mut() {
+            Some(ws) => ws,
+            None => return 0,
+        };
+
+        if ws.root != workspace_identity_root {
+            debug!(
+                expected_workspace_root = %workspace_identity_root.display(),
+                active_workspace_root = %ws.root.display(),
+                "Discarding stale embedding init result after workspace switch"
+            );
+        } else if ws.embedding_provider.is_none() {
+            ws.embedding_provider = initialized_provider.clone();
+            ws.embedding_runtime_status = initialized_runtime_status;
+        }
+
+        match ws.embedding_provider.clone() {
+            Some(provider) => provider,
+            None => {
+                debug!(
+                    "Embedding provider unavailable after init, skipping workspace embedding"
+                );
+                return 0;
             }
         }
     };

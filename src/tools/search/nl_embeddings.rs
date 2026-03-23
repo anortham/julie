@@ -47,13 +47,19 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
         return;
     }
 
+    // If a provider is already available (daemon shared service or workspace),
+    // skip the lazy-init entirely.
+    if handler.embedding_provider().await.is_some() {
+        return;
+    }
+
+    // No provider yet. In daemon mode the shared service would have returned
+    // one, so this is either stdio mode or a transient initialization gap.
+    // Check whether a deferred init is worth attempting.
     let should_attempt_init = {
         let workspace_guard = handler.workspace.read().await;
         match workspace_guard.as_ref() {
-            Some(workspace) => {
-                workspace.embedding_provider.is_none()
-                    && workspace.embedding_runtime_status.is_none()
-            }
+            Some(workspace) => workspace.embedding_runtime_status.is_none(),
             None => false,
         }
     };
@@ -66,13 +72,14 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
 
     // Double-check after acquiring the single-flight mutex: another caller may
     // have completed init while we waited.
+    if handler.embedding_provider().await.is_some() {
+        return;
+    }
     let (workspace_identity_root, workspace_for_init) = {
         let workspace_guard = handler.workspace.read().await;
         match workspace_guard.as_ref() {
             Some(workspace) => {
-                if workspace.embedding_provider.is_some()
-                    || workspace.embedding_runtime_status.is_some()
-                {
+                if workspace.embedding_runtime_status.is_some() {
                     return;
                 }
                 (workspace.root.clone(), workspace.clone())

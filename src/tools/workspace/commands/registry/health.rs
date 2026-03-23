@@ -44,7 +44,7 @@ impl ManageWorkspaceTool {
         // PHASE 3: Embedding Runtime Health
         health_report.push_str("Embedding Runtime\n");
         let embedding_status = self
-            .check_embedding_runtime_health(&primary_workspace)
+            .check_embedding_runtime_health(handler)
             .await?;
         health_report.push_str(&embedding_status);
         health_report.push('\n');
@@ -156,12 +156,15 @@ impl ManageWorkspaceTool {
     /// Check embedding runtime health and fallback/degradation status.
     async fn check_embedding_runtime_health(
         &self,
-        workspace: &crate::workspace::JulieWorkspace,
+        handler: &JulieServerHandler,
     ) -> Result<String> {
         let mut status = String::new();
 
-        match &workspace.embedding_runtime_status {
-            Some(runtime) => match workspace.embedding_provider.as_ref() {
+        let runtime_status = handler.embedding_runtime_status().await;
+        let embedding_provider = handler.embedding_provider().await;
+
+        match &runtime_status {
+            Some(runtime) => match embedding_provider.as_ref() {
                 Some(provider) => {
                     let device_info = provider.device_info();
                     let runtime_state = if runtime.degraded_reason.is_some() {
