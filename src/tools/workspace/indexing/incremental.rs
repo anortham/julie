@@ -360,10 +360,12 @@ impl ManageWorkspaceTool {
                 }
             };
 
-            // Begin transaction for ALL deletions
+            // Begin transaction for ALL deletions — must be all-or-nothing.
             db_lock.begin_transaction()?;
 
-            for file_path in &orphaned_files {
+            let mut cleanup_error: Option<String> = None;
+
+            'files: for file_path in &orphaned_files {
                 // Delete relationships first (referential integrity)
                 let relationships_result = db_lock.conn.execute(
                     "DELETE FROM relationships WHERE from_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)
@@ -375,7 +377,8 @@ impl ManageWorkspaceTool {
                         "Failed to delete relationships for orphaned file {}: {}",
                         file_path, e
                     );
-                    continue;
+                    cleanup_error = Some(format!("relationship delete failed for {}: {}", file_path, e));
+                    break 'files;
                 }
 
                 // Delete symbols
@@ -388,7 +391,8 @@ impl ManageWorkspaceTool {
                         "Failed to delete symbols for orphaned file {}: {}",
                         file_path, e
                     );
-                    continue;
+                    cleanup_error = Some(format!("symbol delete failed for {}: {}", file_path, e));
+                    break 'files;
                 }
 
                 // Delete file record (CASCADE will handle any remaining symbols)
@@ -401,14 +405,23 @@ impl ManageWorkspaceTool {
                         "Failed to delete file record for orphaned file {}: {}",
                         file_path, e
                     );
-                    continue;
+                    cleanup_error = Some(format!("file delete failed for {}: {}", file_path, e));
+                    break 'files;
                 }
 
                 cleaned_count += 1;
                 trace!("Cleaned up orphaned file: {}", file_path);
             }
 
-            // Commit all deletions atomically
+            // Rollback entire batch on any error; commit only if all files succeeded.
+            if let Some(err_msg) = cleanup_error {
+                warn!("Orphan cleanup rolling back due to error: {}", err_msg);
+                if let Err(e) = db_lock.rollback_transaction() {
+                    warn!("Failed to rollback orphan cleanup transaction: {}", e);
+                }
+                return Ok(0);
+            }
+
             db_lock.commit_transaction()?;
         }
 

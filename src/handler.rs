@@ -303,14 +303,10 @@ impl JulieServerHandler {
 
                 let primary_workspace_index_dir = match generate_workspace_id(&workspace_path_str) {
                     Ok(workspace_id) => {
-                        // Successfully got workspace ID - construct path to primary workspace's index
-                        let workspace_name = target_path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("workspace");
-                        let full_workspace_id =
-                            format!("{}_{}", workspace_name, &workspace_id[..8]);
-                        Some(julie_dir.join("indexes").join(full_workspace_id))
+                        // workspace_id is already the full formatted ID (e.g., "julie_c02eb2d9").
+                        // Use it directly — do NOT re-format with the name prefix, which would
+                        // produce a double-prefixed result like "julie_julie_c0".
+                        Some(julie_dir.join("indexes").join(workspace_id))
                     }
                     Err(e) => {
                         warn!(

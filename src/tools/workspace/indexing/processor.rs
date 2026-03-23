@@ -289,13 +289,13 @@ impl ManageWorkspaceTool {
 
                 drop(db_lock);
             } else {
-                // Fresh indexing (no files to clean) - use standard bulk operations
-                // Each bulk operation is already atomic from our previous fixes
+                // Fresh indexing (no files to clean) - use single atomic operation
+                // that wraps all 5 table inserts in one outer transaction.
                 info!(
-                    "🚀 Starting fresh bulk storage of {} symbols, {} relationships, {} files...",
+                    "🔐 Starting ATOMIC fresh bulk storage of {} files, {} symbols, {} relationships...",
+                    all_file_infos.len(),
                     all_symbols.len(),
                     all_relationships.len(),
-                    all_file_infos.len()
                 );
 
                 let mut db_lock = match db.lock() {
@@ -309,29 +309,15 @@ impl ManageWorkspaceTool {
                     }
                 };
 
-                // Bulk store files
-                if let Err(e) = db_lock.bulk_store_files(&all_file_infos) {
-                    warn!("Failed to bulk store files: {}", e);
-                }
-
-                // Bulk store symbols (with index dropping optimization!)
-                if let Err(e) = db_lock.bulk_store_symbols(&all_symbols, &workspace_id) {
-                    warn!("Failed to bulk store symbols: {}", e);
-                }
-
-                // Bulk store relationships
-                if let Err(e) = db_lock.bulk_store_relationships(&all_relationships) {
-                    warn!("Failed to bulk store relationships: {}", e);
-                }
-
-                // Phase 4: Bulk store identifiers
-                if let Err(e) = db_lock.bulk_store_identifiers(&all_identifiers, &workspace_id) {
-                    warn!("Failed to bulk store identifiers: {}", e);
-                }
-
-                // Phase 4: Bulk store types
-                if let Err(e) = db_lock.bulk_store_types(&all_types, &workspace_id) {
-                    warn!("Failed to bulk store types: {}", e);
+                if let Err(e) = db_lock.bulk_store_fresh_atomic(
+                    &all_file_infos,
+                    &all_symbols,
+                    &all_relationships,
+                    &all_identifiers,
+                    &all_types,
+                    &workspace_id,
+                ) {
+                    warn!("Failed to atomically bulk store fresh indexing data: {}", e);
                 }
 
                 // Count documentation symbols for logging

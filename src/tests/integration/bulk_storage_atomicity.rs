@@ -9,9 +9,10 @@ use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
 
+use crate::database::types::FileInfo;
 use crate::database::{SymbolDatabase, create_file_info};
-use crate::extractors::base::Visibility;
-use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::base::{TypeInfo, Visibility};
+use crate::extractors::{Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind};
 
 /// Test helper: Create a simple test symbol
 fn create_test_symbol(name: &str, file_path: &str) -> Symbol {
@@ -307,6 +308,223 @@ fn test_incremental_update_cleanup_atomicity() -> Result<()> {
     // THE PROBLEM: Between delete and insert, there's a window where file has no symbols
     // If crash happens during that window, database is in inconsistent state
     // FIX: Wrap delete + insert in single transaction
+
+    Ok(())
+}
+
+// ============================================================================
+// Helpers for new atomicity tests
+// ============================================================================
+
+fn create_simple_file_info(path: &str) -> FileInfo {
+    FileInfo {
+        path: path.to_string(),
+        language: "rust".to_string(),
+        hash: format!("hash_{}", path),
+        size: 100,
+        last_modified: 1000,
+        last_indexed: 0,
+        symbol_count: 0,
+        line_count: 0,
+        content: None,
+    }
+}
+
+fn create_test_identifier(name: &str, file_path: &str) -> Identifier {
+    Identifier {
+        id: format!("ident_{}_{}", name, file_path.replace('/', "_")),
+        name: name.to_string(),
+        kind: IdentifierKind::Call,
+        language: "rust".to_string(),
+        file_path: file_path.to_string(),
+        start_line: 1,
+        start_column: 0,
+        end_line: 1,
+        end_column: name.len() as u32,
+        start_byte: 0,
+        end_byte: name.len() as u32,
+        containing_symbol_id: None,
+        target_symbol_id: None,
+        confidence: 1.0,
+        code_context: None,
+    }
+}
+
+fn create_test_type_info(symbol_id: &str, resolved_type: &str) -> TypeInfo {
+    TypeInfo {
+        symbol_id: symbol_id.to_string(),
+        resolved_type: resolved_type.to_string(),
+        generic_params: None,
+        constraints: None,
+        is_inferred: false,
+        language: "rust".to_string(),
+        metadata: None,
+    }
+}
+
+// ============================================================================
+// [I-C1] bulk_store_fresh_atomic: single outer transaction for fresh indexing
+// ============================================================================
+
+#[test]
+fn test_bulk_store_fresh_atomic_inserts_all_types() -> Result<()> {
+    // [I-C1] Verifies that bulk_store_fresh_atomic wraps all 5 table inserts in
+    // one outer transaction. This test FAILS TO COMPILE before the fix because
+    // the method does not exist yet.
+
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("test.db");
+
+    let files = vec![
+        create_simple_file_info("/test/file1.rs"),
+        create_simple_file_info("/test/file2.rs"),
+    ];
+    let sym1 = create_test_symbol("fn_one", "/test/file1.rs");
+    let sym2 = create_test_symbol("fn_two", "/test/file2.rs");
+    let relationships = vec![create_test_relationship(
+        &sym1.id,
+        &sym2.id,
+        RelationshipKind::Calls,
+    )];
+    let identifiers = vec![create_test_identifier("fn_two", "/test/file1.rs")];
+    let types = vec![create_test_type_info(&sym1.id, "Result<(), Error>")];
+    let symbols = vec![sym1, sym2];
+
+    let mut db = SymbolDatabase::new(&db_path)?;
+    db.bulk_store_fresh_atomic(
+        &files,
+        &symbols,
+        &relationships,
+        &identifiers,
+        &types,
+        "test_workspace",
+    )?;
+
+    let file_count: i64 =
+        db.conn
+            .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?;
+    assert!(file_count >= 2, "Should have at least 2 files");
+
+    let sym_count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM symbols", [], |r| r.get(0))?;
+    assert_eq!(sym_count, 2, "Should have 2 symbols");
+
+    let rel_count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM relationships", [], |r| r.get(0))?;
+    assert_eq!(rel_count, 1, "Should have 1 relationship");
+
+    let ident_count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM identifiers", [], |r| r.get(0))?;
+    assert_eq!(ident_count, 1, "Should have 1 identifier");
+
+    let type_count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM types", [], |r| r.get(0))?;
+    assert_eq!(type_count, 1, "Should have 1 type entry");
+
+    Ok(())
+}
+
+// ============================================================================
+// [I-C2] bulk_store_identifiers / bulk_store_types: indexes inside transaction
+// ============================================================================
+
+#[test]
+fn test_bulk_store_identifiers_indexes_restored() -> Result<()> {
+    // [I-C2] Verifies that identifier indexes survive a bulk_store_identifiers call.
+    // Before the fix, DROP INDEX ran OUTSIDE the transaction, so a crash between
+    // the drop and the commit would permanently destroy the indexes.
+
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("test.db");
+
+    {
+        let mut db = SymbolDatabase::new(&db_path)?;
+        let symbols = vec![create_test_symbol("fn_one", "/test/file1.rs")];
+        db.bulk_store_symbols(&symbols, "test_workspace")?;
+    }
+
+    {
+        let mut db = SymbolDatabase::new(&db_path)?;
+        let identifiers = vec![create_test_identifier("fn_one", "/test/file1.rs")];
+        db.bulk_store_identifiers(&identifiers, "test_workspace")?;
+    }
+
+    {
+        let db = SymbolDatabase::new(&db_path)?;
+
+        let ident_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM identifiers", [], |r| r.get(0))?;
+        assert_eq!(ident_count, 1, "Should have 1 identifier");
+
+        let index_count: i64 = db.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='identifiers'",
+            [],
+            |r| r.get(0),
+        )?;
+        assert!(
+            index_count >= 5,
+            "Should have at least 5 identifier indexes; got {}",
+            index_count
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_bulk_store_types_indexes_restored() -> Result<()> {
+    // [I-C2] Verifies that type indexes survive a bulk_store_types call.
+    // Mirror of test_bulk_store_identifiers_indexes_restored for the types table.
+
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("test.db");
+
+    {
+        let mut db = SymbolDatabase::new(&db_path)?;
+        let symbols = vec![create_test_symbol("fn_typed", "/test/file1.rs")];
+        db.bulk_store_symbols(&symbols, "test_workspace")?;
+    }
+
+    let symbol_id = {
+        let db = SymbolDatabase::new(&db_path)?;
+        let id: String = db.conn.query_row(
+            "SELECT id FROM symbols WHERE name='fn_typed'",
+            [],
+            |r| r.get(0),
+        )?;
+        id
+    };
+
+    {
+        let mut db = SymbolDatabase::new(&db_path)?;
+        let types = vec![create_test_type_info(&symbol_id, "Result<String, Error>")];
+        db.bulk_store_types(&types, "test_workspace")?;
+    }
+
+    {
+        let db = SymbolDatabase::new(&db_path)?;
+
+        let type_count: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM types", [], |r| r.get(0))?;
+        assert_eq!(type_count, 1, "Should have 1 type entry");
+
+        let index_count: i64 = db.conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='types'",
+            [],
+            |r| r.get(0),
+        )?;
+        assert!(
+            index_count >= 3,
+            "Should have at least 3 type indexes; got {}",
+            index_count
+        );
+    }
 
     Ok(())
 }
