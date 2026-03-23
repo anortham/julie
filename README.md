@@ -27,6 +27,8 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Operational metrics** — per-tool timing, context efficiency tracking, "bytes NOT injected" headline metric
 - **Multi-workspace support** for indexing and searching related codebases
+- **Background daemon** — shared indexes, shared embedding provider, multi-session support with automatic lifecycle management
+- **Stale binary auto-restart** — daemon detects when the binary has been rebuilt and restarts on next session cycle
 - **Stdio MCP server** — single binary, zero configuration, works with any MCP client
 
 ### Performance Characteristics
@@ -309,8 +311,9 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harn
 - **Graph centrality ranking** using pre-computed reference scores from the relationship graph
 - **SQLite storage** for symbols, identifiers, relationships, types, and file metadata
 - **Per-workspace isolation** with separate databases and indexes
+- **Daemon + adapter pattern** — `julie-server` auto-starts a background daemon and forwards stdio to it via IPC (Unix socket). Multiple MCP clients share one daemon process with shared indexes, embedding provider, and file watchers
 - **MCP protocol** over stdio (JSON-RPC)
-- **Embedding pipeline** with GPU-accelerated Python sidecar + ORT CPU fallback
+- **Embedding pipeline** with GPU-accelerated Python sidecar + ORT CPU fallback, shared across sessions in daemon mode
 
 ## Development
 
@@ -329,7 +332,7 @@ cargo build
 
 ### Running Locally
 
-Julie is a stdio MCP server — it communicates via JSON-RPC over stdin/stdout:
+Julie runs as a stdio MCP server with an automatic background daemon. When an MCP client starts `julie-server`, it auto-launches a daemon process that shares indexes and the embedding provider across sessions:
 
 ```bash
 cargo run -- --workspace /path/to/your/project
@@ -341,7 +344,16 @@ To test with an MCP client, point it at your debug build:
 claude mcp add julie-dev -- /path/to/julie/target/debug/julie-server
 ```
 
-After rebuilding (`cargo build`), restart Claude Code to pick up the new binary.
+After rebuilding (`cargo build`), restart your MCP client. The daemon detects the stale binary and auto-restarts with the new build.
+
+**Daemon management** (optional, the adapter handles this automatically):
+
+```bash
+julie-server daemon      # Start daemon manually
+julie-server status      # Check if daemon is running
+julie-server stop        # Stop daemon
+julie-server restart     # Stop daemon; auto-restarts on next connection
+```
 
 ### Testing
 
