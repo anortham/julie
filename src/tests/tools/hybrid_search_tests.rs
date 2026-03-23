@@ -1028,4 +1028,37 @@ mod conversion_tests {
             "empty input should produce empty output"
         );
     }
+
+    // Regression: distance > 1.0 (e.g. cosine distance on un-normalized vectors)
+    // should clamp to 0.0, not produce a negative score.
+    #[test]
+    fn test_knn_score_clamp_negative_distance() {
+        let (mut db, _dir) = create_test_db();
+        insert_test_symbol(
+            &mut db,
+            "sym_clamp",
+            "clamp_me",
+            "function",
+            "rust",
+            "src/clamp.rs",
+            1,
+            None,
+            None,
+        );
+
+        let knn_results = vec![("sym_clamp".to_string(), 1.5f64)];
+        let results = knn_to_search_results(&knn_results, &db).unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0].score >= 0.0,
+            "score must be non-negative, got {}",
+            results[0].score
+        );
+        assert_eq!(
+            results[0].score, 0.0,
+            "distance=1.5 should clamp to score=0.0, got {}",
+            results[0].score
+        );
+    }
 }

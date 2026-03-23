@@ -133,3 +133,34 @@ const result = service.getUserData();
 
     Ok(())
 }
+
+// Regression: files with unknown/unsupported extension (e.g. .env, .cfg, .ini) have no
+// tree-sitter parser. smart_text_replace should fall back to plain text replacement
+// rather than returning an error.
+#[test]
+fn test_smart_text_replace_unknown_language_falls_back_to_plain_text() -> Result<()> {
+    // .env files have no tree-sitter parser -- detect_language returns "unknown"
+    let content = "DATABASE_HOST=old_host\nREPLICA_HOST=old_host_replica\n";
+
+    let tool = SmartRefactorTool {
+        operation: "rename_symbol".to_string(),
+        params: r#"{"old_name": "old_host", "new_name": "new_host"}"#.to_string(),
+        dry_run: false,
+    };
+
+    let result = tool.smart_text_replace(content, "old_host", "new_host", ".env", false);
+
+    assert!(
+        result.is_ok(),
+        "unknown language should fall back to plain text, not error: {:?}",
+        result.err()
+    );
+    let output = result.unwrap();
+    assert!(
+        output.contains("new_host"),
+        "plain-text replacement should have applied to .env file: {}",
+        output
+    );
+
+    Ok(())
+}

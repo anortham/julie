@@ -149,7 +149,7 @@ pub fn knn_to_search_results(
                 start_line: sym.start_line,
                 signature: sym.signature.clone().unwrap_or_default(),
                 doc_comment: sym.doc_comment.clone().unwrap_or_default(),
-                score: (1.0 - distance) as f32,
+                score: (1.0 - distance).max(0.0) as f32,
             })
         })
         .collect();

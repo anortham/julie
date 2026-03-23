@@ -460,6 +460,53 @@ mod formatting_tests {
         assert!(output.contains("pub fn get_user"));
     }
 
+    // Verify SymbolKind::Struct uses the class_or_struct formatter, not the generic fallback.
+    // Regression test for: Struct falling into `_ => format_generic()` branch.
+    #[test]
+    fn test_struct_kind_uses_class_or_struct_formatter() {
+        let sym = make_symbol(
+            "Connection",
+            SymbolKind::Struct,
+            "src/db.rs",
+            5,
+            Some("pub struct Connection"),
+            Some(Visibility::Public),
+            None,
+        );
+        let field = make_symbol(
+            "host",
+            SymbolKind::Property,
+            "src/db.rs",
+            6,
+            Some("host: String"),
+            None,
+            None,
+        );
+        let method = make_symbol(
+            "connect",
+            SymbolKind::Method,
+            "src/db.rs",
+            10,
+            Some("pub fn connect(&self) -> Result<()>"),
+            None,
+            None,
+        );
+        let mut ctx = empty_context(sym);
+        ctx.children = vec![field, method];
+
+        let output = format_symbol_context(&ctx, "overview");
+        assert!(
+            output.contains("Fields (1)"),
+            "SymbolKind::Struct should use class_or_struct formatter, not generic. Got:\n{}",
+            output
+        );
+        assert!(
+            output.contains("Methods (1)"),
+            "SymbolKind::Struct should show Methods section. Got:\n{}",
+            output
+        );
+    }
+
     // === Enum formatting ===
 
     #[test]

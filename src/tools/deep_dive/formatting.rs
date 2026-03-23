@@ -25,7 +25,7 @@ pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
         SymbolKind::Trait | SymbolKind::Interface => {
             format_trait_or_interface(&mut out, ctx, depth);
         }
-        SymbolKind::Class => {
+        SymbolKind::Class | SymbolKind::Struct => {
             format_class_or_struct(&mut out, ctx, depth);
         }
         SymbolKind::Enum => {

@@ -158,7 +158,7 @@ impl FastRefsTool {
 
         // Find references (workspace resolution is handled by workspace_target)
         let (definitions, references) = self
-            .find_references_and_definitions(handler, workspace_target)
+            .find_references_and_definitions(handler, workspace_target.clone())
             .await?;
 
         if definitions.is_empty() && references.is_empty() {
@@ -175,7 +175,9 @@ impl FastRefsTool {
 
         // Resolve from_symbol_id → name for each reference so the formatter
         // can show the calling symbol's name (e.g., "format_definition_search_results (Calls)")
-        let source_names = self.resolve_source_names(handler, &references).await;
+        let source_names = self
+            .resolve_source_names(handler, &references, &workspace_target)
+            .await;
 
         // Respect include_definition parameter
         let defs = if self.include_definition {
@@ -188,10 +190,14 @@ impl FastRefsTool {
     }
 
     /// Batch-resolve from_symbol_id values to symbol names for reference display.
+    ///
+    /// Routes to the correct workspace DB: reference workspaces use
+    /// `get_database_for_workspace`; primary uses `get_workspace().db`.
     async fn resolve_source_names(
         &self,
         handler: &JulieServerHandler,
         references: &[Relationship],
+        workspace_target: &WorkspaceTarget,
     ) -> HashMap<String, String> {
         let ids: Vec<String> = references
             .iter()
@@ -204,11 +210,16 @@ impl FastRefsTool {
             return HashMap::new();
         }
 
-        let result = if let Ok(Some(workspace)) = handler.get_workspace().await {
-            if let Some(db) = workspace.db.as_ref() {
-                let db_arc = db.clone();
+        match workspace_target {
+            WorkspaceTarget::Reference(ref_workspace_id) => {
+                let db_arc = match handler.get_database_for_workspace(ref_workspace_id).await {
+                    Ok(db) => db,
+                    Err(_) => return HashMap::new(),
+                };
                 tokio::task::spawn_blocking(move || {
-                    let db_lock = super::lock_db(&db_arc, "fast_refs source name resolution");
+                    let db_lock = db_arc
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
                     match db_lock.get_symbols_by_ids(&ids) {
                         Ok(symbols) => symbols
                             .into_iter()
@@ -219,14 +230,32 @@ impl FastRefsTool {
                 })
                 .await
                 .unwrap_or_default()
-            } else {
-                HashMap::new()
             }
-        } else {
-            HashMap::new()
-        };
-
-        result
+            WorkspaceTarget::Primary => {
+                if let Ok(Some(workspace)) = handler.get_workspace().await {
+                    if let Some(db) = workspace.db.as_ref() {
+                        let db_arc = db.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let db_lock =
+                                super::lock_db(&db_arc, "fast_refs source name resolution");
+                            match db_lock.get_symbols_by_ids(&ids) {
+                                Ok(symbols) => symbols
+                                    .into_iter()
+                                    .map(|s| (s.id.clone(), s.name.clone()))
+                                    .collect(),
+                                Err(_) => HashMap::new(),
+                            }
+                        })
+                        .await
+                        .unwrap_or_default()
+                    } else {
+                        HashMap::new()
+                    }
+                } else {
+                    HashMap::new()
+                }
+            }
+        }
     }
 
     async fn find_references_and_definitions(
@@ -481,6 +510,8 @@ impl FastRefsTool {
                         let rel_kind = match ident.kind.as_str() {
                             "call" => RelationshipKind::Calls,
                             "import" => RelationshipKind::Imports,
+                            "type_usage" => RelationshipKind::Uses,
+                            "member_access" => RelationshipKind::References,
                             _ => RelationshipKind::References,
                         };
 

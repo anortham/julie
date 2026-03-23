@@ -237,7 +237,14 @@ impl SmartRefactorTool {
         }
 
         let language = self.detect_language(file_path);
-        let ts_language = self.get_tree_sitter_language(&language)?;
+        let ts_language = match self.get_tree_sitter_language(&language) {
+            Ok(lang) => lang,
+            Err(_) => {
+                // No tree-sitter parser for this language (e.g. .env, .cfg, .ini files that
+                // Julie indexes but has no grammar for). Fall back to plain text replacement.
+                return Ok(content.replace(old_name, new_name));
+            }
+        };
 
         let mut parser = Parser::new();
         parser.set_language(&ts_language)?;
