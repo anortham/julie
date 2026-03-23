@@ -42,10 +42,7 @@ pub struct EmbeddingStats {
 
 /// Build a map of symbol_id -> callee names from the relationship graph.
 /// Only includes `Calls` relationships to avoid noise from imports/type refs.
-fn build_callee_map(
-    db: &SymbolDatabase,
-    symbols: &[Symbol],
-) -> HashMap<String, Vec<String>> {
+fn build_callee_map(db: &SymbolDatabase, symbols: &[Symbol]) -> HashMap<String, Vec<String>> {
     let func_ids: Vec<String> = symbols
         .iter()
         .filter(|s| matches!(s.kind, SymbolKind::Function | SymbolKind::Method))
@@ -211,11 +208,19 @@ pub fn run_embedding_pipeline_cancellable(
         let db_guard = db
             .lock()
             .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
-        (build_callee_map(&db_guard, &symbols), build_field_access_map(&db_guard))
+        (
+            build_callee_map(&db_guard, &symbols),
+            build_field_access_map(&db_guard),
+        )
     };
 
     // Build base prepared symbols (existing embeddable kinds) and merge selected variables.
-    let base_prepared = prepare_batch_for_embedding(&symbols, lang_configs, &callees_by_symbol, &fields_by_symbol);
+    let base_prepared = prepare_batch_for_embedding(
+        &symbols,
+        lang_configs,
+        &callees_by_symbol,
+        &fields_by_symbol,
+    );
     let candidate_variable_ids: HashSet<String> = symbols
         .iter()
         .filter(|s| s.kind == SymbolKind::Variable)
@@ -268,9 +273,7 @@ pub fn run_embedding_pipeline_cancellable(
         {
             Ok(deleted) => deleted,
             Err(err) => {
-                warn!(
-                    "Embedding pipeline: failed to delete stale embeddings, continuing: {err:#}"
-                );
+                warn!("Embedding pipeline: failed to delete stale embeddings, continuing: {err:#}");
                 0
             }
         }
@@ -293,19 +296,16 @@ pub fn run_embedding_pipeline_cancellable(
     // For functions/methods: re-embed if they have callees or field accesses.
     let enriched_ids: HashSet<&str> = symbols
         .iter()
-        .filter(|s| {
-            match s.kind {
-                SymbolKind::Class
-                | SymbolKind::Struct
-                | SymbolKind::Interface
-                | SymbolKind::Trait
-                | SymbolKind::Enum => true,
-                SymbolKind::Function | SymbolKind::Method => {
-                    callees_by_symbol.contains_key(&s.id)
-                        || fields_by_symbol.contains_key(&s.id)
-                }
-                _ => false,
+        .filter(|s| match s.kind {
+            SymbolKind::Class
+            | SymbolKind::Struct
+            | SymbolKind::Interface
+            | SymbolKind::Trait
+            | SymbolKind::Enum => true,
+            SymbolKind::Function | SymbolKind::Method => {
+                callees_by_symbol.contains_key(&s.id) || fields_by_symbol.contains_key(&s.id)
             }
+            _ => false,
         })
         .map(|s| s.id.as_str())
         .collect();
@@ -372,19 +372,24 @@ pub fn run_embedding_pipeline_cancellable(
             }
         };
 
+        let usable = vectors.len().min(chunk.len());
         if vectors.len() != chunk.len() {
             warn!(
-                "Embedding count mismatch: expected {}, got {}",
+                "Embedding count mismatch: expected {}, got {}; \
+                 storing {usable} partial results (skipped symbols retry on next run)",
                 chunk.len(),
-                vectors.len()
+                vectors.len(),
             );
+        }
+        if usable == 0 {
+            stats.batches_processed += 1;
             continue;
         }
 
-        // Pair symbol_ids with their vectors
-        let pairs: Vec<(String, Vec<f32>)> = chunk
+        // Pair symbol_ids with their vectors (truncate to the smaller of the two)
+        let pairs: Vec<(String, Vec<f32>)> = chunk[..usable]
             .iter()
-            .zip(vectors.into_iter())
+            .zip(vectors.into_iter().take(usable))
             .map(|((id, _), vec)| (id.clone(), vec))
             .collect();
 
@@ -441,13 +446,21 @@ pub fn embed_symbols_for_file(
         let db_guard = db
             .lock()
             .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
-        (build_callee_map(&db_guard, &symbols), build_field_access_map(&db_guard))
+        (
+            build_callee_map(&db_guard, &symbols),
+            build_field_access_map(&db_guard),
+        )
     };
 
     // Filter and format structural symbols only.
     // Variable embedding is handled globally by `run_embedding_pipeline` at workspace init
     // using budgeted selection. The incremental path skips variables to stay fast (<200ms).
-    let prepared = prepare_batch_for_embedding(&symbols, lang_configs, &callees_by_symbol, &fields_by_symbol);
+    let prepared = prepare_batch_for_embedding(
+        &symbols,
+        lang_configs,
+        &callees_by_symbol,
+        &fields_by_symbol,
+    );
     if prepared.is_empty() {
         return Ok(0);
     }
@@ -506,4 +519,107 @@ pub fn reembed_symbols_for_file(
     }
 
     embed_symbols_for_file(db, provider, file_path, lang_configs)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use anyhow::Result;
+
+    use super::run_embedding_pipeline;
+    use crate::database::SymbolDatabase;
+    use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+
+    /// Mock embedding provider that returns one fewer vector than requested,
+    /// simulating a partial response from a real provider (e.g., GPU OOM).
+    struct PartialProvider {
+        dims: usize,
+    }
+
+    impl EmbeddingProvider for PartialProvider {
+        fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+            Ok(vec![0.1f32; self.dims])
+        }
+
+        fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+            // Return one fewer vector than requested
+            let count = texts.len().saturating_sub(1);
+            Ok((0..count).map(|_| vec![0.1f32; self.dims]).collect())
+        }
+
+        fn dimensions(&self) -> usize {
+            self.dims
+        }
+
+        fn device_info(&self) -> DeviceInfo {
+            DeviceInfo {
+                runtime: "partial-mock".to_string(),
+                device: "cpu".to_string(),
+                model_name: "partial-test-model".to_string(),
+                dimensions: self.dims,
+            }
+        }
+
+        fn shutdown(&self) {}
+    }
+
+    fn setup_db_with_functions(count: usize) -> Arc<Mutex<SymbolDatabase>> {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("test.db");
+        let db = SymbolDatabase::new(&db_path).expect("create db");
+
+        db.conn
+            .execute(
+                "INSERT INTO files (path, language, hash, size, last_modified, last_indexed)
+                 VALUES ('src/lib.rs', 'rust', 'abc', 100, 0, 0)",
+                [],
+            )
+            .unwrap();
+
+        for i in 0..count {
+            db.conn
+                .execute(
+                    "INSERT INTO symbols (id, name, kind, file_path, language,
+                     start_line, start_col, end_line, end_col, start_byte, end_byte,
+                     reference_score)
+                     VALUES (?, ?, 'function', 'src/lib.rs', 'rust',
+                             1, 0, 10, 0, 0, 100, 0.0)",
+                    rusqlite::params![format!("sym-{i}"), format!("do_work_{i}")],
+                )
+                .unwrap();
+        }
+
+        // Must forget the dir so the tempfile path stays valid while db is open
+        std::mem::forget(dir);
+        Arc::new(Mutex::new(db))
+    }
+
+    /// When a provider returns fewer vectors than symbols in a batch, the
+    /// pipeline should store the partial results rather than skipping the
+    /// entire batch.
+    ///
+    /// Before fix: `continue` skips the batch entirely (0 embeddings stored).
+    /// After fix: `min(returned, requested)` embeddings are stored.
+    #[test]
+    fn test_pipeline_stores_partial_results_on_batch_mismatch() {
+        // 3 symbols; PartialProvider returns len-1 = 2 vectors per batch.
+        let db = setup_db_with_functions(3);
+        let provider = PartialProvider { dims: 4 };
+
+        let stats =
+            run_embedding_pipeline(&db, &provider, None).expect("pipeline should not error");
+
+        assert!(
+            stats.symbols_embedded > 0,
+            "Pipeline must store partial embeddings when provider returns fewer vectors \
+             than requested. Got {} embeddings (expected > 0).",
+            stats.symbols_embedded
+        );
+        assert_eq!(
+            stats.symbols_embedded, 2,
+            "Expected 2 embeddings stored (3 requested - 1 = 2 returned), got {}",
+            stats.symbols_embedded
+        );
+    }
 }

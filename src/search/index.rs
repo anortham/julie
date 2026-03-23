@@ -400,7 +400,8 @@ impl SearchIndex {
         );
 
         let searcher = self.reader.searcher();
-        let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
+        let candidate_limit = Self::rerank_candidate_limit(query_str, limit);
+        let top_docs = searcher.search(&query, &TopDocs::with_limit(candidate_limit))?;
 
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
@@ -421,6 +422,10 @@ impl SearchIndex {
         // Apply important_patterns boost if language configs are available
         if let Some(configs) = &self.language_configs {
             apply_important_patterns_boost(&mut results, configs);
+        }
+        apply_nl_path_prior(&mut results, query_str);
+        if results.len() > limit {
+            results.truncate(limit);
         }
 
         Ok(SymbolSearchResults {
@@ -761,5 +766,82 @@ impl SearchIndex {
                 _ => None,
             })
             .unwrap_or(0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::{SearchFilter, SearchIndex, SymbolDocument};
+
+    /// `search_symbols_relaxed` must apply `apply_nl_path_prior` so that source
+    /// paths rank above test paths for natural-language queries.
+    ///
+    /// Both symbols have identical content (equal BM25 scores). Without path
+    /// prior the scores are tied. With path prior the source gets a 1.08x boost
+    /// and the test path gets a 0.95x penalty, so source ranks first.
+    #[test]
+    fn test_search_symbols_relaxed_applies_nl_path_prior() {
+        let temp_dir = TempDir::new().unwrap();
+        let index = SearchIndex::create(temp_dir.path()).unwrap();
+
+        let shared_content = "handles user authentication service requests";
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "src-auth".into(),
+                name: "AuthService".into(),
+                signature: "pub struct AuthService".into(),
+                doc_comment: shared_content.into(),
+                code_body: "".into(),
+                file_path: "src/auth.rs".into(),
+                kind: "struct".into(),
+                language: "rust".into(),
+                start_line: 1,
+            })
+            .unwrap();
+
+        index
+            .add_symbol(&SymbolDocument {
+                id: "test-auth".into(),
+                name: "AuthService".into(),
+                signature: "pub struct AuthService".into(),
+                doc_comment: shared_content.into(),
+                code_body: "".into(),
+                file_path: "tests/auth_test.rs".into(),
+                kind: "struct".into(),
+                language: "rust".into(),
+                start_line: 1,
+            })
+            .unwrap();
+
+        index.commit().unwrap();
+
+        // NL query: multiple common words, no CamelCase/snake_case identifiers.
+        // `is_nl_like_query` returns true for this input.
+        let results = index
+            .search_symbols_relaxed("user authentication service", &SearchFilter::default(), 10)
+            .unwrap()
+            .results;
+
+        assert_eq!(results.len(), 2, "Both symbols should match");
+
+        let src_score = results
+            .iter()
+            .find(|r| r.file_path == "src/auth.rs")
+            .expect("source result should be present")
+            .score;
+        let test_score = results
+            .iter()
+            .find(|r| r.file_path == "tests/auth_test.rs")
+            .expect("test result should be present")
+            .score;
+
+        assert!(
+            src_score > test_score,
+            "Source path should score higher than test path after NL path prior. \
+             src={src_score}, test={test_score}"
+        );
     }
 }

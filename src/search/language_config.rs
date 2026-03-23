@@ -123,14 +123,13 @@ impl LanguageConfigs {
         ];
 
         for (name, content) in embedded {
-            match toml::from_str::<LanguageConfig>(content) {
-                Ok(config) => {
-                    configs.insert(name.to_string(), config);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to parse language config for {}: {}", name, e);
-                }
-            }
+            // These configs are compiled-in via include_str! -- a parse failure means
+            // a broken build was shipped. Panic immediately rather than silently
+            // skipping the language and running with incomplete tokenization.
+            let config: LanguageConfig = toml::from_str(content).unwrap_or_else(|e| {
+                panic!("Failed to parse embedded language config for '{name}': {e}")
+            });
+            configs.insert(name.to_string(), config);
         }
 
         Self { configs }
@@ -199,5 +198,28 @@ impl LanguageConfigs {
     /// Get the embeddings config for a specific language.
     pub fn embeddings_config(&self, language: &str) -> Option<&EmbeddingsConfig> {
         self.configs.get(language).map(|c| &c.embeddings)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify that ALL 33 embedded language configs parse successfully.
+    ///
+    /// With the old warn+skip behavior, a broken TOML would silently reduce the
+    /// count. With the new panic behavior, this test documents that all configs
+    /// are present and valid. If this count fails, check that a new language was
+    /// added to the embedded list in `load_embedded` and its .toml parses cleanly.
+    #[test]
+    fn test_all_embedded_language_configs_load_without_skips() {
+        let configs = LanguageConfigs::load_embedded();
+        assert_eq!(
+            configs.len(),
+            33,
+            "Expected exactly 33 embedded language configs, got {}. \
+             A broken TOML or missing entry would cause this count to be wrong.",
+            configs.len()
+        );
     }
 }
