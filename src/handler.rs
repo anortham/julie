@@ -153,7 +153,7 @@ impl JulieServerHandler {
         // This lets a second session skip auto-indexing when the first has already
         // indexed the workspace.
         let already_indexed = if let Some(ref db_arc) = ws_clone.db {
-            let db = db_arc.lock().unwrap();
+            let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
             let count = db.count_symbols_for_workspace().unwrap_or(0);
             count > 0
         } else {
@@ -1007,14 +1007,16 @@ impl ServerHandler for JulieServerHandler {
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
         info!("MCP connection established - client initialized");
 
-        // Skip auto-indexing if workspace is already indexed (daemon mode: another
-        // session may have already indexed this workspace).
+        // Atomically claim the indexing slot. Two concurrent on_initialized calls on
+        // a shared handler clone would both see is_indexed=false with a read lock;
+        // upgrading to a write lock serializes them so only one proceeds.
         {
-            let indexed = self.is_indexed.read().await;
+            let mut indexed = self.is_indexed.write().await;
             if *indexed {
                 info!("Workspace already indexed, skipping auto-indexing");
                 return;
             }
+            *indexed = true;
         }
 
         // Run auto-indexing in background task

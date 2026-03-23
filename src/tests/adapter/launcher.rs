@@ -78,4 +78,32 @@ mod tests {
         // Verify the launcher's paths match what we gave it
         assert_eq!(launcher.paths().julie_home(), paths.julie_home());
     }
+
+    /// D-H4: socket file exists but no daemon is listening (stale from a crash).
+    /// wait_for_socket must attempt an actual connect, not just check file existence.
+    #[cfg(unix)]
+    #[test]
+    fn test_wait_for_socket_rejects_stale_socket_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        let socket_path = paths.daemon_socket();
+
+        // Bind a real listener (creates the socket file), then immediately drop it.
+        // The socket file remains on disk but no one is listening — stale socket.
+        {
+            let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+            // drops here: fd closed, socket file remains
+        }
+
+        assert!(socket_path.exists(), "stale socket file should persist after listener drop");
+
+        let launcher = DaemonLauncher::new(paths);
+        // With the old file-exists check: returns Ok immediately (false positive).
+        // With the fixed connect attempt: times out and returns Err (correct).
+        let result = launcher.wait_for_socket(Duration::from_millis(300));
+        assert!(
+            result.is_err(),
+            "Should fail when socket file exists but no daemon is listening"
+        );
+    }
 }

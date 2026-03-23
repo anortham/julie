@@ -47,8 +47,19 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
                     .output();
             }
 
-            // Wait briefly for the daemon to clean up after itself
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            // Poll until the process exits (up to 5s), then clean up stale files.
+            // Avoids a fixed 500ms blind wait when the daemon exits quickly.
+            let deadline =
+                std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                if !PidFile::is_process_alive(pid) {
+                    break;
+                }
+                if std::time::Instant::now() >= deadline {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
 
             // Clean up stale files if the daemon didn't get to them in time
             let _ = std::fs::remove_file(paths.daemon_pid());

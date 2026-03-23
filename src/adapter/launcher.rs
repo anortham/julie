@@ -128,7 +128,7 @@ impl DaemonLauncher {
 
         loop {
             #[cfg(unix)]
-            if socket_path.exists() {
+            if std::os::unix::net::UnixStream::connect(&socket_path).is_ok() {
                 return Ok(());
             }
 
