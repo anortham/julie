@@ -174,17 +174,13 @@ async fn handle_ipc_session(
         "Session workspace resolved"
     );
 
-    // Compute workspace ID from path
+    // Compute workspace ID from path. Use generate_workspace_id() directly
+    // (produces e.g. "julie_316c0b08"). Do NOT wrap in another prefix; the
+    // indexing pipeline also calls generate_workspace_id() and the IDs must match
+    // for daemon.db FK constraints and workspace_db_path() to resolve correctly.
     let path_str = workspace_path.to_string_lossy().to_string();
-    let workspace_id = generate_workspace_id(&path_str)
+    let full_workspace_id = generate_workspace_id(&path_str)
         .context("Failed to generate workspace ID")?;
-
-    // Prefix with directory name for readability (same pattern as handler.rs)
-    let dir_name = workspace_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("workspace");
-    let full_workspace_id = format!("{}_{}", dir_name, &workspace_id[..8.min(workspace_id.len())]);
 
     info!(
         session_id = %session_id,

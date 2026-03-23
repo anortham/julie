@@ -512,21 +512,37 @@ impl JulieWorkspace {
     }
 
     /// Get the path to a specific workspace's index directory (SQLite database)
+    ///
+    /// When `index_root_override` is set (daemon mode), the override already
+    /// points to the workspace-specific directory, so workspace_id is not
+    /// appended again. In non-daemon mode, workspace_id selects the subdirectory.
     pub fn workspace_index_path(&self, workspace_id: &str) -> PathBuf {
-        self.indexes_root_path().join(workspace_id).join("db")
+        if self.index_root_override.is_some() {
+            self.indexes_root_path().join("db")
+        } else {
+            self.indexes_root_path().join(workspace_id).join("db")
+        }
     }
 
     /// Get the path to a specific workspace's Tantivy search index
     pub fn workspace_tantivy_path(&self, workspace_id: &str) -> PathBuf {
-        self.indexes_root_path().join(workspace_id).join("tantivy")
+        if self.index_root_override.is_some() {
+            self.indexes_root_path().join("tantivy")
+        } else {
+            self.indexes_root_path().join(workspace_id).join("tantivy")
+        }
     }
 
     /// Get the path to a specific workspace's SQLite database
     pub fn workspace_db_path(&self, workspace_id: &str) -> PathBuf {
-        self.indexes_root_path()
-            .join(workspace_id)
-            .join("db")
-            .join("symbols.db")
+        if self.index_root_override.is_some() {
+            self.indexes_root_path().join("db").join("symbols.db")
+        } else {
+            self.indexes_root_path()
+                .join(workspace_id)
+                .join("db")
+                .join("symbols.db")
+        }
     }
 
     /// Get the path to the general cache

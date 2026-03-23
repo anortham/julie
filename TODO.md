@@ -2,12 +2,12 @@
 
 ## Bugs
 
-No known bugs. All previous issues resolved as of v5.5.4.
+- [ ] **Workspace ID mismatch in daemon mode** — Two workspace ID schemes coexist: the daemon pool uses `"{dir}_{hash[:8]}"` (e.g., `julie_julie_31`) while the indexing pipeline uses `generate_workspace_id()` raw output (e.g., `julie_316c0b08`). The codehealth snapshot FK bug (fixed in `7fae889e`) was one symptom. Another: `spawn_reference_embedding` calls `ws.workspace_db_path(pool_id)` which doubles the path (`~/.julie/indexes/julie_julie_31/julie_julie_31/db/symbols.db`) because `index_root_override` already includes the pool ID. Reference workspace embeddings silently fail in daemon mode. Needs a unified ID strategy or translation layer. Key files: `src/daemon/mod.rs:187` (pool ID construction), `src/tools/workspace/indexing/index.rs:150` (pipeline ID), `src/tools/workspace/indexing/embeddings.rs:102` (doubling), `src/workspace/mod.rs:525` (`workspace_db_path`).
 
 ## Tech Debt
 
-- [ ] **Multiple Instances** - we should discuss the implact of having multiple instances of Julie running at the same time, multiple projects, git worktrees, etc.
-- [ ] **Teams** - we should be investigating https://code.claude.com/docs/en/agent-teams and leveraging this in julie now that it has grown so large. This should help us gring through our TODOs faster.
+- [x] **Multiple Instances** - solved by v6 daemon architecture (Phase 1: shared Tantivy/SQLite, Phase 2: persistent registry, shared watchers)
+- [x] **Teams** - used agent teams for Phase 2 implementation (3 Sonnet teammates, 20 tasks in ~30 min)
 
 ## Performance
 
