@@ -531,11 +531,14 @@ impl ManageWorkspaceTool {
                 );
 
                 // Capture codehealth snapshot in daemon.db (daemon mode only)
+                // Use handler.workspace_id (the daemon pool's ID, e.g. "julie_julie_31")
+                // not the local workspace_id (the indexing pipeline's hash, e.g. "julie_316c0b08")
                 if let Some(ref daemon_db) = handler.daemon_db {
-                    if let Err(e) = daemon_db.snapshot_codehealth_from_db(&workspace_id, &db_lock) {
+                    let snapshot_ws_id = handler.workspace_id.as_deref().unwrap_or(&workspace_id);
+                    if let Err(e) = daemon_db.snapshot_codehealth_from_db(snapshot_ws_id, &db_lock) {
                         warn!("Failed to capture codehealth snapshot: {}", e);
                     } else {
-                        info!(workspace_id = %workspace_id, "Codehealth snapshot captured");
+                        info!(workspace_id = %snapshot_ws_id, "Codehealth snapshot captured");
                     }
                 }
             }
