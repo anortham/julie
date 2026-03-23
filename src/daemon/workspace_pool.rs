@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use tracing::{info, warn};
 
 use crate::daemon::database::DaemonDatabase;
+use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::watcher_pool::WatcherPool;
 use crate::workspace::JulieWorkspace;
 
@@ -20,6 +21,7 @@ pub struct WorkspacePool {
     indexes_dir: PathBuf,
     daemon_db: Option<Arc<DaemonDatabase>>,
     watcher_pool: Option<Arc<WatcherPool>>,
+    embedding_service: Option<Arc<EmbeddingService>>,
 }
 
 struct WorkspaceEntry {
@@ -40,16 +42,22 @@ impl WorkspacePool {
     /// `IncrementalIndexer` instances are ref-counted across sessions so that
     /// each workspace has exactly one active file watcher regardless of how
     /// many sessions are attached.
+    ///
+    /// `embedding_service` is the shared embedding provider, passed through
+    /// to `WatcherPool::attach()` so incremental re-indexing can re-embed
+    /// changed symbols.
     pub fn new(
         indexes_dir: PathBuf,
         daemon_db: Option<Arc<DaemonDatabase>>,
         watcher_pool: Option<Arc<WatcherPool>>,
+        embedding_service: Option<Arc<EmbeddingService>>,
     ) -> Self {
         Self {
             workspaces: tokio::sync::RwLock::new(HashMap::new()),
             indexes_dir,
             daemon_db,
             watcher_pool,
+            embedding_service,
         }
     }
 
@@ -88,7 +96,8 @@ impl WorkspacePool {
                 let _ = db.increment_session_count(workspace_id);
             }
             if let Some(ref wp) = self.watcher_pool {
-                if let Err(e) = wp.attach(workspace_id, &ws).await {
+                let provider = self.shared_embedding_provider();
+                if let Err(e) = wp.attach(workspace_id, &ws, provider).await {
                     warn!(workspace_id, "Failed to attach watcher on session reuse: {}", e);
                 }
             }
@@ -106,7 +115,8 @@ impl WorkspacePool {
                 let _ = db.increment_session_count(workspace_id);
             }
             if let Some(ref wp) = self.watcher_pool {
-                if let Err(e) = wp.attach(workspace_id, &ws).await {
+                let provider = self.shared_embedding_provider();
+                if let Err(e) = wp.attach(workspace_id, &ws, provider).await {
                     warn!(workspace_id, "Failed to attach watcher (double-check path): {}", e);
                 }
             }
@@ -142,7 +152,8 @@ impl WorkspacePool {
         drop(guard); // release write lock before async watcher attach
 
         if let Some(ref wp) = self.watcher_pool {
-            if let Err(e) = wp.attach(workspace_id, &ws).await {
+            let provider = self.shared_embedding_provider();
+            if let Err(e) = wp.attach(workspace_id, &ws, provider).await {
                 warn!(workspace_id, "Failed to attach watcher: {}", e);
             }
         }
@@ -186,6 +197,18 @@ impl WorkspacePool {
     pub async fn active_count(&self) -> usize {
         let guard = self.workspaces.read().await;
         guard.len()
+    }
+
+    /// Extract the shared embedding provider from the service (if available).
+    ///
+    /// Returns `None` when no embedding service is configured or when the
+    /// service initialized without a provider (e.g., model download failed).
+    fn shared_embedding_provider(
+        &self,
+    ) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
+        self.embedding_service
+            .as_ref()
+            .and_then(|svc| svc.provider().cloned())
     }
 
     /// Initialize a `JulieWorkspace` with its index root redirected to the pool's

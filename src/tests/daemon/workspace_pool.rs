@@ -18,7 +18,7 @@ fn temp_workspace_root() -> tempfile::TempDir {
 async fn test_get_or_init_creates_workspace_on_first_call() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
 
     let ws = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -37,7 +37,7 @@ async fn test_get_or_init_creates_workspace_on_first_call() {
 async fn test_get_or_init_returns_same_instance_on_second_call() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
 
     let ws1 = pool
         .get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -61,7 +61,7 @@ async fn test_get_or_init_returns_same_instance_on_second_call() {
 #[tokio::test]
 async fn test_get_returns_none_for_unknown_workspace() {
     let indexes_dir = temp_indexes_dir();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
 
     let result = pool.get("nonexistent").await;
     assert!(
@@ -74,7 +74,7 @@ async fn test_get_returns_none_for_unknown_workspace() {
 async fn test_get_returns_some_after_init() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
 
     // Initialize workspace
     pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -90,7 +90,7 @@ async fn test_get_returns_some_after_init() {
 async fn test_is_indexed_returns_false_before_indexing() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
 
     pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
         .await
@@ -106,7 +106,7 @@ async fn test_is_indexed_returns_false_before_indexing() {
 async fn test_mark_indexed() {
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
 
     pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
         .await
@@ -122,7 +122,7 @@ async fn test_mark_indexed() {
 #[tokio::test]
 async fn test_active_workspace_count() {
     let indexes_dir = temp_indexes_dir();
-    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None);
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
 
     assert_eq!(
         pool.active_count().await,
@@ -152,7 +152,7 @@ async fn test_active_workspace_count() {
 #[tokio::test]
 async fn test_concurrent_get_or_init_different_workspaces() {
     let indexes_dir = temp_indexes_dir();
-    let pool = Arc::new(WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None));
+    let pool = Arc::new(WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None));
 
     let root1 = temp_workspace_root();
     let root2 = temp_workspace_root();
@@ -193,7 +193,7 @@ async fn test_workspace_pool_accepts_daemon_db() {
     std::fs::create_dir_all(&indexes_dir).unwrap();
 
     // Constructor must accept daemon_db -- pool starts empty
-    let pool = WorkspacePool::new(indexes_dir.clone(), Some(daemon_db.clone()), None);
+    let pool = WorkspacePool::new(indexes_dir.clone(), Some(daemon_db.clone()), None, None);
     assert_eq!(pool.active_count().await, 0);
 }
 
@@ -221,6 +221,7 @@ async fn test_watcher_pool_ref_incremented_on_get_or_init() {
         indexes_dir.path().to_path_buf(),
         None,
         Some(Arc::clone(&watcher_pool)),
+        None,
     );
 
     pool.get_or_init("test_ws", workspace_root.path().to_path_buf())
@@ -243,6 +244,7 @@ async fn test_watcher_pool_detached_on_disconnect() {
         indexes_dir.path().to_path_buf(),
         None,
         Some(Arc::clone(&watcher_pool)),
+        None,
     );
 
     pool.get_or_init("test_ws", workspace_root.path().to_path_buf())

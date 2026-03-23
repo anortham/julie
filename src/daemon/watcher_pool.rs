@@ -118,10 +118,15 @@ impl WatcherPool {
     /// Increments the ref count. If no watcher exists for this workspace,
     /// creates and starts an `IncrementalIndexer`. Cancels any pending grace
     /// deadline (reuse-within-grace path).
+    ///
+    /// `embedding_provider` is the shared provider from `EmbeddingService`.
+    /// In daemon mode, `workspace.embedding_provider` is always `None`, so
+    /// the caller must supply the shared provider explicitly.
     pub async fn attach(
         &self,
         workspace_id: &str,
         workspace: &crate::workspace::JulieWorkspace,
+        embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
     ) -> anyhow::Result<()> {
         let mut guard = self.entries.write().await;
         let entry = guard
@@ -143,7 +148,7 @@ impl WatcherPool {
                     db.clone(),
                     extractor_mgr,
                     Some(search_index.clone()),
-                    workspace.embedding_provider.clone(),
+                    embedding_provider.clone(),
                 )?;
                 indexer.start_watching().await?;
                 entry.watcher = Some(indexer);

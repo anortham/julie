@@ -108,6 +108,7 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
         paths.indexes_dir(),
         daemon_db.clone(),
         Some(watcher_pool),
+        Some(Arc::clone(&embedding_service)),
     ));
     let sessions = Arc::new(SessionTracker::new());
 

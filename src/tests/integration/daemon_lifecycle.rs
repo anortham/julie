@@ -77,7 +77,7 @@ mod tests {
         let ws_root = tempfile::tempdir().expect("tempdir for workspace");
         std::fs::create_dir_all(ws_root.path().join(".julie")).expect("create .julie");
 
-        let pool = WorkspacePool::new(indexes_tmp.path().to_path_buf(), None, None);
+        let pool = WorkspacePool::new(indexes_tmp.path().to_path_buf(), None, None, None);
 
         // First session: get_or_init
         let ws1 = pool
@@ -338,6 +338,7 @@ mod tests {
             indexes_dir,
             Some(Arc::clone(&daemon_db)),
             None, // no watcher pool for this test
+            None, // no embedding service for this test
         );
 
         // Step 3: Two sessions attach to the same workspace
