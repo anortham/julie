@@ -129,17 +129,23 @@ impl WorkspacePool {
             "Initializing workspace in pool"
         );
 
-        // Register as pending before we start initializing
+        // Register as pending so the workspace is visible in daemon.db even while
+        // initializing. The session count is incremented AFTER a successful init
+        // to avoid a permanently-leaked count if init_workspace fails.
         if let Some(ref db) = self.daemon_db {
             let path_str = workspace_root.to_string_lossy();
             let _ = db.upsert_workspace(workspace_id, &path_str, "pending");
-            let _ = db.increment_session_count(workspace_id);
         }
 
         let workspace = self
             .init_workspace(workspace_id, workspace_root)
             .await
             .with_context(|| format!("Failed to initialize workspace '{workspace_id}' in pool"))?;
+
+        // Increment only after successful init — safe to count now.
+        if let Some(ref db) = self.daemon_db {
+            let _ = db.increment_session_count(workspace_id);
+        }
 
         let ws = Arc::new(workspace);
         guard.insert(
@@ -177,6 +183,25 @@ impl WorkspacePool {
         }
         if let Some(ref db) = self.daemon_db {
             let _ = db.update_workspace_status(workspace_id, "ready");
+        }
+    }
+
+    /// Sync the pool's in-memory `indexed` flag from daemon.db.
+    ///
+    /// Called at IPC session tear-down: if daemon.db records the workspace as
+    /// "ready" (set by `handle_index_command` after a successful indexing pass),
+    /// the pool's in-memory `indexed` flag is set to match. This ensures
+    /// `is_indexed()` returns the correct value for subsequent sessions and
+    /// that the pool state stays consistent with the persistent registry.
+    pub async fn sync_indexed_from_db(&self, workspace_id: &str) {
+        let Some(ref db) = self.daemon_db else { return };
+        if let Ok(Some(row)) = db.get_workspace(workspace_id) {
+            if row.status == "ready" {
+                let mut guard = self.workspaces.write().await;
+                if let Some(entry) = guard.get_mut(workspace_id) {
+                    entry.indexed = true;
+                }
+            }
         }
     }
 

@@ -5,9 +5,12 @@
 
 use anyhow::Context;
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// Handle to a PID file. Holds the path so cleanup can remove it on drop/shutdown.
+#[derive(Debug)]
 pub struct PidFile {
     path: PathBuf,
 }
@@ -86,6 +89,43 @@ impl PidFile {
             // Stale PID file; clean it up
             let _ = fs::remove_file(path);
             None
+        }
+    }
+
+    /// Atomically create the PID file, checking for an already-running daemon.
+    ///
+    /// Uses `O_CREAT|O_EXCL` semantics (`create_new(true)`) to collapse the
+    /// read-check and write into a single atomic operation, eliminating the
+    /// TOCTOU window present in the `check_running` + `create` sequence.
+    ///
+    /// Behavior:
+    /// - No file exists → create it and return `Ok(PidFile)`.
+    /// - File exists, process is alive → return `Err("already running …")`.
+    /// - File exists, process is dead (stale) → remove it, then create.
+    pub fn create_exclusive(path: &Path) -> anyhow::Result<Self> {
+        let pid = std::process::id();
+
+        loop {
+            match OpenOptions::new().write(true).create_new(true).open(path) {
+                Ok(mut f) => {
+                    write!(f, "{}", pid)
+                        .with_context(|| format!("Failed to write PID to {}", path.display()))?;
+                    return Ok(Self { path: path.to_path_buf() });
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    if let Some(existing) = Self::read_pid(path) {
+                        if Self::is_process_alive(existing) {
+                            anyhow::bail!("Daemon already running (PID {})", existing);
+                        }
+                    }
+                    // Stale or unreadable file — remove and retry the exclusive create
+                    let _ = fs::remove_file(path);
+                }
+                Err(e) => {
+                    return Err(anyhow::Error::from(e)
+                        .context(format!("Failed to create PID file: {}", path.display())));
+                }
+            }
         }
     }
 

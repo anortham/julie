@@ -130,4 +130,57 @@ mod tests {
         let result = PidFile::check_running(&path);
         assert_eq!(result, None);
     }
+
+    // ── D-C2 ──────────────────────────────────────────────────────────────────
+    // create_exclusive must atomically check-and-create the PID file so two
+    // concurrent `julie daemon` invocations can't both believe they are first.
+
+    #[test]
+    fn test_create_exclusive_succeeds_when_no_file_exists() {
+        let (_dir, path) = temp_pid_path();
+        let pid_file = PidFile::create_exclusive(&path).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            contents.trim().parse::<u32>().unwrap(),
+            std::process::id()
+        );
+        pid_file.cleanup().unwrap();
+    }
+
+    #[test]
+    fn test_create_exclusive_detects_live_process() {
+        let (_dir, path) = temp_pid_path();
+
+        // First exclusive creation succeeds
+        let _pid1 = PidFile::create_exclusive(&path).unwrap();
+
+        // Second attempt while the first process (us) is still alive must fail
+        let result = PidFile::create_exclusive(&path);
+        assert!(result.is_err(), "second create_exclusive should fail while process is live");
+        assert!(
+            format!("{:?}", result.unwrap_err()).contains("already running"),
+            "error should mention 'already running'"
+        );
+    }
+
+    #[test]
+    fn test_create_exclusive_handles_stale_pid() {
+        let (_dir, path) = temp_pid_path();
+
+        // Write a stale PID (process definitely dead)
+        std::fs::write(&path, "99999999").unwrap();
+
+        // create_exclusive should detect the dead process, remove stale file, succeed
+        let result = PidFile::create_exclusive(&path);
+        assert!(result.is_ok(), "create_exclusive should succeed with stale PID: {:?}", result.err());
+
+        let pid_str = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            pid_str.trim().parse::<u32>().unwrap(),
+            std::process::id(),
+            "PID file should contain current process PID after overwriting stale one"
+        );
+
+        result.unwrap().cleanup().unwrap();
+    }
 }

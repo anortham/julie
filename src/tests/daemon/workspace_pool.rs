@@ -232,6 +232,100 @@ async fn test_watcher_pool_ref_incremented_on_get_or_init() {
     assert_eq!(watcher_pool.ref_count("test_ws").await, 1);
 }
 
+// ── D-C1 ─────────────────────────────────────────────────────────────────────
+// session_count must NOT be incremented when init_workspace fails, otherwise
+// the count stays +1 permanently (leaked) and daemon.db is inconsistent.
+#[tokio::test]
+async fn test_session_count_not_incremented_on_init_failure() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let daemon_db = Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap());
+    let indexes_dir = tmp.path().join("indexes");
+    std::fs::create_dir_all(&indexes_dir).unwrap();
+
+    // Use a regular FILE as the workspace root so `create_dir_all(.julie)` fails
+    let fake_root = tmp.path().join("not_a_dir");
+    std::fs::write(&fake_root, b"I am a file").unwrap();
+
+    let pool = WorkspacePool::new(indexes_dir, Some(Arc::clone(&daemon_db)), None, None);
+
+    let result = pool.get_or_init("leak_test_ws", fake_root).await;
+    assert!(result.is_err(), "init should fail when workspace root is a regular file");
+
+    // After fix: session_count stays 0 (increment never happened)
+    // Before fix: session_count would be 1 (leaked on failed init)
+    if let Ok(Some(row)) = daemon_db.get_workspace("leak_test_ws") {
+        assert_eq!(
+            row.session_count, 0,
+            "session count must not be incremented when init_workspace fails"
+        );
+    }
+    // If the row doesn't exist at all, that's also acceptable — no leak either way
+}
+
+// ── D-H6 ─────────────────────────────────────────────────────────────────────
+// After indexing, the IPC session tear-down must call sync_indexed_from_db so
+// the pool's in-memory `indexed` flag reflects what daemon.db already knows.
+#[tokio::test]
+async fn test_sync_indexed_from_db_sets_flag_when_ready() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let daemon_db = Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap());
+    let indexes_dir = temp_indexes_dir();
+    let workspace_root = temp_workspace_root();
+
+    let pool = WorkspacePool::new(
+        indexes_dir.path().to_path_buf(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    );
+
+    pool.get_or_init("sync_test_ws", workspace_root.path().to_path_buf())
+        .await
+        .expect("get_or_init should succeed");
+
+    // Not indexed in pool yet
+    assert!(!pool.is_indexed("sync_test_ws").await);
+
+    // Simulate what handle_index_command does: transition daemon.db to "ready"
+    daemon_db.update_workspace_status("sync_test_ws", "ready").unwrap();
+
+    // sync_indexed_from_db must propagate the "ready" flag to the pool's in-memory state
+    pool.sync_indexed_from_db("sync_test_ws").await;
+
+    assert!(
+        pool.is_indexed("sync_test_ws").await,
+        "pool should reflect indexed=true after sync when daemon.db says ready"
+    );
+}
+
+// pool.sync_indexed_from_db must be a no-op when daemon.db says "pending"
+#[tokio::test]
+async fn test_sync_indexed_from_db_noop_when_pending() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let daemon_db = Arc::new(DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap());
+    let indexes_dir = temp_indexes_dir();
+    let workspace_root = temp_workspace_root();
+
+    let pool = WorkspacePool::new(
+        indexes_dir.path().to_path_buf(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    );
+
+    pool.get_or_init("pending_ws", workspace_root.path().to_path_buf())
+        .await
+        .expect("get_or_init should succeed");
+
+    // daemon.db status is "pending" — sync should leave pool flag as false
+    pool.sync_indexed_from_db("pending_ws").await;
+
+    assert!(
+        !pool.is_indexed("pending_ws").await,
+        "pool should remain not-indexed when daemon.db says pending"
+    );
+}
+
 #[tokio::test]
 async fn test_watcher_pool_detached_on_disconnect() {
     use std::time::Duration;

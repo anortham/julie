@@ -14,11 +14,14 @@ pub mod session;
 pub mod watcher_pool;
 pub mod workspace_pool;
 
+use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+#[cfg(unix)]
+use libc;
 use rmcp::ServiceExt;
 use tokio::io::AsyncReadExt;
 use tracing::{error, info, warn};
@@ -35,6 +38,45 @@ use self::session::SessionTracker;
 use self::watcher_pool::WatcherPool;
 use self::workspace_pool::WorkspacePool;
 
+/// Classify an `accept()` error as transient or fatal.
+///
+/// Transient errors — connection resets, interrupts, and fd-exhaustion — should
+/// be logged and retried. Fatal errors (unexpected listener state) should stop
+/// the accept loop.
+pub(crate) fn is_transient_accept_error(e: &io::Error) -> bool {
+    match e.kind() {
+        // Client vanished before the accept completed, or EINTR hit the syscall
+        io::ErrorKind::ConnectionReset
+        | io::ErrorKind::ConnectionAborted
+        | io::ErrorKind::Interrupted => true,
+        _ => {
+            // EMFILE / ENFILE: per-process or system-wide file-descriptor exhaustion
+            #[cfg(unix)]
+            if let Some(raw) = e.raw_os_error() {
+                if raw == libc::EMFILE || raw == libc::ENFILE {
+                    return true;
+                }
+            }
+            false
+        }
+    }
+}
+
+/// Wait for all active IPC sessions to finish, with a deadline.
+///
+/// Returns `true` if sessions drained cleanly, `false` if the timeout elapsed
+/// while sessions were still active.
+pub(crate) async fn drain_sessions(sessions: &SessionTracker, timeout: Duration) -> bool {
+    let start = tokio::time::Instant::now();
+    while sessions.active_count() > 0 {
+        if start.elapsed() >= timeout {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    true
+}
+
 /// Run the Julie daemon: bind IPC socket, accept connections, serve MCP.
 ///
 /// This function blocks until a shutdown signal (SIGTERM/SIGINT) is received.
@@ -46,14 +88,11 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
         .ensure_dirs()
         .context("Failed to create daemon directories")?;
 
-    // Check for an already-running daemon
-    if let Some(pid) = PidFile::check_running(&paths.daemon_pid()) {
-        anyhow::bail!("Daemon already running (PID {})", pid);
-    }
-
-    // Write our PID file
-    let pid_file = PidFile::create(&paths.daemon_pid())
-        .context("Failed to create PID file")?;
+    // Atomically check-and-create the PID file. create_exclusive uses O_CREAT|O_EXCL
+    // internally, eliminating the TOCTOU window between check_running and create
+    // that allowed two concurrent invocations to both believe they were first.
+    let pid_file = PidFile::create_exclusive(&paths.daemon_pid())
+        .context("Failed to start daemon")?;
     info!(pid = std::process::id(), "Daemon PID file created");
 
     // Bind the IPC listener (Unix socket)
@@ -121,7 +160,24 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
         }
     };
 
-    // Cleanup
+    // Give active sessions time to finish before tearing down shared resources.
+    // Without this drain, sessions that are mid-request get dropped immediately
+    // on SIGTERM, which can corrupt in-flight writes or leave daemon.db in an
+    // inconsistent state.
+    let remaining = sessions.active_count();
+    if remaining > 0 {
+        info!(active_sessions = remaining, "Draining active sessions (up to 5s)");
+        let drained = drain_sessions(&sessions, Duration::from_secs(5)).await;
+        if drained {
+            info!("All sessions drained cleanly");
+        } else {
+            warn!(
+                remaining = sessions.active_count(),
+                "Session drain timeout exceeded, forcing shutdown"
+            );
+        }
+    }
+
     info!(
         active_sessions = sessions.active_count(),
         "Daemon shutting down"
@@ -150,7 +206,26 @@ async fn accept_loop(
     embedding_service: &Arc<EmbeddingService>,
 ) -> Result<()> {
     loop {
-        let stream = listener.accept().await.context("IPC accept failed")?;
+        let stream = match listener.accept().await {
+            Ok(s) => s,
+            Err(e) if is_transient_accept_error(&e) => {
+                // Transient OS error (connection reset, EINTR, fd exhaustion, etc.).
+                // Log and retry — killing the daemon for EMFILE would be wrong.
+                warn!(error = %e, "Transient IPC accept error, retrying");
+                // Back off briefly on fd exhaustion to let pressure ease
+                #[cfg(unix)]
+                if let Some(raw) = e.raw_os_error() {
+                    if raw == libc::EMFILE || raw == libc::ENFILE {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+                }
+                continue;
+            }
+            Err(e) => {
+                error!(error = %e, "Fatal IPC accept error, stopping accept loop");
+                return Err(anyhow::anyhow!("IPC accept failed: {}", e));
+            }
+        };
 
         let pool = Arc::clone(pool);
         let sessions = Arc::clone(sessions);
@@ -291,6 +366,12 @@ async fn handle_ipc_session(
     if let Some(ref log) = project_log {
         log.session_end(session_id);
     }
+
+    // Sync the pool's in-memory `indexed` flag from daemon.db. If indexing ran
+    // during this session, handle_index_command will have already written "ready"
+    // to daemon.db; propagate that status to the pool so is_indexed() returns true
+    // for subsequent sessions without requiring another indexing pass.
+    pool.sync_indexed_from_db(&full_workspace_id).await;
 
     // Decrement session count in daemon.db (pool handles the None case gracefully)
     pool.disconnect_session(&full_workspace_id).await;
