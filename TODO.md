@@ -28,49 +28,49 @@ Comprehensive 5-agent code review covering daemon architecture, search engine, n
 
 - [x] **[S-C1] KNN score may be broken for negative distances** (fixed in `6ec24530`) -- `1.0 - distance` assumes cosine distance in [0,1]. sqlite-vec may return L2 or cosine in [0,2]. Needs verification and a clamp to `(1.0 - distance).max(0.0)`. (`hybrid.rs:152`)
 
-- [ ] **[S-C2] Language config TOML parse failures silently swallowed** -- Configs are `include_str!` compiled in. A parse failure means a language gets no tokenizer config. Should panic for shipped configs, not warn+skip. (`language_config.rs`)
+- [x] **[S-C2] Language config TOML parse failures silently swallowed** (fixed in `23b9680a`) -- Configs are `include_str!` compiled in. A parse failure means a language gets no tokenizer config. Should panic for shipped configs, not warn+skip. (`language_config.rs`)
 
-- [ ] **[I-C4] Watcher hash race on rapid edits** -- Watcher reads file content and computes hash, then `create_file_info` re-reads and computes its own hash. Rapid edit between reads causes hash mismatch, making the file appear "always changed." (`handlers.rs:54,122`)
+- [x] **[I-C4] Watcher hash race on rapid edits** (fixed in `09ac63d2`) -- Watcher reads file content and computes hash, then `create_file_info` re-reads and computes its own hash. Rapid edit between reads causes hash mismatch, making the file appear "always changed." (`handlers.rs:54,122`)
 
 ### HIGH
 
 **Daemon:**
 - [x] **[D-H1] SIGTERM doesn't drain active sessions** (fixed in `02ae0263`) -- Shutdown drops sessions immediately. MCP clients get broken connections. Should wait with timeout. (`daemon/mod.rs:116-138`)
-- [ ] **[D-H2] Concurrent sessions both trigger auto-indexing** -- Two sessions see `is_indexed=false` simultaneously. Wasteful double-indexing. Use `AtomicBool` or `try_lock`. (`handler.rs:1016-1022`)
+- [x] **[D-H2] Concurrent sessions both trigger auto-indexing** (fixed in `de5e7146`) -- Two sessions see `is_indexed=false` simultaneously. Wasteful double-indexing. Use `AtomicBool` or `try_lock`. (`handler.rs:1016-1022`)
 - [ ] **[D-H3] DaemonDatabase bypasses SymbolDatabase mutex** -- `snapshot_codehealth_from_db` takes `&SymbolDatabase` (unlocked ref) and accesses `.conn` directly. Correct today because caller holds lock, but deceptive API. (`database.rs:594`)
-- [ ] **[D-H4] wait_for_socket checks file existence, not connectivity** -- Socket file appears before daemon finishes setup. Adapter may connect before `accept()` is ready. (`launcher.rs:131`)
-- [ ] **[D-H5] stop_daemon races with daemon cleanup** -- Fixed 500ms sleep, then force-removes socket. Slow daemon may still be alive. (`lifecycle.rs:51-57`)
+- [x] **[D-H4] wait_for_socket checks file existence, not connectivity** (fixed in `de5e7146`) -- Socket file appears before daemon finishes setup. Adapter may connect before `accept()` is ready. (`launcher.rs:131`)
+- [x] **[D-H5] stop_daemon races with daemon cleanup** (fixed in `de5e7146`) -- Fixed 500ms sleep, then force-removes socket. Slow daemon may still be alive. (`lifecycle.rs:51-57`)
 - [x] **[D-H6] mark_indexed never called in IPC path** (fixed in `02ae0263`) -- Workspace stays `status="pending"` in daemon.db forever. `is_indexed` pool flag never set. (`workspace_pool.rs`)
 - [ ] **[D-H7] Mutex<Connection> blocks tokio workers** -- `DaemonDatabase` is shared across sessions; heavy queries block tokio threads. Consider `spawn_blocking`. (`database.rs:22`)
 
 **Search:**
-- [ ] **[S-H1] search_symbols_relaxed skips apply_nl_path_prior** -- Test files rank alongside production code in relaxed search path. (`index.rs`)
+- [x] **[S-H1] search_symbols_relaxed skips apply_nl_path_prior** (fixed in `23b9680a`) -- Test files rank alongside production code in relaxed search path. (`index.rs`)
 - [ ] **[S-H2] select_budgeted_variables has no global cap** -- Per-language caps exist but total across all languages is unbounded. Polyglot codebases can flood embedding index. (`metadata.rs:273-292`)
-- [ ] **[S-H3] Sidecar has no circuit breaker** -- `connection_fatal` cleared on every request. After N consecutive fatal failures, provider should disable itself. (`sidecar_provider.rs:314`)
+- [x] **[S-H3] Sidecar has no circuit breaker** (fixed in `23b9680a`) -- `connection_fatal` cleared on every request. After N consecutive fatal failures, provider should disable itself. (`sidecar_provider.rs:314`)
 - [ ] **[S-H4] RRF merge always keeps keyword metadata** -- If symbol appears in both keyword and semantic results, keyword version always kept. Metadata could be stale if enrichment paths diverge. (`hybrid.rs:81-86`)
 - [ ] **[S-H5] DB-promoted definitions use hardcoded score: 100.0** -- No centrality check. False positives from `find_definitions_by_name_component` get forced to position 0. (`text_search.rs`)
-- [ ] **[S-H6] Embedding batch mismatch skips 250 symbols permanently** -- When `vectors.len() != chunk.len()`, entire batch skipped. Symbols never get re-embedded on subsequent runs. (`pipeline.rs:375-381`)
+- [x] **[S-H6] Embedding batch mismatch skips 250 symbols permanently** (fixed in `23b9680a`) -- When `vectors.len() != chunk.len()`, entire batch skipped. Symbols never get re-embedded on subsequent runs. (`pipeline.rs:375-381`)
 
 **Navigation:**
-- [ ] **[N-H1] get_context primary arm panics on mutex poison** -- Uses `.unwrap()` while reference arm uses `.map_err`. Inconsistent. (`pipeline.rs:583`)
-- [ ] **[N-H2] format_optimized_results is dead code** -- Zero callers. Delete. (`fast_refs.rs:542-577`)
+- [x] **[N-H1] get_context primary arm panics on mutex poison** (fixed in `09ac63d2`) -- Uses `.unwrap()` while reference arm uses `.map_err`. Inconsistent. (`pipeline.rs:583`)
+- [x] **[N-H2] format_optimized_results is dead code** (deleted in `09ac63d2`) -- Zero callers. Delete. (`fast_refs.rs:542-577`)
 - [x] **[N-H3] deep_dive Struct kind falls into generic formatter** (fixed in `6ec24530`) -- No fields, methods, or implements shown for structs. Add `SymbolKind::Struct` to the `Class` match arm. (`formatting.rs:14-29`)
 - [ ] **[N-H4] query_metrics file_pattern overscan returns empty for narrow globs** -- 5x heuristic insufficient. Push filter into SQL. (`query.rs:153-159`)
-- [ ] **[N-H5] merge_identifier_refs dedup set not updated on append** -- Possible duplicate entries. (`data.rs:382-444`)
+- [x] **[N-H5] merge_identifier_refs dedup set not updated on append** (fixed in `09ac63d2`) -- Possible duplicate entries. (`data.rs:382-444`)
 - [ ] **[N-H6] build_test_refs fires N per-symbol DB queries** -- 200 queries for 200 test refs, then truncates to 10. Batch-fetch first. (`data.rs:324-374`)
 - [x] **[N-H7] rename errors on unknown language** (fixed in `6ec24530`) -- `smart_text_replace` fails for .json/.yaml/.toml/.md. Fall back to text replace. (`utils.rs`)
 
 **Indexing:**
-- [ ] **[I-H1] Parser pool entirely unused** -- `_parser` parameter is dead code. `LanguageParserPool` allocates parsers that are never used. Remove. (`processor.rs:573,692`)
-- [ ] **[I-H2] last_processed dedup map grows unbounded** -- Never evicted in long-running daemon. (`watcher/mod.rs:50`)
+- [x] **[I-H1] Parser pool entirely unused** (module deleted) -- `_parser` parameter is dead code. `LanguageParserPool` allocates parsers that are never used. Remove. (`processor.rs:573,692`)
+- [x] **[I-H2] last_processed dedup map grows unbounded** (fixed in `09ac63d2`) -- Never evicted in long-running daemon. (`watcher/mod.rs:50`)
 - [ ] **[I-H3] Rename events from notify silently dropped** -- `EventKind::Rename` falls to `_` arm. Renames become delete+create, destroying embeddings. (`events.rs:22-76`)
 - [ ] **[I-H4] Orphan cleanup opens separate DB connection** -- Risks "database is locked" errors, bypasses mutex guard. (`incremental.rs:326-346`)
 - [ ] **[I-H5] FK checks disabled globally, not per-transaction** -- `PRAGMA foreign_keys = OFF` is global. Safe today because of mutex, but fragile. Use `defer_foreign_keys`. (`bulk_operations.rs:694`)
 
 **Handler:**
 - [ ] **[H-H2] ensure_workspace TOCTOU race** -- Two callers both see None, both init. Zero callers currently but latent bug. (`handler.rs:403-410`)
-- [ ] **[H-H3] run_stdio_server is dead code** -- `#[allow(dead_code)]` on 80-line function with correct shutdown logic that adapter mode doesn't replicate. Decide: delete or wire back up. (`main.rs:83`)
-- [ ] **[H-H4] lock().unwrap() without poison recovery** -- `new_with_shared_workspace` panics on poisoned mutex. Use `unwrap_or_else(|p| p.into_inner())`. (`handler.rs:156`)
+- [x] **[H-H3] run_stdio_server is dead code** (deleted in `de5e7146`) -- `#[allow(dead_code)]` on 80-line function with correct shutdown logic that adapter mode doesn't replicate. Decide: delete or wire back up. (`main.rs:83`)
+- [x] **[H-H4] lock().unwrap() without poison recovery** (fixed in `de5e7146`) -- `new_with_shared_workspace` panics on poisoned mutex. Use `unwrap_or_else(|p| p.into_inner())`. (`handler.rs:156`)
 - [ ] **[H-H6] Windows daemon mode is empty stub** -- `julie daemon` exposed on Windows but IPC module is TODO. Guard with compile_error or CLI help. (`daemon/ipc.rs:99-108`)
 
 ## Bugs
