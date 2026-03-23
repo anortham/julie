@@ -14,7 +14,7 @@ use anyhow::{Context, Result};
 use tokio::io::{AsyncWriteExt, copy};
 use tracing::{error, info, warn};
 
-use crate::daemon::ipc::IpcConnector;
+use crate::daemon::ipc::{IpcClientStream, IpcConnector};
 use crate::paths::DaemonPaths;
 
 use self::launcher::DaemonLauncher;
@@ -120,16 +120,15 @@ async fn run_with_reconnect(
     })
 }
 
-/// Connect to the daemon socket and send the workspace header.
-#[cfg(unix)]
+/// Connect to the daemon IPC endpoint and send the workspace header.
 async fn connect_and_handshake(
     paths: &DaemonPaths,
     workspace_root: &PathBuf,
-) -> Result<tokio::net::UnixStream> {
-    let socket_path = paths.daemon_socket();
-    let mut stream = IpcConnector::connect(&socket_path)
+) -> Result<IpcClientStream> {
+    let ipc_addr = paths.daemon_ipc_addr();
+    let mut stream = IpcConnector::connect(&ipc_addr)
         .await
-        .context("Failed to connect to daemon IPC socket")?;
+        .context("Failed to connect to daemon IPC endpoint")?;
 
     // Send workspace header: WORKSPACE:/path/to/project\n
     let header = format!("WORKSPACE:{}\n", workspace_root.display());
@@ -146,8 +145,7 @@ async fn connect_and_handshake(
 /// Uses `tokio::io::copy` in both directions simultaneously via `tokio::select!`.
 /// When either direction finishes (EOF or error), the other is cancelled and
 /// we return.
-#[cfg(unix)]
-async fn forward_bytes(stream: tokio::net::UnixStream) -> Result<()> {
+async fn forward_bytes(stream: IpcClientStream) -> Result<()> {
     let (mut ipc_read, mut ipc_write) = tokio::io::split(stream);
     let mut stdin = tokio::io::stdin();
     let mut stdout = tokio::io::stdout();

@@ -122,13 +122,25 @@ impl DaemonLauncher {
         let start = Instant::now();
         let mut delay = Duration::from_millis(50);
         let max_delay = Duration::from_millis(500);
-
-        #[cfg(unix)]
-        let socket_path = self.paths.daemon_socket();
+        let ipc_addr = self.paths.daemon_ipc_addr();
 
         loop {
+            // Probe the IPC endpoint to check if the daemon is listening
             #[cfg(unix)]
-            if std::os::unix::net::UnixStream::connect(&socket_path).is_ok() {
+            if std::os::unix::net::UnixStream::connect(&ipc_addr).is_ok() {
+                return Ok(());
+            }
+
+            // On Windows, try opening the named pipe. If the daemon is listening,
+            // this succeeds. The brief connection is dropped immediately; the
+            // adapter will connect properly afterward.
+            #[cfg(windows)]
+            if std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&ipc_addr)
+                .is_ok()
+            {
                 return Ok(());
             }
 
@@ -136,7 +148,7 @@ impl DaemonLauncher {
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
                     format!(
-                        "Daemon socket did not appear within {}ms",
+                        "Daemon IPC endpoint did not appear within {}ms",
                         timeout.as_millis()
                     ),
                 ));

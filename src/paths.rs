@@ -60,6 +60,19 @@ impl DaemonPaths {
         r"\\.\pipe\julie-daemon".to_string()
     }
 
+    /// Platform-specific IPC address for the daemon.
+    /// Returns socket path on Unix, named pipe path on Windows.
+    pub fn daemon_ipc_addr(&self) -> PathBuf {
+        #[cfg(unix)]
+        {
+            self.julie_home.join("daemon.sock")
+        }
+        #[cfg(windows)]
+        {
+            PathBuf::from(r"\\.\pipe\julie-daemon")
+        }
+    }
+
     /// PID file for daemon lifecycle
     pub fn daemon_pid(&self) -> PathBuf {
         self.julie_home.join("daemon.pid")

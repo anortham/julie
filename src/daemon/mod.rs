@@ -1,6 +1,6 @@
 //! Julie daemon: persistent background process serving MCP over IPC.
 //!
-//! The daemon multiplexes many adapter sessions over a single Unix socket.
+//! The daemon multiplexes many adapter sessions over IPC (Unix socket or Windows named pipe).
 //! Each connection sends a `WORKSPACE:/path\n` header, then speaks MCP
 //! JSON-RPC over the remaining stream.
 
@@ -16,8 +16,8 @@ pub mod workspace_pool;
 
 use std::io;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
@@ -33,7 +33,7 @@ use crate::workspace::registry::generate_workspace_id;
 
 use self::database::DaemonDatabase;
 use self::embedding_service::EmbeddingService;
-use self::ipc::IpcListener;
+use self::ipc::{IpcListener, IpcStream};
 use self::pid::PidFile;
 use self::session::SessionTracker;
 use self::watcher_pool::WatcherPool;
@@ -109,14 +109,13 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
         PidFile::create_exclusive(&paths.daemon_pid()).context("Failed to start daemon")?;
     info!(pid = std::process::id(), "Daemon PID file created");
 
-    // Bind the IPC listener (Unix socket)
-    #[cfg(unix)]
-    let listener = IpcListener::bind(&paths.daemon_socket())
+    // Bind the IPC listener
+    let listener = IpcListener::bind(&paths.daemon_ipc_addr())
         .await
-        .context("Failed to bind IPC socket")?;
+        .context("Failed to bind IPC endpoint")?;
 
     info!(
-        socket = %paths.daemon_socket().display(),
+        endpoint = %paths.daemon_ipc_addr().display(),
         "Daemon listening for IPC connections"
     );
 
@@ -215,7 +214,6 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
     embedding_service.shutdown();
     info!("Embedding service shut down");
 
-    #[cfg(unix)]
     listener.cleanup();
 
     if let Err(e) = pid_file.cleanup() {
@@ -290,8 +288,15 @@ async fn accept_loop(
         );
 
         tokio::spawn(async move {
-            if let Err(e) =
-                handle_ipc_session(stream, &pool, &session_id, &daemon_db, &embedding_service, &restart_pending).await
+            if let Err(e) = handle_ipc_session(
+                stream,
+                &pool,
+                &session_id,
+                &daemon_db,
+                &embedding_service,
+                &restart_pending,
+            )
+            .await
             {
                 error!(session_id = %session_id, "IPC session error: {}", e);
             }
@@ -315,6 +320,8 @@ async fn accept_loop(
                 unsafe {
                     libc::kill(libc::getpid(), libc::SIGTERM);
                 }
+                #[cfg(windows)]
+                std::process::exit(0);
             }
         });
     }
@@ -322,7 +329,7 @@ async fn accept_loop(
 
 /// Handle a single IPC session: read the workspace header, then serve MCP.
 async fn handle_ipc_session(
-    mut stream: tokio::net::UnixStream,
+    mut stream: IpcStream,
     pool: &WorkspacePool,
     session_id: &str,
     daemon_db: &Option<Arc<DaemonDatabase>>,
@@ -414,7 +421,7 @@ async fn handle_ipc_session(
         log.session_start(session_id);
     }
 
-    // Serve MCP over the IPC stream. UnixStream implements AsyncRead + AsyncWrite,
+    // Serve MCP over the IPC stream. IpcStream implements AsyncRead + AsyncWrite,
     // so rmcp's blanket IntoTransport impl handles the conversion automatically.
     let service = handler
         .serve(stream)
@@ -455,7 +462,7 @@ async fn handle_ipc_session(
 /// The adapter sends a single line: `WORKSPACE:/path/to/project\n`
 /// We read byte-by-byte to avoid BufReader consuming bytes past the newline,
 /// which would break the subsequent MCP JSON-RPC framing.
-async fn read_workspace_header(stream: &mut tokio::net::UnixStream) -> Result<PathBuf> {
+async fn read_workspace_header(stream: &mut IpcStream) -> Result<PathBuf> {
     let mut header = Vec::new();
     let mut buf = [0u8; 1];
 
