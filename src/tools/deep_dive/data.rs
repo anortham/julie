@@ -393,8 +393,9 @@ fn merge_identifier_refs(
         return Ok((incoming, incoming_total));
     }
 
-    // Build dedup set from existing relationship refs
-    let existing: HashSet<(String, u32)> = incoming
+    // Build dedup set from existing relationship refs; kept mutable so new entries
+    // added below are tracked and don't get added twice from the identifier list.
+    let mut existing: HashSet<(String, u32)> = incoming
         .iter()
         .map(|r| (r.file_path.clone(), r.line_number))
         .collect();
@@ -436,6 +437,7 @@ fn merge_identifier_refs(
             line_number: ident.start_line,
             symbol: containing_symbol,
         });
+        existing.insert(key);
         added += 1;
     }
 

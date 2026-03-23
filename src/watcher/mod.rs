@@ -326,6 +326,17 @@ impl IncrementalIndexer {
                     }
                 }
 
+                // Evict stale dedup entries older than 2 seconds to prevent unbounded growth.
+                // Entries from the last 1 second are still needed for dedup; 2s gives a safety margin.
+                {
+                    let mut last_proc = last_processed.lock().await;
+                    last_proc.retain(|_, t| {
+                        t.elapsed()
+                            .map(|e| e < Duration::from_secs(2))
+                            .unwrap_or(false)
+                    });
+                }
+
                 // Batch-commit Tantivy after processing all queued events.
                 // Individual handlers intentionally defer commits to avoid
                 // segment-merge conflicts when many files change at once

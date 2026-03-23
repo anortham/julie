@@ -580,8 +580,12 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             let embedding_provider = handler.embedding_provider().await;
 
             let result = tokio::task::spawn_blocking(move || -> Result<String> {
-                let index = search_index.lock().unwrap();
-                let db_guard = db.lock().unwrap();
+                let index = search_index
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Search index lock error: {}", e))?;
+                let db_guard = db
+                    .lock()
+                    .map_err(|e| anyhow::anyhow!("Database lock error: {}", e))?;
                 run_pipeline(
                     &query,
                     max_tokens,

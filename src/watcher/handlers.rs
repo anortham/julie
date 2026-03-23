@@ -117,9 +117,36 @@ pub async fn handle_file_created_or_modified_static(
             return Ok(());
         }
 
-        // Create file info and update hash
-        let file_info = crate::database::create_file_info(&path, &language, workspace_root)?;
+        // Build FileInfo from the already-read content and hash to avoid a TOCTOU race:
+        // create_file_info() re-reads the file, so a rapid save between the initial read
+        // and this point would cause the stored hash to mismatch the stored content,
+        // leading to perpetual re-indexing on every subsequent save.
         let new_hash_str = hex::encode(new_hash.as_bytes());
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+        let file_info_rel_path =
+            crate::utils::paths::to_relative_unix_style(&canonical, workspace_root)
+                .context("Failed to convert path to relative for file info")?;
+        let metadata = std::fs::metadata(&path)
+            .map_err(|e| anyhow::anyhow!("Failed to read metadata for {:?}: {}", path, e))?;
+        let last_modified = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let file_content_str = String::from_utf8_lossy(&content).into_owned();
+        let line_count = file_content_str.lines().count() as i32;
+        let file_info = crate::database::FileInfo {
+            path: file_info_rel_path,
+            language: language.clone(),
+            hash: new_hash_str.clone(),
+            size: metadata.len() as i64,
+            last_modified,
+            last_indexed: 0,
+            symbol_count: 0,
+            line_count,
+            content: Some(file_content_str),
+        };
 
         // Convert types HashMap to Vec for bulk storage
         let types_vec: Vec<_> = results.types.into_values().collect();

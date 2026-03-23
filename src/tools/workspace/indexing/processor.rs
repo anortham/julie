@@ -4,14 +4,12 @@
 use super::resolver;
 use crate::extractors::{PendingRelationship, Relationship, Symbol};
 use crate::handler::JulieServerHandler;
-use crate::tools::workspace::LanguageParserPool;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{debug, info, trace, warn};
-use tree_sitter::Parser;
 
 impl ManageWorkspaceTool {
     /// SQLite-only file processing with optimized parser reuse
@@ -38,13 +36,7 @@ impl ManageWorkspaceTool {
                 .push(file_path);
         }
 
-        // Create parser pool for maximum performance
-        let mut parser_pool = LanguageParserPool::new();
-
-        info!(
-            "🚀 Processing {} languages with optimized parser reuse",
-            files_by_language.len()
-        );
+        info!("🚀 Processing {} languages", files_by_language.len());
 
         // Phase 2: Use workspace_path for relative path storage (works for primary AND reference workspaces)
         let workspace_root = workspace_path;
@@ -113,112 +105,103 @@ impl ManageWorkspaceTool {
                 language
             );
 
-            // Try to get a parser for this language
-            match parser_pool.get_parser(&language) {
-                Ok(parser) => {
-                    // Has parser: full symbol extraction + text indexing for all files
-                    for file_path in file_paths {
-                        match self
-                            .process_file_with_parser(
-                                &file_path,
-                                &language,
-                                parser,
-                                &workspace_root,
-                            )
-                            .await
-                        {
-                            Ok((
-                                symbols,
-                                relationships,
-                                pending_rels,
-                                identifiers,
-                                types,
-                                file_info,
-                            )) => {
-                                *total_files += 1;
+            // Check if a tree-sitter parser exists for this language
+            if crate::language::get_tree_sitter_language(&language).is_ok() {
+                // Has parser: full symbol extraction + text indexing for all files
+                for file_path in file_paths {
+                    match self
+                        .process_file_with_parser(&file_path, &language, &workspace_root)
+                        .await
+                    {
+                        Ok((
+                            symbols,
+                            relationships,
+                            pending_rels,
+                            identifiers,
+                            types,
+                            file_info,
+                        )) => {
+                            *total_files += 1;
 
-                                // Per-file processing details at trace level
-                                trace!(
-                                    "File {} extracted {} symbols, {} pending relationships",
-                                    file_path.display(),
-                                    symbols.len(),
-                                    pending_rels.len()
+                            // Per-file processing details at trace level
+                            trace!(
+                                "File {} extracted {} symbols, {} pending relationships",
+                                file_path.display(),
+                                symbols.len(),
+                                pending_rels.len()
+                            );
+
+                            // Track this file for cleanup (remove old symbols/data before adding new)
+                            // MUST use relative path to match how symbols are stored in database
+                            let relative_path = if file_path.is_absolute() {
+                                crate::utils::paths::to_relative_unix_style(
+                                    &file_path,
+                                    &workspace_root,
+                                )
+                                .unwrap_or_else(|_| file_path.to_string_lossy().to_string())
+                            } else {
+                                // Already relative - use as-is (just normalize to Unix-style)
+                                file_path.to_string_lossy().replace('\\', "/")
+                            };
+                            files_to_clean.push(relative_path);
+
+                            // Collect data for bulk storage
+                            all_symbols.extend(symbols);
+                            all_relationships.extend(relationships);
+                            all_pending_relationships.extend(pending_rels);
+                            all_identifiers.extend(identifiers);
+                            all_types.extend(types.into_iter().map(|(_, v)| v));
+                            all_file_infos.push(file_info);
+
+                            if (*total_files).is_multiple_of(50) {
+                                debug!(
+                                    "Progress: {} files processed, {} symbols collected",
+                                    total_files,
+                                    all_symbols.len()
                                 );
-
-                                // Track this file for cleanup (remove old symbols/data before adding new)
-                                // MUST use relative path to match how symbols are stored in database
-                                let relative_path = if file_path.is_absolute() {
-                                    crate::utils::paths::to_relative_unix_style(
-                                        &file_path,
-                                        &workspace_root,
-                                    )
-                                    .unwrap_or_else(|_| file_path.to_string_lossy().to_string())
-                                } else {
-                                    // Already relative - use as-is (just normalize to Unix-style)
-                                    file_path.to_string_lossy().replace('\\', "/")
-                                };
-                                files_to_clean.push(relative_path);
-
-                                // Collect data for bulk storage
-                                all_symbols.extend(symbols);
-                                all_relationships.extend(relationships);
-                                all_pending_relationships.extend(pending_rels);
-                                all_identifiers.extend(identifiers);
-                                all_types.extend(types.into_iter().map(|(_, v)| v));
-                                all_file_infos.push(file_info);
-
-                                if (*total_files).is_multiple_of(50) {
-                                    debug!(
-                                        "Progress: {} files processed, {} symbols collected",
-                                        total_files,
-                                        all_symbols.len()
-                                    );
-                                }
                             }
-                            Err(e) => {
-                                warn!("Failed to process file {:?}: {}", file_path, e);
-                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to process file {:?}: {}", file_path, e);
                         }
                     }
                 }
-                Err(e) => {
-                    // No parser: index files for text search only (no symbol extraction)
-                    debug!(
-                        "No parser for {} ({}) - indexing {} files for text search only",
-                        language,
-                        e,
-                        file_paths.len()
-                    );
-                    for file_path in file_paths {
-                        match self
-                            .process_file_without_parser(&file_path, &language, &workspace_root)
-                            .await
-                        {
-                            Ok((symbols, relationships, file_info)) => {
-                                debug!("📄 Processed file without parser: {:?}", file_path);
-                                *total_files += 1;
-                                // MUST use relative path to match how symbols are stored in database
-                                let relative_path = if file_path.is_absolute() {
-                                    crate::utils::paths::to_relative_unix_style(
-                                        &file_path,
-                                        &workspace_root,
-                                    )
-                                    .unwrap_or_else(|_| file_path.to_string_lossy().to_string())
-                                } else {
-                                    // Already relative - use as-is (just normalize to Unix-style)
-                                    file_path.to_string_lossy().replace('\\', "/")
-                                };
-                                files_to_clean.push(relative_path);
-                                all_symbols.extend(symbols); // Will be empty
-                                all_relationships.extend(relationships); // Will be empty
-                                all_file_infos.push(file_info);
-                            }
-                            Err(e) => {
-                                warn!(
-                                    "Failed to process file without parser {:?}: {}",
-                                    file_path, e
-                                );
-                            }
+            } else {
+                // No parser: index files for text search only (no symbol extraction)
+                debug!(
+                    "No parser for {} - indexing {} files for text search only",
+                    language,
+                    file_paths.len()
+                );
+                for file_path in file_paths {
+                    match self
+                        .process_file_without_parser(&file_path, &language, &workspace_root)
+                        .await
+                    {
+                        Ok((symbols, relationships, file_info)) => {
+                            debug!("📄 Processed file without parser: {:?}", file_path);
+                            *total_files += 1;
+                            // MUST use relative path to match how symbols are stored in database
+                            let relative_path = if file_path.is_absolute() {
+                                crate::utils::paths::to_relative_unix_style(
+                                    &file_path,
+                                    &workspace_root,
+                                )
+                                .unwrap_or_else(|_| file_path.to_string_lossy().to_string())
+                            } else {
+                                // Already relative - use as-is (just normalize to Unix-style)
+                                file_path.to_string_lossy().replace('\\', "/")
+                            };
+                            files_to_clean.push(relative_path);
+                            all_symbols.extend(symbols); // Will be empty
+                            all_relationships.extend(relationships); // Will be empty
+                            all_file_infos.push(file_info);
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Failed to process file without parser {:?}: {}",
+                                file_path, e
+                            );
                         }
                     }
                 }
@@ -521,7 +504,8 @@ impl ManageWorkspaceTool {
                 // not the local workspace_id (the indexing pipeline's hash, e.g. "julie_316c0b08")
                 if let Some(ref daemon_db) = handler.daemon_db {
                     let snapshot_ws_id = handler.workspace_id.as_deref().unwrap_or(&workspace_id);
-                    if let Err(e) = daemon_db.snapshot_codehealth_from_db(snapshot_ws_id, &db_lock) {
+                    if let Err(e) = daemon_db.snapshot_codehealth_from_db(snapshot_ws_id, &db_lock)
+                    {
                         warn!("Failed to capture codehealth snapshot: {}", e);
                     } else {
                         info!(workspace_id = %snapshot_ws_id, "Codehealth snapshot captured");
@@ -556,7 +540,6 @@ impl ManageWorkspaceTool {
         &self,
         file_path: &Path,
         language: &str,
-        _parser: &mut Parser, // Unused: Creating new parser inside spawn_blocking for Send requirement
         workspace_root: &Path, // NEW: Phase 2 - workspace root for relative paths
     ) -> Result<(
         Vec<Symbol>,

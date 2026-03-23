@@ -569,44 +569,6 @@ impl FastRefsTool {
         Ok((definitions, references))
     }
 
-    /// Format lean text summary for AI agents
-    pub fn format_optimized_results(
-        &self,
-        symbols: &[Symbol],
-        relationships: &[Relationship],
-    ) -> String {
-        let symbol_id_to_name: HashMap<String, String> = symbols
-            .iter()
-            .map(|s| (s.id.clone(), s.name.clone()))
-            .collect();
-
-        let count = relationships.len();
-        let top_results: Vec<String> = relationships
-            .iter()
-            .take(5)
-            .map(|rel| {
-                symbol_id_to_name
-                    .get(&rel.to_symbol_id)
-                    .cloned()
-                    .unwrap_or_else(|| self.symbol.clone())
-            })
-            .collect();
-
-        let mut unique_names: Vec<String> = Vec::new();
-        for name in top_results {
-            if !unique_names.contains(&name) {
-                unique_names.push(name);
-            }
-        }
-
-        format!(
-            "Found {} references for '{}'\n{}",
-            count,
-            self.symbol,
-            unique_names.join(", ")
-        )
-    }
-
     /// Find references in a reference workspace by delegating to the reference_workspace module
     async fn database_find_references_in_reference(
         &self,
