@@ -201,6 +201,7 @@ async fn handle_ipc_session(
         workspace_path,
         daemon_db.clone(),
         Some(full_workspace_id.clone()),
+        None, // Phase 3: shared embedding service wired in Task 4
     )
     .await
     .context("Failed to create handler for IPC session")?;

@@ -90,6 +90,8 @@ pub struct JulieServerHandler {
     pub(crate) daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
     /// This session's workspace ID (e.g. "julie_ab12cd34"). None in stdio mode.
     pub(crate) workspace_id: Option<String>,
+    /// Shared embedding service for daemon mode. None in stdio mode.
+    pub(crate) embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
 }
 
 impl JulieServerHandler {
@@ -114,6 +116,7 @@ impl JulieServerHandler {
             project_log: None,
             daemon_db: None,
             workspace_id: None,
+            embedding_service: None,
         })
     }
 
@@ -133,6 +136,7 @@ impl JulieServerHandler {
         workspace_root: PathBuf,
         daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
         workspace_id: Option<String>,
+        embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
     ) -> Result<Self> {
         info!(
             "Creating daemon-mode handler (workspace_root: {:?})",
@@ -172,6 +176,7 @@ impl JulieServerHandler {
             project_log,
             daemon_db,
             workspace_id,
+            embedding_service,
         })
     }
 
@@ -192,6 +197,26 @@ impl JulieServerHandler {
     /// always uses the path determined by main.rs (CLI > env var > cwd).
     fn get_workspace_path(&self) -> PathBuf {
         self.workspace_root.clone()
+    }
+
+    /// Get the embedding provider, preferring daemon shared service over per-workspace.
+    pub(crate) async fn embedding_provider(&self) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
+        // Daemon mode: use shared service
+        if let Some(ref service) = self.embedding_service {
+            return service.provider().cloned();
+        }
+        // Stdio mode: use per-workspace provider
+        let ws = self.workspace.read().await;
+        ws.as_ref().and_then(|ws| ws.embedding_provider.clone())
+    }
+
+    /// Get embedding runtime status, preferring daemon shared service.
+    pub(crate) async fn embedding_runtime_status(&self) -> Option<crate::embeddings::EmbeddingRuntimeStatus> {
+        if let Some(ref service) = self.embedding_service {
+            return service.runtime_status().cloned();
+        }
+        let ws = self.workspace.read().await;
+        ws.as_ref().and_then(|ws| ws.embedding_runtime_status.clone())
     }
 
     /// Initialize or load workspace and update components to use persistent storage
