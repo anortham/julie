@@ -3,8 +3,8 @@
 // Verifies: basic insert, empty input short-circuit, idempotent index
 // rebuild, large batch throughput, and field-level round-trip fidelity.
 
-use crate::database::types::FileInfo;
 use crate::database::SymbolDatabase;
+use crate::database::types::FileInfo;
 use crate::extractors::base::TypeInfo;
 use crate::extractors::{Symbol, SymbolKind};
 use std::collections::HashMap;
@@ -67,9 +67,7 @@ fn make_type_info(symbol_id: &str, resolved_type: &str) -> TypeInfo {
 
 /// Set up a fresh database with prerequisite file + symbol rows so that FK
 /// constraints on the `types` table are satisfied.
-fn setup_db_with_prerequisites(
-    symbol_count: usize,
-) -> (TempDir, SymbolDatabase, Vec<String>) {
+fn setup_db_with_prerequisites(symbol_count: usize) -> (TempDir, SymbolDatabase, Vec<String>) {
     let tmp = TempDir::new().unwrap();
     let db_path = tmp.path().join("test.db");
     let mut db = SymbolDatabase::new(&db_path).unwrap();
@@ -219,7 +217,7 @@ fn test_bulk_store_types_idempotent_indexes() {
 
     // Second call with INSERT OR REPLACE should upsert cleanly
     let types2 = vec![
-        make_type_info(&ids[0], "String"),   // same
+        make_type_info(&ids[0], "String"),      // same
         make_type_info(&ids[1], "Option<u64>"), // updated resolved_type
     ];
     db.bulk_store_types(&types2, "ws_test")

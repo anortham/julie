@@ -428,7 +428,10 @@ fn test_free_find_child_by_type_returns_none_for_missing() {
     let func = root.child(0).unwrap();
 
     let result = crate::base::find_child_by_type(&func, "class_definition");
-    assert!(result.is_none(), "should return None for nonexistent child type");
+    assert!(
+        result.is_none(),
+        "should return None for nonexistent child type"
+    );
 }
 
 #[test]
@@ -542,12 +545,8 @@ fn test_create_symbol_with_parent_id() {
         ..Default::default()
     };
 
-    let symbol = extractor.create_symbol(
-        &func_item,
-        "child".to_string(),
-        SymbolKind::Method,
-        options,
-    );
+    let symbol =
+        extractor.create_symbol(&func_item, "child".to_string(), SymbolKind::Method, options);
 
     assert_eq!(symbol.parent_id, Some("parent_sym_id_abc".to_string()));
     assert_eq!(symbol.kind, SymbolKind::Method);
@@ -757,7 +756,10 @@ fn test_find_doc_comment_multiline() {
         SymbolOptions::default(),
     );
 
-    assert!(symbol.doc_comment.is_some(), "Should capture multi-line doc comments");
+    assert!(
+        symbol.doc_comment.is_some(),
+        "Should capture multi-line doc comments"
+    );
     let doc = symbol.doc_comment.unwrap();
     assert!(
         doc.contains("First line"),
@@ -866,12 +868,8 @@ fn test_create_identifier_basic_call() {
     }
     let bar_node = bar_node.expect("should find 'bar' identifier node in call");
 
-    let identifier = extractor.create_identifier(
-        &bar_node,
-        "bar".to_string(),
-        IdentifierKind::Call,
-        None,
-    );
+    let identifier =
+        extractor.create_identifier(&bar_node, "bar".to_string(), IdentifierKind::Call, None);
 
     assert_eq!(identifier.name, "bar");
     assert_eq!(identifier.kind, IdentifierKind::Call);
@@ -1041,20 +1039,10 @@ fn test_create_identifier_stored_in_identifiers_vec() {
     }
     let name_node = name_node.unwrap();
 
-    extractor.create_identifier(
-        &name_node,
-        "bar".to_string(),
-        IdentifierKind::Call,
-        None,
-    );
+    extractor.create_identifier(&name_node, "bar".to_string(), IdentifierKind::Call, None);
     assert_eq!(extractor.identifiers.len(), 1);
 
-    extractor.create_identifier(
-        &name_node,
-        "baz".to_string(),
-        IdentifierKind::Call,
-        None,
-    );
+    extractor.create_identifier(&name_node, "baz".to_string(), IdentifierKind::Call, None);
     assert_eq!(
         extractor.identifiers.len(),
         2,

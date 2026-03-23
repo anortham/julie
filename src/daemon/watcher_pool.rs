@@ -98,10 +98,7 @@ impl WatcherPool {
     /// Returns the current reference count for a workspace (0 if not tracked).
     pub async fn ref_count(&self, workspace_id: &str) -> usize {
         let guard = self.entries.read().await;
-        guard
-            .get(workspace_id)
-            .map(|e| e.ref_count)
-            .unwrap_or(0)
+        guard.get(workspace_id).map(|e| e.ref_count).unwrap_or(0)
     }
 
     /// Returns whether a grace deadline is currently set for this workspace.

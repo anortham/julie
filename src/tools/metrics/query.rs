@@ -53,19 +53,17 @@ pub fn query_by_metrics(
     };
 
     let order_clause = match sort_by {
-        "security_risk" => format!(
-            "COALESCE(json_extract(metadata, '$.security_risk.score'), 0.0) {order_dir}"
-        ),
-        "change_risk" => format!(
-            "COALESCE(json_extract(metadata, '$.change_risk.score'), 0.0) {order_dir}"
-        ),
+        "security_risk" => {
+            format!("COALESCE(json_extract(metadata, '$.security_risk.score'), 0.0) {order_dir}")
+        }
+        "change_risk" => {
+            format!("COALESCE(json_extract(metadata, '$.change_risk.score'), 0.0) {order_dir}")
+        }
         "centrality" => format!("reference_score {order_dir}"),
-        "test_coverage" => format!(
-            "COALESCE(json_extract(metadata, '$.test_coverage.test_count'), 0) {order_dir}"
-        ),
-        _ => format!(
-            "COALESCE(json_extract(metadata, '$.security_risk.score'), 0.0) {order_dir}"
-        ),
+        "test_coverage" => {
+            format!("COALESCE(json_extract(metadata, '$.test_coverage.test_count'), 0) {order_dir}")
+        }
+        _ => format!("COALESCE(json_extract(metadata, '$.security_risk.score'), 0.0) {order_dir}"),
     };
 
     // Build WHERE clauses
@@ -91,9 +89,7 @@ pub fn query_by_metrics(
         };
         match min_risk.to_uppercase().as_str() {
             "HIGH" => {
-                conditions.push(format!(
-                    "json_extract(metadata, '{risk_path}') = 'HIGH'"
-                ));
+                conditions.push(format!("json_extract(metadata, '{risk_path}') = 'HIGH'"));
             }
             "MEDIUM" => {
                 conditions.push(format!(
@@ -113,9 +109,7 @@ pub fn query_by_metrics(
     if let Some(has_tests) = has_tests {
         if has_tests {
             // Only symbols WITH test coverage
-            conditions.push(
-                "json_extract(metadata, '$.test_coverage.test_count') > 0".to_string(),
-            );
+            conditions.push("json_extract(metadata, '$.test_coverage.test_count') > 0".to_string());
         } else {
             // Only symbols WITHOUT test coverage
             conditions.push(
@@ -173,7 +167,14 @@ pub fn query_by_metrics(
         let kind: String = row.get(3)?;
         let reference_score: f64 = row.get(4)?;
         let metadata_str: Option<String> = row.get(5)?;
-        Ok((name, file_path, start_line, kind, reference_score, metadata_str))
+        Ok((
+            name,
+            file_path,
+            start_line,
+            kind,
+            reference_score,
+            metadata_str,
+        ))
     })?;
 
     let mut results = Vec::new();

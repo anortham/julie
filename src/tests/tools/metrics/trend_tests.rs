@@ -112,7 +112,10 @@ fn test_format_comparison_has_multiple_sections() {
 
     let output = trend::format_comparison(&current, &previous);
     let line_count = output.lines().count();
-    assert!(line_count >= 3, "expected ≥3 lines, got {line_count}: {output}");
+    assert!(
+        line_count >= 3,
+        "expected ≥3 lines, got {line_count}: {output}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -129,7 +132,10 @@ fn test_format_trend_table_shows_all_rows() {
     let output = trend::format_trend_table(&rows);
     // Header + separator + 3 data rows = at least 5 lines
     let line_count = output.lines().filter(|l: &&str| !l.is_empty()).count();
-    assert!(line_count >= 3, "expected ≥3 non-empty lines, got {line_count}: {output}");
+    assert!(
+        line_count >= 3,
+        "expected ≥3 non-empty lines, got {line_count}: {output}"
+    );
     // All three symbol counts should appear
     assert!(output.contains("7400"), "output: {output}");
     assert!(output.contains("7350"), "output: {output}");

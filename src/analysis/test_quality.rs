@@ -193,7 +193,11 @@ fn strip_comments_and_strings(body: &str) -> String {
 
     while i < len {
         let c = chars[i];
-        let next = if i + 1 < len { Some(chars[i + 1]) } else { None };
+        let next = if i + 1 < len {
+            Some(chars[i + 1])
+        } else {
+            None
+        };
 
         match state {
             StripState::Normal => {

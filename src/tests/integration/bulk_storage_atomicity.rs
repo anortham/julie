@@ -12,7 +12,9 @@ use tempfile::TempDir;
 use crate::database::types::FileInfo;
 use crate::database::{SymbolDatabase, create_file_info};
 use crate::extractors::base::{TypeInfo, Visibility};
-use crate::extractors::{Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::{
+    Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+};
 
 /// Test helper: Create a simple test symbol
 fn create_test_symbol(name: &str, file_path: &str) -> Symbol {
@@ -400,9 +402,9 @@ fn test_bulk_store_fresh_atomic_inserts_all_types() -> Result<()> {
         "test_workspace",
     )?;
 
-    let file_count: i64 =
-        db.conn
-            .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?;
+    let file_count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))?;
     assert!(file_count >= 2, "Should have at least 2 files");
 
     let sym_count: i64 = db
@@ -492,11 +494,11 @@ fn test_bulk_store_types_indexes_restored() -> Result<()> {
 
     let symbol_id = {
         let db = SymbolDatabase::new(&db_path)?;
-        let id: String = db.conn.query_row(
-            "SELECT id FROM symbols WHERE name='fn_typed'",
-            [],
-            |r| r.get(0),
-        )?;
+        let id: String =
+            db.conn
+                .query_row("SELECT id FROM symbols WHERE name='fn_typed'", [], |r| {
+                    r.get(0)
+                })?;
         id
     };
 

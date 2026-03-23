@@ -339,9 +339,8 @@ pub(crate) fn promote_exact_name_matches(results: &mut Vec<SymbolSearchResult>, 
     //   2. Source code > test code > doc language (demotes test doubles and markdown)
     //   3. Score descending (tie-breaker)
     definitions.sort_by(|a, b| {
-        let is_full_match = |r: &SymbolSearchResult| -> bool {
-            r.name.to_lowercase() == query_lower
-        };
+        let is_full_match =
+            |r: &SymbolSearchResult| -> bool { r.name.to_lowercase() == query_lower };
         let file_tier = |r: &SymbolSearchResult| -> u8 {
             if DOC_LANGUAGES.contains(&r.language.as_str()) {
                 2 // doc language — lowest priority

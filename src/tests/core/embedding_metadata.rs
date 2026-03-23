@@ -809,8 +809,12 @@ mod tests {
             "id_multi_doc",
             "record_tool_call",
             SymbolKind::Method,
-            Some("pub(crate) fn record_tool_call(&self, tool_name: &str, duration: Duration, report: &ToolCallReport)"),
-            Some("/// Record a completed tool call. Bumps in-memory atomics synchronously, then spawns async task for source_bytes lookup + SQLite write."),
+            Some(
+                "pub(crate) fn record_tool_call(&self, tool_name: &str, duration: Duration, report: &ToolCallReport)",
+            ),
+            Some(
+                "/// Record a completed tool call. Bumps in-memory atomics synchronously, then spawns async task for source_bytes lookup + SQLite write.",
+            ),
         );
         let text = format_symbol_metadata(&sym);
         assert!(

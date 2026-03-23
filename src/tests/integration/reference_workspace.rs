@@ -77,10 +77,9 @@ mod reference_workspace_tests {
             index_reference.call_tool(handler).await?;
             mark_index_ready(handler).await;
         }
-        let reference_id = crate::workspace::registry::generate_workspace_id(
-            &reference_path.to_string_lossy(),
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compute reference workspace ID: {}", e))?;
+        let reference_id =
+            crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())
+                .map_err(|e| anyhow::anyhow!("Failed to compute reference workspace ID: {}", e))?;
 
         Ok((primary_id, reference_id))
     }
@@ -292,10 +291,9 @@ mod reference_workspace_tests {
             index_reference.call_tool(&handler).await?;
             mark_index_ready(&handler).await;
         }
-        let reference_id = crate::workspace::registry::generate_workspace_id(
-            &reference_path.to_string_lossy(),
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compute reference workspace ID: {}", e))?;
+        let reference_id =
+            crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())
+                .map_err(|e| anyhow::anyhow!("Failed to compute reference workspace ID: {}", e))?;
 
         // Search reference workspace for reference-specific symbol
         let search_reference = FastSearchTool {

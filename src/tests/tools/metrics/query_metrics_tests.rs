@@ -34,7 +34,15 @@ mod tests {
                  start_line, start_col, end_line, end_col, start_byte, end_byte,
                  reference_score, metadata)
                  VALUES (?1, ?2, ?3, ?4, ?5, 10, 0, 20, 0, 0, 100, ?6, ?7)",
-                rusqlite::params![id, name, kind, language, file_path, reference_score, metadata_json],
+                rusqlite::params![
+                    id,
+                    name,
+                    kind,
+                    language,
+                    file_path,
+                    reference_score,
+                    metadata_json
+                ],
             )
             .unwrap();
     }
@@ -53,37 +61,81 @@ mod tests {
 
         // S1: High security risk, high change risk, well-tested, high centrality
         insert_symbol(
-            &db, "s1", "authenticate", "function", "rust", "src/core/auth.rs", 25.0,
-            Some(r#"{"security_risk":{"score":0.85,"label":"HIGH"},"change_risk":{"score":0.78,"label":"HIGH"},"test_coverage":{"test_count":3,"best_tier":"thorough"}}"#),
+            &db,
+            "s1",
+            "authenticate",
+            "function",
+            "rust",
+            "src/core/auth.rs",
+            25.0,
+            Some(
+                r#"{"security_risk":{"score":0.85,"label":"HIGH"},"change_risk":{"score":0.78,"label":"HIGH"},"test_coverage":{"test_count":3,"best_tier":"thorough"}}"#,
+            ),
         );
 
         // S2: Medium security risk, medium change risk, thinly tested, medium centrality
         insert_symbol(
-            &db, "s2", "DatabasePool", "class", "rust", "src/core/db.rs", 12.0,
-            Some(r#"{"security_risk":{"score":0.55,"label":"MEDIUM"},"change_risk":{"score":0.50,"label":"MEDIUM"},"test_coverage":{"test_count":1,"best_tier":"thin"}}"#),
+            &db,
+            "s2",
+            "DatabasePool",
+            "class",
+            "rust",
+            "src/core/db.rs",
+            12.0,
+            Some(
+                r#"{"security_risk":{"score":0.55,"label":"MEDIUM"},"change_risk":{"score":0.50,"label":"MEDIUM"},"test_coverage":{"test_count":1,"best_tier":"thin"}}"#,
+            ),
         );
 
         // S3: Low security risk, low change risk, untested, low centrality
         insert_symbol(
-            &db, "s3", "format_name", "function", "python", "src/utils/helpers.py", 1.0,
-            Some(r#"{"security_risk":{"score":0.15,"label":"LOW"},"change_risk":{"score":0.20,"label":"LOW"}}"#),
+            &db,
+            "s3",
+            "format_name",
+            "function",
+            "python",
+            "src/utils/helpers.py",
+            1.0,
+            Some(
+                r#"{"security_risk":{"score":0.15,"label":"LOW"},"change_risk":{"score":0.20,"label":"LOW"}}"#,
+            ),
         );
 
         // S4: No security risk scored, no change risk, untested, zero centrality
         insert_symbol(
-            &db, "s4", "RouteHandler", "class", "typescript", "src/api/handler.ts", 0.0,
+            &db,
+            "s4",
+            "RouteHandler",
+            "class",
+            "typescript",
+            "src/api/handler.ts",
+            0.0,
             None,
         );
 
         // S5: High security risk, untested, high centrality
         insert_symbol(
-            &db, "s5", "execute_query", "method", "rust", "src/core/db.rs", 18.0,
-            Some(r#"{"security_risk":{"score":0.92,"label":"HIGH"},"change_risk":{"score":0.71,"label":"HIGH"}}"#),
+            &db,
+            "s5",
+            "execute_query",
+            "method",
+            "rust",
+            "src/core/db.rs",
+            18.0,
+            Some(
+                r#"{"security_risk":{"score":0.92,"label":"HIGH"},"change_risk":{"score":0.71,"label":"HIGH"}}"#,
+            ),
         );
 
         // S6: Test symbol — should be excluded by default
         insert_symbol(
-            &db, "s6", "test_auth_flow", "function", "rust", "tests/test_auth.rs", 0.0,
+            &db,
+            "s6",
+            "test_auth_flow",
+            "function",
+            "rust",
+            "tests/test_auth.rs",
+            0.0,
             Some(r#"{"is_test":true,"test_quality":{"quality_tier":"thorough"}}"#),
         );
 
@@ -97,12 +149,12 @@ mod tests {
             &db,
             "security_risk",
             "desc",
-            None,   // no min_risk
-            None,   // no has_tests
-            None,   // no kind
-            None,   // no file_pattern
-            None,   // no language
-            true,   // exclude tests
+            None, // no min_risk
+            None, // no has_tests
+            None, // no kind
+            None, // no file_pattern
+            None, // no language
+            true, // exclude tests
             10,
         )
         .unwrap();
@@ -114,8 +166,14 @@ mod tests {
         );
 
         // Highest security risk should be first
-        assert_eq!(results[0].name, "execute_query", "s5 has highest security_risk (0.92)");
-        assert_eq!(results[1].name, "authenticate", "s1 has second highest (0.85)");
+        assert_eq!(
+            results[0].name, "execute_query",
+            "s5 has highest security_risk (0.92)"
+        );
+        assert_eq!(
+            results[1].name, "authenticate",
+            "s1 has second highest (0.85)"
+        );
 
         // Verify scores parsed correctly
         assert_eq!(results[0].security_risk_score, Some(0.92));
@@ -140,7 +198,10 @@ mod tests {
         .unwrap();
 
         // Lowest centrality first — s4 has 0.0
-        assert_eq!(results[0].name, "RouteHandler", "s4 has lowest centrality (0.0)");
+        assert_eq!(
+            results[0].name, "RouteHandler",
+            "s4 has lowest centrality (0.0)"
+        );
         assert_eq!(results[0].reference_score, 0.0);
 
         // s3 has 1.0, should be second
@@ -238,7 +299,11 @@ mod tests {
         // Only s2 (DatabasePool) and s4 (RouteHandler) are classes
         assert_eq!(results.len(), 2, "Should have 2 class results");
         for r in &results {
-            assert_eq!(r.kind, "class", "Expected class, got {} for {}", r.kind, r.name);
+            assert_eq!(
+                r.kind, "class",
+                "Expected class, got {} for {}",
+                r.kind, r.name
+            );
         }
     }
 
@@ -276,7 +341,16 @@ mod tests {
     fn test_format_metrics_output_security_risk() {
         let (_tmp, db) = setup_test_db();
         let results = query_by_metrics(
-            &db, "security_risk", "desc", None, None, None, None, None, true, 3,
+            &db,
+            "security_risk",
+            "desc",
+            None,
+            None,
+            None,
+            None,
+            None,
+            true,
+            3,
         )
         .unwrap();
 
@@ -369,7 +443,16 @@ mod tests {
     fn test_format_change_risk_output() {
         let (_tmp, db) = setup_test_db();
         let results = query_by_metrics(
-            &db, "change_risk", "desc", None, None, None, None, None, true, 5,
+            &db,
+            "change_risk",
+            "desc",
+            None,
+            None,
+            None,
+            None,
+            None,
+            true,
+            5,
         )
         .unwrap();
 
@@ -388,10 +471,7 @@ mod tests {
         );
 
         // Should include centrality for each result
-        assert!(
-            output.contains("Centrality:"),
-            "Should include centrality"
-        );
+        assert!(output.contains("Centrality:"), "Should include centrality");
     }
 
     #[test]

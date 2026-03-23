@@ -44,7 +44,8 @@ mod tests {
     #[test]
     fn test_upsert_and_get_workspace() {
         let (db, _tmp) = create_test_db();
-        db.upsert_workspace("julie_a1b2c3d4", "/Users/test/julie", "ready").unwrap();
+        db.upsert_workspace("julie_a1b2c3d4", "/Users/test/julie", "ready")
+            .unwrap();
 
         let ws = db.get_workspace("julie_a1b2c3d4").unwrap().unwrap();
         assert_eq!(ws.path, "/Users/test/julie");
@@ -82,7 +83,8 @@ mod tests {
     fn test_update_workspace_stats() {
         let (db, _tmp) = create_test_db();
         db.upsert_workspace("ws1", "/path", "ready").unwrap();
-        db.update_workspace_stats("ws1", 100, 50, Some("jina-code-v2"), Some(80)).unwrap();
+        db.update_workspace_stats("ws1", 100, 50, Some("jina-code-v2"), Some(80))
+            .unwrap();
 
         let ws = db.get_workspace("ws1").unwrap().unwrap();
         assert_eq!(ws.symbol_count, Some(100));
@@ -148,7 +150,8 @@ mod tests {
         // Verifies the lookup the daemon uses when auto-attaching references on connect.
         let (db, _tmp) = create_test_db();
 
-        db.upsert_workspace("primary_abc", "/proj", "ready").unwrap();
+        db.upsert_workspace("primary_abc", "/proj", "ready")
+            .unwrap();
         db.upsert_workspace("ref_xyz", "/lib", "ready").unwrap();
         db.add_reference("primary_abc", "ref_xyz").unwrap();
 
@@ -288,8 +291,30 @@ mod tests {
     #[test]
     fn test_insert_and_query_tool_calls() {
         let (db, _tmp) = create_test_db();
-        db.insert_tool_call("ws1", "sess1", "fast_search", 12.5, Some(10), None, Some(500), true, None).unwrap();
-        db.insert_tool_call("ws1", "sess1", "deep_dive", 45.0, Some(1), None, Some(1200), true, None).unwrap();
+        db.insert_tool_call(
+            "ws1",
+            "sess1",
+            "fast_search",
+            12.5,
+            Some(10),
+            None,
+            Some(500),
+            true,
+            None,
+        )
+        .unwrap();
+        db.insert_tool_call(
+            "ws1",
+            "sess1",
+            "deep_dive",
+            45.0,
+            Some(1),
+            None,
+            Some(1200),
+            true,
+            None,
+        )
+        .unwrap();
 
         let history = db.query_tool_call_history("ws1", 7).unwrap();
         assert_eq!(history.total_calls, 2);
@@ -309,13 +334,15 @@ mod tests {
             ).unwrap();
         }
         // Insert a recent call
-        db.insert_tool_call("ws1", "s1", "new_call", 1.0, None, None, None, true, None).unwrap();
+        db.insert_tool_call("ws1", "s1", "new_call", 1.0, None, None, None, true, None)
+            .unwrap();
 
         db.prune_tool_calls(90).unwrap();
 
         let count: i64 = {
             let conn = db.conn_for_test();
-            conn.query_row("SELECT COUNT(*) FROM tool_calls", [], |r| r.get(0)).unwrap()
+            conn.query_row("SELECT COUNT(*) FROM tool_calls", [], |r| r.get(0))
+                .unwrap()
         };
         assert_eq!(count, 1); // only the recent one survives
     }

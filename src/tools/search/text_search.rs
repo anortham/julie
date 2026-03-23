@@ -52,10 +52,8 @@ pub async fn text_search_impl(
             let primary_id = if let Some(ref ws_id) = handler.workspace_id {
                 ws_id.clone()
             } else {
-                crate::workspace::registry::generate_workspace_id(
-                    &workspace.root.to_string_lossy(),
-                )
-                .unwrap_or_default()
+                crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
+                    .unwrap_or_default()
             };
             if *id != primary_id {
                 Some(id.clone())

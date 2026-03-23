@@ -32,7 +32,10 @@ fn test_migration_013_tool_calls_has_expected_columns() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(col_count, 10, "tool_calls should have 10 columns (id + 9 data columns)");
+    assert_eq!(
+        col_count, 10,
+        "tool_calls should have 10 columns (id + 9 data columns)"
+    );
 }
 
 #[test]

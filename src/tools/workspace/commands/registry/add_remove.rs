@@ -140,7 +140,8 @@ impl ManageWorkspaceTool {
         }
 
         // Stdio mode: workspace registry requires daemon mode
-        let message = "Reference workspaces require daemon mode. Start the daemon with `julie daemon`.";
+        let message =
+            "Reference workspaces require daemon mode. Start the daemon with `julie daemon`.";
         Ok(CallToolResult::text_content(vec![Content::text(message)]))
     }
 
@@ -190,8 +191,7 @@ impl ManageWorkspaceTool {
 
                     // Remove from daemon.db
                     if let Err(e) = db.delete_workspace(workspace_id) {
-                        let message =
-                            format!("Failed to remove workspace from daemon.db: {}", e);
+                        let message = format!("Failed to remove workspace from daemon.db: {}", e);
                         return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                     }
 
@@ -216,7 +216,8 @@ impl ManageWorkspaceTool {
         }
 
         // Stdio mode: workspace registry requires daemon mode
-        let message = "Workspace removal requires daemon mode. Start the daemon with `julie daemon`.";
+        let message =
+            "Workspace removal requires daemon mode. Start the daemon with `julie daemon`.";
         Ok(CallToolResult::text_content(vec![Content::text(message)]))
     }
 }

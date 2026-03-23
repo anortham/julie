@@ -23,10 +23,7 @@ fn test_workspace_index_path() {
         .join(".julie")
         .join("indexes")
         .join("myproject_abc12345");
-    assert_eq!(
-        paths.workspace_index_dir("myproject_abc12345"),
-        expected
-    );
+    assert_eq!(paths.workspace_index_dir("myproject_abc12345"), expected);
 }
 
 #[test]
@@ -51,10 +48,7 @@ fn test_workspace_tantivy_path() {
         .join("indexes")
         .join("myproject_abc12345")
         .join("tantivy");
-    assert_eq!(
-        paths.workspace_tantivy_path("myproject_abc12345"),
-        expected
-    );
+    assert_eq!(paths.workspace_tantivy_path("myproject_abc12345"), expected);
 }
 
 #[test]
@@ -64,10 +58,7 @@ fn test_daemon_socket_path() {
     #[cfg(unix)]
     assert_eq!(paths.daemon_socket(), julie_home.join("daemon.sock"));
     #[cfg(windows)]
-    assert_eq!(
-        paths.daemon_pipe_name(),
-        r"\\.\pipe\julie-daemon"
-    );
+    assert_eq!(paths.daemon_pipe_name(), r"\\.\pipe\julie-daemon");
 }
 
 #[test]

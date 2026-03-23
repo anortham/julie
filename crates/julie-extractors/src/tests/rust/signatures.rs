@@ -313,7 +313,15 @@ fn main() {
     let symbols = extractor.extract_symbols(&tree);
 
     // None of these expression macros should be extracted
-    let macro_names = ["println", "vec", "format", "matches", "assert_eq", "bail", "info"];
+    let macro_names = [
+        "println",
+        "vec",
+        "format",
+        "matches",
+        "assert_eq",
+        "bail",
+        "info",
+    ];
     for name in &macro_names {
         let found = symbols.iter().find(|s| s.name == *name);
         assert!(

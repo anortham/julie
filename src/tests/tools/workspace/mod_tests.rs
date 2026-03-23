@@ -678,7 +678,6 @@ async fn test_concurrent_manage_workspace_index_does_not_lock_search_index() {
     );
 }
 
-
 #[tokio::test]
 #[serial_test::serial(embedding_env)]
 async fn test_primary_index_schedules_embedding_when_provider_available() {

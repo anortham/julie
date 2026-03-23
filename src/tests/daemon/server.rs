@@ -17,9 +17,7 @@ async fn test_daemon_starts_and_creates_pid_file() {
 
     // Spawn the daemon in a background task; it will block on accept loop.
     let paths_clone = paths.clone();
-    let handle = tokio::spawn(async move {
-        daemon::run_daemon(paths_clone, 0).await
-    });
+    let handle = tokio::spawn(async move { daemon::run_daemon(paths_clone, 0).await });
 
     // Give the daemon a moment to bind the socket and write the PID file.
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -65,27 +63,27 @@ fn test_transient_accept_errors_are_classified_correctly() {
     use std::io;
 
     // ConnectionReset: client vanished before accept completed — transient
-    assert!(daemon::is_transient_accept_error(
-        &io::Error::from(io::ErrorKind::ConnectionReset)
-    ));
+    assert!(daemon::is_transient_accept_error(&io::Error::from(
+        io::ErrorKind::ConnectionReset
+    )));
     // Interrupted (EINTR): always transient
-    assert!(daemon::is_transient_accept_error(
-        &io::Error::from(io::ErrorKind::Interrupted)
-    ));
+    assert!(daemon::is_transient_accept_error(&io::Error::from(
+        io::ErrorKind::Interrupted
+    )));
     // ConnectionAborted: transient
-    assert!(daemon::is_transient_accept_error(
-        &io::Error::from(io::ErrorKind::ConnectionAborted)
-    ));
+    assert!(daemon::is_transient_accept_error(&io::Error::from(
+        io::ErrorKind::ConnectionAborted
+    )));
     // NotFound / PermissionDenied / BrokenPipe: NOT transient (structural errors)
-    assert!(!daemon::is_transient_accept_error(
-        &io::Error::from(io::ErrorKind::NotFound)
-    ));
-    assert!(!daemon::is_transient_accept_error(
-        &io::Error::from(io::ErrorKind::PermissionDenied)
-    ));
-    assert!(!daemon::is_transient_accept_error(
-        &io::Error::from(io::ErrorKind::BrokenPipe)
-    ));
+    assert!(!daemon::is_transient_accept_error(&io::Error::from(
+        io::ErrorKind::NotFound
+    )));
+    assert!(!daemon::is_transient_accept_error(&io::Error::from(
+        io::ErrorKind::PermissionDenied
+    )));
+    assert!(!daemon::is_transient_accept_error(&io::Error::from(
+        io::ErrorKind::BrokenPipe
+    )));
 }
 
 // EMFILE (fd exhaustion) must also be classified as transient
@@ -123,7 +121,10 @@ async fn test_drain_sessions_waits_for_active_sessions() {
 
     // drain_sessions should block until the session ends, then return true
     let drained = daemon::drain_sessions(&sessions, Duration::from_secs(2)).await;
-    assert!(drained, "drain_sessions should return true when sessions complete before timeout");
+    assert!(
+        drained,
+        "drain_sessions should return true when sessions complete before timeout"
+    );
     assert_eq!(sessions.active_count(), 0);
 }
 
@@ -135,5 +136,9 @@ async fn test_drain_sessions_times_out_with_persistent_session() {
     // A tiny timeout must expire while session is still active
     let drained = daemon::drain_sessions(&sessions, Duration::from_millis(50)).await;
     assert!(!drained, "drain_sessions should return false on timeout");
-    assert_eq!(sessions.active_count(), 1, "session should still be active after timeout");
+    assert_eq!(
+        sessions.active_count(),
+        1,
+        "session should still be active after timeout"
+    );
 }

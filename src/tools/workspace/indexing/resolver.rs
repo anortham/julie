@@ -173,8 +173,7 @@ fn score_candidate(
     // Dominates all other heuristics combined (max existing: 160).
     if parent_ctx.caller_references_parent(&pending.file_path, candidate.parent_id.as_deref()) {
         score += 200;
-    } else if candidate.parent_id.is_some()
-        && parent_ctx.caller_has_identifiers(&pending.file_path)
+    } else if candidate.parent_id.is_some() && parent_ctx.caller_has_identifiers(&pending.file_path)
     {
         // Caller has identifiers but doesn't reference this candidate's parent type.
         // Apply a penalty (not a hard rejection) so that:
@@ -405,17 +404,16 @@ fn build_parent_reference_context(
 
     // 5. Query which caller files have any identifiers at all.
     // Needed to distinguish "no match" (reject phantom edges) from "no data" (allow fallback).
-    let files_with_identifiers =
-        match db.has_identifiers_for_files(&caller_files) {
-            Ok(files) => files,
-            Err(e) => {
-                warn!(
-                    "Failed to query identifier existence for disambiguation: {}",
-                    e
-                );
-                HashSet::new()
-            }
-        };
+    let files_with_identifiers = match db.has_identifiers_for_files(&caller_files) {
+        Ok(files) => files,
+        Err(e) => {
+            warn!(
+                "Failed to query identifier existence for disambiguation: {}",
+                e
+            );
+            HashSet::new()
+        }
+    };
 
     ParentReferenceContext::new(parent_names, file_refs, files_with_identifiers)
 }

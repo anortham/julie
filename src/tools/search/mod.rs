@@ -157,7 +157,11 @@ impl FastSearchTool {
                         )
                         .unwrap_or_default()
                     };
-                    if primary_id.is_empty() { None } else { Some(vec![primary_id]) }
+                    if primary_id.is_empty() {
+                        None
+                    } else {
+                        Some(vec![primary_id])
+                    }
                 } else {
                     None
                 }

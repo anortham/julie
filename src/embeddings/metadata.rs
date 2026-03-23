@@ -189,7 +189,11 @@ pub fn prepare_batch_for_embedding(
 
     symbols
         .iter()
-        .filter(|s| is_embeddable_for_language(&s.kind, &s.language, lang_configs) && is_embeddable_language(&s.language) && !is_test_symbol_for_embedding(s))
+        .filter(|s| {
+            is_embeddable_for_language(&s.kind, &s.language, lang_configs)
+                && is_embeddable_language(&s.language)
+                && !is_test_symbol_for_embedding(s)
+        })
         .map(|s| {
             let mut text = format_symbol_metadata(s);
 

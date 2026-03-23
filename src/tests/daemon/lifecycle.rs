@@ -1,4 +1,4 @@
-use crate::daemon::lifecycle::{check_status, stop_daemon, DaemonStatus};
+use crate::daemon::lifecycle::{DaemonStatus, check_status, stop_daemon};
 use crate::daemon::pid::PidFile;
 use crate::paths::DaemonPaths;
 

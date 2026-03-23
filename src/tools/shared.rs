@@ -117,8 +117,8 @@ pub const BLACKLISTED_DIRECTORIES: &[&str] = &[
     ".sass-cache",
     ".nuxt",
     ".next",
-    ".gradle",      // Gradle build cache (Java, Android)
-    ".dart_tool",   // Dart/Flutter build cache
+    ".gradle",    // Gradle build cache (Java, Android)
+    ".dart_tool", // Dart/Flutter build cache
     "Pods",
     "DerivedData",
 ];

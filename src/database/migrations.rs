@@ -735,8 +735,10 @@ impl SymbolDatabase {
         )?;
 
         if files_exists && !self.has_column("files", "line_count")? {
-            self.conn
-                .execute("ALTER TABLE files ADD COLUMN line_count INTEGER DEFAULT 0", [])?;
+            self.conn.execute(
+                "ALTER TABLE files ADD COLUMN line_count INTEGER DEFAULT 0",
+                [],
+            )?;
         }
 
         info!("Migration 013 complete: tool_calls table and line_count column added");

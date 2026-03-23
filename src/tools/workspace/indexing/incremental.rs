@@ -377,7 +377,10 @@ impl ManageWorkspaceTool {
                         "Failed to delete relationships for orphaned file {}: {}",
                         file_path, e
                     );
-                    cleanup_error = Some(format!("relationship delete failed for {}: {}", file_path, e));
+                    cleanup_error = Some(format!(
+                        "relationship delete failed for {}: {}",
+                        file_path, e
+                    ));
                     break 'files;
                 }
 

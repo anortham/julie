@@ -63,11 +63,7 @@ fn test_format_session_with_data() {
         "should contain deep_dive: {}",
         output
     );
-    assert!(
-        output.contains("1 calls"),
-        "should show 1 call: {}",
-        output
-    );
+    assert!(output.contains("1 calls"), "should show 1 call: {}", output);
     assert!(
         output.contains("NOT injected"),
         "should contain NOT injected: {}",
@@ -107,10 +103,7 @@ fn test_format_history_output() {
             },
         ],
         durations_by_tool: HashMap::from([
-            (
-                "fast_search".to_string(),
-                vec![3.0, 4.0, 5.0, 6.0, 12.0],
-            ),
+            ("fast_search".to_string(), vec![3.0, 4.0, 5.0, 6.0, 12.0]),
             ("deep_dive".to_string(), vec![5.0, 8.0, 10.0, 15.0]),
         ]),
     };

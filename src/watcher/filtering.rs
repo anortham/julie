@@ -30,7 +30,11 @@ pub fn build_gitignore_matcher(workspace_root: &Path) -> Result<Gitignore> {
     let gitignore_path = workspace_root.join(".gitignore");
     if gitignore_path.is_file() {
         if let Some(err) = builder.add(&gitignore_path) {
-            warn!("Partial error reading {}: {}", gitignore_path.display(), err);
+            warn!(
+                "Partial error reading {}: {}",
+                gitignore_path.display(),
+                err
+            );
         }
     }
 
@@ -78,10 +82,7 @@ pub fn contains_blacklisted_directory(path: &Path) -> bool {
 
 /// Like [`contains_blacklisted_directory`] but with an explicit workspace root
 /// to relativize the path before checking.
-pub fn contains_blacklisted_directory_relative(
-    path: &Path,
-    workspace_root: Option<&Path>,
-) -> bool {
+pub fn contains_blacklisted_directory_relative(path: &Path, workspace_root: Option<&Path>) -> bool {
     let check_path = workspace_root
         .and_then(|root| path.strip_prefix(root).ok())
         .unwrap_or(path);
@@ -438,25 +439,13 @@ mod tests {
         let matcher = build_gitignore_matcher(root).unwrap();
 
         // Ignored by .gitignore
-        assert!(is_gitignored(
-            &root.join("build/output.js"),
-            &matcher,
-            root
-        ));
+        assert!(is_gitignored(&root.join("build/output.js"), &matcher, root));
         assert!(is_gitignored(&root.join("debug.log"), &matcher, root));
-        assert!(is_gitignored(
-            &root.join("nested/deep.log"),
-            &matcher,
-            root
-        ));
+        assert!(is_gitignored(&root.join("nested/deep.log"), &matcher, root));
 
         // Not ignored
         assert!(!is_gitignored(&root.join("src/main.rs"), &matcher, root));
-        assert!(!is_gitignored(
-            &root.join("lib/utils.py"),
-            &matcher,
-            root
-        ));
+        assert!(!is_gitignored(&root.join("lib/utils.py"), &matcher, root));
 
         // Path outside workspace root returns false (not ignored)
         assert!(!is_gitignored(

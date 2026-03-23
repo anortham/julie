@@ -473,10 +473,9 @@ pub fn embedding_vector_semantic() {}
             };
             index_ref.call_tool(&handler).await?;
         }
-        let workspace_id = crate::workspace::registry::generate_workspace_id(
-            &reference_path.to_string_lossy(),
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compute workspace ID: {}", e))?;
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())
+                .map_err(|e| anyhow::anyhow!("Failed to compute workspace ID: {}", e))?;
         println!("🐛 TEST TRACE 8: Reference workspace indexed");
         println!("✅ Reference workspace indexed: {}", workspace_id);
 
@@ -572,10 +571,9 @@ pub fn embedding_vector_semantic() {}
             };
             index_ref.call_tool(&handler).await?;
         }
-        let workspace_id = crate::workspace::registry::generate_workspace_id(
-            &reference_path.to_string_lossy(),
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to compute workspace ID: {}", e))?;
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())
+                .map_err(|e| anyhow::anyhow!("Failed to compute workspace ID: {}", e))?;
 
         // Immediately re-index the same reference workspace before background tasks complete
         let reindex_tool = ManageWorkspaceTool {

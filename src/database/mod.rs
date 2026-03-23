@@ -21,12 +21,12 @@ mod migrations;
 mod relationships;
 mod schema;
 mod symbols;
+mod tool_calls;
 mod type_queries;
 pub mod types;
 pub mod vectors;
 mod workspace;
-mod tool_calls;
-pub use tool_calls::{ToolCallSummary, HistorySummary};
+pub use tool_calls::{HistorySummary, ToolCallSummary};
 
 /// Register sqlite-vec extension as a global auto-extension (once per process).
 static SQLITE_VEC_INIT: Once = Once::new();

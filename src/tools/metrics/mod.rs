@@ -100,8 +100,7 @@ impl QueryMetricsTool {
 
         match self.category.as_str() {
             "session" => {
-                let output =
-                    operational::format_session_from_metrics(&handler.session_metrics);
+                let output = operational::format_session_from_metrics(&handler.session_metrics);
                 Ok(CallToolResult::text_content(vec![Content::text(output)]))
             }
             "trend" => {
@@ -179,9 +178,7 @@ impl QueryMetricsTool {
                     let db = match db_arc.lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => {
-                            tracing::warn!(
-                                "Database mutex poisoned in history query, recovering"
-                            );
+                            tracing::warn!("Database mutex poisoned in history query, recovering");
                             poisoned.into_inner()
                         }
                     };
@@ -227,9 +224,7 @@ impl QueryMetricsTool {
                     let db = match db_arc.lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => {
-                            tracing::warn!(
-                                "Database mutex poisoned in metrics query, recovering"
-                            );
+                            tracing::warn!("Database mutex poisoned in metrics query, recovering");
                             poisoned.into_inner()
                         }
                     };

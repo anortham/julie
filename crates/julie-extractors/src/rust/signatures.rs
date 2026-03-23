@@ -123,17 +123,45 @@ pub(super) fn extract_associated_type(
 /// the symbol index, wastes embedding budget, and degrades search quality.
 const NOISE_MACROS: &[&str] = &[
     // std — constructors and formatting
-    "vec", "format", "println", "print", "eprintln", "eprint", "write", "writeln",
+    "vec",
+    "format",
+    "println",
+    "print",
+    "eprintln",
+    "eprint",
+    "write",
+    "writeln",
     // std — assertions, debugging, and control flow
-    "dbg", "matches", "assert", "assert_eq", "assert_ne",
-    "debug_assert", "debug_assert_eq", "debug_assert_ne",
-    "panic", "todo", "unimplemented", "unreachable",
+    "dbg",
+    "matches",
+    "assert",
+    "assert_eq",
+    "assert_ne",
+    "debug_assert",
+    "debug_assert_eq",
+    "debug_assert_ne",
+    "panic",
+    "todo",
+    "unimplemented",
+    "unreachable",
     // std — compile-time and env
-    "cfg", "env", "concat", "stringify", "include", "include_str", "include_bytes",
+    "cfg",
+    "env",
+    "concat",
+    "stringify",
+    "include",
+    "include_str",
+    "include_bytes",
     // tracing / log
-    "info", "warn", "error", "debug", "trace",
+    "info",
+    "warn",
+    "error",
+    "debug",
+    "trace",
     // anyhow
-    "bail", "anyhow", "ensure",
+    "bail",
+    "anyhow",
+    "ensure",
 ];
 
 /// Extract macro invocation — only item-position macros that define named things.

@@ -147,9 +147,7 @@ mod tests {
 
         // Connect from "client" and send the workspace header
         let workspace_path = "/tmp/test-project";
-        let mut client = IpcConnector::connect(&socket_path)
-            .await
-            .expect("connect");
+        let mut client = IpcConnector::connect(&socket_path).await.expect("connect");
         let header = format!("WORKSPACE:{}\n", workspace_path);
         client
             .write_all(header.as_bytes())
@@ -327,7 +325,10 @@ mod tests {
         let daemon_db = Arc::new(crate::daemon::database::DaemonDatabase::open(
             &daemon_db_path,
         )?);
-        assert!(daemon_db.table_exists("workspaces"), "schema should be created");
+        assert!(
+            daemon_db.table_exists("workspaces"),
+            "schema should be created"
+        );
         assert!(
             daemon_db.table_exists("codehealth_snapshots"),
             "snapshots table should be created"
@@ -352,7 +353,10 @@ mod tests {
 
         // Both sessions should share the same SymbolDatabase Arc
         assert!(
-            Arc::ptr_eq(ws1.db.as_ref().expect("ws1.db"), ws2.db.as_ref().expect("ws2.db")),
+            Arc::ptr_eq(
+                ws1.db.as_ref().expect("ws1.db"),
+                ws2.db.as_ref().expect("ws2.db")
+            ),
             "both sessions must share the same database Arc"
         );
 
@@ -365,10 +369,7 @@ mod tests {
             ws_root.path().to_str().unwrap(),
             "workspace path should match"
         );
-        assert_eq!(
-            ws_row.session_count, 2,
-            "two sessions should be counted"
-        );
+        assert_eq!(ws_row.session_count, 2, "two sessions should be counted");
 
         // Step 5: Add a reference workspace and record the relationship
         let ref_root = tempfile::tempdir()?;
@@ -432,22 +433,49 @@ mod tests {
 
         // Step 7: Record tool calls in daemon.db
         daemon_db.insert_tool_call(
-            primary_id, "sess_a", "fast_search",
-            12.5, Some(5), None, Some(800), true, None,
+            primary_id,
+            "sess_a",
+            "fast_search",
+            12.5,
+            Some(5),
+            None,
+            Some(800),
+            true,
+            None,
         )?;
         daemon_db.insert_tool_call(
-            primary_id, "sess_a", "get_context",
-            88.0, Some(1), None, Some(2000), true, None,
+            primary_id,
+            "sess_a",
+            "get_context",
+            88.0,
+            Some(1),
+            None,
+            Some(2000),
+            true,
+            None,
         )?;
         daemon_db.insert_tool_call(
-            primary_id, "sess_b", "fast_search",
-            15.0, Some(3), None, Some(600), true, None,
+            primary_id,
+            "sess_b",
+            "fast_search",
+            15.0,
+            Some(3),
+            None,
+            Some(600),
+            true,
+            None,
         )?;
 
         let history = daemon_db.query_tool_call_history(primary_id, 7)?;
-        assert_eq!(history.total_calls, 3, "three tool calls should be recorded");
+        assert_eq!(
+            history.total_calls, 3,
+            "three tool calls should be recorded"
+        );
         assert!(
-            history.per_tool.iter().any(|t| t.tool_name == "fast_search"),
+            history
+                .per_tool
+                .iter()
+                .any(|t| t.tool_name == "fast_search"),
             "fast_search should appear in per-tool breakdown"
         );
 

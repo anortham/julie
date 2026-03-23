@@ -28,10 +28,7 @@ pub fn format_delta(old: i64, new: i64) -> String {
 
 /// Format a side-by-side comparison between `current` (just indexed) and
 /// the most recent persisted `previous` snapshot.
-pub fn format_comparison(
-    current: &CodehealthSnapshot,
-    previous: &CodehealthSnapshotRow,
-) -> String {
+pub fn format_comparison(current: &CodehealthSnapshot, previous: &CodehealthSnapshotRow) -> String {
     let mut lines = Vec::new();
 
     lines.push("Codehealth Trend (vs previous snapshot)".to_string());
@@ -50,10 +47,7 @@ pub fn format_comparison(
     lines.push(format!(
         "Change Risk:     HIGH {}  |  MED {}  |  LOW {}",
         format_delta(previous.change_high as i64, current.change_high as i64),
-        format_delta(
-            previous.change_medium as i64,
-            current.change_medium as i64
-        ),
+        format_delta(previous.change_medium as i64, current.change_medium as i64),
         format_delta(previous.change_low as i64, current.change_low as i64),
     ));
 

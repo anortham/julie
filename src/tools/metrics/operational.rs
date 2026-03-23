@@ -111,10 +111,7 @@ pub fn format_session_from_metrics(metrics: &SessionMetrics) -> String {
         "  Source files examined: {}",
         format_bytes(total_source)
     ));
-    lines.push(format!(
-        "  Output returned: {}",
-        format_bytes(total_output)
-    ));
+    lines.push(format!("  Output returned: {}", format_bytes(total_output)));
     let not_injected = total_source.saturating_sub(total_output);
     lines.push(format!(
         "  NOT injected into context: {}",

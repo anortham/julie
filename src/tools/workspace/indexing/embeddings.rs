@@ -85,9 +85,7 @@ pub(crate) async fn spawn_workspace_embedding(
         match ws.embedding_provider.clone() {
             Some(provider) => provider,
             None => {
-                debug!(
-                    "Embedding provider unavailable after init, skipping workspace embedding"
-                );
+                debug!("Embedding provider unavailable after init, skipping workspace embedding");
                 return 0;
             }
         }

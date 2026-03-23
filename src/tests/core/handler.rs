@@ -41,7 +41,7 @@ async fn test_auto_index_write_lock_prevents_double_spawn() {
     let spawn_count = Arc::new(AtomicUsize::new(0));
 
     let check_and_maybe_spawn = |flag: Arc<tokio::sync::RwLock<bool>>,
-                                  counter: Arc<AtomicUsize>| async move {
+                                 counter: Arc<AtomicUsize>| async move {
         // This is the fixed on_initialized pattern: write-lock + check-and-set.
         let mut guard = flag.write().await;
         if *guard {

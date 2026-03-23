@@ -49,8 +49,7 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
 
             // Poll until the process exits (up to 5s), then clean up stale files.
             // Avoids a fixed 500ms blind wait when the daemon exits quickly.
-            let deadline =
-                std::time::Instant::now() + std::time::Duration::from_secs(5);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
             loop {
                 if !PidFile::is_process_alive(pid) {
                     break;

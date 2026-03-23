@@ -152,7 +152,12 @@ async fn test_active_workspace_count() {
 #[tokio::test]
 async fn test_concurrent_get_or_init_different_workspaces() {
     let indexes_dir = temp_indexes_dir();
-    let pool = Arc::new(WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None));
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.path().to_path_buf(),
+        None,
+        None,
+        None,
+    ));
 
     let root1 = temp_workspace_root();
     let root2 = temp_workspace_root();
@@ -202,8 +207,12 @@ fn test_daemon_db_upsert_on_workspace_init() {
     let tmp = tempfile::TempDir::new().unwrap();
     let daemon_db = DaemonDatabase::open(&tmp.path().join("daemon.db")).unwrap();
 
-    daemon_db.upsert_workspace("test_ws", "/tmp/test", "pending").unwrap();
-    daemon_db.update_workspace_status("test_ws", "ready").unwrap();
+    daemon_db
+        .upsert_workspace("test_ws", "/tmp/test", "pending")
+        .unwrap();
+    daemon_db
+        .update_workspace_status("test_ws", "ready")
+        .unwrap();
 
     let ws = daemon_db.get_workspace("test_ws").unwrap().unwrap();
     assert_eq!(ws.status, "ready");
@@ -211,8 +220,8 @@ fn test_daemon_db_upsert_on_workspace_init() {
 
 #[tokio::test]
 async fn test_watcher_pool_ref_incremented_on_get_or_init() {
-    use std::time::Duration;
     use crate::daemon::watcher_pool::WatcherPool;
+    use std::time::Duration;
 
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
@@ -249,7 +258,10 @@ async fn test_session_count_not_incremented_on_init_failure() {
     let pool = WorkspacePool::new(indexes_dir, Some(Arc::clone(&daemon_db)), None, None);
 
     let result = pool.get_or_init("leak_test_ws", fake_root).await;
-    assert!(result.is_err(), "init should fail when workspace root is a regular file");
+    assert!(
+        result.is_err(),
+        "init should fail when workspace root is a regular file"
+    );
 
     // After fix: session_count stays 0 (increment never happened)
     // Before fix: session_count would be 1 (leaked on failed init)
@@ -287,7 +299,9 @@ async fn test_sync_indexed_from_db_sets_flag_when_ready() {
     assert!(!pool.is_indexed("sync_test_ws").await);
 
     // Simulate what handle_index_command does: transition daemon.db to "ready"
-    daemon_db.update_workspace_status("sync_test_ws", "ready").unwrap();
+    daemon_db
+        .update_workspace_status("sync_test_ws", "ready")
+        .unwrap();
 
     // sync_indexed_from_db must propagate the "ready" flag to the pool's in-memory state
     pool.sync_indexed_from_db("sync_test_ws").await;
@@ -328,8 +342,8 @@ async fn test_sync_indexed_from_db_noop_when_pending() {
 
 #[tokio::test]
 async fn test_watcher_pool_detached_on_disconnect() {
-    use std::time::Duration;
     use crate::daemon::watcher_pool::WatcherPool;
+    use std::time::Duration;
 
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();

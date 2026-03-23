@@ -54,13 +54,12 @@ fn setup_similarity_fixture() -> SymbolDatabase {
             .join(".cache")
             .join("fastembed");
 
-    let provider =
-        OrtEmbeddingProvider::try_new(Some(cache_dir), Some("bge-small"))
-            .expect("Embedding provider should init");
+    let provider = OrtEmbeddingProvider::try_new(Some(cache_dir), Some("bge-small"))
+        .expect("Embedding provider should init");
 
     let db_arc = Arc::new(Mutex::new(db));
-    let stats =
-        run_embedding_pipeline(&db_arc, &provider, None).expect("Embedding pipeline should succeed");
+    let stats = run_embedding_pipeline(&db_arc, &provider, None)
+        .expect("Embedding pipeline should succeed");
     println!(
         "Embedding pipeline: {}/{} symbols embedded in {} batches",
         stats.symbols_embedded, stats.symbols_scanned, stats.batches_processed

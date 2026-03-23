@@ -148,7 +148,9 @@
       "Read(//home/murphy/source/coa-codesearch-mcp/COA.CodeSearch.McpServer/Tools/**)",
       "Read(//home/murphy/source/coa-codesearch-mcp/**)",
       "Bash(brew install starship)",
-      "Read(//c/Users/CHS300372/.claude/**)"
+      "Read(//c/Users/CHS300372/.claude/**)",
+      "mcp__plugin_goldfish_goldfish__recall",
+      "mcp__julie__get_context"
     ],
     "deny": [],
     "ask": []

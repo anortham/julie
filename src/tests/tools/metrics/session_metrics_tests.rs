@@ -68,8 +68,7 @@ fn test_session_metrics_record_increments_atomics() {
     let tool = &metrics.per_tool[ToolKind::FastSearch as usize];
     assert_eq!(tool.calls.load(std::sync::atomic::Ordering::Relaxed), 1);
     assert_eq!(
-        tool.output_bytes
-            .load(std::sync::atomic::Ordering::Relaxed),
+        tool.output_bytes.load(std::sync::atomic::Ordering::Relaxed),
         5000
     );
 }

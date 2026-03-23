@@ -143,10 +143,8 @@ async fn test_fast_search_with_explicit_workspace_id() -> Result<()> {
     // Get the actual workspace ID — compute directly from path (index.rs no longer
     // writes registry.json in stdio mode; it uses generate_workspace_id for embeddings)
     let workspace_id = if let Some(workspace) = handler.get_workspace().await? {
-        crate::workspace::registry::generate_workspace_id(
-            &workspace.root.to_string_lossy(),
-        )
-        .expect("Should be able to generate workspace ID from path")
+        crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
+            .expect("Should be able to generate workspace ID from path")
     } else {
         panic!("No workspace found");
     };

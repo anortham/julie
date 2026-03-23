@@ -8,6 +8,7 @@ mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
 
+    use crate::embeddings::create_embedding_provider;
     use crate::embeddings::{
         BackendResolverCapabilities, DeviceInfo, EmbeddingBackend, EmbeddingConfig,
         EmbeddingProvider, EmbeddingProviderFactory, EmbeddingRuntimeStatus,
@@ -18,7 +19,6 @@ mod tests {
     use crate::embeddings::{
         OrtEmbeddingProvider, ort_execution_provider_policy_kinds, ort_runtime_signal,
     };
-    use crate::embeddings::create_embedding_provider;
     use crate::workspace::{JulieWorkspace, build_embedding_runtime_log_fields};
 
     fn test_python_interpreter() -> String {

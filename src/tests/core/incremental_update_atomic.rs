@@ -3,10 +3,12 @@
 // This method wraps cleanup + bulk insert in a single transaction to prevent
 // corruption if a crash occurs between delete and insert phases.
 
-use crate::database::types::FileInfo;
 use crate::database::SymbolDatabase;
+use crate::database::types::FileInfo;
 use crate::extractors::base::TypeInfo;
-use crate::extractors::{Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::extractors::{
+    Identifier, IdentifierKind, Relationship, RelationshipKind, Symbol, SymbolKind,
+};
 use tempfile::TempDir;
 
 /// Helper: build a minimal Symbol with the given id, name, and file_path.
@@ -126,7 +128,7 @@ fn test_incremental_update_atomic_basic_insert() {
     let types = vec![make_type_info("sym_a", "Result<(), Error>")];
 
     db.incremental_update_atomic(
-        &[],           // nothing to clean
+        &[], // nothing to clean
         &files,
         &symbols,
         &relationships,
@@ -239,13 +241,24 @@ fn test_incremental_update_atomic_clean_and_replace() {
     assert!(!names.contains(&"beta"), "old symbol beta should be gone");
     assert!(names.contains(&"gamma"), "new symbol gamma should exist");
     assert!(names.contains(&"delta"), "new symbol delta should exist");
-    assert!(names.contains(&"epsilon"), "new symbol epsilon should exist");
+    assert!(
+        names.contains(&"epsilon"),
+        "new symbol epsilon should exist"
+    );
 
     // Old relationships gone, new ones present
-    assert_eq!(count_rows(&db, "relationships"), 2, "should have 2 new relationships");
+    assert_eq!(
+        count_rows(&db, "relationships"),
+        2,
+        "should have 2 new relationships"
+    );
 
     // Old identifiers gone, new ones present
-    assert_eq!(count_rows(&db, "identifiers"), 2, "should have 2 new identifiers");
+    assert_eq!(
+        count_rows(&db, "identifiers"),
+        2,
+        "should have 2 new identifiers"
+    );
 
     // Old types gone, new ones present
     assert_eq!(count_rows(&db, "types"), 2, "should have 2 new types");
@@ -308,7 +321,11 @@ fn test_incremental_update_atomic_multi_file_isolation() {
     assert_eq!(all_symbols.len(), 2, "total symbol count should still be 2");
 
     // Identifiers: main.rs identifier untouched, lib.rs replaced
-    assert_eq!(count_rows(&db, "identifiers"), 2, "total identifiers should be 2");
+    assert_eq!(
+        count_rows(&db, "identifiers"),
+        2,
+        "total identifiers should be 2"
+    );
     let lib_ident_name: String = db
         .conn
         .query_row(
@@ -317,7 +334,10 @@ fn test_incremental_update_atomic_multi_file_isolation() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(lib_ident_name, "new_ref", "lib.rs identifier should be updated");
+    assert_eq!(
+        lib_ident_name, "new_ref",
+        "lib.rs identifier should be updated"
+    );
 }
 
 // ---------------------------------------------------------------------------

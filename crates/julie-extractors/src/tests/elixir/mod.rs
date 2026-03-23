@@ -605,7 +605,10 @@ end"#;
         }
 
         // Tests should have signature like `test "description"`
-        let auth_test = tests.iter().find(|t| t.name == "authenticates user").unwrap();
+        let auth_test = tests
+            .iter()
+            .find(|t| t.name == "authenticates user")
+            .unwrap();
         assert_eq!(
             auth_test.signature.as_deref(),
             Some("test \"authenticates user\"")

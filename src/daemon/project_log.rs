@@ -66,7 +66,10 @@ impl ProjectLog {
     pub fn session_start(&self, session_id: &str) {
         self.log(
             "INFO",
-            &format!("Session {} connected (daemon mode). Daemon logs at ~/.julie/daemon.log.*", session_id),
+            &format!(
+                "Session {} connected (daemon mode). Daemon logs at ~/.julie/daemon.log.*",
+                session_id
+            ),
         );
     }
 

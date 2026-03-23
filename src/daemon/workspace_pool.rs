@@ -98,7 +98,10 @@ impl WorkspacePool {
             if let Some(ref wp) = self.watcher_pool {
                 let provider = self.shared_embedding_provider();
                 if let Err(e) = wp.attach(workspace_id, &ws, provider).await {
-                    warn!(workspace_id, "Failed to attach watcher on session reuse: {}", e);
+                    warn!(
+                        workspace_id,
+                        "Failed to attach watcher on session reuse: {}", e
+                    );
                 }
             }
             return Ok(ws);
@@ -117,7 +120,10 @@ impl WorkspacePool {
             if let Some(ref wp) = self.watcher_pool {
                 let provider = self.shared_embedding_provider();
                 if let Err(e) = wp.attach(workspace_id, &ws, provider).await {
-                    warn!(workspace_id, "Failed to attach watcher (double-check path): {}", e);
+                    warn!(
+                        workspace_id,
+                        "Failed to attach watcher (double-check path): {}", e
+                    );
                 }
             }
             return Ok(ws);
@@ -228,9 +234,7 @@ impl WorkspacePool {
     ///
     /// Returns `None` when no embedding service is configured or when the
     /// service initialized without a provider (e.g., model download failed).
-    fn shared_embedding_provider(
-        &self,
-    ) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
+    fn shared_embedding_provider(&self) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
         self.embedding_service
             .as_ref()
             .and_then(|svc| svc.provider().cloned())

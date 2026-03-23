@@ -6,8 +6,7 @@
 #[cfg(test)]
 mod resolver_tests {
     use crate::tools::workspace::indexing::resolver::{
-        ParentReferenceContext, build_resolved_relationship,
-        select_best_candidate,
+        ParentReferenceContext, build_resolved_relationship, select_best_candidate,
     };
     use julie_extractors::base::{
         PendingRelationship, RelationshipKind, Symbol, SymbolKind, Visibility,
@@ -562,7 +561,7 @@ mod resolver_tests {
         // Caller file HAS identifiers, but NONE match ApiResponse
         let parent_ctx = make_parent_ctx_with_files(
             &[("api_response_class", "ApiResponse")],
-            &[], // no file_refs — no parent matches
+            &[],                                // no file_refs — no parent matches
             &["Controllers/AuthController.cs"], // but file has identifier data
         );
 
@@ -609,7 +608,7 @@ mod resolver_tests {
             "Success",
             SymbolKind::Method,
             "csharp",
-            "Auth/AuthenticateResult.cs",   // farther directory
+            "Auth/AuthenticateResult.cs", // farther directory
             "authenticate_result_class",
         );
         confirmed.parent_id = Some("authenticate_result_class".to_string());
@@ -618,7 +617,7 @@ mod resolver_tests {
             "Success",
             SymbolKind::Method,
             "csharp",
-            "Controllers/ApiResponse.cs",   // closer directory to caller
+            "Controllers/ApiResponse.cs", // closer directory to caller
             "api_response_class",
         );
 
@@ -638,7 +637,8 @@ mod resolver_tests {
         let result = select_best_candidate(&candidates, &pending, &parent_ctx);
         assert!(result.is_some());
         assert_eq!(
-            result.unwrap().file_path, "Auth/AuthenticateResult.cs",
+            result.unwrap().file_path,
+            "Auth/AuthenticateResult.cs",
             "Confirmed parent reference should beat penalized candidate"
         );
     }
@@ -660,16 +660,12 @@ mod resolver_tests {
             "src/database/tool_calls.rs",
             "symbol_database_struct",
         )];
-        let pending = make_pending(
-            "record_tool_call_id",
-            "insert_tool_call",
-            "src/handler.rs",
-        );
+        let pending = make_pending("record_tool_call_id", "insert_tool_call", "src/handler.rs");
 
         // Caller file HAS identifiers but does NOT reference SymbolDatabase
         let parent_ctx = make_parent_ctx_with_files(
             &[("symbol_database_struct", "SymbolDatabase")],
-            &[], // no parent reference match
+            &[],                 // no parent reference match
             &["src/handler.rs"], // but file has identifier data
         );
 
@@ -693,12 +689,7 @@ mod resolver_tests {
         // The penalty should ensure the production class wins instead.
         let candidates = vec![
             make_symbol("Flask", SymbolKind::Class, "python", "src/flask/app.py"),
-            make_symbol(
-                "Flask",
-                SymbolKind::Class,
-                "python",
-                "tests/test_config.py",
-            ),
+            make_symbol("Flask", SymbolKind::Class, "python", "tests/test_config.py"),
         ];
         let pending = PendingRelationship {
             from_symbol_id: "test_fn".to_string(),

@@ -98,7 +98,10 @@ mod tests {
             std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
         }
 
-        assert!(!service.is_available(), "provider=none should mean unavailable");
+        assert!(
+            !service.is_available(),
+            "provider=none should mean unavailable"
+        );
         // When explicitly disabled via "none", create_embedding_provider
         // returns (None, None) -- no runtime_status is produced because
         // there's nothing to report (it's an intentional skip, not an error).

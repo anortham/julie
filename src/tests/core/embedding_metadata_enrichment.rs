@@ -71,7 +71,10 @@ mod tests {
     fn test_extract_doc_excerpt_strips_rust_prefixes() {
         let doc = "/// First line.\n/// Second line.";
         let excerpt = extract_doc_excerpt(doc);
-        assert!(!excerpt.contains("///"), "Should strip /// prefix: {excerpt}");
+        assert!(
+            !excerpt.contains("///"),
+            "Should strip /// prefix: {excerpt}"
+        );
         assert!(excerpt.contains("First line."));
         assert!(excerpt.contains("Second line."));
     }
@@ -80,17 +83,32 @@ mod tests {
     fn test_extract_doc_excerpt_strips_csharp_xml_tags() {
         let doc = "/// <summary>\n/// Handles authentication.\n/// </summary>\n/// <param name=\"token\">The auth token.</param>";
         let excerpt = extract_doc_excerpt(doc);
-        assert!(!excerpt.contains("<summary>"), "Should strip XML tags: {excerpt}");
-        assert!(!excerpt.contains("<param"), "Should strip param tags: {excerpt}");
-        assert!(excerpt.contains("Handles authentication"), "Content should survive: {excerpt}");
+        assert!(
+            !excerpt.contains("<summary>"),
+            "Should strip XML tags: {excerpt}"
+        );
+        assert!(
+            !excerpt.contains("<param"),
+            "Should strip param tags: {excerpt}"
+        );
+        assert!(
+            excerpt.contains("Handles authentication"),
+            "Content should survive: {excerpt}"
+        );
     }
 
     #[test]
     fn test_extract_doc_excerpt_handles_python_docstring() {
         let doc = "# Process the input data.\n# Returns the transformed result.";
         let excerpt = extract_doc_excerpt(doc);
-        assert!(excerpt.contains("Process the input data"), "Should strip # prefix: {excerpt}");
-        assert!(excerpt.contains("Returns the transformed result"), "Second line should be present: {excerpt}");
+        assert!(
+            excerpt.contains("Process the input data"),
+            "Should strip # prefix: {excerpt}"
+        );
+        assert!(
+            excerpt.contains("Returns the transformed result"),
+            "Second line should be present: {excerpt}"
+        );
     }
 
     #[test]
@@ -114,10 +132,17 @@ mod tests {
 
     #[test]
     fn test_extract_doc_excerpt_jsdoc_block() {
-        let doc = "/**\n * Initialize the connection pool.\n * Validates config before connecting.\n */";
+        let doc =
+            "/**\n * Initialize the connection pool.\n * Validates config before connecting.\n */";
         let excerpt = extract_doc_excerpt(doc);
-        assert!(excerpt.contains("Initialize the connection pool"), "Should handle JSDoc: {excerpt}");
-        assert!(excerpt.contains("Validates config"), "Second line: {excerpt}");
+        assert!(
+            excerpt.contains("Initialize the connection pool"),
+            "Should handle JSDoc: {excerpt}"
+        );
+        assert!(
+            excerpt.contains("Validates config"),
+            "Second line: {excerpt}"
+        );
     }
 
     // =========================================================================
@@ -339,7 +364,8 @@ mod tests {
 
         let base_count = 11;
         let cap = ((base_count as f64) * policy.max_ratio).floor() as usize;
-        let selected = select_budgeted_variables(&symbols, &reference_scores, base_count, &policy, None);
+        let selected =
+            select_budgeted_variables(&symbols, &reference_scores, base_count, &policy, None);
 
         assert_eq!(
             selected.len(),
@@ -778,13 +804,7 @@ mod tests {
             Some("pub fn record_tool_call(&self, tool_name: &str)"),
             Some("/// Record a completed tool call."),
         );
-        let callee_func = make_symbol(
-            "f2",
-            "insert_tool_call",
-            SymbolKind::Function,
-            None,
-            None,
-        );
+        let callee_func = make_symbol("f2", "insert_tool_call", SymbolKind::Function, None, None);
         let callee_func2 = make_symbol(
             "f3",
             "get_total_file_sizes",
@@ -798,10 +818,14 @@ mod tests {
         let mut callees_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
         callees_by_symbol.insert(
             "f1".to_string(),
-            vec!["insert_tool_call".to_string(), "get_total_file_sizes".to_string()],
+            vec![
+                "insert_tool_call".to_string(),
+                "get_total_file_sizes".to_string(),
+            ],
         );
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &HashMap::new());
+        let batch =
+            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &HashMap::new());
         assert_eq!(batch.len(), 3);
 
         let (_, text) = batch.iter().find(|(id, _)| id == "f1").unwrap();
@@ -830,7 +854,10 @@ mod tests {
         );
         let symbols = vec![method];
         let mut callees = HashMap::new();
-        callees.insert("m1".to_string(), vec!["save".to_string(), "validate".to_string()]);
+        callees.insert(
+            "m1".to_string(),
+            vec!["save".to_string(), "validate".to_string()],
+        );
 
         let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new());
         let (_, text) = &batch[0];
@@ -862,19 +889,24 @@ mod tests {
             "f1",
             "orchestrate_complex_pipeline",
             SymbolKind::Function,
-            Some("pub async fn orchestrate_complex_pipeline(handler: &JulieServerHandler, config: &PipelineConfig, options: &ProcessingOptions) -> Result<PipelineOutput>"),
+            Some(
+                "pub async fn orchestrate_complex_pipeline(handler: &JulieServerHandler, config: &PipelineConfig, options: &ProcessingOptions) -> Result<PipelineOutput>",
+            ),
             Some(long_doc),
         );
         let symbols = vec![func];
         let mut callees = HashMap::new();
-        callees.insert("f1".to_string(), vec![
-            "connect_to_source_database".to_string(),
-            "extract_source_records".to_string(),
-            "transform_with_business_rules".to_string(),
-            "validate_intermediate_output".to_string(),
-            "load_into_target_database".to_string(),
-            "retry_with_exponential_backoff".to_string(),
-        ]);
+        callees.insert(
+            "f1".to_string(),
+            vec![
+                "connect_to_source_database".to_string(),
+                "extract_source_records".to_string(),
+                "transform_with_business_rules".to_string(),
+                "validate_intermediate_output".to_string(),
+                "load_into_target_database".to_string(),
+                "retry_with_exponential_backoff".to_string(),
+            ],
+        );
 
         let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new());
         let (_, text) = &batch[0];

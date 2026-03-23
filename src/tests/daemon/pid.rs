@@ -73,7 +73,10 @@ mod tests {
         let pid_file = PidFile::create(&path).unwrap();
 
         // The .tmp file used during atomic write should not remain
-        assert!(!tmp_path.exists(), ".tmp file should not remain after create");
+        assert!(
+            !tmp_path.exists(),
+            ".tmp file should not remain after create"
+        );
         // But the actual PID file should exist
         assert!(path.exists(), "PID file should exist after create");
 
@@ -116,11 +119,7 @@ mod tests {
         fs::write(&path, our_pid.to_string()).unwrap();
 
         let result = PidFile::check_running(&path);
-        assert_eq!(
-            result,
-            Some(our_pid),
-            "Live process PID should be returned"
-        );
+        assert_eq!(result, Some(our_pid), "Live process PID should be returned");
     }
 
     #[test]
@@ -140,10 +139,7 @@ mod tests {
         let (_dir, path) = temp_pid_path();
         let pid_file = PidFile::create_exclusive(&path).unwrap();
         let contents = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(
-            contents.trim().parse::<u32>().unwrap(),
-            std::process::id()
-        );
+        assert_eq!(contents.trim().parse::<u32>().unwrap(), std::process::id());
         pid_file.cleanup().unwrap();
     }
 
@@ -156,7 +152,10 @@ mod tests {
 
         // Second attempt while the first process (us) is still alive must fail
         let result = PidFile::create_exclusive(&path);
-        assert!(result.is_err(), "second create_exclusive should fail while process is live");
+        assert!(
+            result.is_err(),
+            "second create_exclusive should fail while process is live"
+        );
         assert!(
             format!("{:?}", result.unwrap_err()).contains("already running"),
             "error should mention 'already running'"
@@ -172,7 +171,11 @@ mod tests {
 
         // create_exclusive should detect the dead process, remove stale file, succeed
         let result = PidFile::create_exclusive(&path);
-        assert!(result.is_ok(), "create_exclusive should succeed with stale PID: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "create_exclusive should succeed with stale PID: {:?}",
+            result.err()
+        );
 
         let pid_str = std::fs::read_to_string(&path).unwrap();
         assert_eq!(

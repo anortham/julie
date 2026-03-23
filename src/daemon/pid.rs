@@ -110,7 +110,9 @@ impl PidFile {
                 Ok(mut f) => {
                     write!(f, "{}", pid)
                         .with_context(|| format!("Failed to write PID to {}", path.display()))?;
-                    return Ok(Self { path: path.to_path_buf() });
+                    return Ok(Self {
+                        path: path.to_path_buf(),
+                    });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     if let Some(existing) = Self::read_pid(path) {

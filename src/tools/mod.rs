@@ -7,12 +7,12 @@ pub mod shared;
 pub mod deep_dive; // Progressive-depth symbol investigation
 pub mod editing; // EditingTransaction infrastructure (shared by refactoring tools)
 pub mod get_context; // Token-budgeted code context subgraph
+pub mod metrics;
 pub mod navigation;
 pub mod refactoring;
 pub mod search;
 pub mod symbols; // Symbol overview tools
-pub mod workspace;
-pub mod metrics; // Code health metrics query tool
+pub mod workspace; // Code health metrics query tool
 
 // Re-export all tools for external use
 pub use deep_dive::DeepDiveTool;

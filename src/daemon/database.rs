@@ -34,8 +34,9 @@ impl DaemonDatabase {
                 if path.exists() {
                     std::fs::remove_file(path)?;
                 }
-                Connection::open(path)
-                    .with_context(|| format!("Failed to create fresh daemon.db at {}", path.display()))?
+                Connection::open(path).with_context(|| {
+                    format!("Failed to create fresh daemon.db at {}", path.display())
+                })?
             }
         };
 
@@ -172,12 +173,7 @@ impl DaemonDatabase {
     ///
     /// On conflict with an existing `workspace_id`, the `path`, `status`, and
     /// `updated_at` columns are updated. `session_count` and stats are preserved.
-    pub fn upsert_workspace(
-        &self,
-        workspace_id: &str,
-        path: &str,
-        status: &str,
-    ) -> Result<()> {
+    pub fn upsert_workspace(&self, workspace_id: &str, path: &str, status: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let now = now_unix();
         conn.execute(
@@ -257,7 +253,14 @@ impl DaemonDatabase {
                  last_indexed    = ?5,
                  updated_at      = ?5
              WHERE workspace_id  = ?6",
-            params![symbol_count, file_count, embedding_model, vector_count, now, workspace_id],
+            params![
+                symbol_count,
+                file_count,
+                embedding_model,
+                vector_count,
+                now,
+                workspace_id
+            ],
         )?;
         Ok(())
     }
@@ -464,7 +467,10 @@ impl DaemonDatabase {
     pub fn prune_tool_calls(&self, retention_days: u32) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         let cutoff = now_unix() - (retention_days as i64 * 86400);
-        conn.execute("DELETE FROM tool_calls WHERE timestamp < ?1", params![cutoff])?;
+        conn.execute(
+            "DELETE FROM tool_calls WHERE timestamp < ?1",
+            params![cutoff],
+        )?;
         Ok(())
     }
 
@@ -536,10 +542,7 @@ impl DaemonDatabase {
     }
 
     /// Retrieve the most recently inserted snapshot for a workspace, or `None`.
-    pub fn get_latest_snapshot(
-        &self,
-        workspace_id: &str,
-    ) -> Result<Option<CodehealthSnapshotRow>> {
+    pub fn get_latest_snapshot(&self, workspace_id: &str) -> Result<Option<CodehealthSnapshotRow>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare_cached(
             "SELECT id, workspace_id, timestamp, total_symbols, total_files,

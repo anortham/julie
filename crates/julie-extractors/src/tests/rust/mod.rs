@@ -1431,7 +1431,10 @@ fn record_tool_call(tool_name: &str) {
             let symbols = extractor.extract_symbols(&tree);
             let identifiers = extractor.extract_identifiers(&tree, &symbols);
 
-            let record_sym = symbols.iter().find(|s| s.name == "record_tool_call").unwrap();
+            let record_sym = symbols
+                .iter()
+                .find(|s| s.name == "record_tool_call")
+                .unwrap();
 
             // Check if insert_tool_call is extracted as a Call identifier
             let insert_call = identifiers
@@ -1440,7 +1443,10 @@ fn record_tool_call(tool_name: &str) {
             assert!(
                 insert_call.is_some(),
                 "Should extract insert_tool_call call inside tokio::spawn closure. All identifiers: {:?}",
-                identifiers.iter().map(|id| (&id.name, &id.kind)).collect::<Vec<_>>()
+                identifiers
+                    .iter()
+                    .map(|id| (&id.name, &id.kind))
+                    .collect::<Vec<_>>()
             );
 
             // Check if it's assigned to record_tool_call as containing symbol

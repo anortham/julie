@@ -87,8 +87,10 @@ pub async fn resolve_workspace_filter(
                     Some(_) => Ok(WorkspaceTarget::Reference(workspace_id.to_string())),
                     None => {
                         let all_workspaces = db.list_workspaces().unwrap_or_default();
-                        let workspace_ids: Vec<&str> =
-                            all_workspaces.iter().map(|w| w.workspace_id.as_str()).collect();
+                        let workspace_ids: Vec<&str> = all_workspaces
+                            .iter()
+                            .map(|w| w.workspace_id.as_str())
+                            .collect();
                         suggest_closest_workspace(workspace_id, &workspace_ids)
                     }
                 };

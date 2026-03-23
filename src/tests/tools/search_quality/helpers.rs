@@ -7,7 +7,6 @@ use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
 
-
 /// Search Julie's codebase (file content search)
 pub async fn search_content(
     handler: &JulieServerHandler,

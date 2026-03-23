@@ -307,10 +307,7 @@ impl SymbolDatabase {
     ///
     /// Used to distinguish "we checked and found no match" from "we have no data"
     /// when applying negative filtering for phantom call edges.
-    pub fn has_identifiers_for_files(
-        &self,
-        file_paths: &[&str],
-    ) -> Result<HashSet<String>> {
+    pub fn has_identifiers_for_files(&self, file_paths: &[&str]) -> Result<HashSet<String>> {
         if file_paths.is_empty() {
             return Ok(HashSet::new());
         }

@@ -34,10 +34,12 @@ fn resolve_ort_model(model_id: Option<&str>) -> Result<(EmbeddingModel, usize, &
         .unwrap_or_else(|| platform_default_ort_model().to_string());
 
     match id.as_str() {
-        "jina-code-v2"
-        | "jinaai/jina-embeddings-v2-base-code"
-        | "jina-embeddings-v2-base-code" => {
-            Ok((EmbeddingModel::JinaEmbeddingsV2BaseCode, 768, "Jina-code-v2"))
+        "jina-code-v2" | "jinaai/jina-embeddings-v2-base-code" | "jina-embeddings-v2-base-code" => {
+            Ok((
+                EmbeddingModel::JinaEmbeddingsV2BaseCode,
+                768,
+                "Jina-code-v2",
+            ))
         }
         "bge-small" | "bge-small-en-v1.5" | "baai/bge-small-en-v1.5" => {
             Ok((EmbeddingModel::BGESmallENV15, 384, "BGE-small-en-v1.5"))
@@ -151,10 +153,7 @@ impl OrtEmbeddingProvider {
     ///
     /// Returns `Err` if model download fails or ONNX runtime can't initialize.
     /// Callers should treat this as non-fatal — keyword search works without embeddings.
-    pub fn try_new(
-        cache_dir: Option<PathBuf>,
-        model_id: Option<&str>,
-    ) -> Result<Self> {
+    pub fn try_new(cache_dir: Option<PathBuf>, model_id: Option<&str>) -> Result<Self> {
         let cache = cache_dir.unwrap_or_else(default_cache_dir);
         let (embedding_model, dimensions, model_name) = resolve_ort_model(model_id)?;
         let OrtExecutionProviderPolicy {
@@ -164,10 +163,9 @@ impl OrtEmbeddingProvider {
 
         let (model, signal) = if providers.is_empty() {
             // No accelerated EP for this platform — CPU only
-            let model = TextEmbedding::try_new(
-                base_init_options(embedding_model.clone(), cache.clone()),
-            )
-            .context("Failed to initialize fastembed ONNX model")?;
+            let model =
+                TextEmbedding::try_new(base_init_options(embedding_model.clone(), cache.clone()))
+                    .context("Failed to initialize fastembed ONNX model")?;
             (model, signal_on_success)
         } else {
             // Try accelerated EP first, fall back to CPU

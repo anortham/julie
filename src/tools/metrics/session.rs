@@ -119,9 +119,7 @@ pub fn extract_source_paths(text: &str) -> Vec<String> {
                 clean
             };
             // Must contain '/' and have a file extension
-            if path_part.contains('/')
-                && !path_part.starts_with("http")
-                && path_part.contains('.')
+            if path_part.contains('/') && !path_part.starts_with("http") && path_part.contains('.')
             {
                 let p = path_part.to_string();
                 if seen.insert(p.clone()) {

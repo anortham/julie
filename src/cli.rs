@@ -2,7 +2,11 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "julie-server", version, about = "Julie - Code Intelligence Server")]
+#[command(
+    name = "julie-server",
+    version,
+    about = "Julie - Code Intelligence Server"
+)]
 pub struct Cli {
     /// Workspace root directory
     #[arg(long, global = true)]

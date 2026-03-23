@@ -95,7 +95,10 @@ mod tests {
             // drops here: fd closed, socket file remains
         }
 
-        assert!(socket_path.exists(), "stale socket file should persist after listener drop");
+        assert!(
+            socket_path.exists(),
+            "stale socket file should persist after listener drop"
+        );
 
         let launcher = DaemonLauncher::new(paths);
         // With the old file-exists check: returns Ok immediately (false positive).

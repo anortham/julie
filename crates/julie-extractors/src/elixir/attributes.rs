@@ -3,7 +3,7 @@
 /// Handles @type, @typep, @opaque, @callback, @spec, @behaviour, @moduledoc, @doc.
 /// In tree-sitter-elixir, attributes parse as `unary_operator` with `@` operator.
 use super::ElixirExtractor;
-use crate::base::{find_child_by_type, Symbol, SymbolKind, SymbolOptions, Visibility};
+use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility, find_child_by_type};
 use serde_json::Value;
 use std::collections::HashMap;
 use tree_sitter::Node;

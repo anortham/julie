@@ -238,7 +238,11 @@ impl SymbolDatabase {
 
             // STEP 2: Drop all indexes (WITHIN TRANSACTION) for maximum insert speed
             debug!("🗑️ Dropping type indexes for bulk insert optimization");
-            let type_indexes = ["idx_types_language", "idx_types_resolved", "idx_types_inferred"];
+            let type_indexes = [
+                "idx_types_language",
+                "idx_types_resolved",
+                "idx_types_inferred",
+            ];
             for index in &type_indexes {
                 if let Err(e) = outer_tx.execute(&format!("DROP INDEX IF EXISTS {}", index), []) {
                     debug!("Note: Could not drop index {}: {}", index, e);
@@ -971,13 +975,25 @@ impl SymbolDatabase {
             // Drop ALL indexes across all 5 tables (WITHIN TRANSACTION — crash-safe)
             debug!("🗑️ Dropping all table indexes for atomic fresh bulk insert");
             for index in &[
-                "idx_files_language", "idx_files_modified",
-                "idx_symbols_name", "idx_symbols_kind", "idx_symbols_language",
-                "idx_symbols_file", "idx_symbols_semantic", "idx_symbols_parent",
-                "idx_rel_from", "idx_rel_to", "idx_rel_kind",
-                "idx_identifiers_name", "idx_identifiers_file",
-                "idx_identifiers_containing", "idx_identifiers_target", "idx_identifiers_kind",
-                "idx_types_language", "idx_types_resolved", "idx_types_inferred",
+                "idx_files_language",
+                "idx_files_modified",
+                "idx_symbols_name",
+                "idx_symbols_kind",
+                "idx_symbols_language",
+                "idx_symbols_file",
+                "idx_symbols_semantic",
+                "idx_symbols_parent",
+                "idx_rel_from",
+                "idx_rel_to",
+                "idx_rel_kind",
+                "idx_identifiers_name",
+                "idx_identifiers_file",
+                "idx_identifiers_containing",
+                "idx_identifiers_target",
+                "idx_identifiers_kind",
+                "idx_types_language",
+                "idx_types_resolved",
+                "idx_types_inferred",
             ] {
                 if let Err(e) = outer_tx.execute(&format!("DROP INDEX IF EXISTS {}", index), []) {
                     debug!("Note: Could not drop index {}: {}", index, e);
@@ -1020,10 +1036,8 @@ impl SymbolDatabase {
                     symbols.iter().map(|s| s.id.clone()).collect();
 
                 let mut sorted_symbols = Vec::with_capacity(symbols.len());
-                let (no_parent, with_parent): (Vec<_>, Vec<_>) = symbols
-                    .iter()
-                    .cloned()
-                    .partition(|s| s.parent_id.is_none());
+                let (no_parent, with_parent): (Vec<_>, Vec<_>) =
+                    symbols.iter().cloned().partition(|s| s.parent_id.is_none());
 
                 let mut inserted_ids = std::collections::HashSet::new();
                 for sym in no_parent {
@@ -1200,11 +1214,7 @@ impl SymbolDatabase {
                         .as_ref()
                         .map(serde_json::to_string)
                         .transpose()?;
-                    let md_json = t
-                        .metadata
-                        .as_ref()
-                        .map(serde_json::to_string)
-                        .transpose()?;
+                    let md_json = t.metadata.as_ref().map(serde_json::to_string).transpose()?;
                     stmt.execute(params![
                         t.symbol_id,
                         t.resolved_type,

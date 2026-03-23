@@ -437,9 +437,13 @@ impl SymbolDatabase {
             "SELECT COALESCE(SUM(size), 0) FROM files WHERE path IN ({})",
             placeholders.join(", ")
         );
-        let params: Vec<&dyn rusqlite::types::ToSql> =
-            paths.iter().map(|p| p as &dyn rusqlite::types::ToSql).collect();
-        let total: i64 = self.conn.query_row(&sql, params.as_slice(), |row| row.get(0))?;
+        let params: Vec<&dyn rusqlite::types::ToSql> = paths
+            .iter()
+            .map(|p| p as &dyn rusqlite::types::ToSql)
+            .collect();
+        let total: i64 = self
+            .conn
+            .query_row(&sql, params.as_slice(), |row| row.get(0))?;
         Ok(total as u64)
     }
 
@@ -515,9 +519,9 @@ pub fn create_file_info<P: AsRef<Path>>(
         hash,
         size: metadata.len() as i64,
         last_modified,
-        last_indexed: 0,    // Will be set by database
-        symbol_count: 0,    // Will be updated after extraction
-        line_count,         // Computed from content
-        content,            // File content for Tantivy search indexing
+        last_indexed: 0, // Will be set by database
+        symbol_count: 0, // Will be updated after extraction
+        line_count,      // Computed from content
+        content,         // File content for Tantivy search indexing
     })
 }

@@ -40,9 +40,10 @@ impl ManageWorkspaceTool {
                             if force {
                                 let mut task_guard = handler.embedding_task.lock().await;
                                 if let Some((cancel_flag, handle)) = task_guard.take() {
-                                    info!("Cancelling running embedding pipeline for force refresh");
-                                    cancel_flag
-                                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                                    info!(
+                                        "Cancelling running embedding pipeline for force refresh"
+                                    );
+                                    cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                                     handle.abort();
                                 }
                             }
@@ -55,7 +56,10 @@ impl ManageWorkspaceTool {
                             let status = if result.files_processed == 0 {
                                 "Already up-to-date.".to_string()
                             } else if force {
-                                format!("Full re-index: {} files processed.", result.files_processed)
+                                format!(
+                                    "Full re-index: {} files processed.",
+                                    result.files_processed
+                                )
                             } else {
                                 format!("{} changed files re-indexed.", result.files_processed)
                             };
@@ -126,11 +130,10 @@ impl ManageWorkspaceTool {
             let primary_workspace_id = handler.workspace_id.as_deref().unwrap_or("primary");
 
             match workspace_id {
-                Some(ref id) => {
-                    match db.get_workspace(id) {
-                        Ok(Some(ws)) => {
-                            let message = format!(
-                                "Workspace Statistics: {}\n\n\
+                Some(ref id) => match db.get_workspace(id) {
+                    Ok(Some(ws)) => {
+                        let message = format!(
+                            "Workspace Statistics: {}\n\n\
                                 {} ({})\n\
                                 Path: {}\n\
                                 Status: {}\n\
@@ -138,47 +141,44 @@ impl ManageWorkspaceTool {
                                 Sessions: {}\n\
                                 Last Indexed: {}\n\
                                 Vector Count: {}",
-                                ws.workspace_id,
-                                ws.workspace_id
-                                    .split('_')
-                                    .next()
-                                    .unwrap_or(&ws.workspace_id),
-                                ws.workspace_id,
-                                ws.path,
-                                ws.status,
-                                ws.file_count.unwrap_or(0),
-                                ws.symbol_count.unwrap_or(0),
-                                ws.session_count,
-                                ws.last_indexed
-                                    .map(|t| t.to_string())
-                                    .unwrap_or_else(|| "never".to_string()),
-                                ws.vector_count.unwrap_or(0),
-                            );
-                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                        }
-                        Ok(None) => {
-                            let message = format!("Workspace not found: {}", id);
-                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                        }
-                        Err(e) => {
-                            let message = format!("Failed to look up workspace: {}", e);
-                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                        }
+                            ws.workspace_id,
+                            ws.workspace_id
+                                .split('_')
+                                .next()
+                                .unwrap_or(&ws.workspace_id),
+                            ws.workspace_id,
+                            ws.path,
+                            ws.status,
+                            ws.file_count.unwrap_or(0),
+                            ws.symbol_count.unwrap_or(0),
+                            ws.session_count,
+                            ws.last_indexed
+                                .map(|t| t.to_string())
+                                .unwrap_or_else(|| "never".to_string()),
+                            ws.vector_count.unwrap_or(0),
+                        );
+                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                     }
-                }
+                    Ok(None) => {
+                        let message = format!("Workspace not found: {}", id);
+                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    }
+                    Err(e) => {
+                        let message = format!("Failed to look up workspace: {}", e);
+                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    }
+                },
                 None => {
                     // Show overall stats: primary + all references
                     let primary_row = db.get_workspace(primary_workspace_id).ok().flatten();
                     let references = db.list_references(primary_workspace_id).unwrap_or_default();
 
-                    let total_files: i64 = primary_row
-                        .as_ref()
-                        .and_then(|r| r.file_count)
-                        .unwrap_or(0)
-                        + references
-                            .iter()
-                            .map(|r| r.file_count.unwrap_or(0))
-                            .sum::<i64>();
+                    let total_files: i64 =
+                        primary_row.as_ref().and_then(|r| r.file_count).unwrap_or(0)
+                            + references
+                                .iter()
+                                .map(|r| r.file_count.unwrap_or(0))
+                                .sum::<i64>();
                     let total_symbols: i64 = primary_row
                         .as_ref()
                         .and_then(|r| r.symbol_count)

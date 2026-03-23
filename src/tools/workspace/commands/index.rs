@@ -120,7 +120,10 @@ impl ManageWorkspaceTool {
                 match db.get_workspace_by_path(original_path.to_string_lossy().as_ref()) {
                     Ok(Some(row)) => {
                         let is_ref = row.workspace_id != *primary_id;
-                        debug!("Found in daemon.db - workspace_id: {}, is_reference: {}", row.workspace_id, is_ref);
+                        debug!(
+                            "Found in daemon.db - workspace_id: {}, is_reference: {}",
+                            row.workspace_id, is_ref
+                        );
                         is_ref
                     }
                     Ok(None) => {
@@ -241,7 +244,9 @@ impl ManageWorkspaceTool {
                     indexed_workspace_id = Some(workspace_id);
                 } else {
                     // Stdio mode: no registry — compute workspace ID for embeddings only
-                    if let Ok(ws_id) = crate::workspace::registry::generate_workspace_id(&canonical_path_str) {
+                    if let Ok(ws_id) =
+                        crate::workspace::registry::generate_workspace_id(&canonical_path_str)
+                    {
                         indexed_workspace_id = Some(ws_id);
                     }
                 }
@@ -264,7 +269,9 @@ impl ManageWorkspaceTool {
                                 if let Some(ref db) = workspace.db {
                                     let mut db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
                                     match db_lock.clear_all_embeddings() {
-                                        Ok(()) => info!("🗑️ Cleared all embeddings for force re-embed"),
+                                        Ok(()) => {
+                                            info!("🗑️ Cleared all embeddings for force re-embed")
+                                        }
                                         Err(e) => tracing::warn!("Failed to clear embeddings: {e}"),
                                     }
                                 }

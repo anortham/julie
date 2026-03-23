@@ -138,6 +138,7 @@ pub mod utils {
 // ============================================================================
 pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
+    pub mod daemon_lifecycle;
     pub mod documentation_indexing; // Documentation indexing E2E tests (RAG POC)
     pub mod embedding_incremental; // Incremental embedding via file watcher tests
     pub mod embedding_pipeline; // Background embedding pipeline integration tests
@@ -151,8 +152,7 @@ pub mod integration {
     pub mod tracing;
     pub mod watcher; // File watcher tests
     pub mod watcher_handlers; // File watcher handler tests (incremental indexing)
-    pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests // Tracing integration tests (dogfooding tests)
-    pub mod daemon_lifecycle; // Daemon + adapter integration tests (lifecycle, pool sharing, IPC, migration)
+    pub mod workspace_isolation_smoke; // Fast workspace isolation smoke tests // Tracing integration tests (dogfooding tests) // Daemon + adapter integration tests (lifecycle, pool sharing, IPC, migration)
 }
 
 #[cfg(test)]

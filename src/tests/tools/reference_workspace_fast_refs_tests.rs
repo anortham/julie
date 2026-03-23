@@ -687,10 +687,9 @@ pub fn caller_two() {
         // (live indexing via manage_workspace would trigger expensive analysis;
         //  this test only needs specific symbols present to verify query behavior)
         let workspace = handler.get_workspace().await.unwrap().unwrap();
-        let workspace_id = crate::workspace::registry::generate_workspace_id(
-            &reference_path.to_string_lossy(),
-        )
-        .expect("Should compute workspace ID from reference path");
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())
+                .expect("Should compute workspace ID from reference path");
 
         let ref_db_path = workspace.workspace_db_path(&workspace_id);
         fs::create_dir_all(ref_db_path.parent().unwrap()).unwrap();
@@ -703,10 +702,7 @@ pub fn caller_two() {
                         name: "compute".to_string(),
                         kind: SymbolKind::Function,
                         language: "rust".to_string(),
-                        file_path: reference_src
-                            .join("lib.rs")
-                            .to_string_lossy()
-                            .to_string(),
+                        file_path: reference_src.join("lib.rs").to_string_lossy().to_string(),
                         signature: Some("pub fn compute(x: i32) -> i32".to_string()),
                         start_line: 2,
                         start_column: 0,
