@@ -1,4 +1,5 @@
 pub mod database;
+pub mod embedding_service;
 pub mod handler;
 pub mod ipc;
 pub mod lifecycle;
