@@ -14,6 +14,7 @@ pub mod factory;
 pub mod metadata;
 #[cfg(feature = "embeddings-ort")]
 pub mod ort_provider;
+pub mod init;
 pub mod pipeline;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_bootstrap;
@@ -127,6 +128,7 @@ pub trait EmbeddingProvider: Send + Sync {
 }
 
 // Re-exports
+pub use init::create_embedding_provider;
 pub use factory::{
     BackendResolverCapabilities, EmbeddingConfig, EmbeddingProviderFactory,
     fallback_backend_after_init_failure, parse_provider_preference, resolve_backend_preference,
