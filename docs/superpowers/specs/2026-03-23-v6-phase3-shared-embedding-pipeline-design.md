@@ -43,7 +43,7 @@ pub struct EmbeddingService {
 - `pub fn is_available(&self) -> bool` - convenience check
 - `pub fn shutdown(&self)` - kills sidecar child process or drops ORT session
 
-**Serialization:** No explicit queue or channel. Both `OrtEmbeddingProvider` and `SidecarEmbeddingProvider` already use internal `Mutex` for their stateful resources (ORT's `TextEmbedding` model and the sidecar's stdin/stdout pipe). Multiple concurrent callers block on the mutex. FCFS, no starvation.
+**Serialization:** No explicit queue or channel. Both `OrtEmbeddingProvider` and `SidecarEmbeddingProvider` already use internal `Mutex` for their stateful resources (ORT's `TextEmbedding` model and the sidecar's stdin/stdout pipe). Multiple concurrent callers block on the mutex. No fairness guarantee, but sufficient given low contention (embedding calls are infrequent relative to tool call frequency).
 
 ### Extracting Provider Initialization
 
