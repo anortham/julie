@@ -256,29 +256,3 @@ fn log_runtime_status(
         "Embedding runtime status"
     );
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_create_embedding_provider_returns_runtime_status() {
-        // JULIE_EMBEDDING_PROVIDER=none should disable embeddings:
-        // provider = None, runtime_status = None (never attempted, not an error)
-        unsafe {
-            std::env::set_var("JULIE_EMBEDDING_PROVIDER", "none");
-        }
-
-        let (provider, status) = create_embedding_provider();
-
-        assert!(provider.is_none(), "provider should be None when disabled");
-        assert!(
-            status.is_none(),
-            "runtime status should be None when explicitly disabled"
-        );
-
-        unsafe {
-            std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
-        }
-    }
-}

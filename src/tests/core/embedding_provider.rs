@@ -18,6 +18,7 @@ mod tests {
     use crate::embeddings::{
         OrtEmbeddingProvider, ort_execution_provider_policy_kinds, ort_runtime_signal,
     };
+    use crate::embeddings::create_embedding_provider;
     use crate::workspace::{JulieWorkspace, build_embedding_runtime_log_fields};
 
     fn test_python_interpreter() -> String {
@@ -902,5 +903,27 @@ while True:
             err.to_string().contains("auto|sidecar|ort"),
             "Expected unknown provider error, got: {err}"
         );
+    }
+
+    #[test]
+    #[serial(embedding_env)]
+    fn test_create_embedding_provider_returns_runtime_status() {
+        // JULIE_EMBEDDING_PROVIDER=none should disable embeddings:
+        // provider = None, runtime_status = None (never attempted, not an error)
+        unsafe {
+            std::env::set_var("JULIE_EMBEDDING_PROVIDER", "none");
+        }
+
+        let (provider, status) = create_embedding_provider();
+
+        assert!(provider.is_none(), "provider should be None when disabled");
+        assert!(
+            status.is_none(),
+            "runtime status should be None when explicitly disabled"
+        );
+
+        unsafe {
+            std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
+        }
     }
 }
