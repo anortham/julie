@@ -49,13 +49,14 @@ pub async fn text_search_impl(
     // Determine if we're targeting a reference workspace
     let ref_workspace_id = if let Some(ref ids) = workspace_ids {
         if let Some(id) = ids.first() {
-            let registry = crate::workspace::registry_service::WorkspaceRegistryService::new(
-                workspace.root.clone(),
-            );
-            let primary_id = registry
-                .get_primary_workspace_id()
-                .await?
-                .unwrap_or_default();
+            let primary_id = if let Some(ref ws_id) = handler.workspace_id {
+                ws_id.clone()
+            } else {
+                crate::workspace::registry::generate_workspace_id(
+                    &workspace.root.to_string_lossy(),
+                )
+                .unwrap_or_default()
+            };
             if *id != primary_id {
                 Some(id.clone())
             } else {

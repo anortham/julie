@@ -45,7 +45,6 @@ pub fn compute_line_changes(old_content: &str, new_content: &str) -> Vec<RenameC
 
 use crate::handler::JulieServerHandler;
 use crate::tools::editing::EditingTransaction;
-use crate::workspace::registry_service::WorkspaceRegistryService;
 
 fn default_dry_run() -> bool {
     true
@@ -112,14 +111,18 @@ pub(crate) async fn resolve_workspace_root(
         return Ok(primary_workspace.root.clone());
     }
 
-    // Reference workspace — look up original_path from registry
-    let registry_service = WorkspaceRegistryService::new(primary_workspace.root.clone());
-    let entry: crate::workspace::registry::WorkspaceEntry = registry_service
-        .get_workspace(workspace_param)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("Reference workspace not found: {}", workspace_param))?;
+    // Reference workspace — look up path from DaemonDatabase
+    if let Some(ref db) = handler.daemon_db {
+        let row = db
+            .get_workspace(workspace_param)?
+            .ok_or_else(|| anyhow::anyhow!("Reference workspace not found: {}", workspace_param))?;
+        return Ok(PathBuf::from(&row.path));
+    }
 
-    Ok(PathBuf::from(&entry.original_path))
+    Err(anyhow::anyhow!(
+        "Reference workspace '{}' not found: daemon mode required for workspace routing",
+        workspace_param
+    ))
 }
 
 // ===== RENAME SYMBOL TOOL IMPLEMENTATION =====

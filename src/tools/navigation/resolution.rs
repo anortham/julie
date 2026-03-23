@@ -5,7 +5,6 @@
 
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
-use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::Result;
 
 /// Parse a qualified symbol name like "MyClass::method" or "MyClass.method"
@@ -82,24 +81,21 @@ pub async fn resolve_workspace_filter(
     match workspace_param {
         "primary" => Ok(WorkspaceTarget::Primary),
         workspace_id => {
-            if let Some(primary_workspace) = handler.get_workspace().await? {
-                let registry_service =
-                    WorkspaceRegistryService::new(primary_workspace.root.clone());
-
-                match registry_service.get_workspace(workspace_id).await? {
+            // Daemon mode: validate against DaemonDatabase and suggest closest match
+            if let Some(ref db) = handler.daemon_db {
+                return match db.get_workspace(workspace_id)? {
                     Some(_) => Ok(WorkspaceTarget::Reference(workspace_id.to_string())),
                     None => {
-                        let all_workspaces = registry_service.get_all_workspaces().await?;
+                        let all_workspaces = db.list_workspaces().unwrap_or_default();
                         let workspace_ids: Vec<&str> =
-                            all_workspaces.iter().map(|w| w.id.as_str()).collect();
+                            all_workspaces.iter().map(|w| w.workspace_id.as_str()).collect();
                         suggest_closest_workspace(workspace_id, &workspace_ids)
                     }
-                }
-            } else {
-                Err(anyhow::anyhow!(
-                    "No primary workspace found. Initialize workspace first."
-                ))
+                };
             }
+
+            // Stdio mode: no registry available, accept without validation
+            Ok(WorkspaceTarget::Reference(workspace_id.to_string()))
         }
     }
 }

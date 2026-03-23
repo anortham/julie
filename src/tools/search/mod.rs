@@ -149,14 +149,15 @@ impl FastSearchTool {
             WorkspaceTarget::Primary => {
                 // Resolve the actual primary workspace ID for Tantivy filtering
                 if let Some(workspace) = handler.get_workspace().await? {
-                    let registry_service =
-                        crate::workspace::registry_service::WorkspaceRegistryService::new(
-                            workspace.root.clone(),
-                        );
-                    match registry_service.get_primary_workspace_id().await? {
-                        Some(id) => Some(vec![id]),
-                        None => None,
-                    }
+                    let primary_id = if let Some(ref id) = handler.workspace_id {
+                        id.clone()
+                    } else {
+                        crate::workspace::registry::generate_workspace_id(
+                            &workspace.root.to_string_lossy(),
+                        )
+                        .unwrap_or_default()
+                    };
+                    if primary_id.is_empty() { None } else { Some(vec![primary_id]) }
                 } else {
                     None
                 }

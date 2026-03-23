@@ -75,8 +75,10 @@ commands = ["cargo test --lib tests::tools::workspace -- --skip search_quality"]
 
 [buckets.tools-misc]
 # Remaining tool tests with enough shared setup to keep together for the first pass.
-expected_seconds = 150
-timeout_seconds = 300
+# Note: get_symbols_target_filtering includes a dogfood test that indexes the full repo (~164s),
+# which is why expected_seconds and timeout_seconds are elevated.
+expected_seconds = 200
+timeout_seconds = 450
 commands = [
   "cargo test --lib tests::tools::get_symbols -- --skip search_quality",
   "cargo test --lib tests::tools::get_symbols_reference_workspace -- --skip search_quality",

@@ -683,40 +683,50 @@ pub fn caller_two() {
             .await
             .unwrap();
 
-        // Index primary
-        let index_tool = crate::tools::ManageWorkspaceTool {
-            operation: "index".to_string(),
-            path: Some(primary_path.to_string_lossy().to_string()),
-            force: Some(false),
-            name: None,
-            workspace_id: None,
-            detailed: None,
-        };
-        index_tool.call_tool(&handler).await.expect("index primary");
+        // Compute reference workspace ID and manually populate its database
+        // (live indexing via manage_workspace would trigger expensive analysis;
+        //  this test only needs specific symbols present to verify query behavior)
+        let workspace = handler.get_workspace().await.unwrap().unwrap();
+        let workspace_id = crate::workspace::registry::generate_workspace_id(
+            &reference_path.to_string_lossy(),
+        )
+        .expect("Should compute workspace ID from reference path");
 
-        // Add reference workspace
-        let add_tool = crate::tools::ManageWorkspaceTool {
-            operation: "add".to_string(),
-            path: Some(reference_path.to_string_lossy().to_string()),
-            name: Some("test-ref-fast-refs".to_string()),
-            force: None,
-            workspace_id: None,
-            detailed: None,
-        };
-        let add_result = add_tool.call_tool(&handler).await.expect("add ref ws");
-        let add_text: String = add_result
-            .content
-            .iter()
-            .filter_map(|c| c.as_text().map(|t| t.text.clone()))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        let workspace_id = add_text
-            .lines()
-            .find(|l| l.starts_with("Workspace ID:"))
-            .and_then(|l| l.split(':').nth(1))
-            .map(|id| id.trim().to_string())
-            .expect("Should get workspace ID");
+        let ref_db_path = workspace.workspace_db_path(&workspace_id);
+        fs::create_dir_all(ref_db_path.parent().unwrap()).unwrap();
+        {
+            let mut ref_db = SymbolDatabase::new(&ref_db_path).unwrap();
+            ref_db
+                .bulk_store_symbols(
+                    &[Symbol {
+                        id: "compute_fn".to_string(),
+                        name: "compute".to_string(),
+                        kind: SymbolKind::Function,
+                        language: "rust".to_string(),
+                        file_path: reference_src
+                            .join("lib.rs")
+                            .to_string_lossy()
+                            .to_string(),
+                        signature: Some("pub fn compute(x: i32) -> i32".to_string()),
+                        start_line: 2,
+                        start_column: 0,
+                        end_line: 4,
+                        end_column: 1,
+                        start_byte: 1,
+                        end_byte: 35,
+                        doc_comment: None,
+                        visibility: None,
+                        parent_id: None,
+                        metadata: None,
+                        semantic_group: None,
+                        confidence: None,
+                        code_context: None,
+                        content_type: None,
+                    }],
+                    &workspace_id,
+                )
+                .unwrap();
+        }
 
         // Call find_references_in_reference_workspace with the new params
         // This test validates that the function signature compiles with limit + reference_kind

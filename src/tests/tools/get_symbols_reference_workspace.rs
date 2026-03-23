@@ -8,6 +8,9 @@ use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
 
+use crate::SymbolKind;
+use crate::database::SymbolDatabase;
+use crate::extractors::base::Symbol;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
@@ -45,11 +48,7 @@ async fn test_get_symbols_reference_workspace() -> Result<()> {
 
     fs::write(
         primary_src.join("primary.rs"),
-        r#"
-pub struct PrimaryStruct {
-    pub field: String,
-}
-"#,
+        "pub struct PrimaryStruct { pub field: String }\n",
     )?;
 
     // Create reference workspace
@@ -58,26 +57,18 @@ pub struct PrimaryStruct {
     let reference_src = reference_path.join("src");
     fs::create_dir_all(&reference_src)?;
 
+    let reference_file_path = reference_src.join("reference.rs");
     fs::write(
-        reference_src.join("reference.rs"),
-        r#"
-pub struct ReferenceStruct {
-    pub data: i32,
-}
-
-pub fn reference_function() {
-    println!("Reference");
-}
-"#,
+        &reference_file_path,
+        "pub struct ReferenceStruct { pub data: i32 }\npub fn reference_function() {}\n",
     )?;
 
-    // Initialize handler with primary workspace
+    // Initialize handler with primary workspace and index it
     let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
         .await?;
 
-    // Index primary workspace
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         path: Some(primary_path.to_string_lossy().to_string()),
@@ -88,35 +79,71 @@ pub fn reference_function() {
     };
     index_tool.call_tool(&handler).await?;
 
-    // Add reference workspace
-    let add_tool = ManageWorkspaceTool {
-        operation: "add".to_string(),
-        path: Some(reference_path.to_string_lossy().to_string()),
-        name: Some("test-reference".to_string()),
-        force: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    let add_result = add_tool.call_tool(&handler).await?;
-    let add_text = extract_text_from_result(&add_result);
+    // In stdio mode, ManageWorkspaceTool::add requires daemon mode, so we manually
+    // create the reference workspace database at the expected path.
+    // (This mirrors what add+index does in daemon mode.)
+    let workspace = handler.get_workspace().await?.unwrap();
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
 
-    // Extract workspace ID from add result
-    // Format: "Workspace ID: reference_xxxxxxxx"
-    let workspace_id = add_text
-        .lines()
-        .find(|line| line.starts_with("Workspace ID:"))
-        .and_then(|line| line.split(':').nth(1))
-        .map(|id| id.trim().to_string())
-        .expect("Should get workspace ID from add result");
+    let ref_db_path = workspace.workspace_db_path(&workspace_id);
+    fs::create_dir_all(ref_db_path.parent().unwrap())?;
 
-    // Construct full path to reference file
-    let reference_file = reference_src.join("reference.rs");
-    let reference_file_str = reference_file.to_string_lossy().to_string();
+    {
+        let mut ref_db = SymbolDatabase::new(&ref_db_path)?;
+        let ref_file = reference_file_path.to_string_lossy().to_string();
+        ref_db.bulk_store_symbols(
+            &[
+                Symbol {
+                    id: "ref_struct_1".to_string(),
+                    name: "ReferenceStruct".to_string(),
+                    kind: SymbolKind::Struct,
+                    language: "rust".to_string(),
+                    file_path: ref_file.clone(),
+                    signature: Some("pub struct ReferenceStruct".to_string()),
+                    start_line: 1,
+                    start_column: 0,
+                    end_line: 1,
+                    end_column: 44,
+                    start_byte: 0,
+                    end_byte: 44,
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: None,
+                    code_context: None,
+                    content_type: None,
+                },
+                Symbol {
+                    id: "ref_fn_1".to_string(),
+                    name: "reference_function".to_string(),
+                    kind: SymbolKind::Function,
+                    language: "rust".to_string(),
+                    file_path: ref_file.clone(),
+                    signature: Some("pub fn reference_function()".to_string()),
+                    start_line: 2,
+                    start_column: 0,
+                    end_line: 2,
+                    end_column: 30,
+                    start_byte: 45,
+                    end_byte: 75,
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: None,
+                    code_context: None,
+                    content_type: None,
+                },
+            ],
+            &workspace_id,
+        )?;
+    }
 
-    // THE BUG: GetSymbolsTool doesn't have workspace parameter yet
-    // When we add it, this test structure will need updating
-    // For now, this demonstrates the bug - it will return "No symbols found"
-    // even though the file exists and has symbols
+    let reference_file_str = reference_file_path.to_string_lossy().to_string();
 
     let get_symbols_tool = GetSymbolsTool {
         file_path: reference_file_str.clone(),
@@ -124,31 +151,26 @@ pub fn reference_function() {
         target: None,
         limit: None,
         mode: None,
-        workspace: Some(workspace_id.clone()), // ✅ NOW IT EXISTS!
+        workspace: Some(workspace_id.clone()),
     };
 
     let result = get_symbols_tool.call_tool(&handler).await?;
     let result_text = extract_text_from_result(&result);
 
-    // ASSERTION: This test will FAIL until we add workspace parameter
-    // Currently returns "No symbols found" because it queries primary workspace DB
-    // After fix, should return ReferenceStruct and reference_function symbols
     assert!(
         !result_text.contains("No symbols found"),
         "BUG REPRODUCED: get_symbols returned 'No symbols found' for reference workspace file.\n\
          File: {}\n\
          Workspace: {}\n\
-         This happens because GetSymbolsTool is missing workspace parameter and always queries primary workspace.\n\
          Response: {}",
         reference_file_str,
         workspace_id,
         result_text
     );
 
-    // After fix, verify we got the expected symbols
     assert!(
         result_text.contains("ReferenceStruct") || result_text.contains("reference_function"),
-        "After fix: Should find ReferenceStruct or reference_function, got: {}",
+        "Should find ReferenceStruct or reference_function, got: {}",
         result_text
     );
 
@@ -158,7 +180,7 @@ pub fn reference_function() {
 /// Test that filtering parameters (max_depth, target, limit) work in reference workspace
 ///
 /// BUG: The get_symbols_from_reference method ignores ALL filtering logic
-/// that exists in the primary workspace code path (lines 204-405 in symbols.rs)
+/// that exists in the primary workspace code path
 ///
 /// This test creates a reference workspace with nested symbols and verifies that:
 /// - max_depth parameter limits the symbol depth
@@ -174,11 +196,7 @@ async fn test_get_symbols_reference_workspace_filtering() -> Result<()> {
 
     fs::write(
         primary_src.join("primary.rs"),
-        r#"
-pub struct PrimaryStruct {
-    pub field: String,
-}
-"#,
+        "pub struct PrimaryStruct { pub field: String }\n",
     )?;
 
     // Create reference workspace with nested symbols
@@ -187,41 +205,25 @@ pub struct PrimaryStruct {
     let reference_src = reference_path.join("src");
     fs::create_dir_all(&reference_src)?;
 
-    // File with nested symbols (impl blocks, methods, nested types)
+    let nested_file_path = reference_src.join("nested.rs");
     fs::write(
-        reference_src.join("nested.rs"),
-        r#"
-pub struct Outer {
-    pub data: i32,
-}
-
+        &nested_file_path,
+        r#"pub struct Outer { pub data: i32 }
 impl Outer {
-    pub fn method_one(&self) {
-        println!("method_one");
-    }
-
-    pub fn method_two(&self) {
-        println!("method_two");
-    }
+    pub fn method_one(&self) {}
+    pub fn method_two(&self) {}
 }
-
-pub fn outer_function() {
-    println!("outer");
-}
-
-pub struct Another {
-    pub field: String,
-}
+pub fn outer_function() {}
+pub struct Another { pub field: String }
 "#,
     )?;
 
-    // Initialize handler with primary workspace
+    // Initialize handler with primary workspace and index it
     let handler = JulieServerHandler::new_for_test().await?;
     handler
         .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
         .await?;
 
-    // Index primary workspace
     let index_tool = ManageWorkspaceTool {
         operation: "index".to_string(),
         path: Some(primary_path.to_string_lossy().to_string()),
@@ -232,34 +234,142 @@ pub struct Another {
     };
     index_tool.call_tool(&handler).await?;
 
-    // Add reference workspace
-    let add_tool = ManageWorkspaceTool {
-        operation: "add".to_string(),
-        path: Some(reference_path.to_string_lossy().to_string()),
-        name: Some("test-reference-filtering".to_string()),
-        force: None,
-        workspace_id: None,
-        detailed: None,
-    };
-    let add_result = add_tool.call_tool(&handler).await?;
-    let add_text = extract_text_from_result(&add_result);
+    // Manually create the reference workspace database (daemon required for add in stdio mode)
+    let workspace = handler.get_workspace().await?.unwrap();
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
 
-    // Extract workspace ID from add result
-    let workspace_id = add_text
-        .lines()
-        .find(|line| line.starts_with("Workspace ID:"))
-        .and_then(|line| line.split(':').nth(1))
-        .map(|id| id.trim().to_string())
-        .expect("Should get workspace ID from add result");
+    let ref_db_path = workspace.workspace_db_path(&workspace_id);
+    fs::create_dir_all(ref_db_path.parent().unwrap())?;
 
-    let nested_file = reference_src.join("nested.rs");
-    let nested_file_str = nested_file.to_string_lossy().to_string();
+    let nested_file = nested_file_path.to_string_lossy().to_string();
+    let outer_id = "ref_outer_struct";
+
+    {
+        let mut ref_db = SymbolDatabase::new(&ref_db_path)?;
+        ref_db.bulk_store_symbols(
+            &[
+                Symbol {
+                    id: outer_id.to_string(),
+                    name: "Outer".to_string(),
+                    kind: SymbolKind::Struct,
+                    language: "rust".to_string(),
+                    file_path: nested_file.clone(),
+                    signature: Some("pub struct Outer".to_string()),
+                    start_line: 1,
+                    start_column: 0,
+                    end_line: 1,
+                    end_column: 33,
+                    start_byte: 0,
+                    end_byte: 33,
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: None,
+                    code_context: None,
+                    content_type: None,
+                },
+                Symbol {
+                    id: "ref_method_one".to_string(),
+                    name: "method_one".to_string(),
+                    kind: SymbolKind::Method,
+                    language: "rust".to_string(),
+                    file_path: nested_file.clone(),
+                    signature: Some("pub fn method_one(&self)".to_string()),
+                    start_line: 3,
+                    start_column: 4,
+                    end_line: 3,
+                    end_column: 30,
+                    start_byte: 50,
+                    end_byte: 80,
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: Some(outer_id.to_string()),
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: None,
+                    code_context: None,
+                    content_type: None,
+                },
+                Symbol {
+                    id: "ref_method_two".to_string(),
+                    name: "method_two".to_string(),
+                    kind: SymbolKind::Method,
+                    language: "rust".to_string(),
+                    file_path: nested_file.clone(),
+                    signature: Some("pub fn method_two(&self)".to_string()),
+                    start_line: 4,
+                    start_column: 4,
+                    end_line: 4,
+                    end_column: 30,
+                    start_byte: 81,
+                    end_byte: 111,
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: Some(outer_id.to_string()),
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: None,
+                    code_context: None,
+                    content_type: None,
+                },
+                Symbol {
+                    id: "ref_outer_fn".to_string(),
+                    name: "outer_function".to_string(),
+                    kind: SymbolKind::Function,
+                    language: "rust".to_string(),
+                    file_path: nested_file.clone(),
+                    signature: Some("pub fn outer_function()".to_string()),
+                    start_line: 6,
+                    start_column: 0,
+                    end_line: 6,
+                    end_column: 27,
+                    start_byte: 120,
+                    end_byte: 147,
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: None,
+                    code_context: None,
+                    content_type: None,
+                },
+                Symbol {
+                    id: "ref_another_struct".to_string(),
+                    name: "Another".to_string(),
+                    kind: SymbolKind::Struct,
+                    language: "rust".to_string(),
+                    file_path: nested_file.clone(),
+                    signature: Some("pub struct Another".to_string()),
+                    start_line: 7,
+                    start_column: 0,
+                    end_line: 7,
+                    end_column: 38,
+                    start_byte: 148,
+                    end_byte: 186,
+                    doc_comment: None,
+                    visibility: None,
+                    parent_id: None,
+                    metadata: None,
+                    semantic_group: None,
+                    confidence: None,
+                    code_context: None,
+                    content_type: None,
+                },
+            ],
+            &workspace_id,
+        )?;
+    }
+
+    let nested_file_str = nested_file_path.to_string_lossy().to_string();
 
     // TEST 1: Get all symbols without filtering
-    // This should return all top-level symbols (Outer, outer_function, Another)
     let get_all = GetSymbolsTool {
         file_path: nested_file_str.clone(),
-        max_depth: 999, // Very deep
+        max_depth: 999,
         target: None,
         limit: None,
         mode: None,
@@ -269,7 +379,6 @@ pub struct Another {
     let result_all = get_all.call_tool(&handler).await?;
     let text_all = extract_text_from_result(&result_all);
 
-    // Should find all top-level symbols
     assert!(
         text_all.contains("Outer"),
         "Should find Outer struct in reference workspace: {}",
@@ -299,8 +408,6 @@ pub struct Another {
     let result_depth_0 = get_depth_0.call_tool(&handler).await?;
     let text_depth_0 = extract_text_from_result(&result_depth_0);
 
-    // With max_depth=0, output should only contain top-level symbols
-    // (methods like "innerMethod" should not appear)
     assert!(
         !text_depth_0.is_empty(),
         "max_depth=0 should return some symbols"
@@ -319,21 +426,19 @@ pub struct Another {
     let result_target = get_target.call_tool(&handler).await?;
     let text_target = extract_text_from_result(&result_target);
 
-    // Should find Outer
     assert!(
         text_target.contains("Outer"),
         "target filtering should find 'Outer' symbol: {}",
         text_target
     );
 
-    // Should NOT find Another (doesn't match target)
     assert!(
         !text_target.contains("Another"),
         "target filtering should exclude 'Another' that doesn't match target: {}",
         text_target
     );
 
-    // TEST 4: limit=2 should only return 2 top-level symbols (but all their children)
+    // TEST 4: limit=2 should only return 2 top-level symbols
     let get_limit = GetSymbolsTool {
         file_path: nested_file_str.clone(),
         max_depth: 999,
@@ -346,12 +451,7 @@ pub struct Another {
     let result_limit = get_limit.call_tool(&handler).await?;
     let text_limit = extract_text_from_result(&result_limit);
 
-    // limit=2 should constrain the number of top-level symbols returned
     assert!(!text_limit.is_empty(), "limit=2 should return some symbols");
-    {
-        // Verify that the output is reasonably constrained
-        // (exact assertion depends on text format, but should be smaller than unlimited)
-    }
 
     Ok(())
 }

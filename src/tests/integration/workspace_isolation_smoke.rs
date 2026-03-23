@@ -40,14 +40,6 @@ mod workspace_isolation_smoke_tests {
             .join("\n")
     }
 
-    fn extract_workspace_id(result: &crate::mcp_compat::CallToolResult) -> Option<String> {
-        let text = extract_text_from_result(result);
-        text.lines()
-            .find(|line| line.contains("Workspace ID:"))
-            .and_then(|line| line.split(':').nth(1))
-            .map(|id| id.trim().to_string())
-    }
-
     /// Test 1: Verify search NEVER crosses workspace boundaries
     ///
     /// This is the most critical isolation test - searching primary workspace
@@ -75,54 +67,21 @@ mod workspace_isolation_smoke_tests {
         index_primary.call_tool(&handler).await?;
         mark_index_ready(&handler).await;
 
-        // Add and index reference workspace (or get existing if already registered)
-        let reference_id = if let Ok(Some(workspace)) = handler.get_workspace().await {
-            use crate::workspace::registry_service::WorkspaceRegistryService;
-            let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
-
-            // Check if reference workspace already exists (fixture persistence between runs)
-            match registry_service
-                .get_workspace_by_path(&reference_path.to_string_lossy().to_string())
-                .await?
-            {
-                Some(ws) => {
-                    println!("✅ Reference workspace already registered: {}", ws.id);
-
-                    // CRITICAL FIX: Index the existing workspace (it may be registered but not indexed)
-                    let index_reference = ManageWorkspaceTool {
-                        operation: "index".to_string(),
-                        path: Some(reference_path.to_string_lossy().to_string()),
-                        force: Some(false),
-                        name: None,
-                        workspace_id: None,
-                        detailed: None,
-                    };
-                    index_reference.call_tool(&handler).await?;
-                    mark_index_ready(&handler).await;
-
-                    ws.id
-                }
-                None => {
-                    // Add new reference workspace
-                    let add_reference = ManageWorkspaceTool {
-                        operation: "add".to_string(),
-                        path: Some(reference_path.to_string_lossy().to_string()),
-                        force: None,
-                        name: Some("Reference Smoke Test".to_string()),
-                        workspace_id: None,
-                        detailed: None,
-                    };
-                    let reference_result = add_reference.call_tool(&handler).await?;
-                    mark_index_ready(&handler).await;
-
-                    extract_workspace_id(&reference_result).ok_or_else(|| {
-                        anyhow::anyhow!("Failed to extract reference workspace ID")
-                    })?
-                }
-            }
-        } else {
-            return Err(anyhow::anyhow!("Failed to get workspace from handler"));
-        };
+        // Index reference workspace and compute its ID deterministically
+        {
+            let index_reference = ManageWorkspaceTool {
+                operation: "index".to_string(),
+                path: Some(reference_path.to_string_lossy().to_string()),
+                force: Some(false),
+                name: None,
+                workspace_id: None,
+                detailed: None,
+            };
+            index_reference.call_tool(&handler).await?;
+            mark_index_ready(&handler).await;
+        }
+        let reference_id =
+            crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
 
         // CRITICAL TEST: Search primary for reference-only content
         let search_primary_for_ref = FastSearchTool {
@@ -200,54 +159,21 @@ mod workspace_isolation_smoke_tests {
         index_primary.call_tool(&handler).await?;
         mark_index_ready(&handler).await;
 
-        // Add reference workspace (or get existing if already registered)
-        let reference_id = if let Ok(Some(workspace)) = handler.get_workspace().await {
-            use crate::workspace::registry_service::WorkspaceRegistryService;
-            let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
-
-            // Check if reference workspace already exists (fixture persistence between runs)
-            match registry_service
-                .get_workspace_by_path(&reference_path.to_string_lossy().to_string())
-                .await?
-            {
-                Some(ws) => {
-                    println!("✅ Reference workspace already registered: {}", ws.id);
-
-                    // CRITICAL FIX: Index the existing workspace (it may be registered but not indexed)
-                    let index_reference = ManageWorkspaceTool {
-                        operation: "index".to_string(),
-                        path: Some(reference_path.to_string_lossy().to_string()),
-                        force: Some(false),
-                        name: None,
-                        workspace_id: None,
-                        detailed: None,
-                    };
-                    index_reference.call_tool(&handler).await?;
-                    mark_index_ready(&handler).await;
-
-                    ws.id
-                }
-                None => {
-                    // Add new reference workspace
-                    let add_reference = ManageWorkspaceTool {
-                        operation: "add".to_string(),
-                        path: Some(reference_path.to_string_lossy().to_string()),
-                        force: None,
-                        name: Some("Reference Smoke Test".to_string()),
-                        workspace_id: None,
-                        detailed: None,
-                    };
-                    let reference_result = add_reference.call_tool(&handler).await?;
-                    mark_index_ready(&handler).await;
-
-                    extract_workspace_id(&reference_result).ok_or_else(|| {
-                        anyhow::anyhow!("Failed to extract reference workspace ID")
-                    })?
-                }
-            }
-        } else {
-            return Err(anyhow::anyhow!("Failed to get workspace from handler"));
-        };
+        // Index reference workspace and compute its ID deterministically
+        {
+            let index_reference = ManageWorkspaceTool {
+                operation: "index".to_string(),
+                path: Some(reference_path.to_string_lossy().to_string()),
+                force: Some(false),
+                name: None,
+                workspace_id: None,
+                detailed: None,
+            };
+            index_reference.call_tool(&handler).await?;
+            mark_index_ready(&handler).await;
+        }
+        let reference_id =
+            crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
 
         // Test 1: "primary" should resolve to primary workspace
         let search_primary_string = FastSearchTool {

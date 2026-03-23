@@ -13,8 +13,6 @@ mod workspace_isolation {
     use crate::database::SymbolDatabase;
     use crate::extractors::base::Symbol;
     use crate::handler::JulieServerHandler;
-    use crate::workspace::registry::WorkspaceType;
-    use crate::workspace::registry_service::WorkspaceRegistryService;
 
     /// BUG REPRODUCTION TEST: Force reindex should NOT delete reference workspace data
     ///
@@ -57,27 +55,11 @@ mod workspace_isolation {
             )
             .await?;
 
-        // STEP 3: Index primary workspace
+        // STEP 3: Compute workspace IDs from paths (deterministic, no registration needed)
         let workspace = handler.get_workspace().await?.unwrap();
-        let primary_registry = WorkspaceRegistryService::new(workspace.root.clone());
-
-        // Register primary workspace and get its ID
-        let primary_entry = primary_registry
-            .register_workspace(
-                primary_workspace.path().to_string_lossy().to_string(),
-                WorkspaceType::Primary,
-            )
-            .await?;
-        let primary_id = primary_entry.id.clone();
-
-        // STEP 4: Add and index reference workspace
-        let ref_entry = primary_registry
-            .register_workspace(
-                reference_workspace.path().to_string_lossy().to_string(),
-                WorkspaceType::Reference,
-            )
-            .await?;
-        let reference_id = ref_entry.id.clone();
+        let reference_id = crate::workspace::registry::generate_workspace_id(
+            &reference_workspace.path().to_string_lossy(),
+        )?;
 
         // Create test database content in reference workspace
         let ref_db_path = workspace.workspace_db_path(&reference_id);
@@ -155,10 +137,7 @@ mod workspace_isolation {
             symbols_after
         );
 
-        // Verify primary workspace index was actually cleared (sanity check that force reindex worked)
-        let _primary_db_path = workspace.workspace_db_path(&primary_id);
-        // After force reindex, primary workspace should be reinitialized (path may or may not exist yet)
-        // The key test is that reference workspace was NOT touched
+        // The key test is that reference workspace was NOT touched by the primary force reindex
 
         Ok(())
     }
@@ -215,24 +194,16 @@ mod workspace_isolation {
             )
             .await?;
 
-        // STEP 3: Add reference workspace
-        let workspace = handler.get_workspace().await?.unwrap();
-        let registry = crate::workspace::registry_service::WorkspaceRegistryService::new(
-            workspace.root.clone(),
-        );
-
-        let ref_entry = registry
-            .register_workspace(
-                reference_workspace.path().to_string_lossy().to_string(),
-                crate::workspace::registry::WorkspaceType::Reference,
-            )
-            .await?;
-        let reference_id = ref_entry.id.clone();
+        // STEP 3: Compute reference workspace ID
+        let reference_id = crate::workspace::registry::generate_workspace_id(
+            &reference_workspace.path().to_string_lossy(),
+        )?;
 
         // STEP 4: Index reference workspace (should trigger embedding generation)
         // This requires the ManageWorkspaceTool which we can't easily test here
         // For now, we'll manually verify the vectors path structure
 
+        let workspace = handler.get_workspace().await?.unwrap();
         let vectors_path = workspace
             .root
             .join(".julie")

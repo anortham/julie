@@ -636,18 +636,16 @@ impl JulieServerHandler {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
 
-        let registry_service =
-            crate::workspace::registry_service::WorkspaceRegistryService::new(primary.root.clone());
-        let entry = registry_service
-            .get_workspace(workspace_id)
-            .await?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Workspace '{}' not found in workspace registry",
-                    workspace_id
-                )
+        // Daemon mode: look up in DaemonDatabase
+        if let Some(ref db) = self.daemon_db {
+            let row = db.get_workspace(workspace_id)?.ok_or_else(|| {
+                anyhow::anyhow!("Workspace '{}' not found", workspace_id)
             })?;
-        Ok(PathBuf::from(entry.original_path))
+            return Ok(PathBuf::from(row.path));
+        }
+
+        // Stdio mode: only primary workspace exists
+        Ok(primary.root.clone())
     }
 
     /// Returns the agent instructions embedded at compile time.

@@ -4,7 +4,6 @@
 //! and automatic indexing on server startup.
 
 use crate::handler::JulieServerHandler;
-use crate::workspace::registry_service::WorkspaceRegistryService;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::path::Path;
@@ -52,14 +51,15 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
 
     // Check if database exists and has symbols
     if let Some(db_arc) = &workspace.db {
-        // Get primary workspace ID first (before locking database)
-        let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
-        let primary_workspace_id = match registry_service.get_primary_workspace_id().await? {
-            Some(id) => id,
-            None => {
-                debug!("No primary workspace ID found - indexing needed");
-                return Ok(true);
-            }
+        // Compute workspace ID: use daemon workspace_id if available, else derive from path
+        let primary_workspace_id = if let Some(ref ws_id) = handler.workspace_id {
+            ws_id.clone()
+        } else {
+            crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
+                .unwrap_or_else(|_| {
+                    debug!("Failed to generate workspace ID - indexing needed");
+                    String::new()
+                })
         };
 
         // Now lock database (no await while holding this lock)

@@ -460,44 +460,25 @@ pub fn embedding_vector_semantic() {}
         index_result.unwrap()?;
         println!("🐛 TEST TRACE 6: Index complete, about to add reference workspace");
 
-        // Add reference workspace
-        let add_tool = ManageWorkspaceTool {
-            operation: "add".to_string(),
-            path: Some(reference_path.to_string_lossy().to_string()),
-            name: Some("reference-workspace".to_string()),
-            workspace_id: None,
-            force: None,
-            detailed: None,
-        };
-        println!("🐛 TEST TRACE 7: Calling add_tool.call_tool");
-        let add_result = add_tool.call_tool(&handler).await?;
-        println!("🐛 TEST TRACE 8: Add complete, extracting workspace ID");
-
-        // Extract workspace ID from result
-        let add_value = serde_json::to_value(&add_result)?;
-        println!(
-            "🐛 DEBUG: add_result JSON = {}",
-            serde_json::to_string_pretty(&add_value)?
-        );
-
-        let workspace_text = add_value
-            .get("content")
-            .and_then(|content| content.as_array())
-            .and_then(|items| items.first())
-            .and_then(|item| item.get("text"))
-            .and_then(|text| text.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Failed to extract text from add_result"))?;
-
-        println!("🐛 DEBUG: workspace_text = {}", workspace_text);
-
-        let workspace_id = workspace_text
-            .lines()
-            .find(|line| line.contains("Workspace ID:"))
-            .and_then(|line| line.split(':').nth(1))
-            .map(|id| id.trim().to_string())
-            .ok_or_else(|| anyhow::anyhow!("Failed to find 'Workspace ID:' in response text"))?;
-
-        println!("✅ Reference workspace added: {}", workspace_id);
+        // Index reference workspace and compute its ID deterministically
+        println!("🐛 TEST TRACE 7: Indexing reference workspace");
+        {
+            let index_ref = ManageWorkspaceTool {
+                operation: "index".to_string(),
+                path: Some(reference_path.to_string_lossy().to_string()),
+                name: None,
+                workspace_id: None,
+                force: None,
+                detailed: None,
+            };
+            index_ref.call_tool(&handler).await?;
+        }
+        let workspace_id = crate::workspace::registry::generate_workspace_id(
+            &reference_path.to_string_lossy(),
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compute workspace ID: {}", e))?;
+        println!("🐛 TEST TRACE 8: Reference workspace indexed");
+        println!("✅ Reference workspace indexed: {}", workspace_id);
 
         // THIS IS THE TEST: Search reference workspace with timeout to catch hangs
         println!("🐛 TEST TRACE 9: Creating fast_search_tool");
@@ -579,32 +560,22 @@ pub fn embedding_vector_semantic() {}
         };
         index_primary.call_tool(&handler).await?;
 
-        // Add reference workspace (triggers first indexing run)
-        let add_tool = ManageWorkspaceTool {
-            operation: "add".to_string(),
-            path: Some(reference_path.to_string_lossy().to_string()),
-            name: Some("reindex-test".to_string()),
-            workspace_id: None,
-            force: None,
-            detailed: None,
-        };
-        let add_result = add_tool.call_tool(&handler).await?;
-
-        // Extract workspace ID from add result
-        let add_value = serde_json::to_value(add_result)?;
-        let workspace_id = add_value
-            .get("content")
-            .and_then(|content| content.as_array())
-            .and_then(|items| items.first())
-            .and_then(|item| item.get("text"))
-            .and_then(|text| text.as_str())
-            .and_then(|text| {
-                text.lines()
-                    .find(|line| line.contains("Workspace ID:"))
-                    .and_then(|line| line.split(':').nth(1))
-            })
-            .map(|id| id.trim().to_string())
-            .ok_or_else(|| anyhow::anyhow!("Failed to extract workspace ID"))?;
+        // Index reference workspace and compute its ID deterministically
+        {
+            let index_ref = ManageWorkspaceTool {
+                operation: "index".to_string(),
+                path: Some(reference_path.to_string_lossy().to_string()),
+                name: None,
+                workspace_id: None,
+                force: None,
+                detailed: None,
+            };
+            index_ref.call_tool(&handler).await?;
+        }
+        let workspace_id = crate::workspace::registry::generate_workspace_id(
+            &reference_path.to_string_lossy(),
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compute workspace ID: {}", e))?;
 
         // Immediately re-index the same reference workspace before background tasks complete
         let reindex_tool = ManageWorkspaceTool {

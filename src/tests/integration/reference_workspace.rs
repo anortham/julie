@@ -30,14 +30,6 @@ mod reference_workspace_tests {
             .join("\n")
     }
 
-    fn extract_workspace_id(result: &crate::mcp_compat::CallToolResult) -> Option<String> {
-        let text = extract_text_from_result(result);
-        text.lines()
-            .find(|line| line.contains("Workspace ID:"))
-            .and_then(|line| line.split(':').nth(1))
-            .map(|id| id.trim().to_string())
-    }
-
     async fn mark_index_ready(handler: &JulieServerHandler) {
         handler
             .indexing_status
@@ -64,66 +56,31 @@ mod reference_workspace_tests {
         index_primary.call_tool(handler).await?;
         mark_index_ready(handler).await;
 
-        // Get primary workspace ID from registry (more reliable than parsing output)
+        // Compute primary workspace ID deterministically from path
         let primary_id = if let Ok(Some(workspace)) = handler.get_workspace().await {
-            use crate::workspace::registry_service::WorkspaceRegistryService;
-            let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
-            registry_service
-                .get_primary_workspace_id()
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("Primary workspace not registered"))?
+            crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
+                .map_err(|e| anyhow::anyhow!("Failed to compute primary workspace ID: {}", e))?
         } else {
             return Err(anyhow::anyhow!("Failed to get workspace from handler"));
         };
 
-        // Add reference workspace (or get existing if already registered)
-        let reference_id = if let Ok(Some(workspace)) = handler.get_workspace().await {
-            use crate::workspace::registry_service::WorkspaceRegistryService;
-            let registry_service = WorkspaceRegistryService::new(workspace.root.clone());
-
-            // Check if reference workspace already exists (fixture persistence between runs)
-            match registry_service
-                .get_workspace_by_path(&reference_path.to_string_lossy().to_string())
-                .await?
-            {
-                Some(ws) => {
-                    println!("✅ Reference workspace already registered: {}", ws.id);
-
-                    // Re-index to ensure it's up to date
-                    let reindex = ManageWorkspaceTool {
-                        operation: "index".to_string(),
-                        path: Some(reference_path.to_string_lossy().to_string()),
-                        force: Some(true), // Force re-index
-                        name: None,
-                        workspace_id: None,
-                        detailed: None,
-                    };
-                    reindex.call_tool(handler).await?;
-                    mark_index_ready(handler).await;
-
-                    ws.id
-                }
-                None => {
-                    // Add new reference workspace
-                    let add_reference = ManageWorkspaceTool {
-                        operation: "add".to_string(),
-                        path: Some(reference_path.to_string_lossy().to_string()),
-                        force: None,
-                        name: Some("Reference Test Workspace".to_string()),
-                        workspace_id: None,
-                        detailed: None,
-                    };
-                    let reference_result = add_reference.call_tool(handler).await?;
-                    mark_index_ready(handler).await;
-
-                    extract_workspace_id(&reference_result).ok_or_else(|| {
-                        anyhow::anyhow!("Failed to extract reference workspace ID")
-                    })?
-                }
-            }
-        } else {
-            return Err(anyhow::anyhow!("Failed to get workspace from handler"));
-        };
+        // Index reference workspace and compute its ID deterministically
+        {
+            let index_reference = ManageWorkspaceTool {
+                operation: "index".to_string(),
+                path: Some(reference_path.to_string_lossy().to_string()),
+                force: Some(true),
+                name: None,
+                workspace_id: None,
+                detailed: None,
+            };
+            index_reference.call_tool(handler).await?;
+            mark_index_ready(handler).await;
+        }
+        let reference_id = crate::workspace::registry::generate_workspace_id(
+            &reference_path.to_string_lossy(),
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compute reference workspace ID: {}", e))?;
 
         Ok((primary_id, reference_id))
     }
@@ -322,27 +279,23 @@ mod reference_workspace_tests {
         index_primary.call_tool(&handler).await?;
         mark_index_ready(&handler).await;
 
-        // Add reference workspace (the add operation handles "already exists" gracefully)
-        let add_reference = ManageWorkspaceTool {
-            operation: "add".to_string(),
-            path: Some(reference_path.to_string_lossy().to_string()),
-            force: None,
-            name: Some("Reference Test Workspace".to_string()),
-            workspace_id: None,
-            detailed: None,
-        };
-        let reference_result = add_reference.call_tool(&handler).await?;
-        mark_index_ready(&handler).await;
-
-        // Try to extract workspace ID from the result, or look it up in the registry if that fails
-        let reference_id = extract_workspace_id(&reference_result)
-            .or_else(|| {
-                // If extraction failed, the workspace might already be registered
-                // Look it up by path in the registry
-                std::thread::sleep(std::time::Duration::from_millis(100)); // Give registry time to update
-                None
-            })
-            .ok_or_else(|| anyhow::anyhow!("Failed to get reference workspace ID"))?;
+        // Index reference workspace and compute its ID deterministically
+        {
+            let index_reference = ManageWorkspaceTool {
+                operation: "index".to_string(),
+                path: Some(reference_path.to_string_lossy().to_string()),
+                force: None,
+                name: None,
+                workspace_id: None,
+                detailed: None,
+            };
+            index_reference.call_tool(&handler).await?;
+            mark_index_ready(&handler).await;
+        }
+        let reference_id = crate::workspace::registry::generate_workspace_id(
+            &reference_path.to_string_lossy(),
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to compute reference workspace ID: {}", e))?;
 
         // Search reference workspace for reference-specific symbol
         let search_reference = FastSearchTool {
