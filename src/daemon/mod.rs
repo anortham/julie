@@ -16,8 +16,9 @@ pub mod workspace_pool;
 
 use std::io;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 #[cfg(unix)]
@@ -77,6 +78,19 @@ pub(crate) async fn drain_sessions(sessions: &SessionTracker, timeout: Duration)
     true
 }
 
+/// Get the current on-disk binary's modification time.
+///
+/// Used at daemon startup to snapshot the binary mtime, then compared on each
+/// session disconnect to detect whether the binary has been rebuilt. If it has,
+/// the daemon exits after the last session disconnects so the adapter can
+/// restart it with the new binary.
+fn binary_mtime() -> Option<SystemTime> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok())
+}
+
 /// Run the Julie daemon: bind IPC socket, accept connections, serve MCP.
 ///
 /// This function blocks until a shutdown signal (SIGTERM/SIGINT) is received.
@@ -91,8 +105,8 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
     // Atomically check-and-create the PID file. create_exclusive uses O_CREAT|O_EXCL
     // internally, eliminating the TOCTOU window between check_running and create
     // that allowed two concurrent invocations to both believe they were first.
-    let pid_file = PidFile::create_exclusive(&paths.daemon_pid())
-        .context("Failed to start daemon")?;
+    let pid_file =
+        PidFile::create_exclusive(&paths.daemon_pid()).context("Failed to start daemon")?;
     info!(pid = std::process::id(), "Daemon PID file created");
 
     // Bind the IPC listener (Unix socket)
@@ -120,23 +134,35 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
             Some(Arc::new(db))
         }
         Err(e) => {
-            warn!("Failed to open daemon.db, continuing without persistence: {}", e);
+            warn!(
+                "Failed to open daemon.db, continuing without persistence: {}",
+                e
+            );
             None
         }
     };
 
     // Initialize shared embedding service (blocking: model load / sidecar bootstrap)
     let embedding_service = Arc::new(
-        tokio::task::spawn_blocking(|| {
-            EmbeddingService::initialize()
-        })
-        .await
-        .context("Embedding service initialization panicked")?
+        tokio::task::spawn_blocking(|| EmbeddingService::initialize())
+            .await
+            .context("Embedding service initialization panicked")?,
     );
     info!(
         available = embedding_service.is_available(),
         "Shared embedding service initialized"
     );
+
+    // Capture binary mtime at startup for stale-binary detection.
+    // If the binary is rebuilt while the daemon is running, the next session
+    // disconnect will detect the mismatch and trigger a graceful restart.
+    let startup_binary_mtime = binary_mtime();
+    let restart_pending = Arc::new(AtomicBool::new(false));
+    if startup_binary_mtime.is_some() {
+        info!("Binary mtime captured for stale-binary detection");
+    } else {
+        warn!("Could not determine binary mtime; stale-binary detection disabled");
+    }
 
     // Shared state
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
@@ -153,7 +179,7 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
 
     // Accept loop with graceful shutdown
     let result = tokio::select! {
-        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service) => res,
+        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending) => res,
         _ = shutdown_signal() => {
             info!("Shutdown signal received, stopping daemon");
             Ok(())
@@ -166,7 +192,10 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
     // inconsistent state.
     let remaining = sessions.active_count();
     if remaining > 0 {
-        info!(active_sessions = remaining, "Draining active sessions (up to 5s)");
+        info!(
+            active_sessions = remaining,
+            "Draining active sessions (up to 5s)"
+        );
         let drained = drain_sessions(&sessions, Duration::from_secs(5)).await;
         if drained {
             info!("All sessions drained cleanly");
@@ -198,12 +227,18 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
 }
 
 /// Accept IPC connections in a loop, spawning a task for each.
+///
+/// When the last session disconnects and the on-disk binary has been rebuilt
+/// since this daemon started, the loop exits cleanly. The adapter will
+/// auto-start a fresh daemon with the new binary on the next connection.
 async fn accept_loop(
     listener: &IpcListener,
     pool: &Arc<WorkspacePool>,
     sessions: &Arc<SessionTracker>,
     daemon_db: &Option<Arc<DaemonDatabase>>,
     embedding_service: &Arc<EmbeddingService>,
+    startup_binary_mtime: Option<SystemTime>,
+    restart_pending: &Arc<AtomicBool>,
 ) -> Result<()> {
     loop {
         let stream = match listener.accept().await {
@@ -231,7 +266,22 @@ async fn accept_loop(
         let sessions = Arc::clone(sessions);
         let daemon_db = daemon_db.clone();
         let embedding_service = Arc::clone(embedding_service);
+        let restart_pending = Arc::clone(restart_pending);
         let session_id = sessions.add_session();
+
+        // Check for stale binary on each new connection. This way the health
+        // check can surface it immediately rather than waiting for disconnect.
+        if let Some(startup_mtime) = startup_binary_mtime {
+            if let Some(current_mtime) = binary_mtime() {
+                if current_mtime > startup_mtime && !restart_pending.load(Ordering::Relaxed) {
+                    restart_pending.store(true, Ordering::Relaxed);
+                    warn!(
+                        "Binary has been rebuilt since daemon started. \
+                         Daemon will restart when all sessions disconnect."
+                    );
+                }
+            }
+        }
 
         info!(
             session_id = %session_id,
@@ -240,16 +290,32 @@ async fn accept_loop(
         );
 
         tokio::spawn(async move {
-            if let Err(e) = handle_ipc_session(stream, &pool, &session_id, &daemon_db, &embedding_service).await {
+            if let Err(e) =
+                handle_ipc_session(stream, &pool, &session_id, &daemon_db, &embedding_service, &restart_pending).await
+            {
                 error!(session_id = %session_id, "IPC session error: {}", e);
             }
 
             sessions.remove_session(&session_id);
+            let remaining = sessions.active_count();
             info!(
                 session_id = %session_id,
-                remaining = sessions.active_count(),
+                remaining,
                 "IPC session ended"
             );
+
+            // If the binary has been rebuilt and this was the last session,
+            // signal the daemon to exit. The adapter will auto-start a fresh
+            // daemon with the new binary on the next connection.
+            if remaining == 0 && restart_pending.load(Ordering::Relaxed) {
+                info!("Last session disconnected and binary is stale. Triggering restart.");
+                // Send SIGTERM to ourselves to trigger the graceful shutdown path.
+                // The adapter will auto-start a fresh daemon on the next connection.
+                #[cfg(unix)]
+                unsafe {
+                    libc::kill(libc::getpid(), libc::SIGTERM);
+                }
+            }
         });
     }
 }
@@ -261,6 +327,7 @@ async fn handle_ipc_session(
     session_id: &str,
     daemon_db: &Option<Arc<DaemonDatabase>>,
     embedding_service: &Arc<EmbeddingService>,
+    restart_pending: &Arc<AtomicBool>,
 ) -> Result<()> {
     // Read the workspace header (byte-by-byte to avoid BufReader buffering issues)
     let workspace_path = read_workspace_header(&mut stream).await?;
@@ -276,8 +343,8 @@ async fn handle_ipc_session(
     // indexing pipeline also calls generate_workspace_id() and the IDs must match
     // for daemon.db FK constraints and workspace_db_path() to resolve correctly.
     let path_str = workspace_path.to_string_lossy().to_string();
-    let full_workspace_id = generate_workspace_id(&path_str)
-        .context("Failed to generate workspace ID")?;
+    let full_workspace_id =
+        generate_workspace_id(&path_str).context("Failed to generate workspace ID")?;
 
     info!(
         session_id = %session_id,
@@ -298,6 +365,7 @@ async fn handle_ipc_session(
         daemon_db.clone(),
         Some(full_workspace_id.clone()),
         Some(Arc::clone(embedding_service)),
+        Some(Arc::clone(restart_pending)),
     )
     .await
     .context("Failed to create handler for IPC session")?;
@@ -308,7 +376,10 @@ async fn handle_ipc_session(
         match db.list_references(&full_workspace_id) {
             Ok(refs) => {
                 for ref_ws in &refs {
-                    match pool.get_or_init(&ref_ws.workspace_id, PathBuf::from(&ref_ws.path)).await {
+                    match pool
+                        .get_or_init(&ref_ws.workspace_id, PathBuf::from(&ref_ws.path))
+                        .await
+                    {
                         Ok(_) => {
                             info!(
                                 session_id = %session_id,
@@ -404,12 +475,14 @@ async fn read_workspace_header(stream: &mut tokio::net::UnixStream) -> Result<Pa
         }
     }
 
-    let header = String::from_utf8(header)
-        .context("Workspace header is not valid UTF-8")?;
+    let header = String::from_utf8(header).context("Workspace header is not valid UTF-8")?;
 
-    let path = header
-        .strip_prefix("WORKSPACE:")
-        .ok_or_else(|| anyhow::anyhow!("Invalid IPC header: expected WORKSPACE:<path>, got: {}", header))?;
+    let path = header.strip_prefix("WORKSPACE:").ok_or_else(|| {
+        anyhow::anyhow!(
+            "Invalid IPC header: expected WORKSPACE:<path>, got: {}",
+            header
+        )
+    })?;
 
     Ok(PathBuf::from(path))
 }

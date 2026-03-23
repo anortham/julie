@@ -92,6 +92,9 @@ pub struct JulieServerHandler {
     pub(crate) workspace_id: Option<String>,
     /// Shared embedding service for daemon mode. None in stdio mode.
     pub(crate) embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
+    /// True when the daemon detects its binary has been rebuilt.
+    /// Surfaced in `manage_workspace health`. None in stdio mode.
+    pub(crate) restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl JulieServerHandler {
@@ -117,6 +120,7 @@ impl JulieServerHandler {
             daemon_db: None,
             workspace_id: None,
             embedding_service: None,
+            restart_pending: None,
         })
     }
 
@@ -137,6 +141,7 @@ impl JulieServerHandler {
         daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
         workspace_id: Option<String>,
         embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
+        restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
     ) -> Result<Self> {
         info!(
             "Creating daemon-mode handler (workspace_root: {:?})",
@@ -161,9 +166,9 @@ impl JulieServerHandler {
         };
 
         // Create per-project logger for daemon mode
-        let project_log = Some(Arc::new(
-            crate::daemon::project_log::ProjectLog::new(&workspace_root),
-        ));
+        let project_log = Some(Arc::new(crate::daemon::project_log::ProjectLog::new(
+            &workspace_root,
+        )));
 
         Ok(Self {
             workspace_root,
@@ -177,6 +182,7 @@ impl JulieServerHandler {
             daemon_db,
             workspace_id,
             embedding_service,
+            restart_pending,
         })
     }
 
@@ -200,7 +206,9 @@ impl JulieServerHandler {
     }
 
     /// Get the embedding provider, preferring daemon shared service over per-workspace.
-    pub(crate) async fn embedding_provider(&self) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
+    pub(crate) async fn embedding_provider(
+        &self,
+    ) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
         // Daemon mode: use shared service
         if let Some(ref service) = self.embedding_service {
             return service.provider().cloned();
@@ -211,12 +219,15 @@ impl JulieServerHandler {
     }
 
     /// Get embedding runtime status, preferring daemon shared service.
-    pub(crate) async fn embedding_runtime_status(&self) -> Option<crate::embeddings::EmbeddingRuntimeStatus> {
+    pub(crate) async fn embedding_runtime_status(
+        &self,
+    ) -> Option<crate::embeddings::EmbeddingRuntimeStatus> {
         if let Some(ref service) = self.embedding_service {
             return service.runtime_status().cloned();
         }
         let ws = self.workspace.read().await;
-        ws.as_ref().and_then(|ws| ws.embedding_runtime_status.clone())
+        ws.as_ref()
+            .and_then(|ws| ws.embedding_runtime_status.clone())
     }
 
     /// Initialize or load workspace and update components to use persistent storage
@@ -659,9 +670,9 @@ impl JulieServerHandler {
 
         // Daemon mode: look up in DaemonDatabase
         if let Some(ref db) = self.daemon_db {
-            let row = db.get_workspace(workspace_id)?.ok_or_else(|| {
-                anyhow::anyhow!("Workspace '{}' not found", workspace_id)
-            })?;
+            let row = db
+                .get_workspace(workspace_id)?
+                .ok_or_else(|| anyhow::anyhow!("Workspace '{}' not found", workspace_id))?;
             return Ok(PathBuf::from(row.path));
         }
 

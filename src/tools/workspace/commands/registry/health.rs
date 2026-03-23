@@ -43,13 +43,24 @@ impl ManageWorkspaceTool {
 
         // PHASE 3: Embedding Runtime Health
         health_report.push_str("Embedding Runtime\n");
-        let embedding_status = self
-            .check_embedding_runtime_health(handler)
-            .await?;
+        let embedding_status = self.check_embedding_runtime_health(handler).await?;
         health_report.push_str(&embedding_status);
         health_report.push('\n');
 
-        // PHASE 4: Overall System Assessment
+        // PHASE 4: Daemon Binary Status
+        if let Some(ref restart_flag) = handler.restart_pending {
+            health_report.push_str("Daemon Binary\n");
+            if restart_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                health_report.push_str(
+                    "Binary Status: STALE (rebuilt since daemon started)\n\
+                     Action: Daemon will auto-restart when all sessions disconnect\n\n",
+                );
+            } else {
+                health_report.push_str("Binary Status: CURRENT\n\n");
+            }
+        }
+
+        // PHASE 5: Overall System Assessment
         health_report.push_str("Overall System Assessment\n");
         let overall_status = self.assess_overall_health(&primary_workspace).await?;
         health_report.push_str(&overall_status);
@@ -154,10 +165,7 @@ impl ManageWorkspaceTool {
     }
 
     /// Check embedding runtime health and fallback/degradation status.
-    async fn check_embedding_runtime_health(
-        &self,
-        handler: &JulieServerHandler,
-    ) -> Result<String> {
+    async fn check_embedding_runtime_health(&self, handler: &JulieServerHandler) -> Result<String> {
         let mut status = String::new();
 
         let runtime_status = handler.embedding_runtime_status().await;
