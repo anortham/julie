@@ -47,7 +47,7 @@ pub struct EmbeddingService {
 
 ### Extracting Provider Initialization
 
-`JulieWorkspace::initialize_embedding_provider()` is ~220 lines that reads env vars, resolves backends, handles fallback chains, and mutates workspace fields. The core logic doesn't depend on `self` except to write results.
+`JulieWorkspace::initialize_embedding_provider()` is ~250 lines that reads env vars, resolves backends, handles fallback chains, and mutates workspace fields. The core logic doesn't depend on `self` except to write results.
 
 **New file: `src/embeddings/init.rs`**
 
@@ -91,13 +91,14 @@ impl JulieServerHandler {
         ws.as_ref().and_then(|ws| ws.embedding_provider.clone())
     }
 
-    pub(crate) fn embedding_runtime_status(&self) -> Option<EmbeddingRuntimeStatus> {
+    pub(crate) async fn embedding_runtime_status(&self) -> Option<EmbeddingRuntimeStatus> {
+        // Daemon mode: use shared service
         if let Some(ref service) = self.embedding_service {
             return service.runtime_status().cloned();
         }
-        // Stdio fallback reads from workspace
-        // (requires read lock, called less frequently than provider())
-        None
+        // Stdio mode: read from per-workspace status
+        let ws = self.workspace.read().await;
+        ws.as_ref().and_then(|ws| ws.embedding_runtime_status.clone())
     }
 }
 ```
@@ -110,10 +111,11 @@ All tool call sites switch from direct `workspace.embedding_provider` reads to `
 
 1. `DaemonPaths` / `PidFile`
 2. `DaemonDatabase`
-3. `WatcherPool`
-4. **`EmbeddingService::initialize()`** (in `spawn_blocking`)
-5. `WorkspacePool`
-6. IPC listener + accept loop
+3. **`EmbeddingService::initialize()`** (in `spawn_blocking`)
+4. `WatcherPool` + `WorkspacePool` (created together, as they are today)
+5. IPC listener + accept loop
+
+Embedding service initializes before the pools so it's ready when the first session connects. The provider `Arc` is passed into `WatcherPool` for incremental indexer creation.
 
 **Accept loop changes:** `Arc<EmbeddingService>` passed alongside `Arc<WorkspacePool>` and `Option<Arc<DaemonDatabase>>` into each `handle_ipc_session`.
 
@@ -145,6 +147,25 @@ All tool call sites switch from direct `workspace.embedding_provider` reads to `
 
 **Special case: `spawn_workspace_embedding`** currently has a ~60-line lazy init block (lines 37-97). In daemon mode, this entire block is replaced by `handler.embedding_provider().await`. The lazy init path remains for stdio mode via the workspace fallback.
 
+### Watcher / Incremental Indexer
+
+The `WatcherPool` creates `IncrementalIndexer` instances that store their own `embedding_provider` field for re-embedding after file changes. Currently in `watcher_pool.rs:146`:
+
+```rust
+workspace.embedding_provider.clone(), // None in daemon mode!
+```
+
+Without fixing this, daemon mode gets bulk embedding on initial index but silently loses incremental re-embedding on file saves.
+
+**Fix:** `WatcherPool::attach()` (or its internal watcher creation) needs access to the shared provider. Two options:
+
+1. Pass `Option<Arc<dyn EmbeddingProvider>>` into `WatcherPool::attach()` from the daemon, sourced from `EmbeddingService`
+2. Store `Option<Arc<EmbeddingService>>` on `WatcherPool` itself, read the provider when creating watchers
+
+Option 1 is simpler and keeps `WatcherPool` unaware of `EmbeddingService`. The daemon already has both references at the point where watchers are attached (inside `handle_ipc_session` or `WorkspacePool::get_or_init`). The `IncrementalIndexer` struct doesn't need to change; it already takes `Option<Arc<dyn EmbeddingProvider>>` in its constructor.
+
+**Modified files:** `src/daemon/watcher_pool.rs` needs to accept and pass through the provider when creating `IncrementalIndexer` instances.
+
 ### What Stays the Same
 
 - `EmbeddingProvider` trait, `OrtEmbeddingProvider`, `SidecarEmbeddingProvider` - untouched
@@ -152,7 +173,8 @@ All tool call sites switch from direct `workspace.embedding_provider` reads to `
 - `EmbeddingProviderFactory::create()` - untouched
 - Sidecar bootstrap, venv management, protocol - untouched
 - Stdio mode - fully preserved (`embedding_service = None`, tools fall through to workspace provider)
-- `WorkspacePool` - no changes
+- `WorkspacePool` - no changes (watcher pool handles provider injection separately)
+- `IncrementalIndexer` struct - no changes (already accepts `Option<Arc<dyn EmbeddingProvider>>`)
 - Existing test suite - no tests should break
 
 ## Scope Exclusions
@@ -179,7 +201,7 @@ Track C depends on Track B (the helper method must exist). Track A and B can run
 From the v6 spec: "Run multiple sessions, verify VRAM usage, verify no queue starvation."
 
 - **VRAM:** One provider in the daemon. `ps` or Activity Monitor confirms single ORT/sidecar process regardless of session count.
-- **Starvation:** Provider mutex is fair (`std::sync::Mutex`). FCFS, no starvation possible.
+- **Starvation:** Provider mutex (`std::sync::Mutex`) serializes access. No fairness guarantee, but sufficient for this workload since embedding calls are infrequent and short-lived relative to contention windows.
 - **Multi-session:** Open two Claude Code sessions on the same project; both get hybrid search results with semantic component.
 - **Agent team dogfood:** The implementation itself exercises multi-session via parallel agent teammates.
 
@@ -207,4 +229,5 @@ From the v6 spec: "Run multiple sessions, verify VRAM usage, verify no queue sta
 | `src/tools/navigation/fast_refs.rs` | Use `handler.embedding_provider().await` |
 | `src/tools/workspace/indexing/embeddings.rs` | Use `handler.embedding_provider().await`, remove lazy init block in daemon mode |
 | `src/tools/workspace/commands/registry/health.rs` | Use `handler.embedding_runtime_status()` |
+| `src/daemon/watcher_pool.rs` | Pass shared embedding provider when creating `IncrementalIndexer` instances |
 | `src/tests/daemon/mod.rs` | Register `embedding_service` test module |
