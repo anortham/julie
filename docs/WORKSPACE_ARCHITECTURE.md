@@ -62,6 +62,7 @@ Each workspace has its own PHYSICAL database and Tantivy index files. Workspace 
 - Where you're actively developing
 - Has full `JulieWorkspace` object with indexer, searcher, embedding machinery
 - In daemon mode: its session is tracked in `daemon.db` with session count
+- In daemon mode: embedding provider is shared via `EmbeddingService` (not per-workspace)
 
 **Reference Workspaces:**
 - Other codebases you want to search/reference (daemon mode only)

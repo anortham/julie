@@ -279,13 +279,13 @@ See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
 1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization + English stemming
 2. **Graph Centrality Ranking**: Pre-computed reference scores boost well-connected symbols in search results
 3. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`. In stdio mode: under `{project}/.julie/indexes/`. In daemon mode: under `~/.julie/indexes/` (shared across all sessions).
-   - **Daemon mode** (`julie daemon`): starts a background process that shares workspace indexes across MCP sessions. Enables reference workspaces, codehealth snapshots, and tool call history. Registry lives in `~/.julie/daemon.db` (DaemonDatabase). Workspace operations (add, refresh, stats) require daemon mode — they return helpful errors in stdio mode.
+   - **Daemon mode** (`julie daemon`): starts a background process that shares workspace indexes and a single embedding provider across MCP sessions. Enables reference workspaces, codehealth snapshots, and tool call history. Registry lives in `~/.julie/daemon.db` (DaemonDatabase). The shared `EmbeddingService` (Phase 3) ensures one ORT model load or sidecar process serves all sessions. Workspace operations (add, refresh, stats) require daemon mode; they return helpful errors in stdio mode.
    - **Stdio mode**: single session, per-project indexes in `.julie/`, no registry persistence.
 4. **Native Rust Core**: No FFI, no CGO — core indexing/search has zero external dependencies
 5. **Tree-sitter Native**: Direct Rust bindings for all language parsers
 6. **SQLite Storage**: Symbols, identifiers, relationships, types, files
 7. **Single Binary + Optional Sidecar**: Core features work standalone; GPU-accelerated embeddings use a managed Python sidecar (auto-provisioned via `uv`)
-8. **Semantic Embeddings + KNN Vector Search**: Symbol embeddings (via ONNX Runtime or Python sidecar) stored in SQLite, enabling semantic similarity for `deep_dive` (related symbols) and `fast_refs` (zero-reference fallback). Two threshold tiers: symbol-to-symbol (0.5) and query-to-symbol (0.2)
+8. **Semantic Embeddings + KNN Vector Search**: Symbol embeddings (via ONNX Runtime or Python sidecar) stored in SQLite, enabling semantic similarity for `deep_dive` (related symbols) and `fast_refs` (zero-reference fallback). Two threshold tiers: symbol-to-symbol (0.5) and query-to-symbol (0.2). In daemon mode, the embedding provider is shared via `EmbeddingService` (not per-workspace).
 9. **Instant Search**: Tantivy index available immediately after indexing
 10. **Relative Unix-Style Path Storage**: All file paths stored as relative with `/` separators
 11. **Language-Agnostic Everything**: See below — this is critical
