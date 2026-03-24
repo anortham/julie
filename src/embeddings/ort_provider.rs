@@ -128,14 +128,33 @@ where
     match primary(model) {
         Ok(result) => Ok(result),
         Err(primary_error) if was_accelerated => {
-            let result = cpu_fallback(&primary_error, model)?;
-            runtime_state
-                .lock()
-                .map_err(|e| anyhow::anyhow!("ORT runtime state mutex poisoned: {e}"))?
-                .mark_cpu_fallback(format!(
-                    "GPU embedding failed after {previous_device} initialization; switched to CPU: {primary_error}"
-                ));
-            Ok(result)
+            match cpu_fallback(&primary_error, model) {
+                Ok(result) => {
+                    runtime_state
+                        .lock()
+                        .map_err(|e| anyhow::anyhow!("ORT runtime state mutex poisoned: {e}"))?
+                        .mark_cpu_fallback(format!(
+                            "GPU embedding failed after {previous_device} initialization; switched to CPU: {primary_error}"
+                        ));
+                    Ok(result)
+                }
+                Err(cpu_err) => {
+                    // CPU rebuild also failed. Mark the provider as degraded so subsequent
+                    // calls skip the expensive fallback attempt and just return the GPU error
+                    // directly, instead of retrying the rebuild on every single call.
+                    tracing::error!(
+                        "GPU embedding failed and CPU fallback also failed; \
+                         marking provider as permanently degraded. \
+                         GPU error: {primary_error:#}. CPU error: {cpu_err:#}"
+                    );
+                    if let Ok(mut state) = runtime_state.lock() {
+                        state.mark_cpu_fallback(format!(
+                            "GPU failed ({primary_error}) and CPU fallback failed ({cpu_err})"
+                        ));
+                    }
+                    Err(primary_error)
+                }
+            }
         }
         Err(primary_error) => Err(primary_error),
     }

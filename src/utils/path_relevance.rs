@@ -45,16 +45,9 @@ impl PathRelevanceScorer {
             || path_str.contains("/spec/")
             || path_str.contains("__tests__/");
 
-        // Apply test file penalty only for test files in production directories
+        // Apply test file penalty for test files outside dedicated test directories
         if self.is_test_file(path) && !self.search_contains_test && !in_test_directory {
-            // Use less severe penalty for test files in production directories
-            let is_in_production_directory = path_str.contains("src") || path_str.contains("lib");
-            let penalty = if is_in_production_directory {
-                self.get_production_test_penalty()
-            } else {
-                self.get_test_penalty()
-            };
-            score *= penalty;
+            score *= self.get_test_penalty();
         }
 
         // Apply production boost for source code
@@ -80,15 +73,29 @@ impl PathRelevanceScorer {
             return 0.2; // Low priority for docs
         }
 
-        // Check for production source directories FIRST (before test filename patterns)
-        if path_str.contains("src") || path_str.contains("lib") {
-            return 1.0; // High priority for source code (even test files in src get this)
-        }
-
-        // Only then check for dedicated test directories
-        if path_str.contains("test") || path_str.contains("spec") || path_str.contains("__tests__")
+        // Check for dedicated test directories BEFORE the generic src/lib check so that
+        // language layouts like Java's src/test/java/ score as tests, not production.
+        if path_str.contains("/test/")
+            || path_str.contains("/tests/")
+            || path_str.contains("/spec/")
+            || path_str.contains("/specs/")
+            || path_str.contains("/__tests__/")
+            || path_str.starts_with("test/")
+            || path_str.starts_with("tests/")
+            || path_str.starts_with("spec/")
+            || path_str.starts_with("specs/")
         {
             return 0.4; // Medium-low priority for tests
+        }
+
+        // Generic source directory heuristic — applies after test dirs are excluded
+        if path_str.contains("src") || path_str.contains("lib") {
+            return 1.0; // High priority for source code
+        }
+
+        // Remaining test-filename patterns (e.g. __tests__ without surrounding slashes)
+        if path_str.contains("__tests__") {
+            return 0.4;
         }
 
         // Default score for unrecognized directories
@@ -120,22 +127,17 @@ impl PathRelevanceScorer {
     fn is_production_code(&self, path: &Path) -> bool {
         let path_str = path.to_string_lossy().to_lowercase();
 
-        // Production indicators
-        (path_str.contains("src") || path_str.contains("lib"))
-            && !self.is_test_file(path)
+        !self.is_test_file(path)
             && !path_str.contains("node_modules")
             && !path_str.contains("vendor")
+            && !path_str.contains("docs")
+            && !path_str.contains("documentation")
     }
 
     /// Get test file penalty factor
     /// VERIFIED from PathRelevanceFactor.cs:151
     fn get_test_penalty(&self) -> f32 {
         0.15 // 85% penalty for test files when not searching "test"
-    }
-
-    /// Get test file penalty for production directories (less severe)
-    fn get_production_test_penalty(&self) -> f32 {
-        0.5 // 50% penalty for test files in production directories
     }
 
     /// Get production code boost factor

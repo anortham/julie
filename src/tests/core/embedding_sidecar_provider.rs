@@ -293,6 +293,9 @@ while True:
 
     #[test]
     fn test_sidecar_provider_drop_requests_shutdown() {
+        // Drop should NOT block on I/O (no graceful shutdown write).
+        // It just kills the process. The marker file should NOT appear.
+        // Graceful shutdown is handled by the explicit shutdown() method.
         let temp_dir = TempDir::new().expect("temp dir should be created");
         let marker = temp_dir.path().join("shutdown.marker");
         let marker_str = marker.to_string_lossy().to_string();
@@ -302,6 +305,8 @@ while True:
             let _ = provider
                 .embed_query("x")
                 .expect("provider should respond before drop");
+            // Explicit shutdown creates the marker
+            provider.shutdown();
         }
 
         let mut found = false;
@@ -313,7 +318,7 @@ while True:
             thread::sleep(Duration::from_millis(20));
         }
 
-        assert!(found, "expected shutdown marker file after provider drop");
+        assert!(found, "expected shutdown marker file after explicit shutdown()");
     }
 
     #[test]

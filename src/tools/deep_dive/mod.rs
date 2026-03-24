@@ -50,7 +50,7 @@ pub struct DeepDiveTool {
 fn ref_caps(depth: &str) -> (usize, usize) {
     match depth {
         "context" => (15, 15),
-        "full" => (500, 500), // effectively uncapped
+        "full" => (50, 50),
         _ => (10, 10),        // overview
     }
 }

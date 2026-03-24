@@ -302,7 +302,9 @@ impl ManageWorkspaceTool {
 
         let is_primary = _workspace_id == primary_workspace_id;
 
-        // Get the correct database based on workspace type
+        // Get the correct database based on workspace type.
+        // For reference workspaces, route through the handler's cached connection
+        // instead of opening a separate database connection ([I-H4]).
         let db = if is_primary {
             // Primary workspace - use handler's database connection
             match &primary_workspace.db {
@@ -310,35 +312,12 @@ impl ManageWorkspaceTool {
                 None => return Ok(0),
             }
         } else {
-            // Reference workspace - open its separate database
-            let ref_db_path = primary_workspace.workspace_db_path(_workspace_id);
-
-            debug!(
-                "🗄️ Opening reference workspace DB for orphan cleanup: {}",
-                ref_db_path.display()
-            );
-
-            if !ref_db_path.exists() {
-                debug!("Reference workspace DB doesn't exist yet - no orphans to clean");
-                return Ok(0);
-            }
-
-            match tokio::task::spawn_blocking(move || {
-                crate::database::SymbolDatabase::new(ref_db_path)
-            })
-            .await
-            {
-                Ok(Ok(db)) => std::sync::Arc::new(std::sync::Mutex::new(db)),
-                Ok(Err(e)) => {
-                    warn!(
-                        "Reference workspace DB doesn't exist yet: {} - no orphans to clean",
-                        e
-                    );
-                    return Ok(0);
-                }
+            // Reference workspace - use handler's cached connection pool
+            match handler.get_database_for_workspace(_workspace_id).await {
+                Ok(db) => db,
                 Err(e) => {
-                    warn!(
-                        "Failed to open reference workspace DB: {} - skipping orphan cleanup",
+                    debug!(
+                        "Reference workspace DB not available for orphan cleanup ({}), skipping",
                         e
                     );
                     return Ok(0);
@@ -346,7 +325,8 @@ impl ManageWorkspaceTool {
             }
         };
 
-        // Batch all deletions in ONE transaction for efficiency and consistency
+        // Batch all deletions in ONE transaction for efficiency and consistency.
+        // The transaction auto-rolls back on drop if not committed.
         let mut cleaned_count = 0;
         {
             let mut db_lock = match db.lock() {
@@ -360,72 +340,40 @@ impl ManageWorkspaceTool {
                 }
             };
 
-            // Begin transaction for ALL deletions — must be all-or-nothing.
-            db_lock.begin_transaction()?;
+            let tx = db_lock.conn.transaction()?;
 
-            let mut cleanup_error: Option<String> = None;
-
-            'files: for file_path in &orphaned_files {
+            for file_path in &orphaned_files {
                 // Delete relationships first (referential integrity)
-                let relationships_result = db_lock.conn.execute(
+                if let Err(e) = tx.execute(
                     "DELETE FROM relationships WHERE from_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)
                      OR to_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)",
                     rusqlite::params![file_path],
-                );
-                if let Err(e) = relationships_result {
-                    warn!(
-                        "Failed to delete relationships for orphaned file {}: {}",
-                        file_path, e
-                    );
-                    cleanup_error = Some(format!(
-                        "relationship delete failed for {}: {}",
-                        file_path, e
-                    ));
-                    break 'files;
+                ) {
+                    warn!("Failed to delete relationships for orphaned file {}: {}", file_path, e);
+                    return Ok(0); // tx drops here, auto-rollback
                 }
 
-                // Delete symbols
-                let symbols_result = db_lock.conn.execute(
+                if let Err(e) = tx.execute(
                     "DELETE FROM symbols WHERE file_path = ?1",
                     rusqlite::params![file_path],
-                );
-                if let Err(e) = symbols_result {
-                    warn!(
-                        "Failed to delete symbols for orphaned file {}: {}",
-                        file_path, e
-                    );
-                    cleanup_error = Some(format!("symbol delete failed for {}: {}", file_path, e));
-                    break 'files;
+                ) {
+                    warn!("Failed to delete symbols for orphaned file {}: {}", file_path, e);
+                    return Ok(0);
                 }
 
-                // Delete file record (CASCADE will handle any remaining symbols)
-                let file_result = db_lock.conn.execute(
+                if let Err(e) = tx.execute(
                     "DELETE FROM files WHERE path = ?1",
                     rusqlite::params![file_path],
-                );
-                if let Err(e) = file_result {
-                    warn!(
-                        "Failed to delete file record for orphaned file {}: {}",
-                        file_path, e
-                    );
-                    cleanup_error = Some(format!("file delete failed for {}: {}", file_path, e));
-                    break 'files;
+                ) {
+                    warn!("Failed to delete file record for orphaned file {}: {}", file_path, e);
+                    return Ok(0);
                 }
 
                 cleaned_count += 1;
                 trace!("Cleaned up orphaned file: {}", file_path);
             }
 
-            // Rollback entire batch on any error; commit only if all files succeeded.
-            if let Some(err_msg) = cleanup_error {
-                warn!("Orphan cleanup rolling back due to error: {}", err_msg);
-                if let Err(e) = db_lock.rollback_transaction() {
-                    warn!("Failed to rollback orphan cleanup transaction: {}", e);
-                }
-                return Ok(0);
-            }
-
-            db_lock.commit_transaction()?;
+            tx.commit()?;
         }
 
         if cleaned_count > 0 && !is_primary {

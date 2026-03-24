@@ -31,7 +31,10 @@ pub fn compute_line_changes(old_content: &str, new_content: &str) -> Vec<RenameC
     let old_lines: Vec<&str> = old_content.lines().collect();
     let new_lines: Vec<&str> = new_content.lines().collect();
     let mut changes = Vec::new();
-    for (i, (old, new)) in old_lines.iter().zip(new_lines.iter()).enumerate() {
+    let max_len = old_lines.len().max(new_lines.len());
+    for i in 0..max_len {
+        let old = old_lines.get(i).copied().unwrap_or("");
+        let new = new_lines.get(i).copied().unwrap_or("");
         if old != new {
             changes.push(RenameChange {
                 line_number: i + 1,
@@ -67,7 +70,10 @@ pub struct RenameSymbolTool {
     #[serde(default)]
     pub scope: Option<String>,
     /// Preview without applying (default: true)
-    #[serde(default = "default_dry_run")]
+    #[serde(
+        default = "default_dry_run",
+        deserialize_with = "crate::utils::serde_lenient::deserialize_bool_lenient"
+    )]
     pub dry_run: bool,
     /// Workspace filter: "primary" (default) or workspace ID
     #[serde(default)]
@@ -86,7 +92,10 @@ pub struct SmartRefactorTool {
     pub params: String,
 
     /// Preview changes without applying them (default: false).
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_bool_lenient"
+    )]
     pub dry_run: bool,
 }
 

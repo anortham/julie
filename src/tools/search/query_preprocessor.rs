@@ -18,6 +18,13 @@
 
 use anyhow::{Result, anyhow};
 use regex::Regex;
+use std::sync::LazyLock;
+
+static IDENTIFIER_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap());
+
+static CAMEL_CASE_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[A-Z][a-z]+|[a-z]+[A-Z]").unwrap());
 
 /// Query types determine how we process and route searches
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,15 +189,13 @@ fn is_simple_symbol(query: &str) -> bool {
     }
 
     // Check if it matches valid identifier pattern: [A-Za-z_][A-Za-z0-9_]*
-    let identifier_regex = Regex::new(r"^[A-Za-z_][A-Za-z0-9_]*$").unwrap();
-    if identifier_regex.is_match(query) {
+    if IDENTIFIER_REGEX.is_match(query) {
         return true;
     }
 
     // Check for CamelCase pattern (indicates symbol name)
     // Examples: UserService, getUserData, HttpClient
-    let camel_case_regex = Regex::new(r"[A-Z][a-z]+|[a-z]+[A-Z]").unwrap();
-    if camel_case_regex.is_match(query) {
+    if CAMEL_CASE_REGEX.is_match(query) {
         return true;
     }
 

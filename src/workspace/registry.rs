@@ -339,12 +339,18 @@ fn normalize_path(path: &str) -> Result<String> {
         })
         .unwrap_or(path_buf);
 
-    let normalized = canonical
-        .to_string_lossy()
-        .to_lowercase()
-        .replace('\\', "/") // Normalize separators
-        .trim_end_matches('/')
-        .to_string();
+    let lossy = canonical.to_string_lossy();
+    // Lowercase only on Windows (case-insensitive FS). On Unix, paths are
+    // case-sensitive and lowercasing would generate a different workspace ID
+    // for paths that differ only in case.
+    let normalized = if cfg!(windows) {
+        lossy.to_lowercase()
+    } else {
+        lossy.to_string()
+    }
+    .replace('\\', "/") // Normalize separators
+    .trim_end_matches('/')
+    .to_string();
 
     Ok(normalized)
 }

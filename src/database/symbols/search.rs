@@ -23,7 +23,9 @@ impl SymbolDatabase {
         Ok(symbols)
     }
 
-    /// Get all symbols from all workspaces (for SearchEngine population)
+    /// Get all symbols from this workspace's database for SearchEngine population.
+    /// Intentionally unbounded: the SearchEngine must index the full symbol set.
+    /// Do NOT add a LIMIT here; callers that need batched access use get_symbols_batch().
     pub fn get_all_symbols(&self) -> Result<Vec<Symbol>> {
         let query = format!(
             "SELECT {} FROM symbols ORDER BY file_path, start_line",
@@ -72,15 +74,11 @@ impl SymbolDatabase {
     /// Get symbols by exact name match
     /// PERFORMANCE: Uses indexed WHERE name = ?1 instead of LIKE for O(log n) lookup
     pub fn get_symbols_by_name_and_workspace(&self, name: &str) -> Result<Vec<Symbol>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, kind, language, file_path, signature,
-                    start_line, start_col, end_line, end_col, start_byte, end_byte,
-                    doc_comment, visibility, code_context, parent_id,
-                    metadata, semantic_group, confidence
-             FROM symbols
-             WHERE name = ?1
-             ORDER BY file_path, start_line",
-        )?;
+        let query = format!(
+            "SELECT {} FROM symbols WHERE name = ?1 ORDER BY file_path, start_line",
+            SYMBOL_COLUMNS
+        );
+        let mut stmt = self.conn.prepare(&query)?;
 
         let rows = stmt.query_map([name], |row| self.row_to_symbol(row))?;
 
@@ -97,8 +95,12 @@ impl SymbolDatabase {
         Ok(symbols)
     }
 
-    /// Get symbols for a specific workspace (optimized for background tasks)
-    /// Note: workspace_id parameter kept for logging, but DB file is already workspace-specific
+    /// Get all symbols for this workspace (used by background tasks and embedding backfill).
+    /// Intentionally unbounded for full-workspace operations.
+    ///
+    /// The workspace_id parameter is kept for logging only. Workspace isolation happens at
+    /// the SQLite file level (each workspace gets its own .db file routed by the handler),
+    /// so no WHERE workspace_id clause is needed or possible — there is no workspace_id column.
     pub fn get_symbols_for_workspace(&self, workspace_id: &str) -> Result<Vec<Symbol>> {
         let query = format!(
             "SELECT {} FROM symbols ORDER BY file_path, start_line",
@@ -198,11 +200,7 @@ impl SymbolDatabase {
 
     /// Count total symbols for a workspace (for statistics)
     pub fn count_symbols_for_workspace(&self) -> Result<usize> {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
-
-        Ok(count as usize)
+        Ok(self.get_symbol_count_for_workspace()? as usize)
     }
 
     /// Query symbols by name pattern (LIKE search) with optional filters
@@ -217,30 +215,26 @@ impl SymbolDatabase {
         let mut symbols = Vec::new();
 
         if let Some(lang) = language {
-            let mut stmt = self.conn.prepare(
-                "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                        end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                        parent_id, metadata, semantic_group, confidence
-                 FROM symbols
+            let query = format!(
+                "SELECT {} FROM symbols
                  WHERE (name LIKE ?1 OR code_context LIKE ?1) AND language = ?2
-                 ORDER BY name, file_path
-                 LIMIT 1000"
-            )?;
+                 ORDER BY name, file_path LIMIT 1000",
+                SYMBOL_COLUMNS
+            );
+            let mut stmt = self.conn.prepare(&query)?;
             let rows =
                 stmt.query_map([&pattern_like as &str, lang], |row| self.row_to_symbol(row))?;
             for row in rows {
                 symbols.push(row?);
             }
         } else {
-            let mut stmt = self.conn.prepare(
-                "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                        end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                        parent_id, metadata, semantic_group, confidence
-                 FROM symbols
+            let query = format!(
+                "SELECT {} FROM symbols
                  WHERE (name LIKE ?1 OR code_context LIKE ?1)
-                 ORDER BY name, file_path
-                 LIMIT 1000"
-            )?;
+                 ORDER BY name, file_path LIMIT 1000",
+                SYMBOL_COLUMNS
+            );
+            let mut stmt = self.conn.prepare(&query)?;
             let rows = stmt.query_map([&pattern_like], |row| self.row_to_symbol(row))?;
             for row in rows {
                 symbols.push(row?);
@@ -349,14 +343,11 @@ impl SymbolDatabase {
             SymbolKind::EnumMember => "enum_member",
         };
 
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                    parent_id, metadata, semantic_group, confidence
-             FROM symbols
-             WHERE kind = ?1
-             ORDER BY file_path, start_line",
-        )?;
+        let query = format!(
+            "SELECT {} FROM symbols WHERE kind = ?1 ORDER BY file_path, start_line",
+            SYMBOL_COLUMNS
+        );
+        let mut stmt = self.conn.prepare(&query)?;
 
         let rows = stmt.query_map([&kind_str], |row| self.row_to_symbol(row))?;
 
@@ -371,14 +362,11 @@ impl SymbolDatabase {
     /// Query symbols by language
     /// Uses idx_symbols_language for fast lookup
     pub fn query_symbols_by_language(&self, language: &str) -> Result<Vec<Symbol>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, name, kind, language, file_path, signature, start_line, start_col,
-                    end_line, end_col, start_byte, end_byte, doc_comment, visibility, code_context,
-                    parent_id, metadata, semantic_group, confidence
-             FROM symbols
-             WHERE language = ?1
-             ORDER BY file_path, start_line",
-        )?;
+        let query = format!(
+            "SELECT {} FROM symbols WHERE language = ?1 ORDER BY file_path, start_line",
+            SYMBOL_COLUMNS
+        );
+        let mut stmt = self.conn.prepare(&query)?;
 
         let rows = stmt.query_map([language], |row| self.row_to_symbol(row))?;
 
@@ -448,15 +436,6 @@ impl SymbolDatabase {
         }
 
         Ok(by_file)
-    }
-
-    /// Get total symbol count using SQL COUNT (O(1) database operation)
-    pub fn get_total_symbol_count(&self) -> Result<usize> {
-        let count: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
-
-        Ok(count as usize)
     }
 
     /// Get most referenced symbols (GROUP BY aggregation on relationships)

@@ -22,23 +22,6 @@ pub(crate) const SYMBOL_COLUMNS_LIGHTWEIGHT: &str = "id, name, kind, language, f
      doc_comment, visibility, parent_id";
 
 impl SymbolDatabase {
-    pub fn begin_transaction(&mut self) -> Result<()> {
-        self.conn.execute("BEGIN TRANSACTION", [])?;
-        Ok(())
-    }
-
-    /// Commit the current transaction
-    pub fn commit_transaction(&self) -> Result<()> {
-        self.conn.execute("COMMIT", [])?;
-        Ok(())
-    }
-
-    /// Rollback the current transaction
-    pub fn rollback_transaction(&self) -> Result<()> {
-        self.conn.execute("ROLLBACK", [])?;
-        Ok(())
-    }
-
     /// Get database statistics
     pub fn get_stats(&self) -> Result<DatabaseStats> {
         let total_symbols: i64 =
@@ -204,9 +187,9 @@ impl SymbolDatabase {
             from_symbol_id: row.get("from_symbol_id")?,
             to_symbol_id: row.get("to_symbol_id")?,
             kind,
-            file_path: row.get("file_path").unwrap_or_else(|_| String::new()),
-            line_number: row.get("line_number").unwrap_or(0),
-            confidence: row.get("confidence").unwrap_or(1.0),
+            file_path: row.get("file_path")?,
+            line_number: row.get("line_number")?,
+            confidence: row.get::<_, Option<f64>>("confidence")?.unwrap_or(1.0) as f32,
             metadata,
         })
     }

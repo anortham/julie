@@ -32,7 +32,7 @@ pub async fn text_search_impl(
     _context_lines: Option<u32>,
     exclude_tests: Option<bool>,
     handler: &JulieServerHandler,
-) -> Result<(Vec<Symbol>, bool)> {
+) -> Result<(Vec<Symbol>, bool, usize)> {
     super::nl_embeddings::maybe_initialize_embeddings_for_nl_definitions(
         query,
         search_target,
@@ -95,12 +95,12 @@ pub async fn text_search_impl(
         let db_arc = handler.get_database_for_workspace(&ref_id).await?;
         let si_arc = handler.get_search_index_for_workspace(&ref_id).await?;
 
-        let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool)> {
+        let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool, usize)> {
             let si_arc = match si_arc {
                 Some(si) => si,
                 None => {
                     debug!("No search index for reference workspace, returning empty");
-                    return Ok((Vec::new(), false));
+                    return Ok((Vec::new(), false, 0));
                 }
             };
             let index = si_arc
@@ -146,8 +146,10 @@ pub async fn text_search_impl(
     let db_clone = workspace.db.clone();
     let embedding_provider = handler.embedding_provider().await;
 
-    let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool)> {
-        let index = search_index_clone.lock().unwrap();
+    let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool, usize)> {
+        let index = search_index_clone
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         let db_guard = db_clone.as_ref().map(|arc| {
             arc.lock().unwrap_or_else(|poisoned| {
                 warn!("Database mutex poisoned, recovering");
@@ -181,10 +183,10 @@ pub async fn text_search_impl(
 
 /// Defense-in-depth post-filter by file_pattern and log result count.
 fn post_filter_results(
-    (results, relaxed): (Vec<Symbol>, bool),
+    (results, relaxed, pre_trunc): (Vec<Symbol>, bool, usize),
     file_pattern: &Option<String>,
     label: &str,
-) -> (Vec<Symbol>, bool) {
+) -> (Vec<Symbol>, bool, usize) {
     let filtered = if let Some(pattern) = file_pattern {
         results
             .into_iter()
@@ -198,7 +200,7 @@ fn post_filter_results(
         label,
         filtered.len()
     );
-    (filtered, relaxed)
+    (filtered, relaxed, pre_trunc)
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +232,9 @@ fn filter_test_symbols(symbols: &mut Vec<Symbol>, exclude: bool) {
 
 /// Run a definition search: hybrid (keyword + semantic) if NL query with embeddings,
 /// otherwise pure keyword with over-fetch + exact-name promotion.
+///
+/// Returns `(symbols, relaxed, pre_truncation_total)` where `pre_truncation_total` is
+/// the candidate count before applying the limit — used for "showing X of Y" reporting.
 fn definition_search_with_index(
     query: &str,
     filter: &SearchFilter,
@@ -237,7 +242,7 @@ fn definition_search_with_index(
     index: &crate::search::index::SearchIndex,
     db: Option<&crate::database::SymbolDatabase>,
     embedding_provider: Option<&dyn crate::embeddings::EmbeddingProvider>,
-) -> Result<(Vec<Symbol>, bool)> {
+) -> Result<(Vec<Symbol>, bool, usize)> {
     let use_hybrid = crate::search::scoring::is_nl_like_query(query)
         && embedding_provider.is_some()
         && db.is_some();
@@ -291,9 +296,10 @@ fn definition_search_with_index(
 
         // Filter BEFORE truncating so test symbols don't consume limit slots
         filter_test_symbols(&mut symbols, filter.exclude_tests);
+        let pre_trunc = symbols.len();
         symbols.truncate(limit);
 
-        Ok((symbols, relaxed))
+        Ok((symbols, relaxed, pre_trunc))
     } else {
         // Keyword search: over-fetch so exact-name definitions aren't lost.
         // For definition search, we need a large window because:
@@ -339,6 +345,7 @@ fn definition_search_with_index(
 
         // Filter BEFORE truncating so test symbols don't consume limit slots
         filter_test_symbols(&mut symbols, filter.exclude_tests);
+        let pre_trunc = symbols.len();
         symbols.truncate(limit);
 
         // LAST STEP: Prepend high-centrality definitions from SQLite that the
@@ -357,7 +364,7 @@ fn definition_search_with_index(
                 Ok(db_defs) => {
                     let existing_ids: std::collections::HashSet<String> =
                         symbols.iter().map(|s| s.id.clone()).collect();
-                    let mut prepend: Vec<Symbol> = db_defs
+                    let candidates: Vec<_> = db_defs
                         .into_iter()
                         .filter(|s| !existing_ids.contains(&s.id))
                         // Don't prepend doc-language or test-file definitions — they're
@@ -367,7 +374,19 @@ fn definition_search_with_index(
                             !DOC_LANGUAGES.contains(&s.language.as_str())
                                 && !is_test_path(&s.file_path)
                         })
+                        .collect();
+                    // Fetch actual reference_scores so confidence reflects real centrality
+                    // rather than a hardcoded sentinel that misrepresents ranking.
+                    let id_refs: Vec<&str> = candidates.iter().map(|s| s.id.as_str()).collect();
+                    let ref_scores = db.get_reference_scores(&id_refs).unwrap_or_default();
+                    let mut prepend: Vec<Symbol> = candidates
+                        .into_iter()
                         .map(|s| {
+                            let score = ref_scores
+                                .get(&s.id)
+                                .copied()
+                                .unwrap_or(1.0)
+                                .max(1.0) as f32;
                             let sym = tantivy_symbol_to_symbol(
                                 crate::search::index::SymbolSearchResult {
                                     id: s.id,
@@ -378,7 +397,7 @@ fn definition_search_with_index(
                                     kind: format!("{:?}", s.kind).to_lowercase(),
                                     language: s.language,
                                     start_line: s.start_line,
-                                    score: 100.0, // high score to signal these are DB-promoted
+                                    score,
                                 },
                             );
                             // Enrich from DB for code_context etc.
@@ -398,18 +417,20 @@ fn definition_search_with_index(
             }
         }
 
-        Ok((symbols, relaxed))
+        Ok((symbols, relaxed, pre_trunc))
     }
 }
 
 /// Run a content search with post-verification against actual file content.
+///
+/// Returns `(symbols, relaxed, pre_truncation_total)`.
 fn content_search_with_index(
     query: &str,
     filter: &SearchFilter,
     limit: usize,
     index: &crate::search::index::SearchIndex,
     db: Option<&crate::database::SymbolDatabase>,
-) -> Result<(Vec<Symbol>, bool)> {
+) -> Result<(Vec<Symbol>, bool, usize)> {
     debug!("🔍 Searching content with Tantivy");
 
     let fetch_limit = if filter.file_pattern.is_some() {
@@ -420,6 +441,7 @@ fn content_search_with_index(
     let content_search = index.search_content(query, filter, fetch_limit)?;
     let relaxed = content_search.relaxed;
     let search_results = content_search.results;
+    let candidate_total = search_results.len();
 
     let query_words: Vec<String> = query
         .split(|c: char| !c.is_alphanumeric())
@@ -469,7 +491,7 @@ fn content_search_with_index(
         }
     }
 
-    Ok((verified_symbols, relaxed))
+    Ok((verified_symbols, relaxed, candidate_total))
 }
 
 // ---------------------------------------------------------------------------

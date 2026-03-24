@@ -168,16 +168,11 @@ impl HealthChecker {
             report.push_str("❌ No database connection\n");
         }
 
-        // Compute workspace ID for per-workspace paths
-        use crate::workspace::registry;
-        let workspace_id_result =
-            registry::generate_workspace_id(workspace.root.to_str().unwrap_or(""));
-
         // Search status
-        if workspace_id_result.is_ok() {
+        if workspace.search_index.is_some() {
             report.push_str("✅ Tantivy search ready\n");
         } else {
-            report.push_str("❌ Could not determine workspace ID\n");
+            report.push_str("❌ Tantivy search index not initialized\n");
         }
 
         Ok(report)

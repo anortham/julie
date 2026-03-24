@@ -7,8 +7,10 @@ use std::collections::HashMap;
 use tracing::debug;
 
 use super::{RenameChange, SmartRefactorTool};
+use crate::extractors::{Relationship, Symbol};
 use crate::handler::JulieServerHandler;
 use crate::tools::navigation::FastRefsTool;
+use crate::tools::navigation::resolution::resolve_workspace_filter;
 
 impl SmartRefactorTool {
     /// Handle rename symbol operation
@@ -66,10 +68,14 @@ impl SmartRefactorTool {
             reference_kind: None, // No filtering - find all reference kinds
         };
 
-        let refs_result = refs_tool.call_tool(handler).await?;
+        let workspace_target =
+            resolve_workspace_filter(refs_tool.workspace.as_deref(), handler).await?;
+        let (definitions, references) = refs_tool
+            .find_references_and_definitions(handler, workspace_target)
+            .await?;
 
-        // Extract file locations from the refs result
-        let mut file_locations = self.parse_refs_result(&refs_result)?;
+        // Build file -> line-number map directly from structured data (no text parsing)
+        let mut file_locations = build_file_locations(&definitions, &references);
 
         if file_locations.is_empty() {
             return self.create_result(
@@ -146,8 +152,29 @@ impl SmartRefactorTool {
         }
 
         // Step 2.5: Update import statements if requested
+        // Warn upfront when files contain languages not supported by import rewriting.
+        // Supported: JS/TS (.js/.ts/.jsx/.tsx), Python (.py), Rust (.rs).
+        let import_unsupported_warning = if update_imports {
+            let unsupported_exts: std::collections::BTreeSet<String> = file_locations
+                .keys()
+                .filter(|p| !is_import_update_supported(p))
+                .filter_map(|p| p.rsplit('.').next().map(|e| format!(".{}", e)))
+                .collect();
+            if unsupported_exts.is_empty() {
+                None
+            } else {
+                Some(format!(
+                    "Note: update_imports only supports JS/TS, Python, and Rust. \
+                     Files with unsupported extensions ({}) were skipped for import rewriting.",
+                    unsupported_exts.into_iter().collect::<Vec<_>>().join(", ")
+                ))
+            }
+        } else {
+            None
+        };
+
         if update_imports && !renamed_files.is_empty() {
-            debug!("🔄 Updating import statements for renamed symbol");
+            debug!("Updating import statements for renamed symbol");
             let file_paths: Vec<String> = file_locations.keys().cloned().collect();
             match self
                 .update_import_statements_in_files(&workspace_root, &file_paths, old_name, new_name)
@@ -189,14 +216,18 @@ impl SmartRefactorTool {
         if !errors.is_empty() {
             let files: Vec<String> = renamed_files.iter().map(|(f, _)| f.clone()).collect();
             let error_text = errors.join("\n");
+            let warning_suffix = import_unsupported_warning
+                .as_deref()
+                .map(|w| format!("\n{}", w))
+                .unwrap_or_default();
             return self.create_result(
                 "rename_symbol",
                 total_files > 0,
                 files.clone(),
                 total_changes,
                 Some(format!(
-                    "rename_symbol: partial failure renaming '{}' → '{}'\n{} changes in {} files, but errors occurred:\n{}",
-                    old_name, new_name, total_changes, files.len(), error_text
+                    "rename_symbol: partial failure renaming '{}' → '{}'\n{} changes in {} files, but errors occurred:\n{}{}",
+                    old_name, new_name, total_changes, files.len(), error_text, warning_suffix
                 )),
             );
         }
@@ -232,15 +263,19 @@ impl SmartRefactorTool {
                 Some(ws) if ws != "primary" => format!(" (workspace: {})", ws),
                 _ => String::new(),
             };
+            let warning_suffix = import_unsupported_warning
+                .as_deref()
+                .map(|w| format!("\n\n{}", w))
+                .unwrap_or_default();
             return self.create_result(
                 "rename_symbol",
                 true,
                 files,
                 total_changes,
                 Some(format!(
-                    "rename_symbol dry run{} — '{}' → '{}'\n{} changes across {} files:\n{}\n\n(dry run — no changes applied)",
+                    "rename_symbol dry run{} — '{}' → '{}'\n{} changes across {} files:\n{}\n\n(dry run — no changes applied){}",
                     workspace_label, old_name, new_name, total_changes, renamed_files.len(),
-                    preview_lines.join("\n")
+                    preview_lines.join("\n"), warning_suffix
                 )),
             );
         }
@@ -251,7 +286,7 @@ impl SmartRefactorTool {
             true,
             files,
             total_changes,
-            None, // No preview for applied changes
+            import_unsupported_warning, // Surface warning even on success when languages unsupported
         )
     }
 
@@ -361,69 +396,32 @@ impl SmartRefactorTool {
         Ok(changes)
     }
 
-    /// Parse the result from fast_refs to extract file locations
-    pub(crate) fn parse_refs_result(
-        &self,
-        refs_result: &CallToolResult,
-    ) -> Result<HashMap<String, Vec<u32>>> {
-        let mut file_locations: HashMap<String, Vec<u32>> = HashMap::new();
+}
 
-        // Extract text content from the result
-        let content = refs_result
-            .content
-            .iter()
-            .filter_map(|block| {
-                if let Ok(json_value) = serde_json::to_value(block) {
-                    json_value
-                        .get("text")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+/// Returns true if the file extension is supported for automatic import rewriting.
+/// Supported: JavaScript/TypeScript (.js/.ts/.jsx/.tsx/.mjs/.cjs), Python (.py), Rust (.rs).
+fn is_import_update_supported(path: &str) -> bool {
+    let ext = path.rsplit('.').next().unwrap_or("");
+    matches!(ext, "js" | "ts" | "tsx" | "jsx" | "mjs" | "cjs" | "py" | "rs")
+}
 
-        // Parse text output from fast_refs (format: "file_path:line_number")
-        for line in content.lines() {
-            let after_dash = line
-                .split_once(" - ")
-                .map(|(_, rest)| rest)
-                .unwrap_or_else(|| line.trim());
-
-            let mut selected: Option<(&str, &str)> = None;
-            for (idx, _) in after_dash.match_indices(':') {
-                if let Some(remainder) = after_dash.get(idx + 1..) {
-                    let trimmed = remainder.trim_start();
-                    let digit_count = trimmed.chars().take_while(|c| c.is_ascii_digit()).count();
-                    // Check if we have at least one digit after the colon
-                    if digit_count > 0 {
-                        // Looks like a line number (digits followed by optional non-digits like " (confidence: 0.95)")
-                        selected = Some(after_dash.split_at(idx));
-                        break; // Use the FIRST colon with digits, not the last
-                    }
-                }
-            }
-
-            if let Some((file_part, line_part)) = selected {
-                // Extract only the leading digits from line_part (handles suffixes like " (confidence: 0.95)")
-                let digits_only: String = line_part
-                    .trim_start_matches(':')
-                    .trim_start()
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit())
-                    .collect();
-
-                if let Ok(line_num) = digits_only.parse::<u32>() {
-                    file_locations
-                        .entry(file_part.to_string())
-                        .or_default()
-                        .push(line_num);
-                }
-            }
-        }
-
-        Ok(file_locations)
+/// Used by rename to find all locations that need to be updated.
+fn build_file_locations(
+    definitions: &[Symbol],
+    references: &[Relationship],
+) -> HashMap<String, Vec<u32>> {
+    let mut file_locations: HashMap<String, Vec<u32>> = HashMap::new();
+    for def in definitions {
+        file_locations
+            .entry(def.file_path.clone())
+            .or_default()
+            .push(def.start_line);
     }
+    for rel in references {
+        file_locations
+            .entry(rel.file_path.clone())
+            .or_default()
+            .push(rel.line_number);
+    }
+    file_locations
 }

@@ -8,12 +8,22 @@ pub struct DaemonPaths {
 }
 
 impl DaemonPaths {
-    /// Create with default home (~/.julie/)
-    pub fn new() -> Self {
-        let home = dirs::home_dir().expect("Could not determine home directory");
-        Self {
+    /// Create with default home (~/.julie/), returning Err if home dir cannot be determined.
+    pub fn try_new() -> Result<Self, std::io::Error> {
+        let home = dirs::home_dir().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Could not determine home directory",
+            )
+        })?;
+        Ok(Self {
             julie_home: home.join(".julie"),
-        }
+        })
+    }
+
+    /// Create with default home (~/.julie/). Panics if home directory cannot be determined.
+    pub fn new() -> Self {
+        Self::try_new().expect("Could not determine home directory")
     }
 
     /// Create with explicit home (for testing or JULIE_HOME override)
@@ -74,10 +84,15 @@ impl DaemonPaths {
         }
         #[cfg(windows)]
         {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::hash::DefaultHasher::new();
-            self.julie_home.hash(&mut hasher);
-            let hash = hasher.finish();
+            // FNV-1a hash of the path bytes — stable across Rust versions.
+            // std::hash::DefaultHasher is explicitly unstable and may produce
+            // different values across compiler versions.
+            let path_str = self.julie_home.to_string_lossy();
+            let mut hash: u64 = 14695981039346656037;
+            for byte in path_str.as_bytes() {
+                hash ^= *byte as u64;
+                hash = hash.wrapping_mul(1099511628211);
+            }
             PathBuf::from(format!(r"\\.\pipe\julie-daemon-{:016x}", hash))
         }
     }

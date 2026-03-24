@@ -370,10 +370,17 @@ impl JulieWorkspace {
             if julie_dir.exists() && julie_dir.is_dir() {
                 // Skip the global ~/.julie/ config dir — it's not a workspace
                 let is_global = global_julie_home.as_ref().map_or(false, |home| {
-                    julie_dir
+                    let julie_canon = julie_dir
                         .canonicalize()
-                        .unwrap_or_else(|_| julie_dir.clone())
-                        == home.canonicalize().unwrap_or_else(|_| home.clone())
+                        .unwrap_or_else(|_| julie_dir.clone());
+                    let home_canon = home.canonicalize().unwrap_or_else(|_| home.clone());
+                    // macOS has a case-insensitive FS by default; compare with lowercased paths.
+                    if cfg!(target_os = "macos") {
+                        julie_canon.to_string_lossy().to_lowercase()
+                            == home_canon.to_string_lossy().to_lowercase()
+                    } else {
+                        julie_canon == home_canon
+                    }
                 });
                 if is_global {
                     debug!(
@@ -764,18 +771,18 @@ impl WorkspaceHealth {
     }
 
     fn check_disk_space(&mut self, julie_dir: &Path) -> Result<()> {
-        // Simple check - try to get available space
-        // This is a basic implementation, could be enhanced with statvfs on Unix
-        match fs::metadata(julie_dir) {
-            Ok(_) => {
-                self.disk_space_mb = 1000; // Placeholder - assume we have space
+        let path = if julie_dir.exists() { julie_dir } else if let Some(p) = julie_dir.parent() { p } else { julie_dir };
+        match fs2::available_space(path) {
+            Ok(bytes) => {
+                self.disk_space_mb = bytes / (1024 * 1024);
                 if self.disk_space_mb < 100 {
                     self.warnings
-                        .push("Low disk space (< 100MB available)".to_string());
+                        .push(format!("Low disk space: only {}MB available", self.disk_space_mb));
                 }
             }
             Err(e) => {
-                self.errors
+                // Non-fatal: log it but don't fail the health check
+                self.warnings
                     .push(format!("Could not check disk space: {}", e));
             }
         }

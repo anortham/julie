@@ -150,14 +150,23 @@ mod windows {
         ///
         /// Waits for a client to connect, then swaps in a fresh pipe instance
         /// for the next caller and returns the connected one.
+        ///
+        /// The replacement pipe is created BEFORE waiting for a client so that
+        /// a failed `create()` leaves the listener in a consistent state — the
+        /// original (listening) instance is still in `next_server` and a retry
+        /// is safe. Creating after `connect()` would leave `next_server` holding
+        /// a connected (not listening) pipe if `create()` then failed.
         pub async fn accept(&self) -> io::Result<IpcStream> {
             let mut guard = self.next_server.lock().await;
+
+            // Create the replacement instance before blocking on connect(), so a
+            // failed create() does not corrupt the listener state.
+            let replacement = ServerOptions::new().create(&self.pipe_name)?;
+
             guard.connect().await?;
             debug!("Accepted IPC connection on: {}", self.pipe_name.display());
 
-            // Replace with a fresh instance for the next accept()
-            let connected =
-                std::mem::replace(&mut *guard, ServerOptions::new().create(&self.pipe_name)?);
+            let connected = std::mem::replace(&mut *guard, replacement);
             Ok(connected)
         }
 

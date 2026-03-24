@@ -102,9 +102,6 @@ pub async fn handle_file_created_or_modified_static(
             }
         };
 
-        // DEFENSIVE: Rollback any leaked transaction before starting new one
-        let _ = db_lock.rollback_transaction();
-
         let existing_symbols = db_lock.get_symbols_for_file(&relative_path)?;
 
         // Safeguard against data loss

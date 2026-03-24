@@ -76,7 +76,11 @@ pub struct ManageWorkspaceTool {
     pub path: Option<String>,
 
     /// Force complete re-indexing (used by: index, refresh)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_bool_lenient"
+    )]
     pub force: Option<bool>,
 
     /// Display name for workspace (used by: add)
@@ -88,7 +92,11 @@ pub struct ManageWorkspaceTool {
     pub workspace_id: Option<String>,
 
     /// Include detailed diagnostics (used by: health)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_bool_lenient"
+    )]
     pub detailed: Option<bool>,
 }
 

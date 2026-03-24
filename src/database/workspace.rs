@@ -40,25 +40,25 @@ impl SymbolDatabase {
 
     /// Get workspace usage statistics
     pub fn get_workspace_usage_stats(&self, workspace_id: &str) -> Result<WorkspaceUsageStats> {
-        let mut stmt = self.conn.prepare(
-            "SELECT
-                COUNT(DISTINCT s.id) as symbol_count,
-                COUNT(DISTINCT f.path) as file_count,
-                COALESCE(SUM(f.size), 0) as total_size_bytes
-             FROM symbols s
-             CROSS JOIN files f",
+        // Use separate COUNT queries to avoid the CROSS JOIN cartesian product bug.
+        // A CROSS JOIN of symbols × files produces symbol_count × file_count rows,
+        // which inflates both counts and SUM(size) catastrophically on large workspaces.
+        let symbol_count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
+
+        let (file_count, total_size_bytes): (i64, i64) = self.conn.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
 
-        let stats = stmt.query_row([], |row| {
-            Ok(WorkspaceUsageStats {
-                workspace_id: workspace_id.to_string(),
-                symbol_count: row.get("symbol_count").unwrap_or(0),
-                file_count: row.get("file_count").unwrap_or(0),
-                total_size_bytes: row.get("total_size_bytes").unwrap_or(0),
-            })
-        })?;
-
-        Ok(stats)
+        Ok(WorkspaceUsageStats {
+            workspace_id: workspace_id.to_string(),
+            symbol_count,
+            file_count,
+            total_size_bytes,
+        })
     }
 
     /// Get last activity time for this workspace
@@ -67,11 +67,11 @@ impl SymbolDatabase {
         let result = self.conn.query_row(
             "SELECT MAX(last_modified) as last_activity FROM files",
             [],
-            |row| row.get(0),
+            |row| row.get::<_, Option<i64>>(0),
         );
 
         match result {
-            Ok(time) => Ok(Some(time)),
+            Ok(time) => Ok(time),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(anyhow!("Database error: {}", e)),
         }

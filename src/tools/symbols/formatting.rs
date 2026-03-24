@@ -11,15 +11,28 @@ use crate::extractors::base::Symbol;
 ///
 /// This format is optimal for AI agents that can read code directly.
 /// Returns code bodies separated by blank lines with a minimal file header.
+const FORMAT_CODE_CHAR_LIMIT: usize = 50_000;
+
 fn format_code_output(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
     let mut output = String::new();
 
     // Minimal file header
     output.push_str(&format!("// === {} ===\n\n", file_path));
 
-    // Extract code from each symbol
+    // Extract code from each symbol, stopping at the character cap
+    let mut truncated = false;
     for (i, symbol) in symbols.iter().enumerate() {
         if let Some(code) = &symbol.code_context {
+            if output.len() + code.len() > FORMAT_CODE_CHAR_LIMIT {
+                output.push_str(&format!(
+                    "\n// ... truncated ({} of {} symbols shown — output exceeded {} chars)",
+                    i,
+                    symbols.len(),
+                    FORMAT_CODE_CHAR_LIMIT
+                ));
+                truncated = true;
+                break;
+            }
             output.push_str(code);
             // Add separator between symbols (but not after the last one)
             if i < symbols.len() - 1 {
@@ -29,7 +42,11 @@ fn format_code_output(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
     }
 
     // Trim trailing whitespace but ensure single newline at end
-    let output = output.trim_end().to_string() + "\n";
+    let output = if truncated {
+        output + "\n"
+    } else {
+        output.trim_end().to_string() + "\n"
+    };
 
     CallToolResult::text_content(vec![Content::text(output)])
 }

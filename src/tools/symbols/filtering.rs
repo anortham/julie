@@ -129,16 +129,19 @@ fn target_indices(all_symbols: &[Symbol], candidate_indices: &[usize], target: &
     }
 
     // Collect matched symbols + their descendants (restricted to candidate set)
-    let mut result = Vec::new();
+    let mut result_set: HashSet<usize> = HashSet::new();
     for &idx in &matching {
-        result.push(idx);
+        result_set.insert(idx);
         add_descendants_within(
             &all_symbols[idx].id,
             all_symbols,
             &candidate_set,
-            &mut result,
+            &mut result_set,
         );
     }
+
+    let mut result: Vec<usize> = result_set.into_iter().collect();
+    result.sort_unstable();
 
     debug!(
         "After target='{}' filtering: {} symbols",
@@ -154,15 +157,14 @@ fn add_descendants_within(
     parent_id: &str,
     symbols: &[Symbol],
     allowed: &HashSet<usize>,
-    result: &mut Vec<usize>,
+    result: &mut HashSet<usize>,
 ) {
     for (idx, symbol) in symbols.iter().enumerate() {
         if !allowed.contains(&idx) {
             continue;
         }
         if let Some(ref pid) = symbol.parent_id {
-            if pid == parent_id && !result.contains(&idx) {
-                result.push(idx);
+            if pid == parent_id && result.insert(idx) {
                 add_descendants_within(&symbol.id, symbols, allowed, result);
             }
         }
@@ -192,7 +194,7 @@ fn limit_indices(
 
     // Keep first `limit` top-level symbols
     let kept_top: &[usize] = &top_level[..limit_usize];
-    let mut result: Vec<usize> = kept_top.to_vec();
+    let mut result_set: HashSet<usize> = kept_top.iter().copied().collect();
 
     // Add descendants of those top-level symbols (only from candidate set)
     let candidate_set: HashSet<usize> = candidate_indices.iter().copied().collect();
@@ -201,7 +203,10 @@ fn limit_indices(
         .map(|&idx| all_symbols[idx].id.clone())
         .collect();
 
-    add_all_descendants_within(&top_ids, all_symbols, &candidate_set, &mut result);
+    add_all_descendants_within(&top_ids, all_symbols, &candidate_set, &mut result_set);
+
+    let mut result: Vec<usize> = result_set.into_iter().collect();
+    result.sort_unstable();
 
     tracing::info!(
         "Truncating to {} top-level symbols (total {} with children)",
@@ -209,7 +214,6 @@ fn limit_indices(
         result.len()
     );
 
-    result.sort();
     (result, true)
 }
 
@@ -218,24 +222,22 @@ fn add_all_descendants_within(
     parent_ids: &HashSet<String>,
     symbols: &[Symbol],
     allowed: &HashSet<usize>,
-    result: &mut Vec<usize>,
+    result: &mut HashSet<usize>,
 ) {
     let mut to_process: Vec<String> = parent_ids.iter().cloned().collect();
-    let mut processed = HashSet::new();
+    let mut processed: HashSet<String> = HashSet::new();
 
     while let Some(parent_id) = to_process.pop() {
-        if processed.contains(&parent_id) {
+        if !processed.insert(parent_id.clone()) {
             continue;
         }
-        processed.insert(parent_id.clone());
 
         for (idx, symbol) in symbols.iter().enumerate() {
             if !allowed.contains(&idx) {
                 continue;
             }
             if let Some(ref pid) = symbol.parent_id {
-                if pid == &parent_id && !result.contains(&idx) {
-                    result.push(idx);
+                if pid == &parent_id && result.insert(idx) {
                     to_process.push(symbol.id.clone());
                 }
             }

@@ -11,12 +11,20 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+/// Internal state guarded by the Mutex.
+#[derive(Debug)]
+struct LogState {
+    file: Option<File>,
+    /// Date string (YYYY-MM-DD) of the currently-open file, for midnight rotation.
+    date: String,
+}
+
 /// Writes formatted log lines to a project's `.julie/logs/` directory.
 /// Thread-safe via interior Mutex on the file handle.
 #[derive(Debug)]
 pub struct ProjectLog {
     log_dir: PathBuf,
-    file: Mutex<Option<File>>,
+    state: Mutex<LogState>,
 }
 
 impl ProjectLog {
@@ -26,11 +34,12 @@ impl ProjectLog {
         let log_dir = workspace_root.join(".julie").join("logs");
         let _ = fs::create_dir_all(&log_dir);
 
-        let file = Self::open_today(&log_dir);
+        let today = Self::today_date();
+        let file = Self::open_for_date(&log_dir, &today);
 
         Self {
             log_dir,
-            file: Mutex::new(file),
+            state: Mutex::new(LogState { file, date: today }),
         }
     }
 
@@ -38,13 +47,18 @@ impl ProjectLog {
     pub fn log(&self, level: &str, message: &str) {
         let timestamp = Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z");
         let line = format!("{} {:>5} {}\n", timestamp, level, message);
+        let today = Self::today_date();
 
-        if let Ok(mut guard) = self.file.lock() {
-            if guard.is_none() {
-                *guard = Self::open_today(&self.log_dir);
+        if let Ok(mut state) = self.state.lock() {
+            // Rotate at midnight: re-open when the date has changed.
+            if state.date != today {
+                state.file = Self::open_for_date(&self.log_dir, &today);
+                state.date = today;
+            } else if state.file.is_none() {
+                state.file = Self::open_for_date(&self.log_dir, &state.date);
             }
 
-            if let Some(ref mut f) = *guard {
+            if let Some(ref mut f) = state.file {
                 let _ = f.write_all(line.as_bytes());
                 let _ = f.flush();
             }
@@ -83,12 +97,12 @@ impl ProjectLog {
         self.log("INFO", &format!("indexing: {}", message));
     }
 
-    fn today_filename() -> String {
-        format!("julie.log.{}", Local::now().format("%Y-%m-%d"))
+    fn today_date() -> String {
+        Local::now().format("%Y-%m-%d").to_string()
     }
 
-    fn open_today(log_dir: &Path) -> Option<File> {
-        let path = log_dir.join(Self::today_filename());
+    fn open_for_date(log_dir: &Path, date: &str) -> Option<File> {
+        let path = log_dir.join(format!("julie.log.{}", date));
         OpenOptions::new()
             .create(true)
             .append(true)

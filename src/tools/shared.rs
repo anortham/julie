@@ -20,6 +20,15 @@ impl<T> OptimizedResponse<T> {
             total_found,
         }
     }
+
+    /// Create a response where the total found differs from the result count
+    /// (i.e., results were truncated to a limit). Used to produce "showing X of Y" output.
+    pub fn with_total(results: Vec<T>, total_found: usize) -> Self {
+        Self {
+            results,
+            total_found,
+        }
+    }
 }
 
 /// Blacklisted file extensions - binary and temporary files to exclude from indexing

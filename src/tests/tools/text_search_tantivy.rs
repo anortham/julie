@@ -51,7 +51,7 @@ pub fn get_user(id: u32) -> User {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Now call text_search_impl directly
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "get_user",
         &None,
         &None,
@@ -122,7 +122,7 @@ export function process_data(data: string): string {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Search for Rust only
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "process_data",
         &Some("rust".to_string()),
         &None,
@@ -198,7 +198,7 @@ pub fn helper() {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Search for files matching "src/**" pattern
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "helper",
         &None,
         &Some("src/**".to_string()),
@@ -260,7 +260,7 @@ pub fn get_user(id: u32) -> User {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Search for something that doesn't exist
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "nonexistent_function_xyz_abc_def",
         &None,
         &None,
@@ -322,7 +322,7 @@ pub fn search_term_six() { }
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Search with limit of 2
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "search_term",
         &None,
         &None,
@@ -388,7 +388,7 @@ pub fn example() {
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Search for content
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "unique content",
         &None,
         &None,
@@ -500,8 +500,8 @@ pub fn lookup_user_profile(id: u32) -> String {
     start_barrier.wait().await;
 
     let (result_a, result_b) = tokio::join!(task_a, task_b);
-    let (results_a, _) = result_a??;
-    let (results_b, _) = result_b??;
+    let (results_a, _, _) = result_a??;
+    let (results_b, _, _) = result_b??;
 
     assert!(
         results_a
@@ -614,7 +614,7 @@ async fn test_exclude_tests_explicit_true_filters_test_symbols() -> Result<()> {
 
     // Use an NL-like query so the intent is clear, but force exclude via Some(true)
     // because the smart default for definitions search is to always include tests.
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "process payment",
         &None,
         &None,
@@ -652,7 +652,7 @@ async fn test_exclude_tests_explicit_override_includes_tests() -> Result<()> {
         setup_workspace_with_test_and_prod_symbols().await?;
 
     // Explicit Some(false) must include test symbols regardless of query shape.
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "process payment",
         &None,
         &None,
@@ -684,7 +684,7 @@ async fn test_definition_search_includes_tests_by_default() -> Result<()> {
         setup_workspace_with_test_and_prod_symbols().await?;
 
     // Search directly by identifier name — not NL-like (single term / underscore).
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "test_process_payment",
         &None,
         &None,
@@ -715,7 +715,7 @@ async fn test_exclude_tests_explicit_true_filters_for_definitions() -> Result<()
     let (_workspace_path, _temp_dir, handler) =
         setup_workspace_with_test_and_prod_symbols().await?;
 
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "test_process_payment",
         &None,
         &None,
@@ -786,7 +786,7 @@ async fn test_exclude_tests_path_based_excludes_interface_from_test_file() -> Re
 
     // Query "PaymentGateway" matches both MockPaymentGateway (test) and PaymentGateway (prod).
     // With exclude_tests=true: only the production symbol should appear.
-    let (results, _relaxed) = crate::tools::search::text_search::text_search_impl(
+    let (results, _relaxed, _) = crate::tools::search::text_search::text_search_impl(
         "PaymentGateway",
         &None,
         &None,

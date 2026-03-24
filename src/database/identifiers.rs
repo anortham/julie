@@ -102,28 +102,33 @@ impl SymbolDatabase {
     /// Find all identifiers matching any of the given names or their qualified forms.
     /// Matches both exact names ("CodeTokenizer") and qualified calls ("CodeTokenizer::new").
     /// Uses idx_identifiers_name index for exact matches; LIKE for prefix matches.
+    /// Chunked in batches of 166 names (each name uses 3 bind params: exact + 2 prefix patterns).
     pub fn get_identifiers_by_names(&self, names: &[String]) -> Result<Vec<IdentifierRef>> {
         if names.is_empty() {
             return Ok(Vec::new());
         }
 
-        let (where_clause, params) = build_name_match_clause(names);
-        let query = format!(
-            "SELECT {} FROM identifiers WHERE {}",
-            IDENTIFIER_REF_COLUMNS, where_clause
-        );
-
-        let mut stmt = self.conn.prepare(&query)?;
-        let param_refs: Vec<&dyn rusqlite::ToSql> = params
-            .iter()
-            .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
-            .collect();
-
-        let rows = stmt.query_map(&param_refs[..], |row| self.row_to_identifier_ref(row))?;
-
+        // Each name produces 3 bind params (1 exact + 2 prefix LIKE patterns).
+        // Chunk at 166 names to stay comfortably under the 999-param limit.
+        const MAX_NAMES_PER_CHUNK: usize = 166;
         let mut results = Vec::new();
-        for row_result in rows {
-            results.push(row_result?);
+
+        for chunk in names.chunks(MAX_NAMES_PER_CHUNK) {
+            let chunk_vec: Vec<String> = chunk.to_vec();
+            let (where_clause, params) = build_name_match_clause(&chunk_vec);
+            let query = format!(
+                "SELECT {} FROM identifiers WHERE {}",
+                IDENTIFIER_REF_COLUMNS, where_clause
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+            let param_refs: Vec<&dyn rusqlite::ToSql> =
+                params.iter().map(|p| p.as_ref() as &dyn rusqlite::ToSql).collect();
+
+            let rows = stmt.query_map(&param_refs[..], |row| self.row_to_identifier_ref(row))?;
+            for row in rows {
+                results.push(row?);
+            }
         }
 
         debug!(
@@ -205,6 +210,7 @@ impl SymbolDatabase {
 
     /// Find identifiers matching any of the given names or qualified forms, filtered by kind.
     /// Used for reference_kind filtering in fast_refs.
+    /// Chunked in batches of 165 names (3 params per name + 1 for kind = 496 params per chunk).
     pub fn get_identifiers_by_names_and_kind(
         &self,
         names: &[String],
@@ -214,26 +220,30 @@ impl SymbolDatabase {
             return Ok(Vec::new());
         }
 
-        let (where_clause, mut params) = build_name_match_clause(names);
-        let kind_idx = params.len() + 1;
-        params.push(Box::new(kind.to_string()));
-
-        let query = format!(
-            "SELECT {} FROM identifiers WHERE {} AND kind = ?{}",
-            IDENTIFIER_REF_COLUMNS, where_clause, kind_idx
-        );
-
-        let mut stmt = self.conn.prepare(&query)?;
-        let param_refs: Vec<&dyn rusqlite::ToSql> = params
-            .iter()
-            .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
-            .collect();
-
-        let rows = stmt.query_map(&param_refs[..], |row| self.row_to_identifier_ref(row))?;
-
+        // Each name uses 3 params; one extra slot for the kind filter.
+        // 165 names × 3 + 1 = 496 params per chunk, safely under the 999-param limit.
+        const MAX_NAMES_PER_CHUNK: usize = 165;
         let mut results = Vec::new();
-        for row_result in rows {
-            results.push(row_result?);
+
+        for chunk in names.chunks(MAX_NAMES_PER_CHUNK) {
+            let chunk_vec: Vec<String> = chunk.to_vec();
+            let (where_clause, mut params) = build_name_match_clause(&chunk_vec);
+            let kind_idx = params.len() + 1;
+            params.push(Box::new(kind.to_string()));
+
+            let query = format!(
+                "SELECT {} FROM identifiers WHERE {} AND kind = ?{}",
+                IDENTIFIER_REF_COLUMNS, where_clause, kind_idx
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+            let param_refs: Vec<&dyn rusqlite::ToSql> =
+                params.iter().map(|p| p.as_ref() as &dyn rusqlite::ToSql).collect();
+
+            let rows = stmt.query_map(&param_refs[..], |row| self.row_to_identifier_ref(row))?;
+            for row in rows {
+                results.push(row?);
+            }
         }
 
         debug!(
@@ -249,6 +259,7 @@ impl SymbolDatabase {
     ///
     /// Returns a HashSet of (file_path, name) pairs that exist in the identifiers table.
     /// Used by the resolver to detect if a caller file references a candidate's parent type.
+    /// Chunked in batches of 250 per axis (250 files × 250 names = 500 params per query).
     pub fn get_identifier_presence(
         &self,
         file_paths: &[&str],
@@ -258,40 +269,48 @@ impl SymbolDatabase {
             return Ok(HashSet::new());
         }
 
-        let file_placeholders: String = (1..=file_paths.len())
-            .map(|i| format!("?{}", i))
-            .collect::<Vec<_>>()
-            .join(",");
-        let name_offset = file_paths.len();
-        let name_placeholders: String = (1..=names.len())
-            .map(|i| format!("?{}", name_offset + i))
-            .collect::<Vec<_>>()
-            .join(",");
-
-        let query = format!(
-            "SELECT DISTINCT file_path, name FROM identifiers \
-             WHERE file_path IN ({}) AND name IN ({})",
-            file_placeholders, name_placeholders
-        );
-
-        let mut stmt = self.conn.prepare(&query)?;
-
-        let mut params: Vec<&dyn rusqlite::types::ToSql> = Vec::new();
-        for fp in file_paths {
-            params.push(fp as &dyn rusqlite::types::ToSql);
-        }
-        for n in names {
-            params.push(n as &dyn rusqlite::types::ToSql);
-        }
-
+        // Each query uses file_chunk.len() + name_chunk.len() bind params.
+        // Keep total under 500 with 250 per axis.
+        const AXIS_CHUNK: usize = 250;
         let mut results = HashSet::new();
-        let rows = stmt.query_map(&*params, |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
 
-        for row in rows {
-            let (file_path, name) = row?;
-            results.insert((file_path, name));
+        for file_chunk in file_paths.chunks(AXIS_CHUNK) {
+            for name_chunk in names.chunks(AXIS_CHUNK) {
+                let file_placeholders: String = (1..=file_chunk.len())
+                    .map(|i| format!("?{}", i))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let name_offset = file_chunk.len();
+                let name_placeholders: String = (1..=name_chunk.len())
+                    .map(|i| format!("?{}", name_offset + i))
+                    .collect::<Vec<_>>()
+                    .join(",");
+
+                let query = format!(
+                    "SELECT DISTINCT file_path, name FROM identifiers \
+                     WHERE file_path IN ({}) AND name IN ({})",
+                    file_placeholders, name_placeholders
+                );
+
+                let mut stmt = self.conn.prepare(&query)?;
+
+                let mut params: Vec<&dyn rusqlite::types::ToSql> = Vec::new();
+                for fp in file_chunk {
+                    params.push(fp as &dyn rusqlite::types::ToSql);
+                }
+                for n in name_chunk {
+                    params.push(n as &dyn rusqlite::types::ToSql);
+                }
+
+                let rows = stmt.query_map(&*params, |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?;
+
+                for row in rows {
+                    let (file_path, name) = row?;
+                    results.insert((file_path, name));
+                }
+            }
         }
 
         debug!(
@@ -307,32 +326,34 @@ impl SymbolDatabase {
     ///
     /// Used to distinguish "we checked and found no match" from "we have no data"
     /// when applying negative filtering for phantom call edges.
+    /// Chunked in batches of 500 to stay within SQLite's bind parameter limit.
     pub fn has_identifiers_for_files(&self, file_paths: &[&str]) -> Result<HashSet<String>> {
         if file_paths.is_empty() {
             return Ok(HashSet::new());
         }
 
-        let placeholders: String = (1..=file_paths.len())
-            .map(|i| format!("?{}", i))
-            .collect::<Vec<_>>()
-            .join(",");
-
-        let query = format!(
-            "SELECT DISTINCT file_path FROM identifiers WHERE file_path IN ({})",
-            placeholders
-        );
-
-        let mut stmt = self.conn.prepare(&query)?;
-        let params: Vec<&dyn rusqlite::types::ToSql> = file_paths
-            .iter()
-            .map(|fp| fp as &dyn rusqlite::types::ToSql)
-            .collect();
-
+        const CHUNK_SIZE: usize = 500;
         let mut results = HashSet::new();
-        let rows = stmt.query_map(&*params, |row| row.get::<_, String>(0))?;
 
-        for row in rows {
-            results.insert(row?);
+        for chunk in file_paths.chunks(CHUNK_SIZE) {
+            let placeholders: String = (1..=chunk.len())
+                .map(|i| format!("?{}", i))
+                .collect::<Vec<_>>()
+                .join(",");
+
+            let query = format!(
+                "SELECT DISTINCT file_path FROM identifiers WHERE file_path IN ({})",
+                placeholders
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+            let params: Vec<&dyn rusqlite::types::ToSql> =
+                chunk.iter().map(|fp| fp as &dyn rusqlite::types::ToSql).collect();
+
+            let rows = stmt.query_map(&*params, |row| row.get::<_, String>(0))?;
+            for row in rows {
+                results.insert(row?);
+            }
         }
 
         Ok(results)

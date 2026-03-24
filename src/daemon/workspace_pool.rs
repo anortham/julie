@@ -93,7 +93,9 @@ impl WorkspacePool {
 
         if let Some(ws) = cached_ws {
             if let Some(ref db) = self.daemon_db {
-                let _ = db.increment_session_count(workspace_id);
+                let db = Arc::clone(db);
+                let id = workspace_id.to_string();
+                tokio::task::spawn_blocking(move || { let _ = db.increment_session_count(&id); });
             }
             if let Some(ref wp) = self.watcher_pool {
                 let provider = self.shared_embedding_provider();
@@ -115,7 +117,9 @@ impl WorkspacePool {
             let ws = Arc::clone(&entry.workspace);
             drop(guard);
             if let Some(ref db) = self.daemon_db {
-                let _ = db.increment_session_count(workspace_id);
+                let db = Arc::clone(db);
+                let id = workspace_id.to_string();
+                tokio::task::spawn_blocking(move || { let _ = db.increment_session_count(&id); });
             }
             if let Some(ref wp) = self.watcher_pool {
                 let provider = self.shared_embedding_provider();
@@ -150,7 +154,9 @@ impl WorkspacePool {
 
         // Increment only after successful init — safe to count now.
         if let Some(ref db) = self.daemon_db {
-            let _ = db.increment_session_count(workspace_id);
+            let db = Arc::clone(db);
+            let id = workspace_id.to_string();
+            tokio::task::spawn_blocking(move || { let _ = db.increment_session_count(&id); });
         }
 
         let ws = Arc::new(workspace);
@@ -217,7 +223,9 @@ impl WorkspacePool {
     /// decrement starts the grace period when the last session disconnects.
     pub async fn disconnect_session(&self, workspace_id: &str) {
         if let Some(ref db) = self.daemon_db {
-            let _ = db.decrement_session_count(workspace_id);
+            let db = Arc::clone(db);
+            let id = workspace_id.to_string();
+            tokio::task::spawn_blocking(move || { let _ = db.decrement_session_count(&id); });
         }
         if let Some(ref wp) = self.watcher_pool {
             wp.detach(workspace_id).await;

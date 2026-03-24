@@ -47,13 +47,15 @@ pub fn find_similar_by_query(
     let symbol_ids: Vec<String> = filtered.iter().map(|(id, _)| id.clone()).collect();
 
     let symbols = db.get_symbols_by_ids(&symbol_ids)?;
+    let symbol_map: HashMap<&str, &Symbol> =
+        symbols.iter().map(|s| (s.id.as_str(), s)).collect();
 
     let mut entries = Vec::new();
     for id in &symbol_ids {
-        if let Some(sym) = symbols.iter().find(|s| &s.id == id) {
+        if let Some(sym) = symbol_map.get(id.as_str()) {
             let distance = distances.get(id).copied().unwrap_or(1.0);
             entries.push(SimilarEntry {
-                symbol: sym.clone(),
+                symbol: (*sym).clone(),
                 score: (1.0 - distance) as f32,
             });
         }
@@ -98,14 +100,16 @@ pub fn find_similar_symbols(
 
     // Step 4: Fetch full symbols
     let symbols = db.get_symbols_by_ids(&symbol_ids)?;
+    let symbol_map: HashMap<&str, &Symbol> =
+        symbols.iter().map(|s| (s.id.as_str(), s)).collect();
 
     // Step 5: Build entries in KNN order
     let mut entries = Vec::new();
     for id in &symbol_ids {
-        if let Some(sym) = symbols.iter().find(|s| &s.id == id) {
+        if let Some(sym) = symbol_map.get(id.as_str()) {
             let distance = distances.get(id).copied().unwrap_or(1.0);
             entries.push(SimilarEntry {
-                symbol: sym.clone(),
+                symbol: (*sym).clone(),
                 score: (1.0 - distance) as f32,
             });
         }

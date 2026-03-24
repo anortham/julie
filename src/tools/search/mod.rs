@@ -67,7 +67,10 @@ pub struct FastSearchTool {
     /// Exclude test symbols from results.
     /// Default: auto (excludes for NL queries, includes for definition searches).
     /// Set explicitly to override.
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::utils::serde_lenient::deserialize_option_bool_lenient"
+    )]
     pub exclude_tests: Option<bool>,
     /// Workspace filter: "primary" (default) or a reference workspace ID
     #[serde(default = "default_workspace")]
@@ -168,7 +171,7 @@ impl FastSearchTool {
             }
             WorkspaceTarget::Reference(id) => Some(vec![id]),
         };
-        let (symbols, relaxed) = text_search::text_search_impl(
+        let (symbols, relaxed, pre_trunc_total) = text_search::text_search_impl(
             &self.query,
             &self.language,
             &self.file_pattern,
@@ -183,13 +186,12 @@ impl FastSearchTool {
 
         let symbols = formatting::truncate_code_context(symbols, self.context_lines);
 
-        let mut optimized = OptimizedResponse::new(symbols);
-        optimized.results.truncate(self.limit as usize);
+        let optimized = OptimizedResponse::with_total(symbols, pre_trunc_total);
 
         if optimized.results.is_empty() {
             let message = format!(
-                "🔍 No results found for: '{}'\n\
-                💡 Try search_target=\"content\" for line-level search, or a broader query",
+                "No results found for: '{}'\n\
+                Try search_target=\"content\" for line-level search, or a broader query",
                 self.query
             );
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));

@@ -207,9 +207,9 @@ pub fn compute_change_risk_scores(db: &SymbolDatabase) -> Result<ChangeRiskStats
                 None => serde_json::json!({}),
             };
 
-            meta.as_object_mut()
-                .unwrap()
-                .insert("change_risk".to_string(), risk_data);
+            if let Some(obj) = meta.as_object_mut() {
+                obj.insert("change_risk".to_string(), risk_data);
+            }
 
             db.conn.execute(
                 "UPDATE symbols SET metadata = ?1 WHERE id = ?2",

@@ -233,10 +233,6 @@ pub(crate) fn is_non_code_path(path: &str) -> bool {
     path.starts_with(".memories/")
         || is_docs_path(path)
         || path.ends_with(".md")
-        || path.ends_with(".toml")
-        || path.ends_with(".json")
-        || path.ends_with(".yaml")
-        || path.ends_with(".yml")
 }
 
 /// Check if a file is in an auxiliary code path (examples, benchmarks, scripts,

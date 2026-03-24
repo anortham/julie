@@ -250,30 +250,33 @@ impl SymbolDatabase {
             return Ok((vec![], vec![]));
         }
 
-        let mut parents = Vec::new();
-        let mut children = Vec::new();
+        // Batch query 1: all outgoing relationships for the type symbols (finds parents)
+        let outgoing_rels = self.get_outgoing_relationships_for_symbols(&type_symbol_ids)?;
+        let parent_ids: Vec<String> = outgoing_rels
+            .iter()
+            .filter(|r| matches!(r.kind, crate::extractors::RelationshipKind::Extends))
+            .map(|r| r.to_symbol_id.clone())
+            .collect();
 
-        for symbol_id in type_symbol_ids {
-            // Find parent types (this type extends FROM them)
-            let parent_rels = self.get_outgoing_relationships(&symbol_id)?;
-            for rel in parent_rels {
-                if matches!(rel.kind, crate::extractors::RelationshipKind::Extends) {
-                    if let Ok(Some(parent)) = self.get_symbol_by_id(&rel.to_symbol_id) {
-                        parents.push(parent);
-                    }
-                }
-            }
+        // Batch query 2: all incoming relationships for the type symbols (finds children)
+        let incoming_rels = self.get_relationships_to_symbols(&type_symbol_ids)?;
+        let child_ids: Vec<String> = incoming_rels
+            .iter()
+            .filter(|r| matches!(r.kind, crate::extractors::RelationshipKind::Extends))
+            .map(|r| r.from_symbol_id.clone())
+            .collect();
 
-            // Find child types (other types extend FROM this type)
-            let child_rels = self.get_relationships_to_symbol(&symbol_id)?;
-            for rel in child_rels {
-                if matches!(rel.kind, crate::extractors::RelationshipKind::Extends) {
-                    if let Ok(Some(child)) = self.get_symbol_by_id(&rel.from_symbol_id) {
-                        children.push(child);
-                    }
-                }
-            }
-        }
+        // Batch query 3+4: resolve symbol IDs to full Symbol structs
+        let parents = if parent_ids.is_empty() {
+            Vec::new()
+        } else {
+            self.get_symbols_by_ids(&parent_ids)?
+        };
+        let children = if child_ids.is_empty() {
+            Vec::new()
+        } else {
+            self.get_symbols_by_ids(&child_ids)?
+        };
 
         debug!(
             "Found {} parents and {} children for {}",

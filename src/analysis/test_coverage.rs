@@ -269,9 +269,9 @@ pub fn compute_test_coverage(db: &SymbolDatabase) -> Result<TestCoverageStats> {
                 None => serde_json::json!({}),
             };
 
-            meta.as_object_mut()
-                .unwrap()
-                .insert("test_coverage".to_string(), coverage_info);
+            if let Some(obj) = meta.as_object_mut() {
+                obj.insert("test_coverage".to_string(), coverage_info);
+            }
 
             db.conn.execute(
                 "UPDATE symbols SET metadata = ?1 WHERE id = ?2",

@@ -137,25 +137,28 @@ pub fn query_by_metrics(
         format!("WHERE {}", conditions.join(" AND "))
     };
 
-    // We fetch more than the limit to account for post-filtering by file_pattern
-    let fetch_limit = if file_pattern.is_some() {
-        limit * 5
-    } else {
-        limit
-    };
+    // When file_pattern is set, omit the SQL LIMIT so post-filtering can reach the
+    // user's requested count even for narrow globs. A fixed multiplier (e.g. 5x)
+    // fails when the glob matches only a small fraction of the total rows.
+    let use_sql_limit = file_pattern.is_none();
 
     let sql = format!(
         "SELECT name, file_path, COALESCE(start_line, 0), kind, reference_score, metadata
          FROM symbols
          {where_clause}
-         ORDER BY {order_clause}
-         LIMIT ?{}",
-        params.len() + 1
+         ORDER BY {order_clause}{}",
+        if use_sql_limit {
+            format!(" LIMIT ?{}", params.len() + 1)
+        } else {
+            String::new()
+        }
     );
 
     debug!("Metrics query SQL: {}", sql);
 
-    params.push(Box::new(fetch_limit));
+    if use_sql_limit {
+        params.push(Box::new(limit));
+    }
 
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 

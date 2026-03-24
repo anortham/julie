@@ -30,7 +30,7 @@ impl ManageWorkspaceTool {
         // PHASE 1: SQLite Database Health
         health_report.push_str("SQLite Database (Source of Truth)\n");
         let db_status = self
-            .check_database_health(&primary_workspace, detailed)
+            .check_database_health(&primary_workspace)
             .await?;
         health_report.push_str(&db_status);
         health_report.push('\n');
@@ -74,7 +74,6 @@ impl ManageWorkspaceTool {
     async fn check_database_health(
         &self,
         workspace: &crate::workspace::JulieWorkspace,
-        detailed: bool,
     ) -> Result<String> {
         let mut status = String::new();
 
@@ -126,14 +125,6 @@ impl ManageWorkspaceTool {
                             status.push_str("Embeddings: None\n");
                         }
 
-                        if detailed {
-                            status.push_str(&format!(
-                                "Detailed Metrics:\n\
-                                • Database file: {:.2} MB\n\
-                                • Query performance: Optimized with indexes\n",
-                                stats.db_size_mb
-                            ));
-                        }
                     }
                     Err(e) => {
                         status.push_str(&format!("SQLite Status: ERROR\n{}\n", e));

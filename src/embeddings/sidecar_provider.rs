@@ -289,12 +289,11 @@ impl EmbeddingProvider for SidecarEmbeddingProvider {
 
 impl Drop for SidecarEmbeddingProvider {
     fn drop(&mut self) {
+        // Drop must not block on I/O (no graceful shutdown write).
+        // Graceful shutdown is handled by the explicit shutdown() method.
         match self.process.lock() {
-            Ok(mut process) => process.shutdown_and_terminate(),
-            Err(poisoned) => {
-                let mut process = poisoned.into_inner();
-                process.terminate();
-            }
+            Ok(mut process) => process.terminate(),
+            Err(poisoned) => poisoned.into_inner().terminate(),
         }
     }
 }

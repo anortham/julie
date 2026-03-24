@@ -114,8 +114,8 @@ pub fn format_context_with_mode(data: &ContextData, output_format: OutputFormat)
 fn format_context_readable(data: &ContextData) -> String {
     if data.pivots.is_empty() {
         return format!(
-            "\u{2550}\u{2550}\u{2550} Context: \"{}\" \u{2550}\u{2550}\u{2550}\nNo relevant symbols found.\n\
-            💡 Try fast_search(query=\"{}\") for exact matches, or verify the workspace is indexed",
+            "=== Context: \"{}\" ===\nNo relevant symbols found.\n\
+            Try fast_search(query=\"{}\") for exact matches, or verify the workspace is indexed",
             data.query, data.query
         );
     }
@@ -125,7 +125,7 @@ fn format_context_readable(data: &ContextData) -> String {
     // --- Header ---
     let file_count = count_unique_files(data);
     out.push_str(&format!(
-        "\u{2550}\u{2550}\u{2550} Context: \"{}\" \u{2550}\u{2550}\u{2550}\n",
+        "=== Context: \"{}\" ===\n",
         data.query
     ));
     out.push_str(&format!(
@@ -142,7 +142,7 @@ fn format_context_readable(data: &ContextData) -> String {
     for pivot in &data.pivots {
         out.push('\n');
         out.push_str(&format!(
-            "\u{2500}\u{2500} Pivot: {} \u{2500}\u{2500}\u{2500}\n",
+            "-- Pivot: {} ---\n",
             pivot.name
         ));
         let risk_tag = pivot
@@ -196,7 +196,7 @@ fn format_context_readable(data: &ContextData) -> String {
     // --- Neighbors section ---
     if !data.neighbors.is_empty() {
         out.push('\n');
-        out.push_str("\u{2500}\u{2500} Neighbors \u{2500}\u{2500}\u{2500}\n");
+        out.push_str("-- Neighbors ---\n");
         for neighbor in &data.neighbors {
             format_neighbor(&mut out, neighbor, &data.allocation.neighbor_mode);
         }
@@ -209,7 +209,7 @@ fn format_context_compact(data: &ContextData) -> String {
     if data.pivots.is_empty() {
         return format!(
             "Context \"{}\" | no relevant symbols\n\
-            💡 Try fast_search(query=\"{}\") for exact matches, or verify the workspace is indexed",
+            Try fast_search(query=\"{}\") for exact matches, or verify the workspace is indexed",
             data.query, data.query
         );
     }
@@ -316,23 +316,23 @@ fn format_neighbor(out: &mut String, neighbor: &NeighborEntry, mode: &NeighborMo
         NeighborMode::SignatureAndDoc => {
             let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
             out.push_str(&format!(
-                "  {:<20} {}:{}   {}\n",
+                "  {} {}:{} {}\n",
                 neighbor.name, neighbor.file_path, neighbor.start_line, sig
             ));
             if let Some(doc) = &neighbor.doc_summary {
-                out.push_str(&format!("  {:<20} {}\n", "", doc));
+                out.push_str(&format!("  {}\n", doc));
             }
         }
         NeighborMode::SignatureOnly => {
             let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
             out.push_str(&format!(
-                "  {:<20} {}:{}   {}\n",
+                "  {} {}:{} {}\n",
                 neighbor.name, neighbor.file_path, neighbor.start_line, sig
             ));
         }
         NeighborMode::NameAndLocation => {
             out.push_str(&format!(
-                "  {:<20} {}:{}\n",
+                "  {} {}:{}\n",
                 neighbor.name, neighbor.file_path, neighbor.start_line
             ));
         }

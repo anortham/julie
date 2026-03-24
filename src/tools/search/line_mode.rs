@@ -330,6 +330,9 @@ fn collect_line_matches(
     strategy: &LineMatchStrategy,
     max_results: usize,
 ) {
+    if destination.len() >= max_results {
+        return;
+    }
     for (line_idx, line) in content.lines().enumerate() {
         if line_matches(strategy, line) {
             destination.push(LineMatch {

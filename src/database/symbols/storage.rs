@@ -6,8 +6,14 @@ use rusqlite::params;
 use tracing::debug;
 
 impl SymbolDatabase {
-    /// Store symbols within an existing transaction
-    /// Use this when the caller is already managing transactions (file watcher, bulk operations)
+    /// Store symbols within an existing transaction.
+    ///
+    /// This function is intentionally non-transactional: it issues individual
+    /// INSERT OR REPLACE statements without wrapping them in a transaction.
+    /// Callers are responsible for transaction management (the file watcher and
+    /// bulk operations both manage their own transactions around calls here).
+    /// Use `store_symbols_transactional` for one-off storage without an
+    /// existing transaction.
     pub fn store_symbols(&mut self, symbols: &[Symbol]) -> Result<()> {
         if symbols.is_empty() {
             return Ok(());

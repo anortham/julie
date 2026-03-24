@@ -520,23 +520,48 @@ impl SearchIndex {
         let schema = create_schema();
         let schema_fields = SchemaFields::new(&schema);
 
-        let index = match Index::builder().schema(schema.clone()).create_in_dir(path) {
-            Ok(index) => index,
-            Err(_) => {
-                let existing = Index::open_in_dir(path)?;
-                if Self::schema_is_compatible(&schema, &existing.schema()) {
-                    existing
-                } else {
-                    tracing::warn!(
-                        "Tantivy schema mismatch at {} — recreating index (data will be repopulated on next indexing)",
-                        path.display()
-                    );
-                    drop(existing);
+        let index = if path.join("meta.json").exists() {
+            // Index already exists — open and check schema compatibility
+            let existing = Index::open_in_dir(path)?;
+            if Self::schema_is_compatible(&schema, &existing.schema()) {
+                existing
+            } else {
+                tracing::warn!(
+                    "Tantivy schema mismatch at {} — recreating index (data will be repopulated on next indexing)",
+                    path.display()
+                );
+                // Acquire a file-based lock before modifying the index directory so a
+                // concurrent process doesn't observe a partially deleted directory.
+                // create_new is atomic on all supported platforms.
+                let lock_path = path.join(".recreating");
+                let _lock = match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&lock_path)
+                {
+                    Ok(f) => f,
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                        // Another process is already recreating — open whatever exists.
+                        tracing::warn!(
+                            "Concurrent index recreation detected at {} — reusing existing index",
+                            path.display()
+                        );
+                        return Self::open_or_create_with_tokenizer(path, tokenizer, language_configs);
+                    }
+                    Err(e) => return Err(e.into()),
+                };
+                drop(existing);
+                let recreate_result = (|| -> Result<Index> {
                     std::fs::remove_dir_all(path)?;
                     std::fs::create_dir_all(path)?;
-                    Index::create_in_dir(path, schema)?
-                }
+                    Ok(Index::create_in_dir(path, schema)?)
+                })();
+                let _ = std::fs::remove_file(&lock_path);
+                recreate_result?
             }
+        } else {
+            // No index yet — create it; propagates disk-full and permission errors
+            Index::builder().schema(schema.clone()).create_in_dir(path)?
         };
 
         Self::register_tokenizer(&index, tokenizer);
@@ -632,7 +657,10 @@ impl SearchIndex {
         if self.shutdown.load(Ordering::Acquire) {
             return Err(SearchError::Shutdown);
         }
-        let mut guard = self.writer.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.writer.lock().unwrap_or_else(|e| {
+            tracing::warn!("writer mutex was poisoned (a previous writer panicked); recovering");
+            e.into_inner()
+        });
         if guard.is_none() {
             // Double-check after acquiring mutex: shutdown() may have run between
             // the flag check above and the mutex acquisition, dropping the writer.
@@ -654,7 +682,10 @@ impl SearchIndex {
     pub fn shutdown(&self) -> Result<()> {
         self.shutdown.store(true, Ordering::Release);
 
-        let mut guard = self.writer.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self.writer.lock().unwrap_or_else(|e| {
+            tracing::warn!("writer mutex was poisoned during shutdown; recovering");
+            e.into_inner()
+        });
         if let Some(mut writer) = guard.take() {
             // Best-effort commit — if it fails, we still drop the writer to release the lock
             let _ = writer.commit();
@@ -769,79 +800,3 @@ impl SearchIndex {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use tempfile::TempDir;
-
-    use super::{SearchFilter, SearchIndex, SymbolDocument};
-
-    /// `search_symbols_relaxed` must apply `apply_nl_path_prior` so that source
-    /// paths rank above test paths for natural-language queries.
-    ///
-    /// Both symbols have identical content (equal BM25 scores). Without path
-    /// prior the scores are tied. With path prior the source gets a 1.08x boost
-    /// and the test path gets a 0.95x penalty, so source ranks first.
-    #[test]
-    fn test_search_symbols_relaxed_applies_nl_path_prior() {
-        let temp_dir = TempDir::new().unwrap();
-        let index = SearchIndex::create(temp_dir.path()).unwrap();
-
-        let shared_content = "handles user authentication service requests";
-
-        index
-            .add_symbol(&SymbolDocument {
-                id: "src-auth".into(),
-                name: "AuthService".into(),
-                signature: "pub struct AuthService".into(),
-                doc_comment: shared_content.into(),
-                code_body: "".into(),
-                file_path: "src/auth.rs".into(),
-                kind: "struct".into(),
-                language: "rust".into(),
-                start_line: 1,
-            })
-            .unwrap();
-
-        index
-            .add_symbol(&SymbolDocument {
-                id: "test-auth".into(),
-                name: "AuthService".into(),
-                signature: "pub struct AuthService".into(),
-                doc_comment: shared_content.into(),
-                code_body: "".into(),
-                file_path: "tests/auth_test.rs".into(),
-                kind: "struct".into(),
-                language: "rust".into(),
-                start_line: 1,
-            })
-            .unwrap();
-
-        index.commit().unwrap();
-
-        // NL query: multiple common words, no CamelCase/snake_case identifiers.
-        // `is_nl_like_query` returns true for this input.
-        let results = index
-            .search_symbols_relaxed("user authentication service", &SearchFilter::default(), 10)
-            .unwrap()
-            .results;
-
-        assert_eq!(results.len(), 2, "Both symbols should match");
-
-        let src_score = results
-            .iter()
-            .find(|r| r.file_path == "src/auth.rs")
-            .expect("source result should be present")
-            .score;
-        let test_score = results
-            .iter()
-            .find(|r| r.file_path == "tests/auth_test.rs")
-            .expect("test result should be present")
-            .score;
-
-        assert!(
-            src_score > test_score,
-            "Source path should score higher than test path after NL path prior. \
-             src={src_score}, test={test_score}"
-        );
-    }
-}

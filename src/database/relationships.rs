@@ -45,29 +45,9 @@ impl SymbolDatabase {
         Ok(relationships)
     }
 
-    /// Get all relationships for a symbol
-    pub fn get_relationships_for_symbol(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
-        let mut stmt = self.conn.prepare(
-            "
-            SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
-            FROM relationships
-            WHERE from_symbol_id = ?1
-        ",
-        )?;
-
-        let rows = stmt.query_map([symbol_id], |row| self.row_to_relationship(row))?;
-
-        let mut relationships = Vec::new();
-        for row_result in rows {
-            relationships.push(row_result?);
-        }
-
-        Ok(relationships)
-    }
-
     /// Get relationships TO a symbol (where symbol is the target/referenced)
     /// Uses indexed query on to_symbol_id for O(log n) performance
-    /// Complements get_relationships_for_symbol() which finds relationships FROM a symbol
+    /// Complements get_outgoing_relationships() which finds relationships FROM a symbol
     pub fn get_relationships_to_symbol(&self, symbol_id: &str) -> Result<Vec<Relationship>> {
         let mut stmt = self.conn.prepare(
             "
@@ -87,43 +67,40 @@ impl SymbolDatabase {
         Ok(relationships)
     }
 
-    /// Get relationships TO multiple symbols in a single batch query
-    /// PERFORMANCE FIX: Replaces N+1 query pattern with single batch query using SQL IN clause
+    /// Get relationships TO multiple symbols in a single batch query.
+    /// Chunked in batches of 500 to stay within SQLite's bind parameter limit (999).
     pub fn get_relationships_to_symbols(&self, symbol_ids: &[String]) -> Result<Vec<Relationship>> {
         if symbol_ids.is_empty() {
             return Ok(Vec::new());
         }
 
-        // Build parameterized query with IN clause for batch fetch
-        let placeholders: Vec<String> = (1..=symbol_ids.len()).map(|i| format!("?{}", i)).collect();
-        let query = format!(
-            "SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
-             FROM relationships
-             WHERE to_symbol_id IN ({})",
-            placeholders.join(", ")
-        );
-
-        let mut stmt = self.conn.prepare(&query)?;
-
-        // Convert Vec<String> to Vec<&dyn ToSql> for params
-        let params: Vec<&dyn rusqlite::ToSql> = symbol_ids
-            .iter()
-            .map(|id| id as &dyn rusqlite::ToSql)
-            .collect();
-
-        let relationship_iter = stmt.query_map(&params[..], |row| self.row_to_relationship(row))?;
-
+        const CHUNK_SIZE: usize = 500;
         let mut relationships = Vec::new();
-        for relationship_result in relationship_iter {
-            relationships.push(relationship_result?);
+
+        for chunk in symbol_ids.chunks(CHUNK_SIZE) {
+            let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
+            let query = format!(
+                "SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
+                 FROM relationships
+                 WHERE to_symbol_id IN ({})",
+                placeholders.join(", ")
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+            let params: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+
+            let rows = stmt.query_map(&params[..], |row| self.row_to_relationship(row))?;
+            for row in rows {
+                relationships.push(row?);
+            }
         }
 
         Ok(relationships)
     }
 
     /// Get relationships FROM multiple symbols in a single batch query.
-    ///
-    /// PERFORMANCE: Replaces per-symbol outgoing relationship lookups with one SQL query.
+    /// Chunked in batches of 500 to stay within SQLite's bind parameter limit (999).
     pub fn get_outgoing_relationships_for_symbols(
         &self,
         symbol_ids: &[String],
@@ -132,33 +109,34 @@ impl SymbolDatabase {
             return Ok(Vec::new());
         }
 
-        let placeholders: Vec<String> = (1..=symbol_ids.len()).map(|i| format!("?{}", i)).collect();
-        let query = format!(
-            "SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
-             FROM relationships
-             WHERE from_symbol_id IN ({})",
-            placeholders.join(", ")
-        );
-
-        let mut stmt = self.conn.prepare(&query)?;
-        let params: Vec<&dyn rusqlite::ToSql> = symbol_ids
-            .iter()
-            .map(|id| id as &dyn rusqlite::ToSql)
-            .collect();
-
-        let relationship_iter = stmt.query_map(&params[..], |row| self.row_to_relationship(row))?;
-
+        const CHUNK_SIZE: usize = 500;
         let mut relationships = Vec::new();
-        for relationship_result in relationship_iter {
-            relationships.push(relationship_result?);
+
+        for chunk in symbol_ids.chunks(CHUNK_SIZE) {
+            let placeholders: Vec<String> =
+                (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
+            let query = format!(
+                "SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
+                 FROM relationships
+                 WHERE from_symbol_id IN ({})",
+                placeholders.join(", ")
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+            let params: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+
+            let rows = stmt.query_map(&params[..], |row| self.row_to_relationship(row))?;
+            for row in rows {
+                relationships.push(row?);
+            }
         }
 
         Ok(relationships)
     }
 
-    /// Get relationships pointing TO these symbols, filtered by identifier kind
-    /// This joins with the identifiers table to filter by how symbols are used
-    /// (e.g., as types, in function calls, in imports, etc.)
+    /// Get relationships pointing TO these symbols, filtered by identifier kind.
+    /// Chunked in batches of 499 (leaves one slot for the identifier_kind param).
     pub fn get_relationships_to_symbols_filtered_by_kind(
         &self,
         symbol_ids: &[String],
@@ -168,44 +146,41 @@ impl SymbolDatabase {
             return Ok(Vec::new());
         }
 
-        // Build parameterized query with IN clause and JOIN with identifiers
-        let placeholders: Vec<String> = (1..=symbol_ids.len() + 1)
-            .map(|i| format!("?{}", i))
-            .collect();
-
-        // Join relationships with identifiers on file_path + line_number to find matching usages
-        // Use first N placeholders for symbol IDs, last placeholder for kind
-        let query = format!(
-            "SELECT DISTINCT r.id, r.from_symbol_id, r.to_symbol_id, r.kind, r.file_path, r.line_number, r.confidence, r.metadata
-             FROM relationships r
-             INNER JOIN identifiers i ON r.file_path = i.file_path AND r.line_number = i.start_line
-             WHERE r.to_symbol_id IN ({})
-               AND i.kind = ?{}",
-            placeholders[..symbol_ids.len()].join(", "),  // FIX: Use first N placeholders, not drop first!
-            symbol_ids.len() + 1
-        );
-
-        let mut stmt = self.conn.prepare(&query)?;
-
-        // Build params: symbol_ids + identifier_kind
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        for id in symbol_ids {
-            params.push(Box::new(id.clone()));
-        }
-        params.push(Box::new(identifier_kind.to_string()));
-
-        // Convert to &dyn ToSql
-        let param_refs: Vec<&dyn rusqlite::ToSql> = params
-            .iter()
-            .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
-            .collect();
-
-        let relationship_iter =
-            stmt.query_map(&param_refs[..], |row| self.row_to_relationship(row))?;
-
+        // Reserve one bind slot for identifier_kind, so symbol IDs get 499 slots per chunk.
+        const CHUNK_SIZE: usize = 499;
         let mut relationships = Vec::new();
-        for relationship_result in relationship_iter {
-            relationships.push(relationship_result?);
+
+        for chunk in symbol_ids.chunks(CHUNK_SIZE) {
+            // First N params are symbol IDs, last param is identifier_kind.
+            let id_placeholders: Vec<String> =
+                (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
+            let kind_idx = chunk.len() + 1;
+
+            let query = format!(
+                "SELECT DISTINCT r.id, r.from_symbol_id, r.to_symbol_id, r.kind, r.file_path, r.line_number, r.confidence, r.metadata
+                 FROM relationships r
+                 INNER JOIN identifiers i ON r.file_path = i.file_path AND r.line_number = i.start_line
+                 WHERE r.to_symbol_id IN ({})
+                   AND i.kind = ?{}",
+                id_placeholders.join(", "),
+                kind_idx
+            );
+
+            let mut stmt = self.conn.prepare(&query)?;
+
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for id in chunk {
+                params.push(Box::new(id.clone()));
+            }
+            params.push(Box::new(identifier_kind.to_string()));
+
+            let param_refs: Vec<&dyn rusqlite::ToSql> =
+                params.iter().map(|p| p.as_ref() as &dyn rusqlite::ToSql).collect();
+
+            let rows = stmt.query_map(&param_refs[..], |row| self.row_to_relationship(row))?;
+            for row in rows {
+                relationships.push(row?);
+            }
         }
 
         Ok(relationships)
@@ -254,8 +229,12 @@ impl SymbolDatabase {
     ///   from stealing centrality from real production definitions.
     /// - Propagates centrality from C/C++ header declarations to implementations (70%).
     pub fn compute_reference_scores(&self) -> Result<()> {
+        // Wrap all 5 UPDATE steps in one transaction so a partial failure leaves
+        // reference_score in a consistent state (all-or-nothing).
+        let tx = self.conn.unchecked_transaction()?;
+
         // Step 1: Compute direct reference scores from incoming relationships
-        self.conn.execute(
+        tx.execute(
             "UPDATE symbols SET reference_score = COALESCE(
                 (SELECT SUM(
                     CASE r.kind
@@ -295,7 +274,7 @@ impl SymbolDatabase {
         // namespace-qualified references (Kirigami.ScrollablePage, Phoenix.Router) where
         // the last component matches the symbol name. Without suffix matching, all QML
         // components would have centrality 0.00 despite heavy usage.
-        self.conn.execute(
+        tx.execute(
             "UPDATE symbols SET reference_score = reference_score + COALESCE(
                 (SELECT SUM(
                     CASE i.kind
@@ -313,12 +292,27 @@ impl SymbolDatabase {
             )
             WHERE kind IN ('class', 'struct', 'enum', 'interface', 'trait', 'type', 'module', 'namespace', 'constant')
               AND NOT (
+                  -- Directory segments (matches is_test_path() in scoring.rs)
                   file_path LIKE '%/test/%' OR file_path LIKE '%/tests/%'
                   OR file_path LIKE 'test/%' OR file_path LIKE 'tests/%'
                   OR file_path LIKE '%/spec/%' OR file_path LIKE '%/specs/%'
                   OR file_path LIKE 'spec/%' OR file_path LIKE 'specs/%'
                   OR file_path LIKE '%/__tests__/%' OR file_path LIKE '__tests__/%'
+                  -- C# convention: MyProject.Tests/ or MyProject.Test/
                   OR file_path LIKE '%.Tests/%' OR file_path LIKE '%.Test/%'
+                  -- Python: test_*.py
+                  OR file_path LIKE '%/test\\_%' ESCAPE '\\' OR file_path LIKE 'test\\_%' ESCAPE '\\'
+                  -- Go: *_test.go
+                  OR file_path LIKE '%\\_test.go' ESCAPE '\\'
+                  -- C/C++: *_test.c, *_test.cc, *_test.cpp
+                  OR file_path LIKE '%\\_test.c' ESCAPE '\\' OR file_path LIKE '%\\_test.cc' ESCAPE '\\'
+                  OR file_path LIKE '%\\_test.cpp' ESCAPE '\\'
+                  -- JS/TS: *.test.ts, *.test.tsx, *.test.js, *.test.jsx
+                  OR file_path LIKE '%.test.ts' OR file_path LIKE '%.test.tsx'
+                  OR file_path LIKE '%.test.js' OR file_path LIKE '%.test.jsx'
+                  -- JS/TS: *.spec.ts, *.spec.tsx, *.spec.js, *.spec.jsx
+                  OR file_path LIKE '%.spec.ts' OR file_path LIKE '%.spec.tsx'
+                  OR file_path LIKE '%.spec.js' OR file_path LIKE '%.spec.jsx'
               )",
             [],
         )?;
@@ -327,7 +321,7 @@ impl SymbolDatabase {
         // When class Foo implements IBar, Foo gets 70% of IBar's centrality added.
         // This fixes C# DI patterns where all references go through interfaces,
         // leaving concrete implementations with zero centrality.
-        self.conn.execute(
+        tx.execute(
             "UPDATE symbols SET reference_score = reference_score + COALESCE(
                 (SELECT SUM(target_sym.reference_score * 0.7)
                  FROM relationships r
@@ -349,7 +343,7 @@ impl SymbolDatabase {
         // In C# / Java / TypeScript DI patterns, all references target the constructor,
         // leaving the class itself with zero centrality. Give the class 70% of its
         // highest-scoring constructor's score (same factor as interface→implementation).
-        self.conn.execute(
+        tx.execute(
             "UPDATE symbols SET reference_score = reference_score + COALESCE(
                 (SELECT MAX(ctor.reference_score) * 0.7
                  FROM symbols ctor
@@ -378,9 +372,9 @@ impl SymbolDatabase {
         // Language-agnostic test path patterns (matches Rust, Python, JS/TS, C#, Java,
         // Go, Ruby, Swift, etc.):
         //   Directory segments: test, tests, spec, specs, __tests__, .Tests, .Test
-        //   File prefixes: test_*.py
+        //   File prefixes: test_*.py (uses ESCAPE '\\' so \_ matches literal underscore)
         //   File suffixes: _test.go, .test.ts, .spec.ts, etc.
-        self.conn.execute(
+        tx.execute(
             "UPDATE symbols SET reference_score = reference_score * 0.1
              WHERE reference_score > 0
                AND (
@@ -399,11 +393,11 @@ impl SymbolDatabase {
                    -- C# convention: MyProject.Tests/ or MyProject.Test/
                    OR file_path LIKE '%.Tests/%'
                    OR file_path LIKE '%.Test/%'
-                   -- Python: test_*.py files
-                   OR file_path LIKE '%/test\\_%'
-                   OR file_path LIKE 'test\\_%'
-                   -- Go: *_test.go
-                   OR file_path LIKE '%\\_test.go'
+                   -- Python: test_*.py files (\\_ escapes _ as literal with ESCAPE '\\')
+                   OR file_path LIKE '%/test\\_%' ESCAPE '\\'
+                   OR file_path LIKE 'test\\_%' ESCAPE '\\'
+                   -- Go: *_test.go (\\ escapes _ as literal with ESCAPE '\\')
+                   OR file_path LIKE '%\\_test.go' ESCAPE '\\'
                    -- JS/TS: *.test.ts, *.test.tsx, *.test.js, *.test.jsx
                    OR file_path LIKE '%.test.ts'
                    OR file_path LIKE '%.test.tsx'
@@ -422,7 +416,7 @@ impl SymbolDatabase {
         // In C/C++, .h declarations accumulate all refs (via #include) while .c/.cpp
         // implementations get zero. Give implementations 70% of their declaration's score.
         // Same propagation factor as interface→implementation (Step 2).
-        self.conn.execute(
+        tx.execute(
             "UPDATE symbols SET reference_score = reference_score + COALESCE(
                 (SELECT MAX(header_sym.reference_score) * 0.7
                  FROM symbols header_sym
@@ -453,6 +447,7 @@ impl SymbolDatabase {
             [],
         )?;
 
+        tx.commit()?;
         Ok(())
     }
 

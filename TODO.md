@@ -1,5 +1,121 @@
 # TODO
 
+## V6.0.3 Deep Review (2026-03-24)
+
+4-agent team review covering database/search, tools, daemon/adapter/handler, and embeddings/workspace/watcher. 91 findings total.
+
+### CRITICAL
+
+- [x] **C01** `bulk_operations.rs:639,965` — PRAGMA foreign_keys = OFF never restored after bulk ops. *(was already fixed)*
+- [x] **C02** `watcher/events.rs` — Rename events now handled: Both/From/To/Any modes mapped correctly. *(Overlaps [I-H3])*
+- [x] **C03** `editing.rs:207-254` — Fixed: collect into Vec once, pass committed paths to rollback explicitly.
+- [x] **C04** `shared.rs`, `search/formatting.rs:64` — Pre-truncation count now threaded through; "showing X of Y" fires correctly.
+- [x] **C05** `text_search.rs:150` — Replaced with `unwrap_or_else(|p| p.into_inner())`.
+- [x] **C06** `rename.rs:364+` — Rename now calls `find_references_and_definitions` directly for structured data. Deleted ~65 lines of regex parsing. *(Overlaps [N-C3])*
+- [x] **C07** `security_risk.rs:498`, `test_coverage.rs:273`, `change_risk.rs:211` — Replaced with `if let Some(obj)` pattern.
+- [x] **C08** `migrations.rs:147-156` — Added alphanumeric+underscore assertion before interpolation.
+- [x] **C09** `symbols/search.rs`, `files.rs` — Documented as intentionally unbounded (needed for Tantivy backfill).
+- [x] **C10** `daemon/database.rs` — All 22 `.unwrap()` replaced with poison recovery.
+- [x] **C11** `daemon/mod.rs:376-468` — Wrapped in async block so cleanup always runs on any error path.
+- [x] **C12** `daemon/pid.rs:123-150` — Added MAX_RETRIES = 10 counter.
+
+### HIGH
+
+**Database:**
+- [x] **H01** `symbols/search.rs` — All 5 hardcoded SELECT lists replaced with SYMBOL_COLUMNS.
+- [x] **H02** `symbols/search.rs:~100` — Non-issue: workspace isolation is at DB file level, not column. Added doc comment.
+- [x] **H03** `relationships.rs:~115` — Wrapped all 5 UPDATEs in single transaction.
+- [x] **H04** `relationships.rs`, `identifiers.rs` — Added chunking (500/250/166) for all IN clause builders.
+- [x] **H05** `bulk_operations.rs:697` — Added `line_count` to incremental INSERT.
+- [x] **H06** `workspace.rs:43` — Replaced CROSS JOIN with two separate COUNT queries.
+- [x] **H07** `type_queries.rs:256` — Replaced N+1 with 3 batch calls.
+
+**Tool Output & Token Efficiency:**
+- [x] **H08** `deep_dive/mod.rs` — Reduced "full" ref caps from (500,500) to (50,50).
+- [x] **H09** `query_preprocessor.rs:185,192` — Extracted as `LazyLock` statics.
+- [x] **H10** `symbols/filtering.rs:164,237` — Replaced Vec with HashSet for O(1) membership checks.
+- [x] **H11** `get_context/scoring.rs:233` — Removed config file extension penalties. Kept `.memories/` and docs exclusions.
+- [x] **H12** `health.rs:152` — Now checks `search_index.is_some()` instead of DB existence.
+- [x] **H13** `metrics/mod.rs:192` — Replaced `_` catch-all with explicit error for unknown categories.
+
+**Cross-Platform / Windows:**
+- [x] **H14** `lifecycle.rs:47` — Added `/T` flag to kill process tree including sidecar.
+- [x] **H15** `adapter/launcher.rs:134` — Wrapped in `block_in_place`.
+- [x] **H16** `adapter/mod.rs:134` — Path normalized to forward slashes before header send.
+- [x] **H17** `paths.rs:78` — Replaced with inline FNV-1a hash.
+
+**Embeddings & Intelligence:**
+- [x] **H18** `workspace/mod.rs:771` — Now uses `fs2::available_space()`.
+- [x] **H19** `ort_provider.rs:396` — Logs error, marks non-accelerated, skips rebuild retry.
+- [x] **H20** `pipeline.rs:475` — Uses `min(vectors, prepared)` pattern for partial store.
+- [x] **H21** `watcher/mod.rs:97` — Capped at 1000, drains oldest with warning.
+- [x] **H22** `watcher/mod.rs:125,169` — Changed to `Release`/`Acquire` ordering.
+- [x] **H23** `utils/path_relevance.rs:84` — Generalized: test dirs checked first, removed src/lib dependency.
+- [x] **H24** `watcher/mod.rs` — Extracted `dispatch_file_event` helper, ~120 duplicate lines eliminated.
+- [x] **H25** `watcher/mod.rs:486` — Now stores and aborts/awaits join handles in `stop()`.
+
+**Infrastructure:**
+- [x] **H26** `daemon/mod.rs:174` — Renamed to `reaper_handle`, aborted on shutdown.
+- [x] **H27** `daemon/mod.rs:515-528` — Returns Result now, uses `context()?` instead of `.expect()`.
+
+### MEDIUM
+
+- [x] **M01** `daemon/workspace_pool.rs:96,117,152` — All 4 calls wrapped in `spawn_blocking`.
+- [x] **M02** `sidecar_provider.rs:290-300` — Drop now just `terminate()`, graceful shutdown in explicit method only.
+- [x] **M03** `handler.rs:463-517` — Bounded `mpsc::channel(512)` + single background metrics writer.
+- [x] **M04** `symbols/formatting.rs:14-35` — Added 50K-char cap with truncation notice.
+- [x] **M05** `get_context/pipeline.rs:485-506` — Capped at 200 neighbors before token budget.
+- [x] **M06** `search/line_mode.rs` — Early-return guard when destination at capacity.
+- [x] **M07** `search/index.rs:515-540` — File-based `.recreating` lock around delete/recreate sequence.
+- [x] **M08** `symbols/storage.rs:~12` — Documented as intentionally non-transactional; callers manage transactions.
+- [x] **M09** `daemon/ipc.rs:153-161` — Replacement pipe created before connect; failure no longer corrupts state.
+- [x] **M10** `helpers.rs:~207` — Now uses `?` propagation; nullable confidence handled correctly.
+- [x] **M11** `search/index.rs:~523` — Checks `meta.json` existence instead of catching all errors.
+- [x] **M12** `sidecar_bootstrap.rs:51` — Now captures and logs stderr via `cmd.output()`.
+- [x] **M13** `relationships.rs:400-419` — Added `ESCAPE '\\'` to Python and Go test LIKE patterns.
+- [x] **M14** `symbols/search.rs` — All inline SELECT lists replaced with SYMBOL_COLUMNS. *(Fixed with H01)*
+- [x] **M15** `deep_dive/data.rs:302-321` — Deleted local version, now imports `search::scoring::is_test_path`.
+- [x] **M16** `daemon/session.rs:28,35,41` — Replaced with poison recovery.
+- [x] **M17** `rename.rs:292-362` — Now warns when target language not supported for import updates.
+- [x] **M18** `refactoring/mod.rs:30-44` — Handles differing lengths with `get(i).unwrap_or("")`.
+- [x] **M19** `adapter/mod.rs:50-120` — Removed broken reconnect; exits cleanly on connection loss.
+- [x] **M20** `daemon/project_log.rs` — LogState tracks date, re-opens file on midnight rollover.
+- [x] **M21** `daemon/mod.rs:478` — 5s `tokio::time::timeout` added.
+- [x] **M22** `handler.rs:619` — `ref_db_cache` with `Arc<RwLock<HashMap>>`, fast-path on repeat access.
+- [x] **M23** `watcher/filtering.rs:27-68` — Walks subdirs (8 levels), adds nested `.gitignore` files.
+- [x] **M24** `watcher/mod.rs:344` — Tracks `processed_count`, only commits if events actually dispatched.
+- [x] **M25** `workspace/registry.rs:343` — Only lowercases on Windows; original case on Unix.
+- [x] **M26** `workspace/mod.rs:372` — Case-insensitive comparison on macOS for global `.julie/` guard.
+- [x] **M27** `daemon/database.rs:592` — Added lock-ordering doc comment: symbol_db before daemon_db.
+- [x] **M28** `fast_refs.rs:101` — Replaced with `unwrap_or("primary")`.
+
+### LOW
+
+- [x] **L01** `files.rs:386`, `bulk_operations.rs:630,969`, `migrations.rs:136` — Replaced with `get_unix_timestamp()?`.
+- [x] **L02** `search/index.rs:635,657` — Added `warn!` logging on poison recovery.
+- [x] **L03** `relationships.rs` vs `scoring.rs` — SQL patterns synced with `is_test_path()` (Go, C/C++, JS/TS, Python).
+- [x] **L04** `search/similarity.rs:103-114` — Replaced with HashMap lookup.
+- [x] **L05** `workspace.rs:66-78` — Uses `Option<i64>` for proper NULL handling.
+- [x] **L06** `symbols/search.rs`, `files.rs` — Deleted 6 dead index management functions.
+- [x] **L07** `helpers.rs:25-39` — Deleted raw transaction helpers; callers use `conn.transaction()`.
+- [x] **L08** `relationships.rs:49-66` — Deleted duplicate; callers updated.
+- [x] **L09** `files.rs:399-427` — Consolidated into single function.
+- [x] **L10** `symbols/search.rs` — Consolidated to single method; deleted duplicate.
+- [x] **L11** `get_context/formatting.rs` — Removed fixed-width padding; single space separator.
+- [x] **L12** Multiple files — Removed emojis from tool response text; kept in log macros only.
+- [x] **L13** `get_context/formatting.rs` — Replaced with plain ASCII `===` and `--`.
+- [x] **L14** `health.rs:130-135` — Removed empty detailed branch.
+- [x] **L15** `fast_refs.rs:291-390` — Capped at MAX_DEFINITIONS = 50.
+- [x] **L16** `search/scoring.rs` — Added `.Tests.` and `.Test.` C#/.NET patterns.
+- [x] **L17** `tracing/mod.rs` — Gated behind `#[cfg(test)]`; removed pub re-exports from `lib.rs`.
+- [x] **L18** `paths.rs:13` — Added `try_new() -> Result`, `new()` delegates.
+- [x] **L19** `daemon/mod.rs:76-85` — Replaced polling with `tokio::sync::Notify`.
+- [x] **L20** `daemon/pid.rs:23-41` — Marked `#[allow(dead_code)]` with doc note (used by test modules).
+- [x] **L21** `bulk_operations.rs:~66` — Cache size captured and restored after bulk ops.
+- [x] **L22** `search/index.rs` — Moved test to `src/tests/tools/search/tantivy_index_tests.rs`.
+
+---
+
 ## V6 Review Findings (2026-03-23)
 
 Comprehensive 5-agent code review covering daemon architecture, search engine, navigation tools, indexing pipeline, and handler/core infrastructure. 510+ Julie tool calls across all agents.
@@ -20,7 +136,7 @@ Comprehensive 5-agent code review covering daemon architecture, search engine, n
 
 - [x] **[N-C2] Identifier kind conversion loses type_usage, variable_ref, member_access** (fixed in `6ec24530`) -- The match arm maps `"call"` and `"import"` to their kinds but everything else becomes `RelationshipKind::References`. Agents filtering with `reference_kind="type_usage"` get correct entries but wrong labels. (`fast_refs.rs:481-484`)
 
-- [ ] **[N-C3] rename_symbol parses fast_refs text output with fragile regex** -- `parse_refs_result` drives file discovery by scanning formatted text for `:digit` patterns. Any change to `format_lean_refs_results` silently breaks rename. Windows paths with `:` are a risk. Should use structured data internally. (`rename.rs:365-428`)
+- [x] **[N-C3] rename_symbol parses fast_refs text output with fragile regex** *(fixed with C06)* -- `parse_refs_result` drives file discovery by scanning formatted text for `:digit` patterns. Any change to `format_lean_refs_results` silently breaks rename. Windows paths with `:` are a risk. Should use structured data internally. (`rename.rs:365-428`)
 
 - [x] **[D-C1] Session count leaked on init_workspace failure** (fixed in `02ae0263`) -- `increment_session_count` called before `init_workspace`. If init fails, count stays +1 permanently until daemon restart. (`workspace_pool.rs:132-142`)
 
@@ -37,38 +153,38 @@ Comprehensive 5-agent code review covering daemon architecture, search engine, n
 **Daemon:**
 - [x] **[D-H1] SIGTERM doesn't drain active sessions** (fixed in `02ae0263`) -- Shutdown drops sessions immediately. MCP clients get broken connections. Should wait with timeout. (`daemon/mod.rs:116-138`)
 - [x] **[D-H2] Concurrent sessions both trigger auto-indexing** (fixed in `de5e7146`) -- Two sessions see `is_indexed=false` simultaneously. Wasteful double-indexing. Use `AtomicBool` or `try_lock`. (`handler.rs:1016-1022`)
-- [ ] **[D-H3] DaemonDatabase bypasses SymbolDatabase mutex** -- `snapshot_codehealth_from_db` takes `&SymbolDatabase` (unlocked ref) and accesses `.conn` directly. Correct today because caller holds lock, but deceptive API. (`database.rs:594`)
+- [x] **[D-H3] DaemonDatabase bypasses SymbolDatabase mutex** *(documented lock ordering with M27)* -- `snapshot_codehealth_from_db` takes `&SymbolDatabase` (unlocked ref) and accesses `.conn` directly. Correct today because caller holds lock, but deceptive API. (`database.rs:594`)
 - [x] **[D-H4] wait_for_socket checks file existence, not connectivity** (fixed in `de5e7146`) -- Socket file appears before daemon finishes setup. Adapter may connect before `accept()` is ready. (`launcher.rs:131`)
 - [x] **[D-H5] stop_daemon races with daemon cleanup** (fixed in `de5e7146`) -- Fixed 500ms sleep, then force-removes socket. Slow daemon may still be alive. (`lifecycle.rs:51-57`)
 - [x] **[D-H6] mark_indexed never called in IPC path** (fixed in `02ae0263`) -- Workspace stays `status="pending"` in daemon.db forever. `is_indexed` pool flag never set. (`workspace_pool.rs`)
-- [ ] **[D-H7] Mutex<Connection> blocks tokio workers** -- `DaemonDatabase` is shared across sessions; heavy queries block tokio threads. Consider `spawn_blocking`. (`database.rs:22`)
+- [x] **[D-H7] Mutex<Connection> blocks tokio workers** *(fixed with M01: spawn_blocking)* -- `DaemonDatabase` is shared across sessions; heavy queries block tokio threads. Consider `spawn_blocking`. (`database.rs:22`)
 
 **Search:**
 - [x] **[S-H1] search_symbols_relaxed skips apply_nl_path_prior** (fixed in `23b9680a`) -- Test files rank alongside production code in relaxed search path. (`index.rs`)
-- [ ] **[S-H2] select_budgeted_variables has no global cap** -- Per-language caps exist but total across all languages is unbounded. Polyglot codebases can flood embedding index. (`metadata.rs:273-292`)
+- [x] **[S-H2] select_budgeted_variables has no global cap** *(added 5000 cap)* -- Per-language caps exist but total across all languages is unbounded. Polyglot codebases can flood embedding index. (`metadata.rs:273-292`)
 - [x] **[S-H3] Sidecar has no circuit breaker** (fixed in `23b9680a`) -- `connection_fatal` cleared on every request. After N consecutive fatal failures, provider should disable itself. (`sidecar_provider.rs:314`)
 - [ ] **[S-H4] RRF merge always keeps keyword metadata** -- If symbol appears in both keyword and semantic results, keyword version always kept. Metadata could be stale if enrichment paths diverge. (`hybrid.rs:81-86`)
-- [ ] **[S-H5] DB-promoted definitions use hardcoded score: 100.0** -- No centrality check. False positives from `find_definitions_by_name_component` get forced to position 0. (`text_search.rs`)
+- [x] **[S-H5] DB-promoted definitions use hardcoded score: 100.0** *(now uses actual reference_score)* -- No centrality check. False positives from `find_definitions_by_name_component` get forced to position 0. (`text_search.rs`)
 - [x] **[S-H6] Embedding batch mismatch skips 250 symbols permanently** (fixed in `23b9680a`) -- When `vectors.len() != chunk.len()`, entire batch skipped. Symbols never get re-embedded on subsequent runs. (`pipeline.rs:375-381`)
 
 **Navigation:**
 - [x] **[N-H1] get_context primary arm panics on mutex poison** (fixed in `09ac63d2`) -- Uses `.unwrap()` while reference arm uses `.map_err`. Inconsistent. (`pipeline.rs:583`)
 - [x] **[N-H2] format_optimized_results is dead code** (deleted in `09ac63d2`) -- Zero callers. Delete. (`fast_refs.rs:542-577`)
 - [x] **[N-H3] deep_dive Struct kind falls into generic formatter** (fixed in `6ec24530`) -- No fields, methods, or implements shown for structs. Add `SymbolKind::Struct` to the `Class` match arm. (`formatting.rs:14-29`)
-- [ ] **[N-H4] query_metrics file_pattern overscan returns empty for narrow globs** -- 5x heuristic insufficient. Push filter into SQL. (`query.rs:153-159`)
+- [x] **[N-H4] query_metrics file_pattern overscan returns empty for narrow globs** *(removed SQL LIMIT when file_pattern set; post-filter on full results)* -- 5x heuristic insufficient. Push filter into SQL. (`query.rs:153-159`)
 - [x] **[N-H5] merge_identifier_refs dedup set not updated on append** (fixed in `09ac63d2`) -- Possible duplicate entries. (`data.rs:382-444`)
-- [ ] **[N-H6] build_test_refs fires N per-symbol DB queries** -- 200 queries for 200 test refs, then truncates to 10. Batch-fetch first. (`data.rs:324-374`)
+- [x] **[N-H6] build_test_refs fires N per-symbol DB queries** *(batch query with get_symbols_by_ids)* -- 200 queries for 200 test refs, then truncates to 10. Batch-fetch first. (`data.rs:324-374`)
 - [x] **[N-H7] rename errors on unknown language** (fixed in `6ec24530`) -- `smart_text_replace` fails for .json/.yaml/.toml/.md. Fall back to text replace. (`utils.rs`)
 
 **Indexing:**
 - [x] **[I-H1] Parser pool entirely unused** (module deleted) -- `_parser` parameter is dead code. `LanguageParserPool` allocates parsers that are never used. Remove. (`processor.rs:573,692`)
 - [x] **[I-H2] last_processed dedup map grows unbounded** (fixed in `09ac63d2`) -- Never evicted in long-running daemon. (`watcher/mod.rs:50`)
-- [ ] **[I-H3] Rename events from notify silently dropped** -- `EventKind::Rename` falls to `_` arm. Renames become delete+create, destroying embeddings. (`events.rs:22-76`)
-- [ ] **[I-H4] Orphan cleanup opens separate DB connection** -- Risks "database is locked" errors, bypasses mutex guard. (`incremental.rs:326-346`)
-- [ ] **[I-H5] FK checks disabled globally, not per-transaction** -- `PRAGMA foreign_keys = OFF` is global. Safe today because of mutex, but fragile. Use `defer_foreign_keys`. (`bulk_operations.rs:694`)
+- [x] **[I-H3] Rename events from notify silently dropped** *(fixed with C02)* -- `EventKind::Rename` falls to `_` arm. Renames become delete+create, destroying embeddings. (`events.rs:22-76`)
+- [x] **[I-H4] Orphan cleanup opens separate DB connection** *(routes through handler's ref_db_cache)* -- Risks "database is locked" errors, bypasses mutex guard. (`incremental.rs:326-346`)
+- [x] **[I-H5] FK checks disabled globally, not per-transaction** *(addressed with C01)* -- `PRAGMA foreign_keys = OFF` is global. Safe today because of mutex, but fragile. Use `defer_foreign_keys`. (`bulk_operations.rs:694`)
 
 **Handler:**
-- [ ] **[H-H2] ensure_workspace TOCTOU race** -- Two callers both see None, both init. Zero callers currently but latent bug. (`handler.rs:403-410`)
+- [x] **[H-H2] ensure_workspace TOCTOU race** *(fixed with write-lock guard)* -- Two callers both see None, both init. Zero callers currently but latent bug. (`handler.rs:403-410`)
 - [x] **[H-H3] run_stdio_server is dead code** (deleted in `de5e7146`) -- `#[allow(dead_code)]` on 80-line function with correct shutdown logic that adapter mode doesn't replicate. Decide: delete or wire back up. (`main.rs:83`)
 - [x] **[H-H4] lock().unwrap() without poison recovery** (fixed in `de5e7146`) -- `new_with_shared_workspace` panics on poisoned mutex. Use `unwrap_or_else(|p| p.into_inner())`. (`handler.rs:156`)
 - [x] **[H-H6] Windows daemon mode is empty stub** (fixed in `4d372579`, `7a45c3d5`) -- Implemented Windows named pipe IPC, process detection via OpenProcess, pipe-busy retry. (`daemon/ipc.rs`, `daemon/pid.rs`, `adapter/launcher.rs`)

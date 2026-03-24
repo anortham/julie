@@ -51,7 +51,7 @@ impl DaemonDatabase {
         };
 
         {
-            let mut conn = db.conn.lock().unwrap();
+            let mut conn = db.conn.lock().unwrap_or_else(|p| p.into_inner());
             Self::run_migrations(&mut conn)?;
         }
 
@@ -154,7 +154,7 @@ impl DaemonDatabase {
 
     /// Returns true if a table with the given name exists in the database.
     pub fn table_exists(&self, table_name: &str) -> bool {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
             params![table_name],
@@ -174,7 +174,7 @@ impl DaemonDatabase {
     /// On conflict with an existing `workspace_id`, the `path`, `status`, and
     /// `updated_at` columns are updated. `session_count` and stats are preserved.
     pub fn upsert_workspace(&self, workspace_id: &str, path: &str, status: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let now = now_unix();
         conn.execute(
             "INSERT INTO workspaces (workspace_id, path, status, session_count,
@@ -191,7 +191,7 @@ impl DaemonDatabase {
 
     /// Get a workspace row by ID, returns `None` if it doesn't exist.
     pub fn get_workspace(&self, workspace_id: &str) -> Result<Option<WorkspaceRow>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let mut stmt = conn.prepare_cached(
             "SELECT workspace_id, path, status, session_count, last_indexed,
                     symbol_count, file_count, embedding_model, vector_count,
@@ -208,7 +208,7 @@ impl DaemonDatabase {
 
     /// Get a workspace row by filesystem path, returns `None` if it doesn't exist.
     pub fn get_workspace_by_path(&self, path: &str) -> Result<Option<WorkspaceRow>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let mut stmt = conn.prepare_cached(
             "SELECT workspace_id, path, status, session_count, last_indexed,
                     symbol_count, file_count, embedding_model, vector_count,
@@ -225,7 +225,7 @@ impl DaemonDatabase {
 
     /// Update just the `status` column (e.g. `pending` -> `indexing` -> `ready`).
     pub fn update_workspace_status(&self, workspace_id: &str, status: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "UPDATE workspaces SET status = ?1, updated_at = ?2 WHERE workspace_id = ?3",
             params![status, now_unix(), workspace_id],
@@ -242,7 +242,7 @@ impl DaemonDatabase {
         embedding_model: Option<&str>,
         vector_count: Option<i64>,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let now = now_unix();
         conn.execute(
             "UPDATE workspaces
@@ -267,7 +267,7 @@ impl DaemonDatabase {
 
     /// Increment `session_count` for a workspace (called when a session attaches).
     pub fn increment_session_count(&self, workspace_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "UPDATE workspaces
              SET session_count = session_count + 1, updated_at = ?1
@@ -279,7 +279,7 @@ impl DaemonDatabase {
 
     /// Decrement `session_count`, clamping to 0 (called when a session detaches).
     pub fn decrement_session_count(&self, workspace_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "UPDATE workspaces
              SET session_count = MAX(0, session_count - 1), updated_at = ?1
@@ -292,7 +292,7 @@ impl DaemonDatabase {
     /// Reset all session counts to 0. Called on daemon startup to recover from
     /// a crash that left counts non-zero.
     pub fn reset_all_session_counts(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "UPDATE workspaces SET session_count = 0, updated_at = ?1",
             params![now_unix()],
@@ -302,7 +302,7 @@ impl DaemonDatabase {
 
     /// List all known workspaces.
     pub fn list_workspaces(&self) -> Result<Vec<WorkspaceRow>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let mut stmt = conn.prepare_cached(
             "SELECT workspace_id, path, status, session_count, last_indexed,
                     symbol_count, file_count, embedding_model, vector_count,
@@ -316,7 +316,7 @@ impl DaemonDatabase {
     /// Delete a workspace row. Cascades to `workspace_references` and
     /// `codehealth_snapshots` (via `ON DELETE CASCADE`).
     pub fn delete_workspace(&self, workspace_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "DELETE FROM workspaces WHERE workspace_id = ?1",
             params![workspace_id],
@@ -331,7 +331,7 @@ impl DaemonDatabase {
     /// Record that `primary_id` uses `reference_id` as a reference workspace.
     /// Silently ignores duplicate inserts.
     pub fn add_reference(&self, primary_id: &str, reference_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "INSERT OR IGNORE INTO workspace_references
                 (primary_workspace_id, reference_workspace_id, added_at)
@@ -343,7 +343,7 @@ impl DaemonDatabase {
 
     /// Remove a reference relationship.
     pub fn remove_reference(&self, primary_id: &str, reference_id: &str) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "DELETE FROM workspace_references
              WHERE primary_workspace_id = ?1 AND reference_workspace_id = ?2",
@@ -371,7 +371,7 @@ impl DaemonDatabase {
         success: bool,
         metadata: Option<&str>,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "INSERT INTO tool_calls
                 (workspace_id, session_id, timestamp, tool_name, duration_ms,
@@ -397,7 +397,7 @@ impl DaemonDatabase {
     pub fn query_tool_call_history(&self, workspace_id: &str, days: u32) -> Result<HistorySummary> {
         use std::collections::HashMap;
 
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let cutoff = now_unix() - (days as i64 * 86400);
 
         let session_count: i64 = conn.query_row(
@@ -465,7 +465,7 @@ impl DaemonDatabase {
 
     /// Delete tool call records older than `retention_days`. Called on daemon startup.
     pub fn prune_tool_calls(&self, retention_days: u32) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let cutoff = now_unix() - (retention_days as i64 * 86400);
         conn.execute(
             "DELETE FROM tool_calls WHERE timestamp < ?1",
@@ -477,7 +477,7 @@ impl DaemonDatabase {
     /// Direct connection access for tests only.
     #[cfg(test)]
     pub fn conn_for_test(&self) -> std::sync::MutexGuard<'_, Connection> {
-        self.conn.lock().unwrap()
+        self.conn.lock().unwrap_or_else(|p| p.into_inner())
     }
 
     // -------------------------------------------------------------------------
@@ -487,7 +487,7 @@ impl DaemonDatabase {
     /// List all reference workspaces for a given primary workspace, returning
     /// their full `WorkspaceRow` data (JOIN with workspaces table).
     pub fn list_references(&self, primary_id: &str) -> Result<Vec<WorkspaceRow>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let mut stmt = conn.prepare_cached(
             "SELECT w.workspace_id, w.path, w.status, w.session_count, w.last_indexed,
                     w.symbol_count, w.file_count, w.embedding_model, w.vector_count,
@@ -512,7 +512,7 @@ impl DaemonDatabase {
         workspace_id: &str,
         snapshot: &CodehealthSnapshot,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         conn.execute(
             "INSERT INTO codehealth_snapshots
                 (workspace_id, timestamp, total_symbols, total_files,
@@ -543,7 +543,7 @@ impl DaemonDatabase {
 
     /// Retrieve the most recently inserted snapshot for a workspace, or `None`.
     pub fn get_latest_snapshot(&self, workspace_id: &str) -> Result<Option<CodehealthSnapshotRow>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let mut stmt = conn.prepare_cached(
             "SELECT id, workspace_id, timestamp, total_symbols, total_files,
                     security_high, security_medium, security_low,
@@ -569,7 +569,7 @@ impl DaemonDatabase {
         workspace_id: &str,
         limit: u32,
     ) -> Result<Vec<CodehealthSnapshotRow>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let mut stmt = conn.prepare_cached(
             "SELECT id, workspace_id, timestamp, total_symbols, total_files,
                     security_high, security_medium, security_low,
@@ -589,6 +589,10 @@ impl DaemonDatabase {
 
     /// Query aggregate codehealth metrics from a symbols database and store
     /// a snapshot. Called automatically after each indexing pass completes.
+    ///
+    /// LOCK ORDERING: callers must acquire `symbol_db` lock before calling this
+    /// function, which then acquires the internal `DaemonDatabase` lock. Always
+    /// lock symbol_db first, then daemon_db — never in the reverse order.
     pub fn snapshot_codehealth_from_db(
         &self,
         workspace_id: &str,

@@ -20,19 +20,60 @@ pub fn build_supported_extensions() -> HashSet<String> {
         .collect()
 }
 
+/// Walk `dir` recursively (up to `max_depth` levels) and collect paths of all
+/// `.gitignore` files found, skipping blacklisted directories.
+fn collect_gitignore_files(dir: &Path, max_depth: usize) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    if max_depth == 0 {
+        return found;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return found,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !BLACKLISTED_DIRECTORIES.contains(&name) && name != ".git" {
+                found.extend(collect_gitignore_files(&path, max_depth - 1));
+            }
+        } else if path.file_name().and_then(|n| n.to_str()) == Some(".gitignore") {
+            found.push(path);
+        }
+    }
+    found
+}
+
 /// Build a gitignore-based matcher that layers:
-/// 1. `.gitignore` patterns (if present in workspace root)
+/// 1. `.gitignore` patterns from the workspace root and all subdirectories
 /// 2. `.julieignore` patterns (if present in workspace root)
 /// 3. Synthetic patterns for Julie's own directories and common noise
 pub fn build_gitignore_matcher(workspace_root: &Path) -> Result<Gitignore> {
     let mut builder = GitignoreBuilder::new(workspace_root);
 
+    // Add root .gitignore first so its rules take precedence
     let gitignore_path = workspace_root.join(".gitignore");
     if gitignore_path.is_file() {
         if let Some(err) = builder.add(&gitignore_path) {
             warn!(
                 "Partial error reading {}: {}",
                 gitignore_path.display(),
+                err
+            );
+        }
+    }
+
+    // Add .gitignore files from subdirectories (up to 8 levels deep).
+    // Each subdirectory gitignore anchors its patterns to its own directory.
+    for sub_gitignore in collect_gitignore_files(workspace_root, 8) {
+        if sub_gitignore == gitignore_path {
+            continue; // already added root
+        }
+        if let Some(err) = builder.add(&sub_gitignore) {
+            warn!(
+                "Partial error reading {}: {}",
+                sub_gitignore.display(),
                 err
             );
         }
@@ -578,5 +619,45 @@ mod tests {
             &gitignore,
             root
         ));
+    }
+
+    #[test]
+    fn test_build_gitignore_matcher_reads_nested_gitignores() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Root .gitignore ignores *.log
+        fs::write(root.join(".gitignore"), "*.log\n").unwrap();
+
+        // Subdirectory with its own .gitignore (non-absolute pattern, most common case)
+        fs::create_dir_all(root.join("packages/core")).unwrap();
+        fs::write(root.join("packages/core/.gitignore"), "generated/\n__pycache__/\n").unwrap();
+
+        let matcher = build_gitignore_matcher(root).unwrap();
+
+        // Root-level rule still works
+        assert!(
+            matcher.matched_path_or_any_parents("debug.log", false).is_ignore(),
+            "root .gitignore *.log should be ignored"
+        );
+
+        // Nested gitignore patterns (non-absolute) get **/ prefix so they
+        // match anywhere in the workspace. This is the common use case for
+        // patterns like node_modules/, dist/, __pycache__/, generated/.
+        assert!(
+            matcher.matched_path_or_any_parents("packages/core/generated/types.ts", false).is_ignore(),
+            "nested .gitignore generated/ should be ignored under packages/core"
+        );
+        assert!(
+            matcher.matched_path_or_any_parents("packages/core/__pycache__/mod.pyc", false).is_ignore(),
+            "nested .gitignore __pycache__/ should be ignored"
+        );
+
+        // Normal files pass through
+        assert!(
+            !matcher.matched_path_or_any_parents("packages/core/index.ts", false).is_ignore(),
+            "normal file should not be ignored"
+        );
     }
 }

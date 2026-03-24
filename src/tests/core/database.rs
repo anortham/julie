@@ -417,7 +417,7 @@ async fn test_relationship_with_id_field() {
     db.store_relationships(&[relationship.clone()]).unwrap();
 
     // Retrieve relationships for the from_symbol
-    let relationships = db.get_relationships_for_symbol("caller_func").unwrap();
+    let relationships = db.get_outgoing_relationships("caller_func").unwrap();
     assert_eq!(relationships.len(), 1);
 
     let retrieved = &relationships[0];

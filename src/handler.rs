@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
@@ -25,6 +27,83 @@ use crate::tools::{
     DeepDiveTool, FastRefsTool, FastSearchTool, GetContextTool, GetSymbolsTool,
     ManageWorkspaceTool, QueryMetricsTool, RenameSymbolTool,
 };
+
+/// Data for a single metrics write, sent via bounded channel to the background writer.
+/// Avoids spawning a new task per tool call (M03).
+struct MetricsTask {
+    workspace: Arc<RwLock<Option<JulieWorkspace>>>,
+    session_metrics: Arc<SessionMetrics>,
+    session_id: String,
+    tool_name: String,
+    duration_ms: f64,
+    result_count: Option<u32>,
+    source_file_paths: Vec<String>,
+    output_bytes: u64,
+    metadata_str: Option<String>,
+    daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+    workspace_id: Option<String>,
+}
+
+/// Single background task that drains the metrics channel and writes to SQLite.
+async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<MetricsTask>) {
+    while let Some(task) = rx.recv().await {
+        let guard = task.workspace.read().await;
+        if let Some(ws) = guard.as_ref() {
+            if let Some(db_arc) = &ws.db {
+                if let Ok(db) = db_arc.lock() {
+                    let source_bytes = if !task.source_file_paths.is_empty() {
+                        let path_refs: Vec<&str> =
+                            task.source_file_paths.iter().map(|s| s.as_str()).collect();
+                        db.get_total_file_sizes(&path_refs).ok()
+                    } else {
+                        None
+                    };
+                    if let Some(sb) = source_bytes {
+                        task.session_metrics
+                            .total_source_bytes
+                            .fetch_add(sb, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    let _ = db.insert_tool_call(
+                        &task.session_id,
+                        &task.tool_name,
+                        task.duration_ms,
+                        task.result_count,
+                        source_bytes,
+                        Some(task.output_bytes),
+                        true,
+                        task.metadata_str.as_deref(),
+                    );
+                }
+            }
+        }
+        drop(guard);
+
+        if let Some(daemon_db) = task.daemon_db {
+            let workspace_id = task.workspace_id.unwrap_or_default();
+            let session_id = task.session_id;
+            let tool_name = task.tool_name;
+            let duration_ms = task.duration_ms;
+            let result_count = task.result_count;
+            let output_bytes = task.output_bytes;
+            let metadata_str = task.metadata_str;
+            tokio::task::spawn_blocking(move || {
+                if let Err(e) = daemon_db.insert_tool_call(
+                    &workspace_id,
+                    &session_id,
+                    &tool_name,
+                    duration_ms,
+                    result_count,
+                    None,
+                    Some(output_bytes),
+                    true,
+                    metadata_str.as_deref(),
+                ) {
+                    warn!("Failed to write tool call to daemon.db: {}", e);
+                }
+            });
+        }
+    }
+}
 
 /// Tracks which indexes are ready for search operations
 #[derive(Debug)]
@@ -95,6 +174,12 @@ pub struct JulieServerHandler {
     /// True when the daemon detects its binary has been rebuilt.
     /// Surfaced in `manage_workspace health`. None in stdio mode.
     pub(crate) restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Bounded channel sender for background metrics writes (M03).
+    /// A single background task drains this; try_send drops on backpressure
+    /// rather than spawning unbounded tasks.
+    metrics_tx: tokio::sync::mpsc::Sender<MetricsTask>,
+    /// Cache for reference workspace DB connections, keyed by workspace_id (M22).
+    ref_db_cache: Arc<RwLock<HashMap<String, Arc<std::sync::Mutex<SymbolDatabase>>>>>,
 }
 
 impl JulieServerHandler {
@@ -107,6 +192,9 @@ impl JulieServerHandler {
             "Initializing Julie server handler (workspace_root: {:?})",
             workspace_root
         );
+
+        let (metrics_tx, metrics_rx) = tokio::sync::mpsc::channel::<MetricsTask>(512);
+        tokio::spawn(run_metrics_writer(metrics_rx));
 
         Ok(Self {
             workspace_root,
@@ -121,6 +209,8 @@ impl JulieServerHandler {
             workspace_id: None,
             embedding_service: None,
             restart_pending: None,
+            metrics_tx,
+            ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -170,6 +260,9 @@ impl JulieServerHandler {
             &workspace_root,
         )));
 
+        let (metrics_tx, metrics_rx) = tokio::sync::mpsc::channel::<MetricsTask>(512);
+        tokio::spawn(run_metrics_writer(metrics_rx));
+
         Ok(Self {
             workspace_root,
             workspace: Arc::new(RwLock::new(Some(ws_clone))),
@@ -183,6 +276,8 @@ impl JulieServerHandler {
             workspace_id,
             embedding_service,
             restart_pending,
+            metrics_tx,
+            ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -408,12 +503,20 @@ impl JulieServerHandler {
 
     /// Ensure workspace is initialized for operations that require it
     pub async fn ensure_workspace(&self) -> Result<()> {
-        let workspace_guard = self.workspace.read().await;
-        if workspace_guard.is_none() {
-            drop(workspace_guard);
-            self.initialize_workspace(None).await?;
+        if self.workspace.read().await.is_some() {
+            return Ok(());
         }
-        Ok(())
+        // Atomically claim the initialization slot to prevent concurrent double-init.
+        // Mirrors the pattern in on_initialized: only the caller that transitions
+        // is_indexed false→true proceeds with initialization.
+        {
+            let mut indexed = self.is_indexed.write().await;
+            if *indexed {
+                return Ok(());
+            }
+            *indexed = true;
+        }
+        self.initialize_workspace(None).await
     }
 
     /// Record a completed tool call. Bumps in-memory atomics synchronously,
@@ -438,83 +541,22 @@ impl JulieServerHandler {
             log.tool_call(tool_name, duration.as_secs_f64() * 1000.0, output_bytes);
         }
 
-        // Async: look up source file sizes + write to SQLite (fire-and-forget)
-        let workspace = self.workspace.clone();
-        let session_metrics = self.session_metrics.clone();
-        let session_id = self.session_metrics.session_id.clone();
-        let tool_name = tool_name.to_string();
-        let duration_ms = duration.as_secs_f64() * 1000.0;
-        let result_count = report.result_count;
-        let source_file_paths = report.source_file_paths.clone();
+        // Offload source-bytes lookup + SQLite writes to the bounded background channel.
+        // try_send drops the record on backpressure rather than spawning unbounded tasks.
         let metadata = report.metadata.to_string();
-        let metadata_str = if metadata == "null" {
-            None
-        } else {
-            Some(metadata)
-        };
-
-        // Clone for daemon.db write before values are moved into the first spawn
-        let daemon_db_opt = self.daemon_db.clone();
-        let workspace_id_opt = self.workspace_id.clone();
-        let session_id_d = session_id.clone();
-        let tool_name_d = tool_name.clone();
-        let metadata_str_d = metadata_str.clone();
-
-        tokio::spawn(async move {
-            let guard = workspace.read().await;
-            if let Some(ws) = guard.as_ref() {
-                if let Some(db_arc) = &ws.db {
-                    if let Ok(db) = db_arc.lock() {
-                        // Look up source file sizes from the index
-                        let source_bytes = if !source_file_paths.is_empty() {
-                            let path_refs: Vec<&str> =
-                                source_file_paths.iter().map(|s| s.as_str()).collect();
-                            db.get_total_file_sizes(&path_refs).ok()
-                        } else {
-                            None
-                        };
-
-                        // Bump source_bytes atomics (deferred from synchronous path)
-                        if let Some(sb) = source_bytes {
-                            session_metrics
-                                .total_source_bytes
-                                .fetch_add(sb, std::sync::atomic::Ordering::Relaxed);
-                        }
-
-                        let _ = db.insert_tool_call(
-                            &session_id,
-                            &tool_name,
-                            duration_ms,
-                            result_count,
-                            source_bytes,
-                            Some(output_bytes),
-                            true,
-                            metadata_str.as_deref(),
-                        );
-                    }
-                }
-            }
+        let _ = self.metrics_tx.try_send(MetricsTask {
+            workspace: self.workspace.clone(),
+            session_metrics: self.session_metrics.clone(),
+            session_id: self.session_metrics.session_id.clone(),
+            tool_name: tool_name.to_string(),
+            duration_ms: duration.as_secs_f64() * 1000.0,
+            result_count: report.result_count,
+            source_file_paths: report.source_file_paths.clone(),
+            output_bytes,
+            metadata_str: if metadata == "null" { None } else { Some(metadata) },
+            daemon_db: self.daemon_db.clone(),
+            workspace_id: self.workspace_id.clone(),
         });
-
-        // Write to daemon.db if available (daemon mode, fire-and-forget)
-        if let Some(daemon_db) = daemon_db_opt {
-            let workspace_id = workspace_id_opt.unwrap_or_default();
-            tokio::task::spawn_blocking(move || {
-                if let Err(e) = daemon_db.insert_tool_call(
-                    &workspace_id,
-                    &session_id_d,
-                    &tool_name_d,
-                    duration_ms,
-                    result_count,
-                    None,
-                    Some(output_bytes),
-                    true,
-                    metadata_str_d.as_deref(),
-                ) {
-                    warn!("Failed to write tool call to daemon.db: {}", e);
-                }
-            });
-        }
     }
 
     /// Extract output byte count from a CallToolResult.
@@ -588,6 +630,14 @@ impl JulieServerHandler {
         &self,
         workspace_id: &str,
     ) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
+        // Fast path: return cached connection for this session (M22).
+        {
+            let cache = self.ref_db_cache.read().await;
+            if let Some(db) = cache.get(workspace_id) {
+                return Ok(Arc::clone(db));
+            }
+        }
+
         let primary = self
             .get_workspace()
             .await?
@@ -616,11 +666,21 @@ impl JulieServerHandler {
             ));
         }
 
-        tokio::task::spawn_blocking(move || {
+        let db = tokio::task::spawn_blocking(move || {
             let db = SymbolDatabase::new(&db_path)?;
-            Ok(Arc::new(std::sync::Mutex::new(db)))
+            Ok::<_, anyhow::Error>(Arc::new(std::sync::Mutex::new(db)))
         })
-        .await?
+        .await??;
+
+        // Populate cache for subsequent calls within this session.
+        {
+            let mut cache = self.ref_db_cache.write().await;
+            cache
+                .entry(workspace_id.to_string())
+                .or_insert_with(|| Arc::clone(&db));
+        }
+
+        Ok(db)
     }
 
     /// Get the search index for a specific workspace by ID.

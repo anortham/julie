@@ -54,7 +54,7 @@ pub fn format_lean_refs_results(
     // Header
     if total == 0 {
         return format!(
-            "No references found for \"{}\"\n💡 Check spelling, or try fast_search(query=\"{}\", search_target=\"definitions\") to verify the symbol exists",
+            "No references found for \"{}\"\nCheck spelling, or try fast_search(query=\"{}\", search_target=\"definitions\") to verify the symbol exists",
             symbol, symbol
         );
     }

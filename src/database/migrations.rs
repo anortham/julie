@@ -5,6 +5,13 @@ use anyhow::{Result, anyhow};
 use rusqlite::params;
 use tracing::{debug, info, warn};
 
+fn get_unix_timestamp() -> Result<i64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .map_err(|e| anyhow!("System time error: {}", e))
+}
+
 /// Current schema version - increment when adding migrations
 pub const LATEST_SCHEMA_VERSION: i32 = 13;
 
@@ -129,14 +136,7 @@ impl SymbolDatabase {
         self.conn.execute(
             "INSERT OR REPLACE INTO schema_version (version, applied_at, description)
              VALUES (?, ?, ?)",
-            params![
-                version,
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs() as i64,
-                description
-            ],
+            params![version, get_unix_timestamp()?, description],
         )?;
 
         Ok(())
@@ -144,6 +144,14 @@ impl SymbolDatabase {
 
     /// Helper: Check if a column exists in a table
     pub fn has_column(&self, table: &str, column: &str) -> Result<bool> {
+        // Validate table name to prevent SQL injection via PRAGMA interpolation.
+        // PRAGMA table_info() does not support parameter binding in rusqlite.
+        assert!(
+            table.chars().all(|c| c.is_alphanumeric() || c == '_'),
+            "has_column: table name must contain only alphanumeric chars and underscores: {:?}",
+            table
+        );
+
         let mut stmt = self
             .conn
             .prepare(&format!("PRAGMA table_info({})", table))?;

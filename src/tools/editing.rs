@@ -189,8 +189,15 @@ impl MultiFileTransaction {
 
     /// Commit all changes atomically
     pub fn commit_all(mut self) -> Result<()> {
+        // Collect into a stable Vec once. Phase 1 builds self.temp_files in this order;
+        // Phase 2 must iterate in the same order so temp_files[i] maps to the right
+        // destination. HashMap iteration is non-deterministic across re-iterations.
+        // Use std::mem::take because Drop prevents direct field moves from self.
+        let file_list: Vec<(PathBuf, String)> =
+            std::mem::take(&mut self.pending_content).into_iter().collect();
+
         // Phase 0: Pre-flight validation - check if we can write to all target files
-        for file_path in self.pending_content.keys() {
+        for (file_path, _) in &file_list {
             if file_path.exists() {
                 // Check if file is readonly by trying to get metadata and permissions
                 let metadata = fs::metadata(file_path)?;
@@ -205,7 +212,7 @@ impl MultiFileTransaction {
         }
 
         // Phase 1: Write all content to temp files
-        for (file_path, content) in &self.pending_content {
+        for (file_path, content) in &file_list {
             let temp_name = format!("{}.tmp.{}", file_path.display(), self.session_id);
             let temp_path = file_path.with_file_name(temp_name);
 
@@ -214,39 +221,37 @@ impl MultiFileTransaction {
         }
 
         // Phase 2: Atomic rename all temp files (commit point)
-        for (i, (file_path, _)) in self.pending_content.iter().enumerate() {
+        for (i, (file_path, _)) in file_list.iter().enumerate() {
             let temp_path = &self.temp_files[i];
 
             if let Err(e) = fs::rename(temp_path, file_path) {
-                // If any rename fails, roll back all previous renames
-                self.rollback_partial_commit(i)?;
+                // Roll back already-committed renames using the same stable order
+                let committed: Vec<PathBuf> =
+                    file_list[..i].iter().map(|(p, _)| p.clone()).collect();
+                self.rollback_partial_commit(&committed)?;
                 return Err(e.into());
             }
         }
 
-        debug!(
-            "Multi-file transaction committed: {} files",
-            self.pending_content.len()
-        );
+        debug!("Multi-file transaction committed: {} files", file_list.len());
         Ok(())
     }
 
     /// Rollback partial commit (used internally)
-    fn rollback_partial_commit(&self, committed_count: usize) -> Result<()> {
+    fn rollback_partial_commit(&self, committed_paths: &[PathBuf]) -> Result<()> {
         // Restore files that were successfully renamed
-        for (i, (file_path, _)) in self.pending_content.iter().enumerate() {
-            if i < committed_count {
-                let original_content = &self.files[file_path];
-                if let Err(e) = fs::write(file_path, original_content) {
-                    warn!(
-                        "Failed to restore file during rollback: {:?}: {}",
-                        file_path, e
-                    );
-                }
+        for file_path in committed_paths {
+            let original_content = &self.files[file_path];
+            if let Err(e) = fs::write(file_path, original_content) {
+                warn!(
+                    "Failed to restore file during rollback: {:?}: {}",
+                    file_path, e
+                );
             }
         }
 
-        // Clean up remaining temp files
+        // Clean up remaining temp files (those not yet renamed)
+        let committed_count = committed_paths.len();
         for (i, temp_path) in self.temp_files.iter().enumerate() {
             if i >= committed_count && temp_path.exists() {
                 let _ = fs::remove_file(temp_path);

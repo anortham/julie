@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use tracing::{info, warn};
 
 use crate::database::SymbolDatabase;
@@ -472,19 +472,23 @@ pub fn embed_symbols_for_file(
         .embed_batch(&texts)
         .context("Failed to embed file symbols")?;
 
+    let usable = vectors.len().min(prepared.len());
     if vectors.len() != prepared.len() {
-        bail!(
-            "Embedding count mismatch for file {}: expected {}, got {}",
+        warn!(
+            "Embedding count mismatch for file {}: expected {}, got {}; storing {usable} partial results",
             file_path,
             prepared.len(),
-            vectors.len()
+            vectors.len(),
         );
+    }
+    if usable == 0 {
+        return Ok(0);
     }
 
     // Pair and store
-    let pairs: Vec<(String, Vec<f32>)> = prepared
+    let pairs: Vec<(String, Vec<f32>)> = prepared[..usable]
         .iter()
-        .zip(vectors.into_iter())
+        .zip(vectors.into_iter().take(usable))
         .map(|((id, _), vec)| (id.clone(), vec))
         .collect();
 

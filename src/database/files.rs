@@ -187,42 +187,6 @@ impl SymbolDatabase {
         result
     }
 
-    /// Drop all file table indexes for bulk operations
-    #[allow(dead_code)]
-    fn drop_file_indexes(&self) -> Result<()> {
-        let indexes = [
-            "idx_files_language",
-            "idx_files_modified",
-            "idx_files_workspace",
-        ];
-
-        for index in &indexes {
-            if let Err(e) = self
-                .conn
-                .execute(&format!("DROP INDEX IF EXISTS {}", index), [])
-            {
-                debug!("Note: Could not drop index {}: {}", index, e);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Recreate all file table indexes after bulk operations
-    #[allow(dead_code)]
-    fn create_file_indexes(&self) -> Result<()> {
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_files_language ON files(language)",
-            [],
-        )?;
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_files_modified ON files(last_modified)",
-            [],
-        )?;
-
-        Ok(())
-    }
-
     // ========================================
     // CASCADE ARCHITECTURE: File Content Storage
     // ========================================
@@ -272,7 +236,9 @@ impl SymbolDatabase {
         }
     }
 
-    /// CASCADE: Get all file contents for workspace
+    /// Get all file contents for Tantivy index population.
+    /// Intentionally unbounded: Tantivy needs the full corpus to build a complete index.
+    /// Do NOT add a LIMIT here — partial indexing produces incorrect BM25 scores.
     pub fn get_all_file_contents(&self) -> Result<Vec<(String, String)>> {
         let mut stmt = self
             .conn
@@ -292,6 +258,7 @@ impl SymbolDatabase {
 
     /// Get all file contents with language for Tantivy backfill.
     /// Returns (path, language, content) tuples for files that have content stored.
+    /// Intentionally unbounded: the Tantivy backfill must process the entire file corpus.
     pub fn get_all_file_contents_with_language(&self) -> Result<Vec<(String, String, String)>> {
         let mut stmt = self
             .conn
@@ -381,10 +348,7 @@ impl SymbolDatabase {
 
     /// Update file hash for incremental change detection
     pub fn update_file_hash(&self, file_path: &str, new_hash: &str) -> Result<()> {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let now = get_unix_timestamp()?;
 
         self.conn.execute(
             "UPDATE files SET hash = ?1, last_indexed = ?2 WHERE path = ?3",
@@ -406,21 +370,6 @@ impl SymbolDatabase {
 
         debug!(
             "Deleted file record for: {} ({} rows affected)",
-            file_path, count
-        );
-        Ok(())
-    }
-
-    /// Delete file record for a specific workspace (workspace-aware cleanup)
-    pub fn delete_file_record_in_workspace(&self, file_path: &str) -> Result<()> {
-        let count = self
-            .conn
-            .execute("DELETE FROM files WHERE path = ?1", params![file_path])?;
-
-        // Tantivy index is updated separately during re-indexing
-
-        debug!(
-            "Deleted file record for '{}' ({} rows affected)",
             file_path, count
         );
         Ok(())

@@ -20,6 +20,10 @@ impl PidFile {
     ///
     /// The write is atomic: writes to a `.tmp` sibling first, then renames.
     /// Returns a `PidFile` handle for later cleanup.
+    ///
+    /// Prefer `create_exclusive` for production code — it uses O_CREAT|O_EXCL
+    /// to eliminate the TOCTOU window. This method is only used by test helpers.
+    #[allow(dead_code)]
     pub fn create(path: &Path) -> anyhow::Result<Self> {
         let pid = std::process::id();
         let tmp_path = path.with_extension("pid.tmp");
@@ -122,6 +126,8 @@ impl PidFile {
     /// - File exists, process is dead (stale) → remove it, then create.
     pub fn create_exclusive(path: &Path) -> anyhow::Result<Self> {
         let pid = std::process::id();
+        const MAX_RETRIES: u32 = 10;
+        let mut retries = 0u32;
 
         loop {
             match OpenOptions::new().write(true).create_new(true).open(path) {
@@ -140,6 +146,14 @@ impl PidFile {
                     }
                     // Stale or unreadable file — remove and retry the exclusive create
                     let _ = fs::remove_file(path);
+                    retries += 1;
+                    if retries >= MAX_RETRIES {
+                        anyhow::bail!(
+                            "Failed to create PID file at {} after {} retries",
+                            path.display(),
+                            MAX_RETRIES
+                        );
+                    }
                 }
                 Err(e) => {
                     return Err(anyhow::Error::from(e)

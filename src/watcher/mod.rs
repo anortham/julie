@@ -58,6 +58,123 @@ pub struct IncrementalIndexer {
 
     /// Shared flag checked by spawned tasks — when set to true, tasks exit their loops.
     cancel_flag: Arc<AtomicBool>,
+
+    /// Join handles for the event detector and queue processor tasks.
+    /// Stored so stop() can abort and await them for a clean shutdown.
+    event_task: Option<tokio::task::JoinHandle<()>>,
+    queue_task: Option<tokio::task::JoinHandle<()>>,
+}
+
+/// Dispatch a single file change event to the appropriate handler.
+///
+/// `on_atomic_delete` is called (with the file path) when a DELETE event is
+/// skipped because the file still exists (atomic-save pattern). The background
+/// task uses this to clear the dedup entry so the follow-up Create/Modify event
+/// is not suppressed.
+async fn dispatch_file_event<F>(
+    event: FileChangeEvent,
+    db: &Arc<StdMutex<SymbolDatabase>>,
+    extractor_manager: &Arc<ExtractorManager>,
+    search_index: &Option<Arc<StdMutex<crate::search::SearchIndex>>>,
+    embedding_provider: &Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    workspace_root: &std::path::Path,
+    on_atomic_delete: Option<F>,
+) where
+    F: FnOnce(&std::path::Path),
+{
+    let relative_for_embed =
+        crate::utils::paths::to_relative_unix_style(&event.path, workspace_root).ok();
+
+    match event.change_type {
+        FileChangeType::Created | FileChangeType::Modified => {
+            let rel_path = relative_for_embed.clone();
+            if let Err(e) = handlers::handle_file_created_or_modified_static(
+                event.path,
+                db,
+                extractor_manager,
+                workspace_root,
+                search_index.as_ref(),
+            )
+            .await
+            {
+                warn!("Failed to handle file change: {}", e);
+            } else if let (Some(provider), Some(rel)) = (embedding_provider, &rel_path) {
+                if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(
+                    db,
+                    provider.as_ref(),
+                    rel,
+                    None,
+                ) {
+                    warn!("Incremental embedding failed for {}: {}", rel, e);
+                }
+            }
+        }
+        FileChangeType::Deleted => {
+            // Guard: if the file still exists, this was likely an atomic
+            // save (write-temp → delete → rename). Skip to avoid nuking
+            // valid data — the subsequent Create/Modify event will re-index.
+            if event.path.exists() {
+                info!(
+                    "Skipping DELETE for {} (file still exists, likely atomic save)",
+                    event.path.display()
+                );
+                if let Some(cb) = on_atomic_delete {
+                    cb(&event.path);
+                }
+            } else {
+                if let Some(ref rel) = relative_for_embed {
+                    if let Ok(mut db_guard) = db.lock() {
+                        if let Err(e) = db_guard.delete_embeddings_for_file(rel) {
+                            warn!("Failed to delete embeddings for {}: {}", rel, e);
+                        }
+                    }
+                }
+                if let Err(e) = handlers::handle_file_deleted_static(
+                    event.path,
+                    db,
+                    workspace_root,
+                    search_index.as_ref(),
+                )
+                .await
+                {
+                    warn!("Failed to handle file deletion: {}", e);
+                }
+            }
+        }
+        FileChangeType::Renamed { from, to } => {
+            if let Ok(ref rel_from) =
+                crate::utils::paths::to_relative_unix_style(&from, workspace_root)
+            {
+                if let Ok(mut db_guard) = db.lock() {
+                    let _ = db_guard.delete_embeddings_for_file(rel_from);
+                }
+            }
+            if let Err(e) = handlers::handle_file_renamed_static(
+                from,
+                to.clone(),
+                db,
+                extractor_manager,
+                workspace_root,
+                search_index.as_ref(),
+            )
+            .await
+            {
+                warn!("Failed to handle file rename: {}", e);
+            } else if let (Some(provider), Ok(rel_to)) = (
+                embedding_provider,
+                crate::utils::paths::to_relative_unix_style(&to, workspace_root),
+            ) {
+                if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(
+                    db,
+                    provider.as_ref(),
+                    &rel_to,
+                    None,
+                ) {
+                    warn!("Incremental embedding failed for {}: {}", rel_to, e);
+                }
+            }
+        }
+    }
 }
 
 impl IncrementalIndexer {
@@ -84,6 +201,8 @@ impl IncrementalIndexer {
             gitignore,
             workspace_root,
             cancel_flag: Arc::new(AtomicBool::new(false)),
+            event_task: None,
+            queue_task: None,
         })
     }
 
@@ -118,10 +237,10 @@ impl IncrementalIndexer {
         let index_queue = self.index_queue.clone();
         let cancel_flag_events = self.cancel_flag.clone();
 
-        tokio::spawn(async move {
+        let event_handle = tokio::spawn(async move {
             info!("File system event detector started");
             while let Some(event_result) = rx.recv().await {
-                if cancel_flag_events.load(Ordering::Relaxed) {
+                if cancel_flag_events.load(Ordering::Acquire) {
                     info!("Event detector cancelled, exiting");
                     break;
                 }
@@ -146,6 +265,7 @@ impl IncrementalIndexer {
                 }
             }
         });
+        self.event_task = Some(event_handle);
 
         // Spawn background task to process queued events
         // Clone all the components needed for processing
@@ -158,7 +278,7 @@ impl IncrementalIndexer {
         let workspace_root = self.workspace_root.clone();
         let cancel_flag_queue = self.cancel_flag.clone();
 
-        tokio::spawn(async move {
+        let queue_handle = tokio::spawn(async move {
             use tokio::time::{Duration, interval};
             let mut tick = interval(Duration::from_secs(1)); // Process queue every second
 
@@ -166,7 +286,7 @@ impl IncrementalIndexer {
             loop {
                 tick.tick().await;
 
-                if cancel_flag_queue.load(Ordering::Relaxed) {
+                if cancel_flag_queue.load(Ordering::Acquire) {
                     info!("Queue processor cancelled, exiting");
                     break;
                 }
@@ -181,6 +301,7 @@ impl IncrementalIndexer {
                     debug!("Processing {} queued file events", queue_size);
                 }
 
+                let mut processed_count = 0usize;
                 while let Some(event) = {
                     let mut queue = queue_for_processing.lock().await;
                     queue.pop_front()
@@ -220,110 +341,27 @@ impl IncrementalIndexer {
 
                     info!("Background task processing: {:?}", event.path);
 
-                    // Compute relative path for embedding operations
-                    let relative_for_embed =
-                        crate::utils::paths::to_relative_unix_style(&event.path, &workspace_root)
-                            .ok();
+                    let clear_dedup_on_delete = {
+                        let lp = last_processed.clone();
+                        move |path: &std::path::Path| {
+                            let path = path.to_path_buf();
+                            tokio::spawn(async move {
+                                lp.lock().await.remove(&path);
+                            });
+                        }
+                    };
 
-                    match event.change_type {
-                        FileChangeType::Created | FileChangeType::Modified => {
-                            let rel_path = relative_for_embed.clone();
-                            if let Err(e) = handlers::handle_file_created_or_modified_static(
-                                event.path,
-                                &db,
-                                &extractor_manager,
-                                &workspace_root,
-                                search_index.as_ref(),
-                            )
-                            .await
-                            {
-                                warn!("Failed to handle file change: {}", e);
-                            } else if let (Some(provider), Some(rel)) =
-                                (&embedding_provider, &rel_path)
-                            {
-                                // Re-embed symbols after change (non-fatal), replacing stale vectors.
-                                if let Err(e) =
-                                    crate::embeddings::pipeline::reembed_symbols_for_file(
-                                        &db,
-                                        provider.as_ref(),
-                                        rel,
-                                        None,
-                                    )
-                                {
-                                    warn!("Incremental embedding failed for {}: {}", rel, e);
-                                }
-                            }
-                        }
-                        FileChangeType::Deleted => {
-                            // Guard: if the file still exists, this was likely an atomic
-                            // save (write-temp → delete → rename). Skip to avoid nuking
-                            // valid data — the subsequent Create/Modify event will re-index.
-                            if event.path.exists() {
-                                info!(
-                                    "Skipping DELETE for {} (file still exists, likely atomic save)",
-                                    event.path.display()
-                                );
-                                // Clear dedup entry so the follow-up Create/Modify event
-                                // for this path is NOT skipped by the 1s dedup window.
-                                last_processed.lock().await.remove(&event.path);
-                            } else {
-                                // Delete embeddings BEFORE deleting symbols (join requires symbols to exist)
-                                if let Some(ref rel) = relative_for_embed {
-                                    if let Ok(mut db_guard) = db.lock() {
-                                        if let Err(e) = db_guard.delete_embeddings_for_file(rel) {
-                                            warn!("Failed to delete embeddings for {}: {}", rel, e);
-                                        }
-                                    }
-                                }
-                                if let Err(e) = handlers::handle_file_deleted_static(
-                                    event.path,
-                                    &db,
-                                    &workspace_root,
-                                    search_index.as_ref(),
-                                )
-                                .await
-                                {
-                                    warn!("Failed to handle file deletion: {}", e);
-                                }
-                            }
-                        }
-                        FileChangeType::Renamed { from, to } => {
-                            // Delete embeddings for old path before rename
-                            if let Ok(ref rel_from) =
-                                crate::utils::paths::to_relative_unix_style(&from, &workspace_root)
-                            {
-                                if let Ok(mut db_guard) = db.lock() {
-                                    let _ = db_guard.delete_embeddings_for_file(rel_from);
-                                }
-                            }
-                            if let Err(e) = handlers::handle_file_renamed_static(
-                                from,
-                                to.clone(),
-                                &db,
-                                &extractor_manager,
-                                &workspace_root,
-                                search_index.as_ref(),
-                            )
-                            .await
-                            {
-                                warn!("Failed to handle file rename: {}", e);
-                            } else if let (Some(provider), Ok(rel_to)) = (
-                                &embedding_provider,
-                                crate::utils::paths::to_relative_unix_style(&to, &workspace_root),
-                            ) {
-                                if let Err(e) =
-                                    crate::embeddings::pipeline::reembed_symbols_for_file(
-                                        &db,
-                                        provider.as_ref(),
-                                        &rel_to,
-                                        None,
-                                    )
-                                {
-                                    warn!("Incremental embedding failed for {}: {}", rel_to, e);
-                                }
-                            }
-                        }
-                    }
+                    dispatch_file_event(
+                        event,
+                        &db,
+                        &extractor_manager,
+                        &search_index,
+                        &embedding_provider,
+                        &workspace_root,
+                        Some(clear_dedup_on_delete),
+                    )
+                    .await;
+                    processed_count += 1;
                 }
 
                 // Evict stale dedup entries older than 2 seconds to prevent unbounded growth.
@@ -337,11 +375,9 @@ impl IncrementalIndexer {
                     });
                 }
 
-                // Batch-commit Tantivy after processing all queued events.
-                // Individual handlers intentionally defer commits to avoid
-                // segment-merge conflicts when many files change at once
-                // (e.g., worktree cleanup).
-                if queue_size > 0 {
+                // Batch-commit Tantivy only if we actually processed events
+                // (not just queued or skipped via dedup).
+                if processed_count > 0 {
                     if let Some(ref search_index) = search_index {
                         let si = Arc::clone(search_index);
                         let _ = tokio::task::spawn_blocking(move || {
@@ -358,6 +394,7 @@ impl IncrementalIndexer {
                 }
             }
         });
+        self.queue_task = Some(queue_handle);
 
         info!("File watcher started successfully with background queue processing");
         Ok(())
@@ -365,105 +402,26 @@ impl IncrementalIndexer {
 
     /// Process any pending file changes from the queue
     pub async fn process_pending_changes(&self) -> Result<()> {
-        // Process all items currently in the queue
-        let mut has_events = false;
+        let mut processed_count = 0usize;
         while let Some(event) = {
             let mut queue = self.index_queue.lock().await;
             queue.pop_front()
         } {
-            let relative_for_embed =
-                crate::utils::paths::to_relative_unix_style(&event.path, &self.workspace_root).ok();
-
-            match event.change_type {
-                FileChangeType::Created | FileChangeType::Modified => {
-                    let rel_path = relative_for_embed.clone();
-                    if let Err(e) = handlers::handle_file_created_or_modified_static(
-                        event.path,
-                        &self.db,
-                        &self.extractor_manager,
-                        &self.workspace_root,
-                        self.search_index.as_ref(),
-                    )
-                    .await
-                    {
-                        warn!("Failed to handle file change: {}", e);
-                    } else if let (Some(provider), Some(rel)) =
-                        (&self.embedding_provider, &rel_path)
-                    {
-                        if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(
-                            &self.db,
-                            provider.as_ref(),
-                            rel,
-                            None,
-                        ) {
-                            warn!("Incremental embedding failed for {}: {}", rel, e);
-                        }
-                    }
-                }
-                FileChangeType::Deleted => {
-                    // Guard: atomic save pattern — file still exists after DELETE event
-                    if event.path.exists() {
-                        info!(
-                            "Skipping DELETE for {} (file still exists, likely atomic save)",
-                            event.path.display()
-                        );
-                    } else {
-                        if let Some(ref rel) = relative_for_embed {
-                            if let Ok(mut db_guard) = self.db.lock() {
-                                let _ = db_guard.delete_embeddings_for_file(rel);
-                            }
-                        }
-                        if let Err(e) = handlers::handle_file_deleted_static(
-                            event.path,
-                            &self.db,
-                            &self.workspace_root,
-                            self.search_index.as_ref(),
-                        )
-                        .await
-                        {
-                            warn!("Failed to handle file deletion: {}", e);
-                        }
-                    }
-                }
-                FileChangeType::Renamed { from, to } => {
-                    if let Ok(rel_from) =
-                        crate::utils::paths::to_relative_unix_style(&from, &self.workspace_root)
-                    {
-                        if let Ok(mut db_guard) = self.db.lock() {
-                            let _ = db_guard.delete_embeddings_for_file(&rel_from);
-                        }
-                    }
-                    if let Err(e) = handlers::handle_file_renamed_static(
-                        from,
-                        to.clone(),
-                        &self.db,
-                        &self.extractor_manager,
-                        &self.workspace_root,
-                        self.search_index.as_ref(),
-                    )
-                    .await
-                    {
-                        warn!("Failed to handle file rename: {}", e);
-                    } else if let (Some(provider), Ok(rel_to)) = (
-                        &self.embedding_provider,
-                        crate::utils::paths::to_relative_unix_style(&to, &self.workspace_root),
-                    ) {
-                        if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(
-                            &self.db,
-                            provider.as_ref(),
-                            &rel_to,
-                            None,
-                        ) {
-                            warn!("Incremental embedding failed for {}: {}", rel_to, e);
-                        }
-                    }
-                }
-            }
-            has_events = true;
+            dispatch_file_event(
+                event,
+                &self.db,
+                &self.extractor_manager,
+                &self.search_index,
+                &self.embedding_provider,
+                &self.workspace_root,
+                None::<fn(&std::path::Path)>,
+            )
+            .await;
+            processed_count += 1;
         }
 
-        // Batch-commit Tantivy once after processing all pending events.
-        if has_events {
+        // Batch-commit Tantivy only if we actually dispatched events.
+        if processed_count > 0 {
             if let Some(ref search_index) = self.search_index {
                 let si = Arc::clone(search_index);
                 let _ = tokio::task::spawn_blocking(move || {
@@ -484,8 +442,19 @@ impl IncrementalIndexer {
 
     /// Stop the file watcher and signal spawned tasks to exit.
     pub async fn stop(&mut self) -> Result<()> {
-        // Signal spawned tasks to exit their loops
-        self.cancel_flag.store(true, Ordering::Relaxed);
+        // Release ordering ensures all stores above this point are visible to
+        // task threads that load the flag with Acquire ordering.
+        self.cancel_flag.store(true, Ordering::Release);
+
+        // Abort and await spawned tasks for a clean shutdown.
+        if let Some(handle) = self.event_task.take() {
+            handle.abort();
+            let _ = handle.await;
+        }
+        if let Some(handle) = self.queue_task.take() {
+            handle.abort();
+            let _ = handle.await;
+        }
 
         if let Some(watcher) = self.watcher.take() {
             drop(watcher);

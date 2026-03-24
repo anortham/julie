@@ -167,8 +167,12 @@ pub(crate) fn is_test_path(path: &str) -> bool {
             "test" | "tests" | "Test" | "Tests" | "spec" | "Spec" | "__tests__" => return true,
             _ => {}
         }
-        // C# convention: MyProject.Tests
-        if segment.ends_with(".Tests") || segment.ends_with(".Test") {
+        // C# convention: MyProject.Tests, MyProject.Tests.Integration
+        if segment.ends_with(".Tests")
+            || segment.ends_with(".Test")
+            || segment.contains(".Tests.")
+            || segment.contains(".Test.")
+        {
             return true;
         }
     }

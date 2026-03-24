@@ -189,8 +189,7 @@ impl QueryMetricsTool {
 
                 Ok(CallToolResult::text_content(vec![Content::text(output)]))
             }
-            _ => {
-                // Existing code_health logic (unchanged)
+            "code_health" => {
                 let workspace_target =
                     resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
 
@@ -247,6 +246,13 @@ impl QueryMetricsTool {
                 .await??;
 
                 Ok(CallToolResult::text_content(vec![Content::text(output)]))
+            }
+            other => {
+                let msg = format!(
+                    "Unknown category '{}'. Valid categories: code_health, session, history, trend.",
+                    other
+                );
+                Ok(CallToolResult::text_content(vec![Content::text(msg)]))
             }
         }
     }

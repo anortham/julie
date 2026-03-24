@@ -302,6 +302,10 @@ pub fn select_budgeted_variables(
             .then_with(|| a_sym.id.cmp(&b_sym.id))
     });
 
+    // Global cap: prevent runaway embedding work on very large codebases where
+    // per-language ratios alone could sum to thousands of variables.
+    all_selected.truncate(5000);
+
     all_selected
         .into_iter()
         .map(|(s, _)| (s.id.clone(), format_symbol_metadata(s)))

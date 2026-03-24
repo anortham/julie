@@ -74,14 +74,19 @@ pub(crate) fn is_transient_accept_error(e: &io::Error) -> bool {
 /// Returns `true` if sessions drained cleanly, `false` if the timeout elapsed
 /// while sessions were still active.
 pub(crate) async fn drain_sessions(sessions: &SessionTracker, timeout: Duration) -> bool {
-    let start = tokio::time::Instant::now();
-    while sessions.active_count() > 0 {
-        if start.elapsed() >= timeout {
-            return false;
+    tokio::time::timeout(timeout, async {
+        loop {
+            // Arm the notifier before checking count to avoid missing a wake-up
+            // between the check and the await (standard condvar pattern).
+            let notified = sessions.session_notify().notified();
+            if sessions.is_idle() {
+                return;
+            }
+            notified.await;
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    true
+    })
+    .await
+    .is_ok()
 }
 
 /// Get the current on-disk binary's modification time.
@@ -171,7 +176,7 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
 
     // Shared state
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
-    let _reaper = watcher_pool.spawn_reaper(Duration::from_secs(60));
+    let reaper_handle = watcher_pool.spawn_reaper(Duration::from_secs(60));
     info!("WatcherPool started (grace=300s, reaper=60s)");
 
     let pool = Arc::new(WorkspacePool::new(
@@ -191,7 +196,10 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
     // Accept loop with graceful shutdown
     let result = tokio::select! {
         res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify) => res,
-        _ = shutdown_signal() => {
+        res = shutdown_signal() => {
+            if let Err(e) = res {
+                warn!("Signal handler setup failed: {}", e);
+            }
             info!("Shutdown signal received, stopping daemon");
             Ok(())
         }
@@ -226,6 +234,8 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
         active_sessions = sessions.active_count(),
         "Daemon shutting down"
     );
+
+    reaper_handle.abort();
 
     embedding_service.shutdown();
     info!("Embedding service shut down");
@@ -349,8 +359,15 @@ async fn handle_ipc_session(
     embedding_service: &Arc<EmbeddingService>,
     restart_pending: &Arc<AtomicBool>,
 ) -> Result<()> {
-    // Read the workspace header (byte-by-byte to avoid BufReader buffering issues)
-    let workspace_path = read_workspace_header(&mut stream).await?;
+    // Read the workspace header with a timeout so a misbehaving client that
+    // connects but never sends the header cannot hold a session slot forever.
+    let workspace_path = tokio::time::timeout(
+        Duration::from_secs(5),
+        read_workspace_header(&mut stream),
+    )
+    .await
+    .context("Workspace header read timed out (5s)")?
+    .context("Failed to read workspace header")?;
 
     info!(
         session_id = %session_id,
@@ -378,85 +395,94 @@ async fn handle_ipc_session(
         .await
         .context("Failed to initialize workspace in pool")?;
 
-    // Create a per-session handler backed by the shared workspace
-    let handler = JulieServerHandler::new_with_shared_workspace(
-        workspace,
-        workspace_path,
-        daemon_db.clone(),
-        Some(full_workspace_id.clone()),
-        Some(Arc::clone(embedding_service)),
-        Some(Arc::clone(restart_pending)),
-    )
-    .await
-    .context("Failed to create handler for IPC session")?;
+    // From this point, disconnect_session must run on all exit paths — even
+    // on errors from handler creation or MCP serving. Wrap the session work in
+    // an async block so `?` propagates to the block result rather than the
+    // outer function, allowing cleanup to always execute afterwards.
+    let session_result: Result<()> = async {
+        // Create a per-session handler backed by the shared workspace
+        let handler = JulieServerHandler::new_with_shared_workspace(
+            workspace,
+            workspace_path,
+            daemon_db.clone(),
+            Some(full_workspace_id.clone()),
+            Some(Arc::clone(embedding_service)),
+            Some(Arc::clone(restart_pending)),
+        )
+        .await
+        .context("Failed to create handler for IPC session")?;
 
-    // Auto-attach reference workspaces registered for this primary workspace.
-    // Each reference is pre-loaded into the pool so its indexes are warm.
-    if let Some(db) = &daemon_db {
-        match db.list_references(&full_workspace_id) {
-            Ok(refs) => {
-                for ref_ws in &refs {
-                    match pool
-                        .get_or_init(&ref_ws.workspace_id, PathBuf::from(&ref_ws.path))
-                        .await
-                    {
-                        Ok(_) => {
-                            info!(
-                                session_id = %session_id,
-                                reference = %ref_ws.workspace_id,
-                                "Auto-attached reference workspace"
-                            );
-                        }
-                        Err(e) => {
-                            warn!(
-                                session_id = %session_id,
-                                reference = %ref_ws.workspace_id,
-                                "Failed to auto-attach reference workspace: {}", e
-                            );
+        // Auto-attach reference workspaces registered for this primary workspace.
+        // Each reference is pre-loaded into the pool so its indexes are warm.
+        if let Some(db) = &daemon_db {
+            match db.list_references(&full_workspace_id) {
+                Ok(refs) => {
+                    for ref_ws in &refs {
+                        match pool
+                            .get_or_init(&ref_ws.workspace_id, PathBuf::from(&ref_ws.path))
+                            .await
+                        {
+                            Ok(_) => {
+                                info!(
+                                    session_id = %session_id,
+                                    reference = %ref_ws.workspace_id,
+                                    "Auto-attached reference workspace"
+                                );
+                            }
+                            Err(e) => {
+                                warn!(
+                                    session_id = %session_id,
+                                    reference = %ref_ws.workspace_id,
+                                    "Failed to auto-attach reference workspace: {}", e
+                                );
+                            }
                         }
                     }
                 }
+                Err(e) => {
+                    warn!(
+                        session_id = %session_id,
+                        "Failed to query reference workspaces: {}", e
+                    );
+                }
+            }
+        }
+
+        // Grab project log before serve() consumes the handler
+        let project_log = handler.project_log.clone();
+
+        // Log session start to project log
+        if let Some(ref log) = project_log {
+            log.session_start(session_id);
+        }
+
+        // Serve MCP over the IPC stream. IpcStream implements AsyncRead + AsyncWrite,
+        // so rmcp's blanket IntoTransport impl handles the conversion automatically.
+        let service = handler
+            .serve(stream)
+            .await
+            .map_err(|e| anyhow::anyhow!("MCP serve failed: {}", e))?;
+
+        // Block until the MCP session ends (client disconnect or error)
+        let result = match service.waiting().await {
+            Ok(_reason) => {
+                info!(session_id = %session_id, "MCP session completed normally");
+                Ok(())
             }
             Err(e) => {
-                warn!(
-                    session_id = %session_id,
-                    "Failed to query reference workspaces: {}", e
-                );
+                warn!(session_id = %session_id, "MCP session ended with error: {}", e);
+                Err(anyhow::anyhow!("MCP session error: {}", e))
             }
+        };
+
+        // Log session end to project log
+        if let Some(ref log) = project_log {
+            log.session_end(session_id);
         }
+
+        result
     }
-
-    // Grab project log before serve() consumes the handler
-    let project_log = handler.project_log.clone();
-
-    // Log session start to project log
-    if let Some(ref log) = project_log {
-        log.session_start(session_id);
-    }
-
-    // Serve MCP over the IPC stream. IpcStream implements AsyncRead + AsyncWrite,
-    // so rmcp's blanket IntoTransport impl handles the conversion automatically.
-    let service = handler
-        .serve(stream)
-        .await
-        .map_err(|e| anyhow::anyhow!("MCP serve failed: {}", e))?;
-
-    // Block until the MCP session ends (client disconnect or error)
-    let result = match service.waiting().await {
-        Ok(_reason) => {
-            info!(session_id = %session_id, "MCP session completed normally");
-            Ok(())
-        }
-        Err(e) => {
-            warn!(session_id = %session_id, "MCP session ended with error: {}", e);
-            Err(anyhow::anyhow!("MCP session error: {}", e))
-        }
-    };
-
-    // Log session end to project log
-    if let Some(ref log) = project_log {
-        log.session_end(session_id);
-    }
+    .await;
 
     // Sync the pool's in-memory `indexed` flag from daemon.db. If indexing ran
     // during this session, handle_index_command will have already written "ready"
@@ -467,7 +493,7 @@ async fn handle_ipc_session(
     // Decrement session count in daemon.db (pool handles the None case gracefully)
     pool.disconnect_session(&full_workspace_id).await;
 
-    result
+    session_result
 }
 
 /// Read the workspace header from an IPC stream.
@@ -508,12 +534,14 @@ async fn read_workspace_header(stream: &mut IpcStream) -> Result<PathBuf> {
 }
 
 /// Wait for a shutdown signal (SIGTERM or SIGINT on Unix).
-async fn shutdown_signal() {
+async fn shutdown_signal() -> Result<()> {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
-        let mut sigterm = signal(SignalKind::terminate()).expect("failed to register SIGTERM");
-        let mut sigint = signal(SignalKind::interrupt()).expect("failed to register SIGINT");
+        let mut sigterm = signal(SignalKind::terminate())
+            .context("failed to register SIGTERM handler")?;
+        let mut sigint = signal(SignalKind::interrupt())
+            .context("failed to register SIGINT handler")?;
 
         tokio::select! {
             _ = sigterm.recv() => info!("Received SIGTERM"),
@@ -525,7 +553,9 @@ async fn shutdown_signal() {
     {
         tokio::signal::ctrl_c()
             .await
-            .expect("failed to listen for ctrl-c");
+            .context("failed to listen for ctrl-c")?;
         info!("Received Ctrl+C");
     }
+
+    Ok(())
 }

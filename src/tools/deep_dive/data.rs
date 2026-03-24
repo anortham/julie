@@ -9,6 +9,7 @@ use tracing::debug;
 
 use crate::database::SymbolDatabase;
 use crate::extractors::base::{RelationshipKind, Symbol, SymbolKind};
+use crate::search::scoring::is_test_path;
 use crate::tools::navigation::resolution::parse_qualified_name;
 use crate::tools::shared::NOISE_CALLEE_NAMES;
 
@@ -299,46 +300,46 @@ fn is_container_kind(kind: &SymbolKind) -> bool {
     )
 }
 
-/// Check if a file path looks like a test file.
-pub(crate) fn is_test_file(path: &str) -> bool {
-    // Directory patterns
-    path.contains("/tests/")
-        || path.contains("/test/")
-        || path.contains("/__tests__/")
-        // File suffix patterns
-        || path.ends_with("_test.rs")
-        || path.ends_with("_tests.rs")
-        || path.ends_with("_test.go")
-        || path.ends_with("_test.py")
-        || path.ends_with(".test.ts")
-        || path.ends_with(".test.js")
-        || path.ends_with(".test.tsx")
-        || path.ends_with(".test.jsx")
-        || path.ends_with(".spec.ts")
-        || path.ends_with(".spec.js")
-        // File prefix patterns
-        || path.split('/').last().map_or(false, |f| f.starts_with("test_"))
-}
 
 /// Build test location refs by querying identifiers in test files.
 fn build_test_refs(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<RefEntry>> {
     let names = vec![symbol.name.clone()];
     let ident_refs = db.get_identifiers_by_names(&names)?;
 
-    let mut test_refs = Vec::new();
-    for ident in ident_refs {
-        if !is_test_file(&ident.file_path) {
-            continue;
-        }
-        // Skip definition site
-        if ident.file_path == symbol.file_path && ident.start_line == symbol.start_line {
-            continue;
-        }
+    // Filter to test-file identifiers first, then batch-fetch containing symbols
+    // in a single query instead of one per identifier.
+    let test_idents: Vec<_> = ident_refs
+        .into_iter()
+        .filter(|ident| {
+            is_test_path(&ident.file_path)
+                && !(ident.file_path == symbol.file_path
+                    && ident.start_line == symbol.start_line)
+        })
+        .collect();
 
+    // Batch-fetch all containing symbols in one query.
+    let containing_ids: Vec<String> = test_idents
+        .iter()
+        .filter_map(|i| i.containing_symbol_id.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let symbol_map: HashMap<String, Symbol> = if containing_ids.is_empty() {
+        HashMap::new()
+    } else {
+        db.get_symbols_by_ids(&containing_ids)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| (s.id.clone(), s))
+            .collect()
+    };
+
+    let mut test_refs = Vec::new();
+    for ident in test_idents {
         let containing_symbol = ident
             .containing_symbol_id
             .as_ref()
-            .and_then(|id| db.get_symbol_by_id(id).ok().flatten());
+            .and_then(|id| symbol_map.get(id).cloned());
 
         let rel_kind = match ident.kind.as_str() {
             "call" => RelationshipKind::Calls,

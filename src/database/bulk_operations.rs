@@ -1,9 +1,16 @@
 // Bulk operations with index optimization
 
 use super::*;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use rusqlite::params;
 use tracing::{debug, info, warn};
+
+fn get_unix_timestamp() -> Result<i64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .map_err(|e| anyhow!("System time error: {}", e))
+}
 
 impl SymbolDatabase {
     pub fn bulk_store_identifiers(
@@ -26,6 +33,10 @@ impl SymbolDatabase {
             .conn
             .query_row("PRAGMA synchronous", [], |row| row.get(0))?;
 
+        let original_cache_size: i64 = self
+            .conn
+            .query_row("PRAGMA cache_size", [], |row| row.get(0))?;
+
         let current_journal: String = self
             .conn
             .query_row("PRAGMA journal_mode", [], |row| row.get(0))?;
@@ -39,6 +50,7 @@ impl SymbolDatabase {
         }
 
         self.conn.pragma_update(None, "synchronous", 1)?;
+        self.conn.pragma_update(None, "cache_size", 20000i64)?;
 
         let result: Result<()> = (|| -> Result<()> {
             // STEP 1: Wrap ENTIRE bulk operation in outer transaction for atomicity.
@@ -61,9 +73,6 @@ impl SymbolDatabase {
                     debug!("Note: Could not drop index {}: {}", index, e);
                 }
             }
-
-            // STEP 3: Optimize SQLite for bulk operations
-            outer_tx.execute("PRAGMA cache_size = 20000", [])?;
 
             // STEP 4: Use savepoint for identifier inserts (nested within outer_tx)
             let tx = outer_tx.savepoint()?;
@@ -169,6 +178,12 @@ impl SymbolDatabase {
             warn!(
                 "Failed to restore PRAGMA synchronous to {}: {}",
                 original_sync, e
+            );
+        }
+        if let Err(e) = self.conn.pragma_update(None, "cache_size", original_cache_size) {
+            warn!(
+                "Failed to restore PRAGMA cache_size to {}: {}",
+                original_cache_size, e
             );
         }
 
@@ -559,42 +574,6 @@ impl SymbolDatabase {
         result
     }
 
-    /// Drop all relationship table indexes for bulk operations
-    #[allow(dead_code)]
-    fn drop_relationship_indexes(&self) -> Result<()> {
-        let indexes = ["idx_rel_from", "idx_rel_to", "idx_rel_kind"];
-
-        for index in &indexes {
-            if let Err(e) = self
-                .conn
-                .execute(&format!("DROP INDEX IF EXISTS {}", index), [])
-            {
-                debug!("Note: Could not drop index {}: {}", index, e);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Recreate all relationship table indexes after bulk operations
-    #[allow(dead_code)]
-    fn create_relationship_indexes(&self) -> Result<()> {
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_rel_from ON relationships(from_symbol_id)",
-            [],
-        )?;
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_rel_to ON relationships(to_symbol_id)",
-            [],
-        )?;
-        self.conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_rel_kind ON relationships(kind)",
-            [],
-        )?;
-
-        Ok(())
-    }
-
     /// 🔥 ATOMIC INCREMENTAL UPDATE - Cleanup + Bulk Insert in ONE Transaction
     ///
     /// This method solves the critical corruption window in incremental updates:
@@ -625,10 +604,7 @@ impl SymbolDatabase {
         );
 
         // Prepare timestamp
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let now = get_unix_timestamp()?;
 
         // 🔥 CRITICAL: Disable FK checks BEFORE starting transaction
         // Reasons:
@@ -696,8 +672,8 @@ impl SymbolDatabase {
 
                 let mut stmt = outer_tx.prepare(
                     "INSERT OR REPLACE INTO files
-                     (path, language, hash, size, last_modified, last_indexed, symbol_count, content)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                     (path, language, hash, size, last_modified, last_indexed, symbol_count, content, line_count)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 )?;
 
                 for file in new_files {
@@ -709,7 +685,8 @@ impl SymbolDatabase {
                         file.last_modified,
                         now,
                         file.symbol_count,
-                        file.content.as_deref().unwrap_or("")
+                        file.content.as_deref().unwrap_or(""),
+                        file.line_count
                     ])?;
                 }
                 drop(stmt);
@@ -964,10 +941,7 @@ impl SymbolDatabase {
         // Disable FK checks before transaction (same as incremental_update_atomic)
         self.conn.execute("PRAGMA foreign_keys = OFF", [])?;
 
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let now = get_unix_timestamp()?;
 
         let result: Result<()> = (|| -> Result<()> {
             let mut outer_tx = self.conn.transaction()?;

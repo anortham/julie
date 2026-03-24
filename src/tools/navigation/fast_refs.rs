@@ -38,7 +38,10 @@ pub struct FastRefsTool {
     /// Symbol name (supports qualified names)
     pub symbol: String,
     /// Include definition in results (default: true)
-    #[serde(default = "default_true")]
+    #[serde(
+        default = "default_true",
+        deserialize_with = "crate::utils::serde_lenient::deserialize_bool_lenient"
+    )]
     pub include_definition: bool,
     /// Maximum references (default: 10, range: 1-500)
     #[serde(
@@ -98,7 +101,7 @@ impl FastRefsTool {
         const QUERY_SIMILARITY_THRESHOLD: f32 = 0.2;
 
         if is_reference {
-            let ref_id = self.workspace.as_deref().unwrap();
+            let ref_id = self.workspace.as_deref().unwrap_or("primary");
             debug!("Semantic fallback: reference workspace '{}'", ref_id);
             let db_arc = match handler.get_database_for_workspace(ref_id).await {
                 Ok(db) => db,
@@ -258,7 +261,7 @@ impl FastRefsTool {
         }
     }
 
-    async fn find_references_and_definitions(
+    pub async fn find_references_and_definitions(
         &self,
         handler: &JulieServerHandler,
         workspace_target: WorkspaceTarget,
@@ -558,6 +561,20 @@ impl FastRefsTool {
         // Apply user-specified limit to prevent massive responses
         // Truncate AFTER sorting to return the top N most relevant references
         references.truncate(self.limit as usize);
+
+        // Cap definitions — a symbol should rarely have more than a handful of
+        // definition sites (one per language variant or overload). Large counts
+        // signal cross-language naming collisions; cap to keep output usable.
+        const MAX_DEFINITIONS: usize = 50;
+        if definitions.len() > MAX_DEFINITIONS {
+            tracing::debug!(
+                "⚠️  {} definitions for '{}' — capping at {}",
+                definitions.len(),
+                self.symbol,
+                MAX_DEFINITIONS
+            );
+        }
+        let definitions: Vec<Symbol> = definitions.into_iter().take(MAX_DEFINITIONS).collect();
 
         debug!(
             "✅ Found {} definitions and {} references for '{}'",

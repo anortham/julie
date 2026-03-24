@@ -15,7 +15,8 @@ pub mod mcp_compat;
 pub mod search;
 pub mod startup;
 pub mod tools;
-pub mod tracing;
+#[cfg(test)]
+pub(crate) mod tracing;
 pub mod utils;
 pub mod watcher;
 pub mod workspace;
@@ -30,7 +31,4 @@ pub mod tests;
 
 // Re-export common types
 pub use extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
-pub use tracing::{
-    ArchitecturalLayer, ConnectionType, CrossLanguageTracer, DataFlowTrace, TraceOptions, TraceStep,
-};
 pub use workspace::{JulieWorkspace, WorkspaceConfig, WorkspaceHealth};

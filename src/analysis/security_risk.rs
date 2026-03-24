@@ -494,9 +494,9 @@ pub fn compute_security_risk(db: &SymbolDatabase) -> Result<SecurityRiskStats> {
                 None => serde_json::json!({}),
             };
 
-            meta.as_object_mut()
-                .unwrap()
-                .insert("security_risk".to_string(), risk_data);
+            if let Some(obj) = meta.as_object_mut() {
+                obj.insert("security_risk".to_string(), risk_data);
+            }
 
             db.conn.execute(
                 "UPDATE symbols SET metadata = ?1 WHERE id = ?2",

@@ -482,6 +482,8 @@ fn get_pivot_relationship_names_batched(
 
 /// Build NeighborEntry structs from graph expansion results, filtering noise.
 /// Filters out: common trait methods (clone, fmt, etc.) and test file symbols.
+const MAX_NEIGHBOR_ENTRIES: usize = 200;
+
 fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::NeighborEntry> {
     use super::formatting::NeighborEntry;
 
@@ -490,6 +492,7 @@ fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::
         .iter()
         .filter(|neighbor| !NOISE_CALLEE_NAMES.contains(&neighbor.symbol.name.as_str()))
         .filter(|neighbor| !is_test_path(&neighbor.symbol.file_path))
+        .take(MAX_NEIGHBOR_ENTRIES)
         .map(|neighbor| NeighborEntry {
             name: neighbor.symbol.name.clone(),
             file_path: neighbor.symbol.file_path.clone(),
