@@ -88,7 +88,9 @@ impl DaemonLauncher {
 
         if need_spawn {
             // Wait for the socket to appear (daemon needs time to bind)
-            self.wait_for_socket(Duration::from_secs(10))?;
+            // Timeout must exceed the daemon's cold-start time, which includes
+            // ORT embedding model loading (can take 25-30s on Windows with DirectML).
+            self.wait_for_socket(Duration::from_secs(45))?;
             info!("Daemon socket ready");
         }
 
@@ -131,17 +133,19 @@ impl DaemonLauncher {
                 return Ok(());
             }
 
-            // On Windows, try opening the named pipe. If the daemon is listening,
-            // this succeeds. The brief connection is dropped immediately; the
-            // adapter will connect properly afterward.
+            // On Windows, try opening the named pipe. A successful open means the
+            // pipe exists and has an available instance. ERROR_PIPE_BUSY (231)
+            // means the pipe exists but all instances are currently connected,
+            // which still proves the daemon is up and the pipe is bound.
             #[cfg(windows)]
-            if std::fs::OpenOptions::new()
+            match std::fs::OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(&ipc_addr)
-                .is_ok()
             {
-                return Ok(());
+                Ok(_) => return Ok(()),
+                Err(ref e) if e.raw_os_error() == Some(231) => return Ok(()),
+                Err(_) => {} // Pipe doesn't exist yet, keep polling
             }
 
             if start.elapsed() >= timeout {

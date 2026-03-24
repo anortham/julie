@@ -70,9 +70,27 @@ impl PidFile {
 
         #[cfg(windows)]
         {
-            // TODO: implement Windows process check using OpenProcess + GetExitCodeProcess
-            let _ = pid;
-            false
+            // OpenProcess with PROCESS_QUERY_LIMITED_INFORMATION (0x1000) is the
+            // Windows equivalent of kill(pid, 0). If the process exists and we
+            // have access, the handle is valid. If it exists but we lack access,
+            // we get ERROR_ACCESS_DENIED (still alive, just restricted).
+            unsafe extern "system" {
+                fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> isize;
+                fn CloseHandle(handle: isize) -> i32;
+            }
+
+            const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+            let handle =
+                unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+            if handle != 0 {
+                unsafe {
+                    CloseHandle(handle);
+                }
+                return true;
+            }
+            // ERROR_ACCESS_DENIED (5) means the process exists but we lack permission
+            let error = std::io::Error::last_os_error();
+            error.raw_os_error() == Some(5)
         }
     }
 

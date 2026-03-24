@@ -179,10 +179,46 @@ mod windows {
         /// Connect to a daemon's named pipe at `path`.
         ///
         /// Returns a `NamedPipeClient` that implements `AsyncRead + AsyncWrite`.
+        ///
+        /// Windows named pipes return ERROR_PIPE_BUSY (231) when all server
+        /// instances are occupied. This is a transient condition: the daemon
+        /// creates a new instance after each accept(). We retry with
+        /// exponential backoff to ride out the brief window between the
+        /// daemon consuming an instance and creating the next one.
         pub async fn connect(path: &Path) -> io::Result<IpcClientStream> {
-            let client = ClientOptions::new().open(path)?;
-            debug!("Connected to IPC named pipe: {}", path.display());
-            Ok(client)
+            const MAX_ATTEMPTS: u32 = 10;
+            let mut delay = std::time::Duration::from_millis(50);
+            let max_delay = std::time::Duration::from_millis(500);
+
+            for attempt in 1..=MAX_ATTEMPTS {
+                match ClientOptions::new().open(path) {
+                    Ok(client) => {
+                        debug!("Connected to IPC named pipe: {}", path.display());
+                        return Ok(client);
+                    }
+                    Err(e) if e.raw_os_error() == Some(231) && attempt < MAX_ATTEMPTS => {
+                        // ERROR_PIPE_BUSY: all instances occupied (transient).
+                        debug!(
+                            "Named pipe busy (attempt {}/{}), retrying in {}ms",
+                            attempt,
+                            MAX_ATTEMPTS,
+                            delay.as_millis()
+                        );
+                        tokio::time::sleep(delay).await;
+                        delay = (delay * 2).min(max_delay);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!(
+                    "Named pipe {} busy after {} attempts",
+                    path.display(),
+                    MAX_ATTEMPTS
+                ),
+            ))
         }
     }
 }
