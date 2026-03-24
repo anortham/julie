@@ -526,11 +526,16 @@ fn default_cache_dir() -> PathBuf {
         }
     }
     // Linux / fallback: XDG_CACHE_HOME or ~/.cache
+    // Use std::env::temp_dir() as final fallback instead of hardcoded "/tmp"
+    // so this works on Windows where /tmp doesn't exist.
     let cache_base = std::env::var("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            PathBuf::from(home).join(".cache")
+            let home = std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| std::env::temp_dir());
+            home.join(".cache")
         });
     cache_base.join("fastembed")
 }

@@ -25,6 +25,7 @@ use anyhow::{Context, Result};
 use libc;
 use rmcp::ServiceExt;
 use tokio::io::AsyncReadExt;
+use tokio::sync::Notify;
 use tracing::{error, info, warn};
 
 use crate::handler::JulieServerHandler;
@@ -51,10 +52,15 @@ pub(crate) fn is_transient_accept_error(e: &io::Error) -> bool {
         | io::ErrorKind::ConnectionAborted
         | io::ErrorKind::Interrupted => true,
         _ => {
-            // EMFILE / ENFILE: per-process or system-wide file-descriptor exhaustion
-            #[cfg(unix)]
             if let Some(raw) = e.raw_os_error() {
+                // EMFILE / ENFILE: per-process or system-wide fd exhaustion (Unix)
+                #[cfg(unix)]
                 if raw == libc::EMFILE || raw == libc::ENFILE {
+                    return true;
+                }
+                // WSAEMFILE (10024): too many open sockets (Windows)
+                #[cfg(windows)]
+                if raw == 10024 {
                     return true;
                 }
             }
@@ -176,11 +182,21 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
     ));
     let sessions = Arc::new(SessionTracker::new());
 
+    // Notify used by the accept loop to trigger graceful shutdown when the
+    // last session disconnects and the binary is stale. This replaces the
+    // Unix-only SIGTERM-to-self pattern with a cross-platform mechanism that
+    // feeds into the same cleanup path below.
+    let restart_notify = Arc::new(Notify::new());
+
     // Accept loop with graceful shutdown
     let result = tokio::select! {
-        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending) => res,
+        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify) => res,
         _ = shutdown_signal() => {
             info!("Shutdown signal received, stopping daemon");
+            Ok(())
+        }
+        _ = restart_notify.notified() => {
+            info!("Stale binary restart triggered, stopping daemon");
             Ok(())
         }
     };
@@ -237,6 +253,7 @@ async fn accept_loop(
     embedding_service: &Arc<EmbeddingService>,
     startup_binary_mtime: Option<SystemTime>,
     restart_pending: &Arc<AtomicBool>,
+    restart_notify: &Arc<Notify>,
 ) -> Result<()> {
     loop {
         let stream = match listener.accept().await {
@@ -265,6 +282,7 @@ async fn accept_loop(
         let daemon_db = daemon_db.clone();
         let embedding_service = Arc::clone(embedding_service);
         let restart_pending = Arc::clone(restart_pending);
+        let restart_notify = Arc::clone(restart_notify);
         let session_id = sessions.add_session();
 
         // Check for stale binary on each new connection. This way the health
@@ -314,14 +332,9 @@ async fn accept_loop(
             // daemon with the new binary on the next connection.
             if remaining == 0 && restart_pending.load(Ordering::Relaxed) {
                 info!("Last session disconnected and binary is stale. Triggering restart.");
-                // Send SIGTERM to ourselves to trigger the graceful shutdown path.
-                // The adapter will auto-start a fresh daemon on the next connection.
-                #[cfg(unix)]
-                unsafe {
-                    libc::kill(libc::getpid(), libc::SIGTERM);
-                }
-                #[cfg(windows)]
-                std::process::exit(0);
+                // Wake the select! in run_daemon so it exits through the
+                // normal cleanup path (drain, embedding shutdown, PID cleanup).
+                restart_notify.notify_one();
             }
         });
     }

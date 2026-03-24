@@ -106,12 +106,23 @@ impl DaemonLauncher {
         let exe = std::env::current_exe()?;
         info!("Spawning daemon: {} daemon", exe.display());
 
-        std::process::Command::new(&exe)
-            .arg("daemon")
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.arg("daemon")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()?;
+            .stderr(std::process::Stdio::null());
+
+        // Prevent a console window from flashing on Windows when the daemon
+        // is spawned as a background process. Without this flag, Command::new
+        // inherits the parent's console or creates a new one.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        cmd.spawn()?;
 
         Ok(())
     }

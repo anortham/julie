@@ -73,7 +73,7 @@ pub mod file_utils {
         for component in resolved.components() {
             match component {
                 Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-                Component::RootDir => normalized.push("/"),
+                Component::RootDir => normalized.push(component.as_os_str()),
                 Component::CurDir => {} // Skip "."
                 Component::ParentDir => {
                     // Pop parent, but track if we go above workspace root

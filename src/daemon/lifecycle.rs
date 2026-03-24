@@ -42,8 +42,10 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
 
             #[cfg(windows)]
             {
+                // taskkill without /F sends WM_CLOSE, which only works for GUI
+                // apps. The daemon is a console process, so we need /F (force).
                 let _ = std::process::Command::new("taskkill")
-                    .args(["/PID", &pid.to_string()])
+                    .args(["/F", "/PID", &pid.to_string()])
                     .output();
             }
 

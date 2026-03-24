@@ -57,11 +57,16 @@ impl DaemonPaths {
     /// Named pipe name (Windows)
     #[cfg(windows)]
     pub fn daemon_pipe_name(&self) -> String {
-        r"\\.\pipe\julie-daemon".to_string()
+        self.daemon_ipc_addr().to_string_lossy().into_owned()
     }
 
     /// Platform-specific IPC address for the daemon.
     /// Returns socket path on Unix, named pipe path on Windows.
+    ///
+    /// On Windows, the pipe name incorporates a hash of `julie_home` so that
+    /// different installations (or test instances with temp dirs) get isolated
+    /// pipe endpoints, matching the Unix behavior where each `julie_home` gets
+    /// its own socket file.
     pub fn daemon_ipc_addr(&self) -> PathBuf {
         #[cfg(unix)]
         {
@@ -69,7 +74,11 @@ impl DaemonPaths {
         }
         #[cfg(windows)]
         {
-            PathBuf::from(r"\\.\pipe\julie-daemon")
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::hash::DefaultHasher::new();
+            self.julie_home.hash(&mut hasher);
+            let hash = hasher.finish();
+            PathBuf::from(format!(r"\\.\pipe\julie-daemon-{:016x}", hash))
         }
     }
 

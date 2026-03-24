@@ -57,8 +57,24 @@ fn test_daemon_socket_path() {
     let julie_home = dirs::home_dir().unwrap().join(".julie");
     #[cfg(unix)]
     assert_eq!(paths.daemon_socket(), julie_home.join("daemon.sock"));
+    // On Windows, pipe name is scoped to julie_home via hash
     #[cfg(windows)]
-    assert_eq!(paths.daemon_pipe_name(), r"\\.\pipe\julie-daemon");
+    assert!(paths.daemon_pipe_name().starts_with(r"\\.\pipe\julie-daemon-"));
+}
+
+#[test]
+fn test_daemon_ipc_addr_isolation() {
+    // Different julie_home dirs must produce different IPC addresses
+    let paths_a = DaemonPaths::with_home(PathBuf::from("/tmp/julie-a"));
+    let paths_b = DaemonPaths::with_home(PathBuf::from("/tmp/julie-b"));
+    assert_ne!(
+        paths_a.daemon_ipc_addr(),
+        paths_b.daemon_ipc_addr(),
+        "Different julie_home dirs must have different IPC addresses"
+    );
+    // Same julie_home must produce the same address (deterministic)
+    let paths_a2 = DaemonPaths::with_home(PathBuf::from("/tmp/julie-a"));
+    assert_eq!(paths_a.daemon_ipc_addr(), paths_a2.daemon_ipc_addr());
 }
 
 #[test]
