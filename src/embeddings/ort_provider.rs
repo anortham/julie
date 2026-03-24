@@ -422,6 +422,16 @@ impl EmbeddingProvider for OrtEmbeddingProvider {
             return Ok(vec![]);
         }
 
+        // Sub-batch size for ORT inference. Fastembed pads all texts in a
+        // sub-batch to the longest sequence, so a single long text forces
+        // massive padding for every other text in the same sub-batch. Small
+        // sub-batches (32) keep each ORT call's tensor size manageable and
+        // prevent overflowing GPU VRAM on models with long context windows
+        // (Jina-code-v2 supports 8192 tokens). Without this, a 250-text
+        // batch with one long text creates a tensor that exceeds 6GB VRAM,
+        // causing DirectML to silently fall back to CPU.
+        let ort_sub_batch: Option<usize> = Some(32);
+
         let mut model = self
             .model
             .lock()
@@ -432,11 +442,11 @@ impl EmbeddingProvider for OrtEmbeddingProvider {
             &mut *model,
             |model| {
                 model
-                    .embed(texts.to_vec(), None)
+                    .embed(texts.to_vec(), ort_sub_batch)
                     .context("Failed to embed batch")
             },
             |gpu_err, model| {
-                // GPU driver crash (e.g. DirectML 887A0020) — rebuild with CPU and retry.
+                // GPU driver crash (e.g. DirectML 887A0020) -- rebuild with CPU and retry.
                 // Once we swap in the CPU model, all subsequent batches use CPU too.
                 tracing::warn!("GPU embedding failed, falling back to CPU: {gpu_err:#}");
                 let mut cpu_model = TextEmbedding::try_new(
@@ -446,7 +456,7 @@ impl EmbeddingProvider for OrtEmbeddingProvider {
                 .context("Failed to initialize CPU fallback embedding model")?;
 
                 let result = cpu_model
-                    .embed(texts.to_vec(), None)
+                    .embed(texts.to_vec(), ort_sub_batch)
                     .context("CPU fallback embedding also failed")?;
 
                 *model = cpu_model;

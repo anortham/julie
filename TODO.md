@@ -71,7 +71,7 @@ Comprehensive 5-agent code review covering daemon architecture, search engine, n
 - [ ] **[H-H2] ensure_workspace TOCTOU race** -- Two callers both see None, both init. Zero callers currently but latent bug. (`handler.rs:403-410`)
 - [x] **[H-H3] run_stdio_server is dead code** (deleted in `de5e7146`) -- `#[allow(dead_code)]` on 80-line function with correct shutdown logic that adapter mode doesn't replicate. Decide: delete or wire back up. (`main.rs:83`)
 - [x] **[H-H4] lock().unwrap() without poison recovery** (fixed in `de5e7146`) -- `new_with_shared_workspace` panics on poisoned mutex. Use `unwrap_or_else(|p| p.into_inner())`. (`handler.rs:156`)
-- [ ] **[H-H6] Windows daemon mode is empty stub** -- `julie daemon` exposed on Windows but IPC module is TODO. Guard with compile_error or CLI help. (`daemon/ipc.rs:99-108`)
+- [x] **[H-H6] Windows daemon mode is empty stub** (fixed in `4d372579`, `7a45c3d5`) -- Implemented Windows named pipe IPC, process detection via OpenProcess, pipe-busy retry. (`daemon/ipc.rs`, `daemon/pid.rs`, `adapter/launcher.rs`)
 
 ## Bugs
 
@@ -79,13 +79,16 @@ Comprehensive 5-agent code review covering daemon architecture, search engine, n
 
 ## Performance
 
-- [ ] **ORT VRAM management for larger models** -- Discovered 2026-03-21 when switching to Jina-code-v2 (768d, ~270MB model) from BGE-small (384d, ~33MB). Noticeably higher VRAM usage observed. Current state:
-  - `EMBEDDING_BATCH_SIZE = 250` in `pipeline.rs` is model-agnostic -- no scaling for model size.
-  - ORT provider has zero VRAM awareness -- loads model and relies on DirectML crash fallback (`run_with_cpu_fallback` at `ort_provider.rs:431`) after failure, not proactive detection.
+- [~] **ORT VRAM management for larger models** -- Discovered 2026-03-21 when switching to Jina-code-v2 (768d, ~270MB model) from BGE-small (384d, ~33MB). Partially fixed 2026-03-24: ORT sub-batch size set to 32 in `embed_batch()` to prevent VRAM overflow from sequence padding.
+  - **Root cause found (2026-03-24)**: fastembed's `embed(texts, None)` with default batch_size=256 processes ALL texts in one ORT inference call. One long text (up to 8192 tokens for Jina-code-v2) forces padding for every text in the batch, creating tensors that exceed 6GB VRAM. DirectML silently falls back to CPU for oversized batches. Fixed by passing `Some(32)` as the ORT sub-batch size.
   - **Multiple instances are the real risk**: 2+ Claude Code sessions = 2+ Julie processes = 2+ full model loads in VRAM. On a 12GB RTX 4080 Laptop GPU, two Jina-code-v2 instances (~540MB weights alone) plus activation memory during a 250-text batch could push close to limits. BGE-small was small enough this was never a concern.
   - CodeRankEmbed (768d, sidecar) is similarly large. As we move toward larger models as defaults, this needs addressing.
-  - **Proposed fixes**: (a) Model-aware batch size -- scale `EMBEDDING_BATCH_SIZE` down for 768d models (e.g., 150 instead of 250). (b) VRAM query via DirectML/DXGI before loading -- check available VRAM and degrade gracefully. (c) Consider model-level singleton or shared ORT session across Julie instances (hard -- separate processes). (d) At minimum, document the multi-instance VRAM risk.
-  - Key files: `src/embeddings/pipeline.rs` (batch size), `src/embeddings/ort_provider.rs` (model init, CPU fallback), Miller project at `c:\source\miller` has GPU memory detection patterns via WMI.
+  - **Remaining work**: (a) VRAM query via DirectML/DXGI before loading -- check available VRAM and degrade gracefully. (b) Multi-instance VRAM risk documentation. (c) Consider model-level singleton or shared ORT session across Julie instances (hard -- separate processes).
+  - Key files: `src/embeddings/pipeline.rs` (batch size), `src/embeddings/ort_provider.rs` (model init, CPU fallback, sub-batch size), Miller project at `c:\source\miller` has GPU memory detection patterns via WMI.
+
+- [ ] **Upgrade ORT to rc12** -- Current: `ort = "2.0.0-rc.10"` (resolves to rc.11 in lockfile). rc.12 is available. May include DirectML improvements, bug fixes, and new operator support. Update Cargo.toml and test embedding pipeline on both Windows (DirectML) and macOS (CPU/sidecar).
+
+- [ ] **Incomplete embedding backfill not resumed on daemon restart** -- Discovered 2026-03-24. When the daemon is killed mid-embedding (e.g., to stop CPU thrashing), the partial progress (e.g., 1000 of 4858 vectors) is persisted in SQLite, but the remaining symbols are never re-embedded on the next daemon startup. The embedding pipeline only runs during `index` or `refresh` operations, not on session connect. Need either: (a) detect incomplete embedding state on workspace pool init and auto-resume, or (b) add an explicit `manage_workspace(operation="embed")` command, or (c) trigger embedding pipeline on session connect if vectors are below expected count.
 
 ## Future Ideas
 
