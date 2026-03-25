@@ -1,13 +1,15 @@
 # File Watcher Architecture
 
 **Last Updated:** 2026-03-12
-**Status:** Production (v5.0)
+**Status:** Production (v6)
 
 ## Overview
 
 Julie uses OS-native file watchers (via the [`notify`](https://docs.rs/notify) crate) to detect file changes and trigger incremental re-indexing. This keeps the symbol database and Tantivy search index up to date without requiring full re-indexes.
 
 In stdio mode, `IncrementalIndexer` in `src/watcher/mod.rs` manages a single watcher for the connected workspace. It lives for the duration of the MCP session.
+
+In daemon mode, `WatcherPool` in `src/daemon/watcher_pool.rs` manages one `IncrementalIndexer` per registered workspace, sharing watchers across all connected MCP sessions.
 
 ---
 

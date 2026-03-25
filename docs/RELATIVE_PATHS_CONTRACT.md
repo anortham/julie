@@ -1,7 +1,12 @@
 # Relative Unix-Style Paths Contract
 
-## Objective
-Convert all extractors to store relative Unix-style paths instead of absolute native paths for:
+## Status: Complete
+
+All 33 language extractors store relative Unix-style paths. This document describes the contract and utilities.
+
+## Motivation
+
+Relative Unix-style paths were adopted for:
 - 7-12% token savings per search result
 - Elimination of Windows UNC prefix spam
 - Human-readable tool outputs
@@ -9,32 +14,19 @@ Convert all extractors to store relative Unix-style paths instead of absolute na
 
 ## API Contract
 
-### BaseExtractor::new() Signature Change
+### BaseExtractor::new() Signature
 
-**Before:**
-```rust
-pub fn new(language: String, file_path: String, content: String) -> Self
-```
-
-**After:**
 ```rust
 pub fn new(
     language: String,
-    file_path: String,  // Still absolute - used for extraction
+    file_path: String,  // Absolute path - used for extraction only
     content: String,
-    workspace_root: &Path,  // NEW: Required for path conversion
+    workspace_root: &Path,  // Required for relative path conversion
 ) -> Self
 ```
 
 ### Symbol::file_path Field Contract
 
-**Before:**
-- Type: `String`
-- Format: Absolute native path
-- Example (Windows): `\\?\C:\Users\murphy\source\julie\src\tools\search.rs`
-- Example (Linux): `/home/murphy/source/julie/src/tools/search.rs`
-
-**After:**
 - Type: `String`
 - Format: **Relative Unix-style path** (always `/` separators)
 - Example (all platforms): `src/tools/search.rs`
@@ -57,27 +49,17 @@ pub fn to_absolute_native(
 ) -> PathBuf
 ```
 
-## Implementation Pattern for Each Extractor
+## Implementation Pattern
 
-### Step 1: Update Constructor
+All extractor constructors accept `workspace_root: &Path` and pass it to `BaseExtractor::new()`:
 
 ```rust
-// Before
-impl TypeScriptExtractor {
-    pub fn new(language: String, file_path: String, content: String) -> Self {
-        Self {
-            base: BaseExtractor::new(language, file_path, content),
-        }
-    }
-}
-
-// After
 impl TypeScriptExtractor {
     pub fn new(
         language: String,
         file_path: String,
         content: String,
-        workspace_root: &Path,  // NEW parameter
+        workspace_root: &Path,
     ) -> Self {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
@@ -86,44 +68,7 @@ impl TypeScriptExtractor {
 }
 ```
 
-### Step 2: Update BaseExtractor Symbol Creation
-
-```rust
-use crate::utils::paths::to_relative_unix_style;
-
-impl BaseExtractor {
-    pub fn create_symbol(...) -> Symbol {
-        Symbol {
-            file_path: to_relative_unix_style(&canonical_path, workspace_root)?,
-            // ... other fields
-        }
-    }
-}
-```
-
-### Step 3: Update Extractor Instantiation in indexing/extractor.rs
-
-```rust
-// Before
-let mut extractor = TypeScriptExtractor::new(
-    language.to_string(),
-    file_path.to_string(),
-    content.to_string(),
-);
-
-// After
-let workspace_root = handler.get_workspace()
-    .await?
-    .ok_or_else(|| anyhow!("No workspace loaded"))?
-    .root;
-
-let mut extractor = TypeScriptExtractor::new(
-    language.to_string(),
-    file_path.to_string(),
-    content.to_string(),
-    &workspace_root,  // NEW: Pass workspace_root
-);
-```
+`BaseExtractor` uses `src/utils/paths.rs::to_relative_unix_style()` internally when storing symbol file paths. The factory at `crates/julie-extractors/src/factory.rs` passes `workspace_root` through to every extractor.
 
 ## Test Contract
 
@@ -169,35 +114,13 @@ to_relative_unix_style("/etc/passwd", workspace_root)
 // => Err("File path is not within workspace root")
 ```
 
-## Migration Requirements
+## Implementation
 
-### Affected Files (25 extractors + base)
-1. `src/extractors/base.rs` - BaseExtractor::new() signature
-2. All 25 language extractors:
-   - rust, typescript, javascript, python, java, csharp, php, ruby, swift,
-     kotlin, go, c, cpp, lua, gdscript, vue, razor, sql, html, css, regex,
-     bash, powershell, zig, dart
-
-### Affected Caller Sites
-- `src/tools/workspace/indexing/extractor.rs` - All 25 extractor instantiations
-- Test files - All extractor tests need workspace_root parameter
-
-## Breaking Changes
-
-**Database Format Change:**
-- All existing symbols.db files have absolute paths
-- **Requires workspace reindex** after upgrade
-- No migration - document in README/CHANGELOG
-
-## Success Criteria
-
-- ✅ All 11 path utility tests pass
-- ✅ All extractor tests pass with relative path verification
-- ✅ Full test suite passes (636+ tests)
-- ✅ Real-world dogfooding shows token savings
-- ✅ Cross-platform validation (Windows, Linux, macOS)
+- `src/utils/paths.rs` - `to_relative_unix_style()` and `to_absolute_native()` utilities
+- `crates/julie-extractors/src/base/extractor.rs` - `BaseExtractor::new()` accepts `workspace_root: &Path`
+- All 33 language extractors in `crates/julie-extractors/src/` pass `workspace_root` through
 
 ---
 
-**Status**: Phase 2.1 Complete (utilities), Phase 2.2 In Progress (extractors)
-**Last Updated**: 2025-10-27
+**Status**: Complete
+**Last Updated**: 2026-03-25

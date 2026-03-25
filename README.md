@@ -202,6 +202,7 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
   - `category: "code_health"` (default) — sort by security risk, change risk, centrality, or test coverage with filters for risk level, test status, symbol kind, file pattern, and language
   - `category: "session"` — current session stats: per-tool call counts, average latency, output bytes, and context efficiency (source bytes examined vs output returned)
   - `category: "history"` — cross-session trends: total calls, p95 latencies, cumulative context efficiency
+  - `category: "trend"` — compare codehealth snapshots across indexing runs (security/change risk deltas)
   - Headline metric: **bytes NOT injected into context** (source_bytes - output_bytes)
 
 **Default Ignore Patterns** - Julie automatically excludes common build artifacts and dependencies to prevent indexing noise:
@@ -381,7 +382,7 @@ cargo xtask test list
 
 Use raw `cargo test --lib <filter>` only when narrowing a failure after an xtask tier points you at the right area. The dogfood tier is intentionally heavier because it loads the large search-quality fixture and runs real searches.
 
-For now, do not treat `system` or `full` as green-by-default right now: a pre-existing `workspace_init` issue is still being worked through in that path.
+All tiers are currently green. If a test fails, it is a real regression — investigate it.
 
 ## Project Structure
 

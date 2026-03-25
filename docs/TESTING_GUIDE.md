@@ -1,6 +1,6 @@
 # Testing Guide
 
-**Last Updated:** 2025-11-07
+**Last Updated:** 2026-03-25
 
 Complete guide to Julie's testing methodology and standards.
 
@@ -18,7 +18,7 @@ Complete guide to Julie's testing methodology and standards.
 
 1. **SOURCE files** - Original files that are NEVER modified
 2. **CONTROL files** - Expected results after specific operations
-3. **Test Process**: SOURCE → copy → edit → diff against CONTROL
+3. **Test Process**: SOURCE -> copy -> edit -> diff against CONTROL
 4. **Verification**: Must match exactly using diff-match-patch
 
 **Example Structure:**
@@ -33,61 +33,51 @@ struct EditingTestCase {
 ```
 
 **Implemented For:**
-- ✅ FuzzyReplaceTool (18 unit tests)
-- ✅ TraceCallPathTool (15 unit tests)
-- ✅ RenameSymbolTool
-- ✅ EditSymbolTool
+- FuzzyReplaceTool
+- RenameSymbolTool
+- EditSymbolTool
 
 ## Running Tests
 
 ```bash
-# All tests
-cargo test
+# Default -- run after EVERY change
+cargo xtask test dev
 
-# Specific test suites
-cargo test deep_dive              # DeepDiveTool unit tests (37 tests)
-cargo test definition_promotion   # fast_search definition promotion tests (6 tests)
-cargo test typescript_extractor   # Language extractor tests
+# When touching startup/workspace/system flows
+cargo xtask test system
 
-# With output
-cargo test -- --nocapture
+# When changing search/scoring/tokenization
+cargo xtask test dogfood
 
-# Coverage analysis
-cargo tarpaulin
+# Broad pre-merge pass
+cargo xtask test full
 
-# Performance tests
-cargo test --release
+# List all buckets
+cargo xtask test list
+
+# Narrow filter for a specific test (use ONLY when debugging a failure)
+cargo test --lib test_stemming
+cargo test -p julie-extractors typescript_extractor
 ```
 
-## Test Performance Strategy
+## Test Tiers
 
-**Fast Tests (default):**
-- Unit tests and focused integration tests
-- Run in <10 seconds total
-- Execute with: `cargo test`
-- Used during active development
+| Tier | Command | When to use |
+|------|---------|-------------|
+| smoke | `cargo xtask test smoke` | Quick sanity check |
+| dev | `cargo xtask test dev` | After normal changes (default) |
+| system | `cargo xtask test system` | Startup/workspace/system changes |
+| dogfood | `cargo xtask test dogfood` | Search/scoring/tokenization changes |
+| full | `cargo xtask test full` | Pre-merge broad pass |
 
-**Slow Dogfooding Tests (ignored by default):**
-- Real-world validation against Julie's own codebase
-- Index entire workspace and run complex queries
-- Take 60+ seconds each (16 tests total)
-- Located in: `src/tests/tools/search_quality/dogfood_tests.rs`
+## Dogfooding Tests
 
-**Running Slow Tests:**
-```bash
-# Run ONLY slow/ignored tests (for search quality validation)
-cargo test --lib -- --ignored
+The `search_quality` bucket loads a real 100MB SQLite fixture, backfills a Tantivy index, and runs real searches. It is a regression guard, not a fast unit-tier pass.
 
-# Run ALL tests (fast + slow) before releases
-cargo test --lib -- --include-ignored
-```
-
-**When to Run Dogfooding Tests:**
-- Before major releases
+**When to run:**
 - After significant search/ranking changes
 - After modifying Tantivy tokenization or query logic
-- When validating search architecture changes
-- Weekly regression checks
+- Before major releases
 
 ## Code Coverage Tooling
 
@@ -103,7 +93,4 @@ cargo tarpaulin
 
 # Generate detailed HTML report
 cargo tarpaulin --output-dir target/tarpaulin --output-format Html
-
-# Check specific module coverage
-cargo tarpaulin --include src/tools/editing.rs
 ```

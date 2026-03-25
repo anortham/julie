@@ -53,18 +53,16 @@ CREATE INDEX IF NOT EXISTS idx_types_inferred ON types(is_inferred);
 4. **is_inferred as INTEGER**: SQLite boolean convention (0/1)
 5. **Indexes**: Language (filter by lang), resolved_type (search by type), is_inferred (filter explicit vs inferred)
 
-## Language Support (8 languages)
-- Python: Type hints, inferred types
-- Java: Generic types, type bounds
-- C#: Generic types, constraints
-- PHP: Type declarations
-- Kotlin: Type inference, nullability
-- Dart: Generic types
-- Go: Type declarations
-- C++: Template types
+## Language Support
+
+Type inference (`infer_types`) is called for most languages via the factory. The following languages produce type entries in the `types` table:
+
+Rust, TypeScript, JavaScript, Python, Java, C#, PHP, Swift, Scala, Elixir, Kotlin, Dart, Go, C, C++, PowerShell, Bash, Zig, SQL, HTML, Razor, Regex, Vue, Ruby, GDScript
+
+Languages that return an empty types map: Lua, QML, R, CSS, Markdown, JSON, TOML, YAML
 
 ## Migration Number
-**Migration 006**: Add types table for type intelligence
+**Migration 006**: Add types table for type intelligence (current schema version: 13)
 
 ## Bulk Storage Pattern
 Mirror `bulk_store_identifiers`:

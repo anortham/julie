@@ -350,8 +350,9 @@ both produce stem "estim".
 
 ## Storage
 
+**Stdio mode** (per-project):
 ```
-.julie/indexes/{workspace_id}/
+<project>/.julie/indexes/{workspace_id}/
   ├── db/
   │   └── symbols.db           # SQLite (symbols, files, relationships, types)
   └── tantivy/
@@ -363,8 +364,15 @@ both produce stem "estim".
       └── {segment_id}.term    # Term dictionary
 ```
 
+**Daemon mode** (shared across sessions):
+```
+~/.julie/indexes/{workspace_id}/
+  ├── db/symbols.db
+  └── tantivy/
+```
+
 Each workspace (primary and reference) gets its own Tantivy index directory.
-Reference workspaces are stored at `.julie/indexes/{ref_workspace_id}/tantivy/`.
+In daemon mode, the registry of all workspaces and sessions lives in `~/.julie/daemon.db`.
 
 The `SearchIndex` supports `open_or_create` semantics -- if a Tantivy
 directory doesn't exist, it creates one. If it exists, it opens it. A v1-to-v2

@@ -1,6 +1,6 @@
 # Development Commands
 
-**Last Updated:** 2026-02-25
+**Last Updated:** 2026-03-25
 
 Daily commands and workflows for Julie development.
 
@@ -8,20 +8,21 @@ Daily commands and workflows for Julie development.
 
 ```bash
 # Fast iteration (debug build)
-cargo build && cargo run
+cargo build
 
-# Fast test tier (~15s) — use after EVERY change
-cargo test --lib -- --skip search_quality 2>&1 | tail -5
+# Default test tier -- run after EVERY change
+cargo xtask test dev
 
-# Run specific tests during development
-cargo test --lib test_stemming --nocapture
+# Run specific tests during development (narrow filter, not full suite)
+cargo test -p julie-extractors typescript_extractor -- --nocapture
+cargo test --lib test_stemming -- --nocapture
 
 # Check for issues
 cargo clippy
 cargo fmt
 ```
 
-See **CLAUDE.md** for the full test tier strategy (fast/dogfood/full).
+See **CLAUDE.md** for the full test tier strategy (smoke/dev/system/dogfood/full).
 
 ## Release Preparation
 

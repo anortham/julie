@@ -1,6 +1,6 @@
 # Dependencies Management
 
-**Last Updated:** 2025-11-07
+**Last Updated:** 2026-03-25
 
 ## Tree-Sitter Version WARNING
 
@@ -8,8 +8,8 @@
 
 **LOCKED AND TESTED VERSIONS:**
 - `tree-sitter = "0.25"` (REQUIRED for harper-tree-sitter-dart)
-- `tree-sitter-kotlin-ng = "1.1.0"` (modern Kotlin parser)
-- `harper-tree-sitter-dart = "0.0.5"` (modern Dart parser)
+- `tree-sitter-kotlin-ng = "1.1.0"` (modern Kotlin parser, in `crates/julie-extractors/Cargo.toml`)
+- `harper-tree-sitter-dart = "0.0.5"` (modern Dart parser, in `crates/julie-extractors/Cargo.toml`)
 
 **CHANGING THESE WILL CAUSE:**
 - ❌ API incompatibilities between different tree-sitter versions
@@ -39,5 +39,5 @@ Before adding any dependency:
 7. Does it impact startup time significantly?
 
 **Examples:**
-- Before: `tokio = "1.47"` → Search crates.io (latest: 1.47.1)
-- Before: `blake3 = "1.5"` → Search crates.io (latest: 1.8.0)
+- Before: `tokio = "1.47.1"` → Verify on crates.io before upgrading
+- Before: `blake3 = "1.5"` → Verify on crates.io before upgrading

@@ -2,27 +2,29 @@
 
 This document describes all the locations that must be updated when adding a new programming language to Julie's extractors.
 
+Julie currently supports 33 languages via tree-sitter. All extractor code lives in the `crates/julie-extractors/` workspace crate.
+
 ## Quick Checklist
 
 When adding a new language (e.g., "mylang"), you MUST update these files:
 
-- [ ] **1. Create extractor module** - `src/extractors/mylang.rs` or `src/extractors/mylang/mod.rs`
-- [ ] **2. Declare module** - Add `pub mod mylang;` to `src/extractors/mod.rs`
-- [ ] **3. Add language detection** - Map file extensions in `src/tools/workspace/language.rs`
-- [ ] **4. Register in factory** - Add match arm in `src/extractors/factory.rs`
-- [ ] **5. Add tree-sitter parser** - Add to `Cargo.toml` and `src/language/mod.rs`
-- [ ] **6. Create comprehensive tests** - At least 100 test cases in `src/tests/extractors/mylang/`
+- [ ] **1. Create extractor module** - `crates/julie-extractors/src/mylang.rs` or `crates/julie-extractors/src/mylang/mod.rs`
+- [ ] **2. Declare module** - Add `pub mod mylang;` to `crates/julie-extractors/src/lib.rs`
+- [ ] **3. Add language detection** - Add extension mapping in `crates/julie-extractors/src/language.rs` (both `detect_language_from_extension` and `get_tree_sitter_language`)
+- [ ] **4. Register in factory** - Add match arm in `crates/julie-extractors/src/factory.rs`
+- [ ] **5. Add tree-sitter parser** - Add to `crates/julie-extractors/Cargo.toml`
+- [ ] **6. Create comprehensive tests** - At least 100 test cases in `crates/julie-extractors/src/tests/mylang/`
 
 ## Detailed Instructions
 
 ### 1. Create Extractor Module
 
-**Location**: `src/extractors/mylang.rs` or `src/extractors/mylang/mod.rs`
+**Location**: `crates/julie-extractors/src/mylang.rs` or `crates/julie-extractors/src/mylang/mod.rs`
 
 Create a new extractor implementing the BaseExtractor trait:
 
 ```rust
-use crate::extractors::base::{BaseExtractor, Symbol, Relationship};
+use crate::base::{BaseExtractor, Symbol, Relationship};
 use std::path::Path;
 
 pub struct MyLangExtractor {
@@ -59,44 +61,64 @@ impl MyLangExtractor {
 - Implement `extract_symbols()` only
 - Return `Vec::new()` for relationships
 
-### 2. Declare Module in Extractors
+### 2. Declare Module
 
-**Location**: `src/extractors/mod.rs`
+**Location**: `crates/julie-extractors/src/lib.rs`
 
-Add your module to the list:
+Add your module to the list (alphabetically):
 
 ```rust
-pub mod mylang;  // Add this line alphabetically
+pub mod mylang;  // Add this line
+```
+
+Also re-export any public types if needed:
+```rust
+pub use mylang::MyLangExtractor;
 ```
 
 ### 3. Add Language Detection
 
-**Location**: `src/tools/workspace/language.rs`
+**Location**: `crates/julie-extractors/src/language.rs`
 
-Map file extensions to your language string:
+Add the file extension mapping in `detect_language_from_extension`:
 
 ```rust
-pub(crate) fn detect_language(&self, file_path: &Path) -> String {
-    let extension = file_path.extension()...;
-
-    match extension.to_lowercase().as_str() {
+pub fn detect_language_from_extension(extension: &str) -> Option<&'static str> {
+    match extension {
         // ... existing cases ...
 
-        // MyLang (add your extension mappings)
-        "ml" | "mylang" => "mylang".to_string(),
+        // MyLang
+        "ml" | "mylang" => Some("mylang"),
 
+        // ... rest of cases ...
+        _ => None,
+    }
+}
+```
+
+Add the tree-sitter parser registration in `get_tree_sitter_language`:
+
+```rust
+pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language> {
+    match language {
+        // ... existing cases ...
+        "mylang" => Ok(tree_sitter_mylang::LANGUAGE.into()),
         // ... rest of cases ...
     }
 }
 ```
 
+Also add `"mylang"` to the `supported_languages()` list and its extensions to `supported_extensions()`.
+
+**Note**: `src/tools/workspace/language.rs` delegates directly to `detect_language_from_extension` from this module. You do NOT need to edit the workspace language.rs file.
+
 **CRITICAL**: The language string returned here MUST match the factory match arm (step 4).
 
 ### 4. Register in Extractor Factory
 
-**Location**: `src/extractors/factory.rs`
+**Location**: `crates/julie-extractors/src/factory.rs`
 
-Add a match arm in `extract_symbols_and_relationships()`:
+Add a match arm in `extract_symbols_and_relationships()`. The function returns `ExtractionResults`:
 
 ```rust
 pub fn extract_symbols_and_relationships(
@@ -105,12 +127,12 @@ pub fn extract_symbols_and_relationships(
     content: &str,
     language: &str,
     workspace_root: &Path,
-) -> Result<(Vec<Symbol>, Vec<Relationship>), anyhow::Error> {
-    let (symbols, relationships) = match language {
+) -> Result<ExtractionResults, anyhow::Error> {
+    match language {
         // ... existing cases ...
 
         "mylang" => {
-            let mut extractor = crate::extractors::mylang::MyLangExtractor::new(
+            let mut extractor = crate::mylang::MyLangExtractor::new(
                 language.to_string(),
                 file_path.to_string(),
                 content.to_string(),
@@ -118,29 +140,47 @@ pub fn extract_symbols_and_relationships(
             );
             let symbols = extractor.extract_symbols(tree);
             let relationships = extractor.extract_relationships(tree, &symbols);
-            (symbols, relationships)
+            let identifiers = extractor.extract_identifiers(tree, &symbols);
+            let types = convert_types_map(extractor.infer_types(&symbols), language);
+            let pending = extractor.get_pending_relationships();
+            Ok(ExtractionResults {
+                symbols,
+                relationships,
+                pending_relationships: pending,
+                identifiers,
+                types,
+            })
         }
 
-        // OR for documentation/config languages:
+        // For documentation/config languages (markdown, json, toml, yaml, css):
         "mylang" => {
-            let mut extractor = crate::extractors::mylang::MyLangExtractor::new(...);
+            let mut extractor = crate::mylang::MyLangExtractor::new(
+                language.to_string(),
+                file_path.to_string(),
+                content.to_string(),
+                workspace_root,
+            );
             let symbols = extractor.extract_symbols(tree);
-            // MyLang is documentation/config - no code relationships
-            (symbols, Vec::new())
+            let identifiers = extractor.extract_identifiers(tree, &symbols);
+            Ok(ExtractionResults {
+                symbols,
+                relationships: Vec::new(),
+                pending_relationships: Vec::new(),
+                identifiers,
+                types: HashMap::new(),
+            })
         }
 
         // ... default case ...
-    };
+    }
 }
 ```
 
-**Pattern to follow**: Look at existing languages (rust, typescript, etc.) for code, or markdown/json/toml for non-code.
+**Pattern to follow**: Look at existing full-extraction languages (rust, typescript) for code languages, or markdown/json/css for documentation/config languages.
 
 ### 5. Add Tree-Sitter Parser
 
-**Location**: `Cargo.toml` and `src/language/mod.rs`
-
-#### Cargo.toml Dependencies
+**Location**: `crates/julie-extractors/Cargo.toml`
 
 Add the tree-sitter parser crate:
 
@@ -149,34 +189,19 @@ Add the tree-sitter parser crate:
 tree-sitter-mylang = "x.y.z"  # Find latest version on crates.io
 ```
 
-#### Language Module
-
-**Location**: `src/language/mod.rs`
-
-Register the parser:
-
-```rust
-pub fn get_tree_sitter_language(language: &str) -> Result<tree_sitter::Language> {
-    let lang = match language {
-        // ... existing cases ...
-        "mylang" => tree_sitter_mylang::language(),
-        // ... rest of cases ...
-    };
-    Ok(lang)
-}
-```
+The `get_tree_sitter_language` registration in step 3 handles the Rust-side binding.
 
 ### 6. Create Comprehensive Tests
 
-**Location**: `src/tests/extractors/mylang/`
+**Location**: `crates/julie-extractors/src/tests/mylang/`
 
-Create a test module with extensive coverage:
+Create a test module:
 
 ```rust
-// src/tests/extractors/mylang/mod.rs
+// crates/julie-extractors/src/tests/mylang/mod.rs
 
-use crate::extractors::base::SymbolKind;
-use crate::extractors::mylang::MyLangExtractor;
+use crate::base::SymbolKind;
+use crate::mylang::MyLangExtractor;
 
 #[cfg(test)]
 mod tests {
@@ -196,13 +221,10 @@ mod tests {
 }
 ```
 
-Register the test module in `src/tests/mod.rs`:
+Register the test module in `crates/julie-extractors/src/tests/mod.rs`:
 
 ```rust
-pub mod extractors {
-    // ... existing extractors ...
-    pub mod mylang;  // Add this
-}
+pub mod mylang;  // Add this
 ```
 
 ## Validation
@@ -212,12 +234,12 @@ pub mod extractors {
 The factory module has a built-in test that validates all languages are registered:
 
 ```bash
-cargo test factory_consistency_tests --lib
+cargo test -p julie-extractors factory_consistency_tests
 ```
 
 This test will **FAIL** if:
-- A language is in `ExtractorManager::supported_languages()` but missing from factory
-- A language in factory returns "No extractor available" error
+- A language is in `ExtractorManager::supported_languages()` but missing from the factory
+- A language in the factory returns "No extractor available" error
 
 ### Manual Testing
 
@@ -226,33 +248,26 @@ This test will **FAIL** if:
    echo "test code" > test.ml
    ```
 
-2. **Index workspace**:
+2. **Index workspace** via MCP and verify symbols appear:
    ```bash
-   cargo run --release
-   # Use MCP to index workspace
-   ```
-
-3. **Verify extraction**:
-   ```bash
-   # Check database for symbols
    sqlite3 .julie/indexes/primary_*/db/symbols.db "SELECT * FROM symbols WHERE file_path LIKE '%test.ml%';"
    ```
 
 ## Common Mistakes
 
-### ❌ Mismatch Between Language Detection and Factory
+### Mismatch Between Language Detection and Factory
 
 ```rust
 // language.rs
-"ml" => "my-lang".to_string(),  // Returns "my-lang"
+"ml" => Some("my-lang"),  // Returns "my-lang"
 
 // factory.rs
 "mylang" => { ... }  // Expects "mylang" - MISMATCH!
 ```
 
-**Fix**: Use consistent language strings across both files.
+**Fix**: Use consistent language strings across all three locations.
 
-### ❌ Missing Factory Case
+### Missing Factory Case
 
 Adding language detection without factory registration results in:
 ```
@@ -261,63 +276,25 @@ Error: No extractor available for language 'mylang' (file: test.ml)
 
 **Fix**: Always add both language detection AND factory case together.
 
-### ❌ Calling extract_relationships on Non-Code Extractors
+### Using Old Return Type
 
-Documentation/config extractors may not have relationship extraction:
+The factory returns `ExtractionResults`, not a `(Vec<Symbol>, Vec<Relationship>)` tuple.
 
 ```rust
 // WRONG
-"markdown" => {
-    let symbols = extractor.extract_symbols(tree);
-    let relationships = extractor.extract_relationships(tree, &symbols);  // Method doesn't exist!
-    (symbols, relationships)
-}
+let (symbols, relationships) = extract_symbols_and_relationships(...)?;
 
 // CORRECT
-"markdown" => {
-    let symbols = extractor.extract_symbols(tree);
-    (symbols, Vec::new())  // No relationships for documentation
-}
+let results = extract_symbols_and_relationships(...)?;
+let symbols = results.symbols;
+let relationships = results.relationships;
 ```
-
-## Recent Examples
-
-### Markdown, JSON, TOML (Documentation Languages)
-
-Added in 2025-11-05 for RAG POC:
-
-1. ✅ Created extractors: `src/extractors/{markdown,json,toml}.rs`
-2. ✅ Declared modules: `src/extractors/mod.rs`
-3. ✅ Added detection: `src/tools/workspace/language.rs:110-113`
-4. ✅ Registered factory: `src/extractors/factory.rs:336-368`
-5. ✅ Tests: `src/tests/extractors/{markdown,json,toml}/`
-
-**Key insight**: These are documentation/config languages, so they return `Vec::new()` for relationships.
 
 ## Future Improvements
 
 **Centralization Opportunity**: Consider consolidating language registration into a single macro or configuration file to eliminate the need to update multiple locations.
 
-Example conceptual approach:
-```rust
-// Hypothetical future API
-register_language! {
-    name: "mylang",
-    extensions: ["ml", "mylang"],
-    tree_sitter: tree_sitter_mylang::language(),
-    extractor: MyLangExtractor,
-    has_relationships: true,
-}
-```
-
-This would automatically generate:
-- Language detection mapping
-- Factory match arm
-- Language module registration
-
-For now, follow the 6-step checklist above until centralization is implemented.
-
 ---
 
-**Last Updated**: 2025-11-05
+**Last Updated**: 2026-03-25
 **Maintained By**: Julie Development Team

@@ -4,7 +4,7 @@
 
 **Last Updated:** 2026-02-25
 **Status:** Production-Ready
-**Coverage:** All 7 MCP tools optimized
+**Coverage:** Token optimization across all MCP tools
 
 ### Overview
 
@@ -104,21 +104,6 @@ let estimate_workspaces = |ws_subset: &[WorkspaceEntry]| {
 let optimized = reducer.reduce(&workspaces, 10000, estimate_workspaces);
 ```
 
-**TraceCallPathTool (call breadth optimization):**
-```rust
-// Wide call graphs can have 50+ callers at each level
-let estimate_trees = |tree_subset: &[(Symbol, Vec<CallPathNode>)]| {
-    let total_nodes: usize = tree_subset
-        .iter()
-        .map(|(_, nodes)| self.count_nodes(nodes))
-        .sum();
-    let sample_node = "  • path/to/file.rs:42 `function_name` [calls] (rust)\n";
-    let tokens_per_node = token_estimator.estimate_string(&sample_node);
-    total_nodes * tokens_per_node
-};
-
-let optimized = reducer.reduce(&trees, 15000, estimate_trees);
-```
 
 ---
 
@@ -204,7 +189,6 @@ fn optimize_response(&self, response: &str) -> String {
 
 **Tools using this pattern:**
 - FastSearchTool (20K token target)
-- FastGotoTool (15K token target)
 - FastRefsTool (20K token target)
 
 ---
@@ -232,7 +216,6 @@ fn optimize_collection(&self, items: &[T]) -> Vec<T> {
 
 **Tools using this pattern:**
 - ManageWorkspaceTool (list: 10K, recent: 12K targets)
-- TraceCallPathTool (15K token target for call trees)
 
 ---
 
@@ -258,7 +241,7 @@ fn extract_with_truncation(&self, lines: &[String]) -> String {
 **Tools using this pattern:**
 - GetSymbolsTool (Smart Read with 70-90% token savings)
 - FastSearchTool (code context in results)
-- FastGotoTool (symbol definitions)
+- DeepDiveTool (symbol bodies in full depth mode)
 
 ---
 
@@ -278,8 +261,7 @@ let output = self.format_trees_with_truncation(&optimized_trees);
 self.optimize_response(&output)
 ```
 
-**Tools using this pattern:**
-- TraceCallPathTool (call breadth + code context + final truncation)
+**When to apply:** Tools with nested structures where both the number of items (breadth) and the size of each item (depth) can grow unbounded simultaneously.
 
 **Why this works:**
 1. **Data-level** optimization prevents generating excess data
@@ -295,10 +277,9 @@ Different tools have different token budgets based on their purpose:
 | Tool | Target Tokens | Rationale |
 |------|---------------|-----------|
 | **FastSearchTool** | 20,000 | Search results can be extensive; users need comprehensive coverage |
-| **FastGotoTool** | 15,000 | Symbol definitions with context; moderate detail needed |
 | **FastRefsTool** | 20,000 | Reference lists can be long; need to see usage patterns |
 | **GetSymbolsTool** | 15,000 | File structure overviews; moderate size sufficient |
-| **TraceCallPathTool** | 15,000 (data), 20,000 (final) | Call graphs can explode; dual-layer protection |
+| **DeepDiveTool** | ~200-1,500 (depth-gated) | Budget scales with depth level: overview/context/full |
 | **GetContextTool** | 2,000-4,000 (adaptive) | Area-level orientation; adaptive budget scales with pivot count |
 | **ManageWorkspaceTool** | 10,000 (list), 12,000 (recent) | Administrative commands; compact summaries preferred |
 
@@ -336,9 +317,9 @@ fn test_tool_with_large_dataset_applies_reduction() {
 ```
 
 **Test coverage:**
-- `workspace_management_token_tests.rs` - 5 tests (ManageWorkspaceTool)
-- `get_symbols_token_tests.rs` - 7 tests (GetSymbolsTool Smart Read)
-- `deep_dive_tests.rs` - 37 tests (progressive-depth symbol investigation)
+- `src/tests/tools/workspace/management_token.rs` - ManageWorkspaceTool token optimization
+- `src/tests/tools/get_symbols_token.rs` - GetSymbolsTool token optimization
+- `src/tests/tools/deep_dive_tests.rs` - DeepDiveTool (progressive-depth investigation)
 
 ### Testing Checklist
 

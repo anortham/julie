@@ -327,7 +327,7 @@ For detailed architecture info, see: **docs/SEARCH_FLOW.md** and **docs/ARCHITEC
 
 Use Julie's code intelligence tools to find detailed docs on-demand: `fast_search(query="...", file_pattern="docs/**")`
 
-Key docs: `WORKSPACE_ARCHITECTURE.md`, `TESTING_GUIDE.md`, `SEARCH_FLOW.md`, `ARCHITECTURE.md`, `INTELLIGENCE_LAYER.md`, `DEVELOPMENT.md`, `PERFORMANCE.md`, `DEPENDENCIES.md`
+Key docs: `WORKSPACE_ARCHITECTURE.md`, `TESTING_GUIDE.md`, `SEARCH_FLOW.md`, `ARCHITECTURE.md`, `INTELLIGENCE_LAYER.md`, `DEVELOPMENT.md`, `DEPENDENCIES.md`
 
 ### 🔴 CRITICAL: Web Search Before Writing Harness Documentation
 
@@ -345,10 +345,9 @@ Key things that change frequently:
 
 **Always commit these with your work:**
 - `.memories/` — Goldfish checkpoints (developer memory across sessions)
-- `docs/plans/` — Implementation plans
 
 These are project knowledge, not ephemeral. If you create a checkpoint or plan, include it in your commit.
 
 ---
 
-**Last Updated:** 2026-03-23 | **Status:** Production Ready (v6.0.0 — daemon mode, shared workspaces, shared embedding pipeline)
+**Last Updated:** 2026-03-25 | **Status:** Production Ready (v6.0.4 — daemon mode, shared workspaces, shared embedding pipeline)

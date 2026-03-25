@@ -226,12 +226,10 @@ src/utils/cross_language_intelligence.rs
 ### Integration Points
 
 **Used by**:
-- `src/tools/navigation.rs::FastGotoTool` - Find definitions
-- `src/tools/navigation.rs::FastRefsTool` - Find references (disabled for precision)
+- `src/tools/navigation/fast_refs.rs::FastRefsTool` - Find references (strict config for precision)
 
 **Future Integration**:
-- `src/tools/exploration.rs` - Codebase-wide analysis
-- `src/tools/refactoring.rs` - Cross-language refactoring
+- `src/tools/refactoring/` - Could extend RenameSymbolTool for cross-language rename
 - Any tool that needs intelligent cross-language matching
 
 ---
@@ -302,8 +300,8 @@ cargo test cross_language_intelligence
 cargo test navigation
 ```
 
-**Coverage**: 6/6 tests passing
-- FastGotoTool with cross-language resolution
+**Coverage**: Navigation tests
+- FastRefsTool with cross-language resolution
 - Token limit handling
 - Progressive reduction
 
@@ -361,7 +359,7 @@ cargo test navigation
 - ✅ **Naming variants**: 5 conventions generated in <1ms
 - ✅ **Search performance**: <5ms per variant (Tantivy indexed)
 - ✅ **Cross-language matches**: 3-5x more results than text-only search
-- ✅ **Zero regressions**: 481/485 tests passing (same as before)
+- ✅ **Zero regressions**: All tiers green (run `cargo xtask test dev` to verify)
 
 ### Qualitative
 - ✅ **Dogfoodable**: Can navigate Julie's own codebase

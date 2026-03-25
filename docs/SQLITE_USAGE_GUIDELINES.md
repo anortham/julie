@@ -1,7 +1,7 @@
 # SQLite Usage Guidelines for Julie
 
 **Status**: Active Development Standards
-**Last Updated**: 2025-11-07
+**Last Updated**: 2026-03-25
 **Priority**: CRITICAL - Prevents Database Corruption
 
 ---
@@ -215,17 +215,12 @@ match db.conn.execute("INSERT ...", params![...]) {
 
 ### Corruption Detection
 
-Corruption is detected at connection open via SQLite integrity checks:
+Corruption is prevented (not detected) by setting WAL mode before any writes. There is no automatic integrity check on open.
 
-```rust
-// Automatic in SymbolDatabase::new()
-db.check_integrity()?;
-```
-
-If corruption detected:
-1. Runs SQLite integrity check
-2. If database is malformed, deletes and recreates from scratch
-3. Re-indexing rebuilds all data
+If you suspect corruption:
+1. Run a manual integrity check: `sqlite3 symbols.db "PRAGMA integrity_check;"`
+2. If malformed, delete `.julie/indexes/` and let Julie rebuild
+3. The schema version mismatch check in `SymbolDatabase::new()` will catch downgrade scenarios (running old code against a newer schema)
 
 ---
 
