@@ -419,6 +419,36 @@ mod tests {
     }
 
     #[test]
+    fn test_delete_workspace_with_root_path() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("workspace_e3b0c442", "/", "pending").unwrap();
+        assert!(db.get_workspace("workspace_e3b0c442").unwrap().is_some());
+        db.delete_workspace("workspace_e3b0c442").unwrap();
+        assert!(db.get_workspace("workspace_e3b0c442").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_migrate_stale_ids_skips_on_disk_failure() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("julie_316c0b08", "/test/julie", "ready").unwrap();
+        db.upsert_workspace("sealab_72d18461", "/test/sealab", "ready").unwrap();
+
+        // Simulate: julie rename succeeded, sealab rename failed
+        let mut id_map = std::collections::HashMap::new();
+        id_map.insert("julie_316c0b08".to_string(), "julie_528d4264".to_string());
+        // sealab NOT in id_map (simulates being removed after disk failure)
+
+        db.migrate_workspace_ids(&id_map).unwrap();
+
+        // julie was migrated
+        assert!(db.get_workspace("julie_528d4264").unwrap().is_some());
+        assert!(db.get_workspace("julie_316c0b08").unwrap().is_none());
+
+        // sealab was NOT migrated (disk failure excluded it)
+        assert!(db.get_workspace("sealab_72d18461").unwrap().is_some());
+    }
+
+    #[test]
     fn test_migrate_workspace_ids_empty_map() {
         let (db, _tmp) = create_test_db();
         db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "ready").unwrap();

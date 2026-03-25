@@ -15,7 +15,7 @@ pub mod watcher_pool;
 pub mod workspace_pool;
 
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
@@ -102,6 +102,117 @@ fn binary_mtime() -> Option<SystemTime> {
         .and_then(|m| m.modified().ok())
 }
 
+/// Reconcile workspace IDs after a normalize_path behavior change.
+///
+/// Compares each workspace's stored ID against the current generate_workspace_id
+/// output. If they differ, renames the index directory and batch-updates the DB.
+fn migrate_stale_workspace_ids(
+    daemon_db: &DaemonDatabase,
+    indexes_dir: &Path,
+) {
+    let workspaces = match daemon_db.list_workspaces() {
+        Ok(ws) => ws,
+        Err(e) => {
+            warn!("Failed to list workspaces for migration check: {}", e);
+            return;
+        }
+    };
+
+    // Phase 1: Compute all ID mappings
+    let mut id_map = std::collections::HashMap::new();
+    for ws in &workspaces {
+        // Clean up root-path artifact
+        if ws.path == "/" {
+            info!(
+                workspace_id = %ws.workspace_id,
+                "Removing stale root-path workspace entry"
+            );
+            if let Err(e) = daemon_db.delete_workspace(&ws.workspace_id) {
+                warn!("Failed to delete root workspace: {}", e);
+            }
+            let root_dir = indexes_dir.join(&ws.workspace_id);
+            if root_dir.exists() {
+                if let Err(e) = std::fs::remove_dir_all(&root_dir) {
+                    warn!("Failed to remove root workspace dir: {}", e);
+                }
+            }
+            continue;
+        }
+
+        match generate_workspace_id(&ws.path) {
+            Ok(new_id) if new_id != ws.workspace_id => {
+                info!(
+                    old_id = %ws.workspace_id,
+                    new_id = %new_id,
+                    path = %ws.path,
+                    "Workspace ID needs migration"
+                );
+                id_map.insert(ws.workspace_id.clone(), new_id);
+            }
+            Err(e) => {
+                warn!(
+                    workspace_id = %ws.workspace_id,
+                    path = %ws.path,
+                    "Failed to regenerate workspace ID: {}", e
+                );
+            }
+            _ => {} // ID matches, no migration needed
+        }
+    }
+
+    if id_map.is_empty() {
+        return;
+    }
+
+    // Phase 2: Rename/delete index directories
+    let mut disk_failures: Vec<String> = Vec::new();
+    for (old_id, new_id) in &id_map {
+        let old_dir = indexes_dir.join(old_id);
+        let new_dir = indexes_dir.join(new_id);
+
+        if old_dir.exists() && !new_dir.exists() {
+            if let Err(e) = std::fs::rename(&old_dir, &new_dir) {
+                warn!(
+                    old_id, new_id,
+                    "Failed to rename index dir, skipping DB migration for this entry: {}", e
+                );
+                disk_failures.push(old_id.clone());
+            } else {
+                info!(old_id, new_id, "Renamed index directory");
+            }
+        } else if old_dir.exists() && new_dir.exists() {
+            // Both exist: new is active (created by post-fix code), old is stale
+            if let Err(e) = std::fs::remove_dir_all(&old_dir) {
+                warn!(old_id, "Failed to remove stale index dir: {}", e);
+            } else {
+                info!(old_id, "Removed stale index directory (new dir already exists)");
+            }
+        }
+    }
+
+    // Remove entries where disk operations failed
+    for failed_id in &disk_failures {
+        id_map.remove(failed_id);
+    }
+
+    if id_map.is_empty() {
+        return;
+    }
+
+    // Phase 3: Batch-update DB
+    match daemon_db.migrate_workspace_ids(&id_map) {
+        Ok(()) => {
+            info!(
+                count = id_map.len(),
+                "Successfully migrated workspace IDs in daemon.db"
+            );
+        }
+        Err(e) => {
+            warn!("Failed to migrate workspace IDs in DB: {}", e);
+        }
+    }
+}
+
 /// Run the Julie daemon: bind IPC socket, accept connections, serve MCP.
 ///
 /// This function blocks until a shutdown signal (SIGTERM/SIGINT) is received.
@@ -151,6 +262,12 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
             None
         }
     };
+
+    // Migrate stale workspace IDs from pre-v6.0.4 normalize_path behavior.
+    // Must run before WorkspacePool is created so sessions see correct IDs.
+    if let Some(ref db) = daemon_db {
+        migrate_stale_workspace_ids(db, &paths.indexes_dir());
+    }
 
     // Initialize shared embedding service (blocking: model load / sidecar bootstrap)
     let embedding_service = Arc::new(
