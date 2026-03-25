@@ -144,7 +144,13 @@ impl WorkspacePool {
         // to avoid a permanently-leaked count if init_workspace fails.
         if let Some(ref db) = self.daemon_db {
             let path_str = workspace_root.to_string_lossy();
-            let _ = db.upsert_workspace(workspace_id, &path_str, "pending");
+            if let Err(e) = db.upsert_workspace(workspace_id, &path_str, "pending") {
+                warn!(
+                    workspace_id,
+                    path = %path_str,
+                    "Failed to register workspace in daemon.db: {}", e
+                );
+            }
         }
 
         let workspace = self
