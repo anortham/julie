@@ -346,4 +346,87 @@ mod tests {
         };
         assert_eq!(count, 1); // only the recent one survives
     }
+
+    // -------------------------------------------------------------------------
+    // A6: Workspace ID Migration
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_migrate_workspace_ids_updates_all_tables() {
+        let (db, _tmp) = create_test_db();
+
+        // Insert workspace with old ID
+        db.upsert_workspace("julie_316c0b08", "/Users/murphy/source/julie", "ready").unwrap();
+        db.update_workspace_stats("julie_316c0b08", 100, 50, None, None).unwrap();
+
+        // Insert a reference relationship
+        db.upsert_workspace("goldfish_5ed767a5", "/Users/murphy/source/goldfish", "ready").unwrap();
+        db.add_reference("julie_316c0b08", "goldfish_5ed767a5").unwrap();
+
+        // Insert codehealth snapshot
+        use crate::daemon::database::CodehealthSnapshot;
+        db.insert_codehealth_snapshot("julie_316c0b08", &CodehealthSnapshot::default()).unwrap();
+
+        // Insert tool call
+        db.insert_tool_call("julie_316c0b08", "sess1", "fast_search", 50.0, Some(5), None, None, true, None).unwrap();
+
+        // Migrate both workspace IDs
+        let mut migrations = std::collections::HashMap::new();
+        migrations.insert("julie_316c0b08".to_string(), "julie_528d4264".to_string());
+        migrations.insert("goldfish_5ed767a5".to_string(), "goldfish_aa67f476".to_string());
+        db.migrate_workspace_ids(&migrations).unwrap();
+
+        // Verify workspaces table updated
+        assert!(db.get_workspace("julie_528d4264").unwrap().is_some());
+        assert!(db.get_workspace("julie_316c0b08").unwrap().is_none());
+        assert!(db.get_workspace("goldfish_aa67f476").unwrap().is_some());
+
+        // Verify stats preserved
+        let ws = db.get_workspace("julie_528d4264").unwrap().unwrap();
+        assert_eq!(ws.symbol_count, Some(100));
+        assert_eq!(ws.file_count, Some(50));
+
+        // Verify workspace_references updated
+        let refs = db.list_references("julie_528d4264").unwrap();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].workspace_id, "goldfish_aa67f476");
+
+        // Verify codehealth_snapshots updated
+        let snapshot = db.get_latest_snapshot("julie_528d4264").unwrap();
+        assert!(snapshot.is_some());
+        assert!(db.get_latest_snapshot("julie_316c0b08").unwrap().is_none());
+
+        // Verify tool_calls updated
+        let history = db.query_tool_call_history("julie_528d4264", 30).unwrap();
+        assert_eq!(history.total_calls, 1);
+    }
+
+    #[test]
+    fn test_migrate_workspace_ids_idempotent() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "ready").unwrap();
+
+        // Migrate with same old->new (no-op case: old doesn't exist)
+        let mut migrations = std::collections::HashMap::new();
+        migrations.insert("julie_316c0b08".to_string(), "julie_528d4264".to_string());
+
+        // Should not crash even though old ID doesn't exist
+        db.migrate_workspace_ids(&migrations).unwrap();
+
+        // Original entry untouched
+        let ws = db.get_workspace("julie_528d4264").unwrap();
+        assert!(ws.is_some());
+    }
+
+    #[test]
+    fn test_migrate_workspace_ids_empty_map() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "ready").unwrap();
+
+        let migrations = std::collections::HashMap::new();
+        db.migrate_workspace_ids(&migrations).unwrap();
+
+        let ws = db.get_workspace("julie_528d4264").unwrap();
+        assert!(ws.is_some());
+    }
 }

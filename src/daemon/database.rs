@@ -676,6 +676,79 @@ impl DaemonDatabase {
 
         self.insert_codehealth_snapshot(workspace_id, &snapshot)
     }
+
+    // -------------------------------------------------------------------------
+    // Workspace ID Migration
+    // -------------------------------------------------------------------------
+
+    /// Batch-migrate workspace IDs across all tables.
+    ///
+    /// Given a map of old_id -> new_id, updates workspace_references,
+    /// codehealth_snapshots, tool_calls, and workspaces in a single transaction.
+    /// FK checks are temporarily disabled to allow PK updates.
+    pub fn migrate_workspace_ids(&self, id_map: &std::collections::HashMap<String, String>) -> Result<()> {
+        if id_map.is_empty() {
+            return Ok(());
+        }
+
+        let mut conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
+
+        // Scope guard: ensure FK enforcement is restored on ALL exit paths.
+        // Without this, an early `?` return would leave FKs disabled for
+        // all future callers sharing this connection.
+        let result = (|| -> Result<()> {
+            let tx = conn.transaction()?;
+
+            for (old_id, new_id) in id_map {
+                // Update child tables first
+                tx.execute(
+                    "UPDATE workspace_references SET primary_workspace_id = ?1
+                     WHERE primary_workspace_id = ?2",
+                    params![new_id, old_id],
+                )?;
+                tx.execute(
+                    "UPDATE workspace_references SET reference_workspace_id = ?1
+                     WHERE reference_workspace_id = ?2",
+                    params![new_id, old_id],
+                )?;
+                tx.execute(
+                    "UPDATE codehealth_snapshots SET workspace_id = ?1
+                     WHERE workspace_id = ?2",
+                    params![new_id, old_id],
+                )?;
+                tx.execute(
+                    "UPDATE tool_calls SET workspace_id = ?1
+                     WHERE workspace_id = ?2",
+                    params![new_id, old_id],
+                )?;
+                // Update workspace row itself (PK change)
+                tx.execute(
+                    "UPDATE workspaces SET workspace_id = ?1
+                     WHERE workspace_id = ?2",
+                    params![new_id, old_id],
+                )?;
+            }
+
+            // Verify FK integrity before committing
+            let violations: i64 = tx.query_row(
+                "SELECT count(*) FROM pragma_foreign_key_check",
+                [],
+                |row| row.get(0),
+            )?;
+            if violations > 0 {
+                anyhow::bail!("FK integrity check failed after migration ({violations} violations)");
+            }
+
+            tx.commit()?;
+            Ok(())
+        })();
+
+        // ALWAYS re-enable FK enforcement, even if the transaction failed
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+
+        result
+    }
 }
 
 // -----------------------------------------------------------------------------
