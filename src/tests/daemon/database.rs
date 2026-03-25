@@ -461,6 +461,53 @@ mod tests {
     }
 
     #[test]
+    fn test_orphan_directory_cleanup() {
+        let (db, _tmp) = create_test_db();
+
+        // Register two workspaces in DB
+        db.upsert_workspace("julie_528d4264", "/Users/test/julie", "ready").unwrap();
+        db.upsert_workspace("goldfish_aa67f476", "/Users/test/goldfish", "ready").unwrap();
+
+        // Create a temp indexes directory with registered + orphan dirs
+        let indexes_dir = _tmp.path().join("indexes");
+        std::fs::create_dir_all(indexes_dir.join("julie_528d4264")).unwrap();
+        std::fs::create_dir_all(indexes_dir.join("goldfish_aa67f476")).unwrap();
+        std::fs::create_dir_all(indexes_dir.join("julie_316c0b08")).unwrap();  // orphan
+        std::fs::create_dir_all(indexes_dir.join("sealab_72d18461")).unwrap(); // orphan
+
+        // Build registered ID set
+        let registered: std::collections::HashSet<String> = db
+            .list_workspaces()
+            .unwrap()
+            .into_iter()
+            .map(|ws| ws.workspace_id)
+            .collect();
+
+        // Scan and delete orphans (same logic as clean command)
+        let mut cleaned_orphans = Vec::new();
+        for entry in std::fs::read_dir(&indexes_dir).unwrap().flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+                if !registered.contains(&dir_name) {
+                    std::fs::remove_dir_all(entry.path()).unwrap();
+                    cleaned_orphans.push(dir_name);
+                }
+            }
+        }
+
+        assert_eq!(cleaned_orphans.len(), 2);
+        assert!(cleaned_orphans.contains(&"julie_316c0b08".to_string()));
+        assert!(cleaned_orphans.contains(&"sealab_72d18461".to_string()));
+
+        // Verify registered dirs still exist
+        assert!(indexes_dir.join("julie_528d4264").exists());
+        assert!(indexes_dir.join("goldfish_aa67f476").exists());
+        // Verify orphans are gone
+        assert!(!indexes_dir.join("julie_316c0b08").exists());
+        assert!(!indexes_dir.join("sealab_72d18461").exists());
+    }
+
+    #[test]
     fn test_upsert_workspace_path_conflict_updates_status() {
         let (db, _tmp) = create_test_db();
 

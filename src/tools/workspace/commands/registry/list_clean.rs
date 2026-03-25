@@ -90,7 +90,10 @@ impl ManageWorkspaceTool {
                 }
             };
 
-            let mut cleaned = Vec::new();
+            let mut cleaned_stale = Vec::new();
+            let mut cleaned_orphans = Vec::new();
+
+            // Pass 1: Remove DB entries where project path no longer exists
             for ws in &all_workspaces {
                 if !std::path::Path::new(&ws.path).exists() {
                     if let Err(e) = db.delete_workspace(&ws.workspace_id) {
@@ -100,19 +103,63 @@ impl ManageWorkspaceTool {
                             e
                         );
                     } else {
-                        cleaned.push(ws.workspace_id.clone());
+                        cleaned_stale.push(ws.workspace_id.clone());
                     }
                 }
             }
 
-            let message = if cleaned.is_empty() {
+            // Pass 2: Remove orphan index directories not tracked in DB
+            // Re-fetch workspace list (may have changed from pass 1)
+            if let Ok(current_workspaces) = db.list_workspaces() {
+                let registered_ids: std::collections::HashSet<String> = current_workspaces
+                    .iter()
+                    .map(|ws| ws.workspace_id.clone())
+                    .collect();
+
+                if let Ok(paths) = crate::paths::DaemonPaths::try_new() {
+                    let indexes_dir = paths.indexes_dir();
+                    if let Ok(entries) = std::fs::read_dir(&indexes_dir) {
+                        for entry in entries.flatten() {
+                            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                                let dir_name = entry.file_name().to_string_lossy().to_string();
+                                if !registered_ids.contains(&dir_name) {
+                                    let dir_path = entry.path();
+                                    if let Err(e) = std::fs::remove_dir_all(&dir_path) {
+                                        tracing::warn!(
+                                            "Failed to remove orphan index dir {}: {}",
+                                            dir_name,
+                                            e
+                                        );
+                                    } else {
+                                        info!("Removed orphan index directory: {}", dir_name);
+                                        cleaned_orphans.push(dir_name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let message = if cleaned_stale.is_empty() && cleaned_orphans.is_empty() {
                 "No cleanup needed. All workspaces are healthy!".to_string()
             } else {
-                format!(
-                    "Cleaned up {} workspace(s) with missing paths:\n{}",
-                    cleaned.len(),
-                    cleaned.join("\n"),
-                )
+                let mut parts = Vec::new();
+                if !cleaned_stale.is_empty() {
+                    parts.push(format!(
+                        "Removed {} stale DB entries (missing paths):\n  {}",
+                        cleaned_stale.len(),
+                        cleaned_stale.join("\n  "),
+                    ));
+                }
+                if !cleaned_orphans.is_empty() {
+                    parts.push(format!(
+                        "Removed {} orphan index directories (not in DB):\n  {}",
+                        cleaned_orphans.len(),
+                        cleaned_orphans.join("\n  "),
+                    ));
+                }
+                parts.join("\n\n")
             };
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
         }
