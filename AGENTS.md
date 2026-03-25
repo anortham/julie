@@ -350,4 +350,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-03-25 | **Status:** Production Ready (v6.0.4 — daemon mode, shared workspaces, shared embedding pipeline)
+**Last Updated:** 2026-03-25 | **Status:** Production Ready (v6.0.5 — daemon mode, shared workspaces, shared embedding pipeline)
