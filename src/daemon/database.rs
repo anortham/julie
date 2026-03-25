@@ -180,8 +180,7 @@ impl DaemonDatabase {
             "INSERT INTO workspaces (workspace_id, path, status, session_count,
                 created_at, updated_at)
              VALUES (?1, ?2, ?3, 0, ?4, ?4)
-             ON CONFLICT(workspace_id) DO UPDATE SET
-                path       = excluded.path,
+             ON CONFLICT(path) DO UPDATE SET
                 status     = excluded.status,
                 updated_at = excluded.updated_at",
             params![workspace_id, path, status, now],

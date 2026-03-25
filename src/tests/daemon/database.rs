@@ -429,4 +429,21 @@ mod tests {
         let ws = db.get_workspace("julie_528d4264").unwrap();
         assert!(ws.is_some());
     }
+
+    #[test]
+    fn test_upsert_workspace_path_conflict_updates_status() {
+        let (db, _tmp) = create_test_db();
+
+        // Insert with old workspace ID
+        db.upsert_workspace("julie_316c0b08", "/Users/murphy/source/julie", "ready").unwrap();
+
+        // Upsert same path with different workspace ID -- should not crash
+        db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "pending").unwrap();
+
+        // The row should still exist (status updated, workspace_id NOT changed
+        // because only the startup migration handles ID changes with FK safety)
+        let ws = db.get_workspace("julie_316c0b08").unwrap().unwrap();
+        assert_eq!(ws.status, "pending");
+        assert_eq!(ws.path, "/Users/murphy/source/julie");
+    }
 }
