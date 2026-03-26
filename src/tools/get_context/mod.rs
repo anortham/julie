@@ -29,7 +29,7 @@ pub struct GetContextTool {
     /// Search query (text or pattern)
     pub query: String,
 
-    /// Maximum token budget for the response (default: auto-scaled based on result count)
+    /// Token budget override (default: auto-scaled 2000-4000 based on result count). Set higher for broad exploration, lower for focused queries
     #[serde(
         default,
         deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient"

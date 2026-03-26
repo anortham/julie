@@ -52,7 +52,7 @@ pub struct FastRefsTool {
     /// Workspace filter: "primary" (default) or a reference workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
-    /// Reference kind filter: "call", "variable_ref", "type_usage", "member_access", "import"
+    /// Narrow by reference kind: "call", "variable_ref", "type_usage", "member_access", "import". Omit to see all reference types
     #[serde(default)]
     pub reference_kind: Option<String>,
 }

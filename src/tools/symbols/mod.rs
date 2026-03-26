@@ -54,7 +54,7 @@ pub struct GetSymbolsTool {
         deserialize_with = "crate::utils::serde_lenient::deserialize_u32_lenient"
     )]
     pub max_depth: u32,
-    /// Filter to specific symbol name (supports partial matching)
+    /// Filter to specific symbol name (supports partial matching). Combine with mode="minimal" to extract just one symbol's code (90% token savings vs reading the whole file)
     #[serde(default)]
     pub target: Option<String>,
     /// Maximum symbols to return (default: 50)
@@ -63,10 +63,7 @@ pub struct GetSymbolsTool {
         deserialize_with = "crate::utils::serde_lenient::deserialize_option_u32_lenient"
     )]
     pub limit: Option<u32>,
-    /// Reading mode: "structure", "minimal" (default), or "full"
-    /// - "structure": Symbol names/signatures only (no code bodies)
-    /// - "minimal": Code bodies for top-level symbols (default - enables code output)
-    /// - "full": Code bodies for all symbols including nested
+    /// Reading mode: "structure" (names/signatures only, no code), "minimal" (default, code bodies for top-level symbols), "full" (code for all including nested). WARNING: "full" without target extracts the entire file
     #[serde(default = "default_mode")]
     pub mode: Option<String>,
     /// Workspace filter: "primary" (default) or workspace ID

@@ -69,7 +69,7 @@ pub struct RenameSymbolTool {
     /// Scope limitation
     #[serde(default)]
     pub scope: Option<String>,
-    /// Preview without applying (default: true)
+    /// Preview changes without applying (default: true). Always preview first, review the diff, then set to false to apply
     #[serde(
         default = "default_dry_run",
         deserialize_with = "crate::utils::serde_lenient::deserialize_bool_lenient"

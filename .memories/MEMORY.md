@@ -12,6 +12,7 @@
 - **`spawn_blocking` survives `JoinHandle::abort()`**: Must use `AtomicBool` cancellation flag checked between batches.
 - **Cross-platform review gap**: v6.0.0 shipped with broken Windows IPC (16 compile errors) because no reviewer ran `cargo check --target x86_64-pc-windows-msvc`. Always include cross-compilation in review checklists.
 - **normalize_path lowercasing caused duplicate workspaces**: SHA256 of lowercased vs case-preserved path produces different workspace IDs. After fixing path casing, daemon.db needs migration or old IDs create orphan index directories.
+- **C# property extraction uniquely vulnerable**: `extract_property` was the only extractor where type and name are sibling children of the same AST node with no structural anchor. All other member extractors in `csharp/members.rs` are safe -- `extract_method` uses `.rev()`, constructors/destructors have no return type, fields/events search inside `variable_declarator`, delegates handle 1-vs-2 identifier case explicitly.
 
 ## Decisions
 
@@ -25,4 +26,3 @@
 ## Open Questions
 
 - **NL query vocabulary gap**: Code embedding models match tokens, not semantic synonyms ("save" != "record"). Needs NL query expansion or dual-model approach.
-- **C# property name extraction bug (FIXED)**: `extract_property` in `members.rs` now uses `child_by_field_name("name")` with fallback to skip-past-type logic. Other member extractors in `members.rs` may have the same `.find(|c| c.kind() == "identifier")` bug for custom types.

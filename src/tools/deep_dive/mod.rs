@@ -33,7 +33,7 @@ pub struct DeepDiveTool {
     /// Symbol name to investigate (supports qualified names like `Processor::process`)
     pub symbol: String,
 
-    /// Detail level: "overview" (default, ~200 tokens), "context" (~600 tokens), "full" (~1500 tokens)
+    /// Investigation depth: "overview" (default, ~200 tokens: signature + caller/callee list), "context" (~600 tokens: adds code body), "full" (~1500 tokens: all refs, test locations, bodies). Use overview for orientation, context when you need implementation details, full for complete investigation
     #[serde(default = "default_depth")]
     pub depth: String,
 
