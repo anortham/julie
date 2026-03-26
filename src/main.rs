@@ -13,7 +13,7 @@ async fn main() -> anyhow::Result<()> {
     let workspace_root = resolve_workspace_root(cli.workspace);
 
     match cli.command {
-        Some(Command::Daemon { port }) => {
+        Some(Command::Daemon { port, no_dashboard }) => {
             let paths = julie::paths::DaemonPaths::new();
 
             // Set up daemon logging (to ~/.julie/daemon.log)
@@ -42,7 +42,25 @@ async fn main() -> anyhow::Result<()> {
                 .init();
 
             info!("Starting Julie daemon v{}", env!("CARGO_PKG_VERSION"));
-            julie::daemon::run_daemon(paths, port).await?;
+            julie::daemon::run_daemon(paths, port, no_dashboard).await?;
+        }
+        Some(Command::Dashboard) => {
+            let paths = julie::paths::DaemonPaths::new();
+            let port_file = paths.daemon_port();
+            match std::fs::read_to_string(&port_file) {
+                Ok(port) => {
+                    let url = format!("http://localhost:{}", port.trim());
+                    println!("Opening {}", url);
+                    if let Err(e) = opener::open(&url) {
+                        eprintln!("Failed to open browser: {}", e);
+                        println!("Dashboard URL: {}", url);
+                    }
+                }
+                Err(_) => {
+                    eprintln!("Dashboard not available. Is the daemon running?");
+                    std::process::exit(1);
+                }
+            }
         }
         Some(Command::Stop) => {
             let paths = julie::paths::DaemonPaths::new();

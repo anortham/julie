@@ -20,10 +20,15 @@ pub struct Cli {
 pub enum Command {
     /// Run as persistent daemon (HTTP + IPC transport)
     Daemon {
-        /// HTTP port for Streamable HTTP transport (0 = auto-assign)
-        #[arg(long, default_value = "0")]
+        /// HTTP port for dashboard (default: 7890, fallback to auto if taken)
+        #[arg(long, default_value = "7890")]
         port: u16,
+        /// Disable auto-opening dashboard in browser
+        #[arg(long)]
+        no_dashboard: bool,
     },
+    /// Open the dashboard in the default browser
+    Dashboard,
     /// Stop the running daemon
     Stop,
     /// Check daemon status

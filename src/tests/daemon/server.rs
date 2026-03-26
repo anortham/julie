@@ -7,6 +7,21 @@ use crate::daemon;
 use crate::daemon::session::SessionTracker;
 use crate::paths::DaemonPaths;
 
+/// Wait for a file to appear on disk, polling up to a deadline.
+/// Returns true if the file appeared, false if the deadline was exceeded.
+async fn wait_for_file(path: &std::path::Path, timeout: Duration) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if path.exists() {
+            return true;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 /// Verify the daemon starts up, creates a PID file, and shuts down cleanly
 /// when the shutdown signal fires.
 #[tokio::test]
@@ -17,16 +32,15 @@ async fn test_daemon_starts_and_creates_pid_file() {
 
     // Spawn the daemon in a background task; it will block on accept loop.
     let paths_clone = paths.clone();
-    let handle = tokio::spawn(async move { daemon::run_daemon(paths_clone, 0).await });
+    let handle = tokio::spawn(async move { daemon::run_daemon(paths_clone, 0, true).await });
 
-    // Give the daemon a moment to bind the socket and write the PID file.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-    // PID file should exist
+    // Poll for the PID file rather than using a fixed sleep. The embedding
+    // service init can take several seconds on first run, so a fixed 200ms
+    // window is too tight.
     let pid_path = paths.daemon_pid();
     assert!(
-        pid_path.exists(),
-        "PID file should exist at {}",
+        wait_for_file(&pid_path, Duration::from_secs(30)).await,
+        "PID file should appear within 30s at {}",
         pid_path.display()
     );
 
@@ -35,13 +49,13 @@ async fn test_daemon_starts_and_creates_pid_file() {
     let pid: u32 = pid_contents.trim().parse().expect("PID should be numeric");
     assert_eq!(pid, std::process::id(), "PID should match current process");
 
-    // Socket file should exist
+    // Socket file should exist (IPC binds after embedding init completes)
     #[cfg(unix)]
     {
         let socket_path = paths.daemon_socket();
         assert!(
-            socket_path.exists(),
-            "Socket file should exist at {}",
+            wait_for_file(&socket_path, Duration::from_secs(30)).await,
+            "Socket file should appear within 30s at {}",
             socket_path.display()
         );
     }

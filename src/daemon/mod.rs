@@ -219,7 +219,7 @@ fn migrate_stale_workspace_ids(
 /// Each incoming IPC connection is handled in its own tokio task. The daemon
 /// is workspace-agnostic; the workspace path arrives per-session via the
 /// IPC header protocol.
-pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
+pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Result<()> {
     paths
         .ensure_dirs()
         .context("Failed to create daemon directories")?;
@@ -300,6 +300,60 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
     // feeds into the same cleanup path below.
     let restart_notify = Arc::new(Notify::new());
 
+    // --- Dashboard HTTP server ---
+    let dashboard_state = crate::dashboard::state::DashboardState::new(
+        Arc::clone(&sessions),
+        daemon_db.clone(),
+        Arc::clone(&restart_pending),
+        std::time::Instant::now(),
+        embedding_service.is_available(),
+        Some(Arc::clone(&pool)),
+        50, // error buffer capacity
+    );
+
+    let dashboard_config = crate::dashboard::DashboardConfig::default();
+    let dashboard_router = crate::dashboard::create_router(dashboard_state, dashboard_config);
+
+    // Try requested port, fall back to auto-assign
+    let http_listener = match tokio::net::TcpListener::bind(
+        format!("127.0.0.1:{}", port),
+    )
+    .await
+    {
+        Ok(l) => l,
+        Err(_) if port != 0 => {
+            warn!("Port {} in use, falling back to auto-assign", port);
+            tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .context("Failed to bind HTTP server on any port")?
+        }
+        Err(e) => return Err(anyhow::anyhow!("Failed to bind HTTP server: {}", e)),
+    };
+
+    let actual_port = http_listener.local_addr()?.port();
+
+    // Write port file so `julie dashboard` can find it
+    let port_file = paths.daemon_port();
+    std::fs::write(&port_file, actual_port.to_string())
+        .context("Failed to write daemon port file")?;
+
+    let dashboard_url = format!("http://localhost:{}", actual_port);
+    info!(port = actual_port, url = %dashboard_url, "Dashboard HTTP server started");
+
+    // Auto-open browser unless suppressed
+    if !no_dashboard {
+        if let Err(e) = opener::open(&dashboard_url) {
+            warn!("Failed to open browser: {}", e);
+        }
+    }
+
+    // Spawn HTTP server as background task
+    tokio::spawn(async move {
+        if let Err(e) = axum::serve(http_listener, dashboard_router).await {
+            tracing::error!("Dashboard HTTP server error: {}", e);
+        }
+    });
+
     // Bind the IPC listener AFTER all initialization is complete. On Windows,
     // the adapter probes the named pipe to detect readiness, and that probe
     // consumes a pipe instance. If the pipe is bound before the accept loop
@@ -362,6 +416,7 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
     info!("Embedding service shut down");
 
     listener.cleanup();
+    let _ = std::fs::remove_file(paths.daemon_port());
 
     if let Err(e) = pid_file.cleanup() {
         warn!("Failed to clean up PID file: {}", e);

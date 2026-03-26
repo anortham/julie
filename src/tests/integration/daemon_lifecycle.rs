@@ -23,6 +23,20 @@ mod tests {
     // Test 1: Daemon starts, creates PID + socket, stops cleanly
     // ---------------------------------------------------------------
 
+    /// Poll for a file to appear, up to a deadline.
+    async fn wait_for_file(path: &std::path::Path, timeout: std::time::Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if path.exists() {
+                return true;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_daemon_starts_creates_pid_and_socket_then_stops() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -32,23 +46,27 @@ mod tests {
         // Spawn the daemon; it blocks on the accept loop until a signal arrives.
         let paths_for_daemon = paths.clone();
         let daemon_handle =
-            tokio::spawn(async move { crate::daemon::run_daemon(paths_for_daemon, 0).await });
+            tokio::spawn(async move { crate::daemon::run_daemon(paths_for_daemon, 0, true).await });
 
-        // Wait briefly for startup (PID file + socket bind).
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-
-        // PID file should exist with a valid PID.
+        // Poll for the PID file rather than using a fixed sleep. The embedding
+        // service init can take several seconds on first run, so a fixed 300ms
+        // window is too tight.
         let pid_path = paths.daemon_pid();
-        assert!(pid_path.exists(), "PID file should exist after startup");
+        assert!(
+            wait_for_file(&pid_path, std::time::Duration::from_secs(30)).await,
+            "PID file should appear within 30s at {}",
+            pid_path.display()
+        );
         let pid_str = std::fs::read_to_string(&pid_path).expect("read PID file");
         let pid: u32 = pid_str.trim().parse().expect("PID should be numeric");
         assert_eq!(pid, std::process::id(), "PID should match our process");
 
-        // Socket file should exist.
+        // Socket file should exist (IPC binds after embedding init completes).
         let socket_path = paths.daemon_socket();
         assert!(
-            socket_path.exists(),
-            "Socket file should exist after startup"
+            wait_for_file(&socket_path, std::time::Duration::from_secs(30)).await,
+            "Socket file should appear within 30s at {}",
+            socket_path.display()
         );
 
         // Stop via lifecycle::stop_daemon. This sends SIGTERM to ourselves,

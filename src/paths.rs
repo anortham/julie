@@ -122,6 +122,11 @@ impl DaemonPaths {
         self.julie_home.join("daemon.db")
     }
 
+    /// Path to the file storing the dashboard HTTP port.
+    pub fn daemon_port(&self) -> PathBuf {
+        self.julie_home.join("daemon.port")
+    }
+
     /// Migration state file
     pub fn migration_state(&self) -> PathBuf {
         self.julie_home.join("migration.json")
