@@ -113,6 +113,56 @@ pub async fn table(
     State(state): State<AppState>,
     Query(params): Query<MetricsParams>,
 ) -> Result<Html<String>, StatusCode> {
-    // For now, render the full page (htmx will swap just the relevant part)
-    index(State(state), Query(params)).await
+    // Render just the table partial for htmx partial swaps
+    let db = match state.dashboard.daemon_db() {
+        Some(db) => db,
+        None => return Ok(Html("<p>No data</p>".to_string())),
+    };
+
+    let workspace_id = params.workspace.as_deref().unwrap_or("");
+    let history = if workspace_id.is_empty() {
+        let mut total = crate::database::HistorySummary::default();
+        for ws in db.list_workspaces().unwrap_or_default() {
+            if let Ok(h) = db.query_tool_call_history(&ws.workspace_id, params.days) {
+                total.total_calls += h.total_calls;
+                for tool in h.per_tool {
+                    if let Some(existing) = total.per_tool.iter_mut().find(|t| t.tool_name == tool.tool_name) {
+                        let prev = existing.call_count;
+                        existing.call_count += tool.call_count;
+                        existing.avg_duration_ms = (existing.avg_duration_ms * prev as f64
+                            + tool.avg_duration_ms * tool.call_count as f64) / existing.call_count as f64;
+                    } else {
+                        total.per_tool.push(tool);
+                    }
+                }
+                for (name, durations) in h.durations_by_tool {
+                    total.durations_by_tool.entry(name).or_default().extend(durations);
+                }
+            }
+        }
+        total
+    } else {
+        db.query_tool_call_history(workspace_id, params.days).unwrap_or_default()
+    };
+
+    let mut tools = history.per_tool;
+    tools.sort_by(|a, b| b.call_count.cmp(&a.call_count));
+    let max_calls = tools.first().map(|t| t.call_count).unwrap_or(1);
+
+    let mut p95_by_tool = std::collections::HashMap::<String, f64>::new();
+    for (name, durations) in &history.durations_by_tool {
+        let mut sorted = durations.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        if !sorted.is_empty() {
+            let idx = ((sorted.len() as f64 * 0.95) as usize).min(sorted.len() - 1);
+            p95_by_tool.insert(name.clone(), sorted[idx]);
+        }
+    }
+
+    let mut context = tera::Context::new();
+    context.insert("tools", &tools);
+    context.insert("max_calls", &max_calls);
+    context.insert("p95_by_tool", &p95_by_tool);
+
+    render_template(&state, "partials/metrics_table.html", context).await
 }

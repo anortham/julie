@@ -46,14 +46,18 @@ pub async fn metrics_stream(
     Sse::new(stream)
 }
 
-/// SSE stream for activity events (log entries).
+/// SSE stream for live tool call activity.
 pub async fn activity_stream(
     State(state): State<AppState>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.dashboard.subscribe();
     let stream = BroadcastStream::new(rx).filter_map(|result| match result {
-        Ok(DashboardEvent::LogEntry(_)) => {
-            Some(Ok(Event::default().data("update")))
+        Ok(DashboardEvent::ToolCall { tool_name, workspace, duration_ms }) => {
+            let data = format!(
+                r#"{{"tool":"{}","workspace":"{}","duration_ms":{:.1}}}"#,
+                tool_name, workspace, duration_ms
+            );
+            Some(Ok(Event::default().event("activity").data(data)))
         }
         Ok(_) => None,
         Err(e) => {

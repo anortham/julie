@@ -35,7 +35,7 @@
     <td colspan="7" style="padding: 0; border-top: none;">
       <div style="padding: 1rem; background: var(--julie-bg-inset);"
            hx-get="/projects/{{ ws.workspace_id }}/detail"
-           hx-trigger="intersect once"
+           hx-trigger="revealed"
            hx-swap="innerHTML">
         <span style="color: var(--julie-text-muted); font-size: 0.85rem;">Loading details...</span>
       </div>

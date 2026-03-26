@@ -18,8 +18,8 @@
         <tr>
           <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Last indexed</td>
           <td style="border: none; padding: 0.25rem 0;">
-            {% if workspace.last_indexed %}
-              <span class="mono">{{ workspace.last_indexed }}</span>
+            {% if last_indexed_str %}
+              <span class="mono">{{ last_indexed_str }}</span>
             {% else %}
               <span style="color: var(--julie-text-muted);">Never</span>
             {% endif %}

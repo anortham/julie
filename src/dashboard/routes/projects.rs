@@ -44,10 +44,18 @@ pub async fn detail(
     let references = db.list_references(&workspace_id).unwrap_or_default();
     let health = db.get_latest_snapshot(&workspace_id).ok().flatten();
 
+    // Format last_indexed as human-readable
+    let last_indexed_str = workspace.last_indexed.map(|ts| {
+        chrono::DateTime::from_timestamp(ts, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_else(|| ts.to_string())
+    });
+
     let mut context = Context::new();
     context.insert("workspace", &workspace);
     context.insert("references", &references);
     context.insert("health", &health);
+    context.insert("last_indexed_str", &last_indexed_str);
 
     render_template(&state, "partials/project_detail.html", context).await
 }

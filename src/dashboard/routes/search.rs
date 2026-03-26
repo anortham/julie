@@ -80,5 +80,5 @@ pub async fn search(
     // For now, render with empty results. The template handles the "no results" state.
     context.insert("results", &Vec::<serde_json::Value>::new());
 
-    render_template(&state, "search.html", context).await
+    render_template(&state, "partials/search_results.html", context).await
 }
