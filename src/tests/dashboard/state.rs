@@ -23,6 +23,7 @@ fn test_dashboard_state_creation() {
     assert!(!state.is_restart_pending());
     assert!(state.error_entries().is_empty());
     assert!(!state.embedding_available());
+    assert!(state.workspace_pool().is_none());
 }
 
 #[tokio::test]
