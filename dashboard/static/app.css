@@ -1,0 +1,182 @@
+/* Julie Dashboard - Dark theme (default) */
+
+:root,
+[data-theme="dark"] {
+  --julie-bg: #1a1a2e;
+  --julie-bg-card: #222244;
+  --julie-bg-inset: #191932;
+  --julie-border: #2a2a4a;
+  --julie-text: #e0e0e0;
+  --julie-text-muted: #888;
+  --julie-primary: #818cf8;
+  --julie-success: #4ade80;
+  --julie-warning: #fbbf24;
+  --julie-danger: #ef4444;
+}
+
+[data-theme="light"] {
+  --julie-bg: #f5f5f5;
+  --julie-bg-card: #ffffff;
+  --julie-bg-inset: #ebebeb;
+  --julie-border: #d0d0d0;
+  --julie-text: #1a1a2e;
+  --julie-text-muted: #555;
+  --julie-primary: #4f46e5;
+  --julie-success: #16a34a;
+  --julie-warning: #d97706;
+  --julie-danger: #dc2626;
+}
+
+/* Base */
+
+html,
+body {
+  background-color: var(--julie-bg);
+  color: var(--julie-text);
+  min-height: 100vh;
+}
+
+/* Bulma dark overrides */
+
+.navbar {
+  background-color: var(--julie-bg-card) !important;
+}
+
+.navbar-item,
+.navbar-link {
+  color: var(--julie-text) !important;
+}
+
+.navbar-item.is-active,
+.navbar-item:hover {
+  color: var(--julie-primary) !important;
+  background-color: transparent !important;
+  text-decoration: underline;
+}
+
+.section {
+  background-color: var(--julie-bg);
+  color: var(--julie-text);
+}
+
+.title,
+.subtitle {
+  color: var(--julie-text) !important;
+}
+
+.table {
+  background-color: var(--julie-bg-card);
+  color: var(--julie-text);
+  border-color: var(--julie-border);
+}
+
+.table th,
+.table td {
+  border-color: var(--julie-border);
+  color: var(--julie-text);
+}
+
+.table thead th {
+  background-color: var(--julie-bg-inset);
+  color: var(--julie-text-muted);
+}
+
+.table tbody tr:hover {
+  background-color: var(--julie-bg-inset);
+}
+
+/* Card component */
+
+.julie-card {
+  background-color: var(--julie-bg-card);
+  border: 1px solid var(--julie-border);
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Brand */
+
+.julie-brand strong {
+  color: var(--julie-primary);
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+}
+
+/* Status badges */
+
+.badge-ready {
+  background-color: var(--julie-success);
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-indexing {
+  background-color: var(--julie-warning);
+  color: #1a1a1a;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-error {
+  background-color: var(--julie-danger);
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Error log entries */
+
+.error-entry {
+  border-left: 3px solid var(--julie-danger);
+  padding: 0.4rem 0.75rem;
+  margin-bottom: 0.4rem;
+  background-color: var(--julie-bg-inset);
+  border-radius: 0 4px 4px 0;
+  font-size: 0.85rem;
+  color: var(--julie-text);
+}
+
+.error-entry .error-time {
+  color: var(--julie-text-muted);
+  font-size: 0.75rem;
+  margin-right: 0.5rem;
+}
+
+/* Monospace utility */
+
+.mono {
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas",
+    monospace;
+  font-size: 0.85rem;
+}
+
+/* Button overrides */
+
+.button.is-dark {
+  background-color: var(--julie-bg-inset);
+  border-color: var(--julie-border);
+  color: var(--julie-text);
+}
+
+.button.is-dark:hover {
+  background-color: var(--julie-bg-card);
+  color: var(--julie-primary);
+}
+
+/* Tag */
+
+.tag.is-dark {
+  background-color: var(--julie-bg-inset);
+  color: var(--julie-text-muted);
+}

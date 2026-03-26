@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Julie Dashboard{% endblock %}</title>
+
+  <!-- Bulma CSS -->
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css" />
+
+  <!-- htmx -->
+  <script src="https://unpkg.com/htmx.org@2.0.4"
+          integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6pMO"
+          crossorigin="anonymous"></script>
+
+  <!-- htmx SSE extension -->
+  <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+
+  <!-- Alpine.js -->
+  <script defer
+          src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+
+  <!-- Dashboard styles -->
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar" role="navigation" aria-label="main navigation"
+     style="background: var(--julie-bg-card); border-bottom: 1px solid var(--julie-border);">
+  <div class="navbar-brand">
+    <a class="navbar-item julie-brand" href="/">
+      <strong>Julie</strong>&nbsp;<span class="tag is-dark">v{{ version }}</span>
+    </a>
+  </div>
+
+  <div class="navbar-menu is-active">
+    <div class="navbar-start">
+      <a class="navbar-item {% if active_page == 'status' %}is-active{% endif %}" href="/">
+        Status
+      </a>
+      <a class="navbar-item {% if active_page == 'projects' %}is-active{% endif %}" href="/projects">
+        Projects
+      </a>
+      <a class="navbar-item {% if active_page == 'metrics' %}is-active{% endif %}" href="/metrics">
+        Metrics
+      </a>
+      <a class="navbar-item {% if active_page == 'search' %}is-active{% endif %}" href="/search">
+        Search
+      </a>
+    </div>
+
+    <div class="navbar-end">
+      <div class="navbar-item">
+        <button class="button is-small is-dark"
+                onclick="toggleTheme()"
+                title="Toggle light/dark theme">
+          Theme
+        </button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Main content -->
+<main class="section">
+  <div class="container is-fluid">
+    {% block content %}{% endblock %}
+  </div>
+</main>
+
+<!-- Dashboard scripts -->
+<script src="/static/app.js"></script>
+</body>
+</html>

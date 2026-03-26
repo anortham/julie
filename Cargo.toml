@@ -90,7 +90,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "tokio"
 tera = "1"
 rust-embed = "8"
 opener = "0.7"
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # File locking (daemon PID files)
 fs2 = "0.4"
@@ -130,6 +130,7 @@ tempfile = "3.13"
 tokio-test = "0.4"
 cargo-tarpaulin = "0.31"
 serial_test = "3.2"
+tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 opt-level = 3
