@@ -231,16 +231,6 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
         PidFile::create_exclusive(&paths.daemon_pid()).context("Failed to start daemon")?;
     info!(pid = std::process::id(), "Daemon PID file created");
 
-    // Bind the IPC listener
-    let listener = IpcListener::bind(&paths.daemon_ipc_addr())
-        .await
-        .context("Failed to bind IPC endpoint")?;
-
-    info!(
-        endpoint = %paths.daemon_ipc_addr().display(),
-        "Daemon listening for IPC connections"
-    );
-
     // Open persistent daemon database, resetting stale session counts from
     // any previous run (crash recovery) and pruning old tool call records.
     let daemon_db: Option<Arc<DaemonDatabase>> = match DaemonDatabase::open(&paths.daemon_db()) {
@@ -309,6 +299,20 @@ pub async fn run_daemon(paths: DaemonPaths, _port: u16) -> Result<()> {
     // Unix-only SIGTERM-to-self pattern with a cross-platform mechanism that
     // feeds into the same cleanup path below.
     let restart_notify = Arc::new(Notify::new());
+
+    // Bind the IPC listener AFTER all initialization is complete. On Windows,
+    // the adapter probes the named pipe to detect readiness, and that probe
+    // consumes a pipe instance. If the pipe is bound before the accept loop
+    // starts (e.g., during the 8+ second embedding model load), the probe eats
+    // the only instance and the real connection gets ERROR_PIPE_BUSY (231).
+    let listener = IpcListener::bind(&paths.daemon_ipc_addr())
+        .await
+        .context("Failed to bind IPC endpoint")?;
+
+    info!(
+        endpoint = %paths.daemon_ipc_addr().display(),
+        "Daemon listening for IPC connections"
+    );
 
     // Accept loop with graceful shutdown
     let result = tokio::select! {

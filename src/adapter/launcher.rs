@@ -144,19 +144,15 @@ impl DaemonLauncher {
                 return Ok(());
             }
 
-            // On Windows, try opening the named pipe. A successful open means the
-            // pipe exists and has an available instance. ERROR_PIPE_BUSY (231)
-            // means the pipe exists but all instances are currently connected,
-            // which still proves the daemon is up and the pipe is bound.
+            // On Windows, use WaitNamedPipeW to check if the pipe exists without
+            // connecting. OpenOptions::open() actually CONNECTS to the pipe,
+            // consuming a pipe instance. If the daemon hasn't entered its accept
+            // loop yet, this probe eats the only instance and the real connection
+            // gets ERROR_PIPE_BUSY (231). WaitNamedPipeW checks existence without
+            // consuming any instance.
             #[cfg(windows)]
-            match std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&ipc_addr)
-            {
-                Ok(_) => return Ok(()),
-                Err(ref e) if e.raw_os_error() == Some(231) => return Ok(()),
-                Err(_) => {} // Pipe doesn't exist yet, keep polling
+            if win_pipe_exists(&ipc_addr) {
+                return Ok(());
             }
 
             if start.elapsed() >= timeout {
@@ -173,4 +169,40 @@ impl DaemonLauncher {
             delay = (delay * 2).min(max_delay);
         }
     }
+}
+
+/// Check if a Windows named pipe exists without connecting to it.
+///
+/// Uses `WaitNamedPipeW` with a 1ms timeout. This probes the pipe namespace
+/// without consuming a pipe instance (unlike `OpenOptions::open`, which
+/// actually connects and eats an instance).
+///
+/// Returns `true` if the pipe exists (regardless of whether instances are
+/// currently available), `false` if the pipe hasn't been created yet.
+#[cfg(windows)]
+fn win_pipe_exists(pipe_path: &std::path::Path) -> bool {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
+    unsafe extern "system" {
+        fn WaitNamedPipeW(lpNamedPipeName: *const u16, nTimeOut: u32) -> i32;
+    }
+
+    let wide: Vec<u16> = OsStr::new(pipe_path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    // Timeout of 1ms: we don't want to wait, just check existence.
+    let result = unsafe { WaitNamedPipeW(wide.as_ptr(), 1) };
+    if result != 0 {
+        // Pipe exists and has an available instance.
+        return true;
+    }
+
+    // WaitNamedPipeW failed. Check why:
+    // - ERROR_FILE_NOT_FOUND (2): pipe doesn't exist yet
+    // - ERROR_SEM_TIMEOUT (121): pipe exists, all instances busy (still means daemon is up)
+    let err = io::Error::last_os_error();
+    err.raw_os_error() == Some(121)
 }
