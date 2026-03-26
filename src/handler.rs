@@ -12,7 +12,10 @@ use rmcp::{
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
+
+use crate::dashboard::state::DashboardEvent;
 
 use crate::database::SymbolDatabase;
 use crate::search::SearchIndex;
@@ -180,6 +183,8 @@ pub struct JulieServerHandler {
     metrics_tx: tokio::sync::mpsc::Sender<MetricsTask>,
     /// Cache for reference workspace DB connections, keyed by workspace_id (M22).
     ref_db_cache: Arc<RwLock<HashMap<String, Arc<std::sync::Mutex<SymbolDatabase>>>>>,
+    /// Broadcast sender for dashboard live-feed events. None in stdio/test mode.
+    dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
 }
 
 impl JulieServerHandler {
@@ -211,6 +216,7 @@ impl JulieServerHandler {
             restart_pending: None,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
+            dashboard_tx: None,
         })
     }
 
@@ -232,6 +238,7 @@ impl JulieServerHandler {
         workspace_id: Option<String>,
         embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
         restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+        dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     ) -> Result<Self> {
         info!(
             "Creating daemon-mode handler (workspace_root: {:?})",
@@ -278,6 +285,7 @@ impl JulieServerHandler {
             restart_pending,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
+            dashboard_tx,
         })
     }
 
@@ -539,6 +547,15 @@ impl JulieServerHandler {
         // Write to per-project log (daemon mode only)
         if let Some(ref log) = self.project_log {
             log.tool_call(tool_name, duration.as_secs_f64() * 1000.0, output_bytes);
+        }
+
+        // Emit live-feed event to dashboard SSE subscribers (if any).
+        if let Some(ref tx) = self.dashboard_tx {
+            let _ = tx.send(DashboardEvent::ToolCall {
+                tool_name: tool_name.to_string(),
+                workspace: self.workspace_id.clone().unwrap_or_default(),
+                duration_ms: duration.as_secs_f64() * 1000.0,
+            });
         }
 
         // Offload source-bytes lookup + SQLite writes to the bounded background channel.

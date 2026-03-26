@@ -25,8 +25,11 @@ use anyhow::{Context, Result};
 use libc;
 use rmcp::ServiceExt;
 use tokio::io::AsyncReadExt;
+use tokio::sync::broadcast;
 use tokio::sync::Notify;
 use tracing::{error, info, warn};
+
+use crate::dashboard::state::DashboardEvent;
 
 use crate::handler::JulieServerHandler;
 use crate::paths::DaemonPaths;
@@ -311,6 +314,10 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         50, // error buffer capacity
     );
 
+    // Extract the broadcast sender before dashboard_state is moved into the router.
+    // Cloned cheaply (Arc-backed) and passed to each IPC session for live-feed events.
+    let dashboard_tx: broadcast::Sender<DashboardEvent> = dashboard_state.sender();
+
     let dashboard_config = crate::dashboard::DashboardConfig::default();
     let dashboard_router = crate::dashboard::create_router(dashboard_state, dashboard_config)
         .context("Failed to initialize dashboard templates")?;
@@ -371,7 +378,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
 
     // Accept loop with graceful shutdown
     let result = tokio::select! {
-        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify) => res,
+        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify, dashboard_tx) => res,
         res = shutdown_signal() => {
             if let Err(e) = res {
                 warn!("Signal handler setup failed: {}", e);
@@ -441,6 +448,7 @@ async fn accept_loop(
     startup_binary_mtime: Option<SystemTime>,
     restart_pending: &Arc<AtomicBool>,
     restart_notify: &Arc<Notify>,
+    dashboard_tx: broadcast::Sender<DashboardEvent>,
 ) -> Result<()> {
     loop {
         let stream = match listener.accept().await {
@@ -470,6 +478,7 @@ async fn accept_loop(
         let embedding_service = Arc::clone(embedding_service);
         let restart_pending = Arc::clone(restart_pending);
         let restart_notify = Arc::clone(restart_notify);
+        let dashboard_tx = dashboard_tx.clone();
         let session_id = sessions.add_session();
 
         // Check for stale binary on each new connection. This way the health
@@ -500,6 +509,7 @@ async fn accept_loop(
                 &daemon_db,
                 &embedding_service,
                 &restart_pending,
+                Some(dashboard_tx),
             )
             .await
             {
@@ -535,6 +545,7 @@ async fn handle_ipc_session(
     daemon_db: &Option<Arc<DaemonDatabase>>,
     embedding_service: &Arc<EmbeddingService>,
     restart_pending: &Arc<AtomicBool>,
+    dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
 ) -> Result<()> {
     // Read the workspace header with a timeout so a misbehaving client that
     // connects but never sends the header cannot hold a session slot forever.
@@ -585,6 +596,7 @@ async fn handle_ipc_session(
             Some(full_workspace_id.clone()),
             Some(Arc::clone(embedding_service)),
             Some(Arc::clone(restart_pending)),
+            dashboard_tx,
         )
         .await
         .context("Failed to create handler for IPC session")?;
