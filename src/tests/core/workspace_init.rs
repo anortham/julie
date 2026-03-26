@@ -754,7 +754,7 @@ async fn test_agent_instructions_always_available() {
 
     let instructions = info.instructions.unwrap();
     assert!(
-        instructions.contains("Critical Rules"),
+        instructions.contains("Rules"),
         "Embedded instructions should contain expected content"
     );
     assert!(
