@@ -33,47 +33,32 @@
     </table>
   </div>
 
-  <!-- Column 2: Code Health -->
+  <!-- Column 2: Symbol Stats -->
   {% if health %}
   <div class="column">
-    <p class="label-text" style="margin-bottom: 0.5rem;">Code Health <span style="font-size: 0.65rem; color: var(--julie-warning); font-weight: normal; text-transform: none; letter-spacing: 0;">(experimental)</span></p>
+    <p class="label-text" style="margin-bottom: 0.5rem;">Symbol Stats</p>
     <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.85rem;">
       <tbody>
         <tr>
-          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Security risk</td>
-          <td style="border: none; padding: 0.25rem 0;">
-            {% if health.security_high > 0 %}
-              <span style="color: var(--julie-danger);">High ({{ health.security_high }})</span>
-            {% elif health.security_medium > 0 %}
-              <span style="color: var(--julie-warning);">Medium ({{ health.security_medium }})</span>
-            {% else %}
-              <span style="color: var(--julie-success);">Low</span>
-            {% endif %}
-          </td>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Total symbols</td>
+          <td style="border: none; padding: 0.25rem 0;">{{ health.total_symbols | default(value="—") }}</td>
         </tr>
         <tr>
-          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Change risk</td>
-          <td style="border: none; padding: 0.25rem 0;">
-            {% if health.change_high > 0 %}
-              <span style="color: var(--julie-danger);">High ({{ health.change_high }})</span>
-            {% elif health.change_medium > 0 %}
-              <span style="color: var(--julie-warning);">Medium ({{ health.change_medium }})</span>
-            {% else %}
-              <span style="color: var(--julie-success);">Low</span>
-            {% endif %}
-          </td>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Total files</td>
+          <td style="border: none; padding: 0.25rem 0;">{{ health.total_files | default(value="—") }}</td>
         </tr>
+        {% if health.avg_centrality %}
         <tr>
-          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Test coverage</td>
-          <td style="border: none; padding: 0.25rem 0;">
-            {% set total_syms = health.symbols_tested + health.symbols_untested %}
-            {% if total_syms > 0 %}
-              {{ health.symbols_tested * 100 / total_syms | round }}%
-            {% else %}
-              <span style="color: var(--julie-text-muted);">N/A</span>
-            {% endif %}
-          </td>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Avg centrality</td>
+          <td style="border: none; padding: 0.25rem 0;">{{ health.avg_centrality | round(precision=1) }}</td>
         </tr>
+        {% endif %}
+        {% if health.max_centrality %}
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Max centrality</td>
+          <td style="border: none; padding: 0.25rem 0;">{{ health.max_centrality | round(precision=0) }}</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
