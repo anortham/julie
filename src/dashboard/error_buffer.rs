@@ -16,6 +16,16 @@ use tracing_subscriber::Layer;
 // LogEntry
 // ---------------------------------------------------------------------------
 
+/// A single captured log event.
+#[derive(Debug, Clone, Serialize)]
+pub struct LogEntry {
+    #[serde(serialize_with = "serialize_system_time")]
+    pub timestamp: SystemTime,
+    pub level: String,
+    pub message: String,
+    pub target: String,
+}
+
 fn serialize_system_time<S>(time: &SystemTime, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -25,16 +35,6 @@ where
         .unwrap_or_default()
         .as_secs();
     serializer.serialize_u64(secs)
-}
-
-/// A single captured log event.
-#[derive(Debug, Clone, Serialize)]
-pub struct LogEntry {
-    #[serde(serialize_with = "serialize_system_time")]
-    pub timestamp: SystemTime,
-    pub level: String,
-    pub message: String,
-    pub target: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ where
 
         let entry = LogEntry {
             timestamp: SystemTime::now(),
-            level: level.to_string().to_uppercase(),
+            level: level.to_string(),
             message: visitor.message,
             target: event.metadata().target().to_owned(),
         };
