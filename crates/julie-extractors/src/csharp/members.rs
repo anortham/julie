@@ -223,9 +223,35 @@ pub fn extract_property(
     parent_id: Option<String>,
 ) -> Option<Symbol> {
     let mut cursor = node.walk();
+    // Use the grammar's "name" field to get the property name, not the first
+    // identifier child. When the type is a custom class (e.g., MyService),
+    // it's also an "identifier" node and would be grabbed first by kind-matching.
     let name_node = node
-        .children(&mut cursor)
-        .find(|c| c.kind() == "identifier")?;
+        .child_by_field_name("name")
+        .or_else(|| {
+            // Fallback: find the identifier that follows the type node.
+            // The type is the first non-modifier child matching a type kind;
+            // the name is the next identifier after it.
+            let mut found_type = false;
+            node.children(&mut cursor).find(|c| {
+                if c.kind() == "identifier" && found_type {
+                    return true;
+                }
+                if matches!(
+                    c.kind(),
+                    "predefined_type"
+                        | "identifier"
+                        | "qualified_name"
+                        | "generic_name"
+                        | "array_type"
+                        | "nullable_type"
+                        | "tuple_type"
+                ) {
+                    found_type = true;
+                }
+                false
+            })
+        })?;
     let name = base.get_node_text(&name_node);
     let modifiers = helpers::extract_modifiers(base, &node);
     let visibility = helpers::determine_visibility(&modifiers, None);

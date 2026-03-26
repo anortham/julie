@@ -197,10 +197,34 @@ impl ManageWorkspaceTool {
                     *handler.is_indexed.write().await = false;
                     // Fall through to indexing logic below
                 } else {
-                    let message = format!(
+                    // Resume incomplete embedding if needed. The pipeline is
+                    // incremental (skips already-embedded symbols) and fast-exits
+                    // when everything is already embedded. This handles the case
+                    // where the daemon was killed mid-embedding and restarted.
+                    let mut message = format!(
                         "Workspace already indexed: {} symbols\nUse force: true to re-index",
                         symbol_count
                     );
+                    if !skip_embeddings {
+                        let canonical_path_str = canonical_path.to_string_lossy().to_string();
+                        let ws_id = handler.workspace_id.clone().unwrap_or_else(|| {
+                            crate::workspace::registry::generate_workspace_id(&canonical_path_str)
+                                .unwrap_or_default()
+                        });
+                        if !ws_id.is_empty() {
+                            let embed_count =
+                                crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+                                    handler, ws_id,
+                                )
+                                .await;
+                            if embed_count > 0 {
+                                message.push_str(&format!(
+                                    "\nResuming embedding for {} symbols in background...",
+                                    embed_count
+                                ));
+                            }
+                        }
+                    }
                     return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                 }
             }

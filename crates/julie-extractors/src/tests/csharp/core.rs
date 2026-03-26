@@ -422,6 +422,62 @@ namespace MyProject
     }
 
     #[test]
+    fn test_property_with_custom_type_extracts_correct_name() {
+        // Regression: extract_property used .find(|c| c.kind() == "identifier")
+        // which grabs the TYPE identifier instead of the NAME when the type is
+        // a plain identifier (e.g., MyClass) rather than a predefined_type (string, int).
+        let code = r#"
+public class Foo {
+    public MyService Service { get; set; }
+    public ILogger Logger { get; }
+    public List<string> Items { get; set; }
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = CSharpExtractor::new(
+            "c_sharp".to_string(),
+            "test.cs".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        // This is the critical assertion: with custom type "MyService",
+        // the property name should be "Service", NOT "MyService".
+        let service = symbols.iter().find(|s| s.name == "Service");
+        assert!(
+            service.is_some(),
+            "Property 'Service' not found. Found properties: {:?}",
+            symbols
+                .iter()
+                .filter(|s| s.kind == SymbolKind::Property)
+                .map(|s| &s.name)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(service.unwrap().kind, SymbolKind::Property);
+        assert!(
+            service
+                .unwrap()
+                .signature
+                .as_ref()
+                .unwrap()
+                .contains("MyService"),
+            "Signature should contain the type 'MyService'"
+        );
+
+        let logger = symbols.iter().find(|s| s.name == "Logger");
+        assert!(
+            logger.is_some(),
+            "Property 'Logger' not found (interface type ILogger)"
+        );
+    }
+
+    #[test]
     fn test_constructor_extraction() {
         let code = r#"
 namespace MyProject

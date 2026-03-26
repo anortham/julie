@@ -138,6 +138,36 @@ mod tests {
             actual_score,
         );
     }
+
+    #[test]
+    fn test_rrf_merge_prefers_semantic_metadata_for_duplicates() {
+        // When a symbol appears in both keyword and semantic results,
+        // the semantic version's metadata should be preferred because
+        // it comes from SQLite (source of truth), while Tantivy stored
+        // fields may be stale after incremental updates.
+        let mut keyword_version = make_result("dup", "my_func", 10.0);
+        keyword_version.signature = "fn my_func(old: i32)".to_string();
+        keyword_version.doc_comment = "Old doc comment".to_string();
+
+        let mut semantic_version = make_result("dup", "my_func", 0.9);
+        semantic_version.signature = "fn my_func(new: String)".to_string();
+        semantic_version.doc_comment = "Updated doc comment".to_string();
+
+        let tantivy = vec![keyword_version];
+        let semantic = vec![semantic_version];
+
+        let merged = rrf_merge(tantivy, semantic, 60, 10);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            merged[0].signature, "fn my_func(new: String)",
+            "should prefer semantic (SQLite) metadata over keyword (Tantivy) metadata"
+        );
+        assert_eq!(
+            merged[0].doc_comment, "Updated doc comment",
+            "should prefer semantic doc_comment"
+        );
+    }
 }
 
 /// Hybrid search orchestrator tests.

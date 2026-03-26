@@ -2,7 +2,7 @@
 
 ## Open Issues
 
-- [ ] **[S-H4] RRF merge always keeps keyword metadata** -- If symbol appears in both keyword and semantic results, keyword version always kept. Metadata could be stale if enrichment paths diverge. (`hybrid.rs:81-86`)
+- [x] **[S-H4] RRF merge always keeps keyword metadata** -- Fixed: semantic loop now uses `insert` instead of `or_insert` so SQLite-sourced metadata overwrites stale Tantivy stored fields. (`hybrid.rs:90-95`)
 
 ## Bugs
 
@@ -19,7 +19,7 @@
 
 - [ ] **Upgrade ORT to rc12** -- Current: `ort = "2.0.0-rc.10"` (resolves to rc.11 in lockfile). rc.12 is available. May include DirectML improvements, bug fixes, and new operator support. Update Cargo.toml and test embedding pipeline on both Windows (DirectML) and macOS (CPU/sidecar).
 
-- [ ] **Incomplete embedding backfill not resumed on daemon restart** -- Discovered 2026-03-24. When the daemon is killed mid-embedding (e.g., to stop CPU thrashing), the partial progress (e.g., 1000 of 4858 vectors) is persisted in SQLite, but the remaining symbols are never re-embedded on the next daemon startup. The embedding pipeline only runs during `index` or `refresh` operations, not on session connect. Need either: (a) detect incomplete embedding state on workspace pool init and auto-resume, or (b) add an explicit `manage_workspace(operation="embed")` command, or (c) trigger embedding pipeline on session connect if vectors are below expected count.
+- [x] **Incomplete embedding backfill not resumed on daemon restart** -- Fixed: the "already indexed" early-return path in `handle_index_command` now spawns `spawn_workspace_embedding` which resumes incomplete embeddings. The pipeline is already incremental (skips embedded symbols) and fast-exits when complete. (`index.rs:199-219`)
 
 ## Future Ideas
 

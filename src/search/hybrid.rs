@@ -91,7 +91,9 @@ pub fn weighted_rrf_merge(
         let rank = (i + 1) as f32;
         let rrf_score = semantic_weight * (1.0 / (k_f32 + rank));
         *scores.entry(result.id.clone()).or_insert(0.0) += rrf_score;
-        results_by_id.entry(result.id.clone()).or_insert(result);
+        // Overwrite keyword metadata: semantic results come from SQLite (source of truth),
+        // while keyword results use Tantivy stored fields which may be stale.
+        results_by_id.insert(result.id.clone(), result);
     }
 
     let mut merged: Vec<SymbolSearchResult> = results_by_id
