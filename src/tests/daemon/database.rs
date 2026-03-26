@@ -83,7 +83,7 @@ mod tests {
     fn test_update_workspace_stats() {
         let (db, _tmp) = create_test_db();
         db.upsert_workspace("ws1", "/path", "ready").unwrap();
-        db.update_workspace_stats("ws1", 100, 50, Some("jina-code-v2"), Some(80))
+        db.update_workspace_stats("ws1", 100, 50, Some("jina-code-v2"), Some(80), Some(1500))
             .unwrap();
 
         let ws = db.get_workspace("ws1").unwrap().unwrap();
@@ -357,7 +357,7 @@ mod tests {
 
         // Insert workspace with old ID
         db.upsert_workspace("julie_316c0b08", "/Users/murphy/source/julie", "ready").unwrap();
-        db.update_workspace_stats("julie_316c0b08", 100, 50, None, None).unwrap();
+        db.update_workspace_stats("julie_316c0b08", 100, 50, None, None, None).unwrap();
 
         // Insert a reference relationship
         db.upsert_workspace("goldfish_5ed767a5", "/Users/murphy/source/goldfish", "ready").unwrap();

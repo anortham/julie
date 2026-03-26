@@ -51,11 +51,23 @@ pub async fn detail(
             .unwrap_or_else(|| ts.to_string())
     });
 
+    // Format index duration as human-readable
+    let index_duration_str = workspace.last_index_duration_ms.map(|ms| {
+        if ms >= 60_000 {
+            format!("{}m {:.1}s", ms / 60_000, (ms % 60_000) as f64 / 1000.0)
+        } else if ms >= 1_000 {
+            format!("{:.1}s", ms as f64 / 1000.0)
+        } else {
+            format!("{}ms", ms)
+        }
+    });
+
     let mut context = Context::new();
     context.insert("workspace", &workspace);
     context.insert("references", &references);
     context.insert("health", &health);
     context.insert("last_indexed_str", &last_indexed_str);
+    context.insert("index_duration_str", &index_duration_str);
 
     render_template(&state, "partials/project_detail.html", context).await
 }

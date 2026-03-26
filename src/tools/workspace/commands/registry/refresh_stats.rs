@@ -32,6 +32,7 @@ impl ManageWorkspaceTool {
                                 result.files_total as i64,
                                 None,
                                 None,
+                                Some(result.duration_ms),
                             ) {
                                 warn!("Failed to update workspace stats: {}", e);
                             }

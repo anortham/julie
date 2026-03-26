@@ -260,6 +260,7 @@ impl ManageWorkspaceTool {
                         files_total as i64,
                         None,
                         None,
+                        Some(result.duration_ms),
                     );
                     info!(
                         "✅ Updated daemon.db stats: {} files, {} symbols for {}",

@@ -11,7 +11,6 @@ use tracing::{info, warn};
 
 use crate::database::{HistorySummary, ToolCallSummary};
 
-const DAEMON_SCHEMA_VERSION: i32 = 1;
 
 /// Thread-safe daemon database. Shared across sessions as `Arc<DaemonDatabase>`.
 ///
@@ -72,8 +71,11 @@ impl DaemonDatabase {
             |row| row.get(0),
         )?;
 
-        if current < DAEMON_SCHEMA_VERSION {
+        if current < 1 {
             Self::migration_001_initial_schema(conn)?;
+        }
+        if current < 2 {
+            Self::migration_002_add_index_duration(conn)?;
         }
 
         Ok(())
@@ -152,6 +154,19 @@ impl DaemonDatabase {
         Ok(())
     }
 
+    fn migration_002_add_index_duration(conn: &mut Connection) -> Result<()> {
+        info!("daemon.db migration 002: add index duration column");
+        let tx = conn.transaction()?;
+        tx.execute_batch(
+            "ALTER TABLE workspaces ADD COLUMN last_index_duration_ms INTEGER;
+             INSERT OR REPLACE INTO schema_version (version, applied_at)
+             VALUES (2, unixepoch());",
+        )?;
+        tx.commit()?;
+        info!("daemon.db migration 002 complete");
+        Ok(())
+    }
+
     /// Returns true if a table with the given name exists in the database.
     pub fn table_exists(&self, table_name: &str) -> bool {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
@@ -194,7 +209,7 @@ impl DaemonDatabase {
         let mut stmt = conn.prepare_cached(
             "SELECT workspace_id, path, status, session_count, last_indexed,
                     symbol_count, file_count, embedding_model, vector_count,
-                    created_at, updated_at
+                    created_at, updated_at, last_index_duration_ms
              FROM workspaces WHERE workspace_id = ?1",
         )?;
         let mut rows = stmt.query(params![workspace_id])?;
@@ -211,7 +226,7 @@ impl DaemonDatabase {
         let mut stmt = conn.prepare_cached(
             "SELECT workspace_id, path, status, session_count, last_indexed,
                     symbol_count, file_count, embedding_model, vector_count,
-                    created_at, updated_at
+                    created_at, updated_at, last_index_duration_ms
              FROM workspaces WHERE path = ?1",
         )?;
         let mut rows = stmt.query(params![path])?;
@@ -240,6 +255,7 @@ impl DaemonDatabase {
         file_count: i64,
         embedding_model: Option<&str>,
         vector_count: Option<i64>,
+        index_duration_ms: Option<u64>,
     ) -> Result<()> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let now = now_unix();
@@ -250,7 +266,8 @@ impl DaemonDatabase {
                  embedding_model = ?3,
                  vector_count    = ?4,
                  last_indexed    = ?5,
-                 updated_at      = ?5
+                 updated_at      = ?5,
+                 last_index_duration_ms = COALESCE(?7, last_index_duration_ms)
              WHERE workspace_id  = ?6",
             params![
                 symbol_count,
@@ -258,7 +275,8 @@ impl DaemonDatabase {
                 embedding_model,
                 vector_count,
                 now,
-                workspace_id
+                workspace_id,
+                index_duration_ms.map(|d| d as i64),
             ],
         )?;
         Ok(())
@@ -305,7 +323,7 @@ impl DaemonDatabase {
         let mut stmt = conn.prepare_cached(
             "SELECT workspace_id, path, status, session_count, last_indexed,
                     symbol_count, file_count, embedding_model, vector_count,
-                    created_at, updated_at
+                    created_at, updated_at, last_index_duration_ms
              FROM workspaces ORDER BY updated_at DESC",
         )?;
         let rows = stmt.query_map([], |row| WorkspaceRow::from_row(row))?;
@@ -490,7 +508,7 @@ impl DaemonDatabase {
         let mut stmt = conn.prepare_cached(
             "SELECT w.workspace_id, w.path, w.status, w.session_count, w.last_indexed,
                     w.symbol_count, w.file_count, w.embedding_model, w.vector_count,
-                    w.created_at, w.updated_at
+                    w.created_at, w.updated_at, w.last_index_duration_ms
              FROM workspace_references r
              JOIN workspaces w ON w.workspace_id = r.reference_workspace_id
              WHERE r.primary_workspace_id = ?1
@@ -768,6 +786,7 @@ pub struct WorkspaceRow {
     pub vector_count: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
+    pub last_index_duration_ms: Option<i64>,
 }
 
 impl WorkspaceRow {
@@ -784,6 +803,7 @@ impl WorkspaceRow {
             vector_count: row.get(8)?,
             created_at: row.get(9)?,
             updated_at: row.get(10)?,
+            last_index_duration_ms: row.get(11).unwrap_or(None),
         })
     }
 }

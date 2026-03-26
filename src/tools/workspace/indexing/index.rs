@@ -18,6 +18,8 @@ pub(crate) struct IndexResult {
     pub symbols_total: usize,
     /// Total relationships in the workspace DB after indexing
     pub relationships_total: usize,
+    /// Total indexing duration in milliseconds
+    pub duration_ms: u64,
 }
 
 impl ManageWorkspaceTool {
@@ -34,6 +36,7 @@ impl ManageWorkspaceTool {
         workspace_path: &Path,
         force_reindex: bool,
     ) -> Result<IndexResult> {
+        let index_start = std::time::Instant::now();
         info!("🔍 Scanning workspace: {}", workspace_path.display());
 
         // 🔥 CRITICAL DEADLOCK FIX: Call get_workspace() ONCE and reuse throughout function
@@ -289,11 +292,14 @@ impl ManageWorkspaceTool {
             total_symbols, total_files_in_db, total_relationships
         );
 
+        let duration_ms = index_start.elapsed().as_millis() as u64;
+
         Ok(IndexResult {
             files_processed: total_files,
             files_total: total_files_in_db,
             symbols_total: total_symbols,
             relationships_total: total_relationships,
+            duration_ms,
         })
     }
 

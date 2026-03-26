@@ -8,6 +8,9 @@
 
 - [ ] **Flaky search line mode tests** -- `test_fast_search_line_mode_combined_filters` and `test_fast_search_line_mode_language_filter` fail nondeterministically in the `tools-search` xtask bucket. Pass reliably in isolation. Likely a shared-state or fixture ordering issue in the line mode test suite. (`src/tests/tools/search/line_mode.rs`)
 
+what would cause this: ● julie - Deep Dive Symbol Investigation (MCP)(symbol_name: "DemographicsFinder", search_scope: "workspace")
+  ⎿  Error: MCP error -32602: failed to deserialize parameters: missing field `symbol`
+
 ## Performance
 
 - [~] **ORT VRAM management for larger models** -- Discovered 2026-03-21 when switching to Jina-code-v2 (768d, ~270MB model) from BGE-small (384d, ~33MB). Partially fixed 2026-03-24: ORT sub-batch size set to 32 in `embed_batch()` to prevent VRAM overflow from sequence padding.
@@ -20,6 +23,10 @@
 - [ ] **Upgrade ORT to rc12** -- Current: `ort = "2.0.0-rc.10"` (resolves to rc.11 in lockfile). rc.12 is available. May include DirectML improvements, bug fixes, and new operator support. Update Cargo.toml and test embedding pipeline on both Windows (DirectML) and macOS (CPU/sidecar).
 
 - [x] **Incomplete embedding backfill not resumed on daemon restart** -- Fixed: the "already indexed" early-return path in `handle_index_command` now spawns `spawn_workspace_embedding` which resumes incomplete embeddings. The pipeline is already incremental (skips embedded symbols) and fast-exits when complete. (`index.rs:199-219`)
+
+## Architecture Questions
+
+- [ ] **Do reference workspaces need separate indexes?** -- Currently `manage_workspace add /path/to/dep` creates a full separate `indexes/{ref_id}/db/symbols.db` + `tantivy/` for each reference. But if projectA wants to examine projectB, why not just index projectB in the same way as if Julie started directly in that project? The centralized daemon already manages per-workspace indexes. Having a separate "reference" concept with its own index path may be unnecessary indirection. Needs analysis: what does the reference index provide that a regular daemon-managed workspace index wouldn't? Is the `workspace_references` linkage table the only thing that needs to exist? Check `handle_add_command` in `src/tools/workspace/commands/registry/add_remove.rs` and how reference workspaces are queried differently from primary workspaces.
 
 ## Future Ideas
 

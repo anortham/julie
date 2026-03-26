@@ -25,6 +25,14 @@
             {% endif %}
           </td>
         </tr>
+        {% if workspace.last_index_duration_ms %}
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Index duration</td>
+          <td style="border: none; padding: 0.25rem 0;">
+            <span class="mono">{{ index_duration_str }}</span>
+          </td>
+        </tr>
+        {% endif %}
         <tr>
           <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Sessions</td>
           <td style="border: none; padding: 0.25rem 0;">{{ workspace.session_count }}</td>
