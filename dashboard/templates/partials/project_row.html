@@ -34,8 +34,9 @@
   <tr x-show="expanded" x-cloak>
     <td colspan="7" style="padding: 0; border-top: none;">
       <div style="padding: 1rem; background: var(--julie-bg-inset);"
+           x-effect="if (expanded) htmx.trigger($el, 'load-detail')"
            hx-get="/projects/{{ ws.workspace_id }}/detail"
-           hx-trigger="revealed"
+           hx-trigger="load-detail once"
            hx-swap="innerHTML">
         <span style="color: var(--julie-text-muted); font-size: 0.85rem;">Loading details...</span>
       </div>
