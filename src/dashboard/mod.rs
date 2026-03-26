@@ -94,7 +94,7 @@ pub fn init_tera(config: &DashboardConfig) -> Result<Tera, tera::Error> {
             .join("**")
             .join("*.html")
             .to_string_lossy()
-            .to_string();
+            .replace('\\', "/");
         Tera::new(&pattern)
     } else {
         let mut tera = Tera::default();
@@ -160,20 +160,27 @@ pub async fn render_template(
 ) -> Result<Html<String>, StatusCode> {
     context.insert("version", env!("CARGO_PKG_VERSION"));
 
-    let mut tera = state.tera.write().await;
-
-    if state.config.dev_mode
-        && let Err(e) = tera.full_reload()
-    {
-        tracing::error!("Tera reload failed: {e}");
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    match tera.render(template_name, &context) {
-        Ok(html) => Ok(Html(html)),
-        Err(e) => {
-            tracing::error!("Tera render failed for {template_name}: {e}");
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+    if state.config.dev_mode {
+        let mut tera = state.tera.write().await;
+        if let Err(e) = tera.full_reload() {
+            tracing::error!("Tera reload failed: {e}");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+        match tera.render(template_name, &context) {
+            Ok(html) => Ok(Html(html)),
+            Err(e) => {
+                tracing::error!("Tera render failed for {template_name}: {e}");
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
+        }
+    } else {
+        let tera = state.tera.read().await;
+        match tera.render(template_name, &context) {
+            Ok(html) => Ok(Html(html)),
+            Err(e) => {
+                tracing::error!("Tera render failed for {template_name}: {e}");
+                Err(StatusCode::INTERNAL_SERVER_ERROR)
+            }
         }
     }
 }

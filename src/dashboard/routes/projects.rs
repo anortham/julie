@@ -23,5 +23,5 @@ pub async fn detail(
     let mut context = Context::new();
     context.insert("active_page", "projects");
     context.insert("workspace_id", &workspace_id);
-    render_template(&state, "projects_detail.html", context).await
+    render_template(&state, "partials/project_detail.html", context).await
 }

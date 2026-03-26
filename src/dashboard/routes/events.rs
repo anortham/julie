@@ -20,7 +20,10 @@ pub async fn status_stream(
             Some(Ok(Event::default().data("update")))
         }
         Ok(_) => None,
-        Err(_) => None,
+        Err(e) => {
+            tracing::warn!("SSE subscriber lagged: {e}");
+            None
+        }
     });
     Sse::new(stream)
 }
@@ -35,7 +38,10 @@ pub async fn metrics_stream(
             Some(Ok(Event::default().data("update")))
         }
         Ok(_) => None,
-        Err(_) => None,
+        Err(e) => {
+            tracing::warn!("SSE subscriber lagged: {e}");
+            None
+        }
     });
     Sse::new(stream)
 }
@@ -50,7 +56,10 @@ pub async fn activity_stream(
             Some(Ok(Event::default().data("update")))
         }
         Ok(_) => None,
-        Err(_) => None,
+        Err(e) => {
+            tracing::warn!("SSE subscriber lagged: {e}");
+            None
+        }
     });
     Sse::new(stream)
 }
