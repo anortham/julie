@@ -1,0 +1,96 @@
+<div class="columns" style="margin: 0;">
+
+  <!-- Column 1: Index Stats -->
+  <div class="column">
+    <p class="label-text" style="margin-bottom: 0.5rem;">Index Stats</p>
+    <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.85rem;">
+      <tbody>
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Embedding model</td>
+          <td style="border: none; padding: 0.25rem 0;">
+            {% if workspace.embedding_model %}
+              <span class="mono">{{ workspace.embedding_model }}</span>
+            {% else %}
+              <span style="color: var(--julie-text-muted);">None</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Last indexed</td>
+          <td style="border: none; padding: 0.25rem 0;">
+            {% if workspace.last_indexed %}
+              <span class="mono">{{ workspace.last_indexed }}</span>
+            {% else %}
+              <span style="color: var(--julie-text-muted);">Never</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Sessions</td>
+          <td style="border: none; padding: 0.25rem 0;">{{ workspace.session_count }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Column 2: Code Health -->
+  {% if health %}
+  <div class="column">
+    <p class="label-text" style="margin-bottom: 0.5rem;">Code Health</p>
+    <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.85rem;">
+      <tbody>
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Security risk</td>
+          <td style="border: none; padding: 0.25rem 0;">
+            {% if health.security_high > 0 %}
+              <span style="color: var(--julie-danger);">High ({{ health.security_high }})</span>
+            {% elif health.security_medium > 0 %}
+              <span style="color: var(--julie-warning);">Medium ({{ health.security_medium }})</span>
+            {% else %}
+              <span style="color: var(--julie-success);">Low</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Change risk</td>
+          <td style="border: none; padding: 0.25rem 0;">
+            {% if health.change_high > 0 %}
+              <span style="color: var(--julie-danger);">High ({{ health.change_high }})</span>
+            {% elif health.change_medium > 0 %}
+              <span style="color: var(--julie-warning);">Medium ({{ health.change_medium }})</span>
+            {% else %}
+              <span style="color: var(--julie-success);">Low</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Test coverage</td>
+          <td style="border: none; padding: 0.25rem 0;">
+            {% set total_syms = health.symbols_tested + health.symbols_untested %}
+            {% if total_syms > 0 %}
+              {{ health.symbols_tested * 100 / total_syms | round }}%
+            {% else %}
+              <span style="color: var(--julie-text-muted);">N/A</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Column 3: References -->
+  <div class="column">
+    <p class="label-text" style="margin-bottom: 0.5rem;">Reference Workspaces</p>
+    {% if references | length > 0 %}
+      <div class="tags">
+        {% for ref in references %}
+          <span class="tag is-dark mono">{{ ref.workspace_id }}</span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <span style="color: var(--julie-text-muted); font-size: 0.85rem;">None configured</span>
+    {% endif %}
+  </div>
+
+</div>

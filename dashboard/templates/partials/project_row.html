@@ -1,0 +1,44 @@
+<tbody x-data="{ expanded: false }">
+  <tr style="cursor: pointer;" @click="expanded = !expanded">
+    <td style="text-align: center; width: 2rem;">
+      <span style="color: var(--julie-text-muted); display: inline-block; transition: transform 0.15s;"
+            :style="expanded ? 'transform: rotate(90deg);' : ''">&#9654;</span>
+    </td>
+    <td>
+      <span style="font-weight: 600; color: var(--julie-text);" class="mono">{{ ws.workspace_id }}</span>
+    </td>
+    <td>
+      <span class="mono" style="color: var(--julie-text-muted);">{{ ws.path }}</span>
+    </td>
+    <td style="text-align: right;">
+      {{ ws.symbol_count | default(value="—") }}
+    </td>
+    <td style="text-align: right;">
+      {{ ws.file_count | default(value="—") }}
+    </td>
+    <td style="text-align: right;">
+      {{ ws.vector_count | default(value="—") }}
+    </td>
+    <td>
+      {% if ws.status == "ready" %}
+        <span class="badge-ready">Ready</span>
+      {% elif ws.status == "indexing" %}
+        <span class="badge-indexing">Indexing</span>
+      {% elif ws.status == "error" %}
+        <span class="badge-error">Error</span>
+      {% else %}
+        <span style="color: var(--julie-text-muted); font-size: 0.8rem;">{{ ws.status }}</span>
+      {% endif %}
+    </td>
+  </tr>
+  <tr x-show="expanded" x-cloak>
+    <td colspan="7" style="padding: 0; border-top: none;">
+      <div style="padding: 1rem; background: var(--julie-bg-inset);"
+           hx-get="/projects/{{ ws.workspace_id }}/detail"
+           hx-trigger="intersect once"
+           hx-swap="innerHTML">
+        <span style="color: var(--julie-text-muted); font-size: 0.85rem;">Loading details...</span>
+      </div>
+    </td>
+  </tr>
+</tbody>

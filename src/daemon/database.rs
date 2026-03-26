@@ -755,7 +755,7 @@ impl DaemonDatabase {
 // -----------------------------------------------------------------------------
 
 /// A row from the `workspaces` table.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct WorkspaceRow {
     pub workspace_id: String,
     pub path: String,
@@ -809,7 +809,7 @@ pub struct CodehealthSnapshot {
 }
 
 /// A row from the `codehealth_snapshots` table.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct CodehealthSnapshotRow {
     pub id: i64,
     pub workspace_id: String,
