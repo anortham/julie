@@ -4,43 +4,39 @@
 
 <h1 class="title" style="color: var(--julie-text); margin-bottom: 1rem;">Projects</h1>
 
-<!-- Summary bar -->
-<div style="margin-bottom: 1.5rem; color: var(--julie-text-muted); font-size: 0.9rem;">
-  <span style="color: var(--julie-text); font-weight: 600;">{{ total_count }}</span> workspace{% if total_count != 1 %}s{% endif %}
-  {% if ready_count > 0 %}
-    &nbsp;&middot;&nbsp;<span style="color: var(--julie-success); font-weight: 600;">{{ ready_count }}</span> ready
-  {% endif %}
-  {% if indexing_count > 0 %}
-    &nbsp;&middot;&nbsp;<span style="color: var(--julie-warning); font-weight: 600;">{{ indexing_count }}</span> indexing
-  {% endif %}
-  {% if error_count > 0 %}
-    &nbsp;&middot;&nbsp;<span style="color: var(--julie-danger); font-weight: 600;">{{ error_count }}</span> error
-  {% endif %}
+<div id="project-summary" style="margin-bottom: 1.5rem; color: var(--julie-text-muted); font-size: 0.9rem;">
+  {% include "partials/project_summary.html" %}
 </div>
 
-{% if workspaces | length == 0 %}
-  <div class="julie-card" style="text-align: center; padding: 2rem; color: var(--julie-text-muted);">
-    No workspaces indexed yet. Start the daemon and index a project to see it here.
-  </div>
-{% else %}
-  <div class="julie-card" style="padding: 0; overflow: hidden;">
-    <table class="table is-fullwidth" style="margin-bottom: 0;">
-      <thead>
-        <tr>
-          <th style="width: 2rem; background: var(--julie-bg-inset);"></th>
-          <th style="background: var(--julie-bg-inset);">Project</th>
-          <th style="background: var(--julie-bg-inset);">Path</th>
-          <th style="background: var(--julie-bg-inset); text-align: right;">Symbols</th>
-          <th style="background: var(--julie-bg-inset); text-align: right;">Files</th>
-          <th style="background: var(--julie-bg-inset); text-align: right;">Vectors</th>
-          <th style="background: var(--julie-bg-inset);">Status</th>
-        </tr>
-      </thead>
-      {% for ws in workspaces %}
-        {% include "partials/project_row.html" %}
-      {% endfor %}
-    </table>
-  </div>
-{% endif %}
+{% include "partials/project_table.html" %}
+
+<script>
+// Poll workspace statuses every 5s and update badges + stats in place.
+// This avoids replacing the table DOM, which would reset Alpine expand state.
+setInterval(async () => {
+  try {
+    const resp = await fetch('/projects/statuses');
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    // Update summary bar
+    const summary = document.getElementById('project-summary');
+    if (summary && data._summary) summary.innerHTML = data._summary;
+
+    // Update each workspace row
+    for (const [id, ws] of Object.entries(data)) {
+      if (id === '_summary') continue;
+      const badge = document.getElementById('status-' + id);
+      if (badge) badge.innerHTML = ws.badge;
+      const sym = document.getElementById('symbols-' + id);
+      if (sym) sym.textContent = ws.symbols;
+      const files = document.getElementById('files-' + id);
+      if (files) files.textContent = ws.files;
+      const vecs = document.getElementById('vectors-' + id);
+      if (vecs) vecs.textContent = ws.vectors;
+    }
+  } catch (_) {}
+}, 5000);
+</script>
 
 {% endblock %}

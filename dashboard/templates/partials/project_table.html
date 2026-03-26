@@ -1,0 +1,24 @@
+{% if workspaces | length == 0 %}
+  <div class="julie-card" style="text-align: center; padding: 2rem; color: var(--julie-text-muted);">
+    No workspaces indexed yet. Start the daemon and index a project to see it here.
+  </div>
+{% else %}
+  <div class="julie-card" style="padding: 0; overflow: hidden;">
+    <table class="table is-fullwidth" style="margin-bottom: 0;">
+      <thead>
+        <tr>
+          <th style="width: 2rem; background: var(--julie-bg-inset);"></th>
+          <th style="background: var(--julie-bg-inset);">Project</th>
+          <th style="background: var(--julie-bg-inset);">Path</th>
+          <th style="background: var(--julie-bg-inset); text-align: right;">Symbols</th>
+          <th style="background: var(--julie-bg-inset); text-align: right;">Files</th>
+          <th style="background: var(--julie-bg-inset); text-align: right;">Vectors</th>
+          <th style="background: var(--julie-bg-inset);">Status</th>
+        </tr>
+      </thead>
+      {% for ws in workspaces %}
+        {% include "partials/project_row.html" %}
+      {% endfor %}
+    </table>
+  </div>
+{% endif %}

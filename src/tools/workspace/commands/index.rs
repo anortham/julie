@@ -225,6 +225,15 @@ impl ManageWorkspaceTool {
                             }
                         }
                     }
+                    // Ensure daemon.db status reflects reality. The workspace
+                    // pool's get_or_init always upserts with "pending"; without
+                    // this, already-indexed workspaces stay "pending" forever
+                    // after a daemon restart.
+                    if let Some(ref daemon_db) = handler.daemon_db {
+                        if let Some(ref ws_id) = handler.workspace_id {
+                            let _ = daemon_db.update_workspace_status(ws_id, "ready");
+                        }
+                    }
                     return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                 }
             }

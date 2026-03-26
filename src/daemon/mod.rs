@@ -260,6 +260,14 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // Must run before WorkspacePool is created so sessions see correct IDs.
     if let Some(ref db) = daemon_db {
         migrate_stale_workspace_ids(db, &paths.indexes_dir());
+
+        // Normalize path separators (fixes adapter's previous forward-slash storage)
+        // and restore "ready" status for workspaces stuck at "pending".
+        match db.normalize_workspace_paths() {
+            Ok(0) => {}
+            Ok(n) => info!(count = n, "Normalized workspace paths in daemon.db"),
+            Err(e) => warn!("Failed to normalize workspace paths: {}", e),
+        }
     }
 
     // Initialize shared embedding service (blocking: model load / sidecar bootstrap)

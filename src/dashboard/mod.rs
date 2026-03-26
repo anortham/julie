@@ -131,6 +131,8 @@ pub fn create_router(dashboard: DashboardState, config: DashboardConfig) -> Resu
     let router = Router::new()
         .route("/", get(routes::status::index))
         .route("/projects", get(routes::projects::index))
+        .route("/projects/statuses", get(routes::projects::statuses))
+        .route("/projects/table", get(routes::projects::table))
         .route("/projects/{id}/detail", get(routes::projects::detail))
         .route("/metrics", get(routes::metrics::index))
         .route("/metrics/table", get(routes::metrics::table))

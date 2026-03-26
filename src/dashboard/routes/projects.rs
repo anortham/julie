@@ -2,7 +2,7 @@
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::Html;
+use axum::response::{Html, IntoResponse};
 use tera::Context;
 
 use crate::dashboard::render_template;
@@ -28,6 +28,93 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
     context.insert("error_count", &error_count);
 
     render_template(&state, "projects.html", context).await
+}
+
+/// Returns workspace statuses as JSON for live polling.
+///
+/// Response shape: `{ "_summary": "<html>", "workspace_id": { "badge": "<html>", "symbols": "123", ... }, ... }`
+pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
+    let workspaces = state
+        .dashboard
+        .daemon_db()
+        .and_then(|db| db.list_workspaces().ok())
+        .unwrap_or_default();
+
+    let ready_count = workspaces.iter().filter(|w| w.status == "ready").count();
+    let indexing_count = workspaces.iter().filter(|w| w.status == "indexing").count();
+    let error_count = workspaces.iter().filter(|w| w.status == "error").count();
+
+    // Render summary partial
+    let mut summary_ctx = Context::new();
+    summary_ctx.insert("total_count", &workspaces.len());
+    summary_ctx.insert("ready_count", &ready_count);
+    summary_ctx.insert("indexing_count", &indexing_count);
+    summary_ctx.insert("error_count", &error_count);
+    let summary_html = render_template(&state, "partials/project_summary.html", summary_ctx)
+        .await
+        .map(|h| h.0)
+        .unwrap_or_default();
+
+    let mut map = serde_json::Map::new();
+    map.insert("_summary".into(), serde_json::Value::String(summary_html));
+
+    for ws in &workspaces {
+        let badge = match ws.status.as_str() {
+            "ready" => r#"<span class="badge-ready">Ready</span>"#,
+            "indexing" => r#"<span class="badge-indexing">Indexing</span>"#,
+            "error" => r#"<span class="badge-error">Error</span>"#,
+            other => {
+                // For non-standard statuses, build inline
+                map.insert(
+                    ws.workspace_id.clone(),
+                    serde_json::json!({
+                        "badge": format!(r#"<span style="color: var(--julie-text-muted); font-size: 0.8rem;">{other}</span>"#),
+                        "symbols": ws.symbol_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
+                        "files": ws.file_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
+                        "vectors": ws.vector_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
+                    }),
+                );
+                continue;
+            }
+        };
+        map.insert(
+            ws.workspace_id.clone(),
+            serde_json::json!({
+                "badge": badge,
+                "symbols": ws.symbol_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
+                "files": ws.file_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
+                "vectors": ws.vector_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
+            }),
+        );
+    }
+
+    let body = serde_json::Value::Object(map).to_string();
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        body,
+    ))
+}
+
+/// Returns just the project table rows (for htmx polling).
+pub async fn table(State(state): State<AppState>) -> Result<Html<String>, StatusCode> {
+    let workspaces = state
+        .dashboard
+        .daemon_db()
+        .and_then(|db| db.list_workspaces().ok())
+        .unwrap_or_default();
+
+    let ready_count = workspaces.iter().filter(|w| w.status == "ready").count();
+    let indexing_count = workspaces.iter().filter(|w| w.status == "indexing").count();
+    let error_count = workspaces.iter().filter(|w| w.status == "error").count();
+
+    let mut context = Context::new();
+    context.insert("workspaces", &workspaces);
+    context.insert("total_count", &workspaces.len());
+    context.insert("ready_count", &ready_count);
+    context.insert("indexing_count", &indexing_count);
+    context.insert("error_count", &error_count);
+
+    render_template(&state, "partials/project_table.html", context).await
 }
 
 pub async fn detail(

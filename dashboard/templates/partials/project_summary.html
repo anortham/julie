@@ -1,0 +1,10 @@
+<span style="color: var(--julie-text); font-weight: 600;">{{ total_count }}</span> workspace{% if total_count != 1 %}s{% endif %}
+{% if ready_count > 0 %}
+  &nbsp;&middot;&nbsp;<span style="color: var(--julie-success); font-weight: 600;">{{ ready_count }}</span> ready
+{% endif %}
+{% if indexing_count > 0 %}
+  &nbsp;&middot;&nbsp;<span style="color: var(--julie-warning); font-weight: 600;">{{ indexing_count }}</span> indexing
+{% endif %}
+{% if error_count > 0 %}
+  &nbsp;&middot;&nbsp;<span style="color: var(--julie-danger); font-weight: 600;">{{ error_count }}</span> error
+{% endif %}

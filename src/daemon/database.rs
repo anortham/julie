@@ -186,8 +186,9 @@ impl DaemonDatabase {
     /// Insert or update a workspace row. `status` should be one of:
     /// `pending`, `indexing`, `ready`, `error`.
     ///
-    /// On conflict with an existing `workspace_id`, the `path`, `status`, and
-    /// `updated_at` columns are updated. `session_count` and stats are preserved.
+    /// On conflict with an existing path, updates `status` and `updated_at`.
+    /// A "ready" workspace is never downgraded to "pending" by the upsert;
+    /// use `update_workspace_status` for explicit status changes.
     pub fn upsert_workspace(&self, workspace_id: &str, path: &str, status: &str) -> Result<()> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let now = now_unix();
@@ -196,7 +197,11 @@ impl DaemonDatabase {
                 created_at, updated_at)
              VALUES (?1, ?2, ?3, 0, ?4, ?4)
              ON CONFLICT(path) DO UPDATE SET
-                status     = excluded.status,
+                status     = CASE
+                    WHEN workspaces.status = 'ready' AND excluded.status = 'pending'
+                    THEN 'ready'
+                    ELSE excluded.status
+                END,
                 updated_at = excluded.updated_at",
             params![workspace_id, path, status, now],
         )?;
@@ -235,6 +240,58 @@ impl DaemonDatabase {
         } else {
             Ok(None)
         }
+    }
+
+    /// Normalize path separators to the platform-native format for all workspaces.
+    ///
+    /// Fixes paths stored with forward slashes by the adapter's previous
+    /// `.replace('\\', "/")` normalization. Also restores "ready" status for
+    /// workspaces that have stats (were previously indexed) but are stuck at
+    /// "pending" due to the early-return bug.
+    pub fn normalize_workspace_paths(&self) -> Result<usize> {
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let now = now_unix();
+
+        // On Windows, convert forward slashes to backslashes.
+        // On Unix this is a no-op (paths should already use forward slashes).
+        if !cfg!(windows) {
+            return Ok(0);
+        }
+
+        let mut count = 0;
+        let mut stmt = conn.prepare(
+            "SELECT workspace_id, path, status, symbol_count FROM workspaces",
+        )?;
+        let rows: Vec<(String, String, String, Option<i64>)> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        drop(stmt);
+
+        for (workspace_id, path, status, symbol_count) in &rows {
+            let native_path = path.replace('/', "\\");
+            let needs_path_fix = native_path != *path;
+            // Restore "ready" for workspaces that were indexed but stuck at "pending"
+            let needs_status_fix = *status == "pending"
+                && symbol_count.unwrap_or(0) > 0;
+
+            if needs_path_fix || needs_status_fix {
+                let new_status = if needs_status_fix { "ready" } else { status.as_str() };
+                conn.execute(
+                    "UPDATE workspaces SET path = ?1, status = ?2, updated_at = ?3 WHERE workspace_id = ?4",
+                    params![native_path, new_status, now, workspace_id],
+                )?;
+                count += 1;
+            }
+        }
+
+        Ok(count)
     }
 
     /// Update just the `status` column (e.g. `pending` -> `indexing` -> `ready`).

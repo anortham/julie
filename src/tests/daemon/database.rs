@@ -514,13 +514,87 @@ mod tests {
         // Insert with old workspace ID
         db.upsert_workspace("julie_316c0b08", "/Users/murphy/source/julie", "ready").unwrap();
 
-        // Upsert same path with different workspace ID -- should not crash
+        // Upsert same path with different workspace ID -- should not crash.
+        // "ready" must NOT be downgraded to "pending" (the whole point of the fix).
         db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "pending").unwrap();
 
-        // The row should still exist (status updated, workspace_id NOT changed
-        // because only the startup migration handles ID changes with FK safety)
+        // The row should still exist (workspace_id NOT changed, status preserved)
         let ws = db.get_workspace("julie_316c0b08").unwrap().unwrap();
-        assert_eq!(ws.status, "pending");
+        assert_eq!(ws.status, "ready");
         assert_eq!(ws.path, "/Users/murphy/source/julie");
+    }
+
+    #[test]
+    fn test_upsert_workspace_allows_upgrade_to_ready() {
+        let (db, _tmp) = create_test_db();
+
+        // Start as pending
+        db.upsert_workspace("ws1", "/path", "pending").unwrap();
+        assert_eq!(db.get_workspace("ws1").unwrap().unwrap().status, "pending");
+
+        // Upsert with "ready" should upgrade
+        db.upsert_workspace("ws1", "/path", "ready").unwrap();
+        assert_eq!(db.get_workspace("ws1").unwrap().unwrap().status, "ready");
+
+        // Upsert with "pending" should NOT downgrade
+        db.upsert_workspace("ws1", "/path", "pending").unwrap();
+        assert_eq!(db.get_workspace("ws1").unwrap().unwrap().status, "ready");
+
+        // Explicit status change via update_workspace_status still works
+        db.update_workspace_status("ws1", "error").unwrap();
+        assert_eq!(db.get_workspace("ws1").unwrap().unwrap().status, "error");
+    }
+
+    #[test]
+    fn test_normalize_workspace_paths_fixes_slashes_and_status() {
+        let (db, _tmp) = create_test_db();
+
+        // Insert workspace with forward-slash path and "pending" status
+        // (simulates the adapter's old .replace('\\', "/") behavior)
+        db.upsert_workspace("ws1", "//?/C:/source/project", "pending")
+            .unwrap();
+        db.update_workspace_stats("ws1", 500, 50, None, None, Some(1000))
+            .unwrap();
+
+        // Insert workspace with native path and "ready" status (should be untouched)
+        db.upsert_workspace("ws2", "\\\\?\\C:\\source\\other", "ready")
+            .unwrap();
+
+        let count = db.normalize_workspace_paths().unwrap();
+
+        if cfg!(windows) {
+            // ws1: path normalized AND status restored (has symbols, was pending)
+            assert_eq!(count, 1);
+            let ws1 = db.get_workspace("ws1").unwrap().unwrap();
+            assert_eq!(ws1.path, "\\\\?\\C:\\source\\project");
+            assert_eq!(ws1.status, "ready");
+
+            // ws2: untouched (already native path and ready status)
+            let ws2 = db.get_workspace("ws2").unwrap().unwrap();
+            assert_eq!(ws2.path, "\\\\?\\C:\\source\\other");
+            assert_eq!(ws2.status, "ready");
+        } else {
+            // On Unix, no-op
+            assert_eq!(count, 0);
+        }
+    }
+
+    #[test]
+    fn test_normalize_workspace_paths_skips_pending_without_symbols() {
+        let (db, _tmp) = create_test_db();
+
+        // Workspace with no symbols: status should stay "pending" even on Windows
+        db.upsert_workspace("ws1", "//?/C:/source/empty", "pending")
+            .unwrap();
+
+        let count = db.normalize_workspace_paths().unwrap();
+
+        if cfg!(windows) {
+            // Path normalized but status stays pending (no symbols)
+            assert_eq!(count, 1);
+            let ws = db.get_workspace("ws1").unwrap().unwrap();
+            assert_eq!(ws.path, "\\\\?\\C:\\source\\empty");
+            assert_eq!(ws.status, "pending");
+        }
     }
 }

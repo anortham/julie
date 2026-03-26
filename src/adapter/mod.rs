@@ -65,11 +65,9 @@ async fn connect_and_handshake(
         .context("Failed to connect to daemon IPC endpoint")?;
 
     // Send workspace header: WORKSPACE:/path/to/project\n
-    // Normalize to forward slashes so the workspace ID is consistent on Windows.
-    let header = format!(
-        "WORKSPACE:{}\n",
-        workspace_root.to_string_lossy().replace('\\', "/")
-    );
+    // Path is sent as-is (native format); generate_workspace_id() normalizes
+    // internally so the workspace ID is consistent regardless of separators.
+    let header = format!("WORKSPACE:{}\n", workspace_root.to_string_lossy());
     stream
         .write_all(header.as_bytes())
         .await

@@ -10,16 +10,16 @@
     <td>
       <span class="mono" style="color: var(--julie-text-muted);">{{ ws.path }}</span>
     </td>
-    <td style="text-align: right;">
+    <td style="text-align: right;" id="symbols-{{ ws.workspace_id }}">
       {{ ws.symbol_count | default(value="—") }}
     </td>
-    <td style="text-align: right;">
+    <td style="text-align: right;" id="files-{{ ws.workspace_id }}">
       {{ ws.file_count | default(value="—") }}
     </td>
-    <td style="text-align: right;">
+    <td style="text-align: right;" id="vectors-{{ ws.workspace_id }}">
       {{ ws.vector_count | default(value="—") }}
     </td>
-    <td>
+    <td id="status-{{ ws.workspace_id }}">
       {% if ws.status == "ready" %}
         <span class="badge-ready">Ready</span>
       {% elif ws.status == "indexing" %}
