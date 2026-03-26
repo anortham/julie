@@ -1,0 +1,21 @@
+<div class="julie-card">
+  <p class="label-text" style="margin-bottom: 0.75rem;">Recent Errors &amp; Warnings</p>
+
+  {% if errors %}
+    {% for error in errors | reverse %}
+      <div class="error-entry {% if error.level == 'WARN' %}level-warn{% else %}level-error{% endif %}">
+        <span class="{% if error.level == 'WARN' %}level-warn{% else %}level-error{% endif %}" style="font-weight: 600; margin-right: 0.5rem;">{{ error.level }}</span>
+        <span style="color: var(--julie-text-muted); margin-right: 0.5rem; font-size: 0.8rem;">{{ error.target }}</span>
+        <span>{{ error.message }}</span>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div style="text-align: center; padding: 1.5rem 0; color: var(--julie-text-muted);">
+      No recent errors or warnings
+    </div>
+  {% endif %}
+
+  <p style="margin-top: 0.75rem; font-size: 0.75rem; color: var(--julie-text-muted);">
+    View log: ~/.julie/logs/
+  </p>
+</div>

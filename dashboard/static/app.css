@@ -180,3 +180,29 @@ body {
   background-color: var(--julie-bg-inset);
   color: var(--julie-text-muted);
 }
+
+/* Stat card label/value */
+
+.label-text {
+  color: var(--julie-text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.value-text {
+  color: var(--julie-text);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+/* Error log level badges */
+
+.level-warn {
+  color: var(--julie-warning);
+}
+
+.level-error {
+  color: var(--julie-danger);
+}

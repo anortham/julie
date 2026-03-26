@@ -1,6 +1,49 @@
 {% extends "base.html" %}
 {% block title %}Status - Julie Dashboard{% endblock %}
 {% block content %}
-<h1 class="title" style="color: var(--julie-text);">System Status</h1>
-<p class="subtitle" style="color: var(--julie-text-muted);">Dashboard is running</p>
+<div hx-ext="sse" sse-connect="/events/status">
+
+  <h1 class="title" style="color: var(--julie-text); margin-bottom: 1.5rem;">System Status</h1>
+
+  <!-- Hero stats row -->
+  <div class="columns">
+    <div class="column">
+      <div class="julie-card" style="text-align: center;">
+        <p class="label-text">Status</p>
+        <p class="value-text" style="color: var(--julie-success); font-size: 1.4rem; font-weight: 600;">
+          &#9679; Healthy
+        </p>
+      </div>
+    </div>
+    <div class="column">
+      <div class="julie-card" style="text-align: center;">
+        <p class="label-text">Uptime</p>
+        <p class="value-text">{{ uptime }}</p>
+      </div>
+    </div>
+    <div class="column">
+      <div class="julie-card" style="text-align: center;">
+        <p class="label-text">Active Sessions</p>
+        <p class="value-text">{{ active_sessions }}</p>
+      </div>
+    </div>
+    <div class="column">
+      <div class="julie-card" style="text-align: center;">
+        <p class="label-text">Workspaces</p>
+        <p class="value-text">{{ workspace_count }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Two-column layout: services + error feed -->
+  <div class="columns">
+    <div class="column is-half">
+      {% include "partials/services_panel.html" %}
+    </div>
+    <div class="column is-half">
+      {% include "partials/error_feed.html" %}
+    </div>
+  </div>
+
+</div>
 {% endblock %}

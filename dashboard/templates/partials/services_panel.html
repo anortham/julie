@@ -1,0 +1,37 @@
+<div class="julie-card">
+  <p class="label-text" style="margin-bottom: 0.75rem;">Services</p>
+  <table class="table is-fullwidth" style="background: transparent;">
+    <thead>
+      <tr>
+        <th style="background: transparent;">Service</th>
+        <th style="background: transparent;">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Search Engine (Tantivy)</td>
+        <td><span style="color: var(--julie-success);">&#9679; Running</span></td>
+      </tr>
+      <tr>
+        <td>Embedding Service</td>
+        <td>
+          {% if embedding_available %}
+            <span style="color: var(--julie-success);">&#9679; Available</span>
+          {% else %}
+            <span style="color: var(--julie-text-muted);">&#9679; Not configured</span>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>Binary Status</td>
+        <td>
+          {% if restart_pending %}
+            <span style="color: var(--julie-warning);">&#9888; Restart Pending</span>
+          {% else %}
+            <span style="color: var(--julie-success);">&#9679; Current</span>
+          {% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
