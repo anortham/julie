@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Metrics - Julie Dashboard{% endblock %}
+{% block content %}
+
+{% if no_data %}
+  <div style="text-align: center; padding: 4rem 0;">
+    <h2 class="title" style="color: var(--julie-text-muted);">No Data Available</h2>
+    <p style="color: var(--julie-text-muted);">
+      Metrics require daemon mode. Start Julie with <code>julie daemon</code>.
+    </p>
+  </div>
+{% else %}
+
+  <h1 class="title" style="color: var(--julie-text); margin-bottom: 1rem;">Metrics</h1>
+
+  <!-- Filter bar -->
+  <div class="is-flex" style="gap: 0.75rem; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap;">
+
+    <!-- Workspace selector -->
+    <div>
+      <select class="button is-dark is-small"
+              style="cursor: pointer;"
+              onchange="window.location.href='/metrics?days={{ days }}&workspace=' + this.value">
+        <option value="" {% if selected_workspace == "" %}selected{% endif %}>All Workspaces</option>
+        {% for ws in workspaces %}
+          <option value="{{ ws.workspace_id }}"
+                  {% if selected_workspace == ws.workspace_id %}selected{% endif %}>
+            {{ ws.path }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Time range buttons -->
+    <div class="is-flex" style="gap: 0.25rem;">
+      {% for d in [1, 7, 30, 90] %}
+        <a href="/metrics?days={{ d }}&workspace={{ selected_workspace }}"
+           class="button is-small {% if days == d %}is-primary{% else %}is-dark{% endif %}">
+          {% if d == 1 %}1d{% elif d == 7 %}7d{% elif d == 30 %}30d{% else %}90d{% endif %}
+        </a>
+      {% endfor %}
+    </div>
+
+    <!-- Live indicator -->
+    <div class="is-flex" style="align-items: center; gap: 0.4rem; margin-left: auto;">
+      <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--julie-success);"
+            id="live-dot"></span>
+      <span style="color: var(--julie-text-muted); font-size: 0.8rem;">Live</span>
+    </div>
+
+  </div>
+
+  <!-- Summary cards -->
+  <div class="columns">
+    <div class="column">
+      <div class="julie-card" style="text-align: center;">
+        <p class="label-text">Total Tool Calls</p>
+        <p class="value-text">{{ total_calls }}</p>
+      </div>
+    </div>
+    <div class="column">
+      <div class="julie-card" style="text-align: center;">
+        <p class="label-text">Sessions</p>
+        <p class="value-text">{{ session_count }}</p>
+      </div>
+    </div>
+    <div class="column">
+      <div class="julie-card" style="text-align: center;">
+        <p class="label-text">Tools Active</p>
+        <p class="value-text">{{ tools | length }}</p>
+      </div>
+    </div>
+    <div class="column">
+      <div class="julie-card" style="text-align: center;">
+        <p class="label-text">Period</p>
+        <p class="value-text">
+          {% if days == 1 %}1 day{% else %}{{ days }} days{% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Two-column layout: breakdown + live feed -->
+  <div class="columns">
+    <div class="column is-two-thirds">
+      {% include "partials/metrics_table.html" %}
+    </div>
+    <div class="column is-one-third">
+      <div class="julie-card" style="height: 100%;">
+        <p class="label-text" style="margin-bottom: 0.75rem;">Live Activity</p>
+        <div id="activity-feed"
+             hx-ext="sse"
+             sse-connect="/events/activity"
+             sse-swap="message"
+             hx-swap="afterbegin"
+             style="max-height: 420px; overflow-y: auto;">
+          <div style="text-align: center; padding: 1.5rem 0; color: var(--julie-text-muted);">
+            Waiting for activity&hellip;
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,42 @@
+<div class="julie-card">
+  <p class="label-text" style="margin-bottom: 0.75rem;">Tool Breakdown</p>
+
+  {% if tools %}
+    <table class="table is-fullwidth is-size-7">
+      <thead>
+        <tr>
+          <th>Tool</th>
+          <th style="text-align: right;">Calls</th>
+          <th style="text-align: right;">Avg</th>
+          <th style="text-align: right;">p95</th>
+          <th style="width: 120px;">Volume</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tool in tools %}
+          <tr>
+            <td class="mono">{{ tool.tool_name }}</td>
+            <td style="text-align: right; color: var(--julie-primary);">{{ tool.call_count }}</td>
+            <td style="text-align: right; color: var(--julie-text-muted);">{{ tool.avg_duration_ms | round(precision=0) }}ms</td>
+            <td style="text-align: right; color: var(--julie-text-muted);">
+              {% if p95_by_tool[tool.tool_name] %}
+                {{ p95_by_tool[tool.tool_name] | round(precision=0) }}ms
+              {% else %}
+                &mdash;
+              {% endif %}
+            </td>
+            <td>
+              <div style="background: var(--julie-bg-inset); border-radius: 2px; height: 8px; width: 100%;">
+                <div style="background: var(--julie-primary); border-radius: 2px; height: 8px; width: {{ tool.call_count * 100 / max_calls }}%;"></div>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div style="text-align: center; padding: 2rem 0; color: var(--julie-text-muted);">
+      No tool call data for this period.
+    </div>
+  {% endif %}
+</div>

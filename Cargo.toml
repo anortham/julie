@@ -84,7 +84,7 @@ sha2 = "0.10"
 include_dir = "0.7"  # Embed Python sidecar source into binary at compile time
 
 # HTTP server (daemon mode)
-axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "form"] }
 
 # Dashboard (daemon mode)
 tera = "1"

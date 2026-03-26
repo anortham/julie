@@ -6,6 +6,7 @@ use rusqlite::params;
 use std::collections::HashMap;
 
 /// Per-tool summary for a session or time window.
+#[derive(Default, Clone, serde::Serialize)]
 pub struct ToolCallSummary {
     pub tool_name: String,
     pub call_count: u64,
@@ -15,6 +16,7 @@ pub struct ToolCallSummary {
 }
 
 /// Aggregated history across sessions.
+#[derive(Default, serde::Serialize)]
 pub struct HistorySummary {
     pub session_count: u64,
     pub total_calls: u64,
