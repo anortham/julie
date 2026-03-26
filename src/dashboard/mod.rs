@@ -118,10 +118,8 @@ pub fn init_tera(config: &DashboardConfig) -> Result<Tera, tera::Error> {
 // ---------------------------------------------------------------------------
 
 /// Build the Axum router for the dashboard.
-///
-/// Panics if the template engine cannot be initialised.
-pub fn create_router(dashboard: DashboardState, config: DashboardConfig) -> Router {
-    let tera = init_tera(&config).expect("failed to initialise Tera templates");
+pub fn create_router(dashboard: DashboardState, config: DashboardConfig) -> Result<Router, tera::Error> {
+    let tera = init_tera(&config)?;
     let shared_tera: SharedTera = Arc::new(RwLock::new(tera));
 
     let app_state = AppState {
@@ -130,7 +128,7 @@ pub fn create_router(dashboard: DashboardState, config: DashboardConfig) -> Rout
         config,
     };
 
-    Router::new()
+    let router = Router::new()
         .route("/", get(routes::status::index))
         .route("/projects", get(routes::projects::index))
         .route("/projects/{id}/detail", get(routes::projects::detail))
@@ -142,7 +140,9 @@ pub fn create_router(dashboard: DashboardState, config: DashboardConfig) -> Rout
         .route("/events/metrics", get(routes::events::metrics_stream))
         .route("/events/activity", get(routes::events::activity_stream))
         .route("/static/{*path}", get(serve_static))
-        .with_state(app_state)
+        .with_state(app_state);
+
+    Ok(router)
 }
 
 // ---------------------------------------------------------------------------

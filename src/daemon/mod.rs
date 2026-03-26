@@ -312,7 +312,8 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     );
 
     let dashboard_config = crate::dashboard::DashboardConfig::default();
-    let dashboard_router = crate::dashboard::create_router(dashboard_state, dashboard_config);
+    let dashboard_router = crate::dashboard::create_router(dashboard_state, dashboard_config)
+        .context("Failed to initialize dashboard templates")?;
 
     // Try requested port, fall back to auto-assign
     let http_listener = match tokio::net::TcpListener::bind(

@@ -26,7 +26,7 @@ fn test_state() -> DashboardState {
 async fn test_router_serves_landing_page() {
     let state = test_state();
     let config = DashboardConfig::default();
-    let router = create_router(state, config);
+    let router = create_router(state, config).unwrap();
 
     let request = Request::builder()
         .uri("/")
@@ -41,7 +41,7 @@ async fn test_router_serves_landing_page() {
 async fn test_router_serves_static_css() {
     let state = test_state();
     let config = DashboardConfig::default();
-    let router = create_router(state, config);
+    let router = create_router(state, config).unwrap();
 
     let request = Request::builder()
         .uri("/static/app.css")
