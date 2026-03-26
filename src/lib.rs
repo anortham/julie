@@ -23,6 +23,7 @@ pub mod workspace;
 
 pub mod adapter;
 pub mod daemon;
+pub mod dashboard;
 pub mod migration;
 pub mod paths;
 

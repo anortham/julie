@@ -308,6 +308,11 @@ pub mod test_utils;
 pub mod helpers;
 
 // ============================================================================
+// DASHBOARD TESTS - Error ring buffer, dashboard state, views
+// ============================================================================
+pub mod dashboard;
+
+// ============================================================================
 // ADAPTER TESTS - v6 adapter (auto-start daemon, byte forwarding)
 // ============================================================================
 pub mod adapter;
