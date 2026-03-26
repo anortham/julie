@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Search - Julie Dashboard{% endblock %}
+{% block content %}
+
+<h1 class="title" style="color: var(--julie-text); margin-bottom: 1.5rem;">Search Playground</h1>
+
+<!-- Search form -->
+<div class="julie-card">
+  <form hx-post="/search" hx-target="#search-results" hx-swap="innerHTML">
+
+    <!-- Query row -->
+    <div class="field has-addons" style="margin-bottom: 1rem;">
+      <div class="control is-expanded">
+        <input class="input" type="text" name="query"
+               value="{{ query }}"
+               placeholder="Search symbols, functions, classes..."
+               autofocus
+               style="background: var(--julie-bg-inset); border-color: var(--julie-border); color: var(--julie-text);" />
+      </div>
+      <div class="control">
+        <button class="button is-primary" type="submit">Search</button>
+      </div>
+    </div>
+
+    <!-- Filter row -->
+    <div class="columns is-vcentered" style="margin-bottom: 0;">
+
+      <!-- Workspace selector -->
+      <div class="column is-narrow">
+        <div class="field">
+          <label class="label" style="color: var(--julie-text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">Workspace</label>
+          <div class="control">
+            <div class="select is-small">
+              <select name="workspace"
+                      style="background: var(--julie-bg-inset); border-color: var(--julie-border); color: var(--julie-text);">
+                <option value="">All workspaces</option>
+                {% for ws in workspaces %}
+                <option value="{{ ws.workspace_id }}"
+                  {% if ws.workspace_id == selected_workspace %}selected{% endif %}>
+                  {{ ws.path | truncate(length=40) }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search target toggle -->
+      <div class="column is-narrow">
+        <div class="field">
+          <label class="label" style="color: var(--julie-text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">Target</label>
+          <div class="control" x-data="{ target: '{{ search_target }}' }">
+            <input type="hidden" name="search_target" :value="target" />
+            <div class="buttons has-addons">
+              <button type="button"
+                      class="button is-small"
+                      :class="target === 'definitions' ? 'is-primary is-selected' : 'is-dark'"
+                      @click="target = 'definitions'">
+                Definitions
+              </button>
+              <button type="button"
+                      class="button is-small"
+                      :class="target === 'content' ? 'is-primary is-selected' : 'is-dark'"
+                      @click="target = 'content'">
+                Content
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Language dropdown -->
+      <div class="column is-narrow">
+        <div class="field">
+          <label class="label" style="color: var(--julie-text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">Language</label>
+          <div class="control">
+            <div class="select is-small">
+              <select name="language"
+                      style="background: var(--julie-bg-inset); border-color: var(--julie-border); color: var(--julie-text);">
+                <option value="">Any language</option>
+                <option value="rust" {% if language == "rust" %}selected{% endif %}>Rust</option>
+                <option value="typescript" {% if language == "typescript" %}selected{% endif %}>TypeScript</option>
+                <option value="javascript" {% if language == "javascript" %}selected{% endif %}>JavaScript</option>
+                <option value="python" {% if language == "python" %}selected{% endif %}>Python</option>
+                <option value="java" {% if language == "java" %}selected{% endif %}>Java</option>
+                <option value="csharp" {% if language == "csharp" %}selected{% endif %}>C#</option>
+                <option value="go" {% if language == "go" %}selected{% endif %}>Go</option>
+                <option value="cpp" {% if language == "cpp" %}selected{% endif %}>C++</option>
+                <option value="c" {% if language == "c" %}selected{% endif %}>C</option>
+                <option value="ruby" {% if language == "ruby" %}selected{% endif %}>Ruby</option>
+                <option value="swift" {% if language == "swift" %}selected{% endif %}>Swift</option>
+                <option value="kotlin" {% if language == "kotlin" %}selected{% endif %}>Kotlin</option>
+                <option value="php" {% if language == "php" %}selected{% endif %}>PHP</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- File pattern -->
+      <div class="column">
+        <div class="field">
+          <label class="label" style="color: var(--julie-text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">File pattern</label>
+          <div class="control">
+            <input class="input is-small" type="text" name="file_pattern"
+                   value="{{ file_pattern }}"
+                   placeholder="e.g. src/**/*.rs"
+                   style="background: var(--julie-bg-inset); border-color: var(--julie-border); color: var(--julie-text);" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Debug mode toggle -->
+      <div class="column is-narrow">
+        <div class="field">
+          <label class="label" style="color: var(--julie-text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">Debug</label>
+          <div class="control" style="padding-top: 0.2rem;">
+            <label class="checkbox" style="color: var(--julie-text);">
+              <input type="checkbox" name="debug" value="true"
+                     {% if debug %}checked{% endif %} />
+              Show scores
+            </label>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /columns -->
+  </form>
+</div>
+
+<!-- Results area -->
+<div id="search-results">
+  {% if not searched %}
+  <div style="text-align: center; padding: 3rem; color: var(--julie-text-muted);">
+    <p style="font-size: 1.1rem;">Enter a query to search the index</p>
+    <p style="font-size: 0.85rem; margin-top: 0.5rem;">
+      Searches symbols, function names, types, and documentation across all indexed workspaces.
+    </p>
+  </div>
+  {% elif results | length == 0 %}
+  <div class="julie-card" style="text-align: center; padding: 2rem; color: var(--julie-text-muted);">
+    <p style="font-size: 1rem;">No results found for <strong style="color: var(--julie-text);">{{ query }}</strong></p>
+    <p style="font-size: 0.85rem; margin-top: 0.5rem;">
+      Try a different query, or ensure the workspace is indexed.
+    </p>
+  </div>
+  {% else %}
+  {% include "partials/search_results.html" %}
+  {% endif %}
+</div>
+
+{% endblock %}

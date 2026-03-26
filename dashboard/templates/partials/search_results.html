@@ -1,0 +1,85 @@
+<div style="margin-bottom: 0.75rem; color: var(--julie-text-muted); font-size: 0.85rem;">
+  {{ results | length }} result{{ results | length | pluralize }} for
+  <strong style="color: var(--julie-text);">{{ query }}</strong>
+  {% if language %}&middot; language: <span class="mono">{{ language }}</span>{% endif %}
+  {% if file_pattern %}&middot; pattern: <span class="mono">{{ file_pattern }}</span>{% endif %}
+</div>
+
+{% for result in results %}
+<div class="julie-card" style="margin-bottom: 0.5rem; padding: 0.75rem 1rem;"
+     x-data="{ open: false }">
+
+  <!-- Collapsed row: click to expand -->
+  <div style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer;"
+       @click="open = !open">
+
+    <!-- Rank number -->
+    <span style="color: var(--julie-text-muted); font-size: 0.8rem; min-width: 1.5rem; text-align: right;">
+      {{ loop.index }}
+    </span>
+
+    <!-- Kind badge -->
+    {% set kind = result.kind | default(value="unknown") | lower %}
+    {% if kind == "fn" or kind == "function" or kind == "method" %}
+      <span style="background: #16a34a22; color: #4ade80; border: 1px solid #4ade8044;
+                   border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
+                   font-family: monospace; white-space: nowrap;">
+        {{ result.kind | default(value="fn") }}
+      </span>
+    {% elif kind == "struct" or kind == "class" or kind == "type" %}
+      <span style="background: #7c3aed22; color: #a78bfa; border: 1px solid #a78bfa44;
+                   border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
+                   font-family: monospace; white-space: nowrap;">
+        {{ result.kind | default(value="struct") }}
+      </span>
+    {% elif kind == "mod" or kind == "module" or kind == "namespace" %}
+      <span style="background: #1d4ed822; color: #60a5fa; border: 1px solid #60a5fa44;
+                   border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
+                   font-family: monospace; white-space: nowrap;">
+        {{ result.kind | default(value="mod") }}
+      </span>
+    {% elif kind == "trait" or kind == "interface" %}
+      <span style="background: #92400e22; color: #fbbf24; border: 1px solid #fbbf2444;
+                   border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
+                   font-family: monospace; white-space: nowrap;">
+        {{ result.kind | default(value="trait") }}
+      </span>
+    {% else %}
+      <span style="background: var(--julie-bg-inset); color: var(--julie-text-muted);
+                   border: 1px solid var(--julie-border);
+                   border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
+                   font-family: monospace; white-space: nowrap;">
+        {{ result.kind | default(value="?") }}
+      </span>
+    {% endif %}
+
+    <!-- Symbol name -->
+    <span class="mono" style="font-weight: 600; color: var(--julie-text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+      {{ result.name | default(value="(unnamed)") }}
+    </span>
+
+    <!-- File and line -->
+    <span class="mono" style="color: var(--julie-text-muted); font-size: 0.78rem; white-space: nowrap;">
+      {{ result.file | default(value="") }}{% if result.line %}:{{ result.line }}{% endif %}
+    </span>
+
+    <!-- Score (debug only) -->
+    {% if debug %}
+    <span style="color: var(--julie-warning); font-size: 0.78rem; white-space: nowrap; min-width: 4rem; text-align: right;">
+      {{ result.score | default(value=0.0) | round(method="ceil", precision=3) }}
+    </span>
+    {% endif %}
+
+    <!-- Expand chevron -->
+    <span style="color: var(--julie-text-muted); font-size: 0.8rem; transition: transform 0.15s;"
+          :style="open ? 'transform: rotate(90deg)' : ''">&#9654;</span>
+  </div>
+
+  <!-- Expanded detail panel -->
+  <div x-show="open" x-collapse style="margin-top: 0.75rem; padding-top: 0.75rem;
+       border-top: 1px solid var(--julie-border);">
+    {% include "partials/search_detail.html" %}
+  </div>
+
+</div>
+{% endfor %}
