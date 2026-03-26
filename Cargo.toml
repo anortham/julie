@@ -86,6 +86,12 @@ include_dir = "0.7"  # Embed Python sidecar source into binary at compile time
 # HTTP server (daemon mode)
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 
+# Dashboard (daemon mode)
+tera = "1"
+rust-embed = "8"
+opener = "0.7"
+tokio-stream = "0.1"
+
 # File locking (daemon PID files)
 fs2 = "0.4"
 
