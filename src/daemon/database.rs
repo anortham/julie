@@ -586,31 +586,11 @@ impl DaemonDatabase {
         workspace_id: &str,
         snapshot: &CodehealthSnapshot,
     ) -> Result<()> {
-        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock: {e}"))?;
         conn.execute(
-            "INSERT INTO codehealth_snapshots
-                (workspace_id, timestamp, total_symbols, total_files,
-                 security_high, security_medium, security_low,
-                 change_high, change_medium, change_low,
-                 symbols_tested, symbols_untested,
-                 avg_centrality, max_centrality)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![
-                workspace_id,
-                now_unix(),
-                snapshot.total_symbols,
-                snapshot.total_files,
-                snapshot.security_high,
-                snapshot.security_medium,
-                snapshot.security_low,
-                snapshot.change_high,
-                snapshot.change_medium,
-                snapshot.change_low,
-                snapshot.symbols_tested,
-                snapshot.symbols_untested,
-                snapshot.avg_centrality,
-                snapshot.max_centrality,
-            ],
+            "INSERT INTO codehealth_snapshots (workspace_id, total_symbols, total_files)
+             VALUES (?1, ?2, ?3)",
+            rusqlite::params![workspace_id, snapshot.total_symbols, snapshot.total_files],
         )?;
         Ok(())
     }
@@ -619,15 +599,9 @@ impl DaemonDatabase {
     pub fn get_latest_snapshot(&self, workspace_id: &str) -> Result<Option<CodehealthSnapshotRow>> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let mut stmt = conn.prepare_cached(
-            "SELECT id, workspace_id, timestamp, total_symbols, total_files,
-                    security_high, security_medium, security_low,
-                    change_high, change_medium, change_low,
-                    symbols_tested, symbols_untested,
-                    avg_centrality, max_centrality
-             FROM codehealth_snapshots
-             WHERE workspace_id = ?1
-             ORDER BY timestamp DESC
-             LIMIT 1",
+            "SELECT id, workspace_id, timestamp, total_symbols, total_files
+             FROM codehealth_snapshots WHERE workspace_id = ?1
+             ORDER BY timestamp DESC LIMIT 1",
         )?;
         let mut rows = stmt.query(params![workspace_id])?;
         if let Some(row) = rows.next()? {
@@ -645,15 +619,9 @@ impl DaemonDatabase {
     ) -> Result<Vec<CodehealthSnapshotRow>> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let mut stmt = conn.prepare_cached(
-            "SELECT id, workspace_id, timestamp, total_symbols, total_files,
-                    security_high, security_medium, security_low,
-                    change_high, change_medium, change_low,
-                    symbols_tested, symbols_untested,
-                    avg_centrality, max_centrality
-             FROM codehealth_snapshots
-             WHERE workspace_id = ?1
-             ORDER BY timestamp DESC
-             LIMIT ?2",
+            "SELECT id, workspace_id, timestamp, total_symbols, total_files
+             FROM codehealth_snapshots WHERE workspace_id = ?1
+             ORDER BY timestamp DESC LIMIT ?2",
         )?;
         let rows = stmt.query_map(params![workspace_id, limit as i64], |row| {
             CodehealthSnapshotRow::from_row(row)
@@ -687,65 +655,9 @@ impl DaemonDatabase {
             .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
             .unwrap_or(0);
 
-        let (security_high, security_medium, security_low) = conn
-            .query_row(
-                "SELECT \
-                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.security_risk.label') = 'HIGH' THEN 1 ELSE 0 END), 0), \
-                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.security_risk.label') = 'MEDIUM' THEN 1 ELSE 0 END), 0), \
-                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.security_risk.label') = 'LOW' THEN 1 ELSE 0 END), 0) \
-                 FROM symbols WHERE kind NOT IN ('import', 'export')",
-                [],
-                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)),
-            )
-            .unwrap_or((0, 0, 0));
-
-        let (change_high, change_medium, change_low) = conn
-            .query_row(
-                "SELECT \
-                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.change_risk.label') = 'HIGH' THEN 1 ELSE 0 END), 0), \
-                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.change_risk.label') = 'MEDIUM' THEN 1 ELSE 0 END), 0), \
-                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.change_risk.label') = 'LOW' THEN 1 ELSE 0 END), 0) \
-                 FROM symbols WHERE kind NOT IN ('import', 'export')",
-                [],
-                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)),
-            )
-            .unwrap_or((0, 0, 0));
-
-        let (symbols_tested, symbols_untested) = conn
-            .query_row(
-                "SELECT \
-                 COALESCE(SUM(CASE WHEN json_extract(metadata, '$.test_coverage.test_count') > 0 THEN 1 ELSE 0 END), 0), \
-                 COALESCE(SUM(CASE WHEN (json_extract(metadata, '$.test_coverage.test_count') = 0 \
-                              OR json_extract(metadata, '$.test_coverage.test_count') IS NULL) THEN 1 ELSE 0 END), 0) \
-                 FROM symbols WHERE kind NOT IN ('import', 'export') \
-                 AND (json_extract(metadata, '$.is_test') IS NULL OR json_extract(metadata, '$.is_test') != 1)",
-                [],
-                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
-            )
-            .unwrap_or((0, 0));
-
-        let (avg_centrality, max_centrality) = conn
-            .query_row(
-                "SELECT AVG(reference_score), MAX(reference_score) FROM symbols \
-                 WHERE kind NOT IN ('import', 'export')",
-                [],
-                |r| Ok((r.get::<_, Option<f64>>(0)?, r.get::<_, Option<f64>>(1)?)),
-            )
-            .unwrap_or((None, None));
-
         let snapshot = CodehealthSnapshot {
             total_symbols,
             total_files,
-            security_high: security_high as i32,
-            security_medium: security_medium as i32,
-            security_low: security_low as i32,
-            change_high: change_high as i32,
-            change_medium: change_medium as i32,
-            change_low: change_low as i32,
-            symbols_tested,
-            symbols_untested,
-            avg_centrality,
-            max_centrality,
         };
 
         self.insert_codehealth_snapshot(workspace_id, &snapshot)
@@ -865,27 +777,16 @@ impl WorkspaceRow {
     }
 }
 
-/// Metrics captured after a completed indexing pass.
-///
-/// Passed to `DaemonDatabase::insert_codehealth_snapshot`. All risk counts
-/// default to 0 so callers can use struct update syntax (`..Default::default()`).
+/// Passed to `DaemonDatabase::insert_codehealth_snapshot`. Only tracks
+/// symbol and file counts now that risk/coverage metrics are shelved.
 #[derive(Debug, Clone, Default)]
 pub struct CodehealthSnapshot {
     pub total_symbols: i64,
     pub total_files: i64,
-    pub security_high: i32,
-    pub security_medium: i32,
-    pub security_low: i32,
-    pub change_high: i32,
-    pub change_medium: i32,
-    pub change_low: i32,
-    pub symbols_tested: i64,
-    pub symbols_untested: i64,
-    pub avg_centrality: Option<f64>,
-    pub max_centrality: Option<f64>,
 }
 
-/// A row from the `codehealth_snapshots` table.
+/// A row from the `codehealth_snapshots` table. Only reads symbol/file
+/// counts; legacy risk columns remain in the schema but are ignored.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CodehealthSnapshotRow {
     pub id: i64,
@@ -893,16 +794,6 @@ pub struct CodehealthSnapshotRow {
     pub timestamp: i64,
     pub total_symbols: i64,
     pub total_files: i64,
-    pub security_high: i32,
-    pub security_medium: i32,
-    pub security_low: i32,
-    pub change_high: i32,
-    pub change_medium: i32,
-    pub change_low: i32,
-    pub symbols_tested: i64,
-    pub symbols_untested: i64,
-    pub avg_centrality: Option<f64>,
-    pub max_centrality: Option<f64>,
 }
 
 impl CodehealthSnapshotRow {
@@ -913,16 +804,6 @@ impl CodehealthSnapshotRow {
             timestamp: row.get(2)?,
             total_symbols: row.get(3)?,
             total_files: row.get(4)?,
-            security_high: row.get(5)?,
-            security_medium: row.get(6)?,
-            security_low: row.get(7)?,
-            change_high: row.get(8)?,
-            change_medium: row.get(9)?,
-            change_low: row.get(10)?,
-            symbols_tested: row.get(11)?,
-            symbols_untested: row.get(12)?,
-            avg_centrality: row.get(13)?,
-            max_centrality: row.get(14)?,
         })
     }
 }
