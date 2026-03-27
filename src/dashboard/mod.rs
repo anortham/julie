@@ -130,6 +130,7 @@ pub fn create_router(dashboard: DashboardState, config: DashboardConfig) -> Resu
 
     let router = Router::new()
         .route("/", get(routes::status::index))
+        .route("/status/live", get(routes::status::live))
         .route("/projects", get(routes::projects::index))
         .route("/projects/statuses", get(routes::projects::statuses))
         .route("/projects/table", get(routes::projects::table))
@@ -138,8 +139,6 @@ pub fn create_router(dashboard: DashboardState, config: DashboardConfig) -> Resu
         .route("/metrics/table", get(routes::metrics::table))
         .route("/search", get(routes::search::index))
         .route("/search", post(routes::search::search))
-        .route("/events/status", get(routes::events::status_stream))
-        .route("/events/metrics", get(routes::events::metrics_stream))
         .route("/events/activity", get(routes::events::activity_stream))
         .route("/static/{*path}", get(serve_static))
         .with_state(app_state);

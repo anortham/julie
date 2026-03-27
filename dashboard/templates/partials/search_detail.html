@@ -1,4 +1,4 @@
-<!-- Three-column debug info (only in debug mode) -->
+<!-- Debug info (only in debug mode) -->
 {% if debug %}
 <div class="columns" style="margin-bottom: 0.75rem;">
 
@@ -7,25 +7,7 @@
     <p class="label-text" style="margin-bottom: 0.5rem;">Scoring</p>
     <table style="width: 100%; font-size: 0.8rem; border-collapse: collapse;">
       <tr>
-        <td style="color: var(--julie-text-muted); padding: 2px 0;">BM25</td>
-        <td class="mono" style="color: var(--julie-text); text-align: right;">
-          {{ result.bm25 | default(value="—") }}
-        </td>
-      </tr>
-      <tr>
-        <td style="color: var(--julie-text-muted); padding: 2px 0;">Centrality boost</td>
-        <td class="mono" style="color: var(--julie-text); text-align: right;">
-          {{ result.centrality_boost | default(value="—") }}
-        </td>
-      </tr>
-      <tr>
-        <td style="color: var(--julie-text-muted); padding: 2px 0;">Pattern boost</td>
-        <td class="mono" style="color: var(--julie-text); text-align: right;">
-          {{ result.pattern_boost | default(value="—") }}
-        </td>
-      </tr>
-      <tr style="border-top: 1px solid var(--julie-border);">
-        <td style="color: var(--julie-text-muted); padding: 4px 0 2px;">Final score</td>
+        <td style="color: var(--julie-text-muted); padding: 2px 0;">Final score</td>
         <td class="mono" style="color: var(--julie-warning); text-align: right; font-weight: 600;">
           {{ result.score | default(value="—") }}
         </td>
@@ -33,27 +15,7 @@
     </table>
   </div>
 
-  <!-- Column 2: Field Matches -->
-  <div class="column">
-    <p class="label-text" style="margin-bottom: 0.5rem;">Field Matches</p>
-    <table style="width: 100%; font-size: 0.8rem; border-collapse: collapse;">
-      {% set fields = ["name", "qualified_name", "content", "path"] %}
-      {% for field in fields %}
-      <tr>
-        <td style="color: var(--julie-text-muted); padding: 2px 0;">{{ field }}</td>
-        <td style="text-align: right; padding: 2px 0;">
-          {% if result.matched_fields and field in result.matched_fields %}
-            <span style="color: var(--julie-success);">&#10003;</span>
-          {% else %}
-            <span style="color: var(--julie-border);">—</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </table>
-  </div>
-
-  <!-- Column 3: Symbol Info -->
+  <!-- Column 2: Symbol Info -->
   <div class="column">
     <p class="label-text" style="margin-bottom: 0.5rem;">Symbol Info</p>
     <table style="width: 100%; font-size: 0.8rem; border-collapse: collapse;">
@@ -69,12 +31,14 @@
           {{ result.language | default(value="—") }}
         </td>
       </tr>
+      {% if result.workspace %}
       <tr>
-        <td style="color: var(--julie-text-muted); padding: 2px 0;">Visibility</td>
+        <td style="color: var(--julie-text-muted); padding: 2px 0;">Workspace</td>
         <td class="mono" style="color: var(--julie-text); text-align: right;">
-          {{ result.visibility | default(value="—") }}
+          {{ result.workspace }}
         </td>
       </tr>
+      {% endif %}
     </table>
   </div>
 

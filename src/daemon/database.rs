@@ -322,8 +322,8 @@ impl DaemonDatabase {
             "UPDATE workspaces
              SET symbol_count    = ?1,
                  file_count      = ?2,
-                 embedding_model = ?3,
-                 vector_count    = ?4,
+                 embedding_model = COALESCE(?3, embedding_model),
+                 vector_count    = COALESCE(?4, vector_count),
                  last_indexed    = ?5,
                  updated_at      = ?5,
                  last_index_duration_ms = COALESCE(?7, last_index_duration_ms)
@@ -337,6 +337,26 @@ impl DaemonDatabase {
                 workspace_id,
                 index_duration_ms.map(|d| d as i64),
             ],
+        )?;
+        Ok(())
+    }
+
+    /// Update just the `vector_count` column after an embedding pipeline completes.
+    pub fn update_vector_count(&self, workspace_id: &str, vector_count: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        conn.execute(
+            "UPDATE workspaces SET vector_count = ?1, updated_at = ?2 WHERE workspace_id = ?3",
+            params![vector_count, now_unix(), workspace_id],
+        )?;
+        Ok(())
+    }
+
+    /// Update just the `embedding_model` column.
+    pub fn update_embedding_model(&self, workspace_id: &str, model: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        conn.execute(
+            "UPDATE workspaces SET embedding_model = ?1, updated_at = ?2 WHERE workspace_id = ?3",
+            params![model, now_unix(), workspace_id],
         )?;
         Ok(())
     }
@@ -490,9 +510,12 @@ impl DaemonDatabase {
             |row| row.get(0),
         )?;
 
+        // Only aggregate rows with source tracking so the "context saved"
+        // ratio isn't diluted by older rows that predate source_bytes recording.
         let (total_source, total_output): (i64, i64) = conn.query_row(
             "SELECT COALESCE(SUM(source_bytes), 0), COALESCE(SUM(output_bytes), 0)
-             FROM tool_calls WHERE workspace_id = ?1 AND timestamp >= ?2",
+             FROM tool_calls
+             WHERE workspace_id = ?1 AND timestamp >= ?2 AND source_bytes IS NOT NULL",
             params![workspace_id, cutoff],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
@@ -590,9 +613,9 @@ impl DaemonDatabase {
     ) -> Result<()> {
         let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock: {e}"))?;
         conn.execute(
-            "INSERT INTO codehealth_snapshots (workspace_id, total_symbols, total_files)
-             VALUES (?1, ?2, ?3)",
-            rusqlite::params![workspace_id, snapshot.total_symbols, snapshot.total_files],
+            "INSERT INTO codehealth_snapshots (workspace_id, timestamp, total_symbols, total_files)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![workspace_id, now_unix(), snapshot.total_symbols, snapshot.total_files],
         )?;
         Ok(())
     }

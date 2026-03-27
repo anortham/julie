@@ -26,7 +26,6 @@ pub enum DashboardEvent {
     SessionChange {
         active_count: usize,
     },
-    LogEntry(LogEntry),
 }
 
 // ---------------------------------------------------------------------------

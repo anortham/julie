@@ -94,6 +94,11 @@ pub async fn index(
         }
     }
 
+    // Context efficiency: how much data Julie kept out of the LLM context
+    let source_bytes = history.total_source_bytes;
+    let output_bytes = history.total_output_bytes;
+    let saved_bytes = source_bytes.saturating_sub(output_bytes);
+
     let mut context = Context::new();
     context.insert("active_page", "metrics");
     context.insert("no_data", &false);
@@ -105,6 +110,9 @@ pub async fn index(
     context.insert("tools", &tools);
     context.insert("max_calls", &max_calls);
     context.insert("p95_by_tool", &p95_by_tool);
+    context.insert("source_bytes", &source_bytes);
+    context.insert("output_bytes", &output_bytes);
+    context.insert("saved_bytes", &saved_bytes);
 
     render_template(&state, "metrics.html", context).await
 }

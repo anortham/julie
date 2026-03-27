@@ -91,6 +91,35 @@ mod tests {
         assert_eq!(ws.file_count, Some(50));
         assert_eq!(ws.embedding_model, Some("jina-code-v2".to_string()));
         assert_eq!(ws.vector_count, Some(80));
+
+        // COALESCE: passing None for embedding_model and vector_count preserves them
+        db.update_workspace_stats("ws1", 120, 60, None, None, Some(2000))
+            .unwrap();
+        let ws = db.get_workspace("ws1").unwrap().unwrap();
+        assert_eq!(ws.symbol_count, Some(120));
+        assert_eq!(ws.file_count, Some(60));
+        assert_eq!(ws.embedding_model, Some("jina-code-v2".to_string()), "COALESCE should preserve embedding_model");
+        assert_eq!(ws.vector_count, Some(80), "COALESCE should preserve vector_count");
+    }
+
+    #[test]
+    fn test_update_vector_count() {
+        let (db, _tmp) = create_test_db();
+        db.upsert_workspace("ws1", "/path", "ready").unwrap();
+
+        // Initially null
+        let ws = db.get_workspace("ws1").unwrap().unwrap();
+        assert_eq!(ws.vector_count, None);
+
+        // Set vector count
+        db.update_vector_count("ws1", 500).unwrap();
+        let ws = db.get_workspace("ws1").unwrap().unwrap();
+        assert_eq!(ws.vector_count, Some(500));
+
+        // Update preserves it (via COALESCE)
+        db.update_workspace_stats("ws1", 100, 50, None, None, None).unwrap();
+        let ws = db.get_workspace("ws1").unwrap().unwrap();
+        assert_eq!(ws.vector_count, Some(500), "indexing run should not clobber vector_count");
     }
 
     // -------------------------------------------------------------------------

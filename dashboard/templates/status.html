@@ -1,36 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Status - Julie Dashboard{% endblock %}
 {% block content %}
-<div hx-ext="sse" sse-connect="/events/status">
 
-  <h1 class="title" style="color: var(--julie-text); margin-bottom: 1.5rem;">System Status</h1>
+  <h1 class="title" style="margin-bottom: 1.5rem;">System Status</h1>
 
   <!-- Hero stats row -->
   <div class="columns">
     <div class="column">
       <div class="julie-card" style="text-align: center;">
         <p class="label-text">Status</p>
-        <p class="value-text" style="color: var(--julie-success); font-size: 1.4rem; font-weight: 600;">
-          &#9679; Healthy
+        <p class="value-text" style="color: var(--julie-success);">
+          <span class="status-dot is-healthy"></span> Healthy
         </p>
       </div>
     </div>
     <div class="column">
       <div class="julie-card" style="text-align: center;">
         <p class="label-text">Uptime</p>
-        <p class="value-text">{{ uptime }}</p>
+        <p class="value-text" id="stat-uptime">{{ uptime }}</p>
       </div>
     </div>
     <div class="column">
       <div class="julie-card" style="text-align: center;">
         <p class="label-text">Active Sessions</p>
-        <p class="value-text">{{ active_sessions }}</p>
+        <p class="value-text" id="stat-sessions">{{ active_sessions }}</p>
       </div>
     </div>
     <div class="column">
       <div class="julie-card" style="text-align: center;">
         <p class="label-text">Workspaces</p>
-        <p class="value-text">{{ workspace_count }}</p>
+        <p class="value-text" id="stat-workspaces">{{ workspace_count }}</p>
       </div>
     </div>
   </div>
@@ -45,5 +44,18 @@
     </div>
   </div>
 
-</div>
+<script>
+setInterval(async () => {
+  try {
+    const resp = await fetch('/status/live');
+    if (!resp.ok) return;
+    const d = await resp.json();
+    const el = (id) => document.getElementById(id);
+    if (el('stat-uptime')) el('stat-uptime').textContent = d.uptime;
+    if (el('stat-sessions')) el('stat-sessions').textContent = d.active_sessions;
+    if (el('stat-workspaces')) el('stat-workspaces').textContent = d.workspace_count;
+  } catch (_) {}
+}, 5000);
+</script>
+
 {% endblock %}

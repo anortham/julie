@@ -145,6 +145,9 @@ pub(crate) async fn spawn_workspace_embedding(
     let cancel_flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let cancel_for_pipeline = cancel_flag.clone();
 
+    // Capture daemon_db so we can update vector_count on completion
+    let daemon_db = handler.daemon_db.clone();
+
     // Spawn the pipeline in the background, storing handle + flag for cancellation.
     let embedding_task_slot = handler.embedding_task.clone();
     let self_cancel_flag = cancel_flag.clone();
@@ -168,6 +171,13 @@ pub(crate) async fn spawn_workspace_embedding(
                     "Workspace {workspace_id} embedding complete: {}/{} symbols embedded ({} skipped)",
                     stats.symbols_embedded, stats.symbols_scanned, stats.symbols_skipped
                 );
+                // Write vector count back to daemon.db
+                if let Some(ref db) = daemon_db {
+                    let _ = db.update_vector_count(
+                        &workspace_id,
+                        stats.symbols_embedded as i64,
+                    );
+                }
             }
             Ok(Err(e)) => {
                 warn!("Workspace {workspace_id} embedding failed: {e:#}");

@@ -1,3 +1,11 @@
+{% if no_pool %}
+<div class="julie-card" style="text-align: center; padding: 2rem; color: var(--julie-text-muted);">
+  <p style="font-size: 1rem;">No workspaces loaded</p>
+  <p style="font-size: 0.85rem; margin-top: 0.5rem;">
+    Search requires at least one active session connected to the daemon.
+  </p>
+</div>
+{% else %}
 <div style="margin-bottom: 0.75rem; color: var(--julie-text-muted); font-size: 0.85rem;">
   {{ results | length }} result{{ results | length | pluralize }} for
   <strong style="color: var(--julie-text);">{{ query }}</strong>
@@ -20,37 +28,16 @@
 
     <!-- Kind badge -->
     {% set kind = result.kind | default(value="unknown") | lower %}
-    {% if kind == "fn" or kind == "function" or kind == "method" %}
-      <span style="background: #16a34a22; color: #4ade80; border: 1px solid #4ade8044;
-                   border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
-                   font-family: monospace; white-space: nowrap;">
-        {{ result.kind | default(value="fn") }}
-      </span>
+    {% if kind == "function" or kind == "method" %}
+      <span class="kind-fn">{{ result.kind | default(value="fn") }}</span>
     {% elif kind == "struct" or kind == "class" or kind == "type" %}
-      <span style="background: #7c3aed22; color: #a78bfa; border: 1px solid #a78bfa44;
-                   border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
-                   font-family: monospace; white-space: nowrap;">
-        {{ result.kind | default(value="struct") }}
-      </span>
-    {% elif kind == "mod" or kind == "module" or kind == "namespace" %}
-      <span style="background: #1d4ed822; color: #60a5fa; border: 1px solid #60a5fa44;
-                   border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
-                   font-family: monospace; white-space: nowrap;">
-        {{ result.kind | default(value="mod") }}
-      </span>
+      <span class="kind-struct">{{ result.kind | default(value="struct") }}</span>
+    {% elif kind == "module" or kind == "namespace" %}
+      <span class="kind-mod">{{ result.kind | default(value="mod") }}</span>
     {% elif kind == "trait" or kind == "interface" %}
-      <span style="background: #92400e22; color: #fbbf24; border: 1px solid #fbbf2444;
-                   border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
-                   font-family: monospace; white-space: nowrap;">
-        {{ result.kind | default(value="trait") }}
-      </span>
+      <span class="kind-trait">{{ result.kind | default(value="trait") }}</span>
     {% else %}
-      <span style="background: var(--julie-bg-inset); color: var(--julie-text-muted);
-                   border: 1px solid var(--julie-border);
-                   border-radius: 4px; padding: 1px 7px; font-size: 0.72rem; font-weight: 600;
-                   font-family: monospace; white-space: nowrap;">
-        {{ result.kind | default(value="?") }}
-      </span>
+      <span class="kind-default">{{ result.kind | default(value="?") }}</span>
     {% endif %}
 
     <!-- Symbol name -->
@@ -83,3 +70,4 @@
 
 </div>
 {% endfor %}
+{% endif %}

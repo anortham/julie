@@ -50,11 +50,13 @@ struct MetricsTask {
 /// Single background task that drains the metrics channel and writes to SQLite.
 async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<MetricsTask>) {
     while let Some(task) = rx.recv().await {
+        // Compute source_bytes from the workspace DB, then use it for both writes.
+        let mut source_bytes: Option<u64> = None;
         let guard = task.workspace.read().await;
         if let Some(ws) = guard.as_ref() {
             if let Some(db_arc) = &ws.db {
                 if let Ok(db) = db_arc.lock() {
-                    let source_bytes = if !task.source_file_paths.is_empty() {
+                    source_bytes = if !task.source_file_paths.is_empty() {
                         let path_refs: Vec<&str> =
                             task.source_file_paths.iter().map(|s| s.as_str()).collect();
                         db.get_total_file_sizes(&path_refs).ok()
@@ -96,7 +98,7 @@ async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<MetricsTask>) {
                     &tool_name,
                     duration_ms,
                     result_count,
-                    None,
+                    source_bytes,
                     Some(output_bytes),
                     true,
                     metadata_str.as_deref(),
@@ -525,6 +527,51 @@ impl JulieServerHandler {
             *indexed = true;
         }
         self.initialize_workspace(None).await
+    }
+
+    /// Backfill vector_count and embedding_model in daemon.db if missing.
+    /// Handles workspaces embedded before the daemon tracked these stats.
+    async fn backfill_vector_count(&self) {
+        let (Some(db), Some(ws_id)) = (&self.daemon_db, &self.workspace_id) else {
+            return;
+        };
+        let row = match db.get_workspace(ws_id) {
+            Ok(Some(row)) => row,
+            _ => return,
+        };
+        let needs_vectors = row.vector_count.is_none();
+        let needs_model = row.embedding_model.is_none();
+        if !needs_vectors && !needs_model {
+            return;
+        }
+
+        // Backfill vector count from workspace's symbols.db
+        if needs_vectors {
+            let ws_guard = self.workspace.read().await;
+            if let Some(ws) = ws_guard.as_ref() {
+                if let Some(ref db_arc) = ws.db {
+                    let count = {
+                        let sym_db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+                        sym_db.embedding_count().unwrap_or(0)
+                    };
+                    if count > 0 {
+                        let _ = db.update_vector_count(ws_id, count);
+                        info!(workspace_id = %ws_id, count, "Backfilled vector_count");
+                    }
+                }
+            }
+        }
+
+        // Backfill embedding model from the shared embedding service
+        if needs_model {
+            if let Some(ref svc) = self.embedding_service {
+                if let Some(provider) = svc.provider() {
+                    let model = provider.device_info().model_name;
+                    let _ = db.update_embedding_model(ws_id, &model);
+                    info!(workspace_id = %ws_id, model, "Backfilled embedding_model");
+                }
+            }
+        }
     }
 
     /// Record a completed tool call. Bumps in-memory atomics synchronously,
@@ -1102,6 +1149,9 @@ impl ServerHandler for JulieServerHandler {
             let mut indexed = self.is_indexed.write().await;
             if *indexed {
                 info!("Workspace already indexed, skipping auto-indexing");
+                // Backfill vector_count in daemon.db if missing (handles
+                // workspaces embedded before the daemon tracked this stat).
+                self.backfill_vector_count().await;
                 return;
             }
             *indexed = true;

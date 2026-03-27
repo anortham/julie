@@ -105,6 +105,44 @@ fn binary_mtime() -> Option<SystemTime> {
         .and_then(|m| m.modified().ok())
 }
 
+/// Backfill vector_count in daemon.db for all workspaces with embeddings on disk.
+///
+/// Scans each workspace's symbols.db for stored embeddings and writes the count
+/// to daemon.db if missing. Runs once at daemon startup so the dashboard shows
+/// accurate vector counts without waiting for a session to connect.
+fn backfill_all_vector_counts(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
+    let workspaces = match daemon_db.list_workspaces() {
+        Ok(ws) => ws,
+        Err(_) => return,
+    };
+
+    let mut count = 0;
+    for ws in &workspaces {
+        if ws.vector_count.is_some() {
+            continue;
+        }
+        let db_path = indexes_dir
+            .join(&ws.workspace_id)
+            .join("db")
+            .join("symbols.db");
+        if !db_path.exists() {
+            continue;
+        }
+        // Open the symbols.db read-only and query embedding count
+        let vectors = match crate::database::SymbolDatabase::new(&db_path) {
+            Ok(db) => db.embedding_count().unwrap_or(0),
+            Err(_) => continue,
+        };
+        if vectors > 0 {
+            let _ = daemon_db.update_vector_count(&ws.workspace_id, vectors);
+            count += 1;
+        }
+    }
+    if count > 0 {
+        info!(count, "Backfilled vector_count for workspaces");
+    }
+}
+
 /// Reconcile workspace IDs after a normalize_path behavior change.
 ///
 /// Compares each workspace's stored ID against the current generate_workspace_id
@@ -268,6 +306,10 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
             Ok(n) => info!(count = n, "Normalized workspace paths in daemon.db"),
             Err(e) => warn!("Failed to normalize workspace paths: {}", e),
         }
+
+        // Backfill vector_count for workspaces that have embeddings but no count
+        // in daemon.db (handles workspaces embedded before this stat was tracked).
+        backfill_all_vector_counts(db, &paths.indexes_dir());
     }
 
     // Initialize shared embedding service (blocking: model load / sidecar bootstrap)
@@ -280,6 +322,26 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         available = embedding_service.is_available(),
         "Shared embedding service initialized"
     );
+
+    // Backfill embedding_model for workspaces that have vectors but no model name.
+    // Runs after embedding service init so we know the model name.
+    if let Some(ref db) = daemon_db {
+        if let Some(provider) = embedding_service.provider() {
+            let model = provider.device_info().model_name.clone();
+            if let Ok(workspaces) = db.list_workspaces() {
+                let mut count = 0;
+                for ws in &workspaces {
+                    if ws.embedding_model.is_none() && ws.vector_count.map_or(false, |v| v > 0) {
+                        let _ = db.update_embedding_model(&ws.workspace_id, &model);
+                        count += 1;
+                    }
+                }
+                if count > 0 {
+                    info!(count, model, "Backfilled embedding_model for workspaces");
+                }
+            }
+        }
+    }
 
     // Capture binary mtime at startup for stale-binary detection.
     // If the binary is rebuilt while the daemon is running, the next session
@@ -488,6 +550,9 @@ async fn accept_loop(
         let restart_notify = Arc::clone(restart_notify);
         let dashboard_tx = dashboard_tx.clone();
         let session_id = sessions.add_session();
+        let _ = dashboard_tx.send(DashboardEvent::SessionChange {
+            active_count: sessions.active_count(),
+        });
 
         // Check for stale binary on each new connection. This way the health
         // check can surface it immediately rather than waiting for disconnect.
@@ -510,6 +575,7 @@ async fn accept_loop(
         );
 
         tokio::spawn(async move {
+            let dashboard_tx_disconnect = dashboard_tx.clone();
             if let Err(e) = handle_ipc_session(
                 stream,
                 &pool,
@@ -526,6 +592,9 @@ async fn accept_loop(
 
             sessions.remove_session(&session_id);
             let remaining = sessions.active_count();
+            let _ = dashboard_tx_disconnect.send(DashboardEvent::SessionChange {
+                active_count: remaining,
+            });
             info!(
                 session_id = %session_id,
                 remaining,

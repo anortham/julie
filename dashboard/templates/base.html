@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Julie Dashboard{% endblock %}</title>
 
+  <!-- Google Fonts: Outfit (display) + JetBrains Mono (code) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap"
+        rel="stylesheet" />
+
   <!-- Bulma CSS -->
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/bulma@1.0.2/css/bulma.min.css" />
@@ -19,17 +25,17 @@
   <script defer
           src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
 
-  <!-- Dashboard styles -->
+  <!-- Dashboard styles (must load after Bulma to override) -->
   <link rel="stylesheet" href="/static/app.css" />
 </head>
 <body>
 
 <!-- Navbar -->
-<nav class="navbar" role="navigation" aria-label="main navigation"
-     style="background: var(--julie-bg-card); border-bottom: 1px solid var(--julie-border);">
+<nav class="navbar" role="navigation" aria-label="main navigation">
   <div class="navbar-brand">
     <a class="navbar-item julie-brand" href="/">
-      <strong>Julie</strong>&nbsp;<span class="tag is-dark">v{{ version }}</span>
+      <strong>Julie</strong>
+      <span class="tag is-dark" style="font-size: 0.65rem;">{{ version }}</span>
     </a>
   </div>
 
@@ -51,10 +57,11 @@
 
     <div class="navbar-end">
       <div class="navbar-item">
-        <button class="button is-small is-dark"
+        <button class="button is-dark is-small"
                 onclick="toggleTheme()"
+                style="font-size: 0.75rem; padding: 0 0.75rem; height: 28px;"
                 title="Toggle light/dark theme">
-          Theme
+          <span id="theme-icon">&#9790;</span>
         </button>
       </div>
     </div>

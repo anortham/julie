@@ -2,7 +2,7 @@
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::Html;
+use axum::response::{Html, IntoResponse};
 use tera::Context;
 
 use crate::dashboard::render_template;
@@ -41,4 +41,38 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
     context.insert("errors", &errors);
 
     render_template(&state, "status.html", context).await
+}
+
+/// Returns live status values as JSON for polling.
+pub async fn live(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
+    let uptime = state.dashboard.uptime();
+    let uptime_secs = uptime.as_secs();
+    let hours = uptime_secs / 3600;
+    let minutes = (uptime_secs % 3600) / 60;
+    let uptime_str = if hours > 0 {
+        format!("{}h {}m", hours, minutes)
+    } else {
+        format!("{}m", minutes)
+    };
+
+    let active_sessions = state.dashboard.sessions().active_count();
+    let workspace_count = state
+        .dashboard
+        .daemon_db()
+        .and_then(|db| db.list_workspaces().ok())
+        .map(|ws| ws.len())
+        .unwrap_or(0);
+
+    let body = serde_json::json!({
+        "uptime": uptime_str,
+        "active_sessions": active_sessions,
+        "workspace_count": workspace_count,
+        "restart_pending": state.dashboard.is_restart_pending(),
+    })
+    .to_string();
+
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        body,
+    ))
 }
