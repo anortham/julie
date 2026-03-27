@@ -469,36 +469,6 @@ impl ManageWorkspaceTool {
                     t.elapsed().as_secs_f64()
                 );
 
-                // Compute test-to-code coverage linkage
-                let t = std::time::Instant::now();
-                if let Err(e) = crate::analysis::compute_test_coverage(&db_lock) {
-                    warn!("Failed to compute test coverage: {}", e);
-                }
-                info!(
-                    "⏱️  compute_test_coverage: {:.2}s",
-                    t.elapsed().as_secs_f64()
-                );
-
-                // Compute change risk scores
-                let t = std::time::Instant::now();
-                if let Err(e) = crate::analysis::compute_change_risk_scores(&db_lock) {
-                    warn!("Failed to compute change risk scores: {}", e);
-                }
-                info!(
-                    "⏱️  compute_change_risk_scores: {:.2}s",
-                    t.elapsed().as_secs_f64()
-                );
-
-                // Compute structural security risk scores
-                let t = std::time::Instant::now();
-                if let Err(e) = crate::analysis::compute_security_risk(&db_lock) {
-                    warn!("Failed to compute security risk: {}", e);
-                }
-                info!(
-                    "⏱️  compute_security_risk: {:.2}s",
-                    t.elapsed().as_secs_f64()
-                );
-
                 // Capture codehealth snapshot in daemon.db (daemon mode only)
                 // Use handler.workspace_id (the daemon pool's ID, e.g. "julie_julie_31")
                 // not the local workspace_id (the indexing pipeline's hash, e.g. "julie_316c0b08")
