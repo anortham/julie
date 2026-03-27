@@ -55,18 +55,6 @@
           <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Total files</td>
           <td style="border: none; padding: 0.25rem 0;">{{ health.total_files | default(value="—") }}</td>
         </tr>
-        {% if health.avg_centrality %}
-        <tr>
-          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Avg centrality</td>
-          <td style="border: none; padding: 0.25rem 0;">{{ health.avg_centrality | round(precision=1) }}</td>
-        </tr>
-        {% endif %}
-        {% if health.max_centrality %}
-        <tr>
-          <td style="color: var(--julie-text-muted); border: none; padding: 0.25rem 0.5rem 0.25rem 0;">Max centrality</td>
-          <td style="border: none; padding: 0.25rem 0;">{{ health.max_centrality | round(precision=0) }}</td>
-        </tr>
-        {% endif %}
       </tbody>
     </table>
   </div>

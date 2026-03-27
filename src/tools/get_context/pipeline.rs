@@ -269,7 +269,7 @@ fn fetch_pivot_batch_data(
     _pivot_mode: &super::allocation::PivotMode,
 ) -> Result<PivotBatchData> {
     // Always fetch full symbols — even in SignatureOnly mode we need metadata
-    // for risk/security labels. Code bodies are only used in FullBody/SignatureAndKey
+    // for test quality labels. Code bodies are only used in FullBody/SignatureAndKey
     // modes (handled by build_pivot_entries).
     let full_symbols: HashMap<String, Symbol> = db
         .get_symbols_by_ids(pivot_ids)?
@@ -392,24 +392,6 @@ fn build_pivot_entries(
             .copied()
             .unwrap_or(0.0);
 
-        let risk_label = batch
-            .full_symbols
-            .get(&pivot.result.id)
-            .and_then(|sym| sym.metadata.as_ref())
-            .and_then(|m| m.get("change_risk"))
-            .and_then(|r| r.get("label"))
-            .and_then(|l| l.as_str())
-            .map(String::from);
-
-        let security_label = batch
-            .full_symbols
-            .get(&pivot.result.id)
-            .and_then(|sym| sym.metadata.as_ref())
-            .and_then(|m| m.get("security_risk"))
-            .and_then(|r| r.get("label"))
-            .and_then(|l| l.as_str())
-            .map(String::from);
-
         let test_quality_label = batch
             .full_symbols
             .get(&pivot.result.id)
@@ -428,8 +410,6 @@ fn build_pivot_entries(
             content,
             incoming_names,
             outgoing_names,
-            risk_label,
-            security_label,
             test_quality_label,
         });
     }

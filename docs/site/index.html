@@ -38,7 +38,7 @@
       <div class="nav-links">
         <a href="#how-it-works">How it Works</a>
         <a href="#reference-graph">Reference Graph</a>
-        <a href="#code-health">Code Health</a>
+        <a href="#test-intelligence">Test Quality</a>
         <a href="#embeddings">Embeddings</a>
         <a href="#skills">Skills</a>
         <a href="#tools">Tools</a>
@@ -245,75 +245,35 @@
     <p class="section-subtitle" style="margin-top: 32px; text-align: center; max-width: 100%;"><em>One call. Full picture. Zero file reads.</em></p>
   </section>
 
-  <!-- Section 5: Code Health -->
-  <section id="code-health" class="section">
-    <h2 class="section-title">Code Health Intelligence</h2>
-    <p class="section-subtitle">Risk scores and test quality — computed at index time, not runtime.</p>
+  <!-- Section 5: Test Intelligence -->
+  <section id="test-intelligence" class="section">
+    <h2 class="section-title">Test Intelligence</h2>
+    <p class="section-subtitle">Every test rated by quality. Know which tests actually protect your code.</p>
 
-    <div class="split-panels">
-      <div class="terminal animate-on-scroll" data-delay="0" aria-label="Terminal showing test intelligence: 3 tests found with quality tiers ranging from thorough to thin">
-        <div class="terminal-header">
-          <span class="terminal-dot red"></span>
-          <span class="terminal-dot yellow"></span>
-          <span class="terminal-dot green"></span>
-        </div>
-        <div style="margin-bottom: 4px;"><span class="comment">// Test Intelligence</span></div>
-        <div><span class="result">Tests: 3 found</span></div>
-        <div>&nbsp; <span class="command">✓</span> <span class="result">test_process_payment</span> &nbsp;<span class="highlight">(thorough — 8 assertions, error paths)</span></div>
-        <div>&nbsp; <span class="command">✓</span> <span class="result">test_payment_validation</span> &nbsp;<span class="highlight">(adequate — 4 assertions)</span></div>
-        <div>&nbsp; <span class="warn">○</span> <span class="result">test_payment_retry</span> &nbsp;<span class="warn">(thin — 1 assertion, no error paths)</span></div>
-        <span class="cursor"></span>
+    <div class="terminal animate-on-scroll" data-delay="0" style="max-width: 640px; margin: 0 auto;" aria-label="Terminal showing test intelligence: 3 tests found with quality tiers ranging from thorough to thin">
+      <div class="terminal-header">
+        <span class="terminal-dot red"></span>
+        <span class="terminal-dot yellow"></span>
+        <span class="terminal-dot green"></span>
       </div>
-
-      <div class="terminal animate-on-scroll" data-delay="200" aria-label="Terminal showing change risk medium at 0.66 and security risk high at 0.84 with factor breakdown">
-        <div class="terminal-header">
-          <span class="terminal-dot red"></span>
-          <span class="terminal-dot yellow"></span>
-          <span class="terminal-dot green"></span>
-        </div>
-        <div style="margin-bottom: 4px;"><span class="comment">// Risk Scoring</span></div>
-        <div>Change Risk: <span class="risk-medium">MEDIUM</span> <span class="result">(0.66)</span></div>
-        <div>&nbsp; <span class="result">→ 8 callers · public · thorough tests</span></div>
-        <div style="margin-top: 8px;">Security Risk: <span class="risk-high">HIGH</span> <span class="result">(0.84)</span></div>
-        <div>&nbsp; <span class="result">→ calls execute · public · accepts string params</span></div>
-        <div>&nbsp; <span class="result">→ sink calls: </span><span class="error">execute</span></div>
-        <div>&nbsp; <span class="result">→ untested: </span><span class="error">yes</span></div>
-        <span class="cursor"></span>
-      </div>
+      <div style="margin-bottom: 4px;"><span class="comment">// Test Quality Analysis</span></div>
+      <div><span class="result">Tests: 3 found</span></div>
+      <div>&nbsp; <span class="command">✓</span> <span class="result">test_process_payment</span> &nbsp;<span class="highlight">(thorough — 8 assertions, error paths)</span></div>
+      <div>&nbsp; <span class="command">✓</span> <span class="result">test_payment_validation</span> &nbsp;<span class="highlight">(adequate — 4 assertions)</span></div>
+      <div>&nbsp; <span class="warn">○</span> <span class="result">test_payment_retry</span> &nbsp;<span class="warn">(thin — 1 assertion, no error paths)</span></div>
+      <span class="cursor"></span>
     </div>
 
-    <p class="section-subtitle" style="margin-top: 32px; text-align: center; max-width: 100%;"><em>Every symbol scored. Every risk surfaced. Before you touch the code.</em></p>
+    <p class="section-subtitle" style="margin-top: 32px; text-align: center; max-width: 100%;"><em>Computed at index time. Every test scored automatically.</em></p>
   </section>
 
   <!-- Section 6: Skills -->
   <section id="skills" class="section">
     <h2 class="section-title">Skills</h2>
-    <p class="section-subtitle">11 pre-built workflows that combine tools into higher-level capabilities.</p>
+    <p class="section-subtitle">9 pre-built workflows that combine tools into higher-level capabilities.</p>
 
-    <div class="card-grid" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="card-grid" style="grid-template-columns: repeat(2, 1fr);">
       <div class="card tool-card animate-on-scroll" data-delay="0">
-        <div class="tool-name">/codehealth</div>
-        <div class="tool-desc">Risk hotspots, test gaps, and prioritized recommendations</div>
-        <div class="terminal">
-          <div><span class="prompt">$ </span><span class="command">/codehealth</span></div>
-          <div><span class="result">Risk hotspots: </span><span class="risk-high">3 HIGH</span><span class="result">, 7 MEDIUM</span></div>
-          <div><span class="result">Untested high-centrality: </span><span class="warn">5 symbols</span></div>
-          <div><span class="highlight">→ Recommendation: test store_embeddings first</span></div>
-        </div>
-      </div>
-
-      <div class="card tool-card animate-on-scroll" data-delay="100">
-        <div class="tool-name">/security-audit</div>
-        <div class="tool-desc">Security risk analysis with plain-language explanations</div>
-        <div class="terminal">
-          <div><span class="prompt">$ </span><span class="command">/security-audit</span></div>
-          <div><span class="result">Security signals: </span><span class="risk-high">22 HIGH</span><span class="result">, 8 MEDIUM</span></div>
-          <div><span class="result">Untested security code: </span><span class="warn">6 symbols</span></div>
-          <div><span class="highlight">→ All SQL uses parameterized queries ✓</span></div>
-        </div>
-      </div>
-
-      <div class="card tool-card animate-on-scroll" data-delay="200">
         <div class="tool-name">/architecture</div>
         <div class="tool-desc">Architecture overview with entry points and dependency flow</div>
         <div class="terminal">
@@ -324,7 +284,7 @@
         </div>
       </div>
 
-      <div class="card tool-card animate-on-scroll" data-delay="300">
+      <div class="card tool-card animate-on-scroll" data-delay="100">
         <div class="tool-name">/metrics</div>
         <div class="tool-desc">Session performance and context efficiency report</div>
         <div class="terminal">

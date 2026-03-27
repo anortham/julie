@@ -187,23 +187,13 @@ mod tests {
         let snapshot = CodehealthSnapshot {
             total_symbols: 7306,
             total_files: 434,
-            security_high: 14,
-            security_medium: 25,
-            security_low: 100,
-            change_high: 8,
-            change_medium: 30,
-            change_low: 200,
-            symbols_tested: 180,
-            symbols_untested: 47,
-            avg_centrality: Some(0.42),
-            max_centrality: Some(0.95),
         };
 
         db.insert_codehealth_snapshot("ws1", &snapshot).unwrap();
 
         let latest = db.get_latest_snapshot("ws1").unwrap().unwrap();
         assert_eq!(latest.total_symbols, 7306);
-        assert_eq!(latest.security_high, 14);
+        assert_eq!(latest.total_files, 434);
     }
 
     #[test]
@@ -217,8 +207,6 @@ mod tests {
             let snapshot = CodehealthSnapshot {
                 total_symbols: 7000 + i * 100,
                 total_files: 400,
-                security_high: (14 - i) as i32,
-                ..Default::default()
             };
             db.insert_codehealth_snapshot("ws1", &snapshot).unwrap();
         }
@@ -280,8 +268,7 @@ mod tests {
 
         let snapshot = daemon_db.get_latest_snapshot("ws1").unwrap().unwrap();
         assert_eq!(snapshot.total_symbols, 1);
-        assert_eq!(snapshot.security_high, 1);
-        assert_eq!(snapshot.security_medium, 0);
+        assert_eq!(snapshot.total_files, 1);
     }
 
     // -------------------------------------------------------------------------

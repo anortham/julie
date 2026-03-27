@@ -445,8 +445,6 @@ mod tests {
             .get_latest_snapshot(primary_id)?
             .expect("snapshot should have been captured");
         assert_eq!(snapshot.total_symbols, 2, "both symbols should be counted");
-        assert_eq!(snapshot.security_high, 1, "one HIGH security symbol");
-        assert_eq!(snapshot.security_medium, 0, "no MEDIUM security symbols");
         assert_eq!(snapshot.total_files, 1, "one file indexed");
 
         // Step 7: Record tool calls in daemon.db

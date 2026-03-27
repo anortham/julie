@@ -279,7 +279,7 @@ See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
 1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization + English stemming
 2. **Graph Centrality Ranking**: Pre-computed reference scores boost well-connected symbols in search results
 3. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`. In stdio mode: under `{project}/.julie/indexes/`. In daemon mode: under `~/.julie/indexes/` (shared across all sessions).
-   - **Daemon mode** (`julie daemon`): starts a background process that shares workspace indexes and a single embedding provider across MCP sessions. Enables reference workspaces, codehealth snapshots, and tool call history. Registry lives in `~/.julie/daemon.db` (DaemonDatabase). The shared `EmbeddingService` ensures one ORT model load or sidecar process serves all sessions. Workspace operations (add, refresh, stats) require daemon mode; they return helpful errors in stdio mode.
+   - **Daemon mode** (`julie daemon`): starts a background process that shares workspace indexes and a single embedding provider across MCP sessions. Enables reference workspaces, symbol/file count snapshots, and tool call history. Registry lives in `~/.julie/daemon.db` (DaemonDatabase). The shared `EmbeddingService` ensures one ORT model load or sidecar process serves all sessions. Workspace operations (add, refresh, stats) require daemon mode; they return helpful errors in stdio mode.
    - **Adapter mode** (default): when `julie-server` is run without arguments, it auto-starts the daemon (if not already running) and forwards stdio JSON-RPC to the daemon via IPC. This is the standard MCP client integration path.
    - **Stale binary auto-restart**: the daemon captures its binary's mtime at startup. When a rebuild is detected, it sets a `restart_pending` flag (visible in `manage_workspace health`) and exits after the last session disconnects. The adapter restarts it automatically with the new binary.
    - **Stdio mode**: single session, per-project indexes in `.julie/`, no registry persistence. Still available but not the default path.
@@ -350,4 +350,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-03-26 | **Status:** Production Ready (v6.1.1 — daemon mode, web dashboard, shared workspaces, shared embedding pipeline)
+**Last Updated:** 2026-03-27 | **Status:** Production Ready (v6.1.2 — daemon mode, web dashboard, shared workspaces, shared embedding pipeline; codehealth risk/coverage metrics shelved due to data quality)
