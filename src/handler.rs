@@ -1058,7 +1058,7 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("📊 Query metrics: {:?}", params);
         let start = std::time::Instant::now();
-        let metadata = serde_json::json!({ "sort_by": params.sort_by });
+        let metadata = serde_json::json!({ "category": params.category });
         let result = params
             .call_tool(self)
             .await
