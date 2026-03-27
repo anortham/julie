@@ -1148,10 +1148,14 @@ impl ServerHandler for JulieServerHandler {
         {
             let mut indexed = self.is_indexed.write().await;
             if *indexed {
-                info!("Workspace already indexed, skipping auto-indexing");
-                // Backfill vector_count in daemon.db if missing (handles
-                // workspaces embedded before the daemon tracked this stat).
+                info!("Workspace already indexed, running staleness check");
                 self.backfill_vector_count().await;
+                // Still check for stale files in the background. The index
+                // may be outdated if files changed while the daemon was down.
+                let handler = self.clone();
+                tokio::spawn(async move {
+                    handler.run_auto_indexing().await;
+                });
                 return;
             }
             *indexed = true;

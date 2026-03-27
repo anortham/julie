@@ -147,17 +147,29 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
 ///
 /// Returns the mtime of the symbols.db file for the given workspace
 fn get_database_mtime(workspace_root: &Path, workspace_id: &str) -> Result<SystemTime> {
-    let db_path = workspace_root
+    // Check both daemon-mode path (~/.julie/indexes/) and stdio-mode path ({root}/.julie/indexes/)
+    let daemon_path = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".julie")
+        .join("indexes")
+        .join(workspace_id)
+        .join("db")
+        .join("symbols.db");
+    let stdio_path = workspace_root
         .join(".julie")
         .join("indexes")
         .join(workspace_id)
         .join("db")
         .join("symbols.db");
 
-    if !db_path.exists() {
+    let db_path = if daemon_path.exists() {
+        daemon_path
+    } else if stdio_path.exists() {
+        stdio_path
+    } else {
         // Database doesn't exist - return epoch (very old time)
         return Ok(SystemTime::UNIX_EPOCH);
-    }
+    };
 
     let metadata = std::fs::metadata(&db_path)
         .with_context(|| format!("Failed to get metadata for database: {}", db_path.display()))?;

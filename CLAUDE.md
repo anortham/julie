@@ -281,7 +281,8 @@ See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
 3. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`. In stdio mode: under `{project}/.julie/indexes/`. In daemon mode: under `~/.julie/indexes/` (shared across all sessions).
    - **Daemon mode** (`julie daemon`): starts a background process that shares workspace indexes and a single embedding provider across MCP sessions. Enables reference workspaces, symbol/file count snapshots, and tool call history. Registry lives in `~/.julie/daemon.db` (DaemonDatabase). The shared `EmbeddingService` ensures one ORT model load or sidecar process serves all sessions. Workspace operations (add, refresh, stats) require daemon mode; they return helpful errors in stdio mode.
    - **Adapter mode** (default): when `julie-server` is run without arguments, it auto-starts the daemon (if not already running) and forwards stdio JSON-RPC to the daemon via IPC. This is the standard MCP client integration path.
-   - **Stale binary auto-restart**: the daemon captures its binary's mtime at startup. When a rebuild is detected, it sets a `restart_pending` flag (visible in `manage_workspace health`) and exits after the last session disconnects. The adapter restarts it automatically with the new binary.
+   - **Stale binary auto-restart**: the daemon captures its binary's mtime at startup. On each new connection and session disconnect, it compares the current binary mtime. If the daemon is idle (0 sessions) when a stale binary is detected, it shuts down immediately before accepting the connection. If sessions are active, it sets `restart_pending` and exits after the last session disconnects. The adapter restarts it automatically with the new binary.
+   - **Catch-up indexing on session connect**: when a session connects and the workspace is already indexed, a background staleness check runs (mtime comparison, then blake3 hash comparison via `filter_changed_files`). Files that changed while the daemon was down are incrementally re-indexed without requiring `force: true`. This closes the gap between the file watcher (which only sees live events) and daemon restarts.
    - **Stdio mode**: single session, per-project indexes in `.julie/`, no registry persistence. Still available but not the default path.
 4. **Native Rust Core**: No FFI, no CGO — core indexing/search has zero external dependencies
 5. **Tree-sitter Native**: Direct Rust bindings for all language parsers
@@ -350,4 +351,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-03-27 | **Status:** Production Ready (v6.1.4 — daemon mode, web dashboard, shared workspaces, shared embedding pipeline; codehealth risk/coverage metrics shelved due to data quality)
+**Last Updated:** 2026-03-27 | **Status:** Production Ready (v6.1.5 — daemon mode, Observatory dashboard, live search playground, shared workspaces, shared embedding pipeline, catch-up indexing on connect; codehealth risk/coverage metrics shelved due to data quality)

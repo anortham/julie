@@ -11,6 +11,18 @@ In stdio mode, `IncrementalIndexer` in `src/watcher/mod.rs` manages a single wat
 
 In daemon mode, `WatcherPool` in `src/daemon/watcher_pool.rs` manages one `IncrementalIndexer` per registered workspace, sharing watchers across all connected MCP sessions.
 
+### Catch-up Indexing on Session Connect
+
+File watchers only detect changes that happen while they're running. If files change while the daemon is down (during a restart, between sessions, or after a rebuild), the watcher misses them. To close this gap, a catch-up check runs automatically when a session connects to an already-indexed workspace:
+
+1. `on_initialized` spawns a background `run_auto_indexing` task
+2. `check_if_indexing_needed` (startup.rs) compares the newest file mtime against the symbols.db mtime
+3. If stale, `handle_index_command` falls through to `index_workspace_files` (instead of returning "already indexed")
+4. `filter_changed_files` (incremental.rs) computes blake3 hashes for each file and compares against stored hashes
+5. Only files with changed hashes are re-indexed; unchanged files are skipped
+
+This runs in the background and doesn't block the session. On a typical daemon restart where ~100 files changed, the catch-up completes in under 5 seconds.
+
 ---
 
 ## How It Works

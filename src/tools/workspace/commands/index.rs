@@ -197,44 +197,24 @@ impl ManageWorkspaceTool {
                     *handler.is_indexed.write().await = false;
                     // Fall through to indexing logic below
                 } else {
-                    // Resume incomplete embedding if needed. The pipeline is
-                    // incremental (skips already-embedded symbols) and fast-exits
-                    // when everything is already embedded. This handles the case
-                    // where the daemon was killed mid-embedding and restarted.
-                    let mut message = format!(
-                        "Workspace already indexed: {} symbols\nUse force: true to re-index",
+                    // Workspace has symbols. Run incremental indexing to catch
+                    // files that changed while the daemon was down. The blake3
+                    // hash comparison in filter_changed_files is fast when
+                    // nothing changed (just reads hashes from the DB).
+                    info!(
+                        "Workspace has {} symbols, running incremental update",
                         symbol_count
                     );
-                    if !skip_embeddings {
-                        let canonical_path_str = canonical_path.to_string_lossy().to_string();
-                        let ws_id = handler.workspace_id.clone().unwrap_or_else(|| {
-                            crate::workspace::registry::generate_workspace_id(&canonical_path_str)
-                                .unwrap_or_default()
-                        });
-                        if !ws_id.is_empty() {
-                            let embed_count =
-                                crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
-                                    handler, ws_id,
-                                )
-                                .await;
-                            if embed_count > 0 {
-                                message.push_str(&format!(
-                                    "\nResuming embedding for {} symbols in background...",
-                                    embed_count
-                                ));
-                            }
-                        }
-                    }
-                    // Ensure daemon.db status reflects reality. The workspace
-                    // pool's get_or_init always upserts with "pending"; without
-                    // this, already-indexed workspaces stay "pending" forever
-                    // after a daemon restart.
+
+                    // Ensure daemon.db status reflects reality.
                     if let Some(ref daemon_db) = handler.daemon_db {
                         if let Some(ref ws_id) = handler.workspace_id {
                             let _ = daemon_db.update_workspace_status(ws_id, "ready");
                         }
                     }
-                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    // Fall through to index_workspace_files with force=false.
+                    // The incremental pipeline will hash-compare and only
+                    // re-index changed files.
                 }
             }
         }

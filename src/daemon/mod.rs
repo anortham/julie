@@ -549,24 +549,36 @@ async fn accept_loop(
         let restart_pending = Arc::clone(restart_pending);
         let restart_notify = Arc::clone(restart_notify);
         let dashboard_tx = dashboard_tx.clone();
+        // Check for stale binary BEFORE accepting the session. If the daemon
+        // was idle (0 sessions) and the binary changed, shut down immediately
+        // so the adapter restarts with the new binary. Without this, the daemon
+        // accepts the session, runs the old binary for the whole session, and
+        // can only restart after the session ends.
+        if let Some(startup_mtime) = startup_binary_mtime {
+            if let Some(current_mtime) = binary_mtime() {
+                if current_mtime > startup_mtime {
+                    if sessions.active_count() == 0 {
+                        warn!("Binary is stale and no active sessions. Shutting down for restart.");
+                        restart_pending.store(true, Ordering::Relaxed);
+                        restart_notify.notify_one();
+                        // Drop the stream; the adapter will reconnect to the new daemon.
+                        drop(stream);
+                        return Ok(());
+                    } else if !restart_pending.load(Ordering::Relaxed) {
+                        restart_pending.store(true, Ordering::Relaxed);
+                        warn!(
+                            "Binary has been rebuilt since daemon started. \
+                             Daemon will restart when all sessions disconnect."
+                        );
+                    }
+                }
+            }
+        }
+
         let session_id = sessions.add_session();
         let _ = dashboard_tx.send(DashboardEvent::SessionChange {
             active_count: sessions.active_count(),
         });
-
-        // Check for stale binary on each new connection. This way the health
-        // check can surface it immediately rather than waiting for disconnect.
-        if let Some(startup_mtime) = startup_binary_mtime {
-            if let Some(current_mtime) = binary_mtime() {
-                if current_mtime > startup_mtime && !restart_pending.load(Ordering::Relaxed) {
-                    restart_pending.store(true, Ordering::Relaxed);
-                    warn!(
-                        "Binary has been rebuilt since daemon started. \
-                         Daemon will restart when all sessions disconnect."
-                    );
-                }
-            }
-        }
 
         info!(
             session_id = %session_id,
