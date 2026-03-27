@@ -11,6 +11,8 @@ pub mod lifecycle;
 pub mod pid;
 pub mod project_log;
 pub mod session;
+#[cfg(windows)]
+pub mod shutdown_event;
 pub mod watcher_pool;
 pub mod workspace_pool;
 
@@ -373,6 +375,33 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // feeds into the same cleanup path below.
     let restart_notify = Arc::new(Notify::new());
 
+    // Named event for graceful shutdown from `julie stop` / `julie restart`.
+    // On Windows, ctrl_c() requires a console (which CREATE_NO_WINDOW daemons
+    // lack), so this named event is the primary graceful shutdown mechanism.
+    let stop_notify = Arc::new(Notify::new());
+    #[cfg(windows)]
+    {
+        let event_name = paths.daemon_shutdown_event();
+        match shutdown_event::ShutdownEvent::create(&event_name) {
+            Ok(event) => {
+                info!("Shutdown event created: {}", event_name);
+                let notify = Arc::clone(&stop_notify);
+                let event = Arc::new(event);
+                tokio::task::spawn_blocking(move || {
+                    event.wait();
+                    notify.notify_one();
+                });
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to create shutdown event: {}. \
+                     Graceful stop via `julie stop` unavailable.",
+                    e
+                );
+            }
+        }
+    }
+
     // --- Dashboard HTTP server ---
     let dashboard_state = crate::dashboard::state::DashboardState::new(
         Arc::clone(&sessions),
@@ -458,6 +487,10 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         }
         _ = restart_notify.notified() => {
             info!("Stale binary restart triggered, stopping daemon");
+            Ok(())
+        }
+        _ = stop_notify.notified() => {
+            info!("Shutdown event received from `julie stop`, stopping daemon");
             Ok(())
         }
     };

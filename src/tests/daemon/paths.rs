@@ -147,3 +147,20 @@ fn test_default_impl() {
     let new_paths = DaemonPaths::new();
     assert_eq!(default_paths.julie_home(), new_paths.julie_home());
 }
+
+/// Shutdown event name uses the same hash as the IPC pipe name.
+#[cfg(windows)]
+#[test]
+fn test_daemon_shutdown_event_uses_same_hash_as_pipe() {
+    let paths = DaemonPaths::with_home(PathBuf::from(r"C:\Users\test\.julie"));
+    let pipe_name = paths.daemon_pipe_name();
+    let event_name = paths.daemon_shutdown_event();
+
+    // Extract the hex hash from each: "...-{hash}" suffix
+    let pipe_hash = pipe_name.rsplit('-').next().unwrap();
+    let event_hash = event_name.rsplit('-').next().unwrap();
+    assert_eq!(
+        pipe_hash, event_hash,
+        "Pipe and event must share the same home-dir hash"
+    );
+}

@@ -84,17 +84,37 @@ impl DaemonPaths {
         }
         #[cfg(windows)]
         {
-            // FNV-1a hash of the path bytes — stable across Rust versions.
-            // std::hash::DefaultHasher is explicitly unstable and may produce
-            // different values across compiler versions.
-            let path_str = self.julie_home.to_string_lossy();
-            let mut hash: u64 = 14695981039346656037;
-            for byte in path_str.as_bytes() {
-                hash ^= *byte as u64;
-                hash = hash.wrapping_mul(1099511628211);
-            }
-            PathBuf::from(format!(r"\\.\pipe\julie-daemon-{:016x}", hash))
+            PathBuf::from(format!(
+                r"\\.\pipe\julie-daemon-{:016x}",
+                self.julie_home_hash()
+            ))
         }
+    }
+
+    /// Named event for graceful daemon shutdown (Windows).
+    ///
+    /// `julie stop` signals this event; the daemon waits on it alongside
+    /// ctrl_c. Uses the same home-dir hash as the IPC pipe for consistency.
+    #[cfg(windows)]
+    pub fn daemon_shutdown_event(&self) -> String {
+        format!(
+            "Local\\julie-daemon-shutdown-{:016x}",
+            self.julie_home_hash()
+        )
+    }
+
+    /// FNV-1a hash of `julie_home`, used for IPC pipe names and event names.
+    ///
+    /// Stable across Rust versions (unlike `DefaultHasher`).
+    #[cfg(windows)]
+    fn julie_home_hash(&self) -> u64 {
+        let path_str = self.julie_home.to_string_lossy();
+        let mut hash: u64 = 14695981039346656037;
+        for byte in path_str.as_bytes() {
+            hash ^= *byte as u64;
+            hash = hash.wrapping_mul(1099511628211);
+        }
+        hash
     }
 
     /// PID file for daemon lifecycle

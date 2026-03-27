@@ -24,8 +24,9 @@ pub fn check_status(paths: &DaemonPaths) -> DaemonStatus {
 
 /// Stop the daemon process if it is running.
 ///
-/// Sends SIGTERM on Unix (taskkill on Windows) for graceful shutdown,
-/// waits briefly, then cleans up stale PID/socket files.
+/// On Unix, sends SIGTERM for graceful shutdown. On Windows, signals a named
+/// event that the daemon waits on, falling back to `taskkill /F` for older
+/// daemons that predate the event mechanism.
 /// Returns `Ok(())` even if the daemon is not running (idempotent).
 pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
     match PidFile::check_running(&paths.daemon_pid()) {
@@ -42,16 +43,23 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
 
             #[cfg(windows)]
             {
-                // taskkill without /F sends WM_CLOSE, which only works for GUI
-                // apps. The daemon is a console process, so we need /F (force).
-                // /T kills the entire process tree, ensuring the sidecar process is also terminated.
-                let _ = std::process::Command::new("taskkill")
-                    .args(["/F", "/T", "/PID", &pid.to_string()])
-                    .output();
+                use super::shutdown_event;
+
+                let event_name = paths.daemon_shutdown_event();
+                let signaled = shutdown_event::signal_shutdown(&event_name).unwrap_or(false);
+                if signaled {
+                    info!("Signaled shutdown event: {}", event_name);
+                } else {
+                    // Daemon predates the event mechanism (or event creation
+                    // failed at startup). Fall back to force-kill.
+                    info!("Shutdown event not found, falling back to taskkill /F");
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/F", "/T", "/PID", &pid.to_string()])
+                        .output();
+                }
             }
 
             // Poll until the process exits (up to 5s), then clean up stale files.
-            // Avoids a fixed 500ms blind wait when the daemon exits quickly.
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
             loop {
                 if !PidFile::is_process_alive(pid) {
