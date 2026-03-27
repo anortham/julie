@@ -12,7 +12,9 @@
 - **`spawn_blocking` survives `JoinHandle::abort()`**: Must use `AtomicBool` cancellation flag checked between batches.
 - **Cross-platform review gap**: v6.0.0 shipped with broken Windows IPC (16 compile errors) because no reviewer ran `cargo check --target x86_64-pc-windows-msvc`. Always include cross-compilation in review checklists.
 - **normalize_path lowercasing caused duplicate workspaces**: SHA256 of lowercased vs case-preserved path produces different workspace IDs. After fixing path casing, daemon.db needs migration or old IDs create orphan index directories.
-- **C# property extraction uniquely vulnerable**: `extract_property` was the only extractor where type and name are sibling children of the same AST node with no structural anchor. All other member extractors in `csharp/members.rs` are safe -- `extract_method` uses `.rev()`, constructors/destructors have no return type, fields/events search inside `variable_declarator`, delegates handle 1-vs-2 identifier case explicitly.
+- **C# property extraction uniquely vulnerable**: `extract_property` was the only extractor where type and name are sibling children of the same AST node with no structural anchor. All other member extractors in `csharp/members.rs` are safe.
+- **Dashboard workspace status stuck at "pending"**: Three-part root cause: adapter normalized backslashes to forward slashes before daemon stored the path; `upsert_workspace` unconditionally downgraded "ready" to "pending" on reconnect; early-return "already indexed" path never called `update_workspace_status`. Fixed in v6 via CASE guard on upsert and `normalize_workspace_paths()` on daemon startup.
+- **Codehealth analysis sources on disk but not compiled**: `src/analysis/` files kept dormant (not deleted). Gated out of Cargo.toml. Don't accidentally re-enable.
 
 ## Decisions
 
@@ -21,8 +23,10 @@
 - **Language detection single source of truth**: `crates/julie-extractors/src/language.rs`. Adding a new language requires editing only this one file.
 - **`lib/` and `packages/` are NOT vendor directories**: They are primary source dirs in Elixir/Ruby/Dart and JS monorepos.
 - **Daemon-owned EmbeddingService with eager init**: Not pool-owned (muddies WorkspacePool responsibility), not lazy (re-introduces complexity), no explicit queue (provider mutex serializes).
-- **No symbol-level editing tools**: Agents ignore custom editing tools in favor of built-in Edit; Serena overcomes this via aggressive behavioral priming, not organic utility. Bottleneck is search/understanding, not editing. If revisited, `insert_after_symbol` has the strongest case.
+- **No symbol-level editing tools**: Agents ignore custom editing tools in favor of built-in Edit; bottleneck is search/understanding, not editing. If revisited, `insert_after_symbol` has the strongest case.
+- **Codehealth risk/coverage metrics shelved (not experimental)**: Test coverage showed 3% on a well-tested project (direct references only, no transitive closure). Security risk labeled most symbols HIGH due to heuristic miscalibration. Fundamental blockers: incomplete call graph due to dynamic dispatch/generics/closures, no type-resolved security analysis. `compute_test_quality_metrics` (rates test functions) is preserved as independent and reliable.
 
 ## Open Questions
 
 - **NL query vocabulary gap**: Code embedding models match tokens, not semantic synonyms ("save" != "record"). Needs NL query expansion or dual-model approach.
+- **Incomplete embedding backfill not resumed on daemon restart**: Known issue as of v6.0.2. ORT upgrade to rc12 also pending.

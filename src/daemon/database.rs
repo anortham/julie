@@ -242,21 +242,16 @@ impl DaemonDatabase {
         }
     }
 
-    /// Normalize path separators to the platform-native format for all workspaces.
+    /// Normalize workspace paths and restore stuck statuses on daemon startup.
     ///
-    /// Fixes paths stored with forward slashes by the adapter's previous
-    /// `.replace('\\', "/")` normalization. Also restores "ready" status for
-    /// workspaces that have stats (were previously indexed) but are stuck at
-    /// "pending" due to the early-return bug.
+    /// Two fixes applied on every startup:
+    /// 1. (Windows only) Convert forward-slash paths to native backslashes,
+    ///    fixing paths stored by the adapter's previous `.replace('\\', "/")`
+    /// 2. (All platforms) Restore "ready" status for workspaces that have
+    ///    symbols (were previously indexed) but are stuck at "pending"
     pub fn normalize_workspace_paths(&self) -> Result<usize> {
         let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
         let now = now_unix();
-
-        // On Windows, convert forward slashes to backslashes.
-        // On Unix this is a no-op (paths should already use forward slashes).
-        if !cfg!(windows) {
-            return Ok(0);
-        }
 
         let mut count = 0;
         let mut stmt = conn.prepare(
@@ -275,8 +270,15 @@ impl DaemonDatabase {
         drop(stmt);
 
         for (workspace_id, path, status, symbol_count) in &rows {
-            let native_path = path.replace('/', "\\");
+            // On Windows, convert forward slashes to backslashes.
+            // On Unix, paths are already correct.
+            let native_path = if cfg!(windows) {
+                path.replace('/', "\\")
+            } else {
+                path.clone()
+            };
             let needs_path_fix = native_path != *path;
+
             // Restore "ready" for workspaces that were indexed but stuck at "pending"
             let needs_status_fix = *status == "pending"
                 && symbol_count.unwrap_or(0) > 0;

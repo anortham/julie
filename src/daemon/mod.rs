@@ -532,6 +532,19 @@ async fn accept_loop(
                 "IPC session ended"
             );
 
+            // Check for stale binary at disconnect time too (not just on new
+            // connections). Without this, a rebuild during an active session
+            // is missed: the session disconnects, restart_pending is still
+            // false, and a new session connects before the daemon can exit.
+            if let Some(startup_mtime) = startup_binary_mtime {
+                if let Some(current_mtime) = binary_mtime() {
+                    if current_mtime > startup_mtime && !restart_pending.load(Ordering::Relaxed) {
+                        restart_pending.store(true, Ordering::Relaxed);
+                        warn!("Binary rebuild detected at session disconnect.");
+                    }
+                }
+            }
+
             // If the binary has been rebuilt and this was the last session,
             // signal the daemon to exit. The adapter will auto-start a fresh
             // daemon with the new binary on the next connection.

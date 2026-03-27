@@ -561,8 +561,10 @@ mod tests {
             assert_eq!(ws2.path, "\\\\?\\C:\\source\\other");
             assert_eq!(ws2.status, "ready");
         } else {
-            // On Unix, no-op
-            assert_eq!(count, 0);
+            // On Unix, no path fix needed but status is still restored
+            assert_eq!(count, 1); // ws1 has symbols and was pending
+            let ws1 = db.get_workspace("ws1").unwrap().unwrap();
+            assert_eq!(ws1.status, "ready");
         }
     }
 
@@ -570,7 +572,7 @@ mod tests {
     fn test_normalize_workspace_paths_skips_pending_without_symbols() {
         let (db, _tmp) = create_test_db();
 
-        // Workspace with no symbols: status should stay "pending" even on Windows
+        // Workspace with no symbols: status should stay "pending"
         db.upsert_workspace("ws1", "//?/C:/source/empty", "pending")
             .unwrap();
 
@@ -582,6 +584,47 @@ mod tests {
             let ws = db.get_workspace("ws1").unwrap().unwrap();
             assert_eq!(ws.path, "\\\\?\\C:\\source\\empty");
             assert_eq!(ws.status, "pending");
+        } else {
+            // No path fix needed and no status fix (no symbols)
+            assert_eq!(count, 0);
         }
+    }
+
+    #[test]
+    fn test_normalize_restores_ready_on_all_platforms() {
+        let (db, _tmp) = create_test_db();
+
+        // Workspace with symbols stuck at "pending" (simulates post-restart state)
+        db.upsert_workspace("ws1", "/Users/test/project", "pending")
+            .unwrap();
+        db.update_workspace_stats("ws1", 500, 50, None, None, Some(1000))
+            .unwrap();
+
+        // Workspace with no symbols should stay "pending"
+        db.upsert_workspace("ws2", "/Users/test/empty", "pending")
+            .unwrap();
+
+        // Workspace already "ready" should stay "ready"
+        db.upsert_workspace("ws3", "/Users/test/other", "ready")
+            .unwrap();
+        db.update_workspace_stats("ws3", 100, 10, None, None, Some(500))
+            .unwrap();
+
+        let count = db.normalize_workspace_paths().unwrap();
+
+        // ws1 should be restored to "ready" (has symbols, was stuck at pending)
+        let ws1 = db.get_workspace("ws1").unwrap().unwrap();
+        assert_eq!(ws1.status, "ready", "indexed workspace should be restored to ready");
+
+        // ws2 should stay "pending" (no symbols means it was never indexed)
+        let ws2 = db.get_workspace("ws2").unwrap().unwrap();
+        assert_eq!(ws2.status, "pending", "unindexed workspace should stay pending");
+
+        // ws3 should stay "ready" (was never stuck)
+        let ws3 = db.get_workspace("ws3").unwrap().unwrap();
+        assert_eq!(ws3.status, "ready", "ready workspace should stay ready");
+
+        // At least ws1 should have been fixed
+        assert!(count >= 1, "should have fixed at least one workspace");
     }
 }
