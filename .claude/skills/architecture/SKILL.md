@@ -3,7 +3,7 @@ name: architecture
 description: Generate an architecture overview — key entry points, module map, dependency flow, and suggested reading order. Use when the user is new to a codebase, asks "how does this work?", wants an architecture overview, or needs onboarding documentation.
 user-invocable: true
 disable-model-invocation: true
-allowed-tools: mcp__julie__query_metrics, mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__get_symbols
+allowed-tools: mcp__julie__deep_dive, mcp__julie__get_context, mcp__julie__get_symbols, mcp__julie__fast_search
 ---
 
 # Architecture Overview
@@ -27,10 +27,10 @@ This returns pivots (key symbols with code), neighbors (connected symbols), and 
 ### Step 2: Find Key Entry Points
 
 ```
-query_metrics(sort_by="centrality", order="desc", exclude_tests=true, limit=15)
+fast_search(query="$ARGUMENTS", search_target="definitions", limit=20)
 ```
 
-High-centrality symbols are the most connected — they're the architectural backbone. Focus on public functions/methods.
+Search results are ranked by centrality (reference count), so the top results are the most connected symbols -- the architectural backbone. Focus on public functions/methods.
 
 ### Step 3: Understand Entry Point Structure
 
