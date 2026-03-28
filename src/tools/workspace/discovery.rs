@@ -43,14 +43,14 @@ impl ManageWorkspaceTool {
 
             let detected_patterns = self.analyze_vendor_patterns(&all_files, workspace_path)?;
 
+            self.generate_julieignore_file(workspace_path, &detected_patterns)?;
             if !detected_patterns.is_empty() {
-                self.generate_julieignore_file(workspace_path, &detected_patterns)?;
                 info!(
                     "✅ Generated .julieignore with {} patterns",
                     detected_patterns.len()
                 );
             } else {
-                info!("✨ No vendor patterns detected - project looks clean!");
+                info!("✨ No vendor patterns detected - generated .julieignore template");
             }
         }
 
