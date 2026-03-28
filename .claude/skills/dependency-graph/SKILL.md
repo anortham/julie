@@ -1,6 +1,6 @@
 ---
 name: dependency-graph
-description: Show module dependencies by analyzing imports, exports, and cross-references between files. Use when the user asks what a file imports, what depends on a module, how modules are coupled, or wants to understand the dependency structure of any part of the codebase.
+description: Show module dependencies by analyzing imports, exports, and cross-references. Use when the user asks what a file imports, what depends on a module, or wants to see dependency structure.
 user-invocable: true
 arguments: "<module_path>"
 allowed-tools: mcp__julie__get_symbols, mcp__julie__fast_refs, mcp__julie__fast_search, mcp__julie__get_context

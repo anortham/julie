@@ -1,6 +1,6 @@
 ---
 name: impact-analysis
-description: Analyze what would break if a symbol is changed — finds all callers, groups by risk level, and assesses change impact. Use when the user asks about the blast radius of a change, wants to know who uses a symbol, or is planning a refactor and needs to understand downstream effects.
+description: Analyze what would break if a symbol changes: finds callers, groups by risk level, assesses impact. Use when the user asks about blast radius, who uses a symbol, or is planning a refactor.
 user-invocable: true
 arguments: "<symbol_name>"
 allowed-tools: mcp__julie__fast_refs, mcp__julie__deep_dive, mcp__julie__get_context
