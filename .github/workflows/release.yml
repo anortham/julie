@@ -179,7 +179,7 @@ jobs:
           GH_TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
         run: |
           echo "Triggering plugin repo update for v${{ steps.version.outputs.version }}..."
-          gh workflow run update-binaries \
+          gh workflow run "Update Plugin" \
             --repo anortham/julie-plugin \
             -f version="${{ steps.version.outputs.version }}" \
             -f tag="v${{ steps.version.outputs.version }}"
