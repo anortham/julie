@@ -157,6 +157,8 @@
     "deny": [],
     "ask": []
   },
-  "enabledPlugins": {},
+  "enabledPlugins": {
+    "julie@julie-plugin": true
+  },
   "outputStyle": "Explanatory"
 }
