@@ -1109,3 +1109,87 @@ fn function_two() {
         }
     }
 }
+
+/// Regression test: refresh with no file changes should NOT trigger the full
+/// embedding pipeline. Previously, every refresh unconditionally called
+/// spawn_workspace_embedding, re-embedding ~2000 enriched symbols even when
+/// nothing changed.
+#[tokio::test]
+async fn test_refresh_no_changes_skips_embedding_pipeline() {
+    let temp_dir = TempDir::new().unwrap();
+    let test_file = temp_dir.path().join("main.rs");
+    fs::write(&test_file, "fn hello() {}\nfn world() {}\n").unwrap();
+
+    // Set up daemon database (refresh requires daemon mode)
+    let daemon_db_dir = temp_dir.path().join(".julie");
+    fs::create_dir_all(&daemon_db_dir).unwrap();
+    let daemon_db = Arc::new(
+        crate::daemon::database::DaemonDatabase::open(&daemon_db_dir.join("daemon.db")).unwrap(),
+    );
+
+    let workspace_path_str = temp_dir.path().to_string_lossy().to_string();
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&workspace_path_str).unwrap();
+
+    // Create handler with daemon_db
+    let mut handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler.daemon_db = Some(daemon_db.clone());
+    handler.workspace_id = Some(workspace_id.clone());
+
+    handler
+        .initialize_workspace_with_force(Some(workspace_path_str.clone()), true)
+        .await
+        .unwrap();
+
+    // Inject a real embedding provider so spawn_workspace_embedding would
+    // return non-zero if called. Without this, the test could pass trivially
+    // because no provider means embed_count=0 regardless of the gate.
+    {
+        let mut ws_guard = handler.workspace.write().await;
+        let ws = ws_guard.as_mut().expect("workspace should be initialized");
+        ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
+    }
+
+    // Register workspace in daemon db
+    daemon_db
+        .upsert_workspace(&workspace_id, &workspace_path_str, "ready")
+        .unwrap();
+
+    // First: index the workspace so files are known
+    let index_tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path_str.clone()),
+        force: Some(true),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+    let result = index_tool.call_tool(&handler).await.unwrap();
+    let msg = extract_text_from_result(&result);
+    assert!(
+        msg.contains("Workspace indexing complete"),
+        "Index should succeed: {msg}"
+    );
+
+    // Now: refresh with no changes and no force
+    let refresh_tool = ManageWorkspaceTool {
+        operation: "refresh".to_string(),
+        path: None,
+        force: Some(false),
+        name: None,
+        workspace_id: Some(workspace_id.clone()),
+        detailed: None,
+    };
+    let result = refresh_tool.call_tool(&handler).await.unwrap();
+    let msg = extract_text_from_result(&result);
+
+    assert!(
+        msg.contains("Already up-to-date"),
+        "Refresh with no changes should report up-to-date: {msg}"
+    );
+    // The bug: embedding pipeline was triggered even when nothing changed
+    assert!(
+        !msg.contains("Embedding"),
+        "Refresh with no changes should NOT trigger embedding pipeline: {msg}"
+    );
+}

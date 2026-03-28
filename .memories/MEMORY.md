@@ -13,7 +13,9 @@
 - **Cross-platform review gap**: v6.0.0 shipped with broken Windows IPC (16 compile errors) because no reviewer ran `cargo check --target x86_64-pc-windows-msvc`. Always include cross-compilation in review checklists.
 - **normalize_path lowercasing caused duplicate workspaces**: SHA256 of lowercased vs case-preserved path produces different workspace IDs. After fixing path casing, daemon.db needs migration or old IDs create orphan index directories.
 - **C# property extraction uniquely vulnerable**: `extract_property` was the only extractor where type and name are sibling children of the same AST node with no structural anchor. All other member extractors in `csharp/members.rs` are safe.
-- **Dashboard workspace status stuck at "pending"**: Three-part root cause: adapter normalized backslashes to forward slashes before daemon stored the path; `upsert_workspace` unconditionally downgraded "ready" to "pending" on reconnect; early-return "already indexed" path never called `update_workspace_status`. Fixed in v6 via CASE guard on upsert and `normalize_workspace_paths()` on daemon startup.
+- **Dashboard workspace status "pending" had three independent causes**: (1) adapter normalized backslashes before daemon stored the path; (2) `upsert_workspace` downgraded "ready" to "pending" on reconnect; (3) `normalize_workspace_paths()` gated status restoration behind `if !cfg!(windows)`, blocking macOS/Linux. Stale binary auto-restart also missed disconnect-time mtime check, so daemon survived past stale detection.
+- **Windows daemon `CREATE_NO_WINDOW` kills signal handling**: `tokio::signal::ctrl_c()` wraps `SetConsoleCtrlHandler` which never fires without a console window. `taskkill /F` is `TerminateProcess` (instant kill, no cleanup). Solution: Win32 named events (`CreateEventW`/`SetEvent`/`WaitForSingleObject`) bridged into tokio via `spawn_blocking` + `Arc<Notify>`.
+- **Catch-up indexing path bug**: `get_database_mtime` used the stdio-mode path in daemon mode, so mtime comparison always failed. The blake3 `filter_changed_files` logic was correct but unreachable because `check_if_indexing_needed` was gated behind `is_indexed` and `handle_index_command` short-circuited.
 - **Codehealth analysis sources on disk but not compiled**: `src/analysis/` files kept dormant (not deleted). Gated out of Cargo.toml. Don't accidentally re-enable.
 
 ## Decisions
@@ -24,7 +26,7 @@
 - **`lib/` and `packages/` are NOT vendor directories**: They are primary source dirs in Elixir/Ruby/Dart and JS monorepos.
 - **Daemon-owned EmbeddingService with eager init**: Not pool-owned (muddies WorkspacePool responsibility), not lazy (re-introduces complexity), no explicit queue (provider mutex serializes).
 - **No symbol-level editing tools**: Agents ignore custom editing tools in favor of built-in Edit; bottleneck is search/understanding, not editing. If revisited, `insert_after_symbol` has the strongest case.
-- **Codehealth risk/coverage metrics shelved (not experimental)**: Test coverage showed 3% on a well-tested project (direct references only, no transitive closure). Security risk labeled most symbols HIGH due to heuristic miscalibration. Fundamental blockers: incomplete call graph due to dynamic dispatch/generics/closures, no type-resolved security analysis. `compute_test_quality_metrics` (rates test functions) is preserved as independent and reliable.
+- **Codehealth risk/coverage metrics shelved (not experimental)**: Test coverage showed 3% on a well-tested project (direct references only, no transitive closure). Security risk labeled most symbols HIGH due to heuristic miscalibration. `compute_test_quality_metrics` (rates test functions) is preserved as independent and reliable.
 
 ## Open Questions
 

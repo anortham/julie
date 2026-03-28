@@ -12,6 +12,8 @@ use tracing::{debug, info, warn};
 pub(crate) struct IndexResult {
     /// Files actually processed in this indexing run (may be 0 if nothing changed)
     pub files_processed: usize,
+    /// Orphaned files cleaned from DB (deleted from disk since last index)
+    pub orphans_cleaned: usize,
     /// Total files in the workspace DB after indexing
     pub files_total: usize,
     /// Total symbols in the workspace DB after indexing
@@ -98,23 +100,24 @@ impl ManageWorkspaceTool {
             "🐛 [INDEX TRACE E] About to filter files, force_reindex={}",
             force_reindex
         );
-        let files_to_index = if force_reindex {
+        let (files_to_index, orphans_cleaned) = if force_reindex {
             debug!(
                 "Force reindex mode - processing all {} files",
                 all_discovered_files.len()
             );
             debug!("🐛 [INDEX TRACE E1] Using all files (force_reindex=true)");
-            all_discovered_files
+            (all_discovered_files, 0)
         } else {
             debug!("🐛 [INDEX TRACE E2] Calling filter_changed_files");
-            let result = self
+            let (files, orphans) = self
                 .filter_changed_files(handler, all_discovered_files, workspace_path)
                 .await?;
             debug!(
-                "🐛 [INDEX TRACE E3] filter_changed_files returned {} files",
-                result.len()
+                "🐛 [INDEX TRACE E3] filter_changed_files returned {} files, {} orphans cleaned",
+                files.len(),
+                orphans
             );
-            result
+            (files, orphans)
         };
         debug!(
             "🐛 [INDEX TRACE F] Files filtered, {} files to index",
@@ -296,6 +299,7 @@ impl ManageWorkspaceTool {
 
         Ok(IndexResult {
             files_processed: total_files,
+            orphans_cleaned,
             files_total: total_files_in_db,
             symbols_total: total_symbols,
             relationships_total: total_relationships,

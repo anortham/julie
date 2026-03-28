@@ -12,14 +12,14 @@ use tracing::{debug, info, trace, warn};
 impl ManageWorkspaceTool {
     /// Filter files that actually need re-indexing based on hash changes
     ///
-    /// Returns only files that are new, modified, or missing from database.
-    /// Skips unchanged files to speed up incremental indexing.
+    /// Returns (files_to_process, orphans_cleaned) where orphans_cleaned is the
+    /// count of database entries removed for files that no longer exist on disk.
     pub(crate) async fn filter_changed_files(
         &self,
         handler: &JulieServerHandler,
         all_files: Vec<PathBuf>,
         workspace_path: &Path,
-    ) -> Result<Vec<PathBuf>> {
+    ) -> Result<(Vec<PathBuf>, usize)> {
         // 🔥 CRITICAL DEADLOCK FIX: Generate workspace ID directly instead of registry lookup
         // Same fix as other indexing operations - avoids registry lock contention
         let workspace_id = if let Some(_workspace) = handler.get_workspace().await? {
@@ -40,12 +40,12 @@ impl ManageWorkspaceTool {
                         "Failed to generate workspace ID: {} - indexing all files",
                         e
                     );
-                    return Ok(all_files);
+                    return Ok((all_files, 0));
                 }
             }
         } else {
             // No workspace available - all files are new
-            return Ok(all_files);
+            return Ok((all_files, 0));
         };
 
         // 🔥 CRITICAL FIX: Query the CORRECT database based on workspace_id
@@ -59,7 +59,7 @@ impl ManageWorkspaceTool {
                 Ok(id) => id,
                 Err(_) => {
                     warn!("Failed to generate primary workspace ID - treating all files as new");
-                    return Ok(all_files);
+                    return Ok((all_files, 0));
                 }
             };
 
@@ -94,20 +94,20 @@ impl ManageWorkspaceTool {
                                 "Reference workspace DB doesn't exist yet: {} - treating all files as new",
                                 e
                             );
-                            return Ok(all_files);
+                            return Ok((all_files, 0));
                         }
                         Err(e) => {
                             warn!(
                                 "Failed to open reference workspace DB: {} - treating all files as new",
                                 e
                             );
-                            return Ok(all_files);
+                            return Ok((all_files, 0));
                         }
                     }
                 } else {
                     // Reference workspace database doesn't exist yet - all files are new
                     debug!("Reference workspace DB doesn't exist yet - treating all files as new");
-                    return Ok(all_files);
+                    return Ok((all_files, 0));
                 }
             };
 
@@ -134,7 +134,7 @@ impl ManageWorkspaceTool {
                         all_files.len()
                     );
                     drop(db_lock);
-                    return Ok(all_files);
+                    return Ok((all_files, 0));
                 }
 
                 let hashes = match db_lock.get_file_hashes_for_workspace() {
@@ -144,16 +144,16 @@ impl ManageWorkspaceTool {
                             "Failed to get existing file hashes: {} - treating all files as new",
                             e
                         );
-                        return Ok(all_files);
+                        return Ok((all_files, 0));
                     }
                 };
                 drop(db_lock);
                 hashes
             } else {
-                return Ok(all_files);
+                return Ok((all_files, 0));
             }
         } else {
-            return Ok(all_files);
+            return Ok((all_files, 0));
         };
 
         debug!(
@@ -240,7 +240,7 @@ impl ManageWorkspaceTool {
             );
         }
 
-        Ok(files_to_process)
+        Ok((files_to_process, orphaned_count))
     }
 
     /// Clean up orphaned database entries for files that no longer exist on disk

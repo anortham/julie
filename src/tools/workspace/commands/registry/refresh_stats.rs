@@ -37,22 +37,34 @@ impl ManageWorkspaceTool {
                                 warn!("Failed to update workspace stats: {}", e);
                             }
 
-                            // Force refresh: abort running pipeline and clear embeddings
-                            if force {
-                                let mut task_guard = handler.embedding_task.lock().await;
-                                if let Some((cancel_flag, handle)) = task_guard.take() {
-                                    info!(
-                                        "Cancelling running embedding pipeline for force refresh"
-                                    );
-                                    cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
-                                    handle.abort();
+                            // Only run embedding pipeline when the DB actually mutated.
+                            // files_processed: new/modified files re-indexed
+                            // orphans_cleaned: deleted files whose symbols were removed
+                            // force: user-requested full rebuild
+                            // When nothing changed, existing embeddings are still valid;
+                            // live file changes are handled by the file watcher's per-file embedder.
+                            let db_mutated =
+                                result.files_processed > 0 || result.orphans_cleaned > 0;
+                            let embed_count = if db_mutated || force {
+                                if force {
+                                    let mut task_guard = handler.embedding_task.lock().await;
+                                    if let Some((cancel_flag, handle)) = task_guard.take() {
+                                        info!(
+                                            "Cancelling running embedding pipeline for force refresh"
+                                        );
+                                        cancel_flag
+                                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                                        handle.abort();
+                                    }
                                 }
-                            }
 
-                            let embed_count = crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
-                                handler,
-                                workspace_id.to_string(),
-                            ).await;
+                                crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+                                    handler,
+                                    workspace_id.to_string(),
+                                ).await
+                            } else {
+                                0
+                            };
 
                             let status = if result.files_processed == 0 {
                                 "Already up-to-date.".to_string()

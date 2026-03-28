@@ -158,7 +158,8 @@
     "ask": []
   },
   "enabledPlugins": {
-    "julie@julie-plugin": true
+    "julie@julie-plugin": true,
+    "playwright@claude-plugins-official": true
   },
   "outputStyle": "Explanatory"
 }
