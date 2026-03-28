@@ -351,4 +351,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-03-28 | **Status:** Production Ready (v6.1.7 — daemon mode, Observatory dashboard, live search playground, shared workspaces, shared embedding pipeline, catch-up indexing on connect, graceful Windows shutdown; codehealth risk/coverage metrics shelved due to data quality)
+**Last Updated:** 2026-03-28 | **Status:** Production Ready (v6.1.8 — daemon mode, Observatory dashboard, live search playground, shared workspaces, shared embedding pipeline, catch-up indexing on connect, graceful Windows shutdown; codehealth risk/coverage metrics shelved due to data quality)
