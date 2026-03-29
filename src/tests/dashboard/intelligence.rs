@@ -560,7 +560,7 @@ fn test_generate_story_cards_produces_expected_cards() {
         cards[0]
     );
 
-    // Card 2: largest file
+    // Card 2: most complex file
     assert!(
         cards[1].contains("src/big_file.rs"),
         "second card should mention hotspot path, got: {}",

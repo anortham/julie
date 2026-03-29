@@ -334,9 +334,15 @@ pub async fn detail(
                                 let pct = (**count as f64 / total as f64) * 100.0;
                                 let css_var =
                                     crate::dashboard::routes::intelligence::kind_css_var(kind);
+                                // Escape kind for safe HTML attribute insertion
+                                let escaped_kind = kind
+                                    .replace('&', "&amp;")
+                                    .replace('<', "&lt;")
+                                    .replace('>', "&gt;")
+                                    .replace('"', "&quot;");
                                 format!(
                                     r#"<div class="kind-bar-segment" style="width: {:.1}%; background: var({});" title="{}: {} ({:.1}%)"></div>"#,
-                                    pct, css_var, kind, count, pct
+                                    pct, css_var, escaped_kind, count, pct
                                 )
                             })
                             .collect();

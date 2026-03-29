@@ -94,19 +94,12 @@ pub async fn search(
     context.insert("results", &results);
     context.insert("no_pool", &no_pool);
 
-    // Build centrality ranks (name -> rank 1..=20) for badge display
+    // Build centrality ranks (name -> rank 1..=20) for badge display.
+    // Only show badges when a specific workspace is selected; cross-workspace
+    // badges would be misleading since ranks come from one workspace.
     let centrality_ranks: std::collections::HashMap<String, usize> =
-        if let Some(pool) = state.dashboard.workspace_pool() {
-            let ws_id = if workspace_id.is_empty() {
-                state
-                    .dashboard
-                    .daemon_db()
-                    .and_then(|db| db.list_workspaces().ok())
-                    .and_then(|wss| wss.first().map(|w| w.workspace_id.clone()))
-                    .unwrap_or_default()
-            } else {
-                workspace_id.to_string()
-            };
+        if !workspace_id.is_empty() && let Some(pool) = state.dashboard.workspace_pool() {
+            let ws_id = workspace_id.to_string();
 
             if let Some(ws) = pool.get(&ws_id).await {
                 if let Some(db) = &ws.db {

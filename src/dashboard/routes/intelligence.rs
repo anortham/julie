@@ -115,10 +115,10 @@ pub fn generate_story_cards(
         ));
     }
 
-    // Card 2: largest file
+    // Card 2: most complex file (by composite score, not raw size)
     if let Some(hotspot) = hotspots.first() {
         cards.push(format!(
-            "Largest file: {} ({} lines, {} symbols)",
+            "Most complex file: {} ({} lines, {} symbols)",
             hotspot.path, hotspot.line_count, hotspot.symbol_count
         ));
     }
@@ -202,6 +202,15 @@ pub fn format_duration_ms(ms: i64) -> String {
 /// watcher attachment). Works for any registered workspace, even those
 /// without an active session.
 fn open_workspace_db(workspace_id: &str) -> Result<SymbolDatabase, StatusCode> {
+    // Reject path traversal attempts (workspace IDs are alphanumeric + underscore)
+    if workspace_id.contains('/')
+        || workspace_id.contains('\\')
+        || workspace_id.contains("..")
+        || workspace_id.is_empty()
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let db_path = dirs::home_dir()
         .unwrap_or_default()
         .join(".julie/indexes")
