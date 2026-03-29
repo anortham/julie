@@ -28,6 +28,32 @@
   --julie-transition:   0.2s ease;
   --font-display:       "Outfit", system-ui, sans-serif;
   --font-mono:          "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* Language colors (GitHub linguist) */
+  --lang-rust:       #dea584;
+  --lang-typescript: #3178c6;
+  --lang-javascript: #f1e05a;
+  --lang-python:     #3572A5;
+  --lang-java:       #b07219;
+  --lang-csharp:     #178600;
+  --lang-go:         #00ADD8;
+  --lang-c:          #555555;
+  --lang-cpp:        #555555;
+  --lang-ruby:       #701516;
+  --lang-swift:      #F05138;
+  --lang-php:        #4F5D95;
+  --lang-kotlin:     #A97BFF;
+  --lang-html:       #e34c26;
+  --lang-css:        #563d7c;
+  --lang-scala:      #c22d40;
+  --lang-elixir:     #6e4a7e;
+  --lang-lua:        #000080;
+  --lang-dart:       #00B4AB;
+  --lang-zig:        #ec915c;
+  --lang-r:          #198CE7;
+  --lang-gdscript:   #355570;
+  --lang-vue:        #41b883;
+  --lang-other:      #8b8b8b;
 }
 
 [data-theme="light"] {
@@ -47,6 +73,32 @@
   --julie-danger:       #dc2626;
   --julie-danger-dim:   rgba(220, 38, 38, 0.08);
   --julie-glow:         rgba(184, 120, 32, 0.04);
+
+  /* Language colors (GitHub linguist) */
+  --lang-rust:       #dea584;
+  --lang-typescript: #3178c6;
+  --lang-javascript: #f1e05a;
+  --lang-python:     #3572A5;
+  --lang-java:       #b07219;
+  --lang-csharp:     #178600;
+  --lang-go:         #00ADD8;
+  --lang-c:          #555555;
+  --lang-cpp:        #555555;
+  --lang-ruby:       #701516;
+  --lang-swift:      #F05138;
+  --lang-php:        #4F5D95;
+  --lang-kotlin:     #A97BFF;
+  --lang-html:       #e34c26;
+  --lang-css:        #563d7c;
+  --lang-scala:      #c22d40;
+  --lang-elixir:     #6e4a7e;
+  --lang-lua:        #000080;
+  --lang-dart:       #00B4AB;
+  --lang-zig:        #ec915c;
+  --lang-r:          #198CE7;
+  --lang-gdscript:   #355570;
+  --lang-vue:        #41b883;
+  --lang-other:      #8b8b8b;
 }
 
 /* ---------- Reset & Base ---------- */
@@ -447,6 +499,62 @@ html, body {
 @keyframes shimmer {
   0%   { left: -100%; }
   100% { left: 200%; }
+}
+
+/* ---------- Language Bars ---------- */
+
+.lang-bar-track {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--julie-bg-inset);
+}
+
+.lang-bar-segment {
+  height: 100%;
+  min-width: 2px;
+  transition: width 0.4s ease;
+}
+
+.lang-bar-segment:first-child {
+  border-radius: 2px 0 0 2px;
+}
+
+.lang-bar-segment:last-child {
+  border-radius: 0 2px 2px 0;
+}
+
+.lang-bar-segment:only-child {
+  border-radius: 2px;
+}
+
+/* Larger variant for detail panel */
+.lang-bar-track.lang-bar-lg {
+  height: 8px;
+  border-radius: 4px;
+}
+
+.lang-bar-lg .lang-bar-segment:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.lang-bar-lg .lang-bar-segment:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.lang-bar-lg .lang-bar-segment:only-child {
+  border-radius: 4px;
+}
+
+/* Legend swatch */
+.lang-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 0.4rem;
+  vertical-align: middle;
 }
 
 /* ---------- Live Activity Feed ---------- */
