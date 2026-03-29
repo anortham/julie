@@ -12,6 +12,7 @@ use tracing::{debug, info, warn};
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 
 // Module declarations
+pub mod analytics;
 mod bulk_operations;
 mod files;
 mod helpers;
@@ -26,6 +27,7 @@ mod type_queries;
 pub mod types;
 pub mod vectors;
 mod workspace;
+pub use analytics::*;
 pub use tool_calls::{HistorySummary, ToolCallSummary};
 
 /// Register sqlite-vec extension as a global auto-extension (once per process).

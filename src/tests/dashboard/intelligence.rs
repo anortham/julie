@@ -1,0 +1,329 @@
+use crate::database::analytics::{CentralitySymbol, FileHotspot};
+use crate::database::types::FileInfo;
+use crate::database::SymbolDatabase;
+use tempfile::TempDir;
+
+fn test_db() -> (TempDir, SymbolDatabase) {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let db = SymbolDatabase::new(&db_path).unwrap();
+    (tmp, db)
+}
+
+fn make_file(path: &str, language: &str, line_count: i64, size: i64) -> FileInfo {
+    FileInfo {
+        path: path.to_string(),
+        language: language.to_string(),
+        hash: format!("hash_{}", path),
+        size,
+        last_modified: 1000000,
+        last_indexed: 0,
+        symbol_count: 0,
+        line_count: line_count as i32,
+        content: None,
+    }
+}
+
+// --- get_top_symbols_by_centrality ---
+
+#[test]
+fn test_get_top_symbols_by_centrality_returns_empty_for_empty_db() {
+    let (_tmp, db) = test_db();
+    let result = db.get_top_symbols_by_centrality(10).unwrap();
+    assert!(result.is_empty(), "expected empty result for empty db");
+}
+
+#[test]
+fn test_get_top_symbols_by_centrality_excludes_zero_scores() {
+    let (_tmp, db) = test_db();
+
+    db.store_file_info(&make_file("src/main.rs", "rust", 100, 1000)).unwrap();
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES ('sym1', 'zero_score_fn', 'function', 'rust', 'src/main.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
+        [],
+    ).unwrap();
+
+    let result = db.get_top_symbols_by_centrality(10).unwrap();
+    assert!(result.is_empty(), "symbols with reference_score=0 must be excluded");
+}
+
+#[test]
+fn test_get_top_symbols_by_centrality_returns_ordered_by_score() {
+    let (_tmp, db) = test_db();
+
+    db.store_file_info(&make_file("src/lib.rs", "rust", 200, 2000)).unwrap();
+
+    // Insert symbols directly with known reference_score values
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
+        rusqlite::params!["s1", "low_fn", "function", "rust", "src/lib.rs", "fn low_fn()", 1.5_f64],
+    ).unwrap();
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
+        rusqlite::params!["s2", "high_fn", "function", "rust", "src/lib.rs", "fn high_fn()", 9.0_f64],
+    ).unwrap();
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
+        rusqlite::params!["s3", "mid_fn", "function", "rust", "src/lib.rs", "fn mid_fn()", 4.0_f64],
+    ).unwrap();
+
+    let result = db.get_top_symbols_by_centrality(10).unwrap();
+    assert_eq!(result.len(), 3);
+    assert_eq!(result[0].name, "high_fn", "highest score must come first");
+    assert_eq!(result[1].name, "mid_fn", "second highest must be second");
+    assert_eq!(result[2].name, "low_fn", "lowest non-zero score must be last");
+}
+
+#[test]
+fn test_get_top_symbols_by_centrality_respects_limit() {
+    let (_tmp, db) = test_db();
+
+    db.store_file_info(&make_file("src/lib.rs", "rust", 100, 1000)).unwrap();
+
+    for i in 1..=5u32 {
+        db.conn.execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
+            rusqlite::params![
+                format!("s{}", i),
+                format!("fn_{}", i),
+                "function",
+                "rust",
+                "src/lib.rs",
+                format!("fn fn_{}()", i),
+                i as f64,
+            ],
+        ).unwrap();
+    }
+
+    let result = db.get_top_symbols_by_centrality(3).unwrap();
+    assert_eq!(result.len(), 3, "limit of 3 must return exactly 3 results");
+}
+
+#[test]
+fn test_get_top_symbols_by_centrality_fields_populated() {
+    let (_tmp, db) = test_db();
+
+    db.store_file_info(&make_file("src/core.rs", "rust", 100, 1000)).unwrap();
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
+        rusqlite::params!["s1", "core_fn", "function", "rust", "src/core.rs", "fn core_fn()", 5.0_f64],
+    ).unwrap();
+
+    let result = db.get_top_symbols_by_centrality(1).unwrap();
+    assert_eq!(result.len(), 1);
+    let sym: &CentralitySymbol = &result[0];
+    assert_eq!(sym.name, "core_fn");
+    assert_eq!(sym.kind, "function");
+    assert_eq!(sym.language, "rust");
+    assert_eq!(sym.file_path, "src/core.rs");
+    assert_eq!(sym.signature, Some("fn core_fn()".to_string()));
+    assert!((sym.reference_score - 5.0).abs() < 1e-9, "reference_score must be 5.0");
+}
+
+// --- get_file_hotspots ---
+
+#[test]
+fn test_get_file_hotspots_empty_db() {
+    let (_tmp, db) = test_db();
+    let result = db.get_file_hotspots(10).unwrap();
+    assert!(result.is_empty(), "expected empty result for empty db");
+}
+
+#[test]
+fn test_get_file_hotspots_returns_ordered_by_composite_score() {
+    let (_tmp, db) = test_db();
+
+    // Composite = line_count + symbol_count * 10
+    // File A: 50 lines, 1 symbol = 60
+    // File B: 20 lines, 5 symbols = 70  <- highest
+    // File C: 100 lines, 0 symbols = 100 <- actually highest
+    db.store_file_info(&make_file("src/a.rs", "rust", 50, 500)).unwrap();
+    db.store_file_info(&make_file("src/b.rs", "rust", 20, 200)).unwrap();
+    db.store_file_info(&make_file("src/c.rs", "rust", 100, 1000)).unwrap();
+
+    // Add 1 symbol to a.rs (score: 50 + 10 = 60)
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0.0, 1, 10, 0, 0, 0, 100, 0)",
+        rusqlite::params!["s1", "fn_a", "function", "rust", "src/a.rs"],
+    ).unwrap();
+
+    // Add 5 symbols to b.rs (score: 20 + 50 = 70)
+    for i in 1..=5u32 {
+        db.conn.execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+             VALUES (?1, ?2, ?3, ?4, ?5, 0.0, 1, 10, 0, 0, 0, 100, 0)",
+            rusqlite::params![format!("sb{}", i), format!("fn_b{}", i), "function", "rust", "src/b.rs"],
+        ).unwrap();
+    }
+    // c.rs has 0 symbols, line_count 100 => score 100
+
+    let result = db.get_file_hotspots(10).unwrap();
+    assert_eq!(result.len(), 3);
+    // c.rs = 100, b.rs = 70, a.rs = 60
+    assert_eq!(result[0].path, "src/c.rs", "c.rs with 100 lines and no symbols should rank first");
+    assert_eq!(result[1].path, "src/b.rs", "b.rs with 5 symbols should rank second");
+    assert_eq!(result[2].path, "src/a.rs", "a.rs with 1 symbol should rank third");
+}
+
+#[test]
+fn test_get_file_hotspots_respects_limit() {
+    let (_tmp, db) = test_db();
+
+    for i in 1..=5u32 {
+        db.store_file_info(&make_file(
+            &format!("src/file{}.rs", i),
+            "rust",
+            (i * 10) as i64,
+            1000,
+        )).unwrap();
+    }
+
+    let result = db.get_file_hotspots(2).unwrap();
+    assert_eq!(result.len(), 2, "limit of 2 must return exactly 2 results");
+}
+
+#[test]
+fn test_get_file_hotspots_fields_populated() {
+    let (_tmp, db) = test_db();
+
+    db.store_file_info(&make_file("src/hot.rs", "rust", 200, 4096)).unwrap();
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES ('sym1', 'hot_fn', 'function', 'rust', 'src/hot.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
+        [],
+    ).unwrap();
+
+    let result = db.get_file_hotspots(1).unwrap();
+    assert_eq!(result.len(), 1);
+    let hotspot: &FileHotspot = &result[0];
+    assert_eq!(hotspot.path, "src/hot.rs");
+    assert_eq!(hotspot.language, "rust");
+    assert_eq!(hotspot.line_count, 200);
+    assert_eq!(hotspot.size, 4096);
+    assert_eq!(hotspot.symbol_count, 1);
+}
+
+#[test]
+fn test_get_file_hotspots_null_line_count_treated_as_zero() {
+    let (_tmp, db) = test_db();
+
+    // Insert a file with NULL line_count directly (shouldn't happen via FileInfo but
+    // verify robustness of the query's COALESCE/IFNULL handling)
+    db.conn.execute(
+        "INSERT INTO files (path, language, hash, size, last_modified, last_indexed, symbol_count, line_count)
+         VALUES ('src/no_lines.rs', 'rust', 'hash_x', 500, 0, 0, 0, NULL)",
+        [],
+    ).unwrap();
+
+    let result = db.get_file_hotspots(10).unwrap();
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].line_count, 0, "NULL line_count should be treated as 0");
+}
+
+// --- get_aggregate_stats ---
+
+#[test]
+fn test_get_aggregate_stats_empty_db() {
+    let (_tmp, db) = test_db();
+    let stats = db.get_aggregate_stats().unwrap();
+    assert_eq!(stats.total_files, 0);
+    assert_eq!(stats.total_symbols, 0);
+    assert_eq!(stats.total_lines, 0);
+    assert_eq!(stats.total_relationships, 0);
+    assert_eq!(stats.language_count, 0);
+}
+
+#[test]
+fn test_get_aggregate_stats_counts_files_and_symbols() {
+    let (_tmp, db) = test_db();
+
+    db.store_file_info(&make_file("src/a.rs", "rust", 100, 1000)).unwrap();
+    db.store_file_info(&make_file("src/b.rs", "rust", 50, 500)).unwrap();
+    db.store_file_info(&make_file("lib/main.py", "python", 200, 2000)).unwrap();
+
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES ('s1', 'fn_a', 'function', 'rust', 'src/a.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
+        [],
+    ).unwrap();
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES ('s2', 'fn_b', 'function', 'rust', 'src/b.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
+        [],
+    ).unwrap();
+
+    let stats = db.get_aggregate_stats().unwrap();
+    assert_eq!(stats.total_files, 3);
+    assert_eq!(stats.total_symbols, 2);
+    assert_eq!(stats.total_lines, 350, "100 + 50 + 200 = 350");
+    assert_eq!(stats.language_count, 2, "rust + python = 2 distinct languages");
+}
+
+#[test]
+fn test_get_aggregate_stats_total_lines_sums_line_count() {
+    let (_tmp, db) = test_db();
+
+    db.store_file_info(&make_file("a.rs", "rust", 30, 100)).unwrap();
+    db.store_file_info(&make_file("b.rs", "rust", 70, 200)).unwrap();
+
+    let stats = db.get_aggregate_stats().unwrap();
+    assert_eq!(stats.total_lines, 100, "30 + 70 = 100");
+}
+
+#[test]
+fn test_get_aggregate_stats_language_count_ignores_empty_language() {
+    let (_tmp, db) = test_db();
+
+    db.store_file_info(&make_file("a.rs", "rust", 10, 100)).unwrap();
+    // Insert a file with empty language directly
+    db.conn.execute(
+        "INSERT INTO files (path, language, hash, size, last_modified, last_indexed, symbol_count, line_count)
+         VALUES ('unknown_file', '', 'hash_empty', 100, 0, 0, 0, 5)",
+        [],
+    ).unwrap();
+
+    let stats = db.get_aggregate_stats().unwrap();
+    // Files with empty language must NOT count toward language_count
+    assert_eq!(stats.language_count, 1, "only 'rust' counts; empty string excluded");
+    // But total_files should include all files
+    assert_eq!(stats.total_files, 2);
+}
+
+#[test]
+fn test_get_aggregate_stats_counts_relationships() {
+    let (_tmp, db) = test_db();
+
+    db.store_file_info(&make_file("src/a.rs", "rust", 10, 100)).unwrap();
+
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES ('s1', 'fn_a', 'function', 'rust', 'src/a.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
+        [],
+    ).unwrap();
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES ('s2', 'fn_b', 'function', 'rust', 'src/a.rs', 0.0, 2, 20, 0, 0, 0, 100, 0)",
+        [],
+    ).unwrap();
+
+    db.conn.execute(
+        "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+         VALUES ('r1', 's1', 's2', 'calls', 'src/a.rs', 5)",
+        [],
+    ).unwrap();
+    db.conn.execute(
+        "INSERT INTO relationships (id, from_symbol_id, to_symbol_id, kind, file_path, line_number)
+         VALUES ('r2', 's2', 's1', 'calls', 'src/a.rs', 15)",
+        [],
+    ).unwrap();
+
+    let stats = db.get_aggregate_stats().unwrap();
+    assert_eq!(stats.total_relationships, 2);
+}
