@@ -98,6 +98,22 @@
         {% endif %}
       </div>
     </div>
+    <div class="column">
+      <div class="julie-card" style="text-align: center;"
+           title="Percentage of tool calls that completed successfully">
+        <p class="label-text">Success Rate</p>
+        {% if success_total > 0 %}
+          <p class="value-text" style="color:
+            {% if success_rate >= 99.0 %}var(--julie-success)
+            {% elif success_rate >= 95.0 %}var(--julie-warning)
+            {% else %}var(--julie-danger){% endif %};">
+            {{ success_rate | round(precision=1) }}%
+          </p>
+        {% else %}
+          <p class="value-text" style="color: var(--julie-text-muted);">&mdash;</p>
+        {% endif %}
+      </div>
+    </div>
   </div>
 
   <!-- Two-column layout: breakdown + live feed -->

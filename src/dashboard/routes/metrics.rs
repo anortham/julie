@@ -99,6 +99,27 @@ pub async fn index(
     let output_bytes = history.total_output_bytes;
     let saved_bytes = source_bytes.saturating_sub(output_bytes);
 
+    // Tool success rate
+    let (success_total, success_ok) = if workspace_id.is_empty() {
+        let mut total = 0i64;
+        let mut ok = 0i64;
+        for ws in &workspaces {
+            if let Ok((t, o)) = db.get_tool_success_rate(&ws.workspace_id, params.days) {
+                total += t;
+                ok += o;
+            }
+        }
+        (total, ok)
+    } else {
+        db.get_tool_success_rate(workspace_id, params.days).unwrap_or((0, 0))
+    };
+
+    let success_rate = if success_total > 0 {
+        (success_ok as f64 / success_total as f64) * 100.0
+    } else {
+        100.0
+    };
+
     let mut context = Context::new();
     context.insert("active_page", "metrics");
     context.insert("no_data", &false);
@@ -113,6 +134,8 @@ pub async fn index(
     context.insert("source_bytes", &source_bytes);
     context.insert("output_bytes", &output_bytes);
     context.insert("saved_bytes", &saved_bytes);
+    context.insert("success_rate", &success_rate);
+    context.insert("success_total", &success_total);
 
     render_template(&state, "metrics.html", context).await
 }
