@@ -9,6 +9,7 @@
     </td>
     <td>
       <span class="mono" style="color: var(--julie-text-muted);">{{ ws.path }}</span>
+      <div class="lang-bar-track" id="langbar-{{ ws.workspace_id }}" style="margin-top: 0.3rem;"></div>
     </td>
     <td style="text-align: right;" id="symbols-{{ ws.workspace_id }}">
       {{ ws.symbol_count | default(value="—") }}

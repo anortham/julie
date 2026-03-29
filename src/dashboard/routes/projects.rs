@@ -188,6 +188,9 @@ pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse
     map.insert("_summary".into(), serde_json::Value::String(summary_html));
 
     for ws in &workspaces {
+        let languages = fetch_language_data(&state, &ws.workspace_id, 5).await;
+        let lang_bar_html = render_compact_lang_bar(&languages);
+
         let badge = match ws.status.as_str() {
             "ready" => r#"<span class="badge-ready">Ready</span>"#,
             "indexing" => r#"<span class="badge-indexing">Indexing</span>"#,
@@ -201,6 +204,7 @@ pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse
                         "symbols": ws.symbol_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
                         "files": ws.file_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
                         "vectors": ws.vector_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
+                        "lang_bar": lang_bar_html,
                     }),
                 );
                 continue;
@@ -213,6 +217,7 @@ pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse
                 "symbols": ws.symbol_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
                 "files": ws.file_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
                 "vectors": ws.vector_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
+                "lang_bar": lang_bar_html,
             }),
         );
     }

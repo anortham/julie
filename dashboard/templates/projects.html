@@ -34,6 +34,8 @@ setInterval(async () => {
       if (files) files.textContent = ws.files;
       const vecs = document.getElementById('vectors-' + id);
       if (vecs) vecs.textContent = ws.vectors;
+      const lb = document.getElementById('langbar-' + id);
+      if (lb && ws.lang_bar !== undefined) lb.innerHTML = ws.lang_bar;
     }
   } catch (_) {}
 }, 5000);
