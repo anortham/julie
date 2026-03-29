@@ -43,6 +43,9 @@
     <!-- Symbol name -->
     <span class="mono" style="font-weight: 600; color: var(--julie-text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
       {{ result.name | default(value="(unnamed)") }}
+      {% if centrality_ranks[result.name] %}
+        <span class="centrality-badge">&#9733; Top {{ centrality_ranks[result.name] }}</span>
+      {% endif %}
     </span>
 
     <!-- File and line -->
