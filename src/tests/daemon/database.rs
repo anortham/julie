@@ -464,6 +464,63 @@ mod tests {
         assert!(db.get_workspace("sealab_72d18461").unwrap().is_some());
     }
 
+    // -------------------------------------------------------------------------
+    // A7: Tool Call Success Rate
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_get_tool_success_rate() {
+        let (db, _tmp) = create_test_db();
+
+        // Insert 8 successful calls and 2 failed calls (10 total)
+        for _ in 0..8 {
+            db.insert_tool_call("ws1", "sess1", "fast_search", 10.0, Some(5), None, None, true, None)
+                .unwrap();
+        }
+        for _ in 0..2 {
+            db.insert_tool_call("ws1", "sess1", "fast_search", 5.0, Some(0), None, None, false, None)
+                .unwrap();
+        }
+
+        let (total, succeeded) = db.get_tool_success_rate("ws1", 7).unwrap();
+        assert_eq!(total, 10, "should count all 10 tool calls");
+        assert_eq!(succeeded, 8, "should count only the 8 successful calls");
+    }
+
+    #[test]
+    fn test_get_tool_success_rate_empty() {
+        let (db, _tmp) = create_test_db();
+
+        // No tool calls at all
+        let (total, succeeded) = db.get_tool_success_rate("ws1", 7).unwrap();
+        assert_eq!(total, 0, "no calls should return total=0");
+        assert_eq!(succeeded, 0, "no calls should return succeeded=0");
+    }
+
+    #[test]
+    fn test_get_tool_success_rate_workspace_isolation() {
+        let (db, _tmp) = create_test_db();
+
+        // Insert calls for ws1
+        for _ in 0..5 {
+            db.insert_tool_call("ws1", "sess1", "fast_search", 10.0, None, None, None, true, None)
+                .unwrap();
+        }
+        // Insert calls for ws2 (should not affect ws1 query)
+        for _ in 0..3 {
+            db.insert_tool_call("ws2", "sess2", "deep_dive", 20.0, None, None, None, false, None)
+                .unwrap();
+        }
+
+        let (total, succeeded) = db.get_tool_success_rate("ws1", 7).unwrap();
+        assert_eq!(total, 5, "should only count ws1 calls");
+        assert_eq!(succeeded, 5, "all ws1 calls succeeded");
+
+        let (total2, succeeded2) = db.get_tool_success_rate("ws2", 7).unwrap();
+        assert_eq!(total2, 3, "should only count ws2 calls");
+        assert_eq!(succeeded2, 0, "no ws2 calls succeeded");
+    }
+
     #[test]
     fn test_migrate_workspace_ids_empty_map() {
         let (db, _tmp) = create_test_db();

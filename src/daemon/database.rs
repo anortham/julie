@@ -489,6 +489,23 @@ impl DaemonDatabase {
         Ok(())
     }
 
+    /// Get tool call success rate for a workspace over the last N days.
+    /// Returns (total_calls, succeeded_calls).
+    pub fn get_tool_success_rate(&self, workspace_id: &str, days: u32) -> Result<(i64, i64)> {
+        let conn = self.conn.lock().unwrap_or_else(|p| p.into_inner());
+        let cutoff = now_unix() - (days as i64 * 86400);
+
+        let (total, succeeded): (i64, i64) = conn.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END), 0) \
+             FROM tool_calls \
+             WHERE workspace_id = ?1 AND timestamp >= ?2",
+            params![workspace_id, cutoff],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        Ok((total, succeeded))
+    }
+
     /// Query aggregated tool call history for a workspace over the last `days` days.
     pub fn query_tool_call_history(&self, workspace_id: &str, days: u32) -> Result<HistorySummary> {
         use std::collections::HashMap;
