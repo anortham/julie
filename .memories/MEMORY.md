@@ -2,33 +2,28 @@
 
 - **Tantivy OR-mode bug**: `Occur::Should` clauses become optional when `Must` clauses exist in the same `BooleanQuery`. Fix: wrap OR clauses in a nested `BooleanQuery`.
 - **sqlite-vec vec0 virtual tables** don't support `INSERT OR REPLACE`; must DELETE then INSERT.
-- **Atomic saves vs file watcher**: Editors do write-temp, delete-original, rename-temp. DELETE handler must check `path.exists()` before purging symbols. Also `should_index_file()` calls `path.is_file()` which is false for deleted files; need separate `should_process_deletion()`.
-- **SQL cross-table column comparisons** can silently destroy query plans. Always check `EXPLAIN QUERY PLAN` when joining symbol tables.
+- **Atomic saves vs file watcher**: Editors do write-temp, delete-original, rename-temp. DELETE handler must check `path.exists()` before purging. `should_index_file()` calls `path.is_file()` which is false for deleted files; need separate `should_process_deletion()`.
 - **CodeRankEmbed on Windows DirectML**: RoPE uses unsupported tensor ops, produces zero vectors silently. Use Jina-code-v2 via ORT+DirectML instead.
-- **DirectML VRAM overflow**: Passing all texts in one ORT call forces padding to longest sequence; 250 texts with 8192-token max can exceed 6GB VRAM. Always pass explicit sub-batch size (32) to fastembed.
-- **UTF-8 truncation**: `truncate_on_word_boundary` must use char boundaries, not byte indices. CJK/Cyrillic will panic otherwise.
-- **OneDrive sync storm**: Embedding cache on Windows must use `LOCALAPPDATA`, not `$HOME/.cache/` (which is OneDrive-synced).
+- **DirectML VRAM overflow**: Passing all texts in one ORT call forces padding to longest sequence. Always pass explicit sub-batch size (32) to fastembed.
+- **OneDrive sync storm**: Embedding cache on Windows must use `LOCALAPPDATA`, not `$HOME/.cache/` (OneDrive-synced).
 - **WMI AdapterRAM 32-bit overflow**: `uint32` wraps at 4GB. Try `nvidia-smi` first; treat WMI < 2GB as wrapped.
 - **`spawn_blocking` survives `JoinHandle::abort()`**: Must use `AtomicBool` cancellation flag checked between batches.
-- **Cross-platform review gap**: v6.0.0 shipped with broken Windows IPC (16 compile errors) because no reviewer ran `cargo check --target x86_64-pc-windows-msvc`. Always include cross-compilation in review checklists.
-- **normalize_path lowercasing caused duplicate workspaces**: SHA256 of lowercased vs case-preserved path produces different workspace IDs. After fixing path casing, daemon.db needs migration or old IDs create orphan index directories.
-- **C# property extraction uniquely vulnerable**: `extract_property` was the only extractor where type and name are sibling children of the same AST node with no structural anchor. All other member extractors in `csharp/members.rs` are safe.
-- **Dashboard workspace status "pending" had three independent causes**: (1) adapter normalized backslashes before daemon stored the path; (2) `upsert_workspace` downgraded "ready" to "pending" on reconnect; (3) `normalize_workspace_paths()` gated status restoration behind `if !cfg!(windows)`, blocking macOS/Linux. Stale binary auto-restart also missed disconnect-time mtime check, so daemon survived past stale detection.
-- **Windows daemon `CREATE_NO_WINDOW` kills signal handling**: `tokio::signal::ctrl_c()` wraps `SetConsoleCtrlHandler` which never fires without a console window. `taskkill /F` is `TerminateProcess` (instant kill, no cleanup). Solution: Win32 named events (`CreateEventW`/`SetEvent`/`WaitForSingleObject`) bridged into tokio via `spawn_blocking` + `Arc<Notify>`.
-- **Catch-up indexing path bug**: `get_database_mtime` used the stdio-mode path in daemon mode, so mtime comparison always failed. The blake3 `filter_changed_files` logic was correct but unreachable because `check_if_indexing_needed` was gated behind `is_indexed` and `handle_index_command` short-circuited.
-- **Codehealth analysis sources on disk but not compiled**: `src/analysis/` files kept dormant (not deleted). Gated out of Cargo.toml. Don't accidentally re-enable.
+- **Windows daemon `CREATE_NO_WINDOW` kills signal handling**: Use Win32 named events, not `tokio::signal::ctrl_c()` or `taskkill`.
+- **Adapter `forward_bytes` race condition (UNFIXED)**: `tokio::select!` cancels the read-from-daemon task when stdin EOF arrives, breaking bidirectional MCP forwarding. Fix: `tokio::join!` or half-close semantics. Causes "connection closed: initialize request" errors.
+- **Plugin launch script stale binary**: Must compare archive mtime vs extracted binary mtime. Old script only checked existence (`-x`), so plugin updates never deployed new binaries.
+- **Codehealth analysis sources on disk but not compiled**: `src/analysis/` gated out of Cargo.toml. Don't re-enable.
 
 ## Decisions
 
-- **Resolver uses soft penalty, not hard filter**: Import-constrained call-edge filtering gives +200 boost (not hard reject). Hard filter broke same-package Java, implicit Python imports, C headers.
-- **CodeRankEmbed (768d) default on macOS/Linux sidecar**: +10% namespace overlap, +20% cross-language vs BGE-small. Windows uses Jina-code-v2 via ORT+DirectML.
-- **Language detection single source of truth**: `crates/julie-extractors/src/language.rs`. Adding a new language requires editing only this one file.
-- **`lib/` and `packages/` are NOT vendor directories**: They are primary source dirs in Elixir/Ruby/Dart and JS monorepos.
-- **Daemon-owned EmbeddingService with eager init**: Not pool-owned (muddies WorkspacePool responsibility), not lazy (re-introduces complexity), no explicit queue (provider mutex serializes).
-- **No symbol-level editing tools**: Agents ignore custom editing tools in favor of built-in Edit; bottleneck is search/understanding, not editing. If revisited, `insert_after_symbol` has the strongest case.
-- **Codehealth risk/coverage metrics shelved (not experimental)**: Test coverage showed 3% on a well-tested project (direct references only, no transitive closure). Security risk labeled most symbols HIGH due to heuristic miscalibration. `compute_test_quality_metrics` (rates test functions) is preserved as independent and reliable.
+- **Resolver uses soft penalty, not hard filter**: Import-constrained call-edge filtering gives +200 boost. Hard filter broke same-package Java, implicit Python imports, C headers.
+- **Daemon-owned EmbeddingService with eager init**: Not pool-owned (muddies responsibility), not lazy (complexity), no explicit queue (provider mutex serializes).
+- **No symbol-level editing tools**: Agents ignore custom editing in favor of built-in Edit. If revisited, `insert_after_symbol` has strongest case.
+- **Plugin embeds all 3 platform binaries** (~20MB each) rather than download-on-first-run. Plugin cache is version-snapshots so git bloat is irrelevant.
+- **SessionStart hook for behavioral guidance** compensates for MCP 2k tool description limit. Fires on startup/clear/compact.
 
 ## Open Questions
 
 - **NL query vocabulary gap**: Code embedding models match tokens, not semantic synonyms ("save" != "record"). Needs NL query expansion or dual-model approach.
 - **Incomplete embedding backfill not resumed on daemon restart**: Known issue as of v6.0.2. ORT upgrade to rc12 also pending.
+- **Windows plugin stdio piping**: Polyglot wrapper for long-running MCP server is untested.
+- **macOS Gatekeeper warnings**: Ad-hoc codesigning may trigger warnings. User has Apple Developer subscription for proper signing later.
