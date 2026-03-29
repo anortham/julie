@@ -254,7 +254,13 @@ pub async fn index(
     context.insert("by_kind", &by_kind);
     context.insert("lang_counts", &lang_counts);
     context.insert("donut_segments", &donut_segments);
-    context.insert("index_duration_str", &index_duration_str);
+    context.insert("index_duration", &index_duration_str);
+
+    let max_hotspot_score = hotspots
+        .first()
+        .map(|h| h.line_count as f64 + h.symbol_count as f64 * 10.0)
+        .unwrap_or(1.0);
+    context.insert("max_hotspot_score", &max_hotspot_score);
 
     render_template(&state, "intelligence.html", context).await
 }

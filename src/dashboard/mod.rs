@@ -181,7 +181,7 @@ pub async fn render_template(
         match tera.render(template_name, &context) {
             Ok(html) => Ok(Html(html)),
             Err(e) => {
-                tracing::error!("Tera render failed for {template_name}: {e}");
+                tracing::error!("Tera render failed for {template_name}: {e:#}");
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
             }
         }
@@ -190,7 +190,7 @@ pub async fn render_template(
         match tera.render(template_name, &context) {
             Ok(html) => Ok(Html(html)),
             Err(e) => {
-                tracing::error!("Tera render failed for {template_name}: {e}");
+                tracing::error!("Tera render failed for {template_name}: {e:#}");
                 Err(StatusCode::INTERNAL_SERVER_ERROR)
             }
         }
