@@ -79,6 +79,7 @@ impl super::SymbolDatabase {
              FROM files f
              LEFT JOIN symbols s ON s.file_path = f.path
              GROUP BY f.path
+             HAVING COUNT(s.id) > 0
              ORDER BY (COALESCE(f.line_count, 0) + COUNT(s.id) * 10) DESC
              LIMIT ?1",
         )?;

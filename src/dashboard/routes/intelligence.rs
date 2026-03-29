@@ -11,6 +11,7 @@ use tera::Context;
 
 use crate::dashboard::AppState;
 use crate::dashboard::render_template;
+use crate::database::SymbolDatabase;
 use crate::database::analytics::{AggregateStats, CentralitySymbol, FileHotspot};
 
 /// SVG donut chart circumference: 2 * pi * r where r = 0.7.
@@ -194,43 +195,50 @@ pub fn format_duration_ms(ms: i64) -> String {
 // Route handlers
 // ---------------------------------------------------------------------------
 
+/// Open a workspace's SymbolDatabase directly from disk.
+///
+/// Opens the DB file at `~/.julie/indexes/{id}/db/symbols.db` without going
+/// through WorkspacePool, avoiding session side-effects (count increment,
+/// watcher attachment). Works for any registered workspace, even those
+/// without an active session.
+fn open_workspace_db(workspace_id: &str) -> Result<SymbolDatabase, StatusCode> {
+    let db_path = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".julie/indexes")
+        .join(workspace_id)
+        .join("db/symbols.db");
+
+    if !db_path.exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    SymbolDatabase::new(&db_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 /// Main intelligence page for a workspace.
 pub async fn index(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
 ) -> Result<Html<String>, StatusCode> {
-    let pool = match state.dashboard.workspace_pool() {
-        Some(p) => p,
-        None => {
-            let mut context = Context::new();
-            context.insert("active_page", "intelligence");
-            context.insert("workspace_id", &workspace_id);
-            context.insert("no_data", &true);
-            return render_template(&state, "intelligence.html", context).await;
-        }
-    };
+    // Check workspace exists in daemon DB
+    let has_workspace = state
+        .dashboard
+        .daemon_db()
+        .and_then(|db| db.get_workspace(&workspace_id).ok().flatten())
+        .is_some();
 
-    let workspace = match pool.get(&workspace_id).await {
-        Some(ws) => ws,
-        None => return Err(StatusCode::NOT_FOUND),
-    };
+    if !has_workspace {
+        return Err(StatusCode::NOT_FOUND);
+    }
 
-    let db = match &workspace.db {
-        Some(db) => db,
-        None => return Err(StatusCode::NOT_FOUND),
-    };
+    let db = open_workspace_db(&workspace_id)?;
 
     let (top_symbols, hotspots, stats, by_kind, lang_counts) = {
-        let db_guard = db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        let top_symbols = db_guard
-            .get_top_symbols_by_centrality(15)
-            .unwrap_or_default();
-        let hotspots = db_guard.get_file_hotspots(10).unwrap_or_default();
-        let stats = db_guard.get_aggregate_stats().unwrap_or_default();
-        let (by_kind, _by_language) = db_guard.get_symbol_statistics().unwrap_or_default();
-        let lang_counts = db_guard.count_files_by_language().unwrap_or_default();
-
+        let top_symbols = db.get_top_symbols_by_centrality(15).unwrap_or_default();
+        let hotspots = db.get_file_hotspots(10).unwrap_or_default();
+        let stats = db.get_aggregate_stats().unwrap_or_default();
+        let (by_kind, _by_language) = db.get_symbol_statistics().unwrap_or_default();
+        let lang_counts = db.count_files_by_language().unwrap_or_default();
         (top_symbols, hotspots, stats, by_kind, lang_counts)
     };
 
@@ -270,32 +278,17 @@ pub async fn story_cards(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
 ) -> Result<Html<String>, StatusCode> {
-    let pool = match state.dashboard.workspace_pool() {
-        Some(p) => p,
-        None => return Ok(Html(String::new())),
-    };
-
-    let workspace = match pool.get(&workspace_id).await {
-        Some(ws) => ws,
-        None => return Err(StatusCode::NOT_FOUND),
-    };
-
-    let db = match &workspace.db {
-        Some(db) => db,
-        None => return Err(StatusCode::NOT_FOUND),
+    let db = match open_workspace_db(&workspace_id) {
+        Ok(db) => db,
+        Err(_) => return Ok(Html(String::new())),
     };
 
     let (top_symbols, hotspots, stats, by_kind, lang_counts) = {
-        let db_guard = db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        let top_symbols = db_guard
-            .get_top_symbols_by_centrality(1)
-            .unwrap_or_default();
-        let hotspots = db_guard.get_file_hotspots(1).unwrap_or_default();
-        let stats = db_guard.get_aggregate_stats().unwrap_or_default();
-        let (by_kind, _by_language) = db_guard.get_symbol_statistics().unwrap_or_default();
-        let lang_counts = db_guard.count_files_by_language().unwrap_or_default();
-
+        let top_symbols = db.get_top_symbols_by_centrality(1).unwrap_or_default();
+        let hotspots = db.get_file_hotspots(1).unwrap_or_default();
+        let stats = db.get_aggregate_stats().unwrap_or_default();
+        let (by_kind, _by_language) = db.get_symbol_statistics().unwrap_or_default();
+        let lang_counts = db.count_files_by_language().unwrap_or_default();
         (top_symbols, hotspots, stats, by_kind, lang_counts)
     };
 

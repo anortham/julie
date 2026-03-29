@@ -157,9 +157,10 @@ fn test_get_file_hotspots_returns_ordered_by_composite_score() {
     let (_tmp, db) = test_db();
 
     // Composite = line_count + symbol_count * 10
+    // Files with 0 symbols are excluded (data files, not code)
     // File A: 50 lines, 1 symbol = 60
     // File B: 20 lines, 5 symbols = 70  <- highest
-    // File C: 100 lines, 0 symbols = 100 <- actually highest
+    // File C: 100 lines, 2 symbols = 120 <- actually highest
     db.store_file_info(&make_file("src/a.rs", "rust", 50, 500))
         .unwrap();
     db.store_file_info(&make_file("src/b.rs", "rust", 20, 200))
@@ -182,14 +183,22 @@ fn test_get_file_hotspots_returns_ordered_by_composite_score() {
             rusqlite::params![format!("sb{}", i), format!("fn_b{}", i), "function", "rust", "src/b.rs"],
         ).unwrap();
     }
-    // c.rs has 0 symbols, line_count 100 => score 100
+
+    // Add 2 symbols to c.rs (score: 100 + 20 = 120)
+    for i in 1..=2u32 {
+        db.conn.execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+             VALUES (?1, ?2, ?3, ?4, ?5, 0.0, 1, 10, 0, 0, 0, 100, 0)",
+            rusqlite::params![format!("sc{}", i), format!("fn_c{}", i), "function", "rust", "src/c.rs"],
+        ).unwrap();
+    }
 
     let result = db.get_file_hotspots(10).unwrap();
     assert_eq!(result.len(), 3);
-    // c.rs = 100, b.rs = 70, a.rs = 60
+    // c.rs = 120, b.rs = 70, a.rs = 60
     assert_eq!(
         result[0].path, "src/c.rs",
-        "c.rs with 100 lines and no symbols should rank first"
+        "c.rs with 100 lines and 2 symbols should rank first"
     );
     assert_eq!(
         result[1].path, "src/b.rs",
@@ -213,6 +222,12 @@ fn test_get_file_hotspots_respects_limit() {
             1000,
         ))
         .unwrap();
+        // Each file needs at least one symbol to not be filtered out
+        db.conn.execute(
+            "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+             VALUES (?1, ?2, 'function', 'rust', ?3, 0.0, 1, 10, 0, 0, 0, 100, 0)",
+            rusqlite::params![format!("sl{}", i), format!("fn_{}", i), format!("src/file{}.rs", i)],
+        ).unwrap();
     }
 
     let result = db.get_file_hotspots(2).unwrap();
@@ -250,6 +265,12 @@ fn test_get_file_hotspots_null_line_count_treated_as_zero() {
     db.conn.execute(
         "INSERT INTO files (path, language, hash, size, last_modified, last_indexed, symbol_count, line_count)
          VALUES ('src/no_lines.rs', 'rust', 'hash_x', 500, 0, 0, 0, NULL)",
+        [],
+    ).unwrap();
+    // File needs at least one symbol to appear in hotspots
+    db.conn.execute(
+        "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
+         VALUES ('snl1', 'fn_no_lines', 'function', 'rust', 'src/no_lines.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
         [],
     ).unwrap();
 
