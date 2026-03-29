@@ -191,6 +191,31 @@ pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse
         let languages = fetch_language_data(&state, &ws.workspace_id, 5).await;
         let lang_bar_html = render_compact_lang_bar(&languages);
 
+        // Fetch top symbol by centrality for this workspace
+        let pool_ref = state.dashboard.workspace_pool();
+        let top_symbol_name: String = if let Some(pool) = pool_ref {
+            if let Some(ws_arc) = pool.get(&ws.workspace_id).await {
+                if let Some(db) = &ws_arc.db {
+                    if let Ok(guard) = db.lock() {
+                        guard
+                            .get_top_symbols_by_centrality(1)
+                            .ok()
+                            .and_then(|v| v.into_iter().next())
+                            .map(|s| s.name)
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
         let badge = match ws.status.as_str() {
             "ready" => r#"<span class="badge-ready">Ready</span>"#,
             "indexing" => r#"<span class="badge-indexing">Indexing</span>"#,
@@ -205,6 +230,7 @@ pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse
                         "files": ws.file_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
                         "vectors": ws.vector_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
                         "lang_bar": lang_bar_html,
+                        "top_symbol": top_symbol_name,
                     }),
                 );
                 continue;
@@ -218,6 +244,7 @@ pub async fn statuses(State(state): State<AppState>) -> Result<impl IntoResponse
                 "files": ws.file_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
                 "vectors": ws.vector_count.map(|n| n.to_string()).unwrap_or_else(|| "\u{2014}".into()),
                 "lang_bar": lang_bar_html,
+                "top_symbol": top_symbol_name,
             }),
         );
     }
@@ -286,6 +313,48 @@ pub async fn detail(
     let languages = fetch_language_data(&state, &workspace_id, 8).await;
     let has_languages = !languages.is_empty();
 
+    // Build kind bar HTML from workspace pool
+    let kind_bar_html: String = {
+        let pool = state.dashboard.workspace_pool();
+        if let Some(pool) = pool {
+            if let Some(ws_arc) = pool.get(&workspace_id).await {
+                if let Some(db) = &ws_arc.db {
+                    let guard = db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                    let (by_kind, _) = guard.get_symbol_statistics().unwrap_or_default();
+
+                    let total: usize = by_kind.values().sum();
+                    if total > 0 {
+                        let mut entries: Vec<_> = by_kind.iter().collect();
+                        entries.sort_by(|a, b| b.1.cmp(a.1));
+
+                        let segments: Vec<String> = entries
+                            .iter()
+                            .take(8)
+                            .map(|(kind, count)| {
+                                let pct = (**count as f64 / total as f64) * 100.0;
+                                let css_var =
+                                    crate::dashboard::routes::intelligence::kind_css_var(kind);
+                                format!(
+                                    r#"<div class="kind-bar-segment" style="width: {:.1}%; background: var({});" title="{}: {} ({:.1}%)"></div>"#,
+                                    pct, css_var, kind, count, pct
+                                )
+                            })
+                            .collect();
+                        format!(r#"<div class="kind-bar-track">{}</div>"#, segments.join(""))
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    };
+
     let mut context = Context::new();
     context.insert("workspace", &workspace);
     context.insert("references", &references);
@@ -294,6 +363,8 @@ pub async fn detail(
     context.insert("index_duration_str", &index_duration_str);
     context.insert("languages", &languages);
     context.insert("has_languages", &has_languages);
+    context.insert("kind_bar_html", &kind_bar_html);
+    context.insert("workspace_id", &workspace_id);
 
     render_template(&state, "partials/project_detail.html", context).await
 }

@@ -31,9 +31,13 @@
         <span style="color: var(--julie-text-muted); font-size: 0.8rem;">{{ ws.status }}</span>
       {% endif %}
     </td>
+    <td id="topsym-{{ ws.workspace_id }}" style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+      <span class="mono" style="color: var(--julie-text-muted); font-size: 0.78rem;"
+            id="topsym-val-{{ ws.workspace_id }}"></span>
+    </td>
   </tr>
   <tr x-show="expanded" x-cloak>
-    <td colspan="7" style="padding: 0; border-top: none;">
+    <td colspan="8" style="padding: 0; border-top: none;">
       <div style="padding: 1rem; background: var(--julie-bg-inset);"
            x-effect="if (expanded) htmx.trigger($el, 'load-detail')"
            hx-get="/projects/{{ ws.workspace_id }}/detail"

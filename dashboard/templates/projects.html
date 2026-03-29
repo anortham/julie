@@ -39,6 +39,10 @@ setInterval(async () => {
         lb.innerHTML = ws.lang_bar;
         lb.style.display = ws.lang_bar ? '' : 'none';
       }
+      const topSym = document.getElementById('topsym-val-' + id);
+      if (topSym && ws.top_symbol !== undefined) {
+        topSym.textContent = ws.top_symbol;
+      }
     }
   } catch (_) {}
 }, 5000);

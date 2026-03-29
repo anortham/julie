@@ -80,11 +80,24 @@
 <!-- Language distribution -->
 {% include "partials/language_detail.html" %}
 
-<!-- Workspace metrics link -->
+<!-- Symbol kind breakdown -->
+{% if kind_bar_html %}
 <div style="margin-top: 0.75rem;">
-  <a href="/metrics?workspace={{ workspace.workspace_id }}"
+  <p class="label-text" style="margin-bottom: 0.3rem; font-size: 0.8rem;">Symbol Kinds</p>
+  {{ kind_bar_html | safe }}
+</div>
+{% endif %}
+
+<!-- Action buttons -->
+<div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
+  <a href="/metrics?workspace={{ workspace_id }}"
      class="button is-dark is-small"
      style="font-size: 0.78rem;">
     View Metrics &rarr;
+  </a>
+  <a href="/intelligence/{{ workspace_id }}"
+     class="button is-dark is-small"
+     style="font-size: 0.78rem;">
+    Intelligence &rarr;
   </a>
 </div>
