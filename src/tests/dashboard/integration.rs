@@ -150,3 +150,21 @@ async fn test_dashboard_post_search_returns_200() {
 
     assert_eq!(response.status().as_u16(), 200);
 }
+
+#[tokio::test]
+async fn test_project_detail_returns_404_without_daemon_db() {
+    // With no daemon_db, the detail endpoint should return 404
+    // (daemon_db is None, so get_workspace returns NotFound)
+    let state = test_state();
+    let config = DashboardConfig::default();
+    let router = create_router(state, config).unwrap();
+
+    let request = Request::builder()
+        .uri("/projects/test_workspace/detail")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = router.oneshot(request).await.unwrap();
+    // 404 because daemon_db is None
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+}
