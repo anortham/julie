@@ -52,7 +52,10 @@ fn try_uv_venv(venv_path: &Path) -> Option<Result<()>> {
             Ok(out) if out.status.success() => return Some(Ok(())),
             Ok(out) => {
                 let stderr = String::from_utf8_lossy(&out.stderr);
-                tracing::debug!("uv venv --python 3.{minor} failed (exit {}): {stderr}", out.status);
+                tracing::debug!(
+                    "uv venv --python 3.{minor} failed (exit {}): {stderr}",
+                    out.status
+                );
             }
             Err(e) => tracing::debug!("uv venv --python 3.{minor} could not be run: {e}"),
         }

@@ -6,8 +6,8 @@ use axum::response::Html;
 use serde::Deserialize;
 use tera::Context;
 
-use crate::dashboard::render_template;
 use crate::dashboard::AppState;
+use crate::dashboard::render_template;
 use crate::search::index::SearchFilter;
 
 #[derive(Deserialize)]

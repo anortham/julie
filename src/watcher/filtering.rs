@@ -71,11 +71,7 @@ pub fn build_gitignore_matcher(workspace_root: &Path) -> Result<Gitignore> {
             continue; // already added root
         }
         if let Some(err) = builder.add(&sub_gitignore) {
-            warn!(
-                "Partial error reading {}: {}",
-                sub_gitignore.display(),
-                err
-            );
+            warn!("Partial error reading {}: {}", sub_gitignore.display(), err);
         }
     }
 
@@ -632,13 +628,19 @@ mod tests {
 
         // Subdirectory with its own .gitignore (non-absolute pattern, most common case)
         fs::create_dir_all(root.join("packages/core")).unwrap();
-        fs::write(root.join("packages/core/.gitignore"), "generated/\n__pycache__/\n").unwrap();
+        fs::write(
+            root.join("packages/core/.gitignore"),
+            "generated/\n__pycache__/\n",
+        )
+        .unwrap();
 
         let matcher = build_gitignore_matcher(root).unwrap();
 
         // Root-level rule still works
         assert!(
-            matcher.matched_path_or_any_parents("debug.log", false).is_ignore(),
+            matcher
+                .matched_path_or_any_parents("debug.log", false)
+                .is_ignore(),
             "root .gitignore *.log should be ignored"
         );
 
@@ -646,17 +648,23 @@ mod tests {
         // match anywhere in the workspace. This is the common use case for
         // patterns like node_modules/, dist/, __pycache__/, generated/.
         assert!(
-            matcher.matched_path_or_any_parents("packages/core/generated/types.ts", false).is_ignore(),
+            matcher
+                .matched_path_or_any_parents("packages/core/generated/types.ts", false)
+                .is_ignore(),
             "nested .gitignore generated/ should be ignored under packages/core"
         );
         assert!(
-            matcher.matched_path_or_any_parents("packages/core/__pycache__/mod.pyc", false).is_ignore(),
+            matcher
+                .matched_path_or_any_parents("packages/core/__pycache__/mod.pyc", false)
+                .is_ignore(),
             "nested .gitignore __pycache__/ should be ignored"
         );
 
         // Normal files pass through
         assert!(
-            !matcher.matched_path_or_any_parents("packages/core/index.ts", false).is_ignore(),
+            !matcher
+                .matched_path_or_any_parents("packages/core/index.ts", false)
+                .is_ignore(),
             "normal file should not be ignored"
         );
     }

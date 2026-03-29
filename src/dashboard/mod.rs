@@ -7,12 +7,12 @@ pub mod state;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axum::Router;
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::Router;
 use tera::Tera;
 use tokio::sync::RwLock;
 
@@ -118,7 +118,10 @@ pub fn init_tera(config: &DashboardConfig) -> Result<Tera, tera::Error> {
 // ---------------------------------------------------------------------------
 
 /// Build the Axum router for the dashboard.
-pub fn create_router(dashboard: DashboardState, config: DashboardConfig) -> Result<Router, tera::Error> {
+pub fn create_router(
+    dashboard: DashboardState,
+    config: DashboardConfig,
+) -> Result<Router, tera::Error> {
     let tera = init_tera(&config)?;
     let shared_tera: SharedTera = Arc::new(RwLock::new(tera));
 
@@ -139,8 +142,14 @@ pub fn create_router(dashboard: DashboardState, config: DashboardConfig) -> Resu
         .route("/metrics/table", get(routes::metrics::table))
         .route("/search", get(routes::search::index))
         .route("/search", post(routes::search::search))
-        .route("/intelligence/{workspace_id}", get(routes::intelligence::index))
-        .route("/intelligence/{workspace_id}/stories", get(routes::intelligence::story_cards))
+        .route(
+            "/intelligence/{workspace_id}",
+            get(routes::intelligence::index),
+        )
+        .route(
+            "/intelligence/{workspace_id}/stories",
+            get(routes::intelligence::story_cards),
+        )
         .route("/events/activity", get(routes::events::activity_stream))
         .route("/static/{*path}", get(serve_static))
         .with_state(app_state);
@@ -195,10 +204,7 @@ pub async fn render_template(
 /// Serve a file from `dashboard/static/`.
 ///
 /// In dev mode, reads from disk; in release mode reads from embedded assets.
-pub async fn serve_static(
-    State(state): State<AppState>,
-    Path(path): Path<String>,
-) -> Response {
+pub async fn serve_static(State(state): State<AppState>, Path(path): Path<String>) -> Response {
     let asset_path = format!("static/{path}");
 
     let data: Vec<u8> = if state.config.dev_mode {
@@ -218,10 +224,7 @@ pub async fn serve_static(
 
     Response::builder()
         .status(StatusCode::OK)
-        .header(
-            header::CONTENT_TYPE,
-            HeaderValue::from_static(content_type),
-        )
+        .header(header::CONTENT_TYPE, HeaderValue::from_static(content_type))
         .body(Body::from(data))
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }

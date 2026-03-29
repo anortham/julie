@@ -318,7 +318,10 @@ while True:
             thread::sleep(Duration::from_millis(20));
         }
 
-        assert!(found, "expected shutdown marker file after explicit shutdown()");
+        assert!(
+            found,
+            "expected shutdown marker file after explicit shutdown()"
+        );
     }
 
     #[test]

@@ -6,8 +6,8 @@ use axum::response::{Html, IntoResponse};
 use serde::Serialize;
 use tera::Context;
 
-use crate::dashboard::render_template;
 use crate::dashboard::AppState;
+use crate::dashboard::render_template;
 
 /// A single language in the distribution bar.
 #[derive(Debug, Clone, Serialize)]

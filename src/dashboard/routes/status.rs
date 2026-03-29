@@ -5,8 +5,8 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
 use tera::Context;
 
-use crate::dashboard::render_template;
 use crate::dashboard::AppState;
+use crate::dashboard::render_template;
 
 pub async fn index(State(state): State<AppState>) -> Result<Html<String>, StatusCode> {
     let uptime = state.dashboard.uptime();

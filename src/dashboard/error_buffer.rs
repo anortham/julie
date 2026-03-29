@@ -7,8 +7,8 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::ser::Serializer;
 use serde::Serialize;
+use serde::ser::Serializer;
 use tracing::Level;
 use tracing_subscriber::Layer;
 

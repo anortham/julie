@@ -120,10 +120,7 @@ fn format_context_readable(data: &ContextData) -> String {
 
     // --- Header ---
     let file_count = count_unique_files(data);
-    out.push_str(&format!(
-        "=== Context: \"{}\" ===\n",
-        data.query
-    ));
+    out.push_str(&format!("=== Context: \"{}\" ===\n", data.query));
     out.push_str(&format!(
         "Found {} pivot{}, {} neighbor{} across {} file{}\n",
         data.pivots.len(),
@@ -137,10 +134,7 @@ fn format_context_readable(data: &ContextData) -> String {
     // --- Pivot sections ---
     for pivot in &data.pivots {
         out.push('\n');
-        out.push_str(&format!(
-            "-- Pivot: {} ---\n",
-            pivot.name
-        ));
+        out.push_str(&format!("-- Pivot: {} ---\n", pivot.name));
         let quality_tag = pivot
             .test_quality_label
             .as_ref()
@@ -219,12 +213,7 @@ fn format_context_compact(data: &ContextData) -> String {
             .unwrap_or_default();
         out.push_str(&format!(
             "PIVOT {} {}:{} kind={} centrality={}{}\n",
-            pivot.name,
-            pivot.file_path,
-            pivot.start_line,
-            pivot.kind,
-            label,
-            quality_tag
+            pivot.name, pivot.file_path, pivot.start_line, pivot.kind, label, quality_tag
         ));
         for line in pivot.content.lines() {
             out.push_str("  ");

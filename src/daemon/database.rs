@@ -11,7 +11,6 @@ use tracing::{info, warn};
 
 use crate::database::{HistorySummary, ToolCallSummary};
 
-
 /// Thread-safe daemon database. Shared across sessions as `Arc<DaemonDatabase>`.
 ///
 /// Uses an internal `Mutex<Connection>` so callers don't need to lock externally.
@@ -254,17 +253,11 @@ impl DaemonDatabase {
         let now = now_unix();
 
         let mut count = 0;
-        let mut stmt = conn.prepare(
-            "SELECT workspace_id, path, status, symbol_count FROM workspaces",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT workspace_id, path, status, symbol_count FROM workspaces")?;
         let rows: Vec<(String, String, String, Option<i64>)> = stmt
             .query_map([], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                ))
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         drop(stmt);
@@ -280,11 +273,14 @@ impl DaemonDatabase {
             let needs_path_fix = native_path != *path;
 
             // Restore "ready" for workspaces that were indexed but stuck at "pending"
-            let needs_status_fix = *status == "pending"
-                && symbol_count.unwrap_or(0) > 0;
+            let needs_status_fix = *status == "pending" && symbol_count.unwrap_or(0) > 0;
 
             if needs_path_fix || needs_status_fix {
-                let new_status = if needs_status_fix { "ready" } else { status.as_str() };
+                let new_status = if needs_status_fix {
+                    "ready"
+                } else {
+                    status.as_str()
+                };
                 conn.execute(
                     "UPDATE workspaces SET path = ?1, status = ?2, updated_at = ?3 WHERE workspace_id = ?4",
                     params![native_path, new_status, now, workspace_id],
@@ -632,7 +628,12 @@ impl DaemonDatabase {
         conn.execute(
             "INSERT INTO codehealth_snapshots (workspace_id, timestamp, total_symbols, total_files)
              VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![workspace_id, now_unix(), snapshot.total_symbols, snapshot.total_files],
+            rusqlite::params![
+                workspace_id,
+                now_unix(),
+                snapshot.total_symbols,
+                snapshot.total_files
+            ],
         )?;
         Ok(())
     }
@@ -714,7 +715,10 @@ impl DaemonDatabase {
     /// Given a map of old_id -> new_id, updates workspace_references,
     /// codehealth_snapshots, tool_calls, and workspaces in a single transaction.
     /// FK checks are temporarily disabled to allow PK updates.
-    pub fn migrate_workspace_ids(&self, id_map: &std::collections::HashMap<String, String>) -> Result<()> {
+    pub fn migrate_workspace_ids(
+        &self,
+        id_map: &std::collections::HashMap<String, String>,
+    ) -> Result<()> {
         if id_map.is_empty() {
             return Ok(());
         }
@@ -759,13 +763,14 @@ impl DaemonDatabase {
             }
 
             // Verify FK integrity before committing
-            let violations: i64 = tx.query_row(
-                "SELECT count(*) FROM pragma_foreign_key_check",
-                [],
-                |row| row.get(0),
-            )?;
+            let violations: i64 =
+                tx.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |row| {
+                    row.get(0)
+                })?;
             if violations > 0 {
-                anyhow::bail!("FK integrity check failed after migration ({violations} violations)");
+                anyhow::bail!(
+                    "FK integrity check failed after migration ({violations} violations)"
+                );
             }
 
             tx.commit()?;

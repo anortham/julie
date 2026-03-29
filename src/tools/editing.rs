@@ -193,8 +193,9 @@ impl MultiFileTransaction {
         // Phase 2 must iterate in the same order so temp_files[i] maps to the right
         // destination. HashMap iteration is non-deterministic across re-iterations.
         // Use std::mem::take because Drop prevents direct field moves from self.
-        let file_list: Vec<(PathBuf, String)> =
-            std::mem::take(&mut self.pending_content).into_iter().collect();
+        let file_list: Vec<(PathBuf, String)> = std::mem::take(&mut self.pending_content)
+            .into_iter()
+            .collect();
 
         // Phase 0: Pre-flight validation - check if we can write to all target files
         for (file_path, _) in &file_list {
@@ -233,7 +234,10 @@ impl MultiFileTransaction {
             }
         }
 
-        debug!("Multi-file transaction committed: {} files", file_list.len());
+        debug!(
+            "Multi-file transaction committed: {} files",
+            file_list.len()
+        );
         Ok(())
     }
 

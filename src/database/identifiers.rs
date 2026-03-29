@@ -122,8 +122,10 @@ impl SymbolDatabase {
             );
 
             let mut stmt = self.conn.prepare(&query)?;
-            let param_refs: Vec<&dyn rusqlite::ToSql> =
-                params.iter().map(|p| p.as_ref() as &dyn rusqlite::ToSql).collect();
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params
+                .iter()
+                .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
+                .collect();
 
             let rows = stmt.query_map(&param_refs[..], |row| self.row_to_identifier_ref(row))?;
             for row in rows {
@@ -237,8 +239,10 @@ impl SymbolDatabase {
             );
 
             let mut stmt = self.conn.prepare(&query)?;
-            let param_refs: Vec<&dyn rusqlite::ToSql> =
-                params.iter().map(|p| p.as_ref() as &dyn rusqlite::ToSql).collect();
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params
+                .iter()
+                .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
+                .collect();
 
             let rows = stmt.query_map(&param_refs[..], |row| self.row_to_identifier_ref(row))?;
             for row in rows {
@@ -347,8 +351,10 @@ impl SymbolDatabase {
             );
 
             let mut stmt = self.conn.prepare(&query)?;
-            let params: Vec<&dyn rusqlite::types::ToSql> =
-                chunk.iter().map(|fp| fp as &dyn rusqlite::types::ToSql).collect();
+            let params: Vec<&dyn rusqlite::types::ToSql> = chunk
+                .iter()
+                .map(|fp| fp as &dyn rusqlite::types::ToSql)
+                .collect();
 
             let rows = stmt.query_map(&*params, |row| row.get::<_, String>(0))?;
             for row in rows {

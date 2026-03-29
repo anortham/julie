@@ -7,8 +7,8 @@ use axum::response::sse::{Event, Sse};
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
-use crate::dashboard::state::DashboardEvent;
 use crate::dashboard::AppState;
+use crate::dashboard::state::DashboardEvent;
 
 /// SSE stream for live tool call activity.
 pub async fn activity_stream(

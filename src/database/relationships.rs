@@ -113,8 +113,7 @@ impl SymbolDatabase {
         let mut relationships = Vec::new();
 
         for chunk in symbol_ids.chunks(CHUNK_SIZE) {
-            let placeholders: Vec<String> =
-                (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
+            let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
             let query = format!(
                 "SELECT id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata
                  FROM relationships
@@ -174,8 +173,10 @@ impl SymbolDatabase {
             }
             params.push(Box::new(identifier_kind.to_string()));
 
-            let param_refs: Vec<&dyn rusqlite::ToSql> =
-                params.iter().map(|p| p.as_ref() as &dyn rusqlite::ToSql).collect();
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params
+                .iter()
+                .map(|p| p.as_ref() as &dyn rusqlite::ToSql)
+                .collect();
 
             let rows = stmt.query_map(&param_refs[..], |row| self.row_to_relationship(row))?;
             for row in rows {

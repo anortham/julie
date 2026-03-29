@@ -29,9 +29,7 @@ impl ManageWorkspaceTool {
 
         // PHASE 1: SQLite Database Health
         health_report.push_str("SQLite Database (Source of Truth)\n");
-        let db_status = self
-            .check_database_health(&primary_workspace)
-            .await?;
+        let db_status = self.check_database_health(&primary_workspace).await?;
         health_report.push_str(&db_status);
         health_report.push('\n');
 
@@ -124,7 +122,6 @@ impl ManageWorkspaceTool {
                         } else {
                             status.push_str("Embeddings: None\n");
                         }
-
                     }
                     Err(e) => {
                         status.push_str(&format!("SQLite Status: ERROR\n{}\n", e));

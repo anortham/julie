@@ -147,9 +147,7 @@ pub async fn text_search_impl(
     let embedding_provider = handler.embedding_provider().await;
 
     let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool, usize)> {
-        let index = search_index_clone
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
+        let index = search_index_clone.lock().unwrap_or_else(|p| p.into_inner());
         let db_guard = db_clone.as_ref().map(|arc| {
             arc.lock().unwrap_or_else(|poisoned| {
                 warn!("Database mutex poisoned, recovering");
@@ -382,11 +380,8 @@ fn definition_search_with_index(
                     let mut prepend: Vec<Symbol> = candidates
                         .into_iter()
                         .map(|s| {
-                            let score = ref_scores
-                                .get(&s.id)
-                                .copied()
-                                .unwrap_or(1.0)
-                                .max(1.0) as f32;
+                            let score =
+                                ref_scores.get(&s.id).copied().unwrap_or(1.0).max(1.0) as f32;
                             let sym = tantivy_symbol_to_symbol(
                                 crate::search::index::SymbolSearchResult {
                                     id: s.id,

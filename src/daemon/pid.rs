@@ -84,8 +84,7 @@ impl PidFile {
             }
 
             const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
-            let handle =
-                unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+            let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
             if handle != 0 {
                 unsafe {
                     CloseHandle(handle);

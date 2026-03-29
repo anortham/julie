@@ -173,10 +173,7 @@ pub(crate) async fn spawn_workspace_embedding(
                 );
                 // Write vector count back to daemon.db
                 if let Some(ref db) = daemon_db {
-                    let _ = db.update_vector_count(
-                        &workspace_id,
-                        stats.symbols_embedded as i64,
-                    );
+                    let _ = db.update_vector_count(&workspace_id, stats.symbols_embedded as i64);
                 }
             }
             Ok(Err(e)) => {

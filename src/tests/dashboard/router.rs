@@ -1,5 +1,5 @@
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 use axum::body::Body;
@@ -28,10 +28,7 @@ async fn test_router_serves_landing_page() {
     let config = DashboardConfig::default();
     let router = create_router(state, config).unwrap();
 
-    let request = Request::builder()
-        .uri("/")
-        .body(Body::empty())
-        .unwrap();
+    let request = Request::builder().uri("/").body(Body::empty()).unwrap();
 
     let response = router.oneshot(request).await.unwrap();
     assert_eq!(response.status(), axum::http::StatusCode::OK);

@@ -230,9 +230,7 @@ pub(crate) fn is_structural_kind(kind: &str) -> bool {
 /// Uses the canonical `is_docs_path` for directory detection plus
 /// file-extension checks for non-code formats regardless of directory.
 pub(crate) fn is_non_code_path(path: &str) -> bool {
-    path.starts_with(".memories/")
-        || is_docs_path(path)
-        || path.ends_with(".md")
+    path.starts_with(".memories/") || is_docs_path(path) || path.ends_with(".md")
 }
 
 /// Check if a file is in an auxiliary code path (examples, benchmarks, scripts,

@@ -546,7 +546,11 @@ impl SearchIndex {
                             "Concurrent index recreation detected at {} — reusing existing index",
                             path.display()
                         );
-                        return Self::open_or_create_with_tokenizer(path, tokenizer, language_configs);
+                        return Self::open_or_create_with_tokenizer(
+                            path,
+                            tokenizer,
+                            language_configs,
+                        );
                     }
                     Err(e) => return Err(e.into()),
                 };
@@ -561,7 +565,9 @@ impl SearchIndex {
             }
         } else {
             // No index yet — create it; propagates disk-full and permission errors
-            Index::builder().schema(schema.clone()).create_in_dir(path)?
+            Index::builder()
+                .schema(schema.clone())
+                .create_in_dir(path)?
         };
 
         Self::register_tokenizer(&index, tokenizer);
@@ -799,4 +805,3 @@ impl SearchIndex {
             .unwrap_or(0)
     }
 }
-

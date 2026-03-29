@@ -300,7 +300,6 @@ fn is_container_kind(kind: &SymbolKind) -> bool {
     )
 }
 
-
 /// Build test location refs by querying identifiers in test files.
 fn build_test_refs(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<RefEntry>> {
     let names = vec![symbol.name.clone()];
@@ -312,8 +311,7 @@ fn build_test_refs(db: &SymbolDatabase, symbol: &Symbol) -> Result<Vec<RefEntry>
         .into_iter()
         .filter(|ident| {
             is_test_path(&ident.file_path)
-                && !(ident.file_path == symbol.file_path
-                    && ident.start_line == symbol.start_line)
+                && !(ident.file_path == symbol.file_path && ident.start_line == symbol.start_line)
         })
         .collect();
 

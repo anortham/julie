@@ -25,11 +25,7 @@ unsafe extern "system" {
         bInitialState: i32,
         lpName: *const u16,
     ) -> isize;
-    fn OpenEventW(
-        dwDesiredAccess: u32,
-        bInheritHandle: i32,
-        lpName: *const u16,
-    ) -> isize;
+    fn OpenEventW(dwDesiredAccess: u32, bInheritHandle: i32, lpName: *const u16) -> isize;
     fn SetEvent(hEvent: isize) -> i32;
     fn WaitForSingleObject(hHandle: isize, dwMilliseconds: u32) -> u32;
     fn CloseHandle(handle: isize) -> i32;

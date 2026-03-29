@@ -27,8 +27,8 @@ use anyhow::{Context, Result};
 use libc;
 use rmcp::ServiceExt;
 use tokio::io::AsyncReadExt;
-use tokio::sync::broadcast;
 use tokio::sync::Notify;
+use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
 use crate::dashboard::state::DashboardEvent;
@@ -149,10 +149,7 @@ fn backfill_all_vector_counts(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
 ///
 /// Compares each workspace's stored ID against the current generate_workspace_id
 /// output. If they differ, renames the index directory and batch-updates the DB.
-fn migrate_stale_workspace_ids(
-    daemon_db: &DaemonDatabase,
-    indexes_dir: &Path,
-) {
+fn migrate_stale_workspace_ids(daemon_db: &DaemonDatabase, indexes_dir: &Path) {
     let workspaces = match daemon_db.list_workspaces() {
         Ok(ws) => ws,
         Err(e) => {
@@ -216,8 +213,10 @@ fn migrate_stale_workspace_ids(
         if old_dir.exists() && !new_dir.exists() {
             if let Err(e) = std::fs::rename(&old_dir, &new_dir) {
                 warn!(
-                    old_id, new_id,
-                    "Failed to rename index dir, skipping DB migration for this entry: {}", e
+                    old_id,
+                    new_id,
+                    "Failed to rename index dir, skipping DB migration for this entry: {}",
+                    e
                 );
                 disk_failures.push(old_id.clone());
             } else {
@@ -228,7 +227,10 @@ fn migrate_stale_workspace_ids(
             if let Err(e) = std::fs::remove_dir_all(&old_dir) {
                 warn!(old_id, "Failed to remove stale index dir: {}", e);
             } else {
-                info!(old_id, "Removed stale index directory (new dir already exists)");
+                info!(
+                    old_id,
+                    "Removed stale index directory (new dir already exists)"
+                );
             }
         }
     }
@@ -422,11 +424,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         .context("Failed to initialize dashboard templates")?;
 
     // Try requested port, fall back to auto-assign
-    let http_listener = match tokio::net::TcpListener::bind(
-        format!("127.0.0.1:{}", port),
-    )
-    .await
-    {
+    let http_listener = match tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await {
         Ok(l) => l,
         Err(_) if port != 0 => {
             warn!("Port {} in use, falling back to auto-assign", port);
@@ -684,13 +682,11 @@ async fn handle_ipc_session(
 ) -> Result<()> {
     // Read the workspace header with a timeout so a misbehaving client that
     // connects but never sends the header cannot hold a session slot forever.
-    let workspace_path = tokio::time::timeout(
-        Duration::from_secs(5),
-        read_workspace_header(&mut stream),
-    )
-    .await
-    .context("Workspace header read timed out (5s)")?
-    .context("Failed to read workspace header")?;
+    let workspace_path =
+        tokio::time::timeout(Duration::from_secs(5), read_workspace_header(&mut stream))
+            .await
+            .context("Workspace header read timed out (5s)")?
+            .context("Failed to read workspace header")?;
 
     info!(
         session_id = %session_id,
@@ -862,10 +858,10 @@ async fn shutdown_signal() -> Result<()> {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
-        let mut sigterm = signal(SignalKind::terminate())
-            .context("failed to register SIGTERM handler")?;
-        let mut sigint = signal(SignalKind::interrupt())
-            .context("failed to register SIGINT handler")?;
+        let mut sigterm =
+            signal(SignalKind::terminate()).context("failed to register SIGTERM handler")?;
+        let mut sigint =
+            signal(SignalKind::interrupt()).context("failed to register SIGINT handler")?;
 
         tokio::select! {
             _ = sigterm.recv() => info!("Received SIGTERM"),

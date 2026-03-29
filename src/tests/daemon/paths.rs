@@ -59,7 +59,11 @@ fn test_daemon_socket_path() {
     assert_eq!(paths.daemon_socket(), julie_home.join("daemon.sock"));
     // On Windows, pipe name is scoped to julie_home via hash
     #[cfg(windows)]
-    assert!(paths.daemon_pipe_name().starts_with(r"\\.\pipe\julie-daemon-"));
+    assert!(
+        paths
+            .daemon_pipe_name()
+            .starts_with(r"\\.\pipe\julie-daemon-")
+    );
 }
 
 #[test]

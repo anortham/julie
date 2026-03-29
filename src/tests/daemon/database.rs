@@ -98,8 +98,16 @@ mod tests {
         let ws = db.get_workspace("ws1").unwrap().unwrap();
         assert_eq!(ws.symbol_count, Some(120));
         assert_eq!(ws.file_count, Some(60));
-        assert_eq!(ws.embedding_model, Some("jina-code-v2".to_string()), "COALESCE should preserve embedding_model");
-        assert_eq!(ws.vector_count, Some(80), "COALESCE should preserve vector_count");
+        assert_eq!(
+            ws.embedding_model,
+            Some("jina-code-v2".to_string()),
+            "COALESCE should preserve embedding_model"
+        );
+        assert_eq!(
+            ws.vector_count,
+            Some(80),
+            "COALESCE should preserve vector_count"
+        );
     }
 
     #[test]
@@ -117,9 +125,14 @@ mod tests {
         assert_eq!(ws.vector_count, Some(500));
 
         // Update preserves it (via COALESCE)
-        db.update_workspace_stats("ws1", 100, 50, None, None, None).unwrap();
+        db.update_workspace_stats("ws1", 100, 50, None, None, None)
+            .unwrap();
         let ws = db.get_workspace("ws1").unwrap().unwrap();
-        assert_eq!(ws.vector_count, Some(500), "indexing run should not clobber vector_count");
+        assert_eq!(
+            ws.vector_count,
+            Some(500),
+            "indexing run should not clobber vector_count"
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -372,24 +385,47 @@ mod tests {
         let (db, _tmp) = create_test_db();
 
         // Insert workspace with old ID
-        db.upsert_workspace("julie_316c0b08", "/Users/murphy/source/julie", "ready").unwrap();
-        db.update_workspace_stats("julie_316c0b08", 100, 50, None, None, None).unwrap();
+        db.upsert_workspace("julie_316c0b08", "/Users/murphy/source/julie", "ready")
+            .unwrap();
+        db.update_workspace_stats("julie_316c0b08", 100, 50, None, None, None)
+            .unwrap();
 
         // Insert a reference relationship
-        db.upsert_workspace("goldfish_5ed767a5", "/Users/murphy/source/goldfish", "ready").unwrap();
-        db.add_reference("julie_316c0b08", "goldfish_5ed767a5").unwrap();
+        db.upsert_workspace(
+            "goldfish_5ed767a5",
+            "/Users/murphy/source/goldfish",
+            "ready",
+        )
+        .unwrap();
+        db.add_reference("julie_316c0b08", "goldfish_5ed767a5")
+            .unwrap();
 
         // Insert codehealth snapshot
         use crate::daemon::database::CodehealthSnapshot;
-        db.insert_codehealth_snapshot("julie_316c0b08", &CodehealthSnapshot::default()).unwrap();
+        db.insert_codehealth_snapshot("julie_316c0b08", &CodehealthSnapshot::default())
+            .unwrap();
 
         // Insert tool call
-        db.insert_tool_call("julie_316c0b08", "sess1", "fast_search", 50.0, Some(5), None, None, true, None).unwrap();
+        db.insert_tool_call(
+            "julie_316c0b08",
+            "sess1",
+            "fast_search",
+            50.0,
+            Some(5),
+            None,
+            None,
+            true,
+            None,
+        )
+        .unwrap();
 
         // Migrate both workspace IDs
         let mut migrations = std::collections::HashMap::new();
         migrations.insert("julie_316c0b08".to_string(), "julie_528d4264".to_string());
-        migrations.insert("goldfish_5ed767a5".to_string(), "goldfish_aa67f476".to_string());
+        migrations.insert(
+            "goldfish_5ed767a5".to_string(),
+            "goldfish_aa67f476".to_string(),
+        );
         db.migrate_workspace_ids(&migrations).unwrap();
 
         // Verify workspaces table updated
@@ -420,7 +456,8 @@ mod tests {
     #[test]
     fn test_migrate_workspace_ids_idempotent() {
         let (db, _tmp) = create_test_db();
-        db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "ready").unwrap();
+        db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "ready")
+            .unwrap();
 
         // Migrate with same old->new (no-op case: old doesn't exist)
         let mut migrations = std::collections::HashMap::new();
@@ -437,7 +474,8 @@ mod tests {
     #[test]
     fn test_delete_workspace_with_root_path() {
         let (db, _tmp) = create_test_db();
-        db.upsert_workspace("workspace_e3b0c442", "/", "pending").unwrap();
+        db.upsert_workspace("workspace_e3b0c442", "/", "pending")
+            .unwrap();
         assert!(db.get_workspace("workspace_e3b0c442").unwrap().is_some());
         db.delete_workspace("workspace_e3b0c442").unwrap();
         assert!(db.get_workspace("workspace_e3b0c442").unwrap().is_none());
@@ -446,8 +484,10 @@ mod tests {
     #[test]
     fn test_migrate_stale_ids_skips_on_disk_failure() {
         let (db, _tmp) = create_test_db();
-        db.upsert_workspace("julie_316c0b08", "/test/julie", "ready").unwrap();
-        db.upsert_workspace("sealab_72d18461", "/test/sealab", "ready").unwrap();
+        db.upsert_workspace("julie_316c0b08", "/test/julie", "ready")
+            .unwrap();
+        db.upsert_workspace("sealab_72d18461", "/test/sealab", "ready")
+            .unwrap();
 
         // Simulate: julie rename succeeded, sealab rename failed
         let mut id_map = std::collections::HashMap::new();
@@ -474,12 +514,32 @@ mod tests {
 
         // Insert 8 successful calls and 2 failed calls (10 total)
         for _ in 0..8 {
-            db.insert_tool_call("ws1", "sess1", "fast_search", 10.0, Some(5), None, None, true, None)
-                .unwrap();
+            db.insert_tool_call(
+                "ws1",
+                "sess1",
+                "fast_search",
+                10.0,
+                Some(5),
+                None,
+                None,
+                true,
+                None,
+            )
+            .unwrap();
         }
         for _ in 0..2 {
-            db.insert_tool_call("ws1", "sess1", "fast_search", 5.0, Some(0), None, None, false, None)
-                .unwrap();
+            db.insert_tool_call(
+                "ws1",
+                "sess1",
+                "fast_search",
+                5.0,
+                Some(0),
+                None,
+                None,
+                false,
+                None,
+            )
+            .unwrap();
         }
 
         let (total, succeeded) = db.get_tool_success_rate("ws1", 7).unwrap();
@@ -503,13 +563,33 @@ mod tests {
 
         // Insert calls for ws1
         for _ in 0..5 {
-            db.insert_tool_call("ws1", "sess1", "fast_search", 10.0, None, None, None, true, None)
-                .unwrap();
+            db.insert_tool_call(
+                "ws1",
+                "sess1",
+                "fast_search",
+                10.0,
+                None,
+                None,
+                None,
+                true,
+                None,
+            )
+            .unwrap();
         }
         // Insert calls for ws2 (should not affect ws1 query)
         for _ in 0..3 {
-            db.insert_tool_call("ws2", "sess2", "deep_dive", 20.0, None, None, None, false, None)
-                .unwrap();
+            db.insert_tool_call(
+                "ws2",
+                "sess2",
+                "deep_dive",
+                20.0,
+                None,
+                None,
+                None,
+                false,
+                None,
+            )
+            .unwrap();
         }
 
         let (total, succeeded) = db.get_tool_success_rate("ws1", 7).unwrap();
@@ -524,7 +604,8 @@ mod tests {
     #[test]
     fn test_migrate_workspace_ids_empty_map() {
         let (db, _tmp) = create_test_db();
-        db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "ready").unwrap();
+        db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "ready")
+            .unwrap();
 
         let migrations = std::collections::HashMap::new();
         db.migrate_workspace_ids(&migrations).unwrap();
@@ -538,14 +619,16 @@ mod tests {
         let (db, _tmp) = create_test_db();
 
         // Register two workspaces in DB
-        db.upsert_workspace("julie_528d4264", "/Users/test/julie", "ready").unwrap();
-        db.upsert_workspace("goldfish_aa67f476", "/Users/test/goldfish", "ready").unwrap();
+        db.upsert_workspace("julie_528d4264", "/Users/test/julie", "ready")
+            .unwrap();
+        db.upsert_workspace("goldfish_aa67f476", "/Users/test/goldfish", "ready")
+            .unwrap();
 
         // Create a temp indexes directory with registered + orphan dirs
         let indexes_dir = _tmp.path().join("indexes");
         std::fs::create_dir_all(indexes_dir.join("julie_528d4264")).unwrap();
         std::fs::create_dir_all(indexes_dir.join("goldfish_aa67f476")).unwrap();
-        std::fs::create_dir_all(indexes_dir.join("julie_316c0b08")).unwrap();  // orphan
+        std::fs::create_dir_all(indexes_dir.join("julie_316c0b08")).unwrap(); // orphan
         std::fs::create_dir_all(indexes_dir.join("sealab_72d18461")).unwrap(); // orphan
 
         // Build registered ID set
@@ -585,11 +668,13 @@ mod tests {
         let (db, _tmp) = create_test_db();
 
         // Insert with old workspace ID
-        db.upsert_workspace("julie_316c0b08", "/Users/murphy/source/julie", "ready").unwrap();
+        db.upsert_workspace("julie_316c0b08", "/Users/murphy/source/julie", "ready")
+            .unwrap();
 
         // Upsert same path with different workspace ID -- should not crash.
         // "ready" must NOT be downgraded to "pending" (the whole point of the fix).
-        db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "pending").unwrap();
+        db.upsert_workspace("julie_528d4264", "/Users/murphy/source/julie", "pending")
+            .unwrap();
 
         // The row should still exist (workspace_id NOT changed, status preserved)
         let ws = db.get_workspace("julie_316c0b08").unwrap().unwrap();
@@ -700,11 +785,17 @@ mod tests {
 
         // ws1 should be restored to "ready" (has symbols, was stuck at pending)
         let ws1 = db.get_workspace("ws1").unwrap().unwrap();
-        assert_eq!(ws1.status, "ready", "indexed workspace should be restored to ready");
+        assert_eq!(
+            ws1.status, "ready",
+            "indexed workspace should be restored to ready"
+        );
 
         // ws2 should stay "pending" (no symbols means it was never indexed)
         let ws2 = db.get_workspace("ws2").unwrap().unwrap();
-        assert_eq!(ws2.status, "pending", "unindexed workspace should stay pending");
+        assert_eq!(
+            ws2.status, "pending",
+            "unindexed workspace should stay pending"
+        );
 
         // ws3 should stay "ready" (was never stuck)
         let ws3 = db.get_workspace("ws3").unwrap().unwrap();

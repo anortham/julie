@@ -31,10 +31,7 @@ fn test_shutdown_event_name_isolation() {
 #[test]
 fn test_create_and_signal_event() {
     // Use a unique name to avoid colliding with a real daemon
-    let event_name = format!(
-        "Local\\julie-test-shutdown-{}",
-        std::process::id()
-    );
+    let event_name = format!("Local\\julie-test-shutdown-{}", std::process::id());
 
     let event = Arc::new(ShutdownEvent::create(&event_name).expect("create event"));
 
@@ -59,8 +56,7 @@ fn test_create_and_signal_event() {
 
 #[test]
 fn test_signal_nonexistent_event() {
-    let result =
-        shutdown_event::signal_shutdown("Local\\julie-test-nonexistent-event-99999999");
+    let result = shutdown_event::signal_shutdown("Local\\julie-test-nonexistent-event-99999999");
     assert_eq!(
         result.unwrap(),
         false,

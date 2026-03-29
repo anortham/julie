@@ -109,19 +109,19 @@ impl super::SymbolDatabase {
             .conn
             .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
 
-        let total_symbols: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
+        let total_symbols: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
 
-        let total_lines: i64 = self
-            .conn
-            .query_row("SELECT COALESCE(SUM(line_count), 0) FROM files", [], |row| {
-                row.get(0)
-            })?;
+        let total_lines: i64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(line_count), 0) FROM files",
+            [],
+            |row| row.get(0),
+        )?;
 
-        let total_relationships: i64 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))?;
+        let total_relationships: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))?;
 
         let language_count: i64 = self.conn.query_row(
             "SELECT COUNT(DISTINCT language) FROM files WHERE language != ''",

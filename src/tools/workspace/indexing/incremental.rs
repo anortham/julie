@@ -357,7 +357,10 @@ impl ManageWorkspaceTool {
                     "DELETE FROM symbols WHERE file_path = ?1",
                     rusqlite::params![file_path],
                 ) {
-                    warn!("Failed to delete symbols for orphaned file {}: {}", file_path, e);
+                    warn!(
+                        "Failed to delete symbols for orphaned file {}: {}",
+                        file_path, e
+                    );
                     return Ok(0);
                 }
 
@@ -365,7 +368,10 @@ impl ManageWorkspaceTool {
                     "DELETE FROM files WHERE path = ?1",
                     rusqlite::params![file_path],
                 ) {
-                    warn!("Failed to delete file record for orphaned file {}: {}", file_path, e);
+                    warn!(
+                        "Failed to delete file record for orphaned file {}: {}",
+                        file_path, e
+                    );
                     return Ok(0);
                 }
 

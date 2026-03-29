@@ -1,9 +1,9 @@
 use crate::dashboard::routes::intelligence::{
     compute_donut_segments, format_duration_ms, format_number, generate_story_cards, kind_css_var,
 };
+use crate::database::SymbolDatabase;
 use crate::database::analytics::{AggregateStats, CentralitySymbol, FileHotspot};
 use crate::database::types::FileInfo;
-use crate::database::SymbolDatabase;
 use std::collections::HashMap;
 use tempfile::TempDir;
 
@@ -41,7 +41,8 @@ fn test_get_top_symbols_by_centrality_returns_empty_for_empty_db() {
 fn test_get_top_symbols_by_centrality_excludes_zero_scores() {
     let (_tmp, db) = test_db();
 
-    db.store_file_info(&make_file("src/main.rs", "rust", 100, 1000)).unwrap();
+    db.store_file_info(&make_file("src/main.rs", "rust", 100, 1000))
+        .unwrap();
     db.conn.execute(
         "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
          VALUES ('sym1', 'zero_score_fn', 'function', 'rust', 'src/main.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
@@ -49,14 +50,18 @@ fn test_get_top_symbols_by_centrality_excludes_zero_scores() {
     ).unwrap();
 
     let result = db.get_top_symbols_by_centrality(10).unwrap();
-    assert!(result.is_empty(), "symbols with reference_score=0 must be excluded");
+    assert!(
+        result.is_empty(),
+        "symbols with reference_score=0 must be excluded"
+    );
 }
 
 #[test]
 fn test_get_top_symbols_by_centrality_returns_ordered_by_score() {
     let (_tmp, db) = test_db();
 
-    db.store_file_info(&make_file("src/lib.rs", "rust", 200, 2000)).unwrap();
+    db.store_file_info(&make_file("src/lib.rs", "rust", 200, 2000))
+        .unwrap();
 
     // Insert symbols directly with known reference_score values
     db.conn.execute(
@@ -79,14 +84,18 @@ fn test_get_top_symbols_by_centrality_returns_ordered_by_score() {
     assert_eq!(result.len(), 3);
     assert_eq!(result[0].name, "high_fn", "highest score must come first");
     assert_eq!(result[1].name, "mid_fn", "second highest must be second");
-    assert_eq!(result[2].name, "low_fn", "lowest non-zero score must be last");
+    assert_eq!(
+        result[2].name, "low_fn",
+        "lowest non-zero score must be last"
+    );
 }
 
 #[test]
 fn test_get_top_symbols_by_centrality_respects_limit() {
     let (_tmp, db) = test_db();
 
-    db.store_file_info(&make_file("src/lib.rs", "rust", 100, 1000)).unwrap();
+    db.store_file_info(&make_file("src/lib.rs", "rust", 100, 1000))
+        .unwrap();
 
     for i in 1..=5u32 {
         db.conn.execute(
@@ -112,7 +121,8 @@ fn test_get_top_symbols_by_centrality_respects_limit() {
 fn test_get_top_symbols_by_centrality_fields_populated() {
     let (_tmp, db) = test_db();
 
-    db.store_file_info(&make_file("src/core.rs", "rust", 100, 1000)).unwrap();
+    db.store_file_info(&make_file("src/core.rs", "rust", 100, 1000))
+        .unwrap();
     db.conn.execute(
         "INSERT INTO symbols (id, name, kind, language, file_path, signature, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 10, 0, 0, 0, 100, 0)",
@@ -127,7 +137,10 @@ fn test_get_top_symbols_by_centrality_fields_populated() {
     assert_eq!(sym.language, "rust");
     assert_eq!(sym.file_path, "src/core.rs");
     assert_eq!(sym.signature, Some("fn core_fn()".to_string()));
-    assert!((sym.reference_score - 5.0).abs() < 1e-9, "reference_score must be 5.0");
+    assert!(
+        (sym.reference_score - 5.0).abs() < 1e-9,
+        "reference_score must be 5.0"
+    );
 }
 
 // --- get_file_hotspots ---
@@ -147,9 +160,12 @@ fn test_get_file_hotspots_returns_ordered_by_composite_score() {
     // File A: 50 lines, 1 symbol = 60
     // File B: 20 lines, 5 symbols = 70  <- highest
     // File C: 100 lines, 0 symbols = 100 <- actually highest
-    db.store_file_info(&make_file("src/a.rs", "rust", 50, 500)).unwrap();
-    db.store_file_info(&make_file("src/b.rs", "rust", 20, 200)).unwrap();
-    db.store_file_info(&make_file("src/c.rs", "rust", 100, 1000)).unwrap();
+    db.store_file_info(&make_file("src/a.rs", "rust", 50, 500))
+        .unwrap();
+    db.store_file_info(&make_file("src/b.rs", "rust", 20, 200))
+        .unwrap();
+    db.store_file_info(&make_file("src/c.rs", "rust", 100, 1000))
+        .unwrap();
 
     // Add 1 symbol to a.rs (score: 50 + 10 = 60)
     db.conn.execute(
@@ -171,9 +187,18 @@ fn test_get_file_hotspots_returns_ordered_by_composite_score() {
     let result = db.get_file_hotspots(10).unwrap();
     assert_eq!(result.len(), 3);
     // c.rs = 100, b.rs = 70, a.rs = 60
-    assert_eq!(result[0].path, "src/c.rs", "c.rs with 100 lines and no symbols should rank first");
-    assert_eq!(result[1].path, "src/b.rs", "b.rs with 5 symbols should rank second");
-    assert_eq!(result[2].path, "src/a.rs", "a.rs with 1 symbol should rank third");
+    assert_eq!(
+        result[0].path, "src/c.rs",
+        "c.rs with 100 lines and no symbols should rank first"
+    );
+    assert_eq!(
+        result[1].path, "src/b.rs",
+        "b.rs with 5 symbols should rank second"
+    );
+    assert_eq!(
+        result[2].path, "src/a.rs",
+        "a.rs with 1 symbol should rank third"
+    );
 }
 
 #[test]
@@ -186,7 +211,8 @@ fn test_get_file_hotspots_respects_limit() {
             "rust",
             (i * 10) as i64,
             1000,
-        )).unwrap();
+        ))
+        .unwrap();
     }
 
     let result = db.get_file_hotspots(2).unwrap();
@@ -197,7 +223,8 @@ fn test_get_file_hotspots_respects_limit() {
 fn test_get_file_hotspots_fields_populated() {
     let (_tmp, db) = test_db();
 
-    db.store_file_info(&make_file("src/hot.rs", "rust", 200, 4096)).unwrap();
+    db.store_file_info(&make_file("src/hot.rs", "rust", 200, 4096))
+        .unwrap();
     db.conn.execute(
         "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
          VALUES ('sym1', 'hot_fn', 'function', 'rust', 'src/hot.rs', 0.0, 1, 10, 0, 0, 0, 100, 0)",
@@ -228,7 +255,10 @@ fn test_get_file_hotspots_null_line_count_treated_as_zero() {
 
     let result = db.get_file_hotspots(10).unwrap();
     assert_eq!(result.len(), 1);
-    assert_eq!(result[0].line_count, 0, "NULL line_count should be treated as 0");
+    assert_eq!(
+        result[0].line_count, 0,
+        "NULL line_count should be treated as 0"
+    );
 }
 
 // --- get_aggregate_stats ---
@@ -248,9 +278,12 @@ fn test_get_aggregate_stats_empty_db() {
 fn test_get_aggregate_stats_counts_files_and_symbols() {
     let (_tmp, db) = test_db();
 
-    db.store_file_info(&make_file("src/a.rs", "rust", 100, 1000)).unwrap();
-    db.store_file_info(&make_file("src/b.rs", "rust", 50, 500)).unwrap();
-    db.store_file_info(&make_file("lib/main.py", "python", 200, 2000)).unwrap();
+    db.store_file_info(&make_file("src/a.rs", "rust", 100, 1000))
+        .unwrap();
+    db.store_file_info(&make_file("src/b.rs", "rust", 50, 500))
+        .unwrap();
+    db.store_file_info(&make_file("lib/main.py", "python", 200, 2000))
+        .unwrap();
 
     db.conn.execute(
         "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
@@ -267,15 +300,20 @@ fn test_get_aggregate_stats_counts_files_and_symbols() {
     assert_eq!(stats.total_files, 3);
     assert_eq!(stats.total_symbols, 2);
     assert_eq!(stats.total_lines, 350, "100 + 50 + 200 = 350");
-    assert_eq!(stats.language_count, 2, "rust + python = 2 distinct languages");
+    assert_eq!(
+        stats.language_count, 2,
+        "rust + python = 2 distinct languages"
+    );
 }
 
 #[test]
 fn test_get_aggregate_stats_total_lines_sums_line_count() {
     let (_tmp, db) = test_db();
 
-    db.store_file_info(&make_file("a.rs", "rust", 30, 100)).unwrap();
-    db.store_file_info(&make_file("b.rs", "rust", 70, 200)).unwrap();
+    db.store_file_info(&make_file("a.rs", "rust", 30, 100))
+        .unwrap();
+    db.store_file_info(&make_file("b.rs", "rust", 70, 200))
+        .unwrap();
 
     let stats = db.get_aggregate_stats().unwrap();
     assert_eq!(stats.total_lines, 100, "30 + 70 = 100");
@@ -285,7 +323,8 @@ fn test_get_aggregate_stats_total_lines_sums_line_count() {
 fn test_get_aggregate_stats_language_count_ignores_empty_language() {
     let (_tmp, db) = test_db();
 
-    db.store_file_info(&make_file("a.rs", "rust", 10, 100)).unwrap();
+    db.store_file_info(&make_file("a.rs", "rust", 10, 100))
+        .unwrap();
     // Insert a file with empty language directly
     db.conn.execute(
         "INSERT INTO files (path, language, hash, size, last_modified, last_indexed, symbol_count, line_count)
@@ -295,7 +334,10 @@ fn test_get_aggregate_stats_language_count_ignores_empty_language() {
 
     let stats = db.get_aggregate_stats().unwrap();
     // Files with empty language must NOT count toward language_count
-    assert_eq!(stats.language_count, 1, "only 'rust' counts; empty string excluded");
+    assert_eq!(
+        stats.language_count, 1,
+        "only 'rust' counts; empty string excluded"
+    );
     // But total_files should include all files
     assert_eq!(stats.total_files, 2);
 }
@@ -304,7 +346,8 @@ fn test_get_aggregate_stats_language_count_ignores_empty_language() {
 fn test_get_aggregate_stats_counts_relationships() {
     let (_tmp, db) = test_db();
 
-    db.store_file_info(&make_file("src/a.rs", "rust", 10, 100)).unwrap();
+    db.store_file_info(&make_file("src/a.rs", "rust", 10, 100))
+        .unwrap();
 
     db.conn.execute(
         "INSERT INTO symbols (id, name, kind, language, file_path, reference_score, start_line, end_line, start_col, end_col, start_byte, end_byte, last_indexed)
@@ -376,7 +419,10 @@ fn test_kind_css_var_unknown_falls_back() {
 fn test_compute_donut_segments_empty() {
     let by_kind: HashMap<String, usize> = HashMap::new();
     let segments = compute_donut_segments(&by_kind);
-    assert!(segments.is_empty(), "empty map should produce empty segments");
+    assert!(
+        segments.is_empty(),
+        "empty map should produce empty segments"
+    );
 }
 
 #[test]
@@ -471,10 +517,7 @@ fn test_generate_story_cards_produces_expected_cards() {
         language_count: 2,
     };
 
-    let lang_counts = vec![
-        ("rust".to_string(), 70_i64),
-        ("python".to_string(), 30_i64),
-    ];
+    let lang_counts = vec![("rust".to_string(), 70_i64), ("python".to_string(), 30_i64)];
 
     let cards = generate_story_cards(&top_symbols, &hotspots, &by_kind, &stats, &lang_counts);
 
@@ -517,7 +560,11 @@ fn test_generate_story_cards_produces_expected_cards() {
 
     // Card 5: total references (only if > 100, which 1500 is)
     let has_refs_card = cards.iter().any(|c| c.contains("1,500"));
-    assert!(has_refs_card, "should have a card about total references (1,500), cards: {:?}", cards);
+    assert!(
+        has_refs_card,
+        "should have a card about total references (1,500), cards: {:?}",
+        cards
+    );
 }
 
 #[test]
@@ -554,7 +601,9 @@ fn test_generate_story_cards_skips_refs_card_when_low() {
 
     let cards = generate_story_cards(&top_symbols, &hotspots, &by_kind, &stats, &lang_counts);
 
-    let has_refs_card = cards.iter().any(|c| c.to_lowercase().contains("references tracked"));
+    let has_refs_card = cards
+        .iter()
+        .any(|c| c.to_lowercase().contains("references tracked"));
     assert!(
         !has_refs_card,
         "should NOT have a references card when total_relationships <= 100, cards: {:?}",

@@ -15,7 +15,11 @@ fn test_error_buffer_captures_warn_and_error() {
     });
 
     let entries = buffer.recent_entries();
-    assert_eq!(entries.len(), 2, "should have captured 2 entries (warn + error)");
+    assert_eq!(
+        entries.len(),
+        2,
+        "should have captured 2 entries (warn + error)"
+    );
 
     assert_eq!(entries[0].level, "WARN");
     assert_eq!(entries[0].message, "something looks off");

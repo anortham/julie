@@ -95,7 +95,9 @@ impl WorkspacePool {
             if let Some(ref db) = self.daemon_db {
                 let db = Arc::clone(db);
                 let id = workspace_id.to_string();
-                tokio::task::spawn_blocking(move || { let _ = db.increment_session_count(&id); });
+                tokio::task::spawn_blocking(move || {
+                    let _ = db.increment_session_count(&id);
+                });
             }
             if let Some(ref wp) = self.watcher_pool {
                 let provider = self.shared_embedding_provider();
@@ -119,7 +121,9 @@ impl WorkspacePool {
             if let Some(ref db) = self.daemon_db {
                 let db = Arc::clone(db);
                 let id = workspace_id.to_string();
-                tokio::task::spawn_blocking(move || { let _ = db.increment_session_count(&id); });
+                tokio::task::spawn_blocking(move || {
+                    let _ = db.increment_session_count(&id);
+                });
             }
             if let Some(ref wp) = self.watcher_pool {
                 let provider = self.shared_embedding_provider();
@@ -162,7 +166,9 @@ impl WorkspacePool {
         if let Some(ref db) = self.daemon_db {
             let db = Arc::clone(db);
             let id = workspace_id.to_string();
-            tokio::task::spawn_blocking(move || { let _ = db.increment_session_count(&id); });
+            tokio::task::spawn_blocking(move || {
+                let _ = db.increment_session_count(&id);
+            });
         }
 
         let ws = Arc::new(workspace);
@@ -231,7 +237,9 @@ impl WorkspacePool {
         if let Some(ref db) = self.daemon_db {
             let db = Arc::clone(db);
             let id = workspace_id.to_string();
-            tokio::task::spawn_blocking(move || { let _ = db.decrement_session_count(&id); });
+            tokio::task::spawn_blocking(move || {
+                let _ = db.decrement_session_count(&id);
+            });
         }
         if let Some(ref wp) = self.watcher_pool {
             wp.detach(workspace_id).await;

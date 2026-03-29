@@ -66,7 +66,10 @@ fn test_restart_subcommand() {
 fn test_workspace_flag_global_with_subcommand() {
     let cli = Cli::parse_from(["julie-server", "--workspace", "/tmp/proj", "daemon"]);
     assert_eq!(cli.workspace, Some(PathBuf::from("/tmp/proj")));
-    assert!(matches!(cli.command, Some(Command::Daemon { port: 7890, .. })));
+    assert!(matches!(
+        cli.command,
+        Some(Command::Daemon { port: 7890, .. })
+    ));
 }
 
 // ============================================================================

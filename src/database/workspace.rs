@@ -43,9 +43,9 @@ impl SymbolDatabase {
         // Use separate COUNT queries to avoid the CROSS JOIN cartesian product bug.
         // A CROSS JOIN of symbols × files produces symbol_count × file_count rows,
         // which inflates both counts and SUM(size) catastrophically on large workspaces.
-        let symbol_count: i64 =
-            self.conn
-                .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
+        let symbol_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
 
         let (file_count, total_size_bytes): (i64, i64) = self.conn.query_row(
             "SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files",

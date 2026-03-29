@@ -625,11 +625,8 @@ fn test_discover_creates_julieignore_even_without_vendor_patterns() {
     let tool = create_tool();
 
     // Clean project: just source files, no vendor directories at all
-    let (temp_dir, _files) = create_workspace_with_files(vec![
-        "src/main.rs",
-        "src/lib.rs",
-        "src/utils.rs",
-    ]);
+    let (temp_dir, _files) =
+        create_workspace_with_files(vec!["src/main.rs", "src/lib.rs", "src/utils.rs"]);
 
     let _indexable = tool
         .discover_indexable_files(temp_dir.path())

@@ -6,8 +6,8 @@ use axum::response::Html;
 use serde::Deserialize;
 use tera::Context;
 
-use crate::dashboard::render_template;
 use crate::dashboard::AppState;
+use crate::dashboard::render_template;
 
 #[derive(Deserialize)]
 pub struct MetricsParams {
@@ -55,8 +55,7 @@ pub async fn index(
                     {
                         let prev_count = existing.call_count;
                         existing.call_count += tool.call_count;
-                        existing.avg_duration_ms = (existing.avg_duration_ms
-                            * prev_count as f64
+                        existing.avg_duration_ms = (existing.avg_duration_ms * prev_count as f64
                             + tool.avg_duration_ms * tool.call_count as f64)
                             / existing.call_count as f64;
                     } else {
@@ -111,7 +110,8 @@ pub async fn index(
         }
         (total, ok)
     } else {
-        db.get_tool_success_rate(workspace_id, params.days).unwrap_or((0, 0))
+        db.get_tool_success_rate(workspace_id, params.days)
+            .unwrap_or((0, 0))
     };
 
     let success_rate = if success_total > 0 {
@@ -157,23 +157,33 @@ pub async fn table(
             if let Ok(h) = db.query_tool_call_history(&ws.workspace_id, params.days) {
                 total.total_calls += h.total_calls;
                 for tool in h.per_tool {
-                    if let Some(existing) = total.per_tool.iter_mut().find(|t| t.tool_name == tool.tool_name) {
+                    if let Some(existing) = total
+                        .per_tool
+                        .iter_mut()
+                        .find(|t| t.tool_name == tool.tool_name)
+                    {
                         let prev = existing.call_count;
                         existing.call_count += tool.call_count;
                         existing.avg_duration_ms = (existing.avg_duration_ms * prev as f64
-                            + tool.avg_duration_ms * tool.call_count as f64) / existing.call_count as f64;
+                            + tool.avg_duration_ms * tool.call_count as f64)
+                            / existing.call_count as f64;
                     } else {
                         total.per_tool.push(tool);
                     }
                 }
                 for (name, durations) in h.durations_by_tool {
-                    total.durations_by_tool.entry(name).or_default().extend(durations);
+                    total
+                        .durations_by_tool
+                        .entry(name)
+                        .or_default()
+                        .extend(durations);
                 }
             }
         }
         total
     } else {
-        db.query_tool_call_history(workspace_id, params.days).unwrap_or_default()
+        db.query_tool_call_history(workspace_id, params.days)
+            .unwrap_or_default()
     };
 
     let mut tools = history.per_tool;

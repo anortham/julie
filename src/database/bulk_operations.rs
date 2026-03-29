@@ -180,7 +180,10 @@ impl SymbolDatabase {
                 original_sync, e
             );
         }
-        if let Err(e) = self.conn.pragma_update(None, "cache_size", original_cache_size) {
+        if let Err(e) = self
+            .conn
+            .pragma_update(None, "cache_size", original_cache_size)
+        {
             warn!(
                 "Failed to restore PRAGMA cache_size to {}: {}",
                 original_cache_size, e

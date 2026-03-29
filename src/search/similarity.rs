@@ -47,8 +47,7 @@ pub fn find_similar_by_query(
     let symbol_ids: Vec<String> = filtered.iter().map(|(id, _)| id.clone()).collect();
 
     let symbols = db.get_symbols_by_ids(&symbol_ids)?;
-    let symbol_map: HashMap<&str, &Symbol> =
-        symbols.iter().map(|s| (s.id.as_str(), s)).collect();
+    let symbol_map: HashMap<&str, &Symbol> = symbols.iter().map(|s| (s.id.as_str(), s)).collect();
 
     let mut entries = Vec::new();
     for id in &symbol_ids {
@@ -100,8 +99,7 @@ pub fn find_similar_symbols(
 
     // Step 4: Fetch full symbols
     let symbols = db.get_symbols_by_ids(&symbol_ids)?;
-    let symbol_map: HashMap<&str, &Symbol> =
-        symbols.iter().map(|s| (s.id.as_str(), s)).collect();
+    let symbol_map: HashMap<&str, &Symbol> = symbols.iter().map(|s| (s.id.as_str(), s)).collect();
 
     // Step 5: Build entries in KNN order
     let mut entries = Vec::new();

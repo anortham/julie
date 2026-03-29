@@ -771,13 +771,21 @@ impl WorkspaceHealth {
     }
 
     fn check_disk_space(&mut self, julie_dir: &Path) -> Result<()> {
-        let path = if julie_dir.exists() { julie_dir } else if let Some(p) = julie_dir.parent() { p } else { julie_dir };
+        let path = if julie_dir.exists() {
+            julie_dir
+        } else if let Some(p) = julie_dir.parent() {
+            p
+        } else {
+            julie_dir
+        };
         match fs2::available_space(path) {
             Ok(bytes) => {
                 self.disk_space_mb = bytes / (1024 * 1024);
                 if self.disk_space_mb < 100 {
-                    self.warnings
-                        .push(format!("Low disk space: only {}MB available", self.disk_space_mb));
+                    self.warnings.push(format!(
+                        "Low disk space: only {}MB available",
+                        self.disk_space_mb
+                    ));
                 }
             }
             Err(e) => {

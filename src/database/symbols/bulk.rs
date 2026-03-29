@@ -329,5 +329,4 @@ impl SymbolDatabase {
 
         result
     }
-
 }

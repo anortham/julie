@@ -395,14 +395,16 @@ impl SmartRefactorTool {
 
         Ok(changes)
     }
-
 }
 
 /// Returns true if the file extension is supported for automatic import rewriting.
 /// Supported: JavaScript/TypeScript (.js/.ts/.jsx/.tsx/.mjs/.cjs), Python (.py), Rust (.rs).
 fn is_import_update_supported(path: &str) -> bool {
     let ext = path.rsplit('.').next().unwrap_or("");
-    matches!(ext, "js" | "ts" | "tsx" | "jsx" | "mjs" | "cjs" | "py" | "rs")
+    matches!(
+        ext,
+        "js" | "ts" | "tsx" | "jsx" | "mjs" | "cjs" | "py" | "rs"
+    )
 }
 
 /// Used by rename to find all locations that need to be updated.

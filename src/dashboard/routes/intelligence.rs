@@ -9,8 +9,8 @@ use axum::response::Html;
 use serde::Serialize;
 use tera::Context;
 
-use crate::dashboard::render_template;
 use crate::dashboard::AppState;
+use crate::dashboard::render_template;
 use crate::database::analytics::{AggregateStats, CentralitySymbol, FileHotspot};
 
 /// SVG donut chart circumference: 2 * pi * r where r = 0.7.
@@ -124,23 +124,23 @@ pub fn generate_story_cards(
 
     // Card 3: dominant language
     let total_files = stats.total_files;
-    if total_files > 0 {
-        if let Some((lang, count)) = lang_counts.first() {
-            let pct = (*count as f64 / total_files as f64) * 100.0;
-            cards.push(format!("Dominant language: {} ({:.0}% of files)", lang, pct));
-        }
+    if total_files > 0
+        && let Some((lang, count)) = lang_counts.first()
+    {
+        let pct = (*count as f64 / total_files as f64) * 100.0;
+        cards.push(format!(
+            "Dominant language: {} ({:.0}% of files)",
+            lang, pct
+        ));
     }
 
     // Card 4: most common symbol kind
     let total_symbols: usize = by_kind.values().sum();
-    if total_symbols > 0 {
-        if let Some((kind, count)) = by_kind.iter().max_by_key(|(_, v)| *v) {
-            let pct = (*count as f64 / total_symbols as f64) * 100.0;
-            cards.push(format!(
-                "Most common symbol kind: {} ({:.0}%)",
-                kind, pct
-            ));
-        }
+    if total_symbols > 0
+        && let Some((kind, count)) = by_kind.iter().max_by_key(|(_, v)| *v)
+    {
+        let pct = (*count as f64 / total_symbols as f64) * 100.0;
+        cards.push(format!("Most common symbol kind: {} ({:.0}%)", kind, pct));
     }
 
     // Card 5: total references tracked (only if meaningful)
@@ -162,7 +162,7 @@ pub fn format_number(n: i64) -> String {
     let len = chars.len();
 
     for (i, ch) in chars.iter().enumerate() {
-        if i > 0 && (len - i) % 3 == 0 {
+        if i > 0 && (len - i).is_multiple_of(3) {
             result.push(',');
         }
         result.push(*ch);
@@ -223,7 +223,9 @@ pub async fn index(
     let (top_symbols, hotspots, stats, by_kind, lang_counts) = {
         let db_guard = db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        let top_symbols = db_guard.get_top_symbols_by_centrality(15).unwrap_or_default();
+        let top_symbols = db_guard
+            .get_top_symbols_by_centrality(15)
+            .unwrap_or_default();
         let hotspots = db_guard.get_file_hotspots(10).unwrap_or_default();
         let stats = db_guard.get_aggregate_stats().unwrap_or_default();
         let (by_kind, _by_language) = db_guard.get_symbol_statistics().unwrap_or_default();
@@ -280,7 +282,9 @@ pub async fn story_cards(
     let (top_symbols, hotspots, stats, by_kind, lang_counts) = {
         let db_guard = db.lock().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        let top_symbols = db_guard.get_top_symbols_by_centrality(1).unwrap_or_default();
+        let top_symbols = db_guard
+            .get_top_symbols_by_centrality(1)
+            .unwrap_or_default();
         let hotspots = db_guard.get_file_hotspots(1).unwrap_or_default();
         let stats = db_guard.get_aggregate_stats().unwrap_or_default();
         let (by_kind, _by_language) = db_guard.get_symbol_statistics().unwrap_or_default();

@@ -617,7 +617,11 @@ impl JulieServerHandler {
             result_count: report.result_count,
             source_file_paths: report.source_file_paths.clone(),
             output_bytes,
-            metadata_str: if metadata == "null" { None } else { Some(metadata) },
+            metadata_str: if metadata == "null" {
+                None
+            } else {
+                Some(metadata)
+            },
             daemon_db: self.daemon_db.clone(),
             workspace_id: self.workspace_id.clone(),
         });
