@@ -139,6 +139,8 @@ pub fn create_router(dashboard: DashboardState, config: DashboardConfig) -> Resu
         .route("/metrics/table", get(routes::metrics::table))
         .route("/search", get(routes::search::index))
         .route("/search", post(routes::search::search))
+        .route("/intelligence/{workspace_id}", get(routes::intelligence::index))
+        .route("/intelligence/{workspace_id}/stories", get(routes::intelligence::story_cards))
         .route("/events/activity", get(routes::events::activity_stream))
         .route("/static/{*path}", get(serve_static))
         .with_state(app_state);
