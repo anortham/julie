@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Intelligence - Julie Dashboard{% endblock %}
+{% block content %}
+
+{% if no_data %}
+  <div style="text-align: center; padding: 4rem 0;">
+    <h2 class="title" style="color: var(--julie-text-muted);">No Data Available</h2>
+    <p style="color: var(--julie-text-muted);">
+      Intelligence requires daemon mode with an indexed workspace.
+    </p>
+  </div>
+{% else %}
+
+  <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;">
+    <h1 class="title" style="margin-bottom: 0;">Intelligence</h1>
+    <span class="mono" style="color: var(--julie-text-muted); font-size: 0.85rem;">{{ workspace_id }}</span>
+  </div>
+
+  <!-- Section 1: Codebase Fingerprint -->
+  <div class="fingerprint-grid">
+    <div class="fingerprint-card">
+      <p class="stat-value">{{ stats.total_files }}</p>
+      <p class="stat-label">Files</p>
+    </div>
+    <div class="fingerprint-card">
+      <p class="stat-value">{{ stats.total_symbols }}</p>
+      <p class="stat-label">Symbols</p>
+    </div>
+    <div class="fingerprint-card">
+      <p class="stat-value">
+        {% if stats.total_lines >= 1000 %}{{ (stats.total_lines / 1000) | round(precision=1) }}k
+        {% else %}{{ stats.total_lines }}{% endif %}
+      </p>
+      <p class="stat-label">Lines of Code</p>
+    </div>
+    <div class="fingerprint-card">
+      <p class="stat-value">{{ stats.language_count }}</p>
+      <p class="stat-label">Languages</p>
+    </div>
+    <div class="fingerprint-card">
+      <p class="stat-value">
+        {% if stats.total_relationships >= 1000 %}{{ (stats.total_relationships / 1000) | round(precision=1) }}k
+        {% else %}{{ stats.total_relationships }}{% endif %}
+      </p>
+      <p class="stat-label">References</p>
+    </div>
+    {% if index_duration %}
+    <div class="fingerprint-card">
+      <p class="stat-value" style="font-size: 1.4rem;">{{ index_duration }}</p>
+      <p class="stat-label">Index Time</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Section 2: Top Symbols ("Main Characters") -->
+  <div class="julie-card" style="margin-bottom: 2rem;">
+    <h2 class="subtitle" style="margin-bottom: 0.75rem; font-size: 1rem; color: var(--julie-text);">
+      Top Symbols by Centrality
+    </h2>
+    {% if top_symbols | length > 0 %}
+    <div style="overflow-x: auto;">
+      <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.82rem;">
+        <thead>
+          <tr>
+            <th style="width: 2.5rem; color: var(--julie-text-muted);">#</th>
+            <th style="color: var(--julie-text-muted);">Symbol</th>
+            <th style="color: var(--julie-text-muted);">Kind</th>
+            <th style="color: var(--julie-text-muted);">Language</th>
+            <th style="color: var(--julie-text-muted);">File</th>
+            <th style="color: var(--julie-text-muted); text-align: right;">Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sym in top_symbols %}
+          <tr>
+            <td style="color: var(--julie-text-muted);">{{ loop.index }}</td>
+            <td>
+              <span class="mono" style="color: var(--julie-text); font-weight: 600;">{{ sym.name }}</span>
+              {% if sym.signature %}
+                <br><span class="mono" style="color: var(--julie-text-muted); font-size: 0.75rem;">
+                  {{ sym.signature | truncate(length=60) }}
+                </span>
+              {% endif %}
+            </td>
+            <td>
+              <span style="display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px;
+                           font-size: 0.75rem;">
+                {{ sym.kind }}
+              </span>
+            </td>
+            <td style="color: var(--julie-text-muted);">{{ sym.language }}</td>
+            <td><span class="mono" style="color: var(--julie-text-muted); font-size: 0.78rem;">{{ sym.file_path }}</span></td>
+            <td style="text-align: right;">
+              <span class="mono" style="color: var(--julie-primary);">{{ sym.reference_score | round(precision=1) }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p style="color: var(--julie-text-muted); font-size: 0.85rem;">
+        No centrality data yet. Centrality scores are computed during indexing.
+      </p>
+    {% endif %}
+  </div>
+
+  <!-- Section 3: Symbol Kind Distribution -->
+  <div class="julie-card" style="margin-bottom: 2rem;">
+    <h2 class="subtitle" style="margin-bottom: 0.75rem; font-size: 1rem; color: var(--julie-text);">
+      Symbol Kind Distribution
+    </h2>
+    {% if donut_segments | length > 0 %}
+    <div class="donut-container">
+      <!-- SVG Donut (stroke-dasharray technique) -->
+      <svg class="donut-svg" width="180" height="180" viewBox="-1 -1 2 2" style="transform: rotate(-90deg);">
+        {% for seg in donut_segments %}
+          <circle cx="0" cy="0" r="0.7" fill="none"
+                  stroke="var({{ seg.color_var }})" stroke-width="0.25"
+                  stroke-dasharray="{{ seg.dash_length }} {{ 4.398 }}"
+                  stroke-dashoffset="{{ seg.dash_offset }}"
+                  opacity="0.85"/>
+        {% endfor %}
+      </svg>
+
+      <!-- Legend -->
+      <div class="donut-legend">
+        {% for seg in donut_segments %}
+        <div class="donut-legend-item">
+          <span class="donut-legend-swatch" style="background: var({{ seg.color_var }});"></span>
+          <span class="donut-legend-label">{{ seg.label }}</span>
+          <span class="donut-legend-count">{{ seg.count }} ({{ seg.percentage | round(precision=1) }}%)</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+      <p style="color: var(--julie-text-muted); font-size: 0.85rem;">No symbol data available.</p>
+    {% endif %}
+  </div>
+
+  <!-- Section 4: Complexity Hotspots -->
+  <div class="julie-card" style="margin-bottom: 2rem;">
+    <h2 class="subtitle" style="margin-bottom: 0.75rem; font-size: 1rem; color: var(--julie-text);">
+      Complexity Hotspots
+    </h2>
+    {% if hotspots | length > 0 %}
+    <table class="table is-fullwidth is-narrow" style="background: transparent; font-size: 0.82rem;">
+      <thead>
+        <tr>
+          <th style="color: var(--julie-text-muted);">File</th>
+          <th style="color: var(--julie-text-muted);">Language</th>
+          <th style="color: var(--julie-text-muted); text-align: right;">Lines</th>
+          <th style="color: var(--julie-text-muted); text-align: right;">Symbols</th>
+          <th style="color: var(--julie-text-muted); min-width: 80px;">Complexity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for file in hotspots %}
+        <tr>
+          <td><span class="mono" style="color: var(--julie-text); font-size: 0.78rem;">{{ file.path }}</span></td>
+          <td style="color: var(--julie-text-muted);">{{ file.language }}</td>
+          <td style="text-align: right;">{{ file.line_count }}</td>
+          <td style="text-align: right;">{{ file.symbol_count }}</td>
+          <td>
+            {% set score = file.line_count + file.symbol_count * 10 %}
+            {% set pct = score / max_hotspot_score * 100.0 %}
+            <div class="hotspot-bar">
+              <div class="hotspot-bar-fill" style="width: {{ pct | round(precision=1) }}%;"></div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p style="color: var(--julie-text-muted); font-size: 0.85rem;">No file data available.</p>
+    {% endif %}
+  </div>
+
+  <!-- Section 5: Story Cards (lazy loaded) -->
+  <div class="julie-card">
+    <h2 class="subtitle" style="margin-bottom: 0.75rem; font-size: 1rem; color: var(--julie-text);">
+      Observations
+    </h2>
+    <div hx-get="/intelligence/{{ workspace_id }}/stories"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <p style="color: var(--julie-text-muted); font-size: 0.85rem;">Loading observations...</p>
+    </div>
+  </div>
+
+{% endif %}
+{% endblock %}

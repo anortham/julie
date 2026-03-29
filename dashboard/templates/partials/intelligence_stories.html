@@ -1,0 +1,14 @@
+{% if cards | length > 0 %}
+  <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+    {% for card in cards %}
+    <div class="story-card">
+      <span class="story-icon">&#9670;</span>
+      <span>{{ card }}</span>
+    </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <p style="color: var(--julie-text-muted); font-size: 0.85rem;">
+    Not enough data to generate observations yet.
+  </p>
+{% endif %}
