@@ -1,0 +1,27 @@
+{% if has_languages %}
+<div style="margin-top: 0.75rem;">
+  <p class="label-text" style="margin-bottom: 0.5rem;">Languages</p>
+
+  <!-- Stacked bar -->
+  <div class="lang-bar-track lang-bar-lg" style="margin-bottom: 0.6rem;">
+    {% for lang in languages %}
+      <div class="lang-bar-segment"
+           style="width: {{ lang.percentage }}%; background: {{ lang.css_var }};"
+           title="{{ lang.name }}: {{ lang.file_count }} files ({{ lang.percentage | round(precision=1) }}%)">
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Legend -->
+  <div style="display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; font-size: 0.8rem;">
+    {% for lang in languages %}
+      <span style="white-space: nowrap;">
+        <span class="lang-swatch" style="background: {{ lang.css_var }};"></span>
+        <span style="color: var(--julie-text-muted);">{{ lang.name }}</span>
+        <span class="mono" style="color: var(--julie-text); margin-left: 0.15rem;">{{ lang.file_count }}</span>
+        <span style="color: var(--julie-text-muted); font-size: 0.72rem;">({{ lang.percentage | round(precision=1) }}%)</span>
+      </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}

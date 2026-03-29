@@ -3,10 +3,139 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
+use serde::Serialize;
 use tera::Context;
 
 use crate::dashboard::render_template;
 use crate::dashboard::AppState;
+
+/// A single language in the distribution bar.
+#[derive(Debug, Clone, Serialize)]
+pub struct LanguageEntry {
+    pub name: String,
+    pub file_count: i64,
+    pub percentage: f64,
+    pub css_var: String,
+}
+
+/// Map a language name to its CSS custom property name.
+fn lang_css_var(lang: &str) -> &'static str {
+    match lang.to_lowercase().as_str() {
+        "rust" => "var(--lang-rust)",
+        "typescript" | "tsx" => "var(--lang-typescript)",
+        "javascript" | "jsx" => "var(--lang-javascript)",
+        "python" => "var(--lang-python)",
+        "java" => "var(--lang-java)",
+        "c_sharp" | "csharp" | "c#" => "var(--lang-csharp)",
+        "go" => "var(--lang-go)",
+        "c" => "var(--lang-c)",
+        "cpp" | "c++" => "var(--lang-cpp)",
+        "ruby" => "var(--lang-ruby)",
+        "swift" => "var(--lang-swift)",
+        "php" => "var(--lang-php)",
+        "kotlin" => "var(--lang-kotlin)",
+        "html" => "var(--lang-html)",
+        "css" => "var(--lang-css)",
+        "scala" => "var(--lang-scala)",
+        "elixir" => "var(--lang-elixir)",
+        "lua" => "var(--lang-lua)",
+        "dart" => "var(--lang-dart)",
+        "zig" => "var(--lang-zig)",
+        "r" => "var(--lang-r)",
+        "gdscript" => "var(--lang-gdscript)",
+        "vue" => "var(--lang-vue)",
+        _ => "var(--lang-other)",
+    }
+}
+
+/// Fetch language distribution for a workspace via the WorkspacePool.
+/// Returns up to `max_entries` named languages; the rest are grouped as "Other".
+async fn fetch_language_data(
+    state: &AppState,
+    workspace_id: &str,
+    max_entries: usize,
+) -> Vec<LanguageEntry> {
+    let pool = match state.dashboard.workspace_pool() {
+        Some(p) => p,
+        None => return vec![],
+    };
+
+    let workspace = match pool.get(workspace_id).await {
+        Some(ws) => ws,
+        None => return vec![],
+    };
+
+    let db = match &workspace.db {
+        Some(db) => db,
+        None => return vec![],
+    };
+
+    let counts = {
+        let db_guard = match db.lock() {
+            Ok(g) => g,
+            Err(_) => return vec![],
+        };
+        match db_guard.count_files_by_language() {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        }
+    };
+
+    if counts.is_empty() {
+        return vec![];
+    }
+
+    let total: i64 = counts.iter().map(|(_, n)| n).sum();
+    if total == 0 {
+        return vec![];
+    }
+
+    let mut entries = Vec::new();
+    let mut other_count: i64 = 0;
+
+    for (i, (lang, count)) in counts.iter().enumerate() {
+        if i < max_entries {
+            entries.push(LanguageEntry {
+                name: lang.clone(),
+                file_count: *count,
+                percentage: (*count as f64 / total as f64) * 100.0,
+                css_var: lang_css_var(lang).to_string(),
+            });
+        } else {
+            other_count += count;
+        }
+    }
+
+    if other_count > 0 {
+        entries.push(LanguageEntry {
+            name: "Other".to_string(),
+            file_count: other_count,
+            percentage: (other_count as f64 / total as f64) * 100.0,
+            css_var: lang_css_var("other").to_string(),
+        });
+    }
+
+    entries
+}
+
+/// Render a compact language bar as an HTML string for the statuses JSON response.
+fn render_compact_lang_bar(languages: &[LanguageEntry]) -> String {
+    if languages.is_empty() {
+        return String::new();
+    }
+    let mut html = String::new();
+    for lang in languages {
+        html.push_str(&format!(
+            r#"<div class="lang-bar-segment" style="width: {pct}%; background: {color};" title="{name}: {count} files ({pct_r}%)"></div>"#,
+            pct = lang.percentage,
+            color = lang.css_var,
+            name = lang.name,
+            count = lang.file_count,
+            pct_r = format!("{:.1}", lang.percentage),
+        ));
+    }
+    html
+}
 
 pub async fn index(State(state): State<AppState>) -> Result<Html<String>, StatusCode> {
     let workspaces = state
@@ -149,12 +278,17 @@ pub async fn detail(
         }
     });
 
+    let languages = fetch_language_data(&state, &workspace_id, 8).await;
+    let has_languages = !languages.is_empty();
+
     let mut context = Context::new();
     context.insert("workspace", &workspace);
     context.insert("references", &references);
     context.insert("health", &health);
     context.insert("last_indexed_str", &last_indexed_str);
     context.insert("index_duration_str", &index_duration_str);
+    context.insert("languages", &languages);
+    context.insert("has_languages", &has_languages);
 
     render_template(&state, "partials/project_detail.html", context).await
 }
