@@ -118,10 +118,11 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_cuda_from_nvidia_smi() {
-        let result = crate::embeddings::sidecar_bootstrap::detect_nvidia_cuda();
-        // Can't assert specific value (depends on hardware), but must not panic
-        let _ = result;
+    fn test_detect_cuda_from_nvidia_smi_is_idempotent() {
+        // Result is hardware-dependent, but must be consistent across calls
+        let first = crate::embeddings::sidecar_bootstrap::detect_nvidia_cuda();
+        let second = crate::embeddings::sidecar_bootstrap::detect_nvidia_cuda();
+        assert_eq!(first, second, "CUDA detection should be idempotent");
     }
 
     #[test]

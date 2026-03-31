@@ -404,7 +404,8 @@ pub(super) fn ensure_sidecar_package_installed(
                 cmd.arg("-m")
                     .arg("pip")
                     .arg("install")
-                    .arg("--disable-pip-version-check");
+                    .arg("--disable-pip-version-check")
+                    .arg("--force-reinstall");
                 if let Some(ref ver) = torch_version {
                     cmd.arg(format!("torch=={ver}"));
                 } else {
