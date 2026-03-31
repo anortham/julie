@@ -42,17 +42,19 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 
 ### Embeddings Runtime
 
-Julie uses ONNX Runtime with DirectML GPU acceleration on Windows, and a managed Python sidecar (CUDA/MPS) on macOS and Linux.
+Julie uses a managed Python sidecar (sentence-transformers + PyTorch) for GPU-accelerated embeddings on all platforms.
 
-- **Windows**: Jina-code-v2 (768d, code-optimized) via ORT with DirectML — GPU-accelerated, zero Python dependencies
-- **macOS/Linux**: CodeRankEmbed (768d, code-optimized) via Python sidecar with CUDA/MPS — auto-provisions Python and venv via `uv`
-- **Fallback**: If GPU acceleration fails, Julie falls back to CPU — keyword search always remains available
-- **Model switching**: Changing models automatically wipes and re-embeds all vectors on the next indexing run; no manual cleanup needed
+- **NVIDIA (CUDA)**: auto-detected at first launch; the correct torch variant is installed automatically
+- **AMD/Intel (DirectML)**: via `torch-directml`, installed alongside PyTorch
+- **Apple Silicon (MPS)**: detected automatically by PyTorch
+- **CPU fallback**: if no GPU is available, embeddings run on CPU; keyword search always remains available
+- **Model**: CodeRankEmbed (768d, code-optimized) via `nomic-ai/CodeRankEmbed` by default
+- **Auto-provisioned**: Julie creates a managed Python venv via `uv` on first use; no manual setup required
+- **Model switching**: changing models automatically wipes and re-embeds all vectors on the next indexing run
 
 **Runtime controls:**
-- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar|ort` (default: `auto`; Windows → `ort`, macOS/Linux → `sidecar`)
-- `JULIE_EMBEDDING_ORT_MODEL_ID`: ORT model — `jina-code-v2` (768d, default on Windows) or `bge-small` (384d)
-- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: Sidecar model — any HuggingFace model ID (default: `nomic-ai/CodeRankEmbed`)
+- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar` (default: `auto`)
+- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: any HuggingFace model ID (default: `nomic-ai/CodeRankEmbed`)
 - `JULIE_EMBEDDING_STRICT_ACCEL`: `1` to disable embeddings when no GPU is available
 - See `docs/operations/embedding-sidecar.md` for all env vars and troubleshooting
 
@@ -161,9 +163,8 @@ All `env` values are optional — see the table below for defaults.
 | Variable | Values | Default | Notes |
 |----------|--------|---------|-------|
 | `JULIE_WORKSPACE` | Absolute path to project root | Current working directory | Tells Julie which project to index. Set explicitly if cwd is unreliable. |
-| `JULIE_EMBEDDING_PROVIDER` | `auto`, `sidecar`, `ort` | `auto` | Windows: `ort` (DirectML GPU). macOS/Linux: `sidecar` (CUDA/MPS GPU). |
-| `JULIE_EMBEDDING_ORT_MODEL_ID` | `jina-code-v2`, `bge-small` | Windows: `jina-code-v2`, other: `bge-small` | ORT model selection. Jina-code-v2 (768d) is code-optimized; BGE-small (384d) is smaller/faster. |
-| `JULIE_EMBEDDING_SIDECAR_MODEL_ID` | Any HuggingFace model ID | `nomic-ai/CodeRankEmbed` | Only applies when using the sidecar backend (macOS/Linux). |
+| `JULIE_EMBEDDING_PROVIDER` | `auto`, `sidecar` | `auto` | Selects embedding backend. `auto` resolves to `sidecar` on all platforms. |
+| `JULIE_EMBEDDING_SIDECAR_MODEL_ID` | Any HuggingFace model ID | `nomic-ai/CodeRankEmbed` | Sidecar model. CodeRankEmbed (768d) is code-optimized. |
 | `JULIE_EMBEDDING_STRICT_ACCEL` | `1` | unset | Disable embeddings entirely when no GPU is available. |
 
 **First Use:**
@@ -326,7 +327,7 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harn
 - **Per-workspace isolation** with separate databases and indexes
 - **Daemon + adapter pattern** — `julie-server` auto-starts a background daemon and forwards stdio to it via IPC (Unix socket). Multiple MCP clients share one daemon process with shared indexes, embedding provider, and file watchers
 - **MCP protocol** over stdio (JSON-RPC)
-- **Embedding pipeline** with GPU-accelerated Python sidecar + ORT CPU fallback, shared across sessions in daemon mode
+- **Embedding pipeline** with GPU-accelerated Python sidecar (CUDA/DirectML/MPS/CPU), shared across sessions in daemon mode
 
 ## Development
 

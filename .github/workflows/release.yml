@@ -22,18 +22,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Windows (DirectML via ORT covers all GPU vendors natively)
+          # Windows (sidecar handles CUDA/DirectML/CPU via PyTorch)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary_name: julie-server.exe
-            cargo_features: "--no-default-features --features embeddings-ort"
 
           # macOS Apple Silicon (sidecar for MPS acceleration)
           - os: macos-latest
             target: aarch64-apple-darwin
             binary_name: julie-server
 
-          # Linux (sidecar for NVIDIA/CUDA — ORT has no CUDA feature)
+          # Linux (sidecar for CUDA/CPU acceleration)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_name: julie-server
@@ -54,7 +53,7 @@ jobs:
 
       - name: Build release binary
         run: |
-          cargo build --release --target ${{ matrix.target }} --bin julie-server ${{ matrix.cargo_features }}
+          cargo build --release --target ${{ matrix.target }} --bin julie-server
 
       - name: Strip binary (Linux/macOS)
         if: matrix.os != 'windows-latest'
