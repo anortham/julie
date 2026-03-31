@@ -30,6 +30,46 @@ fn suppress_console_window(_cmd: &mut Command) {
     // No-op on Unix — child processes inherit the parent's terminal.
 }
 
+/// Detect whether NVIDIA CUDA is available by probing for nvidia-smi.
+/// This is a build-time check (run during venv creation), not a runtime check.
+/// The Python sidecar handles runtime device selection via torch.cuda.is_available().
+pub(crate) fn detect_nvidia_cuda() -> bool {
+    let mut cmd = Command::new("nvidia-smi");
+    cmd.arg("--query-gpu=driver_version")
+        .arg("--format=csv,noheader")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    suppress_console_window(&mut cmd);
+    cmd.status().is_ok_and(|s| s.success())
+}
+
+/// PyTorch CUDA wheel index URL. Uses CUDA 12.4 which supports
+/// Ampere (RTX 30xx, A-series) and newer architectures.
+pub(crate) fn cuda_torch_index_url() -> &'static str {
+    "https://download.pytorch.org/whl/cu124"
+}
+
+/// Read the currently installed torch version from the venv so we can
+/// pin the same version when swapping for the CUDA variant.
+fn read_installed_torch_version(venv_python: &Path) -> Option<String> {
+    let mut cmd = Command::new(venv_python);
+    cmd.arg("-c")
+        .arg("import torch; v=torch.__version__; print(v.split('+')[0])")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    suppress_console_window(&mut cmd);
+    let output = cmd.output().ok()?;
+    if output.status.success() {
+        let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !version.is_empty() {
+            return Some(version);
+        }
+    }
+    None
+}
+
 /// Try creating the sidecar venv with `uv venv --python 3.X`.
 ///
 /// Returns `Some(Ok(()))` on success, `Some(Err(_))` if uv ran but the venv
@@ -332,6 +372,58 @@ pub(super) fn ensure_sidecar_package_installed(
                 .current_dir(sidecar_root),
             "sidecar bootstrap failed to install managed sidecar package",
         )?;
+    }
+
+    // After successful base install, swap torch for CUDA variant if available.
+    // The base install pulls torch+cpu from PyPI. If NVIDIA CUDA is detected,
+    // reinstall torch from the PyTorch CUDA index. This gives us CUDA support
+    // while keeping all other deps (sentence-transformers, etc.) from PyPI.
+    if cfg!(target_os = "windows") || cfg!(target_os = "linux") {
+        if detect_nvidia_cuda() {
+            tracing::info!("NVIDIA CUDA detected, installing CUDA-enabled torch");
+
+            let torch_version = read_installed_torch_version(venv_python);
+
+            let mut cuda_cmd = if command_exists(OsStr::new("uv")) {
+                let mut cmd = Command::new("uv");
+                cmd.arg("pip")
+                    .arg("install")
+                    .arg("--python")
+                    .arg(venv_python)
+                    .arg("--reinstall-package")
+                    .arg("torch");
+                if let Some(ref ver) = torch_version {
+                    cmd.arg(format!("torch=={ver}"));
+                } else {
+                    cmd.arg("torch");
+                }
+                cmd.arg("--index-url").arg(cuda_torch_index_url());
+                cmd
+            } else {
+                let mut cmd = Command::new(venv_python);
+                cmd.arg("-m")
+                    .arg("pip")
+                    .arg("install")
+                    .arg("--disable-pip-version-check");
+                if let Some(ref ver) = torch_version {
+                    cmd.arg(format!("torch=={ver}"));
+                } else {
+                    cmd.arg("torch");
+                }
+                cmd.arg("--index-url").arg(cuda_torch_index_url());
+                cmd
+            };
+
+            match run_command(&mut cuda_cmd, "CUDA torch install") {
+                Ok(()) => tracing::info!("CUDA-enabled torch installed successfully"),
+                Err(err) => {
+                    // Non-fatal: CPU torch still works, sidecar falls back gracefully
+                    tracing::warn!(
+                        "CUDA torch install failed (CPU fallback available): {err:#}"
+                    );
+                }
+            }
+        }
     }
 
     std::fs::write(&marker_path, expected_marker).with_context(|| {

@@ -116,4 +116,17 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_detect_cuda_from_nvidia_smi() {
+        let result = crate::embeddings::sidecar_bootstrap::detect_nvidia_cuda();
+        // Can't assert specific value (depends on hardware), but must not panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_cuda_torch_index_url() {
+        let url = crate::embeddings::sidecar_bootstrap::cuda_torch_index_url();
+        assert!(url.starts_with("https://download.pytorch.org/whl/cu"));
+    }
 }

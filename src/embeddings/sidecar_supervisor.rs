@@ -13,7 +13,7 @@ const SIDECAR_RAW_PROGRAM_ENV: &str = "JULIE_EMBEDDING_SIDECAR_RAW_PROGRAM";
 const SIDECAR_SCRIPT_ENV: &str = "JULIE_EMBEDDING_SIDECAR_SCRIPT";
 const SIDECAR_MODULE_ENV: &str = "JULIE_EMBEDDING_SIDECAR_MODULE";
 const EMBEDDING_CACHE_DIR_ENV: &str = "JULIE_EMBEDDING_CACHE_DIR";
-pub(crate) const INSTALL_MARKER_VERSION: &str = "v9-vram-aware-batching";
+pub(crate) const INSTALL_MARKER_VERSION: &str = "v10-cuda-torch";
 /// PyTorch publishes wheels for these minor versions (3.10 through 3.13).
 pub(crate) const SUPPORTED_PYTHON_MINORS: [u32; 4] = [12, 13, 11, 10];
 pub(crate) const RUNTIME_EDITABLE_REQUIREMENT: &str = ".[runtime]";
