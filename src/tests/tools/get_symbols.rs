@@ -6,8 +6,10 @@ use anyhow::Result;
 use std::fs;
 use tempfile::TempDir;
 
+use crate::extractors::{Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
+use crate::tools::symbols::formatting::format_symbol_response;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
 
 /// Extract text from CallToolResult content blocks
@@ -602,5 +604,86 @@ fn test_get_symbols_default_mode_is_structure() {
         Some("structure"),
         "default mode must be 'structure', got: {:?}",
         tool.mode
+    );
+}
+
+/// Lean format must skip the kind prefix when the signature already contains
+/// the kind keyword.  e.g. `struct pub struct Foo` should not appear in output;
+/// only `pub struct Foo` should.
+#[test]
+fn test_lean_format_skips_redundant_kind_prefix() {
+    let struct_sym = Symbol {
+        id: "s1".to_string(),
+        name: "Foo".to_string(),
+        kind: SymbolKind::Struct,
+        language: "rust".to_string(),
+        file_path: "src/foo.rs".to_string(),
+        start_line: 10,
+        start_column: 0,
+        end_line: 25,
+        end_column: 0,
+        start_byte: 0,
+        end_byte: 200,
+        signature: Some("pub struct Foo".to_string()),
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    let fn_sym = Symbol {
+        id: "s2".to_string(),
+        name: "process".to_string(),
+        kind: SymbolKind::Function,
+        language: "rust".to_string(),
+        file_path: "src/foo.rs".to_string(),
+        start_line: 17,
+        start_column: 0,
+        end_line: 24,
+        end_column: 0,
+        start_byte: 300,
+        end_byte: 500,
+        signature: Some("pub fn process(&self)".to_string()),
+        doc_comment: None,
+        visibility: None,
+        parent_id: None,
+        metadata: None,
+        semantic_group: None,
+        confidence: None,
+        code_context: None,
+        content_type: None,
+    };
+
+    let result = format_symbol_response("src/foo.rs", vec![struct_sym, fn_sym], None)
+        .expect("format_symbol_response should not fail");
+
+    let text = extract_text_from_result(&result);
+
+    // Must NOT contain redundant "struct pub struct" or "function pub fn"
+    assert!(
+        !text.contains("struct pub struct"),
+        "output must not contain 'struct pub struct', got:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("function pub fn"),
+        "output must not contain 'function pub fn', got:\n{}",
+        text
+    );
+
+    // Signatures themselves must appear in the output
+    assert!(
+        text.contains("pub struct Foo"),
+        "output must contain 'pub struct Foo', got:\n{}",
+        text
+    );
+    assert!(
+        text.contains("pub fn process(&self)"),
+        "output must contain 'pub fn process(&self)', got:\n{}",
+        text
     );
 }

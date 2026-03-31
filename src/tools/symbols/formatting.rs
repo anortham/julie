@@ -51,6 +51,25 @@ fn format_code_output(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
     CallToolResult::text_content(vec![Content::text(output)])
 }
 
+/// Map a SymbolKind to its source-code keyword (with trailing space).
+///
+/// Used to detect when a signature already contains the kind keyword so
+/// we can skip the redundant kind prefix in lean output.
+fn kind_keyword(kind: &crate::extractors::SymbolKind) -> Option<&'static str> {
+    use crate::extractors::SymbolKind;
+    match kind {
+        SymbolKind::Function | SymbolKind::Method => Some("fn "),
+        SymbolKind::Struct => Some("struct "),
+        SymbolKind::Class => Some("class "),
+        SymbolKind::Interface => Some("interface "),
+        SymbolKind::Trait => Some("trait "),
+        SymbolKind::Enum => Some("enum "),
+        SymbolKind::Module => Some("mod "),
+        SymbolKind::Namespace => Some("namespace "),
+        _ => None,
+    }
+}
+
 /// Format lean text overview — scannable symbol list for agents
 ///
 /// Output format:
@@ -95,10 +114,23 @@ fn format_lean_symbols(file_path: &str, symbols: &[Symbol]) -> CallToolResult {
             format!(", {}", vis)
         };
 
-        output.push_str(&format!(
-            "{}{} {} ({}-{}{})\n",
-            indent, kind, name_display, symbol.start_line, symbol.end_line, vis_str,
-        ));
+        // Skip the kind prefix when the signature already contains the kind
+        // keyword, e.g. "pub struct Foo" already signals its kind.
+        let signature_has_kind = kind_keyword(&symbol.kind)
+            .map(|kw| name_display.contains(kw))
+            .unwrap_or(false);
+
+        if signature_has_kind {
+            output.push_str(&format!(
+                "{}{} ({}-{}{})\n",
+                indent, name_display, symbol.start_line, symbol.end_line, vis_str,
+            ));
+        } else {
+            output.push_str(&format!(
+                "{}{} {} ({}-{}{})\n",
+                indent, kind, name_display, symbol.start_line, symbol.end_line, vis_str,
+            ));
+        }
     }
 
     CallToolResult::text_content(vec![Content::text(output.trim_end().to_string())])

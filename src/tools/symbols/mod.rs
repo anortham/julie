@@ -11,7 +11,7 @@
 
 mod body_extraction;
 pub(crate) mod filtering;
-mod formatting;
+pub(crate) mod formatting;
 mod primary;
 mod reference;
 
