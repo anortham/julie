@@ -37,7 +37,9 @@ mod tests {
 
     #[test]
     fn test_python_version_parses_current_interpreter() {
-        // Use whatever Python is available in CI/dev to smoke-test parsing.
+        // Smoke-test that python_version_from_program can parse whatever
+        // Python is on PATH. We only care that parsing works, not that the
+        // version is new enough for PyTorch (that's the bootstrap's job).
         let candidates: &[&str] = if cfg!(target_os = "windows") {
             &["py", "python"]
         } else {
@@ -46,11 +48,11 @@ mod tests {
         for &name in candidates {
             if let Some((major, minor)) = python_version_from_program(OsStr::new(name)) {
                 assert_eq!(major, 3, "Expected Python 3.x");
-                assert!(minor >= 10, "Expected Python 3.10+, got 3.{minor}");
+                assert!(minor >= 6, "Expected Python 3.6+, got 3.{minor}");
                 return;
             }
         }
-        // No Python found — skip rather than fail (CI might not have Python).
+        // No Python found - skip rather than fail (CI might not have Python).
     }
 
     #[test]

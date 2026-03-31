@@ -1,4 +1,4 @@
-//! Tests for EmbeddingProvider trait and OrtEmbeddingProvider implementation.
+//! Tests for EmbeddingProvider trait and factory resolution.
 
 #[cfg(test)]
 mod tests {

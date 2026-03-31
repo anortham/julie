@@ -89,8 +89,8 @@ impl DeviceInfo {
 /// Trait abstracting vector embedding generation.
 ///
 /// Implementations must be `Send + Sync` for use behind `Arc` in async contexts.
-/// The trait uses `&self` despite fastembed's `&mut self` requirement — implementors
-/// are expected to use interior mutability (e.g., `Mutex`).
+/// The trait uses `&self`; implementors are expected to use interior mutability
+/// (e.g., `Mutex`) if their underlying runtime requires `&mut self`.
 pub trait EmbeddingProvider: Send + Sync {
     /// Embed a single query string. Returns a vector of `dimensions()` floats.
     fn embed_query(&self, text: &str) -> Result<Vec<f32>>;

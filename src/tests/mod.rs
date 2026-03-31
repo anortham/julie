@@ -34,7 +34,7 @@ pub mod core {
     pub mod bulk_store_types_tests;
     pub mod database; // Database operations and SQLite tests
     pub mod database_lightweight_query; // Lightweight query optimization tests
-    pub mod embedding_deps; // Embedding dependency smoke tests (fastembed + sqlite-vec)
+    pub mod embedding_deps; // Embedding dependency smoke tests (sqlite-vec + zerocopy)
     pub mod embedding_metadata; // Symbol metadata formatting for embeddings
     pub mod embedding_metadata_enrichment; // Variable budget, callee/field enrichment, doc excerpt
     pub mod embedding_provider; // EmbeddingProvider trait and factory tests

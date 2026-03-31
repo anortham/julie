@@ -885,14 +885,15 @@ fn test_function() {
         }
     }
 
-    // Try to index again with force=false - should skip
+    // Try to index again with force=false - should run incremental update
+    // (catch-up indexing compares blake3 hashes; unchanged files are skipped)
     let result = tool.call_tool(&handler).await.unwrap();
     let result_text = extract_text_from_result(&result);
 
-    // Should see "already indexed" message with symbol count > 0
+    // Incremental re-index succeeds and still reports symbols
     assert!(
-        result_text.contains("already indexed"),
-        "Should skip re-indexing when database has symbols, got: {}",
+        result_text.contains("Workspace indexing complete"),
+        "Incremental re-index should succeed, got: {}",
         result_text
     );
 

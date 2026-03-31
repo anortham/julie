@@ -1,0 +1,35 @@
+decisions:
+  - "2026-03-01 | Resolver uses soft penalty (+200 boost), not hard filter for import-constrained call-edge filtering. Hard filter broke same-package Java, implicit Python imports, C headers."
+  - "2026-03-01 | Daemon-owned EmbeddingService with eager init. Not pool-owned (muddies responsibility), not lazy (complexity), no explicit queue (provider mutex serializes)."
+  - "2026-03-01 | No symbol-level editing tools. Agents ignore custom editing in favor of built-in Edit. If revisited, insert_after_symbol has strongest case."
+  - "2026-03-01 | Plugin embeds all 3 platform binaries (~20MB each) rather than download-on-first-run. Plugin cache is version-snapshots so git bloat is irrelevant."
+  - "2026-03-01 | SessionStart hook for behavioral guidance compensates for MCP 2k tool description limit. Fires on startup/clear/compact."
+  - "2026-03-29 | Dashboard intelligence layer: Approach A (new /intelligence page + enrichments) over Approach B (enrich existing pages only, no linkable wow moment) and Approach C (full Observatory with Chart.js CDN, unnecessary dependency). Server-side SVG donut via stroke-dasharray, no JS charting lib."
+  - "2026-03-29 | Direct DB file open for inactive workspaces in dashboard (bypasses WorkspacePool session side-effects). HAVING COUNT > 0 filters data files from hotspots."
+  - "2026-03-31 | Token efficiency: vetoed changes to tool descriptions/server instructions (they drive behavioral adoption). Cut batch deep_dive (complexity not justified), changed_symbols (git diff + Julie tools sufficient), path aliases (might hurt LLM accuracy)."
+  - "2026-03-31 | Token efficiency implementation details: return_format=locations only for definition search (content search already compact). deep_dive caps: overview=300, context=800, full=1800 tokens. Compact mode neighbor budget 2400 chars (~600 tokens)."
+  - "2026-03-31 | Standardized on Python sidecar as sole embedding backend, removed ORT/fastembed entirely (net -2,601 lines). Rejected keeping ORT as primary (dual pipeline complexity caused debugging nightmares, DirectML fused ops fragile), keeping ORT behind feature flag (unnecessary maintenance), ORT bge-small CPU fallback (sidecar CPU fallback works fine)."
+
+open_questions:
+  - "2026-03-01 | NL query vocabulary gap: code embedding models match tokens, not semantic synonyms ('save' != 'record'). Needs NL query expansion or dual-model approach."
+  - "2026-03-01 | Windows plugin stdio piping: polyglot wrapper for long-running MCP server is untested."
+  - "2026-03-01 | macOS Gatekeeper warnings: ad-hoc codesigning may trigger warnings. User has Apple Developer subscription for proper signing later."
+  - "2026-03-31 | Sidecar venv CUDA torch swap fragility: if bootstrap recreates venv (e.g., plugin update bumps marker), it reinstalls CPU torch from PyPI. detect_nvidia_cuda() + CUDA torch install should handle this automatically but needs testing on fresh machine."
+  - "2026-03-31 | tools-search bucket timeout needs investigation (possibly sidecar process startup latency during search tests)."
+
+deferred_work:
+  - "2026-03-01 | Incomplete embedding backfill not resumed on daemon restart. Known issue as of v6.0.2."
+
+gotchas:
+  - "2026-03-01 | Tantivy OR-mode bug: Occur::Should clauses become optional when Must clauses exist in same BooleanQuery. Fix: wrap OR clauses in nested BooleanQuery."
+  - "2026-03-01 | sqlite-vec vec0 virtual tables don't support INSERT OR REPLACE; must DELETE then INSERT."
+  - "2026-03-01 | Atomic saves vs file watcher: editors do write-temp, delete-original, rename-temp. DELETE handler must check path.exists() before purging. should_index_file() calls path.is_file() which is false for deleted files; need separate should_process_deletion()."
+  - "2026-03-01 | OneDrive sync storm: embedding cache on Windows must use LOCALAPPDATA, not $HOME/.cache/ (OneDrive-synced)."
+  - "2026-03-01 | WMI AdapterRAM 32-bit overflow: uint32 wraps at 4GB. Try nvidia-smi first; treat WMI < 2GB as wrapped."
+  - "2026-03-01 | spawn_blocking survives JoinHandle::abort(). Must use AtomicBool cancellation flag checked between batches."
+  - "2026-03-01 | Windows daemon CREATE_NO_WINDOW kills signal handling. Use Win32 named events, not tokio::signal::ctrl_c() or taskkill."
+  - "2026-03-01 | Adapter forward_bytes race condition (UNFIXED): tokio::select! cancels read-from-daemon task when stdin EOF arrives, breaking bidirectional MCP forwarding. Fix: tokio::join! or half-close semantics."
+  - "2026-03-01 | Plugin launch script stale binary: must compare archive mtime vs extracted binary mtime. Old script only checked existence (-x), so plugin updates never deployed new binaries."
+  - "2026-03-01 | Codehealth analysis sources on disk but not compiled: src/analysis/ gated out of Cargo.toml. Don't re-enable."
+  - "2026-03-31 | Python sidecar device selection already handles CUDA in _select_device(). The gap was only in bootstrap (detecting CUDA, installing torch+cu124 wheels, passing device preference via env var). Python runtime, VRAM detection, probe/fallback chain were all production-ready."
+  - "2026-03-31 | SidecarLaunchConfig.env was empty (no env vars passed to sidecar process). Had to be extended to pass JULIE_EMBEDDING_DEVICE_PREFERENCE for CUDA support."
