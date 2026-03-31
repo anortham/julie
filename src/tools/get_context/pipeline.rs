@@ -6,6 +6,7 @@ use anyhow::Result;
 
 use super::GetContextTool;
 use super::content::abbreviate_code;
+#[cfg(test)]
 pub(crate) use super::content::truncate_to_token_budget;
 use super::content::truncate_to_token_budget_with_hint;
 pub use super::scoring::{Pivot, select_pivots};

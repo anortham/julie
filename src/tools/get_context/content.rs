@@ -25,6 +25,7 @@ pub(crate) fn abbreviate_code(code: &str) -> String {
 /// Truncate code content to fit within a token budget.
 /// Returns content unchanged if within budget.
 /// Uses head-biased truncation (2/3 top, 1/3 bottom).
+#[cfg(test)]
 pub(crate) fn truncate_to_token_budget(code: &str, max_tokens: usize) -> String {
     truncate_to_token_budget_with_hint(code, max_tokens, None)
 }
