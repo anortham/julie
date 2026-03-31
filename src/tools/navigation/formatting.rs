@@ -127,23 +127,53 @@ pub fn format_lean_refs_results(
         output.push('\n');
     }
 
-    // References section — unified format: file:line  name (Kind)
+    // References section — group by file when multiple refs share a file
     if !references.is_empty() {
         output.push_str(&format!("References ({}):\n", references.len()));
 
+        // Group references by file path (preserving order of first appearance)
+        let mut groups: Vec<(&str, Vec<&Relationship>)> = Vec::new();
         for rel in references {
-            let kind = format!("{:?}", rel.kind);
-            let name = source_names.get(&rel.from_symbol_id);
-            if let Some(name) = name {
-                output.push_str(&format!(
-                    "  {}:{}  {} ({})\n",
-                    rel.file_path, rel.line_number, name, kind
-                ));
+            let path = rel.file_path.as_str();
+            if let Some(group) = groups.iter_mut().find(|(p, _)| *p == path) {
+                group.1.push(rel);
             } else {
-                output.push_str(&format!(
-                    "  {}:{} ({})\n",
-                    rel.file_path, rel.line_number, kind
-                ));
+                groups.push((path, vec![rel]));
+            }
+        }
+
+        for (file_path, rels) in &groups {
+            if rels.len() == 1 {
+                // Single ref in file: keep inline format
+                let rel = rels[0];
+                let kind = format!("{:?}", rel.kind);
+                let name = source_names.get(&rel.from_symbol_id);
+                if let Some(name) = name {
+                    output.push_str(&format!(
+                        "  {}:{}  {} ({})\n",
+                        file_path, rel.line_number, name, kind
+                    ));
+                } else {
+                    output.push_str(&format!(
+                        "  {}:{} ({})\n",
+                        file_path, rel.line_number, kind
+                    ));
+                }
+            } else {
+                // Multiple refs in same file: group under file header
+                output.push_str(&format!("  {}:\n", file_path));
+                for rel in rels.iter() {
+                    let kind = format!("{:?}", rel.kind);
+                    let name = source_names.get(&rel.from_symbol_id);
+                    if let Some(name) = name {
+                        output.push_str(&format!(
+                            "    :{}  {} ({})\n",
+                            rel.line_number, name, kind
+                        ));
+                    } else {
+                        output.push_str(&format!("    :{} ({})\n", rel.line_number, kind));
+                    }
+                }
             }
         }
     }

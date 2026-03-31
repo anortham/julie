@@ -254,6 +254,44 @@ mod tests {
     }
 
     #[test]
+    fn test_lean_format_groups_same_file_results() {
+        // 2 matches in src/handler.rs, 1 in src/other.rs
+        let symbols = vec![
+            make_test_symbol("src/handler.rs", 42, "42→ fn foo() {"),
+            make_test_symbol("src/handler.rs", 100, "100→ fn bar() {"),
+            make_test_symbol("src/other.rs", 5, "5→ fn baz() {"),
+        ];
+
+        let response = OptimizedResponse {
+            results: symbols,
+            total_found: 3,
+        };
+
+        let output = format_lean_search_results("fn", &response);
+
+        // File path for the grouped file should appear only ONCE
+        let handler_occurrences = output.matches("src/handler.rs").count();
+        assert_eq!(
+            handler_occurrences, 1,
+            "src/handler.rs should appear exactly once (grouped header), got {handler_occurrences}. Output:\n{output}"
+        );
+
+        // The grouped header should be file: (no line number)
+        assert!(
+            output.contains("src/handler.rs:\n"),
+            "Grouped file should use 'file:' header (no line number). Output:\n{output}"
+        );
+
+        // Both code contexts should be indented under the group
+        assert!(output.contains("  42→ fn foo()"), "First match context missing. Output:\n{output}");
+        assert!(output.contains("  100→ fn bar()"), "Second match context missing. Output:\n{output}");
+
+        // Single-match file can use either format; just verify it appears
+        assert!(output.contains("src/other.rs"), "Other file should appear. Output:\n{output}");
+        assert!(output.contains("  5→ fn baz()"), "Third match context missing. Output:\n{output}");
+    }
+
+    #[test]
     fn test_fast_search_return_format_deserialization() {
         use crate::tools::search::FastSearchTool;
 
