@@ -9,8 +9,8 @@ use tracing::{info, warn};
 
 use crate::embeddings::{
     BackendResolverCapabilities, EmbeddingBackend, EmbeddingConfig, EmbeddingProvider,
-    EmbeddingProviderFactory, EmbeddingRuntimeStatus, fallback_backend_after_init_failure,
-    parse_provider_preference, resolve_backend_preference, should_disable_for_strict_acceleration,
+    EmbeddingProviderFactory, EmbeddingRuntimeStatus, parse_provider_preference,
+    resolve_backend_preference, should_disable_for_strict_acceleration,
     strict_acceleration_enabled_from_env_value,
 };
 use crate::workspace::build_embedding_runtime_log_fields;
@@ -42,7 +42,6 @@ pub fn create_embedding_provider() -> (
     config.cache_dir = std::env::var("JULIE_EMBEDDING_CACHE_DIR")
         .ok()
         .map(std::path::PathBuf::from);
-    config.ort_model_id = std::env::var("JULIE_EMBEDDING_ORT_MODEL_ID").ok();
 
     // Allow explicit disabling (e.g. CI, tests, offline environments)
     if matches!(
@@ -107,34 +106,6 @@ pub fn create_embedding_provider() -> (
                 device_info.model_name, device_info.device, device_info.dimensions
             );
 
-            // Warmup probe: run a single inference to verify the GPU compute graph
-            // actually works, not just that initialization succeeded. DirectML can
-            // init fine but fail on the first real LayerNorm op due to VRAM pressure,
-            // driver quirks, or fused-op bugs. Catching it here means the fallback
-            // in run_with_cpu_fallback fires on a tiny 1-text call instead of the
-            // first 32-text sub-batch of a multi-thousand-symbol pipeline.
-            {
-                let warmup_start = std::time::Instant::now();
-                match provider.embed_query("warmup probe") {
-                    Ok(vec) => {
-                        info!(
-                            "Embedding warmup probe passed ({} dims, {:.0}ms)",
-                            vec.len(),
-                            warmup_start.elapsed().as_secs_f64() * 1000.0,
-                        );
-                    }
-                    Err(err) => {
-                        warn!(
-                            "Embedding warmup probe failed ({:.0}ms): {err:#}",
-                            warmup_start.elapsed().as_secs_f64() * 1000.0,
-                        );
-                        // The provider's internal state has already been switched
-                        // to CPU by run_with_cpu_fallback, so we continue with
-                        // the same provider instance (now on CPU).
-                    }
-                }
-            }
-
             let degraded_reason = provider.degraded_reason();
             let accelerated = provider
                 .accelerated()
@@ -172,73 +143,6 @@ pub fn create_embedding_provider() -> (
             (Some(provider), Some(status))
         }
         Err(e) => {
-            if let Some(fallback_backend) = fallback_backend_after_init_failure(
-                requested_backend.clone(),
-                resolved_backend.clone(),
-                strict_accel,
-                capabilities,
-            ) {
-                warn!(
-                    "Embedding backend '{}' failed to initialize, \
-                     falling back to '{}': {:#}",
-                    resolved_backend.as_str(),
-                    fallback_backend.as_str(),
-                    e,
-                );
-                if resolved_backend == EmbeddingBackend::Sidecar {
-                    warn!(
-                        "Python sidecar unavailable -- common causes: \
-                         Python 3.10-3.13 not installed, uv not on PATH, \
-                         or sidecar source not found. \
-                         Check: uv python install 3.12 && uv --version"
-                    );
-                }
-                let mut fallback_config = config.clone();
-                fallback_config.provider = fallback_backend.as_str().to_string();
-
-                match EmbeddingProviderFactory::create(&fallback_config) {
-                    Ok(provider) => {
-                        let device_info = provider.device_info();
-                        info!(
-                            "Embedding provider initialized via fallback: {} ({}, {}d)",
-                            device_info.model_name, device_info.device, device_info.dimensions
-                        );
-
-                        let provider_degraded_reason = provider.degraded_reason();
-                        let accelerated = provider
-                            .accelerated()
-                            .unwrap_or_else(|| device_info.is_accelerated());
-                        let fallback_reason = format!(
-                            "Auto backend '{}' failed to initialize, fell back to '{}': {}",
-                            resolved_backend.as_str(),
-                            fallback_backend.as_str(),
-                            e
-                        );
-                        let degraded_reason = provider_degraded_reason
-                            .map(|reason| {
-                                format!("{fallback_reason}; fallback runtime detail: {reason}")
-                            })
-                            .or(Some(fallback_reason));
-
-                        let status = EmbeddingRuntimeStatus {
-                            requested_backend,
-                            resolved_backend: fallback_backend,
-                            accelerated,
-                            degraded_reason,
-                        };
-                        log_runtime_status(Some(&*provider), &status, strict_accel, true);
-                        return (Some(provider), Some(status));
-                    }
-                    Err(fallback_error) => {
-                        warn!(
-                            "Embedding fallback to '{}' failed (keyword search unaffected): {}",
-                            fallback_backend.as_str(),
-                            fallback_error
-                        );
-                    }
-                }
-            }
-
             warn!(
                 "Embedding provider unavailable (keyword search unaffected): {}",
                 e

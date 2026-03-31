@@ -424,9 +424,9 @@ async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
         ws.embedding_provider = Some(Arc::new(NoopEmbeddingProvider));
         ws.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
             requested_backend: EmbeddingBackend::Auto,
-            resolved_backend: EmbeddingBackend::Ort,
+            resolved_backend: EmbeddingBackend::Sidecar,
             accelerated: false,
-            degraded_reason: Some("ORT fallback to CPU after DirectML init failure".to_string()),
+            degraded_reason: Some("CPU only: no GPU detected in sidecar runtime".to_string()),
         });
     }
 
@@ -456,7 +456,7 @@ async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
         "health output should include sidecar runtime identity: {health}"
     );
     assert!(
-        health.contains("backend: ort") || health.contains("Backend: ort"),
+        health.contains("backend: sidecar") || health.contains("Backend: sidecar"),
         "health output should include resolved backend: {health}"
     );
     assert!(
@@ -468,7 +468,7 @@ async fn test_manage_workspace_health_surfaces_embedding_runtime_status() {
         "health output should include acceleration flag: {health}"
     );
     assert!(
-        health_lower.contains("degraded") && health.contains("DirectML"),
+        health_lower.contains("degraded") && health.contains("CPU only"),
         "health output should include degraded reason: {health}"
     );
 }
@@ -495,7 +495,7 @@ async fn test_manage_workspace_health_reports_unavailable_when_provider_missing(
         ws.embedding_provider = None;
         ws.embedding_runtime_status = Some(EmbeddingRuntimeStatus {
             requested_backend: EmbeddingBackend::Auto,
-            resolved_backend: EmbeddingBackend::Ort,
+            resolved_backend: EmbeddingBackend::Sidecar,
             accelerated: false,
             degraded_reason: Some("provider init failed".to_string()),
         });

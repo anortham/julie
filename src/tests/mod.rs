@@ -37,7 +37,7 @@ pub mod core {
     pub mod embedding_deps; // Embedding dependency smoke tests (fastembed + sqlite-vec)
     pub mod embedding_metadata; // Symbol metadata formatting for embeddings
     pub mod embedding_metadata_enrichment; // Variable budget, callee/field enrichment, doc excerpt
-    pub mod embedding_provider; // EmbeddingProvider trait + OrtEmbeddingProvider tests
+    pub mod embedding_provider; // EmbeddingProvider trait and factory tests
     pub mod embedding_sidecar_protocol; // Sidecar protocol contracts + validation tests
     pub mod embedding_sidecar_provider; // Sidecar provider IPC + dimension guard tests
     pub mod handler; // MCP handler tests

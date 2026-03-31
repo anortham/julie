@@ -3,8 +3,6 @@ use std::sync::Arc;
 
 use anyhow::{Result, bail};
 
-#[cfg(feature = "embeddings-ort")]
-use super::OrtEmbeddingProvider;
 #[cfg(feature = "embeddings-sidecar")]
 use super::SidecarEmbeddingProvider;
 use super::{EmbeddingBackend, EmbeddingProvider};
@@ -12,7 +10,6 @@ use super::{EmbeddingBackend, EmbeddingProvider};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BackendResolverCapabilities {
     pub sidecar_available: bool,
-    pub ort_available: bool,
     pub target_os: &'static str,
     pub target_arch: &'static str,
 }
@@ -21,7 +18,6 @@ impl BackendResolverCapabilities {
     pub fn current() -> Self {
         Self {
             sidecar_available: cfg!(feature = "embeddings-sidecar"),
-            ort_available: cfg!(feature = "embeddings-ort"),
             target_os: std::env::consts::OS,
             target_arch: std::env::consts::ARCH,
         }
@@ -30,7 +26,6 @@ impl BackendResolverCapabilities {
     fn is_available(self, backend: EmbeddingBackend) -> bool {
         match backend {
             EmbeddingBackend::Sidecar => self.sidecar_available,
-            EmbeddingBackend::Ort => self.ort_available,
             _ => false,
         }
     }
@@ -41,9 +36,6 @@ impl BackendResolverCapabilities {
 pub struct EmbeddingConfig {
     pub provider: String,
     pub cache_dir: Option<PathBuf>,
-    /// ORT model override. Maps to fastembed's `EmbeddingModel` enum.
-    /// Recognized values: "jina-code-v2", "bge-small" (default depends on platform).
-    pub ort_model_id: Option<String>,
 }
 
 impl Default for EmbeddingConfig {
@@ -51,7 +43,6 @@ impl Default for EmbeddingConfig {
         Self {
             provider: "auto".to_string(),
             cache_dir: None,
-            ort_model_id: None,
         }
     }
 }
@@ -60,9 +51,11 @@ pub fn parse_provider_preference(provider: &str) -> Result<EmbeddingBackend> {
     match provider.trim().to_ascii_lowercase().as_str() {
         "auto" => Ok(EmbeddingBackend::Auto),
         "sidecar" => Ok(EmbeddingBackend::Sidecar),
-        "ort" => Ok(EmbeddingBackend::Ort),
+        "ort" => bail!(
+            "ORT embedding backend has been removed. Use 'auto' or 'sidecar' instead."
+        ),
         unknown => bail!(
-            "Unknown embedding provider: {} (valid: auto|sidecar|ort)",
+            "Unknown embedding provider: {} (valid: auto|sidecar)",
             unknown
         ),
     }
@@ -87,49 +80,14 @@ pub fn should_disable_for_strict_acceleration(
             || matches!(resolved_backend, EmbeddingBackend::Unresolved))
 }
 
-pub fn fallback_backend_after_init_failure(
-    requested_backend: EmbeddingBackend,
-    resolved_backend: EmbeddingBackend,
-    strict_acceleration: bool,
-    capabilities: BackendResolverCapabilities,
-) -> Option<EmbeddingBackend> {
-    if strict_acceleration {
-        return None;
-    }
-
-    if requested_backend == EmbeddingBackend::Auto {
-        if resolved_backend == EmbeddingBackend::Sidecar && capabilities.ort_available {
-            return Some(EmbeddingBackend::Ort);
-        }
-    }
-
-    None
-}
-
 pub fn resolve_backend_preference(
     requested_backend: EmbeddingBackend,
     capabilities: &BackendResolverCapabilities,
 ) -> Result<EmbeddingBackend> {
     let resolved_backend = match requested_backend {
         EmbeddingBackend::Auto => {
-            if capabilities.target_os == "windows" {
-                // Windows: prefer ORT (DirectML GPU acceleration) by default,
-                // fall back to sidecar if ORT isn't available in this build.
-                if capabilities.ort_available {
-                    EmbeddingBackend::Ort
-                } else if capabilities.sidecar_available {
-                    EmbeddingBackend::Sidecar
-                } else {
-                    bail!(
-                        "No embedding backend available for platform {}-{}",
-                        capabilities.target_os,
-                        capabilities.target_arch
-                    )
-                }
-            } else if capabilities.sidecar_available {
+            if capabilities.sidecar_available {
                 EmbeddingBackend::Sidecar
-            } else if capabilities.ort_available {
-                EmbeddingBackend::Ort
             } else {
                 bail!(
                     "No embedding backend available for platform {}-{}",
@@ -139,7 +97,6 @@ pub fn resolve_backend_preference(
             }
         }
         EmbeddingBackend::Sidecar => EmbeddingBackend::Sidecar,
-        EmbeddingBackend::Ort => EmbeddingBackend::Ort,
         EmbeddingBackend::Unresolved => {
             bail!("Cannot resolve embedding backend from unresolved preference")
         }
@@ -179,20 +136,6 @@ impl EmbeddingProviderFactory {
                 #[cfg(not(feature = "embeddings-sidecar"))]
                 {
                     bail!("Embedding provider 'sidecar' is not available in this build");
-                }
-            }
-            EmbeddingBackend::Ort => {
-                #[cfg(feature = "embeddings-ort")]
-                {
-                    return Ok(Arc::new(OrtEmbeddingProvider::try_new(
-                        config.cache_dir.clone(),
-                        config.ort_model_id.as_deref(),
-                    )?));
-                }
-
-                #[cfg(not(feature = "embeddings-ort"))]
-                {
-                    bail!("Embedding provider 'ort' is not available in this build");
                 }
             }
             backend => {
