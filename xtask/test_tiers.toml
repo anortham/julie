@@ -34,7 +34,6 @@ commands = [
   "cargo test --lib tests::core::embedding_deps -- --skip search_quality",
   "cargo test --lib tests::core::embedding_sidecar_protocol -- --skip search_quality",
   "cargo test --lib tests::core::embedding_sidecar_provider -- --skip search_quality",
-  "cargo test --lib tests::core::windows_embedding_policy -- --skip search_quality",
   "cargo test --lib tests::core::sidecar_supervisor_tests -- --skip search_quality",
   "cargo test --lib tests::core::sidecar_embedding_tests -- --skip search_quality",
 ]

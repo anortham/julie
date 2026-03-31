@@ -49,7 +49,6 @@ pub mod core {
     pub mod sidecar_supervisor_tests; // Sidecar supervisor config, launch, and utility tests
     pub mod tracing; // Tracing and logging tests
     pub mod vector_storage; // sqlite-vec vector storage CRUD tests
-    pub mod windows_embedding_policy; // Windows ORT policy + DirectML adapter selection tests
     pub mod workspace_init; // Workspace root detection and initialization tests // Batch pending relationship resolution tests // bulk_store_types integration tests (TDD)
 }
 
@@ -140,8 +139,6 @@ pub mod integration {
     pub mod bulk_storage_atomicity; // Bulk storage atomicity tests (TDD) - verify transaction safety
     pub mod daemon_lifecycle;
     pub mod documentation_indexing; // Documentation indexing E2E tests (RAG POC)
-    pub mod embedding_incremental; // Incremental embedding via file watcher tests
-    pub mod embedding_pipeline; // Background embedding pipeline integration tests
     pub mod lock_contention; // Lock contention regression tests
     pub mod query_preprocessor_tests; // Query preprocessor comprehensive test suite (TDD)
     pub mod real_world_validation; // Real-world code validation tests

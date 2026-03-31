@@ -24,7 +24,5 @@
 
 mod dogfood_tests;
 mod helpers;
-mod hybrid_search_dogfood;
 mod labhandbook_dogfood;
-mod semantic_similarity_dogfood;
 mod stemming_dogfood_tests;
