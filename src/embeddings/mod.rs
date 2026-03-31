@@ -7,14 +7,12 @@
 //! # Architecture
 //!
 //! - [`EmbeddingProvider`] — trait abstracting embedding generation
-//! - [`OrtEmbeddingProvider`] — production implementation using fastembed (ONNX Runtime)
+//! - [`SidecarEmbeddingProvider`] — production implementation using a managed Python sidecar
 //! - Vector storage lives in `database::vectors` (sqlite-vec)
 
 pub mod factory;
 pub mod init;
 pub mod metadata;
-#[cfg(feature = "embeddings-ort")]
-pub mod ort_provider;
 pub mod pipeline;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_bootstrap;
@@ -26,19 +24,14 @@ pub mod sidecar_protocol;
 pub mod sidecar_provider;
 #[cfg(feature = "embeddings-sidecar")]
 pub mod sidecar_supervisor;
-#[cfg(feature = "embeddings-ort")]
-pub mod windows_directml;
 
 use anyhow::Result;
-
-pub const SIDECAR_BACKEND_COMPILED: bool = cfg!(feature = "embeddings-sidecar");
 
 /// Supported embedding backends.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmbeddingBackend {
     Auto,
     Sidecar,
-    Ort,
     Unresolved,
     Invalid(String),
 }
@@ -48,7 +41,6 @@ impl EmbeddingBackend {
         match self {
             Self::Auto => "auto",
             Self::Sidecar => "sidecar",
-            Self::Ort => "ort",
             Self::Unresolved => "unresolved",
             Self::Invalid(_) => "invalid",
         }
@@ -130,14 +122,10 @@ pub trait EmbeddingProvider: Send + Sync {
 // Re-exports
 pub use factory::{
     BackendResolverCapabilities, EmbeddingConfig, EmbeddingProviderFactory,
-    fallback_backend_after_init_failure, parse_provider_preference, resolve_backend_preference,
+    parse_provider_preference, resolve_backend_preference,
     should_disable_for_strict_acceleration, strict_acceleration_enabled_from_env_value,
 };
 pub use init::create_embedding_provider;
-#[cfg(feature = "embeddings-ort")]
-pub use ort_provider::{
-    OrtEmbeddingProvider, ort_execution_provider_policy_kinds, ort_runtime_signal,
-};
 #[cfg(feature = "embeddings-sidecar")]
 pub use sidecar_protocol::{
     EmbedBatchRequest, EmbedBatchResult, EmbedQueryRequest, EmbedQueryResult, ProtocolError,

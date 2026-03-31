@@ -24,8 +24,7 @@ name = "julie-server"
 path = "src/main.rs"
 
 [features]
-default = ["embeddings-ort", "embeddings-sidecar"]
-embeddings-ort = ["dep:fastembed", "dep:ort", "ort/directml"]
+default = ["embeddings-sidecar"]
 embeddings-sidecar = []
 
 
@@ -114,13 +113,8 @@ chrono = { version = "0.4.42", features = ["serde"] }
 ignore = "0.4"
 
 # Semantic embeddings
-fastembed = { version = "5", optional = true }
-ort = { version = "2.0.0-rc.10", optional = true }
 sqlite-vec = "0.1"
 zerocopy = { version = "0.7", features = ["derive"] }
-
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dxgi"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

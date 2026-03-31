@@ -107,6 +107,34 @@ pub fn create_embedding_provider() -> (
                 device_info.model_name, device_info.device, device_info.dimensions
             );
 
+            // Warmup probe: run a single inference to verify the GPU compute graph
+            // actually works, not just that initialization succeeded. DirectML can
+            // init fine but fail on the first real LayerNorm op due to VRAM pressure,
+            // driver quirks, or fused-op bugs. Catching it here means the fallback
+            // in run_with_cpu_fallback fires on a tiny 1-text call instead of the
+            // first 32-text sub-batch of a multi-thousand-symbol pipeline.
+            {
+                let warmup_start = std::time::Instant::now();
+                match provider.embed_query("warmup probe") {
+                    Ok(vec) => {
+                        info!(
+                            "Embedding warmup probe passed ({} dims, {:.0}ms)",
+                            vec.len(),
+                            warmup_start.elapsed().as_secs_f64() * 1000.0,
+                        );
+                    }
+                    Err(err) => {
+                        warn!(
+                            "Embedding warmup probe failed ({:.0}ms): {err:#}",
+                            warmup_start.elapsed().as_secs_f64() * 1000.0,
+                        );
+                        // The provider's internal state has already been switched
+                        // to CPU by run_with_cpu_fallback, so we continue with
+                        // the same provider instance (now on CPU).
+                    }
+                }
+            }
+
             let degraded_reason = provider.degraded_reason();
             let accelerated = provider
                 .accelerated()
