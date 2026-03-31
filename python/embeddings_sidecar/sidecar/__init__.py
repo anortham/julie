@@ -5,10 +5,8 @@ from sidecar.protocol import (
     handle_embed_query,
     handle_health,
 )
-from sidecar.runtime import FakeRuntime
 
 __all__ = [
-    "FakeRuntime",
     "dispatch_request",
     "handle_health",
     "handle_embed_query",

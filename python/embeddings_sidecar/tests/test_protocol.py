@@ -16,7 +16,7 @@ from sidecar.protocol import (
     handle_health,
     run_stdio_loop,
 )
-from sidecar.runtime import FakeRuntime
+from conftest import FakeRuntime
 
 
 def test_health_returns_ready_runtime_metadata() -> None:

@@ -49,9 +49,9 @@ Operational caveat (release binaries): default sidecar root is derived from buil
 - `JULIE_EMBEDDING_SIDECAR_SCRIPT`: script path to run (used instead of `-m <module>`).
 - `JULIE_EMBEDDING_SIDECAR_MODULE`: module for `-m` launch (default: `sidecar.main`).
 - `JULIE_EMBEDDING_SIDECAR_BOOTSTRAP_PYTHON`: interpreter for creating managed venv.
-- `JULIE_EMBEDDING_SIDECAR_TIMEOUT_MS`: per-request IPC timeout in milliseconds (default: `5000`).
+- `JULIE_EMBEDDING_SIDECAR_TIMEOUT_MS`: per-request IPC timeout in milliseconds (default: `30000`).
 - `JULIE_EMBEDDING_SIDECAR_INIT_TIMEOUT_MS`: health-probe/init timeout in milliseconds (default: `120000`).
-- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: sidecar model id override (default: `BAAI/bge-small-en-v1.5`). Changing this automatically wipes and re-embeds all vectors on the next indexing run.
+- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: sidecar model id override (default: `nomic-ai/CodeRankEmbed`). Changing this automatically wipes and re-embeds all vectors on the next indexing run.
 - `JULIE_EMBEDDING_SIDECAR_BATCH_SIZE`: embedding batch size override for sidecar runtime (default: `32`).
 
 ## Interpreting Health and Stats

@@ -345,34 +345,14 @@ pub(super) fn ensure_sidecar_package_installed(
     // Install the sidecar package and all deps. On Windows, pyproject.toml
     // includes torch-directml which provides GPU acceleration via DirectX 12
     // for NVIDIA, AMD, and Intel GPUs — no CUDA download required.
-    //
-    // Prefer `uv pip install` when available — it's faster and doesn't
-    // require pip to be bundled in the venv (uv venv omits pip by design).
-    if command_exists(OsStr::new("uv")) {
-        run_command(
-            Command::new("uv")
-                .arg("pip")
-                .arg("install")
-                .arg("--python")
-                .arg(venv_python)
-                .arg("--editable")
-                .arg(RUNTIME_EDITABLE_REQUIREMENT)
-                .current_dir(sidecar_root),
-            "sidecar bootstrap failed to install managed sidecar package",
-        )?;
-    } else {
-        run_command(
-            Command::new(venv_python)
-                .arg("-m")
-                .arg("pip")
-                .arg("install")
-                .arg("--disable-pip-version-check")
-                .arg("--editable")
-                .arg(RUNTIME_EDITABLE_REQUIREMENT)
-                .current_dir(sidecar_root),
-            "sidecar bootstrap failed to install managed sidecar package",
-        )?;
-    }
+    let (mut cmd, _) = pip_install_command(venv_python);
+    cmd.arg("--editable")
+        .arg(RUNTIME_EDITABLE_REQUIREMENT)
+        .current_dir(sidecar_root);
+    run_command(
+        &mut cmd,
+        "sidecar bootstrap failed to install managed sidecar package",
+    )?;
 
     // After successful base install, swap torch for CUDA variant if available.
     // The base install pulls torch+cpu from PyPI. If NVIDIA CUDA is detected,
@@ -384,36 +364,18 @@ pub(super) fn ensure_sidecar_package_installed(
 
             let torch_version = read_installed_torch_version(venv_python);
 
-            let mut cuda_cmd = if command_exists(OsStr::new("uv")) {
-                let mut cmd = Command::new("uv");
-                cmd.arg("pip")
-                    .arg("install")
-                    .arg("--python")
-                    .arg(venv_python)
-                    .arg("--reinstall-package")
-                    .arg("torch");
-                if let Some(ref ver) = torch_version {
-                    cmd.arg(format!("torch=={ver}"));
-                } else {
-                    cmd.arg("torch");
-                }
-                cmd.arg("--index-url").arg(cuda_torch_index_url());
-                cmd
+            let (mut cuda_cmd, is_uv) = pip_install_command(venv_python);
+            if is_uv {
+                cuda_cmd.arg("--reinstall-package").arg("torch");
             } else {
-                let mut cmd = Command::new(venv_python);
-                cmd.arg("-m")
-                    .arg("pip")
-                    .arg("install")
-                    .arg("--disable-pip-version-check")
-                    .arg("--force-reinstall");
-                if let Some(ref ver) = torch_version {
-                    cmd.arg(format!("torch=={ver}"));
-                } else {
-                    cmd.arg("torch");
-                }
-                cmd.arg("--index-url").arg(cuda_torch_index_url());
-                cmd
-            };
+                cuda_cmd.arg("--force-reinstall");
+            }
+            if let Some(ref ver) = torch_version {
+                cuda_cmd.arg(format!("torch=={ver}"));
+            } else {
+                cuda_cmd.arg("torch");
+            }
+            cuda_cmd.arg("--index-url").arg(cuda_torch_index_url());
 
             match run_command(&mut cuda_cmd, "CUDA torch install") {
                 Ok(()) => tracing::info!("CUDA-enabled torch installed successfully"),
@@ -435,6 +397,27 @@ pub(super) fn ensure_sidecar_package_installed(
     })?;
 
     Ok(())
+}
+
+/// Build a `pip install` command, preferring `uv pip install` when available.
+/// Returns the command and whether `uv` was selected (callers may need
+/// uv-specific flags like `--reinstall-package`).
+fn pip_install_command(venv_python: &Path) -> (Command, bool) {
+    if command_exists(OsStr::new("uv")) {
+        let mut cmd = Command::new("uv");
+        cmd.arg("pip")
+            .arg("install")
+            .arg("--python")
+            .arg(venv_python);
+        (cmd, true)
+    } else {
+        let mut cmd = Command::new(venv_python);
+        cmd.arg("-m")
+            .arg("pip")
+            .arg("install")
+            .arg("--disable-pip-version-check");
+        (cmd, false)
+    }
 }
 
 fn run_command(command: &mut Command, error_context: &str) -> Result<()> {
