@@ -8,7 +8,7 @@
 #[cfg(test)]
 mod tests {
     use crate::extractors::base::{Symbol, SymbolKind};
-    use crate::tools::search::formatting::format_lean_search_results;
+    use crate::tools::search::formatting::{format_lean_search_results, format_locations_only};
     use crate::tools::shared::OptimizedResponse;
 
     fn make_test_symbol(file_path: &str, line: u32, code_context: &str) -> Symbol {
@@ -192,5 +192,78 @@ mod tests {
         assert!(output.contains("r\"\\d+\""));
         assert!(output.contains("'<'"));
         assert!(output.contains("'>'"));
+    }
+
+    #[test]
+    fn test_locations_only_format() {
+        let mut sym1 = make_test_symbol(
+            "src/tools/search/mod.rs",
+            42,
+            "41: // context before\n42→ pub fn call_tool() {\n43:     // body",
+        );
+        sym1.name = "call_tool".to_string();
+        sym1.kind = SymbolKind::Function;
+
+        let mut sym2 = make_test_symbol("src/lib.rs", 10, "10→ pub struct Foo {");
+        sym2.name = "Foo".to_string();
+        sym2.kind = SymbolKind::Struct;
+
+        let response = OptimizedResponse {
+            results: vec![sym1, sym2],
+            total_found: 2,
+        };
+
+        let output = format_locations_only("call_tool", &response);
+
+        // Header should mention count and query
+        assert!(output.contains("2 locations for \"call_tool\""));
+
+        // Should contain file:line for each result
+        assert!(output.contains("src/tools/search/mod.rs:42"));
+        assert!(output.contains("src/lib.rs:10"));
+
+        // Should contain kind in parens
+        assert!(output.contains("(function)"));
+        assert!(output.contains("(struct)"));
+
+        // Must NOT contain code context lines
+        assert!(!output.contains("41: // context before"));
+        assert!(!output.contains("42→ pub fn call_tool()"));
+        assert!(!output.contains("10→ pub struct Foo"));
+
+        // Output should be compact: one header line + one line per result
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.len(), 3, "Expected 1 header + 2 result lines, got: {output}");
+    }
+
+    #[test]
+    fn test_locations_only_format_truncated() {
+        let symbols: Vec<Symbol> = (0..3)
+            .map(|i| make_test_symbol(&format!("src/file{i}.rs"), i * 10, "code"))
+            .collect();
+
+        let response = OptimizedResponse {
+            results: symbols,
+            total_found: 50,
+        };
+
+        let output = format_locations_only("foo", &response);
+
+        // When count < total, show "showing N of M"
+        assert!(output.contains("3 locations for \"foo\" (showing 3 of 50)"));
+    }
+
+    #[test]
+    fn test_fast_search_return_format_deserialization() {
+        use crate::tools::search::FastSearchTool;
+
+        // Default should be "full"
+        let tool: FastSearchTool = serde_json::from_str(r#"{"query": "test"}"#).unwrap();
+        assert_eq!(tool.return_format, "full");
+
+        // Explicit "locations"
+        let tool: FastSearchTool =
+            serde_json::from_str(r#"{"query": "test", "return_format": "locations"}"#).unwrap();
+        assert_eq!(tool.return_format, "locations");
     }
 }

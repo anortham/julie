@@ -159,6 +159,33 @@ pub fn format_definition_search_results(
     output.trim_end().to_string()
 }
 
+/// Format search results as file:line locations only (no code context).
+/// Saves 70-90% tokens compared to full format.
+pub fn format_locations_only(query: &str, response: &OptimizedResponse<Symbol>) -> String {
+    let mut output = String::new();
+    let count = response.results.len();
+    let total = response.total_found;
+
+    if count == total {
+        output.push_str(&format!("{} locations for \"{}\":\n", count, query));
+    } else {
+        output.push_str(&format!(
+            "{} locations for \"{}\" (showing {} of {}):\n",
+            count, query, count, total
+        ));
+    }
+
+    for symbol in &response.results {
+        let kind = symbol.kind.to_string();
+        output.push_str(&format!(
+            "  {}:{} ({})\n",
+            symbol.file_path, symbol.start_line, kind
+        ));
+    }
+
+    output.trim_end().to_string()
+}
+
 /// Check if a symbol name matches a query for definition formatting.
 /// Matches exact name OR last component of a dot-qualified name.
 fn is_definition_name_match(symbol_name: &str, query_lower: &str) -> bool {

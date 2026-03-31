@@ -76,6 +76,7 @@ async fn test_fast_search_recognizes_indexed_primary_workspace() -> Result<()> {
         context_lines: None,
         exclude_tests: None,
         workspace: Some("primary".to_string()), // Using "primary" should work!
+        ..Default::default()
     };
 
     let result = search_tool.call_tool(&handler).await?;
@@ -159,6 +160,7 @@ async fn test_fast_search_with_explicit_workspace_id() -> Result<()> {
         context_lines: None,
         exclude_tests: None,
         workspace: Some(workspace_id), // Using actual workspace ID
+        ..Default::default()
     };
 
     let result = search_tool.call_tool(&handler).await?;

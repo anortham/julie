@@ -75,6 +75,9 @@ pub struct FastSearchTool {
     /// Workspace filter: "primary" (default) or a reference workspace ID
     #[serde(default = "default_workspace")]
     pub workspace: Option<String>,
+    /// Return format: "full" (default, code context included) or "locations" (file:line only, 70-90% fewer tokens)
+    #[serde(default = "default_return_format")]
+    pub return_format: String,
 }
 
 fn default_limit() -> u32 {
@@ -88,6 +91,25 @@ fn default_context_lines() -> Option<u32> {
 }
 fn default_search_target() -> String {
     "content".to_string()
+}
+fn default_return_format() -> String {
+    "full".to_string()
+}
+
+impl Default for FastSearchTool {
+    fn default() -> Self {
+        Self {
+            query: String::new(),
+            search_target: default_search_target(),
+            language: None,
+            file_pattern: None,
+            limit: default_limit(),
+            context_lines: default_context_lines(),
+            exclude_tests: None,
+            workspace: default_workspace(),
+            return_format: default_return_format(),
+        }
+    }
 }
 
 impl FastSearchTool {
@@ -195,6 +217,14 @@ impl FastSearchTool {
                 self.query
             );
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+        }
+
+        // Locations-only mode: skip code context entirely (70-90% token savings)
+        if self.return_format == "locations" {
+            let locations_output = formatting::format_locations_only(&self.query, &optimized);
+            return Ok(CallToolResult::text_content(vec![Content::text(
+                locations_output,
+            )]));
         }
 
         // Definition search: use promoted formatting (exact matches get "Definition found:" header)

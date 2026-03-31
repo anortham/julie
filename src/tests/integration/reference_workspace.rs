@@ -124,6 +124,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let primary_result = search_primary.call_tool(&handler).await?;
@@ -148,6 +149,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let reference_result = search_reference.call_tool(&handler).await?;
@@ -173,6 +175,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let cross_result = cross_search.call_tool(&handler).await?;
@@ -224,6 +227,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result = search_tool.call_tool(&handler).await;
@@ -305,6 +309,7 @@ mod reference_workspace_tests {
             search_target: "definitions".to_string(), // Use symbols scope (doesn't need FTS5)
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let reference_result = search_reference.call_tool(&handler).await?;
@@ -366,6 +371,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let initial_result = initial_search.call_tool(&handler).await?;
@@ -407,6 +413,7 @@ mod reference_workspace_tests {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let deleted_result = search_deleted.call_tool(&handler).await?;

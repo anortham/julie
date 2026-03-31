@@ -286,6 +286,7 @@ mod tests {
             search_target: "definitions".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result = tool.call_tool(&handler).await;
