@@ -229,7 +229,7 @@ pub fn run_pipeline(
         build_pivot_entries(&pivots, &expansion, db, &allocation, &pivot_ref_scores)?;
 
     // 8. Build NeighborEntries
-    let neighbor_entries = build_neighbor_entries(&expansion);
+    let neighbor_entries = build_neighbor_entries(&expansion, allocation.neighbor_tokens);
 
     // 9. Format and return
     let context_data = ContextData {
@@ -463,11 +463,16 @@ fn get_pivot_relationship_names_batched(
 /// Build NeighborEntry structs from graph expansion results, filtering noise.
 /// Filters out: common trait methods (clone, fmt, etc.) and test file symbols.
 const MAX_NEIGHBOR_ENTRIES: usize = 200;
-/// Character budget for neighbor output (~600 tokens * 4 chars/token).
-const MAX_NEIGHBOR_CHARS: usize = 2400;
 
-fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::NeighborEntry> {
+fn build_neighbor_entries(
+    expansion: &GraphExpansion,
+    neighbor_token_budget: u32,
+) -> Vec<super::formatting::NeighborEntry> {
     use super::formatting::NeighborEntry;
+
+    // Scale char budget from the caller's token allocation (rough: 4 chars/token).
+    // Minimum of 2400 chars (~600 tokens) to preserve existing behavior when budget is low.
+    let char_budget = ((neighbor_token_budget as usize) * 4).max(2400);
 
     let mut estimated_chars: usize = 0;
     let mut entries = Vec::new();
@@ -496,7 +501,7 @@ fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::
                 .map(|d| d.len().min(120))
                 .unwrap_or(0);
 
-        if estimated_chars + entry_char_estimate > MAX_NEIGHBOR_CHARS && !entries.is_empty() {
+        if estimated_chars + entry_char_estimate > char_budget && !entries.is_empty() {
             break;
         }
         estimated_chars += entry_char_estimate;

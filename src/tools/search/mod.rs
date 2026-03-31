@@ -221,7 +221,13 @@ impl FastSearchTool {
 
         // Locations-only mode: skip code context entirely (70-90% token savings)
         if self.return_format == "locations" {
-            let locations_output = formatting::format_locations_only(&self.query, &optimized);
+            let mut locations_output = formatting::format_locations_only(&self.query, &optimized);
+            if relaxed {
+                locations_output = format!(
+                    "NOTE: Relaxed search (showing partial matches — no results matched all terms)\n\n{}",
+                    locations_output
+                );
+            }
             return Ok(CallToolResult::text_content(vec![Content::text(
                 locations_output,
             )]));

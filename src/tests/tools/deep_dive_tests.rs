@@ -1296,6 +1296,64 @@ mod formatting_tests {
         );
     }
 
+    // === Token budget: UTF-8 safety ===
+
+    #[test]
+    fn test_truncation_does_not_panic_on_multibyte_utf8() {
+        // Fill the body with emoji and CJK characters so that a naive byte-slice
+        // at token_limit * 4 would land inside a multi-byte sequence.
+        // "full" limit is 1800 tokens; target_chars = (1800-20)*4 = 7120 bytes.
+        // Each emoji is 4 bytes, each CJK char is 3 bytes — a mix should reliably
+        // hit a non-boundary if we do raw byte slicing.
+        let body: String = (0..300)
+            .map(|i| {
+                if i % 2 == 0 {
+                    "🦀 rust is great ".to_string()
+                } else {
+                    "中文代码注释 ".to_string()
+                }
+            })
+            .collect();
+
+        let sym = make_symbol(
+            "unicode_heavy",
+            SymbolKind::Function,
+            "src/unicode.rs",
+            1,
+            Some("pub fn unicode_heavy()"),
+            Some(Visibility::Public),
+            Some(&body),
+        );
+        let mut ctx = empty_context(sym);
+        // Add a pile of incoming refs so the pre-body output also contains multibyte chars.
+        ctx.incoming = (0..30)
+            .map(|i| {
+                let caller = make_symbol(
+                    &format!("caller_{}", i),
+                    SymbolKind::Function,
+                    &format!("src/file_{}.rs", i),
+                    i as u32,
+                    Some(&format!("fn caller_{}() // 日本語コメント", i)),
+                    None,
+                    None,
+                );
+                make_ref(
+                    RelationshipKind::Calls,
+                    &format!("src/file_{}.rs", i),
+                    i as u32,
+                    Some(caller),
+                )
+            })
+            .collect();
+        ctx.incoming_total = 30;
+
+        // Must not panic regardless of where the byte boundary falls.
+        let output = format_symbol_context(&ctx, "full");
+        // Basic sanity: output is valid UTF-8 (the assert! forces the string to be
+        // used; if we got here without panicking, the fix works).
+        assert!(output.is_char_boundary(0), "output must be valid UTF-8");
+    }
+
     // === Token budget enforcement ===
 
     #[test]

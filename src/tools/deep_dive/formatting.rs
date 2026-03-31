@@ -57,11 +57,18 @@ pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
         // Leave room for the truncation notice (~20 tokens = 80 chars).
         let target_chars = (token_limit.saturating_sub(20)) * 4;
         let truncated = if target_chars < out.len() {
-            // Walk back to the last newline so we don't cut mid-line.
-            let boundary = out[..target_chars]
+            // Find the last char boundary at or before target_chars, then walk
+            // back to the last newline so we don't cut mid-line.
+            let safe_byte = out
+                .char_indices()
+                .take_while(|(i, _)| *i <= target_chars)
+                .last()
+                .map(|(i, c)| i + c.len_utf8())
+                .unwrap_or(0);
+            let boundary = out[..safe_byte]
                 .rfind('\n')
                 .map(|pos| pos + 1)
-                .unwrap_or(target_chars);
+                .unwrap_or(safe_byte);
             &out[..boundary]
         } else {
             &out

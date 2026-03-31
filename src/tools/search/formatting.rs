@@ -97,9 +97,10 @@ pub fn format_lean_search_results(query: &str, response: &OptimizedResponse<Symb
             // Multiple matches in file: group under file header
             output.push_str(&format!("{}:\n", file_path));
             for sym in symbols.iter() {
+                output.push_str(&format!("  :{}\n", sym.start_line));
                 if let Some(ctx) = &sym.code_context {
                     for line in ctx.lines() {
-                        output.push_str(&format!("  {}\n", line));
+                        output.push_str(&format!("    {}\n", line));
                     }
                 }
                 output.push('\n');
@@ -192,9 +193,10 @@ pub fn format_definition_search_results(
             } else {
                 output.push_str(&format!("{}:\n", file_path));
                 for sym in symbols.iter() {
+                    output.push_str(&format!("  :{}\n", sym.start_line));
                     if let Some(ctx) = &sym.code_context {
                         for line in ctx.lines() {
-                            output.push_str(&format!("  {}\n", line));
+                            output.push_str(&format!("    {}\n", line));
                         }
                     }
                     output.push('\n');
