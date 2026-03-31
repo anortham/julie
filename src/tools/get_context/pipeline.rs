@@ -7,6 +7,7 @@ use anyhow::Result;
 use super::GetContextTool;
 use super::content::abbreviate_code;
 pub(crate) use super::content::truncate_to_token_budget;
+use super::content::truncate_to_token_budget_with_hint;
 pub use super::scoring::{Pivot, select_pivots};
 use crate::search::scoring::is_test_path;
 use tracing::debug;
@@ -378,7 +379,11 @@ fn build_pivot_entries(
             PivotMode::SignatureOnly => pivot.result.signature.clone(),
         };
 
-        let content = truncate_to_token_budget(&content, per_pivot_tokens);
+        let content = truncate_to_token_budget_with_hint(
+            &content,
+            per_pivot_tokens,
+            Some(&pivot.result.name),
+        );
 
         let (incoming_names, outgoing_names) = get_pivot_relationship_names_batched(
             &pivot.result.id,

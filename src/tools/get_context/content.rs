@@ -26,6 +26,15 @@ pub(crate) fn abbreviate_code(code: &str) -> String {
 /// Returns content unchanged if within budget.
 /// Uses head-biased truncation (2/3 top, 1/3 bottom).
 pub(crate) fn truncate_to_token_budget(code: &str, max_tokens: usize) -> String {
+    truncate_to_token_budget_with_hint(code, max_tokens, None)
+}
+
+/// Truncate with an actionable hint telling the agent how to get the full body.
+pub(crate) fn truncate_to_token_budget_with_hint(
+    code: &str,
+    max_tokens: usize,
+    symbol_name: Option<&str>,
+) -> String {
     use crate::utils::token_estimation::TokenEstimator;
 
     let estimator = TokenEstimator::new();
@@ -47,16 +56,24 @@ pub(crate) fn truncate_to_token_budget(code: &str, max_tokens: usize) -> String 
 
     let head = (target_lines * 2 / 3).max(3);
     let tail = (target_lines - head).max(2);
+    let omitted = lines.len() - head - tail;
 
     let mut out = String::new();
     for line in &lines[..head] {
         out.push_str(line);
         out.push('\n');
     }
-    out.push_str(&format!(
-        "    // ... ({} lines omitted to fit token budget)\n",
-        lines.len() - head - tail
-    ));
+    let hint = match symbol_name {
+        Some(name) => format!(
+            "    // ... ({} lines omitted to fit token budget)\n    // use get_symbols(target=\"{}\") for full body\n",
+            omitted, name
+        ),
+        None => format!(
+            "    // ... ({} lines omitted to fit token budget)\n",
+            omitted
+        ),
+    };
+    out.push_str(&hint);
     for (i, line) in lines[lines.len() - tail..].iter().enumerate() {
         out.push_str(line);
         if i < tail - 1 {
