@@ -7,6 +7,7 @@
 //! - Module/Namespace: public exports
 
 use crate::extractors::base::{RelationshipKind, SymbolKind};
+use crate::utils::token_estimation::TokenEstimator;
 
 use super::data::{RefEntry, SimilarEntry, SymbolContext};
 
@@ -42,6 +43,42 @@ pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
 
     // === Semantic similarity (context and full depth) ===
     format_similar_section(&mut out, &ctx.similar);
+
+    // === Token budget enforcement ===
+    let token_limit = match depth {
+        "overview" => 300,
+        "context" => 800,
+        _ => 1800, // "full"
+    };
+    let estimator = TokenEstimator::new();
+    let estimated = estimator.estimate_string(&out);
+    if estimated > token_limit {
+        // Find the character cut point: roughly token_limit * chars_per_token.
+        // Leave room for the truncation notice (~20 tokens = 80 chars).
+        let target_chars = (token_limit.saturating_sub(20)) * 4;
+        let truncated = if target_chars < out.len() {
+            // Find the last char boundary at or before target_chars, then walk
+            // back to the last newline so we don't cut mid-line.
+            let safe_byte = out
+                .char_indices()
+                .take_while(|(i, _)| *i <= target_chars)
+                .last()
+                .map(|(i, c)| i + c.len_utf8())
+                .unwrap_or(0);
+            let boundary = out[..safe_byte]
+                .rfind('\n')
+                .map(|pos| pos + 1)
+                .unwrap_or(safe_byte);
+            &out[..boundary]
+        } else {
+            &out
+        };
+        return format!(
+            "{}  ... (truncated to ~{} token budget)\n",
+            truncated.trim_end(),
+            token_limit
+        );
+    }
 
     out.trim_end().to_string()
 }

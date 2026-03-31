@@ -205,15 +205,14 @@ fn format_context_compact(data: &ContextData) -> String {
     ));
 
     for pivot in &data.pivots {
-        let label = centrality_label(pivot.reference_score);
         let quality_tag = pivot
             .test_quality_label
             .as_ref()
             .map(|l| format!(" quality={}", l))
             .unwrap_or_default();
         out.push_str(&format!(
-            "PIVOT {} {}:{} kind={} centrality={}{}\n",
-            pivot.name, pivot.file_path, pivot.start_line, pivot.kind, label, quality_tag
+            "PIVOT {} {}:{} kind={}{}\n",
+            pivot.name, pivot.file_path, pivot.start_line, pivot.kind, quality_tag
         ));
         for line in pivot.content.lines() {
             out.push_str("  ");
@@ -221,12 +220,16 @@ fn format_context_compact(data: &ContextData) -> String {
             out.push('\n');
         }
         let incoming_names = dedup_names(&pivot.incoming_names);
-        if !incoming_names.is_empty() {
-            out.push_str(&format!("  callers={}\n", incoming_names.join(",")));
-        }
         let outgoing_names = dedup_names(&pivot.outgoing_names);
-        if !outgoing_names.is_empty() {
-            out.push_str(&format!("  calls={}\n", outgoing_names.join(",")));
+        match (incoming_names.is_empty(), outgoing_names.is_empty()) {
+            (false, false) => out.push_str(&format!(
+                "  callers={} calls={}\n",
+                incoming_names.join(","),
+                outgoing_names.join(",")
+            )),
+            (false, true) => out.push_str(&format!("  callers={}\n", incoming_names.join(","))),
+            (true, false) => out.push_str(&format!("  calls={}\n", outgoing_names.join(","))),
+            (true, true) => {}
         }
     }
 
@@ -246,18 +249,9 @@ fn dedup_names(names: &[String]) -> Vec<String> {
 
 fn format_neighbor_compact(out: &mut String, neighbor: &NeighborEntry, mode: &NeighborMode) {
     match mode {
-        NeighborMode::SignatureAndDoc => {
-            let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
-            out.push_str(&format!(
-                "NEIGHBOR {} {}:{} kind={} sig={}",
-                neighbor.name, neighbor.file_path, neighbor.start_line, neighbor.kind, sig
-            ));
-            if let Some(doc) = &neighbor.doc_summary {
-                out.push_str(&format!(" doc=\"{}\"", doc));
-            }
-            out.push('\n');
-        }
-        NeighborMode::SignatureOnly => {
+        // In compact mode, SignatureAndDoc omits doc to save tokens (doc is optional context,
+        // not load-bearing for navigation). Use readable format when doc matters.
+        NeighborMode::SignatureAndDoc | NeighborMode::SignatureOnly => {
             let sig = neighbor.signature.as_deref().unwrap_or(&neighbor.name);
             out.push_str(&format!(
                 "NEIGHBOR {} {}:{} kind={} sig={}\n",

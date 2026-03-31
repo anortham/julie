@@ -70,15 +70,40 @@ pub fn format_lean_search_results(query: &str, response: &OptimizedResponse<Symb
         ));
     }
 
-    // Each result: file:line header + indented code context
+    // Group results by file path (preserving order of first appearance)
+    // Build ordered list of groups: (file_path, Vec<&Symbol>)
+    let mut groups: Vec<(&str, Vec<&Symbol>)> = Vec::new();
     for symbol in &response.results {
-        // File:line header
-        output.push_str(&format!("{}:{}\n", symbol.file_path, symbol.start_line));
+        let path = symbol.file_path.as_str();
+        if let Some(group) = groups.iter_mut().find(|(p, _)| *p == path) {
+            group.1.push(symbol);
+        } else {
+            groups.push((path, vec![symbol]));
+        }
+    }
 
-        // Indented code context (already has line numbers and arrow)
-        if let Some(ctx) = &symbol.code_context {
-            for line in ctx.lines() {
-                output.push_str(&format!("  {}\n", line));
+    // Emit each group
+    for (file_path, symbols) in &groups {
+        if symbols.len() == 1 {
+            // Single match in file: keep original file:line format
+            let sym = symbols[0];
+            output.push_str(&format!("{}:{}\n", file_path, sym.start_line));
+            if let Some(ctx) = &sym.code_context {
+                for line in ctx.lines() {
+                    output.push_str(&format!("  {}\n", line));
+                }
+            }
+        } else {
+            // Multiple matches in file: group under file header
+            output.push_str(&format!("{}:\n", file_path));
+            for sym in symbols.iter() {
+                output.push_str(&format!("  :{}\n", sym.start_line));
+                if let Some(ctx) = &sym.code_context {
+                    for line in ctx.lines() {
+                        output.push_str(&format!("    {}\n", line));
+                    }
+                }
+                output.push('\n');
             }
         }
         output.push('\n');
@@ -145,15 +170,67 @@ pub fn format_definition_search_results(
     if !others.is_empty() {
         output.push_str("\nOther matches:\n\n");
 
+        // Group by file (preserving order of first appearance)
+        let mut groups: Vec<(&str, Vec<&&Symbol>)> = Vec::new();
         for symbol in &others {
-            output.push_str(&format!("{}:{}\n", symbol.file_path, symbol.start_line));
-            if let Some(ctx) = &symbol.code_context {
-                for line in ctx.lines() {
-                    output.push_str(&format!("  {}\n", line));
+            let path = symbol.file_path.as_str();
+            if let Some(group) = groups.iter_mut().find(|(p, _)| *p == path) {
+                group.1.push(symbol);
+            } else {
+                groups.push((path, vec![symbol]));
+            }
+        }
+
+        for (file_path, symbols) in &groups {
+            if symbols.len() == 1 {
+                let sym = symbols[0];
+                output.push_str(&format!("{}:{}\n", file_path, sym.start_line));
+                if let Some(ctx) = &sym.code_context {
+                    for line in ctx.lines() {
+                        output.push_str(&format!("  {}\n", line));
+                    }
+                }
+            } else {
+                output.push_str(&format!("{}:\n", file_path));
+                for sym in symbols.iter() {
+                    output.push_str(&format!("  :{}\n", sym.start_line));
+                    if let Some(ctx) = &sym.code_context {
+                        for line in ctx.lines() {
+                            output.push_str(&format!("    {}\n", line));
+                        }
+                    }
+                    output.push('\n');
                 }
             }
             output.push('\n');
         }
+    }
+
+    output.trim_end().to_string()
+}
+
+/// Format search results as file:line locations only (no code context).
+/// Saves 70-90% tokens compared to full format.
+pub fn format_locations_only(query: &str, response: &OptimizedResponse<Symbol>) -> String {
+    let mut output = String::new();
+    let count = response.results.len();
+    let total = response.total_found;
+
+    if count == total {
+        output.push_str(&format!("{} locations for \"{}\":\n", count, query));
+    } else {
+        output.push_str(&format!(
+            "{} locations for \"{}\" (showing {} of {}):\n",
+            count, query, count, total
+        ));
+    }
+
+    for symbol in &response.results {
+        let kind = symbol.kind.to_string();
+        output.push_str(&format!(
+            "  {}:{} ({})\n",
+            symbol.file_path, symbol.start_line, kind
+        ));
     }
 
     output.trim_end().to_string()

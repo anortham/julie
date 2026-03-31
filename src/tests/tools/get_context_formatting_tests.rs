@@ -730,16 +730,12 @@ mod formatting_tests {
         let readable = format_context(&data);
         let compact = format_context_with_mode(&data, OutputFormat::Compact);
 
-        // Both formats are now lean (no box-drawing, no padding in either).
-        // Compact may be similar size or slightly larger for small data sets
-        // since KEY=VALUE labels can exceed readable section headers.
-        // Just verify both render non-empty and are within 10% of each other.
         assert!(!compact.is_empty(), "compact output should not be empty");
         assert!(!readable.is_empty(), "readable output should not be empty");
         let ratio = compact.len() as f64 / readable.len() as f64;
         assert!(
-            ratio < 1.10,
-            "compact should not be >10% larger than readable (compact={}, readable={}, ratio={:.2})",
+            ratio < 0.90,
+            "compact should be at least 10% smaller than readable (compact={}, readable={}, ratio={:.2})",
             compact.len(),
             readable.len(),
             ratio
@@ -817,11 +813,9 @@ mod formatting_tests {
         let compact_tokens = estimator.estimate_string_hybrid(&compact) as f64;
         let reduction = 1.0 - (compact_tokens / readable_tokens);
 
-        // Both formats were made leaner (removed padding, box-drawing from readable too),
-        // so the gap is small. The remaining savings come from KEY=VALUE format vs labeled sections.
         assert!(
-            reduction >= 0.02,
-            "compact should reduce estimated tokens by >=2% (readable={}, compact={}, reduction={:.1}%)",
+            reduction >= 0.15,
+            "compact should reduce estimated tokens by >=15% (readable={}, compact={}, reduction={:.1}%)",
             readable_tokens,
             compact_tokens,
             reduction * 100.0

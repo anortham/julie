@@ -1295,6 +1295,200 @@ mod formatting_tests {
             output
         );
     }
+
+    // === Token budget: UTF-8 safety ===
+
+    #[test]
+    fn test_truncation_does_not_panic_on_multibyte_utf8() {
+        // Fill the body with emoji and CJK characters so that a naive byte-slice
+        // at token_limit * 4 would land inside a multi-byte sequence.
+        // "full" limit is 1800 tokens; target_chars = (1800-20)*4 = 7120 bytes.
+        // Each emoji is 4 bytes, each CJK char is 3 bytes — a mix should reliably
+        // hit a non-boundary if we do raw byte slicing.
+        let body: String = (0..300)
+            .map(|i| {
+                if i % 2 == 0 {
+                    "🦀 rust is great ".to_string()
+                } else {
+                    "中文代码注释 ".to_string()
+                }
+            })
+            .collect();
+
+        let sym = make_symbol(
+            "unicode_heavy",
+            SymbolKind::Function,
+            "src/unicode.rs",
+            1,
+            Some("pub fn unicode_heavy()"),
+            Some(Visibility::Public),
+            Some(&body),
+        );
+        let mut ctx = empty_context(sym);
+        // Add a pile of incoming refs so the pre-body output also contains multibyte chars.
+        ctx.incoming = (0..30)
+            .map(|i| {
+                let caller = make_symbol(
+                    &format!("caller_{}", i),
+                    SymbolKind::Function,
+                    &format!("src/file_{}.rs", i),
+                    i as u32,
+                    Some(&format!("fn caller_{}() // 日本語コメント", i)),
+                    None,
+                    None,
+                );
+                make_ref(
+                    RelationshipKind::Calls,
+                    &format!("src/file_{}.rs", i),
+                    i as u32,
+                    Some(caller),
+                )
+            })
+            .collect();
+        ctx.incoming_total = 30;
+
+        // Must not panic regardless of where the byte boundary falls.
+        let output = format_symbol_context(&ctx, "full");
+        // Basic sanity: output is valid UTF-8 (the assert! forces the string to be
+        // used; if we got here without panicking, the fix works).
+        assert!(output.is_char_boundary(0), "output must be valid UTF-8");
+    }
+
+    // === Token budget enforcement ===
+
+    #[test]
+    fn test_full_depth_output_under_token_budget() {
+        use crate::utils::token_estimation::TokenEstimator;
+
+        // Build a worst-case SymbolContext for "full" depth:
+        // - Primary symbol with 100-line body
+        // - 50 incoming refs, each with a Symbol having a 10-line code_context
+        let code_100_lines = (0..100)
+            .map(|i| format!("    let x_{} = some_func_with_a_long_name_{}();", i, i))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let sym = make_symbol(
+            "big_function",
+            SymbolKind::Function,
+            "src/engine.rs",
+            1,
+            Some("pub fn big_function(a: &BigStruct, b: &mut OtherStruct) -> Result<LongReturnType>"),
+            Some(Visibility::Public),
+            Some(&code_100_lines),
+        );
+
+        let code_10_lines = (0..10)
+            .map(|i| format!("    let val_{} = big_function_called_here_{}();", i, i))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let incoming: Vec<RefEntry> = (0..50)
+            .map(|i| {
+                let caller = make_symbol(
+                    &format!("caller_{}", i),
+                    SymbolKind::Function,
+                    &format!("src/callers/file_{}.rs", i),
+                    (i * 10 + 1) as u32,
+                    Some(&format!("fn caller_{}(arg: &SomeType) -> AnotherType", i)),
+                    None,
+                    Some(&code_10_lines),
+                );
+                make_ref(
+                    RelationshipKind::Calls,
+                    &format!("src/callers/file_{}.rs", i),
+                    (i * 10 + 5) as u32,
+                    Some(caller),
+                )
+            })
+            .collect();
+
+        let ctx = SymbolContext {
+            symbol: sym,
+            incoming,
+            incoming_total: 50,
+            outgoing: vec![],
+            outgoing_total: 0,
+            children: vec![],
+            implementations: vec![],
+            test_refs: vec![],
+            similar: vec![],
+        };
+
+        let output = format_symbol_context(&ctx, "full");
+        let estimator = TokenEstimator::new();
+        let token_count = estimator.estimate_string(&output);
+
+        assert!(
+            token_count <= 2000,
+            "full depth output exceeded token budget: {} tokens (limit 2000)\nOutput length: {} chars",
+            token_count,
+            output.len()
+        );
+        // Verify the output still contains the truncation notice
+        assert!(
+            output.contains("truncated"),
+            "output should contain truncation notice when budget is exceeded, got:\n{}",
+            &output[output.len().saturating_sub(200)..]
+        );
+    }
+
+    #[test]
+    fn test_overview_depth_under_token_budget() {
+        use crate::utils::token_estimation::TokenEstimator;
+
+        let sym = make_symbol(
+            "tiny_fn",
+            SymbolKind::Function,
+            "src/lib.rs",
+            1,
+            Some("pub fn tiny_fn()"),
+            Some(Visibility::Public),
+            None,
+        );
+
+        let incoming: Vec<RefEntry> = (0..20)
+            .map(|i| {
+                let caller = make_symbol(
+                    &format!("user_{}", i),
+                    SymbolKind::Function,
+                    &format!("src/users/file_{}.rs", i),
+                    (i * 5 + 1) as u32,
+                    None,
+                    None,
+                    None,
+                );
+                make_ref(
+                    RelationshipKind::Calls,
+                    &format!("src/users/file_{}.rs", i),
+                    (i * 5 + 2) as u32,
+                    Some(caller),
+                )
+            })
+            .collect();
+
+        let ctx = SymbolContext {
+            symbol: sym,
+            incoming,
+            incoming_total: 20,
+            outgoing: vec![],
+            outgoing_total: 0,
+            children: vec![],
+            implementations: vec![],
+            test_refs: vec![],
+            similar: vec![],
+        };
+
+        let output = format_symbol_context(&ctx, "overview");
+        let estimator = TokenEstimator::new();
+        let token_count = estimator.estimate_string(&output);
+
+        assert!(
+            token_count <= 400,
+            "overview depth output exceeded token budget: {} tokens (limit 400)",
+            token_count
+        );
+    }
 }
 
 #[cfg(test)]

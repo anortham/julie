@@ -276,6 +276,64 @@ fn test_lean_refs_graceful_without_source_names() {
     );
 }
 
+// --- Group-by-file references tests ---
+
+#[test]
+fn test_lean_refs_groups_same_file_references() {
+    // Two refs in src/api/auth.rs, one in src/handlers/login.rs
+    let defs = vec![make_test_symbol(
+        "src/user.rs",
+        15,
+        SymbolKind::Struct,
+        Some("pub struct UserService"),
+    )];
+
+    let mut refs = vec![
+        make_test_relationship("src/api/auth.rs", 42, RelationshipKind::Calls),
+        make_test_relationship("src/api/auth.rs", 78, RelationshipKind::Calls),
+        make_test_relationship("src/handlers/login.rs", 55, RelationshipKind::Calls),
+    ];
+    refs[0].from_symbol_id = "caller_a".to_string();
+    refs[1].from_symbol_id = "caller_b".to_string();
+    refs[2].from_symbol_id = "caller_c".to_string();
+
+    let mut source_names = HashMap::new();
+    source_names.insert("caller_a".to_string(), "handle_request".to_string());
+    source_names.insert("caller_b".to_string(), "validate_token".to_string());
+    source_names.insert("caller_c".to_string(), "login".to_string());
+
+    let output = format_lean_refs_results("UserService", &defs, &refs, &source_names);
+
+    // The grouped file should appear only once as a header
+    let auth_occurrences = output.matches("src/api/auth.rs").count();
+    assert_eq!(
+        auth_occurrences, 1,
+        "src/api/auth.rs should appear once (grouped header). Got:\n{output}"
+    );
+
+    // Grouped header format: indented file path with colon
+    assert!(
+        output.contains("  src/api/auth.rs:\n"),
+        "Multi-ref file should use grouped header format. Got:\n{output}"
+    );
+
+    // Grouped entries use :line format
+    assert!(
+        output.contains(":42  handle_request (Calls)"),
+        "First grouped ref should use :line format. Got:\n{output}"
+    );
+    assert!(
+        output.contains(":78  validate_token (Calls)"),
+        "Second grouped ref should use :line format. Got:\n{output}"
+    );
+
+    // Single-file ref stays inline
+    assert!(
+        output.contains("src/handlers/login.rs:55  login (Calls)"),
+        "Single-file ref should stay inline. Got:\n{output}"
+    );
+}
+
 // --- Qualified name parsing tests ---
 
 #[test]

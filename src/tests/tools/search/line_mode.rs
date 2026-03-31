@@ -109,6 +109,7 @@ fn processPayment() {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result = search_tool.call_tool(&handler).await?;
@@ -189,6 +190,7 @@ fn processPayment() {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result = search_primary.call_tool(&handler).await?;
@@ -215,6 +217,7 @@ fn processPayment() {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result = search_invalid.call_tool(&handler).await;
@@ -276,6 +279,7 @@ fn processPayment() {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result = search_tool.call_tool(&handler).await?;
@@ -354,6 +358,7 @@ fn processPayment() {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result = search_tool.call_tool(&handler).await?;
@@ -441,6 +446,7 @@ def python_function():
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result = search_rust.call_tool(&handler).await?;
@@ -469,6 +475,7 @@ def python_function():
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result_ts = search_ts.call_tool(&handler).await?;
@@ -538,6 +545,7 @@ def python_function():
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result = search_src.call_tool(&handler).await?;
@@ -563,6 +571,7 @@ def python_function():
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result_tests = search_tests.call_tool(&handler).await?;
@@ -649,6 +658,7 @@ fn test_authenticate_user() {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result_all = search_all.call_tool(&handler).await?;
@@ -675,6 +685,7 @@ fn test_authenticate_user() {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: Some(true),
+            ..Default::default()
         };
 
         let result_no_tests = search_no_tests.call_tool(&handler).await?;
@@ -743,6 +754,7 @@ fn test_authenticate_user() {
             search_target: "content".to_string(),
             context_lines: None,
             exclude_tests: None,
+            ..Default::default()
         };
 
         let result = search_combined.call_tool(&handler).await?;

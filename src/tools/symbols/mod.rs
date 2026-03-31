@@ -11,7 +11,7 @@
 
 mod body_extraction;
 pub(crate) mod filtering;
-mod formatting;
+pub(crate) mod formatting;
 mod primary;
 mod reference;
 
@@ -33,7 +33,7 @@ fn default_limit() -> Option<u32> {
 }
 
 fn default_mode() -> Option<String> {
-    Some("minimal".to_string()) // Default to minimal for code output
+    Some("structure".to_string()) // Default to structure for token-efficient orientation
 }
 
 fn default_workspace() -> Option<String> {

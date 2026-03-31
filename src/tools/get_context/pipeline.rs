@@ -229,7 +229,7 @@ pub fn run_pipeline(
         build_pivot_entries(&pivots, &expansion, db, &allocation, &pivot_ref_scores)?;
 
     // 8. Build NeighborEntries
-    let neighbor_entries = build_neighbor_entries(&expansion);
+    let neighbor_entries = build_neighbor_entries(&expansion, allocation.neighbor_tokens);
 
     // 9. Format and return
     let context_data = ContextData {
@@ -464,16 +464,49 @@ fn get_pivot_relationship_names_batched(
 /// Filters out: common trait methods (clone, fmt, etc.) and test file symbols.
 const MAX_NEIGHBOR_ENTRIES: usize = 200;
 
-fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::NeighborEntry> {
+fn build_neighbor_entries(
+    expansion: &GraphExpansion,
+    neighbor_token_budget: u32,
+) -> Vec<super::formatting::NeighborEntry> {
     use super::formatting::NeighborEntry;
 
-    expansion
+    // Scale char budget from the caller's token allocation (rough: 4 chars/token).
+    // Minimum of 2400 chars (~600 tokens) to preserve existing behavior when budget is low.
+    let char_budget = ((neighbor_token_budget as usize) * 4).max(2400);
+
+    let mut estimated_chars: usize = 0;
+    let mut entries = Vec::new();
+
+    for neighbor in expansion
         .neighbors
         .iter()
         .filter(|neighbor| !NOISE_CALLEE_NAMES.contains(&neighbor.symbol.name.as_str()))
         .filter(|neighbor| !is_test_path(&neighbor.symbol.file_path))
         .take(MAX_NEIGHBOR_ENTRIES)
-        .map(|neighbor| NeighborEntry {
+    {
+        // Estimate chars for this entry: name + file_path + line digits + kind + sig + doc
+        let entry_char_estimate = neighbor.symbol.name.len()
+            + neighbor.symbol.file_path.len()
+            + 10 // line number, separators, label overhead
+            + neighbor
+                .symbol
+                .signature
+                .as_ref()
+                .map(|s| s.len())
+                .unwrap_or(0)
+            + neighbor
+                .symbol
+                .doc_comment
+                .as_ref()
+                .map(|d| d.len().min(120))
+                .unwrap_or(0);
+
+        if estimated_chars + entry_char_estimate > char_budget && !entries.is_empty() {
+            break;
+        }
+        estimated_chars += entry_char_estimate;
+
+        entries.push(NeighborEntry {
             name: neighbor.symbol.name.clone(),
             file_path: neighbor.symbol.file_path.clone(),
             start_line: neighbor.symbol.start_line,
@@ -485,8 +518,10 @@ fn build_neighbor_entries(expansion: &GraphExpansion) -> Vec<super::formatting::
                 .as_ref()
                 .map(|d| crate::embeddings::metadata::first_sentence(d))
                 .filter(|s| !s.is_empty()),
-        })
-        .collect()
+        });
+    }
+
+    entries
 }
 
 /// Handler entry point: extracts DB and SearchIndex from handler, delegates to run_pipeline.
