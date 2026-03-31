@@ -586,3 +586,21 @@ pub fn get_user(id: &str) -> User {
 
     Ok(())
 }
+
+/// Test that the default mode is "structure", not "minimal".
+///
+/// Most get_symbols calls are for orientation ("what's in this file?"), not code
+/// extraction. The default should give a lean structural overview, not full code
+/// bodies that burn 50-80% of output tokens unnecessarily.
+#[test]
+fn test_get_symbols_default_mode_is_structure() {
+    // Deserialize without a mode field — should default to "structure"
+    let json = r#"{"file_path": "src/foo.rs"}"#;
+    let tool: GetSymbolsTool = serde_json::from_str(json).expect("should deserialize");
+    assert_eq!(
+        tool.mode.as_deref(),
+        Some("structure"),
+        "default mode must be 'structure', got: {:?}",
+        tool.mode
+    );
+}
