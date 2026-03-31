@@ -549,11 +549,9 @@
       <div id="panel-claude-code" class="install-panel active" role="tabpanel">
         <div class="terminal install-terminal" style="position:relative;" aria-label="Installation commands for Claude Code">
           <button class="copy-btn" data-copy="claude-code" aria-label="Copy to clipboard">Copy</button>
-          <div><span class="prompt"># </span><span class="command">Build from source</span></div>
-          <div><span class="prompt">$ </span><span class="result">git clone https://github.com/anortham/julie.git</span></div>
-          <div><span class="prompt">$ </span><span class="result">cd julie && cargo build --release</span></div>
-          <div style="margin-top: 8px;"><span class="prompt"># </span><span class="command">Connect to Claude Code</span></div>
-          <div><span class="prompt">$ </span><span class="result">claude mcp add julie -- ./target/release/julie-server</span></div>
+          <div><span class="prompt"># </span><span class="command">Install the plugin (recommended)</span></div>
+          <div><span class="prompt">$ </span><span class="result">/plugin marketplace add anortham/julie-plugin</span></div>
+          <div><span class="prompt">$ </span><span class="result">/plugin install julie@julie-plugin</span></div>
         </div>
       </div>
 

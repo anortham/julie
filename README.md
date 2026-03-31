@@ -70,6 +70,18 @@ Julie uses ONNX Runtime with DirectML GPU acceleration on Windows, and a managed
 
 ## Installation
 
+### Claude Code Plugin (Recommended)
+
+Install Julie as a [Claude Code plugin](https://github.com/anortham/julie-plugin) for the full experience: MCP tools, skills, and a SessionStart hook that teaches Claude how to use Julie effectively. No Rust toolchain required.
+
+```bash
+# Add the plugin marketplace
+/plugin marketplace add anortham/julie-plugin
+
+# Install (user scope, available across all projects)
+/plugin install julie@julie-plugin
+```
+
 ### Build from Source
 
 ```bash
