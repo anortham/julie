@@ -518,38 +518,37 @@ impl JulieWorkspace {
         self.index_root_override = Some(path);
     }
 
-    /// Get the path to a specific workspace's index directory (SQLite database)
+    /// Get the shared indexes parent directory.
     ///
-    /// When `index_root_override` is set (daemon mode), the override already
-    /// points to the workspace-specific directory, so workspace_id is not
-    /// appended again. In non-daemon mode, workspace_id selects the subdirectory.
-    pub fn workspace_index_path(&self, workspace_id: &str) -> PathBuf {
+    /// When `index_root_override` is set (daemon mode), the override points to
+    /// a workspace-specific dir (e.g., `~/.julie/indexes/julie_528d4264/`).
+    /// The shared parent is one level up (`~/.julie/indexes/`).
+    /// Without override, `indexes_root_path()` already IS the shared parent.
+    fn shared_indexes_dir(&self) -> PathBuf {
         if self.index_root_override.is_some() {
-            self.indexes_root_path().join("db")
+            let root = self.indexes_root_path();
+            root.parent().unwrap_or(&root).to_path_buf()
         } else {
-            self.indexes_root_path().join(workspace_id).join("db")
+            self.indexes_root_path()
         }
+    }
+
+    /// Get the path to a specific workspace's index directory (SQLite database)
+    pub fn workspace_index_path(&self, workspace_id: &str) -> PathBuf {
+        self.shared_indexes_dir().join(workspace_id).join("db")
     }
 
     /// Get the path to a specific workspace's Tantivy search index
     pub fn workspace_tantivy_path(&self, workspace_id: &str) -> PathBuf {
-        if self.index_root_override.is_some() {
-            self.indexes_root_path().join("tantivy")
-        } else {
-            self.indexes_root_path().join(workspace_id).join("tantivy")
-        }
+        self.shared_indexes_dir().join(workspace_id).join("tantivy")
     }
 
     /// Get the path to a specific workspace's SQLite database
     pub fn workspace_db_path(&self, workspace_id: &str) -> PathBuf {
-        if self.index_root_override.is_some() {
-            self.indexes_root_path().join("db").join("symbols.db")
-        } else {
-            self.indexes_root_path()
-                .join(workspace_id)
-                .join("db")
-                .join("symbols.db")
-        }
+        self.shared_indexes_dir()
+            .join(workspace_id)
+            .join("db")
+            .join("symbols.db")
     }
 
     /// Get the path to the general cache
