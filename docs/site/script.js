@@ -346,6 +346,8 @@
     'vscode': '{\n  "servers": {\n    "Julie": {\n      "type": "stdio",\n      "command": "/path/to/julie-server",\n      "env": {\n        "JULIE_WORKSPACE": "${workspaceFolder}"\n      }\n    }\n  }\n}',
     'opencode': '{\n  "mcp": {\n    "julie": {\n      "type": "local",\n      "command": ["/path/to/julie-server"],\n      "enabled": true\n    }\n  }\n}',
     'cursor': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
+    'gemini': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
+    'codex': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
   };
 
   document.querySelectorAll('.copy-btn').forEach((btn) => {

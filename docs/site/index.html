@@ -14,7 +14,6 @@
   <meta property="og:description" content="LSP-quality code intelligence across 33 languages. 90% fewer tokens. <5ms search. Built in Rust with tree-sitter.">
   <meta property="og:url" content="https://anortham.github.io/julie/">
 
-  <!-- Open Graph image (TODO: replace with actual screenshot/card after site is live) -->
   <meta property="og:image" content="https://anortham.github.io/julie/og-card.png">
 
   <!-- Twitter Card -->
@@ -374,7 +373,7 @@
         <div class="terminal" aria-label="deep_dive showing callers, callees, and types for process_payment">
           <div><span class="prompt">$ </span><span class="command">deep_dive("process_payment", overview)</span></div>
           <div><span class="result">Callers (3) · Callees (3) · Types (2)</span></div>
-          <div><span class="result">Change Risk: </span><span class="risk-medium">MEDIUM</span></div>
+          <div><span class="result">Centrality: </span><span class="highlight">0.82</span></div>
           <div><span class="comment">&nbsp; ~400 tokens</span></div>
         </div>
         <span class="token-badge">~400 tokens</span>
@@ -430,7 +429,7 @@
 
       <div class="card tool-card animate-on-scroll" data-delay="700">
         <div class="tool-name">query_metrics</div>
-        <div class="tool-desc">Code health metrics + operational performance stats</div>
+        <div class="tool-desc">Session performance stats and context efficiency</div>
         <div class="terminal" aria-label="query_metrics showing session performance and context efficiency">
           <div><span class="prompt">$ </span><span class="command">query_metrics(category="session")</span></div>
           <div><span class="result">fast_search</span>  12 calls  avg 4.1ms</div>
@@ -647,7 +646,7 @@
       <span class="footer-sep">·</span>
       <span>Built in Rust with tree-sitter and Tantivy</span>
       <span class="footer-sep">·</span>
-      <span>v5.4.0</span>
+      <span>v6.5.1</span>
     </div>
   </footer>
 

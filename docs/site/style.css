@@ -759,13 +759,6 @@ a:hover {
 }
 
 /* ============================================
-   Code Health — Risk labels
-   ============================================ */
-.risk-low { color: var(--accent-green); }
-.risk-medium { color: var(--accent-yellow); }
-.risk-high { color: var(--accent-red); }
-
-/* ============================================
    Tools Showcase
    ============================================ */
 .tool-card .tool-name {
