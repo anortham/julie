@@ -42,6 +42,7 @@
         <a href="#skills">Skills</a>
         <a href="#tools">Tools</a>
         <a href="#languages">Languages</a>
+        <a href="#dashboard">Dashboard</a>
         <a href="#install">Install</a>
       </div>
     </div>
@@ -81,7 +82,7 @@
   <!-- Section 2: Token Savings -->
   <section id="token-savings" class="section">
     <h2 class="section-title">Token Savings</h2>
-    <p class="section-subtitle">Real numbers. Same tasks. Dramatically less context consumed.</p>
+    <p class="section-subtitle">Measured across real projects (Rust, TypeScript, Python, JavaScript). Same tasks. Dramatically less context consumed.</p>
 
     <table class="savings-table">
       <thead>
@@ -95,27 +96,27 @@
       <tbody>
         <tr class="data-row animate-on-scroll" data-delay="0">
           <td>Understand a file's API</td>
-          <td class="without"><span class="savings-icon" aria-hidden="true">✗</span>~1,000 tokens</td>
-          <td class="with-julie"><span class="savings-icon" aria-hidden="true">✓</span>~150 tokens</td>
-          <td class="savings-pct">~80%</td>
+          <td class="without"><span class="savings-icon" aria-hidden="true">✗</span>~3,000 tokens</td>
+          <td class="with-julie"><span class="savings-icon" aria-hidden="true">✓</span>~300 tokens</td>
+          <td class="savings-pct">~90%</td>
         </tr>
         <tr class="data-row animate-on-scroll" data-delay="100">
-          <td>Find a function</td>
-          <td class="without"><span class="savings-icon" aria-hidden="true">✗</span>~2,000+ tokens</td>
-          <td class="with-julie"><span class="savings-icon" aria-hidden="true">✓</span>~150 tokens</td>
-          <td class="savings-pct">~90%</td>
+          <td>Find a function definition</td>
+          <td class="without"><span class="savings-icon" aria-hidden="true">✗</span>~4,000+ tokens</td>
+          <td class="with-julie"><span class="savings-icon" aria-hidden="true">✓</span>~100 tokens</td>
+          <td class="savings-pct">~97%</td>
         </tr>
         <tr class="data-row animate-on-scroll" data-delay="200">
           <td>Investigate before modifying</td>
-          <td class="without"><span class="savings-icon" aria-hidden="true">✗</span>~4,000+ tokens</td>
-          <td class="with-julie"><span class="savings-icon" aria-hidden="true">✓</span>~400 tokens</td>
-          <td class="savings-pct">~90%</td>
+          <td class="without"><span class="savings-icon" aria-hidden="true">✗</span>~5,000+ tokens</td>
+          <td class="with-julie"><span class="savings-icon" aria-hidden="true">✓</span>~200 tokens</td>
+          <td class="savings-pct">~96%</td>
         </tr>
         <tr class="data-row animate-on-scroll" data-delay="300">
           <td>Orient on new area</td>
-          <td class="without"><span class="savings-icon" aria-hidden="true">✗</span>~5,000+ tokens</td>
-          <td class="with-julie"><span class="savings-icon" aria-hidden="true">✓</span>~1,000 tokens</td>
-          <td class="savings-pct">~75%</td>
+          <td class="without"><span class="savings-icon" aria-hidden="true">✗</span>~10,000+ tokens</td>
+          <td class="with-julie"><span class="savings-icon" aria-hidden="true">✓</span>~800 tokens</td>
+          <td class="savings-pct">~92%</td>
         </tr>
       </tbody>
     </table>
@@ -530,7 +531,63 @@
     <p class="perf-subtitle animate-on-scroll" data-delay="400">After initial indexing, only changed files are re-processed — keeping your index fresh in seconds, not minutes.</p>
   </section>
 
-  <!-- Section 10: Installation -->
+  <!-- Section 10: Observatory Dashboard -->
+  <section id="dashboard" class="section">
+    <h2 class="section-title">Observatory Dashboard</h2>
+    <p class="section-subtitle">A built-in web dashboard for monitoring your Julie daemon.</p>
+
+    <div class="card-grid" style="grid-template-columns: repeat(2, 1fr);">
+      <div class="card tool-card animate-on-scroll" data-delay="0">
+        <div class="tool-name">Intelligence</div>
+        <div class="tool-desc">Codebase analytics: top symbols by centrality, symbol kind distribution, file hotspots, and story cards</div>
+        <div class="terminal">
+          <div><span class="prompt">Top Symbols</span></div>
+          <div><span class="highlight">1.</span> <span class="result">process_payment</span> <span class="comment">fn (0.92)</span></div>
+          <div><span class="highlight">2.</span> <span class="result">UserService</span> <span class="comment">struct (0.87)</span></div>
+          <div><span class="highlight">3.</span> <span class="result">handle_request</span> <span class="comment">fn (0.81)</span></div>
+        </div>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="100">
+        <div class="tool-name">Search Playground</div>
+        <div class="tool-desc">Live search across all indexed workspaces with scoring details and centrality badges</div>
+        <div class="terminal">
+          <div><span class="prompt">$ </span><span class="command">search "authenticate"</span></div>
+          <div><span class="result">verify_credentials</span> <span class="highlight">score: 42.1</span></div>
+          <div><span class="result">validate_session</span> <span class="highlight">score: 38.7</span></div>
+          <div><span class="comment">2 workspaces searched</span></div>
+        </div>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="200">
+        <div class="tool-name">Projects</div>
+        <div class="tool-desc">Workspace overview with language distribution bars, symbol counts, and indexing status</div>
+        <div class="terminal">
+          <div><span class="result">my-app</span> <span class="highlight">Ready</span></div>
+          <div><span class="comment">1,247 symbols | 89 files</span></div>
+          <div style="display:flex;gap:2px;margin-top:4px;">
+            <span style="background:#dea584;width:40%;height:6px;border-radius:2px;display:inline-block;"></span>
+            <span style="background:#3178c6;width:35%;height:6px;border-radius:2px;display:inline-block;"></span>
+            <span style="background:#3572a5;width:25%;height:6px;border-radius:2px;display:inline-block;"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="300">
+        <div class="tool-name">Metrics</div>
+        <div class="tool-desc">Tool call performance, session stats, success rates, and context efficiency across workspaces</div>
+        <div class="terminal">
+          <div><span class="result">fast_search</span> <span class="comment">142 calls</span> <span class="highlight">avg 3.8ms</span></div>
+          <div><span class="result">deep_dive</span> <span class="comment">67 calls</span> <span class="highlight">avg 8.2ms</span></div>
+          <div><span class="result">Context saved:</span> <span class="highlight">1.2MB</span></div>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-subtitle" style="margin-top: 32px; text-align: center; max-width: 100%;"><em>Start the daemon with <code>julie daemon</code>, then visit <code>http://localhost:4242</code>.</em></p>
+  </section>
+
+  <!-- Section 11: Installation -->
   <section id="install" class="section">
     <h2 class="section-title">Installation</h2>
     <p class="section-subtitle">Get started in 30 seconds.</p>

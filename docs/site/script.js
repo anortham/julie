@@ -91,12 +91,12 @@
     if (prefersReducedMotion()) {
       bar.style.width = '5%';
       bar.className = 'context-bar-fill';
-      counter.textContent = '~550 tokens';
+      counter.textContent = '~300 tokens';
       reads.innerHTML = [
-        '<div class="file-read-line visible"><span class="julie-cmd">fast_search("UserService", definitions)</span> → <span class="julie-result">Found · 150 tokens</span></div>',
-        '<div class="file-read-line visible"><span class="julie-cmd">deep_dive("UserService", overview)</span> → <span class="julie-result">Full picture · 400 tokens</span></div>',
+        '<div class="file-read-line visible"><span class="julie-cmd">fast_search("UserService", definitions)</span> → <span class="julie-result">Found · 100 tokens</span></div>',
+        '<div class="file-read-line visible"><span class="julie-cmd">deep_dive("UserService", overview)</span> → <span class="julie-result">Full picture · 200 tokens</span></div>',
       ].join('');
-      message.textContent = 'Same understanding. 90% fewer tokens.';
+      message.textContent = 'Same understanding. 97% fewer tokens.';
       message.className = 'hero-message visible solution';
       ctas.classList.add('visible');
       var hint = document.querySelector('.scroll-hint');
@@ -158,8 +158,8 @@
       message.className = 'hero-message';
 
       const julieSteps = [
-        { cmd: 'fast_search("UserService", definitions)', result: 'Found · 150 tokens', tokens: 150 },
-        { cmd: 'deep_dive("UserService", overview)', result: 'Callers, callees, types · 400 tokens', tokens: 400 },
+        { cmd: 'fast_search("UserService", definitions)', result: 'Found · 100 tokens', tokens: 100 },
+        { cmd: 'deep_dive("UserService", overview)', result: 'Callers, callees, types · 200 tokens', tokens: 200 },
       ];
 
       let stepIdx = 0;
@@ -167,7 +167,7 @@
       function addJulieStep() {
         if (stepIdx >= julieSteps.length) {
           setTimeout(() => {
-            message.textContent = 'Same understanding. 90% fewer tokens.';
+            message.textContent = 'Same understanding. 97% fewer tokens.';
             message.className = 'hero-message visible solution';
             setTimeout(() => {
               ctas.classList.add('visible');

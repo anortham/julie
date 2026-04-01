@@ -12,10 +12,10 @@ Julie parses your codebase once with tree-sitter, builds a searchable index with
 
 | Task | Without Julie | With Julie | Savings |
 |------|--------------|------------|---------|
-| Understand a file's API | Read whole file (~2,000 tokens) | `get_symbols` structure mode (~200 tokens) | ~90% |
-| Find a function | Grep + read matching files (~5,000+ tokens) | `fast_search` with ranked results (~300 tokens) | ~94% |
-| Understand a symbol before modifying it | Read file + grep for references (~4,000+ tokens) | `deep_dive` overview (~200 tokens) | ~95% |
-| Orient on a new area of the codebase | Read 5-10 files (~10,000+ tokens) | `get_context` with token budgeting (~2,000 tokens) | ~80% |
+| Understand a file's API | Read whole file (~3,000 tokens) | `get_symbols` structure mode (~300 tokens) | ~90% |
+| Find a function definition | Grep + read matching files (~4,000+ tokens) | `fast_search` definitions mode (~100 tokens) | ~97% |
+| Investigate before modifying | Read file + grep refs (~5,000+ tokens) | `deep_dive` overview (~200 tokens) | ~96% |
+| Orient on a new area | Read 5-10 files (~10,000+ tokens) | `get_context` with token budgeting (~800 tokens) | ~92% |
 
 The key difference from simpler code indexing tools: Julie doesn't just extract symbols — it builds a **reference graph** so agents can navigate code relationships (who calls this function? what does it call? what types flow through it?) without reading files at all.
 
@@ -23,7 +23,7 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 
 - **Fast symbol search** with code-aware tokenization (CamelCase/snake_case splitting, stemming, <5ms)
 - **Cross-language code navigation** (go-to-definition, find-references) across 33 languages
-- **Code Health Intelligence** — automatic test detection, test quality metrics, change risk scores, and security risk signals computed at index time and surfaced in tool output
+- **Test intelligence** — automatic test detection, test quality metrics, and test-to-code linkage across all 33 languages
 - **AST-aware refactoring** with workspace-wide rename and dry-run preview
 - **Operational metrics** — per-tool timing, context efficiency tracking, "bytes NOT injected" headline metric
 - **Multi-workspace support** for indexing and searching related codebases
@@ -185,13 +185,12 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
 - `get_context` - Token-budgeted context for a concept or task
   - Returns relevant code subgraph with pivots (full code) and neighbors (signatures)
   - Pipeline: search → centrality ranking → graph expansion → adaptive token allocation → formatted output
-  - Pivots include change risk and security risk labels for immediate risk awareness
   - Adaptive budget: few results → deep context, many results → broad overview
   - Use at the start of a task for area-level orientation
 - `deep_dive` - Progressive-depth symbol investigation
   - Overview (~200 tokens), context (~600 tokens), or full (~1500 tokens) detail levels
   - Kind-aware: functions show callers/callees/types, traits show implementations, structs show fields/methods
-  - Includes test locations with quality tiers, change risk scores, and security risk signals
+  - Includes test locations with quality tiers and centrality scores
   - Identifier fallback for references that relationships miss
 - `fast_refs` - Find all references to a symbol with structured output
 - `get_symbols` - Smart file reading with 70-90% token savings
@@ -209,13 +208,11 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
 
 - `manage_workspace` - Index, add, remove, refresh, and clean workspaces
 
-### Code Health & Metrics
+### Metrics
 
-- `query_metrics` - Query code health metrics or operational performance stats
-  - `category: "code_health"` (default) — sort by security risk, change risk, centrality, or test coverage with filters for risk level, test status, symbol kind, file pattern, and language
-  - `category: "session"` — current session stats: per-tool call counts, average latency, output bytes, and context efficiency (source bytes examined vs output returned)
+- `query_metrics` - Session performance and operational metrics
+  - `category: "session"` (default) — per-tool call counts, average latency, output bytes, and context efficiency (source bytes examined vs output returned)
   - `category: "history"` — cross-session trends: total calls, p95 latencies, cumulative context efficiency
-  - `category: "trend"` — compare codehealth snapshots across indexing runs (security/change risk deltas)
   - Headline metric: **bytes NOT injected into context** (source_bytes - output_bytes)
 
 **Default Ignore Patterns** - Julie automatically excludes common build artifacts and dependencies to prevent indexing noise:
@@ -241,47 +238,27 @@ third-party/
 
 Patterns use glob syntax (`**/` for recursive, `*` for wildcard). Default patterns cover 99% of use cases - only use `.julieignore` for project-specific needs.
 
-## Code Health Intelligence
+## Test Intelligence
 
-Julie automatically analyzes your codebase for test coverage quality and structural risk during indexing — no configuration required. These signals appear directly in `deep_dive` and `get_context` output, giving agents immediate awareness without extra tool calls.
+Julie automatically detects and analyzes tests during indexing across all 33 languages, with no configuration required.
 
-### Test Intelligence
-
-- **Test detection** across all 33 languages — recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and language-specific test patterns
+- **Test detection** — recognizes `#[test]`, `@Test`, `pytest`, `describe`/`it`, and language-specific test patterns
 - **Test quality metrics** — assertion density, mock usage, error path coverage, classified as thorough/adequate/thin/stub
 - **Test-to-code linkage** — maps which tests exercise each production function via call graph and identifier analysis
 - **Smart test filtering** — `fast_search` supports `exclude_tests` parameter to filter test symbols from results
 
-### Risk Scoring
-
-- **Change risk** (0.0–1.0) — "how dangerous is it to modify this?" based on centrality, visibility, test coverage quality, and symbol kind. Displayed as HIGH/MEDIUM/LOW in `deep_dive` with full factor breakdown, and as labels on `get_context` pivots.
-- **Security risk** (0.0–1.0) — "does this code have structural security concerns?" based on five signals:
-  - **Exposure** — public callable functions score highest
-  - **Input handling** — detects string/Request/Query parameter types in signatures
-  - **Sink calls** — one-hop detection of calls to exec/eval/execute/query patterns
-  - **Blast radius** — how many other symbols depend on this one
-  - **Untested** — no test coverage for security-critical code
-
-Example `deep_dive` output:
-```
-Change Risk: MEDIUM (0.66) — 8 callers, public, thorough tests
-Security Risk: HIGH (0.84) — calls execute; public; accepts string params
-  sink calls: execute
-  untested: yes
-```
+These signals appear in `deep_dive` output, giving agents immediate awareness of test coverage without extra tool calls.
 
 ## Skills
 
-Julie ships with 11 pre-built skills — reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/codehealth`) in harnesses that support them, or used as system prompt instructions.
+Julie ships with 9 pre-built skills, reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/architecture`) in harnesses that support them, or used as system prompt instructions.
 
 ### Report Skills
 
 | Skill | Description |
 |-------|-------------|
-| `/codehealth` | Risk hotspots, test gaps, dead code candidates, and prioritized recommendations |
-| `/security-audit` | Security risk analysis with plain-language explanations of risky patterns |
-| `/architecture` | Architecture overview — entry points, module map, dependency flow, suggested reading order |
-| `/metrics` | Session performance report — tool usage, timing, and context efficiency (bytes NOT injected) |
+| `/architecture` | Architecture overview: entry points, module map, dependency flow, suggested reading order |
+| `/metrics` | Session performance report: tool usage, timing, and context efficiency (bytes NOT injected) |
 
 ### Navigation & Analysis Skills
 
@@ -406,7 +383,7 @@ src/
 ├── startup.rs       # Workspace initialization and staleness detection
 ├── cli.rs           # CLI argument parsing
 ├── extractors/      # Language-specific symbol extraction (33 languages)
-├── analysis/        # Post-indexing analysis (test quality, coverage, risk scoring)
+├── analysis/        # Post-indexing analysis (test quality metrics)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer
 ├── embeddings/      # Embedding pipeline, sidecar supervisor and protocol
