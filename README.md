@@ -342,7 +342,7 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harn
 
 ### Prerequisites
 
-- **Rust** (stable, 1.80+) — [rustup.rs](https://rustup.rs)
+- **Rust** (stable, 1.85+) — [rustup.rs](https://rustup.rs)
 - **[uv](https://docs.astral.sh/uv/)** — auto-provisions Python 3.12 and the embedding sidecar (see [Embeddings and GPU Acceleration](#embeddings-and-gpu-acceleration))
 
 ### Building
@@ -376,6 +376,7 @@ julie-server daemon      # Start daemon manually
 julie-server status      # Check if daemon is running
 julie-server stop        # Stop daemon
 julie-server restart     # Stop daemon; auto-restarts on next connection
+julie-server dashboard   # Open the web dashboard in your browser
 ```
 
 ### Testing
@@ -410,15 +411,19 @@ All tiers are currently green. If a test fails, it is a real regression — inve
 
 ```
 src/
-├── main.rs          # Stdio MCP entry point
+├── main.rs          # Entry point: adapter mode or subcommand dispatch
 ├── handler.rs       # MCP tool handler (rmcp ServerHandler)
+├── cli.rs           # CLI argument parsing and workspace resolution
 ├── startup.rs       # Workspace initialization and staleness detection
-├── cli.rs           # CLI argument parsing
+├── adapter/         # Thin stdio adapter: auto-starts daemon, forwards bytes via IPC
+├── daemon/          # Background daemon: shared indexes, IPC server, lifecycle management
+├── dashboard/       # Web dashboard (htmx + Tera templates, served by daemon)
 ├── extractors/      # Language-specific symbol extraction (33 languages)
-├── analysis/        # Post-indexing analysis (test quality metrics)
+├── analysis/        # Post-indexing analysis (test quality metrics, risk scoring)
 ├── database/        # SQLite structured storage
 ├── search/          # Tantivy search engine and tokenizer
 ├── embeddings/      # Embedding pipeline, sidecar supervisor and protocol
+├── watcher/         # File watcher for incremental re-indexing
 ├── tools/           # MCP tool implementations
 │   ├── deep_dive/   # Progressive-depth symbol investigation
 │   ├── get_context/ # Token-budgeted context retrieval
@@ -427,7 +432,7 @@ src/
 │   ├── search/      # fast_search
 │   ├── symbols/     # get_symbols
 │   └── workspace/   # Workspace management and indexing
-├── workspace/       # Multi-workspace management
+├── workspace/       # Multi-workspace management and registry
 └── tests/           # Test infrastructure
 
 python/

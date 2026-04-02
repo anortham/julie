@@ -1094,7 +1094,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "query_metrics",
-        description = "Query metrics: code health (security risk, change risk, test coverage, centrality) or operational metrics (session stats, historical performance). Use category parameter: \"code_health\" (default), \"session\", or \"history\".",
+        description = "Query operational metrics: session stats or historical tool call performance. Use category parameter: \"session\" (default) or \"history\".",
         annotations(
             title = "Query Code Metrics",
             read_only_hint = true,
