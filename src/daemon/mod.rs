@@ -680,19 +680,38 @@ async fn handle_ipc_session(
     restart_pending: &Arc<AtomicBool>,
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
 ) -> Result<()> {
-    // Read the workspace header with a timeout so a misbehaving client that
-    // connects but never sends the header cannot hold a session slot forever.
-    let workspace_path =
-        tokio::time::timeout(Duration::from_secs(5), read_workspace_header(&mut stream))
+    // Read IPC headers with a timeout so a misbehaving client that
+    // connects but never sends headers cannot hold a session slot forever.
+    let headers =
+        tokio::time::timeout(Duration::from_secs(5), read_ipc_headers(&mut stream))
             .await
-            .context("Workspace header read timed out (5s)")?
-            .context("Failed to read workspace header")?;
+            .context("IPC header read timed out (5s)")?
+            .context("Failed to read IPC headers")?;
+    let workspace_path = headers.workspace;
 
     info!(
         session_id = %session_id,
         workspace = %workspace_path.display(),
         "Session workspace resolved"
     );
+
+    // If the adapter reports a different version than this daemon, flag for
+    // restart. This catches plugin updates where the binary mtime didn't
+    // change (e.g. Windows file lock prevented re-extraction).
+    if let Some(adapter_version) = &headers.version {
+        let daemon_version = env!("CARGO_PKG_VERSION");
+        if adapter_version != daemon_version {
+            if !restart_pending.load(Ordering::Relaxed) {
+                restart_pending.store(true, Ordering::Relaxed);
+                warn!(
+                    adapter_version,
+                    daemon_version,
+                    "Adapter/daemon version mismatch. \
+                     Daemon will restart when all sessions disconnect."
+                );
+            }
+        }
+    }
 
     // Compute workspace ID from path. Use generate_workspace_id() directly
     // (produces e.g. "julie_316c0b08"). Do NOT wrap in another prefix; the
@@ -816,41 +835,63 @@ async fn handle_ipc_session(
     session_result
 }
 
-/// Read the workspace header from an IPC stream.
+/// IPC headers sent by the adapter on connect.
+struct IpcHeaders {
+    workspace: PathBuf,
+    /// Adapter binary version (None if old adapter without version support).
+    version: Option<String>,
+}
+
+/// Read IPC headers from the adapter.
 ///
-/// The adapter sends a single line: `WORKSPACE:/path/to/project\n`
-/// We read byte-by-byte to avoid BufReader consuming bytes past the newline,
+/// The adapter sends:
+///   WORKSPACE:/path/to/project\n
+///   VERSION:6.5.2\n            (optional, added in v6.5.3)
+///
+/// We read byte-by-byte to avoid BufReader consuming bytes past the headers,
 /// which would break the subsequent MCP JSON-RPC framing.
-async fn read_workspace_header(stream: &mut IpcStream) -> Result<PathBuf> {
-    let mut header = Vec::new();
+async fn read_ipc_headers(stream: &mut IpcStream) -> Result<IpcHeaders> {
+    let first_line = read_header_line(stream).await?;
+    let path = first_line.strip_prefix("WORKSPACE:").ok_or_else(|| {
+        anyhow::anyhow!(
+            "Invalid IPC header: expected WORKSPACE:<path>, got: {}",
+            first_line
+        )
+    })?;
+
+    // Read the VERSION: header. The adapter always sends this (added in the
+    // same release as this daemon code). The adapter and daemon are built from
+    // the same source, so there's no backward-compat concern.
+    let version_line = read_header_line(stream).await?;
+    let version = version_line.strip_prefix("VERSION:").map(|v| v.to_string());
+
+    Ok(IpcHeaders {
+        workspace: PathBuf::from(path),
+        version,
+    })
+}
+
+/// Read a single newline-terminated header line from the IPC stream.
+async fn read_header_line(stream: &mut IpcStream) -> Result<String> {
+    let mut line = Vec::new();
     let mut buf = [0u8; 1];
 
     loop {
         stream
             .read_exact(&mut buf)
             .await
-            .context("Failed to read workspace header")?;
+            .context("Failed to read IPC header")?;
         if buf[0] == b'\n' {
             break;
         }
-        header.push(buf[0]);
+        line.push(buf[0]);
 
-        // Safety limit: workspace paths shouldn't exceed 4 KB
-        if header.len() > 4096 {
-            anyhow::bail!("Workspace header too long (>4096 bytes)");
+        if line.len() > 4096 {
+            anyhow::bail!("IPC header line too long (>4096 bytes)");
         }
     }
 
-    let header = String::from_utf8(header).context("Workspace header is not valid UTF-8")?;
-
-    let path = header.strip_prefix("WORKSPACE:").ok_or_else(|| {
-        anyhow::anyhow!(
-            "Invalid IPC header: expected WORKSPACE:<path>, got: {}",
-            header
-        )
-    })?;
-
-    Ok(PathBuf::from(path))
+    String::from_utf8(line).context("IPC header is not valid UTF-8")
 }
 
 /// Wait for a shutdown signal (SIGTERM or SIGINT on Unix).

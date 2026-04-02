@@ -64,14 +64,18 @@ async fn connect_and_handshake(
         .await
         .context("Failed to connect to daemon IPC endpoint")?;
 
-    // Send workspace header: WORKSPACE:/path/to/project\n
+    // Send IPC headers: workspace path, then adapter version.
     // Path is sent as-is (native format); generate_workspace_id() normalizes
     // internally so the workspace ID is consistent regardless of separators.
-    let header = format!("WORKSPACE:{}\n", workspace_root.to_string_lossy());
+    let header = format!(
+        "WORKSPACE:{}\nVERSION:{}\n",
+        workspace_root.to_string_lossy(),
+        env!("CARGO_PKG_VERSION"),
+    );
     stream
         .write_all(header.as_bytes())
         .await
-        .context("Failed to send workspace header")?;
+        .context("Failed to send IPC headers")?;
 
     Ok(stream)
 }
