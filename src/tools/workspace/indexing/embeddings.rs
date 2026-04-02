@@ -155,6 +155,8 @@ pub(crate) async fn spawn_workspace_embedding(
         info!("Starting workspace embedding for {workspace_id} ({total_symbols} symbols)...");
         let db_clone = db_arc.clone();
         let lang_configs = crate::search::language_config::LanguageConfigs::load_embedded();
+        // Capture model name before provider is moved into spawn_blocking
+        let model_name = provider.device_info().model_name.clone();
         let result = tokio::task::spawn_blocking(move || {
             run_embedding_pipeline_cancellable(
                 &db_clone,
@@ -171,9 +173,10 @@ pub(crate) async fn spawn_workspace_embedding(
                     "Workspace {workspace_id} embedding complete: {}/{} symbols embedded ({} skipped)",
                     stats.symbols_embedded, stats.symbols_scanned, stats.symbols_skipped
                 );
-                // Write vector count back to daemon.db
+                // Write vector count and embedding model back to daemon.db
                 if let Some(ref db) = daemon_db {
                     let _ = db.update_vector_count(&workspace_id, stats.symbols_embedded as i64);
+                    let _ = db.update_embedding_model(&workspace_id, &model_name);
                 }
             }
             Ok(Err(e)) => {

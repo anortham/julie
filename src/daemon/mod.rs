@@ -327,21 +327,25 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         "Shared embedding service initialized"
     );
 
-    // Backfill embedding_model for workspaces that have vectors but no model name.
-    // Runs after embedding service init so we know the model name.
+    // Sync embedding_model for workspaces that have vectors but a missing or
+    // stale model name. Runs after embedding service init so we know the
+    // current model. Covers both fresh backfill (None) and model changes
+    // (e.g. jina-code -> CodeRankEmbed) that daemon.db missed.
     if let Some(ref db) = daemon_db {
         if let Some(provider) = embedding_service.provider() {
             let model = provider.device_info().model_name.clone();
             if let Ok(workspaces) = db.list_workspaces() {
                 let mut count = 0;
                 for ws in &workspaces {
-                    if ws.embedding_model.is_none() && ws.vector_count.map_or(false, |v| v > 0) {
+                    if ws.vector_count.map_or(false, |v| v > 0)
+                        && ws.embedding_model.as_deref() != Some(model.as_str())
+                    {
                         let _ = db.update_embedding_model(&ws.workspace_id, &model);
                         count += 1;
                     }
                 }
                 if count > 0 {
-                    info!(count, model, "Backfilled embedding_model for workspaces");
+                    info!(count, model, "Synced embedding_model for workspaces");
                 }
             }
         }
@@ -606,6 +610,60 @@ async fn accept_loop(
             }
         }
 
+        // Read IPC headers BEFORE registering the session. This lets us
+        // check for version mismatches while the daemon might still be idle
+        // (0 sessions), enabling immediate shutdown + restart instead of
+        // serving a full session with stale code.
+        let mut stream = stream;
+        let headers = match tokio::time::timeout(
+            Duration::from_secs(5),
+            read_ipc_headers(&mut stream),
+        )
+        .await
+        {
+            Ok(Ok(h)) => h,
+            Ok(Err(e)) => {
+                warn!("Failed to read IPC headers, dropping connection: {e}");
+                continue;
+            }
+            Err(_) => {
+                warn!("IPC header read timed out (5s), dropping connection");
+                continue;
+            }
+        };
+
+        let workspace_path = headers.workspace;
+        info!(workspace = %workspace_path.display(), "IPC headers received");
+
+        // Check version mismatch BEFORE adding the session. This catches
+        // plugin updates where the binary mtime didn't change (e.g. Windows
+        // file lock prevented re-extraction over the running executable).
+        if let Some(ref adapter_version) = headers.version {
+            let daemon_version = env!("CARGO_PKG_VERSION");
+            if adapter_version != daemon_version {
+                if sessions.active_count() == 0 {
+                    warn!(
+                        adapter_version,
+                        daemon_version,
+                        "Version mismatch with no active sessions. \
+                         Shutting down for restart."
+                    );
+                    restart_pending.store(true, Ordering::Relaxed);
+                    restart_notify.notify_one();
+                    drop(stream);
+                    return Ok(());
+                } else if !restart_pending.load(Ordering::Relaxed) {
+                    restart_pending.store(true, Ordering::Relaxed);
+                    warn!(
+                        adapter_version,
+                        daemon_version,
+                        "Adapter/daemon version mismatch. \
+                         Daemon will restart when all sessions disconnect."
+                    );
+                }
+            }
+        }
+
         let session_id = sessions.add_session();
         let _ = dashboard_tx.send(DashboardEvent::SessionChange {
             active_count: sessions.active_count(),
@@ -627,6 +685,7 @@ async fn accept_loop(
                 &embedding_service,
                 &restart_pending,
                 Some(dashboard_tx),
+                workspace_path,
             )
             .await
             {
@@ -672,47 +731,15 @@ async fn accept_loop(
 
 /// Handle a single IPC session: read the workspace header, then serve MCP.
 async fn handle_ipc_session(
-    mut stream: IpcStream,
+    stream: IpcStream,
     pool: &WorkspacePool,
     session_id: &str,
     daemon_db: &Option<Arc<DaemonDatabase>>,
     embedding_service: &Arc<EmbeddingService>,
     restart_pending: &Arc<AtomicBool>,
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
+    workspace_path: PathBuf,
 ) -> Result<()> {
-    // Read IPC headers with a timeout so a misbehaving client that
-    // connects but never sends headers cannot hold a session slot forever.
-    let headers =
-        tokio::time::timeout(Duration::from_secs(5), read_ipc_headers(&mut stream))
-            .await
-            .context("IPC header read timed out (5s)")?
-            .context("Failed to read IPC headers")?;
-    let workspace_path = headers.workspace;
-
-    info!(
-        session_id = %session_id,
-        workspace = %workspace_path.display(),
-        "Session workspace resolved"
-    );
-
-    // If the adapter reports a different version than this daemon, flag for
-    // restart. This catches plugin updates where the binary mtime didn't
-    // change (e.g. Windows file lock prevented re-extraction).
-    if let Some(adapter_version) = &headers.version {
-        let daemon_version = env!("CARGO_PKG_VERSION");
-        if adapter_version != daemon_version {
-            if !restart_pending.load(Ordering::Relaxed) {
-                restart_pending.store(true, Ordering::Relaxed);
-                warn!(
-                    adapter_version,
-                    daemon_version,
-                    "Adapter/daemon version mismatch. \
-                     Daemon will restart when all sessions disconnect."
-                );
-            }
-        }
-    }
-
     // Compute workspace ID from path. Use generate_workspace_id() directly
     // (produces e.g. "julie_316c0b08"). Do NOT wrap in another prefix; the
     // indexing pipeline also calls generate_workspace_id() and the IDs must match
