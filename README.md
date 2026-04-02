@@ -36,27 +36,59 @@ The key difference from simpler code indexing tools: Julie doesn't just extract 
 - Search latency: <5ms (Tantivy full-text search)
 - Memory usage: <100MB typical workload
 - Startup time: <2s (database + Tantivy indexing)
-- Single binary server deployment with optional GPU-accelerated embedding sidecar
+- Single binary server with GPU-accelerated embedding sidecar (auto-provisioned via `uv`)
 
 **Incremental Updates**: Only changed files are re-indexed, typically completing in 3-15 seconds.
 
-### Embeddings Runtime
+### Embeddings and GPU Acceleration
 
-Julie uses a managed Python sidecar (sentence-transformers + PyTorch) for GPU-accelerated embeddings on all platforms.
+Julie uses embeddings for semantic search, related symbol discovery, and intelligent code navigation. These features are powered by a managed Python sidecar (sentence-transformers + PyTorch) with automatic GPU acceleration.
 
-- **NVIDIA (CUDA)**: auto-detected at first launch; the correct torch variant is installed automatically
-- **AMD/Intel (DirectML)**: via `torch-directml`, installed alongside PyTorch
-- **Apple Silicon (MPS)**: detected automatically by PyTorch
-- **CPU fallback**: if no GPU is available, embeddings run on CPU; keyword search always remains available
-- **Model**: CodeRankEmbed (768d, code-optimized) via `nomic-ai/CodeRankEmbed` by default
-- **Auto-provisioned**: Julie creates a managed Python venv via `uv` on first use; no manual setup required
-- **Model switching**: changing models automatically wipes and re-embeds all vectors on the next indexing run
+#### Step 1: install `uv`
 
-**Runtime controls:**
-- `JULIE_EMBEDDING_PROVIDER`: `auto|sidecar` (default: `auto`)
-- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: any HuggingFace model ID (default: `nomic-ai/CodeRankEmbed`)
-- `JULIE_EMBEDDING_STRICT_ACCEL`: `1` to disable embeddings when no GPU is available
-- See `docs/operations/embedding-sidecar.md` for all env vars and troubleshooting
+[`uv`](https://docs.astral.sh/uv/) is the only prerequisite. Julie uses it to install Python 3.12 and all sidecar dependencies automatically. You do not need to install Python yourself.
+
+**macOS:**
+```bash
+brew install uv
+```
+
+**Windows** (open PowerShell):
+```powershell
+winget install --id=astral-sh.uv -e
+```
+
+If `winget` is not available, use the standalone installer instead:
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**Linux:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+After installing, open a new terminal and verify with `uv --version`.
+
+#### Step 2: there is no step 2
+
+On first launch, Julie automatically creates a Python 3.12 environment, installs PyTorch and the embedding model, and detects your GPU. Everything is cached, so subsequent launches are instant.
+
+#### GPU acceleration
+
+Julie auto-detects your GPU and uses it for faster embeddings:
+
+- **NVIDIA (CUDA)**: auto-detected; the correct torch+CUDA variant is installed automatically
+- **AMD/Intel (DirectML)**: auto-detected on Windows via `torch-directml`
+- **Apple Silicon (MPS)**: auto-detected by PyTorch
+- **CPU**: used when no GPU is available (slower, but fully functional)
+
+Python 3.12 is used because it has the best PyTorch hardware acceleration compatibility across all GPU backends.
+
+#### Advanced configuration
+
+- `JULIE_EMBEDDING_SIDECAR_MODEL_ID`: any HuggingFace model ID (default: `nomic-ai/CodeRankEmbed`, 768d code-optimized). Changing models automatically wipes and re-embeds all vectors on the next indexing run.
+- See `docs/operations/embedding-sidecar.md` for all environment variables and troubleshooting
 
 ## Supported Languages (33)
 
@@ -311,7 +343,7 @@ Skills ship as `SKILL.md` files in `.claude/skills/`. Most modern AI coding harn
 ### Prerequisites
 
 - **Rust** (stable, 1.80+) — [rustup.rs](https://rustup.rs)
-- **Python 3.10-3.13** + **uv** (optional) — only needed for GPU-accelerated embeddings; keyword search works without it
+- **[uv](https://docs.astral.sh/uv/)** — auto-provisions Python 3.12 and the embedding sidecar (see [Embeddings and GPU Acceleration](#embeddings-and-gpu-acceleration))
 
 ### Building
 
