@@ -10,7 +10,10 @@ use crate::extractors::base::Symbol;
 
 /// Minimum similarity score (1.0 - cosine_distance) to include in results.
 /// Below this threshold, matches are likely noise.
-pub const MIN_SIMILARITY_SCORE: f32 = 0.5;
+/// Lowered from 0.5 to 0.35 after embedding enrichment (file paths, callees,
+/// field signatures, implementors) improved vector quality. CodeRankEmbed's
+/// cosine distances for genuinely related symbols cluster around 0.3-0.5.
+pub const MIN_SIMILARITY_SCORE: f32 = 0.35;
 
 /// Entry for a semantically similar symbol.
 #[derive(Debug)]
