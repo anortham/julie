@@ -32,6 +32,13 @@ use crate::extractors::ExtractorManager;
 
 pub use types::{FileChangeEvent, FileChangeType, IndexingStats};
 
+/// Shared embedding provider that can be updated after construction.
+/// The workspace and watcher hold clones of the same Arc, so when
+/// `initialize_embedding_provider()` writes a new provider, the watcher's
+/// background tasks see it on their next read-lock.
+pub(crate) type SharedEmbeddingProvider =
+    Arc<std::sync::RwLock<Option<Arc<dyn crate::embeddings::EmbeddingProvider>>>>;
+
 /// Manages incremental indexing with real-time file watching
 pub struct IncrementalIndexer {
     watcher: Option<notify::RecommendedWatcher>,
@@ -39,8 +46,13 @@ pub struct IncrementalIndexer {
     extractor_manager: Arc<ExtractorManager>,
     search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
 
-    /// Embedding provider for incremental semantic updates (None if unavailable)
-    embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    /// Embedding provider for incremental semantic updates.
+    /// Shared with the workspace via Arc<RwLock<...>> so lazy initialization
+    /// (which happens on first search) propagates to the watcher.
+    embedding_provider: SharedEmbeddingProvider,
+
+    /// Language configs for embedding text generation (extra kinds per language).
+    lang_configs: Arc<crate::search::language_config::LanguageConfigs>,
 
     // Processing queues
     pub(crate) index_queue: Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
@@ -78,6 +90,7 @@ async fn dispatch_file_event<F>(
     search_index: &Option<Arc<StdMutex<crate::search::SearchIndex>>>,
     embedding_provider: &Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
     workspace_root: &std::path::Path,
+    lang_configs: &crate::search::language_config::LanguageConfigs,
     on_atomic_delete: Option<F>,
 ) where
     F: FnOnce(&std::path::Path),
@@ -103,7 +116,7 @@ async fn dispatch_file_event<F>(
                     db,
                     provider.as_ref(),
                     rel,
-                    None,
+                    Some(lang_configs),
                 ) {
                     warn!("Incremental embedding failed for {}: {}", rel, e);
                 }
@@ -168,7 +181,7 @@ async fn dispatch_file_event<F>(
                     db,
                     provider.as_ref(),
                     &rel_to,
-                    None,
+                    Some(lang_configs),
                 ) {
                     warn!("Incremental embedding failed for {}: {}", rel_to, e);
                 }
@@ -184,10 +197,11 @@ impl IncrementalIndexer {
         db: Arc<StdMutex<SymbolDatabase>>,
         extractor_manager: Arc<ExtractorManager>,
         search_index: Option<Arc<StdMutex<crate::search::SearchIndex>>>,
-        embedding_provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+        embedding_provider: SharedEmbeddingProvider,
     ) -> Result<Self> {
         let supported_extensions = filtering::build_supported_extensions();
         let gitignore = filtering::build_gitignore_matcher(&workspace_root)?;
+        let lang_configs = Arc::new(crate::search::language_config::LanguageConfigs::load_embedded());
 
         Ok(Self {
             watcher: None,
@@ -195,6 +209,7 @@ impl IncrementalIndexer {
             extractor_manager,
             search_index,
             embedding_provider,
+            lang_configs,
             index_queue: Arc::new(TokioMutex::new(VecDeque::new())),
             last_processed: Arc::new(TokioMutex::new(HashMap::new())),
             supported_extensions,
@@ -204,6 +219,18 @@ impl IncrementalIndexer {
             event_task: None,
             queue_task: None,
         })
+    }
+
+    /// Update the shared embedding provider after lazy initialization.
+    pub fn update_embedding_provider(
+        &self,
+        provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    ) {
+        let mut guard = self
+            .embedding_provider
+            .write()
+            .unwrap_or_else(|p| p.into_inner());
+        *guard = provider;
     }
 
     /// Start watching the workspace for file changes
@@ -273,6 +300,7 @@ impl IncrementalIndexer {
         let extractor_manager = self.extractor_manager.clone();
         let search_index = self.search_index.clone();
         let embedding_provider = self.embedding_provider.clone();
+        let lang_configs = self.lang_configs.clone();
         let queue_for_processing = self.index_queue.clone();
         let last_processed = self.last_processed.clone();
         let workspace_root = self.workspace_root.clone();
@@ -351,13 +379,18 @@ impl IncrementalIndexer {
                         }
                     };
 
+                    let provider_snapshot = embedding_provider
+                        .read()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .clone();
                     dispatch_file_event(
                         event,
                         &db,
                         &extractor_manager,
                         &search_index,
-                        &embedding_provider,
+                        &provider_snapshot,
                         &workspace_root,
+                        &lang_configs,
                         Some(clear_dedup_on_delete),
                     )
                     .await;
@@ -407,13 +440,19 @@ impl IncrementalIndexer {
             let mut queue = self.index_queue.lock().await;
             queue.pop_front()
         } {
+            let provider_snapshot = self
+                .embedding_provider
+                .read()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone();
             dispatch_file_event(
                 event,
                 &self.db,
                 &self.extractor_manager,
                 &self.search_index,
-                &self.embedding_provider,
+                &provider_snapshot,
                 &self.workspace_root,
+                &self.lang_configs,
                 None::<fn(&std::path::Path)>,
             )
             .await;

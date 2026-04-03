@@ -130,6 +130,10 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
 
     if workspace.embedding_provider.is_none() {
         workspace.embedding_provider = initialized_provider;
+        // Propagate to file watcher so incremental updates use the new provider
+        if let Some(ref watcher) = workspace.watcher {
+            watcher.update_embedding_provider(workspace.embedding_provider.clone());
+        }
     }
     if workspace.embedding_runtime_status.is_none() {
         workspace.embedding_runtime_status = initialized_runtime_status;

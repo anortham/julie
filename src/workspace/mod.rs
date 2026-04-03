@@ -680,12 +680,13 @@ impl JulieWorkspace {
         // Create placeholder extractor manager for now
         let extractor_manager = Arc::new(crate::extractors::ExtractorManager::new());
 
+        let shared_provider = Arc::new(std::sync::RwLock::new(self.embedding_provider.clone()));
         let file_watcher = IncrementalIndexer::new(
             self.root.clone(),
             self.db.as_ref().unwrap().clone(),
             extractor_manager,
             self.search_index.clone(),
-            self.embedding_provider.clone(),
+            shared_provider,
         )?;
 
         self.watcher = Some(file_watcher);
@@ -725,8 +726,12 @@ impl JulieWorkspace {
     /// search continues to work without embeddings.
     pub fn initialize_embedding_provider(&mut self) {
         let (provider, runtime_status) = crate::embeddings::create_embedding_provider();
-        self.embedding_provider = provider;
+        self.embedding_provider = provider.clone();
         self.embedding_runtime_status = runtime_status;
+        // Propagate to file watcher so incremental updates use the new provider
+        if let Some(ref watcher) = self.watcher {
+            watcher.update_embedding_provider(provider);
+        }
     }
 
     /// Start file watching if initialized

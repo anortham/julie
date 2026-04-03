@@ -126,12 +126,13 @@ async fn test_real_time_file_watcher_indexing() {
     fs::write(&initial_file, "fn initial() {}").unwrap();
 
     // Create and start watcher
+    let shared_provider = std::sync::Arc::new(std::sync::RwLock::new(None));
     let mut indexer = IncrementalIndexer::new(
         workspace_root.clone(),
         db.clone(),
         extractor_manager.clone(),
         None,
-        None, // No embedding provider in test
+        shared_provider, // No embedding provider in test
     )
     .unwrap();
 

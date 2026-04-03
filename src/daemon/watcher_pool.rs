@@ -140,12 +140,14 @@ impl WatcherPool {
         if entry.watcher.is_none() {
             if let (Some(db), Some(search_index)) = (&workspace.db, &workspace.search_index) {
                 let extractor_mgr = Arc::new(crate::extractors::ExtractorManager::new());
+                let shared_provider =
+                    Arc::new(std::sync::RwLock::new(embedding_provider.clone()));
                 let mut indexer = IncrementalIndexer::new(
                     workspace.root.clone(),
                     db.clone(),
                     extractor_mgr,
                     Some(search_index.clone()),
-                    embedding_provider.clone(),
+                    shared_provider,
                 )?;
                 indexer.start_watching().await?;
                 entry.watcher = Some(indexer);

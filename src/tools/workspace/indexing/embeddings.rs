@@ -80,6 +80,10 @@ pub(crate) async fn spawn_workspace_embedding(
         } else if ws.embedding_provider.is_none() {
             ws.embedding_provider = initialized_provider.clone();
             ws.embedding_runtime_status = initialized_runtime_status;
+            // Propagate to file watcher so incremental updates use the new provider
+            if let Some(ref watcher) = ws.watcher {
+                watcher.update_embedding_provider(ws.embedding_provider.clone());
+            }
         }
 
         match ws.embedding_provider.clone() {

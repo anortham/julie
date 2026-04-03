@@ -138,3 +138,63 @@ fn test_embedding_count_reflects_total_vectors_not_run_count() {
         "embedding_count() must reflect actual DB total (1), not the original run count (2)"
     );
 }
+
+/// Verify that a shared provider container propagates updates to readers.
+///
+/// This validates the design pattern used by IncrementalIndexer: the workspace
+/// and watcher share an Arc<RwLock<Option<...>>> so that lazy initialization
+/// of the embedding provider (which happens on first search, well after watcher
+/// construction) is visible to the watcher's background tasks.
+#[test]
+fn test_shared_provider_container_propagates_updates() {
+    use crate::embeddings::{DeviceInfo, EmbeddingProvider};
+    use std::sync::{Arc, RwLock};
+
+    type SharedProvider = Arc<RwLock<Option<Arc<dyn EmbeddingProvider>>>>;
+
+    let shared: SharedProvider = Arc::new(RwLock::new(None));
+    let watcher_ref = shared.clone();
+
+    // Before lazy init, the watcher's view is None.
+    assert!(
+        watcher_ref.read().unwrap().is_none(),
+        "watcher should see None before provider is initialized"
+    );
+
+    // Simulate lazy init by writing a provider into the shared container.
+    struct DummyProvider;
+    impl EmbeddingProvider for DummyProvider {
+        fn embed_query(&self, _: &str) -> anyhow::Result<Vec<f32>> {
+            Ok(vec![1.0, 2.0, 3.0, 4.0])
+        }
+        fn embed_batch(&self, _: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+            Ok(vec![])
+        }
+        fn dimensions(&self) -> usize {
+            4
+        }
+        fn device_info(&self) -> DeviceInfo {
+            DeviceInfo {
+                runtime: "test".to_string(),
+                device: "cpu".to_string(),
+                model_name: "dummy".to_string(),
+                dimensions: 4,
+            }
+        }
+    }
+
+    *shared.write().unwrap() = Some(Arc::new(DummyProvider));
+
+    // After lazy init, the watcher's cloned Arc sees the updated provider.
+    let snapshot = watcher_ref.read().unwrap();
+    assert!(
+        snapshot.is_some(),
+        "watcher must see the provider after lazy initialization"
+    );
+    let provider = snapshot.as_ref().unwrap();
+    assert_eq!(provider.dimensions(), 4);
+
+    // Verify the provider actually works through the shared reference.
+    let result = provider.embed_query("test").unwrap();
+    assert_eq!(result, vec![1.0, 2.0, 3.0, 4.0]);
+}
