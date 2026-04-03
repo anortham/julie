@@ -82,48 +82,55 @@ async fn connect_and_handshake(
 
 /// Bidirectional byte forwarding between stdin/stdout and the IPC stream.
 ///
-/// Uses `tokio::io::copy` in both directions simultaneously via `tokio::select!`.
-/// When either direction finishes (EOF or error), the other is cancelled and
-/// we return.
+/// Both directions run concurrently. When stdin closes (MCP client sent its
+/// last message or exited), we shut down the IPC write side to signal the
+/// daemon, then keep draining daemon-to-stdout until the daemon is done.
+/// When stdout closes (client gone), we stop immediately.
 async fn forward_bytes(stream: IpcClientStream) -> Result<()> {
     let (mut ipc_read, mut ipc_write) = tokio::io::split(stream);
     let mut stdin = tokio::io::stdin();
     let mut stdout = tokio::io::stdout();
 
+    // Run both directions concurrently with tokio::select!, but when
+    // stdin->daemon finishes, don't return immediately. Instead, fall
+    // through to drain the daemon->stdout direction.
+    let stdout_result;
     tokio::select! {
         result = copy(&mut stdin, &mut ipc_write) => {
             match result {
-                Ok(bytes) => {
-                    info!("stdin->daemon forwarding ended ({} bytes)", bytes);
-                    Ok(())
-                }
+                Ok(bytes) => info!("stdin->daemon forwarding ended ({} bytes)", bytes),
                 Err(e) => {
-                    // stdin closing is normal (MCP client exited)
                     if e.kind() == std::io::ErrorKind::UnexpectedEof
                         || e.kind() == std::io::ErrorKind::BrokenPipe
                     {
                         info!("stdin closed (client exited)");
-                        Ok(())
                     } else {
-                        Err(anyhow::anyhow!("stdin->daemon forwarding error: {}", e))
+                        info!("stdin->daemon forwarding error: {}", e);
                     }
                 }
             }
+            // Signal daemon that no more input is coming
+            let _ = ipc_write.shutdown().await;
+            // Now drain the daemon's remaining output to stdout
+            stdout_result = copy(&mut ipc_read, &mut stdout).await;
         }
         result = copy(&mut ipc_read, &mut stdout) => {
-            match result {
-                Ok(bytes) => {
-                    info!("daemon->stdout forwarding ended ({} bytes)", bytes);
-                    Ok(())
-                }
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::BrokenPipe {
-                        info!("stdout closed (client exited)");
-                        Ok(())
-                    } else {
-                        Err(anyhow::anyhow!("daemon->stdout forwarding error: {}", e))
-                    }
-                }
+            // Daemon closed its side or stdout broke. Nothing more to do.
+            stdout_result = result;
+        }
+    }
+
+    match stdout_result {
+        Ok(bytes) => {
+            info!("daemon->stdout forwarding ended ({} bytes)", bytes);
+            Ok(())
+        }
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                info!("stdout closed (client exited)");
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("daemon->stdout forwarding error: {}", e))
             }
         }
     }
