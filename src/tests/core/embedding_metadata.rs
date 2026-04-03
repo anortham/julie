@@ -506,8 +506,8 @@ mod tests {
             class_entry.1
         );
         assert!(
-            class_entry.1.contains("properties:"),
-            "Property enrichment should use 'properties:' label: {}",
+            class_entry.1.contains("fields:"),
+            "Property enrichment should use 'fields:' label: {}",
             class_entry.1
         );
     }
@@ -570,8 +570,8 @@ mod tests {
             class_entry.1
         );
         assert!(
-            class_entry.1.contains("properties:"),
-            "Should have properties label: {}",
+            class_entry.1.contains("fields:"),
+            "Should have fields label: {}",
             class_entry.1
         );
         assert!(
@@ -725,7 +725,7 @@ mod tests {
         let class_entry = &batch[0];
 
         // With a reasonable limit, a class with 12 properties should retain most of them
-        // (12 short property names ≈ 120 chars for "properties: Id, FirstName, ...")
+        // (12 short property names ≈ 120 chars for "fields: Id, FirstName, ...")
         assert!(
             class_entry.1.contains("UpdatedAt"),
             "Should retain properties near end of list — limit should be generous enough: {}",

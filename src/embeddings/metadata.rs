@@ -164,7 +164,7 @@ pub fn prepare_batch_for_embedding(
 ) -> Vec<(String, String)> {
     // Build parent_id → child method names mapping for container enrichment.
     let mut methods_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
-    let mut properties_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut field_sigs_by_parent: HashMap<&str, Vec<String>> = HashMap::new();
     let mut variants_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
     for sym in symbols {
         if let Some(ref parent_id) = sym.parent_id {
@@ -176,10 +176,14 @@ pub fn prepare_batch_for_embedding(
                         .push(&sym.name);
                 }
                 SymbolKind::Property | SymbolKind::Field => {
-                    properties_by_parent
+                    let display = match &sym.signature {
+                        Some(sig) => first_line_trimmed(sig),
+                        None => sym.name.clone(),
+                    };
+                    field_sigs_by_parent
                         .entry(parent_id.as_str())
                         .or_default()
-                        .push(&sym.name);
+                        .push(display);
                 }
                 SymbolKind::EnumMember => {
                     variants_by_parent
@@ -210,8 +214,8 @@ pub fn prepare_batch_for_embedding(
                     let suffix = format!(" methods: {}", methods.join(", "));
                     text.push_str(&suffix);
                 }
-                if let Some(properties) = properties_by_parent.get(s.id.as_str()) {
-                    let suffix = format!(" properties: {}", properties.join(", "));
+                if let Some(field_sigs) = field_sigs_by_parent.get(s.id.as_str()) {
+                    let suffix = format!(" fields: {}", field_sigs.join(", "));
                     text.push_str(&suffix);
                 }
                 if let Some(variants) = variants_by_parent.get(s.id.as_str()) {

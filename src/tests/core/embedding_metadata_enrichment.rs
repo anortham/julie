@@ -986,7 +986,7 @@ mod tests {
 
         assert!(
             !text.contains("fields:"),
-            "Containers should NOT get field access enrichment (they use properties:): {text}"
+            "Containers should NOT get field access enrichment from fields_by_symbol (no child fields in this test): {text}"
         );
     }
 
@@ -1108,6 +1108,35 @@ mod tests {
         assert!(
             !text.contains("implemented_by:"),
             "Classes should not get implementor enrichment: {text}"
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_enriches_struct_with_field_signatures() {
+        let struct_sym = make_symbol_with_lang("s1", "UserRecord", SymbolKind::Struct, "rust");
+
+        let mut field1 = make_symbol_with_lang("f1", "name", SymbolKind::Field, "rust");
+        field1.parent_id = Some("s1".to_string());
+        field1.signature = Some("pub name: String".to_string());
+
+        let mut field2 = make_symbol_with_lang("f2", "age", SymbolKind::Field, "rust");
+        field2.parent_id = Some("s1".to_string());
+        field2.signature = Some("pub age: u32".to_string());
+
+        let mut field3 = make_symbol_with_lang("f3", "active", SymbolKind::Field, "rust");
+        field3.parent_id = Some("s1".to_string());
+        field3.signature = None;
+
+        let symbols = vec![struct_sym, field1, field2, field3];
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+
+        // Only the struct is embeddable (Field is not in EMBEDDABLE_KINDS)
+        assert_eq!(batch.len(), 1);
+
+        let (_, text) = batch.iter().find(|(id, _)| id == "s1").unwrap();
+        assert!(
+            text.contains("fields: pub name: String, pub age: u32, active"),
+            "Expected field signatures in embedding, got: {text}"
         );
     }
 }
