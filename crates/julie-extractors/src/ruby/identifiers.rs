@@ -1,4 +1,4 @@
-use super::helpers::extract_method_name_from_call;
+use super::helpers::{extract_method_name_from_call, is_assignment_target};
 /// Identifier extraction for Ruby symbols
 /// Handles LSP-quality find_references functionality
 use crate::base::{BaseExtractor, Identifier, IdentifierKind, Symbol};
@@ -88,11 +88,44 @@ fn extract_identifier_from_node(
             }
         }
 
+        // Type references: superclass, scope_resolution, include/extend args, etc.
+        // Ruby constants are always PascalCase class/module names, so any constant
+        // in a reference position (not a declaration name or assignment target) is
+        // a type usage that contributes to centrality scoring.
+        "constant" => {
+            // Skip declaration names: the `name` field of class/module nodes
+            if is_constant_declaration_name(&node) {
+                return;
+            }
+            // Skip assignment LHS: `CONST = value` defines, not references
+            if is_assignment_target(&node) {
+                return;
+            }
+
+            let name = base.get_node_text(&node);
+            let containing_symbol_id = find_containing_symbol_id(base, node, symbol_map);
+
+            base.create_identifier(&node, name, IdentifierKind::TypeUsage, containing_symbol_id);
+        }
+
         _ => {
             // Skip other node types for now
-            // Future: type usage, constructor calls, etc.
         }
     }
+}
+
+/// Returns true if this constant node is the declaration name of a class or module.
+/// Example: `class Foo` or `module Bar` — the `Foo`/`Bar` constant is a declaration,
+/// not a reference. All other constant positions are type references.
+fn is_constant_declaration_name(node: &Node) -> bool {
+    if let Some(parent) = node.parent() {
+        if let Some(name_node) = parent.child_by_field_name("name") {
+            if name_node.id() == node.id() {
+                return matches!(parent.kind(), "class" | "module");
+            }
+        }
+    }
+    false
 }
 
 /// Find the ID of the symbol that contains this node

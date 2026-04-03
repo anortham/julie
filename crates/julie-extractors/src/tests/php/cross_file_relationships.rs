@@ -380,4 +380,245 @@ function my_function() {
         // (could be a pending relationship depending on implementation)
         // Just verify the test runs without panic
     }
+
+    // ========================================================================
+    // TEST: Bug fixes for PHP class-level tracking
+    // ========================================================================
+
+    /// Test that `new ClassName()` creates a PendingRelationship with Instantiates kind.
+    /// Bug 1: object_creation_expression was not visited at all.
+    #[test]
+    fn test_new_expression_creates_pending_instantiates_relationship() {
+        let code = r#"<?php
+function make_app() {
+    $app = new App();
+    return $app;
+}
+"#;
+
+        let results = extract_full("src/factory.php", code);
+
+        println!("=== symbols ===");
+        for s in &results.symbols {
+            println!("  {} ({:?})", s.name, s.kind);
+        }
+        println!("=== pending_relationships ===");
+        for p in &results.pending_relationships {
+            println!("  {:?}: {} -> '{}'", p.kind, p.from_symbol_id, p.callee_name);
+        }
+
+        let instantiates: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Instantiates)
+            .collect();
+
+        assert!(
+            !instantiates.is_empty(),
+            "new App() should create a PendingRelationship with kind Instantiates.\n\
+             Got {} pending relationships total, 0 Instantiates.",
+            results.pending_relationships.len()
+        );
+
+        let app_instantiation = instantiates.iter().find(|p| p.callee_name == "App");
+        assert!(
+            app_instantiation.is_some(),
+            "PendingRelationship callee_name should be 'App'.\n\
+             Found: {:?}",
+            instantiates.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+        );
+    }
+
+    /// Test that namespace-qualified `new \App\Http\Controller()` strips the namespace.
+    /// Bug 4: qualified names were not normalized.
+    #[test]
+    fn test_new_expression_with_qualified_name_strips_namespace() {
+        let code = r#"<?php
+function make_controller() {
+    $ctrl = new \App\Http\Controller();
+    return $ctrl;
+}
+"#;
+
+        let results = extract_full("src/factory.php", code);
+
+        let instantiates: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Instantiates)
+            .collect();
+
+        assert!(
+            !instantiates.is_empty(),
+            "new \\App\\Http\\Controller() should create a PendingRelationship with kind Instantiates."
+        );
+
+        let ctrl_instantiation = instantiates.iter().find(|p| p.callee_name == "Controller");
+        assert!(
+            ctrl_instantiation.is_some(),
+            "PendingRelationship callee_name should be 'Controller' (namespace stripped).\n\
+             Found: {:?}",
+            instantiates.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+        );
+    }
+
+    /// Test that `class Foo extends Bar` creates a PendingRelationship when Bar is in another file.
+    /// Bug 2: cross-file extends was silently dropped.
+    #[test]
+    fn test_cross_file_extends_creates_pending_relationship() {
+        let code = r#"<?php
+class Controller extends BaseController {
+    public function index() {
+        return 'ok';
+    }
+}
+"#;
+
+        let results = extract_full("src/controller.php", code);
+
+        println!("=== symbols ===");
+        for s in &results.symbols {
+            println!("  {} ({:?})", s.name, s.kind);
+        }
+        println!("=== relationships ===");
+        for r in &results.relationships {
+            println!("  {:?}: {} -> {}", r.kind, r.from_symbol_id, r.to_symbol_id);
+        }
+        println!("=== pending_relationships ===");
+        for p in &results.pending_relationships {
+            println!("  {:?}: {} -> '{}'", p.kind, p.from_symbol_id, p.callee_name);
+        }
+
+        // BaseController is not in the same file, so it should be a PendingRelationship
+        let extends_pending: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Extends)
+            .collect();
+
+        assert!(
+            !extends_pending.is_empty(),
+            "class Controller extends BaseController should create a PendingRelationship.\n\
+             Got 0 Extends pending relationships. (BaseController is cross-file)"
+        );
+
+        let base_controller = extends_pending
+            .iter()
+            .find(|p| p.callee_name == "BaseController");
+        assert!(
+            base_controller.is_some(),
+            "PendingRelationship callee_name should be 'BaseController'.\n\
+             Found: {:?}",
+            extends_pending
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// Test that `class Foo implements RouterInterface` creates a PendingRelationship
+    /// when RouterInterface is in another file.
+    /// Bug 3: implements was filtered to same-file only and fabricated IDs.
+    #[test]
+    fn test_cross_file_implements_creates_pending_relationship() {
+        let code = r#"<?php
+class Router implements RouterInterface {
+    public function route($path) {
+        return $path;
+    }
+}
+"#;
+
+        let results = extract_full("src/router.php", code);
+
+        println!("=== symbols ===");
+        for s in &results.symbols {
+            println!("  {} ({:?})", s.name, s.kind);
+        }
+        println!("=== relationships ===");
+        for r in &results.relationships {
+            println!("  {:?}: {} -> {}", r.kind, r.from_symbol_id, r.to_symbol_id);
+        }
+        println!("=== pending_relationships ===");
+        for p in &results.pending_relationships {
+            println!("  {:?}: {} -> '{}'", p.kind, p.from_symbol_id, p.callee_name);
+        }
+
+        // RouterInterface is not in the same file, should be PendingRelationship
+        let implements_pending: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Implements)
+            .collect();
+
+        // Also check that no relationship uses the fabricated "php-interface:*" ID
+        let fabricated_ids: Vec<_> = results
+            .relationships
+            .iter()
+            .filter(|r| r.to_symbol_id.starts_with("php-interface:"))
+            .collect();
+
+        assert!(
+            fabricated_ids.is_empty(),
+            "Should NOT create relationships with fabricated 'php-interface:' IDs.\n\
+             Found: {:?}",
+            fabricated_ids.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+        );
+
+        assert!(
+            !implements_pending.is_empty(),
+            "class Router implements RouterInterface should create a PendingRelationship.\n\
+             Got 0 Implements pending relationships."
+        );
+
+        let router_interface = implements_pending
+            .iter()
+            .find(|p| p.callee_name == "RouterInterface");
+        assert!(
+            router_interface.is_some(),
+            "PendingRelationship callee_name should be 'RouterInterface'.\n\
+             Found: {:?}",
+            implements_pending
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    /// Test namespace-qualified extends strips the namespace prefix.
+    /// Bug 4 applied to extends: `class Foo extends \Base\AbstractController` should use 'AbstractController'.
+    #[test]
+    fn test_namespace_qualified_extends_strips_namespace() {
+        let code = r#"<?php
+class AdminController extends \Base\Http\AbstractController {
+    public function index() {}
+}
+"#;
+
+        let results = extract_full("src/admin.php", code);
+
+        let extends_pending: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Extends)
+            .collect();
+
+        assert!(
+            !extends_pending.is_empty(),
+            "Namespace-qualified extends should create a PendingRelationship."
+        );
+
+        let base = extends_pending
+            .iter()
+            .find(|p| p.callee_name == "AbstractController");
+        assert!(
+            base.is_some(),
+            "callee_name should be 'AbstractController' (namespace stripped).\n\
+             Found: {:?}",
+            extends_pending
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
+        );
+    }
 }

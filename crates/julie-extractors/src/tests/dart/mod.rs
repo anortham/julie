@@ -2545,6 +2545,128 @@ mixin class MixinClass {}
                 sealed_sig
             );
         }
+
+        #[test]
+        fn test_dart3_modifier_classes_riverpod_realistic() {
+            // Mirrors actual rrousselGit/riverpod class definitions that were
+            // failing: generics, implements clauses, and mixin class.
+            let code = r#"
+sealed class AsyncValue<T> {
+  const AsyncValue._();
+  T get requireValue;
+  bool get isLoading;
+}
+
+base class ProviderContainer {
+  ProviderContainer({
+    ProviderContainer? parent,
+    List<Object> overrides = const [],
+  });
+
+  void dispose() {}
+}
+
+mixin class ProviderObserver {
+  void didAddProvider() {}
+  void didDisposeProvider() {}
+}
+
+final class AsyncData<T> extends AsyncValue<T> {
+  const AsyncData(this.value);
+  final T value;
+}
+
+interface class Ref<State extends Object?> {
+  State get state;
+}
+"#;
+            let mut parser = init_parser();
+            let tree = parser.parse(code, None).unwrap();
+            let workspace_root = PathBuf::from("/tmp/test");
+            let mut extractor = DartExtractor::new(
+                "dart".to_string(),
+                "test.dart".to_string(),
+                code.to_string(),
+                &workspace_root,
+            );
+
+            let symbols = extractor.extract_symbols(&tree);
+            let classes: Vec<_> = symbols
+                .iter()
+                .filter(|s| s.kind == SymbolKind::Class)
+                .collect();
+
+            let class_names: Vec<&str> = classes.iter().map(|s| s.name.as_str()).collect();
+
+            assert!(
+                class_names.contains(&"AsyncValue"),
+                "Should extract sealed class AsyncValue<T> (generic), got: {:?}",
+                class_names
+            );
+            assert!(
+                class_names.contains(&"ProviderContainer"),
+                "Should extract base class ProviderContainer (with constructor body), got: {:?}",
+                class_names
+            );
+            assert!(
+                class_names.contains(&"ProviderObserver"),
+                "Should extract mixin class ProviderObserver, got: {:?}",
+                class_names
+            );
+            assert!(
+                class_names.contains(&"AsyncData"),
+                "Should extract final class AsyncData<T> extends AsyncValue<T>, got: {:?}",
+                class_names
+            );
+            assert!(
+                class_names.contains(&"Ref"),
+                "Should extract interface class Ref<State extends Object?>, got: {:?}",
+                class_names
+            );
+
+            // Verify AsyncValue signature includes 'sealed'
+            let async_value = classes.iter().find(|s| s.name == "AsyncValue").unwrap();
+            let sig = async_value.signature.as_deref().unwrap_or("");
+            assert!(
+                sig.contains("sealed"),
+                "AsyncValue signature should include 'sealed', got: {}",
+                sig
+            );
+
+            // Verify mixin class signature
+            let observer = classes.iter().find(|s| s.name == "ProviderObserver");
+            if let Some(obs) = observer {
+                let obs_sig = obs.signature.as_deref().unwrap_or("");
+                assert!(
+                    obs_sig.contains("mixin"),
+                    "ProviderObserver signature should include 'mixin', got: {}",
+                    obs_sig
+                );
+            }
+
+            // Verify that `final class AsyncData<T> extends AsyncValue<T>` produces
+            // a PendingRelationship with Extends kind targeting AsyncValue
+            let _rels = extractor.extract_relationships(&tree, &symbols);
+            let pending = extractor.get_pending_relationships();
+            let async_data = classes.iter().find(|s| s.name == "AsyncData").unwrap();
+            let extends_pending = pending.iter().find(|p| {
+                p.from_symbol_id == async_data.id
+                    && p.kind == crate::base::RelationshipKind::Extends
+            });
+            assert!(
+                extends_pending.is_some(),
+                "AsyncData extends AsyncValue should produce a PendingRelationship. \
+                 Got pending: {:?}",
+                pending
+                    .iter()
+                    .map(|p| format!("{} -> {} ({:?})", p.from_symbol_id, p.callee_name, p.kind))
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                extends_pending.unwrap().callee_name, "AsyncValue",
+                "PendingRelationship should target AsyncValue"
+            );
+        }
     }
 }
 mod types; // Phase 4: Type extraction verification tests

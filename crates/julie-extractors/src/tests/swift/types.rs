@@ -2,9 +2,71 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::base::SymbolKind;
     use crate::factory::extract_symbols_and_relationships;
+    use crate::swift::SwiftExtractor;
     use std::path::PathBuf;
     use tree_sitter::Parser;
+
+    fn parse_swift(code: &str) -> (SwiftExtractor, tree_sitter::Tree) {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_swift::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(code, None).unwrap();
+        let extractor = SwiftExtractor::new(
+            "swift".to_string(),
+            "test.swift".to_string(),
+            code.to_string(),
+            &PathBuf::from("/tmp/test"),
+        );
+        (extractor, tree)
+    }
+
+    /// Regression test: open class Session: @unchecked Sendable was absent from symbol table.
+    /// The class body methods were extracted as orphaned top-level functions.
+    /// Also guards against @unchecked leaking into class modifiers (wrong signature).
+    #[test]
+    fn test_open_class_session_unchecked_sendable() {
+        let code = r#"open class Session: @unchecked Sendable {
+    func request(_ url: String) {}
+    func download(_ url: String) {}
+}"#;
+
+        let (mut extractor, tree) = parse_swift(code);
+        let symbols = extractor.extract_symbols(&tree);
+
+        let session = symbols.iter().find(|s| s.name == "Session");
+        assert!(
+            session.is_some(),
+            "Session class was not extracted — methods became orphaned top-level functions"
+        );
+
+        let session = session.unwrap();
+        assert_eq!(session.kind, SymbolKind::Class, "Session should be SymbolKind::Class");
+
+        let sig = session.signature.as_deref().unwrap_or("");
+        // @unchecked must NOT be pulled into class modifiers; it belongs to the inheritance clause
+        assert!(
+            sig.contains("open class Session"),
+            "Signature should have 'open class Session' (not 'open @unchecked class Session'), got: {:?}",
+            sig
+        );
+        assert!(
+            sig.contains("@unchecked Sendable"),
+            "Signature should preserve '@unchecked Sendable' in inheritance, got: {:?}",
+            sig
+        );
+
+        // Methods should be children of Session, not orphans
+        let request = symbols.iter().find(|s| s.name == "request");
+        assert!(request.is_some(), "request method should be extracted");
+        assert_eq!(
+            request.unwrap().parent_id.as_deref(),
+            Some(session.id.as_str()),
+            "request should be a child of Session"
+        );
+    }
 
     #[test]
     fn test_factory_extracts_swift_types() {

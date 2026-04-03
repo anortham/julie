@@ -157,7 +157,10 @@ impl PhpExtractor {
             "interface_declaration" => {
                 extract_interface_relationships(self, node, symbols, relationships);
             }
-            "function_call_expression" | "member_call_expression" | "scoped_call_expression" => {
+            "function_call_expression"
+            | "member_call_expression"
+            | "scoped_call_expression"
+            | "object_creation_expression" => {
                 extract_call_relationships(self, node, symbols, relationships);
             }
             _ => {}

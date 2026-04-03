@@ -67,8 +67,8 @@ impl DartExtractor {
             return;
         }
 
-        // Skip block nodes already consumed as Dart 3 modifier class bodies
-        if node.kind() == "block" && self.consumed_blocks.contains(&node.start_byte()) {
+        // Skip nodes already consumed as Dart 3 modifier class bodies or generic class ERROR content
+        if self.consumed_blocks.contains(&node.start_byte()) {
             return;
         }
 
@@ -120,7 +120,71 @@ impl DartExtractor {
                     current_parent_id.as_deref(),
                 );
             }
+            "type_identifier" => {
+                // `sealed class AsyncValue<T>` — grammar sees the generic `<T>` as a relational
+                // expression, so `sealed` ends up as a standalone type_identifier at program
+                // level rather than inside an ERROR.  Detect the pattern here and recover.
+                if node.parent().map_or(false, |p| p.kind() == "program") {
+                    if let Some((class_sym, body_opt, container_start)) =
+                        recover_dart3_generic_modifier_class(&mut self.base, &node, current_parent_id.as_deref())
+                    {
+                        let class_id = class_sym.id.clone();
+                        // Extract inheritance from source text before pushing symbol
+                        let source = self.base.get_node_text(&node.parent().unwrap());
+                        for (target_name, kind) in extract_inheritance_from_source(&source) {
+                            self.add_pending_relationship(PendingRelationship {
+                                from_symbol_id: class_id.clone(),
+                                callee_name: target_name,
+                                kind,
+                                file_path: self.base.file_path.clone(),
+                                line_number: node.start_position().row as u32 + 1,
+                                confidence: 0.8,
+                            });
+                        }
+                        symbols.push(class_sym);
+                        // Prevent the expression_statement/ERROR container from being double-visited
+                        self.consumed_blocks.insert(container_start);
+                        if let Some(body_node) = body_opt {
+                            let mut cursor = body_node.walk();
+                            for child in body_node.children(&mut cursor) {
+                                self.visit_node(child, symbols, Some(&class_id));
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
             "mixin_declaration" => {
+                // Dart 3 `mixin class Foo {}` — try mixin class recovery first.
+                // Tree-sitter produces two different structures for this depending on
+                // context; recover_mixin_class_declaration handles both.
+                if let Some(class_sym) = recover_mixin_class_declaration(
+                    &mut self.base,
+                    &node,
+                    current_parent_id.as_deref(),
+                ) {
+                    let class_id = class_sym.id.clone();
+                    // Extract inheritance from source text of the mixin_declaration
+                    let source = self.base.get_node_text(&node);
+                    for (target_name, kind) in extract_inheritance_from_source(&source) {
+                        self.add_pending_relationship(PendingRelationship {
+                            from_symbol_id: class_id.clone(),
+                            callee_name: target_name,
+                            kind,
+                            file_path: self.base.file_path.clone(),
+                            line_number: node.start_position().row as u32 + 1,
+                            confidence: 0.8,
+                        });
+                    }
+                    symbols.push(class_sym);
+                    if let Some(body_node) = find_child_by_type(&node, "class_body") {
+                        let mut cursor = body_node.walk();
+                        for child in body_node.children(&mut cursor) {
+                            self.visit_node(child, symbols, Some(&class_id));
+                        }
+                    }
+                    return;
+                }
                 symbol = types::extract_mixin(&mut self.base, &node, current_parent_id.as_deref());
             }
             "extension_declaration" => {
@@ -177,6 +241,18 @@ impl DartExtractor {
                         current_parent_id.as_deref(),
                     ) {
                         let class_id = class_sym.id.clone();
+                        // Extract inheritance from source text of the ERROR node
+                        let source = self.base.get_node_text(&node);
+                        for (target_name, kind) in extract_inheritance_from_source(&source) {
+                            self.add_pending_relationship(PendingRelationship {
+                                from_symbol_id: class_id.clone(),
+                                callee_name: target_name,
+                                kind,
+                                file_path: self.base.file_path.clone(),
+                                line_number: node.start_position().row as u32 + 1,
+                                confidence: 0.8,
+                            });
+                        }
                         symbols.push(class_sym);
 
                         // The class body is the sibling `block` node immediately after this ERROR.
@@ -318,6 +394,49 @@ impl DartExtractor {
 /// Dart 3 class modifier keywords that the grammar doesn't support.
 const DART3_CLASS_MODIFIERS: &[&str] = &["base", "sealed", "final", "interface"];
 
+/// Regex for extracting extends/implements/with clauses from source text.
+/// Used by Dart 3 recovery paths where the AST is too mangled to walk.
+static EXTENDS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\bextends\s+([A-Z]\w*)").unwrap());
+static IMPLEMENTS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\bimplements\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)").unwrap());
+static WITH_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\bwith\s+([A-Z]\w*(?:\s*,\s*[A-Z]\w*)*)").unwrap());
+
+/// Extract extends/implements/with relationships from source text around a
+/// recovered Dart 3 modifier class. The AST is mangled by tree-sitter, but
+/// the source is correct, so regex is the reliable approach.
+///
+/// Returns a Vec of (name, RelationshipKind) pairs.
+fn extract_inheritance_from_source(source: &str) -> Vec<(String, crate::base::RelationshipKind)> {
+    use crate::base::RelationshipKind;
+    let mut result = Vec::new();
+
+    // Only look at text before the opening brace (the class header)
+    let header = source.split('{').next().unwrap_or(source);
+
+    if let Some(caps) = EXTENDS_RE.captures(header) {
+        if let Some(name) = caps.get(1) {
+            result.push((name.as_str().to_string(), RelationshipKind::Extends));
+        }
+    }
+
+    for re in [&*IMPLEMENTS_RE, &*WITH_RE] {
+        if let Some(caps) = re.captures(header) {
+            if let Some(names) = caps.get(1) {
+                for name in names.as_str().split(',') {
+                    let name = name.trim();
+                    if !name.is_empty() && name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                        result.push((name.to_string(), RelationshipKind::Implements));
+                    }
+                }
+            }
+        }
+    }
+
+    result
+}
+
 /// Attempt to recover a class symbol from an ERROR node that represents a
 /// Dart 3 modifier class (base/sealed/final/interface class).
 ///
@@ -396,6 +515,238 @@ fn recover_dart3_modifier_class(
     // Build signature: e.g. "sealed class Sealed"
     let signature = format!("{} class {}", modifier, name);
 
+    Some(base.create_symbol(
+        &name_node,
+        name,
+        SymbolKind::Class,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(|id| id.to_string()),
+            metadata: Some(HashMap::new()),
+            ..Default::default()
+        },
+    ))
+}
+
+// === Dart 3 Generic Modifier Class Recovery ===
+//
+// When a Dart 3 modifier class has generic type parameters, e.g.:
+//   sealed class AsyncValue<T> { ... }
+//
+// harper-tree-sitter-dart (v0.0.5) cannot parse the `<T>` as a generic and
+// instead treats `AsyncValue<T>` as a relational expression (less-than
+// comparison). This produces a completely different program-level structure:
+//
+//   type_identifier("sealed")          <- modifier sits outside the ERROR
+//   initialized_identifier_list        <- "class" parsed as variable name
+//     initialized_identifier
+//       identifier("class")
+//   ;
+//   ERROR
+//     relational_expression            <- AsyncValue < T interpreted as comparison
+//       relational_expression
+//         identifier("AsyncValue")     <- actual class name is here
+//         relational_operator <
+//         identifier("T")
+//       relational_operator >
+//       set_or_map_literal             <- class body { ... }
+//
+// The recovery triggers on the type_identifier node and walks its siblings.
+
+/// Recover a Dart 3 modifier class whose generic parameter caused the grammar
+/// to produce a type_identifier + initialized_identifier_list + ERROR pattern.
+///
+/// Returns `Some((Symbol, Option<body_node>, error_start_byte))` on match.
+fn recover_dart3_generic_modifier_class<'a>(
+    base: &mut BaseExtractor,
+    node: &Node<'a>,
+    parent_id: Option<&str>,
+) -> Option<(Symbol, Option<Node<'a>>, usize)> {
+    // Text must be a known Dart 3 modifier
+    let modifier = get_node_text(node);
+    if !DART3_CLASS_MODIFIERS.contains(&modifier.as_str()) {
+        return None;
+    }
+
+    // The next NAMED sibling contains the "class" keyword (parsed as
+    // initialized_identifier_list or similar).
+    let next = node.next_named_sibling()?;
+    if get_node_text(&next).trim() != "class" {
+        return None;
+    }
+
+    // Walk named siblings forward to find the expression_statement or ERROR that
+    // contains the relational_expression with the class name and body.
+    // In the full-file case, a class body with members causes the relational
+    // expression to appear in an expression_statement (not ERROR).
+    let mut sib = next.next_named_sibling();
+    let body_container = loop {
+        let s = sib?;
+        match s.kind() {
+            "ERROR" | "expression_statement" => break s,
+            _ => sib = s.next_named_sibling(),
+        }
+    };
+    let container_start = body_container.start_byte();
+
+    // Extract class name: leftmost identifier inside relational_expression(s)
+    let class_name_node = find_leftmost_identifier_in_relational(&body_container)?;
+    let name = get_node_text(&class_name_node);
+    if !name.chars().next().map_or(false, |c| c.is_uppercase()) {
+        return None;
+    }
+
+    // Class body (partial): set_or_map_literal inside the expression_statement/ERROR
+    let body_node = find_set_or_map_literal_in_node(&body_container);
+
+    let signature = format!("{} class {}", modifier, name);
+    let symbol = base.create_symbol(
+        &class_name_node,
+        name,
+        SymbolKind::Class,
+        SymbolOptions {
+            signature: Some(signature),
+            visibility: Some(Visibility::Public),
+            parent_id: parent_id.map(|id| id.to_string()),
+            metadata: Some(HashMap::new()),
+            ..Default::default()
+        },
+    );
+
+    Some((symbol, body_node, container_start))
+}
+
+/// Find the leftmost identifier in a nested relational_expression tree.
+/// `relational_expression > relational_expression > identifier` — the
+/// deepest-left identifier is the class name (e.g. `AsyncValue` in `AsyncValue<T>`).
+fn find_leftmost_identifier_in_relational<'a>(node: &Node<'a>) -> Option<Node<'a>> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "identifier" | "type_identifier" => return Some(child),
+            "relational_expression" => {
+                if let Some(found) = find_leftmost_identifier_in_relational(&child) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Recursively search for the first `set_or_map_literal` node in a subtree.
+fn find_set_or_map_literal_in_node<'a>(node: &Node<'a>) -> Option<Node<'a>> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "set_or_map_literal" {
+            return Some(child);
+        }
+        if let Some(found) = find_set_or_map_literal_in_node(&child) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+// === Dart 3 mixin class Recovery ===
+//
+// `mixin class Foo {}` — since `mixin` is a valid Dart keyword, the grammar
+// starts a mixin_declaration. It uses "class" as the mixin name (identifier)
+// and puts the actual class name "Foo" in an ERROR child:
+//
+//   mixin_declaration
+//     mixin = "mixin"
+//     identifier = "class"    <- wrong: mixin name is "class"
+//     ERROR
+//       identifier = "Foo"    <- actual class name
+//     class_body { }
+
+/// Recover a `mixin class Foo {}` declaration misparsed as mixin_declaration.
+///
+/// Tree-sitter produces two different structures depending on context:
+///
+/// Structure 1 (isolated or after certain nodes):
+///   mixin_declaration(mixin, identifier("class"), ERROR(identifier("Foo")), class_body)
+///
+/// Structure 2 (after complex preceding code):
+///   mixin_declaration(mixin, ERROR(identifier("class")), identifier("Foo"), class_body)
+///
+/// Returns None for genuine mixin declarations (e.g. `mixin Foo on Bar`).
+fn recover_mixin_class_declaration<'a>(
+    base: &mut BaseExtractor,
+    node: &Node<'a>,
+    parent_id: Option<&str>,
+) -> Option<Symbol> {
+    let mut cursor = node.walk();
+    let children: Vec<Node<'a>> = node.children(&mut cursor).collect();
+
+    let mut saw_mixin = false;
+    let mut saw_class = false;
+    let mut name: Option<String> = None;
+    let mut name_node: Option<Node<'a>> = None;
+
+    for child in children {
+        let kind = child.kind();
+
+        if kind == "mixin" {
+            saw_mixin = true;
+            continue;
+        }
+
+        if !saw_mixin {
+            continue;
+        }
+
+        if !saw_class {
+            // Look for the "class" keyword — either directly or inside an ERROR child
+            if kind == "identifier" && get_node_text(&child) == "class" {
+                saw_class = true;
+                continue;
+            }
+            if kind == "ERROR" {
+                let mut ec = child.walk();
+                if child
+                    .children(&mut ec)
+                    .any(|gc| gc.kind() == "identifier" && get_node_text(&gc) == "class")
+                {
+                    saw_class = true;
+                    continue;
+                }
+            }
+            // Something other than "class" appeared after "mixin" — not mixin class
+            break;
+        }
+
+        // After the "class" keyword, find the actual class name
+        if name.is_none() {
+            if kind == "identifier" || kind == "type_identifier" {
+                let text = get_node_text(&child);
+                if !text.is_empty() {
+                    name = Some(text);
+                    name_node = Some(child);
+                }
+            } else if kind == "ERROR" {
+                // Structure 1: name is inside the ERROR
+                let mut ec = child.walk();
+                for gc in child.children(&mut ec) {
+                    if (gc.kind() == "identifier" || gc.kind() == "type_identifier")
+                        && !get_node_text(&gc).is_empty()
+                    {
+                        name = Some(get_node_text(&gc));
+                        name_node = Some(gc);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    let name = name?;
+    let name_node = name_node?;
+
+    let signature = format!("mixin class {}", name);
     Some(base.create_symbol(
         &name_node,
         name,

@@ -68,8 +68,14 @@ pub(super) fn extract_class(
         signature.push_str(&type_params);
     }
 
-    // Add primary constructor parameters to signature if present
+    // Add primary constructor parameters to signature if present.
+    // When the constructor has an explicit `constructor` keyword or modifier
+    // (e.g., `private constructor(...)`), the node text doesn't start with `(`
+    // so we need a space separator. When it's just `(...)`, no space is needed.
     if let Some(constructor_params) = constructor_params {
+        if !constructor_params.starts_with('(') {
+            signature.push(' ');
+        }
         signature.push_str(&constructor_params);
     }
 

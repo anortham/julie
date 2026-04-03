@@ -24,6 +24,7 @@
 
 ## Future Ideas
 
+- [ ] **Dashboard: code quality metrics page** -- Add a "Code Quality" page to the Observatory dashboard showing doc coverage (per-language breakdown, coverage %) and dead code candidates. Data layer already exists in `query_metrics` categories `doc_coverage` and `dead_code`. Bundle with other dashboard additions to make a single coherent update.
 - [ ] **AST-based complexity metrics** -- Add cyclomatic complexity calculation during AST extraction. Store as symbol metadata. Enables a `/hotspots` skill (complexity x centrality = refactoring targets). Deferred because it requires per-language node-kind mapping across 33 extractors.
 - [ ] **Function body hashing for duplication detection** -- Hash normalized function bodies during extraction to detect near-duplicate functions across a codebase. Low priority.
 - [ ] **Scoped path extraction for Rust** -- Capture `crate::module::func()` qualified paths as implicit import edges. Would improve call graph quality for Rust codebases specifically.

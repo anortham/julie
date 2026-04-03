@@ -45,8 +45,13 @@ impl SwiftExtractor {
             }
         }
 
-        // Check for direct modifier nodes
+        // Check for direct modifier nodes that precede the inheritance clause.
+        // Stop at ":" to avoid pulling in type-attributes like @unchecked that belong
+        // to an inherited type (e.g. `open class Session: @unchecked Sendable`).
         for child in node.children(&mut node.walk()) {
+            if child.kind() == ":" {
+                break;
+            }
             if child.kind() == "lazy" || self.base.get_node_text(&child) == "lazy" {
                 modifiers.push("lazy".to_string());
             } else if child.kind() == "attribute" {
@@ -81,20 +86,36 @@ impl SwiftExtractor {
             }
         }
 
-        // For Swift enums, inheritance is represented as direct inheritance_specifier nodes
-        let inheritance_specifiers: Vec<_> = node
-            .children(&mut node.walk())
-            .filter(|c| c.kind() == "inheritance_specifier")
-            .collect();
-        if !inheritance_specifiers.is_empty() {
-            let types: Vec<_> = inheritance_specifiers
-                .iter()
-                .filter_map(|spec| {
-                    spec.children(&mut spec.walk())
-                        .find(|c| matches!(c.kind(), "user_type" | "type_identifier" | "type"))
-                        .map(|type_node| self.base.get_node_text(&type_node))
-                })
-                .collect();
+        // Some declarations have direct inheritance_specifier nodes (e.g. enums, classes with
+        // type-attributes like `@unchecked Sendable`). Walk children after ":" pairing any
+        // preceding attribute with the following inheritance_specifier.
+        let children: Vec<_> = node.children(&mut node.walk()).collect();
+        let colon_idx = children.iter().position(|c| c.kind() == ":");
+        if let Some(start) = colon_idx {
+            let mut types: Vec<String> = Vec::new();
+            let mut pending_attr: Option<String> = None;
+            for child in &children[start + 1..] {
+                match child.kind() {
+                    "attribute" => {
+                        pending_attr = Some(self.base.get_node_text(child));
+                    }
+                    "inheritance_specifier" => {
+                        let type_text = child
+                            .children(&mut child.walk())
+                            .find(|c| matches!(c.kind(), "user_type" | "type_identifier" | "type"))
+                            .map(|n| self.base.get_node_text(&n))
+                            .unwrap_or_else(|| self.base.get_node_text(child));
+                        if let Some(attr) = pending_attr.take() {
+                            types.push(format!("{} {}", attr, type_text));
+                        } else {
+                            types.push(type_text);
+                        }
+                    }
+                    "class_body" | "struct_body" | "enum_body" | "protocol_body"
+                    | "where_clause" | "type_parameters" => break,
+                    _ => {}
+                }
+            }
             if !types.is_empty() {
                 return Some(types.join(", "));
             }

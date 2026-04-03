@@ -2157,6 +2157,61 @@ public sealed class JsonReader : Closeable {
             "beginArray should be a child of JsonReader, not orphaned"
         );
     }
+
+    /// Regression: class signature missing space when primary constructor has
+    /// explicit `constructor` keyword with a visibility modifier.
+    /// e.g., `class Moshi private constructor(builder: Builder)` was producing
+    /// `"class Moshiprivate constructor(builder: Builder)"` (no space).
+    #[test]
+    fn test_class_signature_space_before_constructor_keyword() {
+        let code = r#"
+class Moshi private constructor(builder: Builder) {
+    fun <T> adapter(type: Class<T>): JsonAdapter<T> {
+        TODO()
+    }
+}
+
+class Options internal constructor(val value: String) {
+    fun get(): String = value
+}
+"#;
+
+        let mut parser = init_parser();
+        let tree = parser.parse(code, None).unwrap();
+
+        let workspace_root = PathBuf::from("/tmp/test");
+        let mut extractor = KotlinExtractor::new(
+            "kotlin".to_string(),
+            "test.kt".to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+
+        let symbols = extractor.extract_symbols(&tree);
+
+        let moshi = symbols.iter().find(|s| s.name == "Moshi");
+        assert!(moshi.is_some(), "Moshi class should be extracted");
+        let moshi_sig = moshi.unwrap().signature.as_ref().unwrap();
+        assert!(
+            !moshi_sig.contains("Moshiprivate"),
+            "Signature must not concatenate class name and 'private' without a space. Got: {}",
+            moshi_sig
+        );
+        assert!(
+            moshi_sig.contains("class Moshi private constructor(builder: Builder)"),
+            "Expected 'class Moshi private constructor(builder: Builder)', got: {}",
+            moshi_sig
+        );
+
+        let options = symbols.iter().find(|s| s.name == "Options");
+        assert!(options.is_some(), "Options class should be extracted");
+        let options_sig = options.unwrap().signature.as_ref().unwrap();
+        assert!(
+            options_sig.contains("class Options internal constructor(val value: String)"),
+            "Expected 'class Options internal constructor(val value: String)', got: {}",
+            options_sig
+        );
+    }
 }
 mod cross_file_relationships;
 mod identifiers;

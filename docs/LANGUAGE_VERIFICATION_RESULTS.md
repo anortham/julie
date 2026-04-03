@@ -16,17 +16,17 @@
 | GDScript | bitbrain/pandora | PASS | PASS | PASS* | PASS* | PASS | PASS* | PASS | PASS | 2026-03-17 |
 | Zig | zigtools/zls | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-17 |
 | TypeScript | colinhacks/zod | PASS | PASS | PASS* | PASS* | PASS* | PASS | PASS* | PASS* | 2026-03-17 |
-| Python | pallets/flask | PASS | PASS | PASS | PASS | PASS | PASS | PASS* | PASS | 2026-03-18 |
+| Python | pallets/flask | PASS | PASS | PASS | PASS | PASS | PASS | PASS* | PASS | 2026-04-03 |
 | Go | spf13/cobra | PASS | PASS | PASS | PASS | PARTIAL | PASS | PASS | PASS | 2026-03-18 |
 | Java | google/gson | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
-| PHP | slimphp/Slim | PASS | FAIL | PARTIAL | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
-| Ruby | sinatra/sinatra | PASS | PASS | PASS | MIXED | PASS | PASS | PASS | PASS | 2026-03-18 |
+| PHP | slimphp/Slim | PASS | PASS* | PASS* | PASS* | PASS | PASS | PASS | PASS | 2026-04-03 |
+| Ruby | sinatra/sinatra | PASS | PASS | PASS* | PASS* | PASS | PASS | PASS | PASS | 2026-04-03 |
 | C# | JamesNK/Newtonsoft.Json | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | 2026-03-18 |
-| Swift | Alamofire/Alamofire | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | 2026-03-18 |
-| Kotlin | square/moshi | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
-| C | jqlang/jq | PASS | PASS | PASS | PARTIAL | PASS | PASS | PASS | FAIL* | 2026-03-18 |
+| Swift | Alamofire/Alamofire | PASS* | PASS | PASS | PASS | PASS | PASS | PASS | PASS | 2026-04-03 |
+| Kotlin | square/moshi | PASS* | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-04-03 |
+| C | jqlang/jq | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS* | 2026-04-03 |
 | C++ | nlohmann/json | PASS | FAIL | PASS* | FAIL | PASS | FAIL | PASS | PASS | 2026-03-18 |
-| Dart | rrousselGit/riverpod | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
+| Dart | rrousselGit/riverpod | PASS* | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-04-03 |
 | Lua | rxi/lite | PASS | PASS | PASS | FAIL | PARTIAL | PARTIAL | PARTIAL | N/A | 2026-03-18 |
 | Scala | typelevel/cats | PASS | PASS | PASS* | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
 | Elixir | phoenixframework/phoenix | PASS | PASS | PASS | PASS | PASS | PASS | PASS | PASS | 2026-03-18 |
@@ -245,16 +245,18 @@
   - `use` mapped to import reference kind (correct for Elixir's module inclusion semantics)
 
 ### Python
-- **Reference project:** pallets/flask (227 files, 4297 symbols, 1952 relationships)
-- **Date verified:** 2026-03-18
-- **6/8 PASS, 2 FAIL (Centrality, Def Search)**
-- **Issues found (2 — not yet fixed):**
-  - **UNFIXED: Test subclass steals centrality** — `tests/test_config.py` defines `class Flask(flask.Flask)` (a test subclass). Pending relationship resolution picks this test Flask (raw score 213) over the real `src/flask/app.py` Flask (raw score 1.4). The real Flask class gets almost zero centrality despite 125 dependents.
-  - **UNFIXED: Def search ranking affected** — Test Flask subclass ranks #1 above real Flask class (cascade from centrality issue).
-- **Live verification results:**
+- **Reference project:** pallets/flask (227 files, 4291 symbols, 1952 relationships)
+- **Date verified:** 2026-04-03 (re-verified)
+- **All 8 checks: PASS**
+- **Issues found (2 — both FIXED since March 18):**
+  - **FIXED: Test subclass steals centrality** — Three layers of protection now in place: (1) resolver `-75` penalty for test-path candidates, (2) Step 1b excludes test files from identifier-based centrality boost, (3) Step 4 de-weights all test-file scores by 0.1x. Re-verified: real Flask reference_score=151.4, test Flask=6.3 (was 213 vs 1.4).
+  - **FIXED: Def search ranking** — Real Flask (`src/flask/app.py`) now ranks #1 above test Flask in definition search. Cascade from centrality fix.
+- **Live verification results (2026-04-03):**
   - Check 1 (Symbols): 142 symbols for Flask class, 35 methods, correct types
   - Check 2 (Relationships): 60 refs for Flask, cross-file imports/calls, `extends` captured
   - Check 3 (Identifiers): 125 dependents via identifiers
+  - Check 4 (Centrality): Real Flask **151.4**, test Flask **6.3** (24:1 ratio, correct)
+  - Check 5 (Def Search): Real Flask ranks #1 in `fast_search("Flask", search_target="definitions")`
   - Check 6 (deep_dive): 35 methods, `extends App`, 125 dependents shown
   - Check 7 (get_context): 10 neighbors showing request handling pipeline
   - Check 8 (Test Detection): `tests/` directory correctly excluded
@@ -289,26 +291,34 @@
 
 ### PHP
 - **Reference project:** slimphp/Slim (145 files, 4031 symbols, 1555 relationships)
-- **Date verified:** 2026-03-18
-- **5/8 PASS, 2 FAIL, 1 PARTIAL** (after type_usage fix)
-- **Issues found (3):**
+- **Date verified:** 2026-04-03 (re-verified)
+- **All 8 checks: PASS** (after relationship fix)
+- **Issues found (5 — all FIXED):**
   - **FIXED: No type_usage identifiers** — Added `named_type` + `instanceof_expression` handlers. App centrality 0.00 → 0.24. Commit `90bffa2a`.
-  - **UNFIXED: Class-level relationship tracking weak** — `new ClassName()`, `use` imports, `extends`/`implements` not fully tracked as incoming references at class level. Method-level refs work.
-  - **UNFIXED: `reference_kind` filter ignored** — All kinds return identical results (downstream of relationship issue).
+  - **FIXED: `new ClassName()` not tracked** — `object_creation_expression` was missing from `visit_relationships` and `extract_call_relationships`. Added handler that creates `PendingRelationship` with `Instantiates` kind. Commit from 2026-04-03.
+  - **FIXED: `extends` failed cross-file** — Same-file symbol lookup silently dropped the relationship when base class wasn't found. Now creates `PendingRelationship` with `Extends` kind for the resolver. Commit from 2026-04-03.
+  - **FIXED: `implements` was same-file only** — Had explicit `s.file_path == ...` filter rejecting cross-file interfaces and fabricating dead IDs. Removed filter; creates `PendingRelationship` with `Implements` kind when interface not found locally. Commit from 2026-04-03.
+  - **FIXED: Namespace-qualified names not normalized** — Added `strip_php_namespace()` helper to extract last `\`-separated component. Applied to extends, implements, and instantiates name resolution. Commit from 2026-04-03.
 - **Notes:**
-  - PHP's interface-heavy architecture (Slim uses PSR interfaces) naturally limits direct class references
-  - `get_symbols` target filter duplicates methods (106 instead of 55) — display bug
+  - `*` on Relationships, Identifiers, and Centrality indicates PASS after fixes
+  - `get_symbols` target filter duplicates methods (106 instead of 55) — minor display bug, not data loss
+  - 50 PHP tests passing, 5 new cross-file relationship tests added
 
 ### Ruby
-- **Reference project:** sinatra/sinatra (289 files, 6919 symbols, 1661 relationships)
-- **Date verified:** 2026-03-18
-- **7/8 PASS, 1 MIXED (Centrality)**
-- **Issues found (1):**
-  - **UNFIXED: Centrality on constant, not class** — Ruby class definitions produce both a `class` and `constant` symbol at the same line. Centrality accumulates on the wrong one (`Sinatra::Base` class = 0.00, but `route` method = 1.00).
+- **Reference project:** sinatra/sinatra (290 files, 4290 symbols, 1611 relationships)
+- **Date verified:** 2026-04-03 (re-verified)
+- **All 8 checks: PASS**
+- **Issues found (2 — both FIXED):**
+  - **FIXED: Centrality on constant, not class** — Class/constant deduplication logic added to `traverse_tree_with_parent`: constants that are class/module name fields, superclass refs, scope resolution components, etc. are filtered out. Only 3 minor duplicates remain (cosmetic). Centrality now correctly goes to class symbol: `Base` class=4.8, constant=0.0.
+  - **FIXED: Zero type_usage identifiers** — Ruby identifier extractor had no `type_usage` extraction. Added TypeUsage for constant nodes in reference positions (scope resolution, superclass, include/extend/prepend arguments). Commit from 2026-04-03.
+- **Live verification results (2026-04-03):**
+  - Check 3 (Identifiers): TypeUsage identifiers now extracted for `Sinatra::Base`, superclass refs, include/extend
+  - Check 4 (Centrality): `Base` class reference_score=4.8 (was 0.00); centrality correctly on class, not constant
+  - Top symbols: `new` method (117.0), `settings` (78.0), `route` (36.0) — healthy distribution
 - **Notes:**
   - Module nesting (`Sinatra::Base`, `Sinatra::Helpers`) correctly represented
   - attr_accessor, attr_reader, aliases, includes/extends all captured
-  - 21 disambiguation candidates for `Base` in deep_dive (class/constant duplication)
+  - `*` on Identifiers and Centrality indicates PASS after type_usage fix applied
 
 ### C#
 - **Reference project:** JamesNK/Newtonsoft.Json (1160 files, 21062 symbols, 17049 relationships)
@@ -323,35 +333,40 @@
 
 ### Swift
 - **Reference project:** Alamofire/Alamofire (521 files, 20552 symbols, 2932 relationships)
-- **Date verified:** 2026-03-18
-- **5/8 PASS, 3 PARTIAL**
-- **Issues found (1 — not yet fixed):**
-  - **UNFIXED: Primary `Session` class missing from symbols** — `open class Session: @unchecked Sendable` at `Source/Core/Session.swift:30` is absent from the symbol table. Its ~80 methods are extracted as orphaned top-level functions. `extract_class()` in `swift/types.rs` looks for `type_identifier`/`user_type` child but returns `None` for this file. Other classes with `@unchecked Sendable` ARE extracted correctly.
+- **Date verified:** 2026-04-03 (re-verified)
+- **All 8 checks: PASS**
+- **Issues found (2 — both FIXED):**
+  - **FIXED: Primary `Session` class missing from symbols** — Fixed in prior commit (3105fa7e): `child_by_field_name("name")` instead of kind-based search. Session is now correctly extracted.
+  - **FIXED: Signature for `@unchecked Sendable` classes** — `open class Session: @unchecked Sendable` generated wrong signature `"open @unchecked class Session: Sendable"`. Root cause: `extract_modifiers` scanned ALL direct children for `attribute` nodes including post-colon inheritance attributes. Fix: break on `:` in direct-child scan; pair `attribute` + `inheritance_specifier` siblings in inheritance extraction. Commit from 2026-04-03.
 - **Notes:**
+  - `*` on Symbols indicates PASS after signature fix
   - Protocol/extension extraction works well (URLConvertible, URLRequestConvertible)
-  - Session extensions have wildly different centrality (0.00 to 1.00)
   - Test detection works correctly for Swift `Tests/` directory
 
 ### Kotlin
 - **Reference project:** square/moshi (182 files, 6602 symbols, 5767 relationships)
-- **Date verified:** 2026-03-18
-- **6/8 PASS, 2 PARTIAL** (after type_usage fix)
-- **Issues found (2):**
+- **Date verified:** 2026-04-03 (re-verified)
+- **All 8 checks: PASS**
+- **Issues found (3 — all FIXED):**
   - **FIXED: Centrality 0.00 for all core classes** — Added `user_type` handler for Kotlin type annotations. Commit `90bffa2a`.
-  - **UNFIXED: Sealed class `JsonReader` not extracted** — `sealed class JsonReader` completely absent from symbols. 30+ member functions extracted as orphaned top-level symbols. `JsonWriter` (also sealed) IS extracted correctly.
+  - **FIXED: Sealed class `JsonReader` not extracted** — Fixed in prior commit via ERROR node recovery in `mod.rs`. `tree-sitter-kotlin-ng 1.1.0` wraps the outer sealed class in an ERROR node when a nested class has `private constructor` on a separate line.
+  - **FIXED: Missing space in class signature** — `Moshiprivate constructor(builder: Builder)` missing space. Fix: check if constructor text starts with `(`; if not, insert space before appending. Commit from 2026-04-03.
 - **Notes:**
+  - `*` on Symbols indicates PASS after signature spacing fix
   - Nested class extraction works well (Builder, LookupChain, companion objects)
   - Cross-language references (Java importing Kotlin) tracked correctly
-  - Missing space in `Moshi` class signature: `Moshiprivate constructor(builder: Builder)`
+  - All 43 Kotlin tests pass
 
 ### C
-- **Reference project:** jqlang/jq (358 files, 12361 symbols, 3639 relationships)
-- **Date verified:** 2026-03-18
-- **5/8 PASS, 1 PARTIAL, 1 FAIL** (after type_usage + test detection fix)
-- **Issues found (2):**
+- **Reference project:** jqlang/jq (358 files, 12361 symbols, 3637 relationships)
+- **Date verified:** 2026-04-03 (re-verified)
+- **All 8 checks: PASS**
+- **Issues found (3 — all FIXED):**
   - **FIXED: No type_usage identifiers for typedefs** — Added `type_identifier` handler with struct/enum/typedef declaration filter. Commit `90bffa2a`.
   - **FIXED: `*_test.c` not detected** — Added `_test.c`/`_test.cc`/`_test.cpp` to `is_test_path()`. Commit `90bffa2a`.
-  - **UNFIXED: Centrality split between header and implementation** — `jq_next` in `execute.c` has centrality 0.00 (26 refs) while the `jq.h` declaration gets 0.80. Ref attribution goes to header, not implementation.
+  - **FIXED: Centrality split between header and implementation** — Step 5 in `compute_reference_scores()` propagates 70% of header declaration score to `.c`/`.cpp` implementation. Re-verified: `jv_mem_free` header=75.0, impl=52.5 (exactly 70%); `jq_next` impl=27.0 (gets direct refs now), header=0.0. `gen_op_simple` header=36.0, impl=120.0 (implementation has own refs plus propagation).
+- **Notes:**
+  - `*` on Centrality and Test Detection indicates PASS after fixes
 
 ### C++
 - **Reference project:** nlohmann/json (1136 files, 15701 symbols, 2342 relationships)
@@ -367,14 +382,16 @@
 
 ### Dart
 - **Reference project:** rrousselGit/riverpod (1805 files, 28106 symbols, 3373 relationships)
-- **Date verified:** 2026-03-18
-- **6/8 PASS, 2 PARTIAL** (after type_usage fix)
-- **Issues found (2):**
+- **Date verified:** 2026-04-03 (re-verified)
+- **All 8 checks: PASS**
+- **Issues found (2 — both FIXED):**
   - **FIXED: No type_usage identifiers** — Added `type_identifier` handler with type_alias declaration filter. Commit `90bffa2a`.
-  - **UNFIXED: Dart 3 class modifiers dropped** — `ProviderContainer` (`base class`) and `AsyncValue` (`sealed class`) not extracted as class symbols. Extractor only matches `class_definition`; Dart 3's `base`/`sealed`/`final`/`interface` modifiers produce different AST node types.
+  - **FIXED: Dart 3 class modifiers** — `harper-tree-sitter-dart v0.0.5` does not support Dart 3 modifier syntax (`sealed`, `base`, `final`, `interface`, `mixin class`). Two AST recovery patterns implemented: (1) Generic modifier classes (`sealed class AsyncValue<T>`) where `<T>` is misparsed as a comparison, recovered via forward-walking from program-level `type_identifier` matching a modifier keyword; (2) `mixin class` declarations where `class` becomes the mixin name, recovered via `recover_mixin_class_declaration`. Commit from 2026-04-03.
 - **Notes:**
+  - `*` on Symbols and Centrality indicates PASS after Dart 3 modifier fix
   - Standard `abstract class` and plain `class` declarations extracted correctly
   - Test detection correctly handles `test/` directory for Dart
+  - Both existing and new Dart tests pass (no regression)
 
 ### Lua
 - **Reference project:** rxi/lite (404 files, 27858 symbols, 9167 relationships)
@@ -396,12 +413,14 @@ These are unfixed issues that are either language-inherent or low-severity. They
 | Language | Limitation | Workaround |
 |----------|-----------|------------|
 | **C++** | Zero cross-file references in header-only projects (e.g., nlohmann/json) | Most C++ projects with separate `.cpp` files work correctly |
-| **C** | Centrality splits between header declaration and implementation | Header gets the references; use `context_file` parameter to reach the implementation |
-| **PHP** | Class-level relationship tracking weak for namespace-heavy codebases | Method-level references work; use `language` filter for better results |
-| **Ruby** | Centrality accumulates on `constant` symbol instead of `class` | Class is still found via search; centrality ranking is affected |
+| **C++** | `deep_dive` can't disambiguate constructor overloads within same file | `context_file` only helps across files; within-file overloads need line-number disambiguation |
 | **Lua** | Class-like tables stored as `variable` kind (no `class` keyword) | Lua metatables are semantically classes but syntactically variables |
 | **Go** | Markdown headings can outrank Go structs in def search without language filter | Use `language="go"` for accurate definition search results |
 | **HTML** | Structural language — no navigable symbols extracted | HTML elements are indexed for full-text search but not symbol navigation |
 | **CSS** | Structural language — no navigable symbols extracted | CSS selectors are indexed for full-text search but not symbol navigation |
 | **JavaScript** | CommonJS `require()` patterns produce fewer relationship edges than ES modules | Centrality may be lower than expected; symbol extraction works correctly |
 | **JSON** | Flat config files may produce no symbols | Structured JSON with nested objects extracts correctly |
+
+---
+
+*Last updated: 2026-04-03 | Re-verification sweep: Python, Ruby, Swift, Kotlin, C, Dart updated. C/Ruby centrality issues resolved. Dart 3 modifier support added. Known Limitations reduced from 8 to 7 (C header/impl and Ruby class/constant fixed).*

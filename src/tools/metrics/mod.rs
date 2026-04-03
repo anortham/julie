@@ -1,8 +1,10 @@
-//! Metrics query tool — surface session and history operational data.
+//! Metrics query tool — surface session, history, and code quality data.
 //!
 //! Provides a structured interface for querying operational metrics
-//! (session stats, tool call history) stored by the operational pipeline.
+//! (session stats, tool call history) and code quality metrics
+//! (doc coverage, dead code detection) stored by the operational pipeline.
 
+pub(crate) mod code_quality;
 pub(crate) mod operational;
 pub mod session;
 
@@ -30,10 +32,10 @@ fn default_workspace() -> Option<String> {
     Some("primary".to_string())
 }
 
-/// Query operational metrics (session stats, tool call history).
+/// Query metrics: operational (session, history) or code quality (doc_coverage, dead_code).
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 pub struct QueryMetricsTool {
-    /// Metrics category: "session" (default) or "history"
+    /// Metrics category: "session" (default), "history", "doc_coverage", or "dead_code"
     #[serde(default = "default_category")]
     pub category: String,
     /// Sort order: "asc" or "desc" (default: "desc")
@@ -96,9 +98,93 @@ impl QueryMetricsTool {
 
                 Ok(CallToolResult::text_content(vec![Content::text(output)]))
             }
+            "doc_coverage" => {
+                let workspace_target =
+                    resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+                let db_arc = match workspace_target {
+                    WorkspaceTarget::Primary => {
+                        let workspace = handler
+                            .get_workspace()
+                            .await?
+                            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+                        workspace
+                            .db
+                            .clone()
+                            .ok_or_else(|| anyhow::anyhow!("No database available"))?
+                    }
+                    WorkspaceTarget::Reference(ref id) => {
+                        handler.get_database_for_workspace(id).await?
+                    }
+                };
+
+                let limit = self.limit;
+                let output = tokio::task::spawn_blocking(move || {
+                    let db = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            tracing::warn!(
+                                "Database mutex poisoned in doc_coverage query, recovering"
+                            );
+                            poisoned.into_inner()
+                        }
+                    };
+                    let stats = db.get_doc_coverage()?;
+                    let undocumented = db.get_undocumented_symbols(limit as usize)?;
+                    Ok::<String, anyhow::Error>(code_quality::format_doc_coverage(
+                        &stats,
+                        &undocumented,
+                    ))
+                })
+                .await??;
+
+                Ok(CallToolResult::text_content(vec![Content::text(output)]))
+            }
+            "dead_code" => {
+                let workspace_target =
+                    resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+                let db_arc = match workspace_target {
+                    WorkspaceTarget::Primary => {
+                        let workspace = handler
+                            .get_workspace()
+                            .await?
+                            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
+                        workspace
+                            .db
+                            .clone()
+                            .ok_or_else(|| anyhow::anyhow!("No database available"))?
+                    }
+                    WorkspaceTarget::Reference(ref id) => {
+                        handler.get_database_for_workspace(id).await?
+                    }
+                };
+
+                let limit = self.limit;
+                let output = tokio::task::spawn_blocking(move || {
+                    let db = match db_arc.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            tracing::warn!(
+                                "Database mutex poisoned in dead_code query, recovering"
+                            );
+                            poisoned.into_inner()
+                        }
+                    };
+                    let total_dead = db.count_dead_code_candidates()?;
+                    let candidates = db.get_dead_code_candidates(limit as usize)?;
+                    let stats = db.get_doc_coverage()?;
+                    Ok::<String, anyhow::Error>(code_quality::format_dead_code(
+                        &candidates,
+                        total_dead,
+                        stats.total_public,
+                    ))
+                })
+                .await??;
+
+                Ok(CallToolResult::text_content(vec![Content::text(output)]))
+            }
             other => {
                 let msg = format!(
-                    "Unknown category '{}'. Valid categories: session, history.",
+                    "Unknown category '{}'. Valid categories: session, history, doc_coverage, dead_code.",
                     other
                 );
                 Ok(CallToolResult::text_content(vec![Content::text(msg)]))

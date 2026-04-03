@@ -6,6 +6,7 @@ pub mod class_constant_dedup;
 pub mod cross_file_relationships;
 pub mod doc_comments;
 pub mod extractor;
+pub mod identifiers;
 pub mod struct_and_module_function;
 pub mod types;
 
