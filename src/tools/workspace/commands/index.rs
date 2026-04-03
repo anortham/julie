@@ -275,33 +275,84 @@ impl ManageWorkspaceTool {
                             "Skipping embeddings in auto-index mode (use explicit `manage_workspace index` to embed)"
                         );
                     } else {
-                        // Force re-index: pipeline was already cancelled at the top
-                        // of this function. Clear embeddings so the new pipeline
-                        // re-embeds everything with the latest enrichment text.
-                        if force {
-                            if let Ok(Some(workspace)) = handler.get_workspace().await {
-                                if let Some(ref db) = workspace.db {
-                                    let mut db_lock = db.lock().unwrap_or_else(|p| p.into_inner());
-                                    match db_lock.clear_all_embeddings() {
-                                        Ok(()) => {
-                                            info!("🗑️ Cleared all embeddings for force re-embed")
+                        // Only run embedding pipeline when the DB actually mutated.
+                        // Matches the gate in handle_refresh_command.
+                        let db_mutated =
+                            result.files_processed > 0 || result.orphans_cleaned > 0;
+
+                        if db_mutated || force {
+                            // Force re-index: pipeline was already cancelled at the top
+                            // of this function. Clear embeddings so the new pipeline
+                            // re-embeds everything with the latest enrichment text.
+                            //
+                            // Bug fix: route the clear to the CORRECT workspace DB.
+                            // handler.get_workspace().db always points to the PRIMARY
+                            // workspace. For reference workspaces we must open the
+                            // reference DB via workspace_db_path() instead.
+                            if force {
+                                if let Ok(Some(workspace)) = handler.get_workspace().await {
+                                    if is_reference_workspace {
+                                        // Open the REFERENCE workspace DB directly.
+                                        // handler.get_workspace().db is the PRIMARY, not the reference.
+                                        let ref_db_path =
+                                            workspace.workspace_db_path(&ws_id);
+                                        if ref_db_path.exists() {
+                                            let path = ref_db_path;
+                                            let clear_result =
+                                                tokio::task::spawn_blocking(move || {
+                                                    let mut ref_db =
+                                                        crate::database::SymbolDatabase::new(
+                                                            path,
+                                                        )?;
+                                                    ref_db.clear_all_embeddings()
+                                                })
+                                                .await;
+                                            match clear_result {
+                                                Ok(Ok(())) => info!(
+                                                    "🗑️ Cleared reference workspace embeddings for force re-embed"
+                                                ),
+                                                Ok(Err(e)) => tracing::warn!(
+                                                    "Failed to clear reference embeddings: {e}"
+                                                ),
+                                                Err(e) => tracing::warn!(
+                                                    "Reference embedding clear task panicked: {e}"
+                                                ),
+                                            }
+                                        } else {
+                                            debug!(
+                                                "Reference DB does not exist at {}, nothing to clear",
+                                                ref_db_path.display()
+                                            );
                                         }
-                                        Err(e) => tracing::warn!("Failed to clear embeddings: {e}"),
+                                    } else if let Some(ref db) = workspace.db {
+                                        // Primary workspace: clear from the handler's workspace DB.
+                                        let mut db_lock =
+                                            db.lock().unwrap_or_else(|p| p.into_inner());
+                                        match db_lock.clear_all_embeddings() {
+                                            Ok(()) => info!(
+                                                "🗑️ Cleared all embeddings for force re-embed"
+                                            ),
+                                            Err(e) => tracing::warn!(
+                                                "Failed to clear embeddings: {e}"
+                                            ),
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        let embed_count =
-                            crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
-                                handler, ws_id,
-                            )
-                            .await;
-                        if embed_count > 0 {
-                            message.push_str(&format!(
-                                "\nEmbedding {} symbols in background...",
-                                embed_count
-                            ));
+                            let embed_count =
+                                crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+                                    handler, ws_id,
+                                )
+                                .await;
+                            if embed_count > 0 {
+                                message.push_str(&format!(
+                                    "\nEmbedding {} symbols in background...",
+                                    embed_count
+                                ));
+                            }
+                        } else {
+                            debug!("No files changed, skipping embedding pipeline");
                         }
                     }
                 }

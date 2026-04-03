@@ -29,6 +29,65 @@ fn insert_test_symbol(db: &mut SymbolDatabase, id: &str, name: &str, file_path: 
         .expect("Failed to insert test symbol");
 }
 
+/// Verify that clearing embeddings on a separate DB does not affect another DB.
+/// This characterizes the correct routing behavior: when force-indexing a reference
+/// workspace, `clear_all_embeddings()` must be called on the REFERENCE DB,
+/// not on the primary workspace DB.
+#[test]
+fn test_clear_embeddings_on_separate_db_does_not_affect_other() {
+    let dir1 = TempDir::new().unwrap();
+    let dir2 = TempDir::new().unwrap();
+    let primary_path = dir1.path().join("primary.db");
+    let reference_path = dir2.path().join("reference.db");
+
+    let mut primary_db = SymbolDatabase::new(&primary_path).unwrap();
+    let mut reference_db = SymbolDatabase::new(&reference_path).unwrap();
+
+    // Insert a symbol into each DB so store_embeddings has a valid FK target.
+    insert_test_symbol(&mut primary_db, "sym_primary", "primary_fn", "src/main.rs");
+    insert_test_symbol(
+        &mut reference_db,
+        "sym_ref",
+        "reference_fn",
+        "lib/lib.rs",
+    );
+
+    // Store one embedding in each DB.
+    primary_db
+        .store_embeddings(&[("sym_primary".to_string(), vec![0.1_f32; 384])])
+        .unwrap();
+    reference_db
+        .store_embeddings(&[("sym_ref".to_string(), vec![0.2_f32; 384])])
+        .unwrap();
+
+    assert_eq!(
+        primary_db.embedding_count().unwrap(),
+        1,
+        "primary should have 1 embedding before clear"
+    );
+    assert_eq!(
+        reference_db.embedding_count().unwrap(),
+        1,
+        "reference should have 1 embedding before clear"
+    );
+
+    // Clear embeddings on the REFERENCE db only (simulating force-index of ref workspace).
+    reference_db.clear_all_embeddings().unwrap();
+
+    // Primary must be untouched.
+    assert_eq!(
+        primary_db.embedding_count().unwrap(),
+        1,
+        "primary embeddings must be untouched after clearing reference DB"
+    );
+    // Reference is now empty.
+    assert_eq!(
+        reference_db.embedding_count().unwrap(),
+        0,
+        "reference embeddings must be 0 after clear"
+    );
+}
+
 /// Verify that `embedding_count()` returns the actual total row count from
 /// `symbol_vectors`, not merely the number of vectors stored in a single run.
 ///
