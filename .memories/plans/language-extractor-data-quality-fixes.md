@@ -1,9 +1,9 @@
 ---
 id: language-extractor-data-quality-fixes
 title: Language Extractor Data Quality Fixes
-status: active
+status: completed
 created: 2026-04-03T00:24:16.145Z
-updated: 2026-04-03T00:24:16.145Z
+updated: 2026-04-03T12:16:58.502Z
 tags:
   - data-quality
   - extractors
