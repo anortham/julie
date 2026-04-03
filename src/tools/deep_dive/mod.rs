@@ -31,6 +31,7 @@ fn default_workspace() -> Option<String> {
 /// fast_search → get_symbols → fast_refs → Read with a single call.
 pub struct DeepDiveTool {
     /// Symbol name to investigate (supports qualified names like `Processor::process`)
+    #[serde(alias = "symbol_name")]
     pub symbol: String,
 
     /// Investigation depth: "overview" (default, ~200 tokens: signature + caller/callee list), "context" (~600 tokens: adds code body), "full" (~1500 tokens: all refs, test locations, bodies). Use overview for orientation, context when you need implementation details, full for complete investigation

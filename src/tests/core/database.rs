@@ -2264,10 +2264,11 @@ fn test_migration_011_is_idempotent() {
     let version = db.get_schema_version().unwrap();
     assert_eq!(version, LATEST_SCHEMA_VERSION);
 
-    // Config should still have defaults
-    let (model, dims) = db.get_embedding_config().unwrap();
+    // Config should still have defaults (including format_version from migration 014)
+    let (model, dims, fmt_ver) = db.get_embedding_config().unwrap();
     assert_eq!(model, "bge-small-en-v1.5");
     assert_eq!(dims, 384);
+    assert_eq!(fmt_ver, 1);
 }
 
 /// Task 6: Constructor centrality propagation to parent class.

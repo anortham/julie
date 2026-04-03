@@ -31,6 +31,17 @@ const VARIABLE_EMBEDDING_POLICY: VariableEmbeddingPolicy = VariableEmbeddingPoli
     max_ratio: 0.20,
 };
 
+/// Embedding text format version. Bump when the format of text passed to the
+/// embedding model changes (e.g., adding file paths, implementor names, field
+/// signatures to symbol metadata). A version mismatch triggers a full re-embed
+/// on the next pipeline run, so users upgrading Julie get enriched embeddings
+/// automatically without needing `force: true`.
+///
+/// History:
+///   1 = original format (symbol name + signature + children names)
+///   2 = enriched format (+ file path, implementor names, field signatures)
+pub const EMBEDDING_FORMAT_VERSION: u32 = 2;
+
 /// Statistics from an embedding pipeline run.
 #[derive(Debug, Clone)]
 pub struct EmbeddingStats {
@@ -177,30 +188,33 @@ pub fn run_embedding_pipeline_cancellable(
         batches_processed: 0,
     };
 
-    // Detect model/dimension changes and recreate the vector table if needed.
-    // Any model change (name or dimensions) wipes all vectors and re-embeds from scratch,
-    // because vectors from different models are not comparable even at the same dimensionality.
+    // Detect model/dimension/format changes and recreate the vector table if needed.
+    // Any change wipes all vectors and re-embeds from scratch, because vectors from
+    // different models or format versions are not comparable.
     {
         let mut db_guard = db
             .lock()
             .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
-        let (stored_model, stored_dims) = db_guard
+        let (stored_model, stored_dims, stored_fmt_ver) = db_guard
             .get_embedding_config()
-            .unwrap_or(("unknown".to_string(), 384));
+            .unwrap_or(("unknown".to_string(), 384, 0));
         let provider_dims = provider.dimensions();
         let provider_model = provider.device_info().model_name;
 
-        if stored_dims != provider_dims || stored_model != provider_model {
+        if stored_dims != provider_dims || stored_model != provider_model || stored_fmt_ver != EMBEDDING_FORMAT_VERSION {
+            let reason = if stored_fmt_ver != EMBEDDING_FORMAT_VERSION {
+                format!("format version change (v{stored_fmt_ver} -> v{EMBEDDING_FORMAT_VERSION})")
+            } else {
+                format!("model change ({stored_model} {stored_dims}d -> {provider_model} {provider_dims}d)")
+            };
             info!(
-                "Embedding pipeline: model change detected \
-                 ({stored_model} {stored_dims}d -> {provider_model} {provider_dims}d), \
-                 recreating vector table and clearing all embeddings"
+                "Embedding pipeline: {reason}, recreating vector table and clearing all embeddings"
             );
             db_guard
                 .recreate_vectors_table(provider_dims)
                 .context("Failed to recreate vectors table for new model")?;
             db_guard
-                .set_embedding_config(&provider_model, provider_dims)
+                .set_embedding_config(&provider_model, provider_dims, EMBEDDING_FORMAT_VERSION)
                 .context("Failed to update embedding config")?;
         }
     }

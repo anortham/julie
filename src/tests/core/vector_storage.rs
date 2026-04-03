@@ -387,22 +387,41 @@ mod tests {
     fn test_get_embedding_config_returns_defaults() {
         let (db, _dir) = create_test_db();
 
-        // Migration 011 should set defaults: model="bge-small-en-v1.5", dimensions=384
-        let (model, dims) = db.get_embedding_config().unwrap();
+        // Migration 011 sets model/dims defaults, migration 014 adds format_version=1
+        let (model, dims, fmt_ver) = db.get_embedding_config().unwrap();
         assert_eq!(model, "bge-small-en-v1.5");
         assert_eq!(dims, 384);
+        assert_eq!(fmt_ver, 1);
     }
 
     #[test]
     fn test_set_embedding_config_updates_values() {
         let (mut db, _dir) = create_test_db();
 
-        db.set_embedding_config("nomic-embed-text-v1.5", 768)
+        db.set_embedding_config("nomic-embed-text-v1.5", 768, 2)
             .unwrap();
 
-        let (model, dims) = db.get_embedding_config().unwrap();
+        let (model, dims, fmt_ver) = db.get_embedding_config().unwrap();
         assert_eq!(model, "nomic-embed-text-v1.5");
         assert_eq!(dims, 768);
+        assert_eq!(fmt_ver, 2);
+    }
+
+    #[test]
+    fn test_set_embedding_config_preserves_format_version_independently() {
+        let (mut db, _dir) = create_test_db();
+
+        // Change model but keep format version at 1
+        db.set_embedding_config("new-model", 768, 1).unwrap();
+        let (_, _, fmt_ver) = db.get_embedding_config().unwrap();
+        assert_eq!(fmt_ver, 1);
+
+        // Now bump format version
+        db.set_embedding_config("new-model", 768, 3).unwrap();
+        let (model, dims, fmt_ver) = db.get_embedding_config().unwrap();
+        assert_eq!(model, "new-model");
+        assert_eq!(dims, 768);
+        assert_eq!(fmt_ver, 3);
     }
 
     #[test]

@@ -4,7 +4,7 @@
 
 - [ ] **Flaky search line mode tests** -- `test_fast_search_line_mode_combined_filters` and `test_fast_search_line_mode_language_filter` fail nondeterministically in the `tools-search` xtask bucket. Pass reliably in isolation. Likely a shared-state or fixture ordering issue in the line mode test suite. (`src/tests/tools/search/line_mode.rs`)
 
-- [ ] **deep_dive parameter mismatch** -- `symbol_name` param sent by some clients but the tool expects `symbol`. Causes `missing field 'symbol'` deserialization error.
+- [x] **deep_dive parameter mismatch** -- Fixed via `#[serde(alias = "symbol_name")]` on the `symbol` field.
 
 ## Architecture Questions
 
@@ -16,10 +16,10 @@
 
 - [ ] **Linux ROCm (AMD GPU) support in sidecar bootstrap** -- PyTorch supports AMD GPUs on Linux via ROCm (`https://download.pytorch.org/whl/rocm6.2`). When ROCm torch is installed, `torch.cuda.is_available()` returns True (ROCm provides HIP-based CUDA compat), so the runtime `_select_device` works fine. But the Rust bootstrap (`sidecar_bootstrap.rs`) has no `detect_amd_rocm()` equivalent and never installs ROCm torch. Linux users with AMD GPUs silently get CPU-only embeddings. Detection: check for `rocminfo` command or `/opt/rocm`. Intel XPU (`intel-extension-for-pytorch`) is a similar gap but much more niche.
 - [ ] **Windows Python launcher versioned probing** -- `python_interpreter_candidates()` lists `py` first on Windows, but doesn't try `py -3.12` / `py -3.13` syntax (the standard way to request a specific Python version via the Windows launcher). These require passing args, not just a binary name, so the current `Vec<OsString>` approach needs rework. (`src/embeddings/sidecar_bootstrap.rs`)
-- [ ] **Embedding format versioning** -- When embedding enrichment format changes (e.g., adding field accesses), symbols need re-embedding. Currently requires `force=true` on reindex. Add a format version to the pipeline so changes trigger automatic re-embedding.
+- [x] **Embedding format versioning** -- `EMBEDDING_FORMAT_VERSION` constant in `pipeline.rs` triggers full re-embed when bumped. Migration 014 adds `format_version` column to `embedding_config`. Version 2 = enriched format (file paths, implementor names, field signatures).
 - [ ] **Worktree agent metrics are lost on cleanup** -- Worktree agents spawn their own Julie MCP server instance with a separate `.julie/` directory. When the worktree is cleaned up, those metrics are deleted. Fix: route metrics writes to the primary workspace's database regardless of which worktree Julie is running in, or consolidate metrics post-merge.
-- [ ] **NL query vocabulary gap** -- Code embedding models match tokens, not semantic synonyms ("save" != "record", "persist" != "insert"). Needs NL query expansion or dual-model approach. Related: `fast_search` content mode with NL queries consistently misses relevant code that `get_context` (embedding-powered) finds.
-- [ ] **Claude Code plugin distribution** -- Viable via a separate `julie-plugin` repo that bundles pre-built binaries + sidecar + skills. Key constraint: no PostInstall hooks exist in Claude Code plugin system, so bundling binaries is the only reliable approach. See goldfish plugin at `~/source/goldfish` as working example.
+- [ ] **NL query vocabulary gap** -- Code embedding models match tokens, not semantic synonyms ("save" != "record", "persist" != "insert"). Partially mitigated by embedding enrichment (file paths, implementor names, field signatures) and query classification (dynamic keyword/semantic weighting). Remaining gap: `fast_search` content mode with NL queries still misses code that `get_context` (embedding-powered) finds. Full fix likely needs NL query expansion or dual-model approach.
+- [x] **Claude Code plugin distribution** -- Shipped as `julie-plugin` repo with bundled platform binaries. See `~/source/julie-plugin`.
 - [ ] **Self-improvement skill** -- Julie could identify symbols with high centrality but poor searchability: functions whose names and docs don't overlap with the concepts they implement.
 
 ## Future Ideas
@@ -37,5 +37,5 @@ Tested 9 semantic queries against LabHandbook V2 (434 files, 7306 symbols). Key 
 
 - **Cross-language semantic search is the killer feature.** "How does the frontend communicate with the backend API" returned a complete API surface map across C# and TypeScript in one call.
 - **NL text search (`fast_search`) is the weak spot.** Definition mode is excellent; content mode with NL queries misses relevant code. The quality gap between `fast_search` and `get_context` for NL queries is significant.
-- **One persistent weakness:** "content management rich text editing" missed the core content subsystem. Embedding vectors for some symbols don't associate strongly with the concepts they implement. Worth investigating whether enriching embedding input (beyond symbol name + signature) helps.
+- **One persistent weakness:** "content management rich text editing" missed the core content subsystem. Embedding vectors for some symbols don't associate strongly with the concepts they implement. **Update (2026-04-03):** Embedding enrichment shipped (file paths, implementor names, field signatures, query classification). Similarity threshold lowered from 0.5 to 0.35. This improved conceptual search significantly but the core vocabulary gap remains for true semantic synonyms.
 - **Multi-instance VRAM is a concern** with larger models (768d). 2+ Julie processes = 2+ model loads. Daemon mode's shared `EmbeddingService` mitigates this for same-machine sessions.

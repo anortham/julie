@@ -20,6 +20,14 @@ If the symbol names are approximate or ambiguous, resolve them first:
 fast_search(query="<name>", search_target="definitions")
 ```
 
+If the user describes behavior ("how does X reach Y") rather than naming symbols, use a conceptual search to find the entry points:
+
+```
+fast_search(query="payment validation", search_target="definitions")
+```
+
+Semantic search will find relevant symbols by meaning, not just name.
+
 If `deep_dive` returns the wrong symbol (e.g., a common name like `new` or `process`), use the `context_file` parameter to disambiguate:
 
 ```

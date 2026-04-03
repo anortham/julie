@@ -22,6 +22,14 @@ get_context(query="<function_name or related concept>")
 
 This shows the function's neighbors and where it fits in the broader architecture.
 
+If the user describes behavior ("how does payment processing work") rather than naming a function, start with a conceptual search to find the entry point:
+
+```
+fast_search(query="payment processing", search_target="definitions")
+```
+
+Semantic search will find relevant symbols even when the query doesn't match any name literally.
+
 ### Step 1: Deep Dive with Full Depth
 
 ```

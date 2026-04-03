@@ -243,29 +243,30 @@ impl SymbolDatabase {
     // Embedding Config (Dynamic Dimensions)
     // ========================================================================
 
-    /// Read the current embedding model name and dimensions from the config table.
-    pub fn get_embedding_config(&self) -> Result<(String, usize)> {
-        let (model, dims) = self.conn.query_row(
-            "SELECT model_name, dimensions FROM embedding_config WHERE id = 1",
+    /// Read the current embedding model name, dimensions, and format version from the config table.
+    pub fn get_embedding_config(&self) -> Result<(String, usize, u32)> {
+        let (model, dims, fmt_ver) = self.conn.query_row(
+            "SELECT model_name, dimensions, format_version FROM embedding_config WHERE id = 1",
             [],
             |row| {
                 let model: String = row.get(0)?;
                 let dims: i32 = row.get(1)?;
-                Ok((model, dims as usize))
+                let fmt_ver: i32 = row.get(2)?;
+                Ok((model, dims as usize, fmt_ver as u32))
             },
         )?;
-        Ok((model, dims))
+        Ok((model, dims, fmt_ver))
     }
 
-    /// Update the embedding config with a new model name and dimensions.
-    pub fn set_embedding_config(&mut self, model_name: &str, dimensions: usize) -> Result<()> {
+    /// Update the embedding config with a new model name, dimensions, and format version.
+    pub fn set_embedding_config(&mut self, model_name: &str, dimensions: usize, format_version: u32) -> Result<()> {
         self.conn.execute(
-            "UPDATE embedding_config SET model_name = ?1, dimensions = ?2 WHERE id = 1",
-            rusqlite::params![model_name, dimensions as i32],
+            "UPDATE embedding_config SET model_name = ?1, dimensions = ?2, format_version = ?3 WHERE id = 1",
+            rusqlite::params![model_name, dimensions as i32, format_version as i32],
         )?;
         debug!(
-            "Updated embedding config: model={}, dimensions={}",
-            model_name, dimensions
+            "Updated embedding config: model={}, dimensions={}, format_version={}",
+            model_name, dimensions, format_version
         );
         Ok(())
     }

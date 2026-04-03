@@ -13,7 +13,7 @@ fn get_unix_timestamp() -> Result<i64> {
 }
 
 /// Current schema version - increment when adding migrations
-pub const LATEST_SCHEMA_VERSION: i32 = 13;
+pub const LATEST_SCHEMA_VERSION: i32 = 14;
 
 impl SymbolDatabase {
     // ============================================================
@@ -109,6 +109,7 @@ impl SymbolDatabase {
             11 => self.migration_011_add_embedding_config()?,
             12 => self.migration_012_add_memory_vectors()?,
             13 => self.migration_013_add_tool_calls_and_line_count()?,
+            14 => self.migration_014_add_embedding_format_version()?,
             _ => return Err(anyhow!("Unknown migration version: {}", version)),
         }
         Ok(())
@@ -130,6 +131,7 @@ impl SymbolDatabase {
             11 => "Add embedding config table",
             12 => "Add memory vectors table",
             13 => "Add tool_calls table and line_count column",
+            14 => "Add format_version to embedding_config",
             _ => "Unknown migration",
         };
 
@@ -750,6 +752,23 @@ impl SymbolDatabase {
         }
 
         info!("Migration 013 complete: tool_calls table and line_count column added");
+        Ok(())
+    }
+
+    fn migration_014_add_embedding_format_version(&self) -> Result<()> {
+        info!("Running migration 014: Add format_version to embedding_config");
+
+        if self.has_column("embedding_config", "format_version")? {
+            debug!("embedding_config.format_version already exists, skipping migration 014");
+            return Ok(());
+        }
+
+        self.conn.execute(
+            "ALTER TABLE embedding_config ADD COLUMN format_version INTEGER NOT NULL DEFAULT 1",
+            [],
+        )?;
+
+        info!("Migration 014 complete: format_version column added to embedding_config");
         Ok(())
     }
 }

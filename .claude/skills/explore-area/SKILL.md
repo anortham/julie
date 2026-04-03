@@ -18,6 +18,8 @@ Orient on an unfamiliar area of the codebase using Julie's `get_context` tool. T
 get_context(query="<area, concept, or module name>")
 ```
 
+Conceptual queries work well here, not just symbol names. For example, `get_context(query="error handling and retries")` will find relevant symbols by meaning via semantic search.
+
 This returns:
 - **Pivots**: The most relevant symbols with full code bodies
 - **Neighbors**: Connected symbols with signatures only
