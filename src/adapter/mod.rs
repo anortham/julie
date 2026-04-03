@@ -26,19 +26,50 @@ use self::launcher::DaemonLauncher;
 /// 3. Sends the workspace header (`WORKSPACE:/path\n`)
 /// 4. Bidirectionally forwards stdin/stdout to/from the IPC stream
 ///
-/// On connection loss, logs the error and exits cleanly. The MCP client
-/// is responsible for restarting the adapter process — transparent reconnect
-/// from the adapter side breaks MCP session state.
+/// On connection loss during forwarding, logs the error and exits cleanly.
+/// The MCP client is responsible for restarting the adapter process in that
+/// case; transparent reconnect from the adapter side would break MCP session
+/// state.
+///
+/// However, initial connection failures ARE retried: the daemon may have just
+/// shut down for a stale-binary restart, and the adapter needs to re-launch it.
+/// Without this retry, the MCP client sees "failed" on every rebuild cycle.
 pub async fn run_adapter(workspace_root: PathBuf) -> Result<()> {
     let paths = DaemonPaths::new();
     let launcher = DaemonLauncher::new(paths.clone());
 
-    // ensure_daemon_running blocks (file locks + thread::sleep poll).
-    // block_in_place yields the tokio thread pool slot while blocking.
-    tokio::task::block_in_place(|| launcher.ensure_daemon_running())
-        .context("Failed to ensure daemon is running")?;
+    // Retry loop for initial connection. The daemon may reject our connection
+    // if it detects a stale binary (rebuilt since daemon started). In that case
+    // it shuts down before accepting, so connect_and_handshake fails. We wait
+    // briefly for the old daemon to exit, then re-launch and reconnect.
+    const MAX_RETRIES: u32 = 2;
+    let mut stream = None;
+    for attempt in 0..=MAX_RETRIES {
+        tokio::task::block_in_place(|| launcher.ensure_daemon_running())
+            .context("Failed to ensure daemon is running")?;
 
-    let stream = connect_and_handshake(&paths, &workspace_root).await?;
+        match connect_and_handshake(&paths, &workspace_root).await {
+            Ok(s) => {
+                stream = Some(s);
+                break;
+            }
+            Err(e) => {
+                if attempt < MAX_RETRIES {
+                    info!(
+                        "Connection attempt {} failed ({}), retrying after daemon restart...",
+                        attempt + 1, e
+                    );
+                    // Give the old daemon time to fully shut down and release
+                    // the socket before we try to spawn a new one.
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                } else {
+                    return Err(e).context("Failed to connect to daemon after retries");
+                }
+            }
+        }
+    }
+    let stream = stream.expect("loop guarantees stream is set on success");
+
     info!("Adapter connected to daemon, forwarding bytes");
 
     match forward_bytes(stream).await {
