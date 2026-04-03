@@ -84,6 +84,7 @@ pub mod tools {
 
     pub mod workspace {
         pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests
+        pub mod index_embedding_tests; // Embedding pipeline fixes: embedding_count reflects DB total
         pub mod isolation; // Workspace isolation tests
         pub mod management_token; // ManageWorkspaceTool token optimization tests
         pub mod mod_tests; // Workspace module functionality tests

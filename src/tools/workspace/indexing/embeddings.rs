@@ -173,10 +173,17 @@ pub(crate) async fn spawn_workspace_embedding(
                     "Workspace {workspace_id} embedding complete: {}/{} symbols embedded ({} skipped)",
                     stats.symbols_embedded, stats.symbols_scanned, stats.symbols_skipped
                 );
-                // Write vector count and embedding model back to daemon.db
-                if let Some(ref db) = daemon_db {
-                    let _ = db.update_vector_count(&workspace_id, stats.symbols_embedded as i64);
-                    let _ = db.update_embedding_model(&workspace_id, &model_name);
+                // Write vector count and embedding model back to daemon.db.
+                // Use embedding_count() from the workspace DB rather than
+                // stats.symbols_embedded so partial re-embeds and no-op runs
+                // don't make daemon.db drift from reality.
+                if let Some(ref daemon) = daemon_db {
+                    let actual_count = {
+                        let db_lock = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+                        db_lock.embedding_count().unwrap_or(stats.symbols_embedded as i64)
+                    };
+                    let _ = daemon.update_vector_count(&workspace_id, actual_count);
+                    let _ = daemon.update_embedding_model(&workspace_id, &model_name);
                 }
             }
             Ok(Err(e)) => {
