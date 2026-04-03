@@ -41,46 +41,64 @@ pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
         }
     }
 
-    // === Semantic similarity (context and full depth) ===
-    format_similar_section(&mut out, &ctx.similar);
-
     // === Token budget enforcement ===
+    // Render the similar section separately so it survives truncation.
+    // The main body (callers, callees, code) gets truncated first;
+    // similar symbols are appended after, within reserved budget.
     let token_limit = match depth {
         "overview" => 300,
         "context" => 800,
         _ => 1800, // "full"
     };
+
+    let mut similar_text = String::new();
+    format_similar_section(&mut similar_text, &ctx.similar);
+
     let estimator = TokenEstimator::new();
-    let estimated = estimator.estimate_string(&out);
-    if estimated > token_limit {
-        // Find the character cut point: roughly token_limit * chars_per_token.
-        // Leave room for the truncation notice (~20 tokens = 80 chars).
-        let target_chars = (token_limit.saturating_sub(20)) * 4;
-        let truncated = if target_chars < out.len() {
-            // Find the last char boundary at or before target_chars, then walk
-            // back to the last newline so we don't cut mid-line.
-            let safe_byte = out
-                .char_indices()
-                .take_while(|(i, _)| *i <= target_chars)
-                .last()
-                .map(|(i, c)| i + c.len_utf8())
-                .unwrap_or(0);
-            let boundary = out[..safe_byte]
-                .rfind('\n')
-                .map(|pos| pos + 1)
-                .unwrap_or(safe_byte);
-            &out[..boundary]
-        } else {
-            &out
-        };
-        return format!(
-            "{}  ... (truncated to ~{} token budget)\n",
-            truncated.trim_end(),
-            token_limit
-        );
+    let similar_tokens = estimator.estimate_string(&similar_text);
+    let main_tokens = estimator.estimate_string(&out);
+    let total = main_tokens + similar_tokens;
+
+    if total <= token_limit {
+        // Everything fits
+        out.push_str(&similar_text);
+        return out.trim_end().to_string();
     }
 
-    out.trim_end().to_string()
+    // Need to truncate. Reserve space for similar section (up to 150 tokens)
+    // and truncation notice (~20 tokens).
+    let similar_reserve = similar_tokens.min(150);
+    let main_budget = token_limit.saturating_sub(similar_reserve).saturating_sub(20);
+    let target_chars = main_budget * 4;
+
+    let truncated_main = if target_chars < out.len() {
+        let safe_byte = out
+            .char_indices()
+            .take_while(|(i, _)| *i <= target_chars)
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(0);
+        let boundary = out[..safe_byte]
+            .rfind('\n')
+            .map(|pos| pos + 1)
+            .unwrap_or(safe_byte);
+        &out[..boundary]
+    } else {
+        &out
+    };
+
+    let mut result = format!(
+        "{}  ... (truncated to ~{} token budget)\n",
+        truncated_main.trim_end(),
+        token_limit
+    );
+
+    // Append similar section if we have budget for it
+    if !similar_text.is_empty() && similar_reserve > 0 {
+        result.push_str(&similar_text);
+    }
+
+    result.trim_end().to_string()
 }
 
 fn format_header(out: &mut String, ctx: &SymbolContext) {
