@@ -17,7 +17,7 @@
 | Zig | zigtools/zls | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-17 |
 | TypeScript | colinhacks/zod | PASS | PASS | PASS* | PASS* | PASS* | PASS | PASS* | PASS* | 2026-03-17 |
 | Python | pallets/flask | PASS | PASS | PASS | PASS | PASS | PASS | PASS* | PASS | 2026-04-03 |
-| Go | spf13/cobra | PASS | PASS | PASS | PASS | PARTIAL | PASS | PASS | PASS | 2026-03-18 |
+| Go | spf13/cobra | PASS | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | 2026-04-03 |
 | Java | google/gson | PASS | PASS | PASS | PASS* | PASS | PASS | PASS | PASS | 2026-03-18 |
 | PHP | slimphp/Slim | PASS | PASS* | PASS* | PASS* | PASS | PASS | PASS | PASS | 2026-04-03 |
 | Ruby | sinatra/sinatra | PASS | PASS | PASS* | PASS* | PASS | PASS | PASS | PASS | 2026-04-03 |
@@ -266,16 +266,19 @@
   - `__init__.py` re-exports all captured correctly (39 import symbols)
 
 ### Go
-- **Reference project:** spf13/cobra (65 files, 1441 symbols, 1590 relationships)
-- **Date verified:** 2026-03-18
-- **7/8 PASS, 1 PARTIAL (Def Search)**
-- **Issues found (1 — minor):**
-  - **Markdown headings outrank Go struct** — Without `language` filter, `fast_search("Command", search_target="definitions")` returns markdown doc headings above the actual `Command` struct. With `language="go"`, ranks correctly at #1.
-- **Live verification results:**
+- **Reference project:** spf13/cobra (66 files, 1441 symbols, 1590 relationships)
+- **Date verified:** 2026-04-03 (re-verified)
+- **All 8 checks: PASS**
+- **Issues found (1 — FIXED since March 18):**
+  - **FIXED: Markdown headings outrank Go struct** — `promote_exact_name_matches` now demotes doc-language symbols (markdown/json/toml/yaml) to tier 2, below source code (tier 0) and test files (tier 1). Re-verified: `Command` struct ranks #1 without `language` filter, all 7 markdown headings rank below.
+- **Live verification results (2026-04-03):**
+  - Check 5 (Def Search): `Command` struct at #1, markdown headings below (all 7 demoted correctly)
   - Command: centrality **1.00** (correct gradient: Execute=0.69, SetErrPrefix=0.43)
   - 118 symbols from command.go, correct kinds (class/field/method/constant/namespace)
   - `*_test.go` functions correctly detected and excluded
   - 3 high-centrality pivots in get_context, 21 neighbors
+- **Notes:**
+  - `*` on Def Search indicates PASS after doc-language demotion fix
 
 ### Java
 - **Reference project:** google/gson (305 files, 8511 symbols, 7327 relationships)
@@ -415,7 +418,6 @@ These are unfixed issues that are either language-inherent or low-severity. They
 | **C++** | Zero cross-file references in header-only projects (e.g., nlohmann/json) | Most C++ projects with separate `.cpp` files work correctly |
 | **C++** | `deep_dive` can't disambiguate constructor overloads within same file | `context_file` only helps across files; within-file overloads need line-number disambiguation |
 | **Lua** | Class-like tables stored as `variable` kind (no `class` keyword) | Lua metatables are semantically classes but syntactically variables |
-| **Go** | Markdown headings can outrank Go structs in def search without language filter | Use `language="go"` for accurate definition search results |
 | **HTML** | Structural language — no navigable symbols extracted | HTML elements are indexed for full-text search but not symbol navigation |
 | **CSS** | Structural language — no navigable symbols extracted | CSS selectors are indexed for full-text search but not symbol navigation |
 | **JavaScript** | CommonJS `require()` patterns produce fewer relationship edges than ES modules | Centrality may be lower than expected; symbol extraction works correctly |
