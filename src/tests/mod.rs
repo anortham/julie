@@ -108,6 +108,7 @@ pub mod tools {
     pub mod get_context_token_budget_tests; // get_context token truncation tests // get_context run_pipeline fallback relevance tests
 
     pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
+    pub mod query_classification_tests; // QueryIntent classification heuristics (symbol, conceptual, mixed)
 
     pub mod formatting_tests; // Navigation formatting tests (lean refs, qualified name parsing)
     pub mod metrics; // QueryMetricsTool metrics query tests

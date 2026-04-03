@@ -217,9 +217,9 @@ pub fn hybrid_search(
         tantivy_results.results.len(),
         semantic_results.len(),
         if weight_profile.is_some() {
-            "weighted RRF"
+            "weighted RRF (explicit)"
         } else {
-            "uniform RRF"
+            "weighted RRF (classified)"
         },
         limit
     );
@@ -242,10 +242,12 @@ pub fn hybrid_search(
         debug!("  semantic top-10: [{}]", sem_top.join(", "));
     }
 
+    use crate::search::weights::classify_query;
+
     let merged = match weight_profile {
         Some(profile) => {
             debug!(
-                "  weight profile: keyword={:.2}, semantic={:.2}",
+                "  weight profile (explicit): keyword={:.2}, semantic={:.2}",
                 profile.keyword_weight, profile.semantic_weight
             );
             weighted_rrf_merge(
@@ -257,7 +259,22 @@ pub fn hybrid_search(
                 profile.semantic_weight,
             )
         }
-        None => rrf_merge(tantivy_results.results, semantic_results, 60, limit),
+        None => {
+            let intent = classify_query(query);
+            let profile = intent.to_weight_profile();
+            debug!(
+                "  weight profile (classified {:?}): keyword={:.2}, semantic={:.2}",
+                intent, profile.keyword_weight, profile.semantic_weight
+            );
+            weighted_rrf_merge(
+                tantivy_results.results,
+                semantic_results,
+                60,
+                limit,
+                profile.keyword_weight,
+                profile.semantic_weight,
+            )
+        }
     };
 
     Ok(SymbolSearchResults {
