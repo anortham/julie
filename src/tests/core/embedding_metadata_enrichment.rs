@@ -755,7 +755,7 @@ mod tests {
         let source_class = make_symbol("s2", "Router", SymbolKind::Class, None, None);
 
         let symbols = vec![test_func, test_class, source_func, source_class];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
 
         assert_eq!(batch.len(), 2, "Should exclude both test symbols");
         let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
@@ -825,7 +825,7 @@ mod tests {
         );
 
         let batch =
-            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &HashMap::new());
+            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &HashMap::new(), &HashMap::new());
         assert_eq!(batch.len(), 3);
 
         let (_, text) = batch.iter().find(|(id, _)| id == "f1").unwrap();
@@ -859,7 +859,7 @@ mod tests {
             vec!["save".to_string(), "validate".to_string()],
         );
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new(), &HashMap::new());
         let (_, text) = &batch[0];
         assert!(
             text.contains("calls: save, validate"),
@@ -874,7 +874,7 @@ mod tests {
         let mut callees = HashMap::new();
         callees.insert("c1".to_string(), vec!["something".to_string()]);
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new(), &HashMap::new());
         let (_, text) = &batch[0];
         assert!(
             !text.contains("calls:"),
@@ -908,7 +908,7 @@ mod tests {
             ],
         );
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new());
+        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new(), &HashMap::new());
         let (_, text) = &batch[0];
 
         assert!(
@@ -953,7 +953,7 @@ mod tests {
         );
 
         let batch =
-            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol);
+            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol, &HashMap::new());
         assert_eq!(batch.len(), 1);
 
         let (_, text) = &batch[0];
@@ -981,7 +981,7 @@ mod tests {
         fields_by_symbol.insert("c1".to_string(), vec!["some_field".to_string()]);
 
         let batch =
-            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol);
+            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol, &HashMap::new());
         let (_, text) = &batch[0];
 
         assert!(
@@ -1008,12 +1008,106 @@ mod tests {
         fields_by_symbol.insert("f1".to_string(), vec!["config".to_string()]);
 
         let batch =
-            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol);
+            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol, &HashMap::new());
         let (_, text) = &batch[0];
 
         assert!(
             text.contains("calls:") && text.contains("fields:"),
             "Should have both callee and field enrichment: {text}"
+        );
+    }
+
+    // =========================================================================
+    // Implementor enrichment for traits/interfaces
+    // =========================================================================
+
+    #[test]
+    fn test_prepare_batch_enriches_trait_with_implementors() {
+        let trait_sym = make_symbol_with_lang("t1", "EmbeddingProvider", SymbolKind::Trait, "rust");
+        let mut method1 = make_symbol_with_lang("m1", "embed_query", SymbolKind::Method, "rust");
+        method1.parent_id = Some("t1".to_string());
+        let mut method2 = make_symbol_with_lang("m2", "embed_batch", SymbolKind::Method, "rust");
+        method2.parent_id = Some("t1".to_string());
+
+        let symbols = vec![trait_sym, method1, method2];
+        let mut implementors: HashMap<String, Vec<String>> = HashMap::new();
+        implementors.insert(
+            "t1".to_string(),
+            vec![
+                "SidecarEmbeddingProvider".to_string(),
+                "PartialProvider".to_string(),
+            ],
+        );
+
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &implementors,
+        );
+        // trait + 2 methods are all embeddable kinds
+        assert_eq!(batch.len(), 3);
+        let (_, text) = batch.iter().find(|(id, _)| id == "t1").unwrap();
+        assert!(
+            text.contains("implemented_by: SidecarEmbeddingProvider, PartialProvider"),
+            "Expected implementor names in trait embedding text, got: {text}"
+        );
+        assert!(
+            text.contains("methods: embed_query, embed_batch"),
+            "Expected child methods preserved, got: {text}"
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_enriches_interface_with_implementors() {
+        let iface =
+            make_symbol_with_lang("i1", "ISearchService", SymbolKind::Interface, "csharp");
+        let mut method = make_symbol_with_lang("m1", "Search", SymbolKind::Method, "csharp");
+        method.parent_id = Some("i1".to_string());
+
+        let symbols = vec![iface, method];
+        let mut implementors: HashMap<String, Vec<String>> = HashMap::new();
+        implementors.insert(
+            "i1".to_string(),
+            vec!["LuceneSearchService".to_string()],
+        );
+
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &implementors,
+        );
+        // interface + method are both embeddable
+        assert_eq!(batch.len(), 2);
+        let (_, text) = batch.iter().find(|(id, _)| id == "i1").unwrap();
+        assert!(
+            text.contains("implemented_by: LuceneSearchService"),
+            "Expected implementor name, got: {text}"
+        );
+    }
+
+    #[test]
+    fn test_prepare_batch_no_implementor_enrichment_for_class() {
+        let class = make_symbol_with_lang("c1", "MyService", SymbolKind::Class, "rust");
+        let symbols = vec![class];
+        let mut implementors: HashMap<String, Vec<String>> = HashMap::new();
+        implementors.insert("c1".to_string(), vec!["SubService".to_string()]);
+
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &implementors,
+        );
+        assert_eq!(batch.len(), 1);
+        let (_, text) = &batch[0];
+        assert!(
+            !text.contains("implemented_by:"),
+            "Classes should not get implementor enrichment: {text}"
         );
     }
 }

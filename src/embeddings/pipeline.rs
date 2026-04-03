@@ -98,6 +98,55 @@ fn build_field_access_map(db: &SymbolDatabase) -> HashMap<String, Vec<String>> {
     }
 }
 
+/// Build a map of symbol_id -> implementor names from the relationship graph.
+/// Finds `Implements` and `Extends` relationships pointing TO trait/interface symbols.
+fn build_implementor_map(db: &SymbolDatabase, symbols: &[Symbol]) -> HashMap<String, Vec<String>> {
+    let trait_interface_ids: Vec<String> = symbols
+        .iter()
+        .filter(|s| matches!(s.kind, SymbolKind::Trait | SymbolKind::Interface))
+        .map(|s| s.id.clone())
+        .collect();
+
+    if trait_interface_ids.is_empty() {
+        return HashMap::new();
+    }
+
+    let relationships = match db.get_relationships_to_symbols(&trait_interface_ids) {
+        Ok(rels) => rels,
+        Err(err) => {
+            tracing::warn!("Failed to load implementors for embedding enrichment: {err:#}");
+            return HashMap::new();
+        }
+    };
+
+    let id_to_name: HashMap<&str, &str> = symbols
+        .iter()
+        .map(|s| (s.id.as_str(), s.name.as_str()))
+        .collect();
+
+    let mut implementors: HashMap<String, Vec<String>> = HashMap::new();
+    for rel in &relationships {
+        if matches!(rel.kind, RelationshipKind::Implements | RelationshipKind::Extends) {
+            let impl_name = id_to_name
+                .get(rel.from_symbol_id.as_str())
+                .copied()
+                .unwrap_or(rel.from_symbol_id.as_str());
+            implementors
+                .entry(rel.to_symbol_id.clone())
+                .or_default()
+                .push(impl_name.to_string());
+        }
+    }
+
+    for names in implementors.values_mut() {
+        names.sort();
+        names.dedup();
+        names.truncate(8);
+    }
+
+    implementors
+}
+
 /// Run the full embedding pipeline: load symbols → filter → embed → store.
 ///
 /// This is designed to run in a `spawn_blocking` context since both the
@@ -203,14 +252,15 @@ pub fn run_embedding_pipeline_cancellable(
     stats.symbols_scanned = symbols.len();
     info!("Embedding pipeline: {} total symbols loaded", symbols.len());
 
-    // Build callee map and field access map for function/method enrichment.
-    let (callees_by_symbol, fields_by_symbol) = {
+    // Build callee map, field access map, and implementor map for enrichment.
+    let (callees_by_symbol, fields_by_symbol, implementors_by_symbol) = {
         let db_guard = db
             .lock()
             .map_err(|e| anyhow::anyhow!("DB mutex poisoned: {e}"))?;
         (
             build_callee_map(&db_guard, &symbols),
             build_field_access_map(&db_guard),
+            build_implementor_map(&db_guard, &symbols),
         )
     };
 
@@ -220,6 +270,7 @@ pub fn run_embedding_pipeline_cancellable(
         lang_configs,
         &callees_by_symbol,
         &fields_by_symbol,
+        &implementors_by_symbol,
     );
     let candidate_variable_ids: HashSet<String> = symbols
         .iter()
@@ -297,11 +348,11 @@ pub fn run_embedding_pipeline_cancellable(
     let enriched_ids: HashSet<&str> = symbols
         .iter()
         .filter(|s| match s.kind {
-            SymbolKind::Class
-            | SymbolKind::Struct
-            | SymbolKind::Interface
-            | SymbolKind::Trait
-            | SymbolKind::Enum => true,
+            SymbolKind::Class | SymbolKind::Struct | SymbolKind::Enum => true,
+            SymbolKind::Interface | SymbolKind::Trait => {
+                // Re-embed when children exist OR implementors have been recorded.
+                true
+            }
             SymbolKind::Function | SymbolKind::Method => {
                 callees_by_symbol.contains_key(&s.id) || fields_by_symbol.contains_key(&s.id)
             }
@@ -455,11 +506,14 @@ pub fn embed_symbols_for_file(
     // Filter and format structural symbols only.
     // Variable embedding is handled globally by `run_embedding_pipeline` at workspace init
     // using budgeted selection. The incremental path skips variables to stay fast (<200ms).
+    // Implementor enrichment is skipped here since this per-file path doesn't have all
+    // symbols loaded; the full pipeline handles it on the next workspace-wide run.
     let prepared = prepare_batch_for_embedding(
         &symbols,
         lang_configs,
         &callees_by_symbol,
         &fields_by_symbol,
+        &HashMap::new(),
     );
     if prepared.is_empty() {
         return Ok(0);

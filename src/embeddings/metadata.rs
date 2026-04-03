@@ -160,6 +160,7 @@ pub fn prepare_batch_for_embedding(
     lang_configs: Option<&LanguageConfigs>,
     callees_by_symbol: &HashMap<String, Vec<String>>,
     fields_by_symbol: &HashMap<String, Vec<String>>,
+    implementors_by_symbol: &HashMap<String, Vec<String>>,
 ) -> Vec<(String, String)> {
     // Build parent_id → child method names mapping for container enrichment.
     let mut methods_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -216,6 +217,15 @@ pub fn prepare_batch_for_embedding(
                 if let Some(variants) = variants_by_parent.get(s.id.as_str()) {
                     let suffix = format!(" variants: {}", variants.join(", "));
                     text.push_str(&suffix);
+                }
+                // Implementor names for traits/interfaces
+                if matches!(s.kind, SymbolKind::Trait | SymbolKind::Interface) {
+                    if let Some(impls) = implementors_by_symbol.get(&s.id) {
+                        if !impls.is_empty() {
+                            let suffix = format!(" implemented_by: {}", impls.join(", "));
+                            text.push_str(&suffix);
+                        }
+                    }
                 }
                 text = truncate_on_word_boundary(&text, MAX_METADATA_CHARS);
             }
