@@ -302,6 +302,10 @@ fn matches_filter(result: &SymbolSearchResult, filter: &SearchFilter) -> bool {
         }
     }
 
+    if filter.exclude_tests && crate::search::scoring::is_test_path(&result.file_path) {
+        return false;
+    }
+
     true
 }
 

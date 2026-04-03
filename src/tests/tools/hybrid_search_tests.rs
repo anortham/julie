@@ -539,6 +539,100 @@ mod orchestrator_tests {
             "expected fallback warning log, got: {logs}"
         );
     }
+
+    #[test]
+    fn test_hybrid_search_exclude_tests_filters_semantic_results() {
+        let (index, mut db, _idx_dir, _db_dir) = setup_index_and_db();
+
+        // Insert file record for the test-file symbol
+        db.conn
+            .execute(
+                "INSERT OR IGNORE INTO files (path, language, hash, size, last_modified, last_indexed)
+                 VALUES ('src/tests/pipeline_tests.rs', 'rust', 'testfile123', 80, 0, 0)",
+                [],
+            )
+            .unwrap();
+
+        // Insert a test-file symbol into DB
+        db.conn
+            .execute(
+                "INSERT INTO symbols (id, name, kind, file_path, language,
+                 start_line, start_col, end_line, end_col, start_byte, end_byte,
+                 reference_score, signature, doc_comment)
+                 VALUES ('test_fn', 'test_process_data', 'function', 'src/tests/pipeline_tests.rs', 'rust',
+                 5, 0, 15, 0, 0, 100, 0.0,
+                 'fn test_process_data()',
+                 '')",
+                [],
+            )
+            .unwrap();
+
+        // Do NOT add the test symbol to Tantivy — it should only be reachable
+        // via the semantic (KNN) path, so the only way it enters the merge is
+        // through matches_filter on semantic candidates.
+
+        // Store 384-dim embeddings for both symbols so the semantic path finds them.
+        // The test symbol gets a slightly higher embedding similarity score.
+        let prod_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.8 } else { 0.0 }).collect();
+        let test_vec: Vec<f32> = (0..384).map(|i| if i == 0 { 0.9 } else { 0.0 }).collect();
+        db.store_embeddings(&[
+            ("test_fn".to_string(), test_vec),
+            ("sym1".to_string(), prod_vec),
+        ])
+        .unwrap();
+
+        // Provider that returns a query vector close to both stored embeddings
+        struct TestProvider;
+        impl EmbeddingProvider for TestProvider {
+            fn embed_query(&self, _text: &str) -> Result<Vec<f32>> {
+                Ok((0..384).map(|i| if i == 0 { 0.85 } else { 0.0 }).collect())
+            }
+            fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+                Ok(texts
+                    .iter()
+                    .map(|_| (0..384).map(|i| if i == 0 { 0.85 } else { 0.0 }).collect())
+                    .collect())
+            }
+            fn dimensions(&self) -> usize {
+                384
+            }
+            fn device_info(&self) -> DeviceInfo {
+                DeviceInfo {
+                    runtime: "test".into(),
+                    device: "cpu".into(),
+                    model_name: "test-provider".into(),
+                    dimensions: 384,
+                }
+            }
+        }
+
+        let filter = SearchFilter {
+            exclude_tests: true,
+            ..Default::default()
+        };
+
+        let results = hybrid_search(
+            "process data",
+            &filter,
+            10,
+            &index,
+            &db,
+            Some(&TestProvider),
+            None,
+        )
+        .unwrap();
+
+        // The test-file symbol should have been filtered out by matches_filter
+        // BEFORE the RRF merge, not pushed out after damage is done
+        for r in &results.results {
+            assert!(
+                !r.file_path.contains("tests/"),
+                "Test file result '{}' in '{}' should have been filtered from semantic candidates",
+                r.name,
+                r.file_path
+            );
+        }
+    }
 }
 
 /// Weighted RRF merge tests (Phase 5, Task 2).
