@@ -39,11 +39,11 @@ use crate::tools::shared::OptimizedResponse;
 //******************//
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
-/// Search code using text search with code-aware tokenization. Supports multi-word queries with AND/OR logic.
+/// Search code using text search with code-aware tokenization. Supports multi-word queries with AND/OR logic. For conceptual queries (e.g., "error handling"), use search_target="definitions" to leverage semantic search.
 pub struct FastSearchTool {
     /// Search query. Exact symbol names work best for definition search. Too many results? Add file_pattern or language filter. Zero results? Run manage_workspace(operation="index")
     pub query: String,
-    /// Search target: "content" (default, line-level text search) or "definitions" (promotes exact symbol name matches to top, best for jumping to where a symbol is defined)
+    /// Search target: "content" (default, line-level text search) or "definitions" (promotes exact symbol name matches to top, best for jumping to where a symbol is defined). Use "definitions" for conceptual queries too (e.g., "error handling retry logic") as it leverages semantic search
     #[serde(default = "default_search_target")]
     pub search_target: String,
     /// Language filter: "rust", "typescript", "javascript", "python", "java", "csharp", "php", "ruby", "swift", "kotlin", "scala", "go", "c", "cpp", "lua", "qml", "r", "sql", "html", "css", "vue", "bash", "gdscript", "dart", "zig"
