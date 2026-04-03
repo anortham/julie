@@ -287,7 +287,7 @@ impl SymbolDatabase {
         let create_sql = format!(
             "CREATE VIRTUAL TABLE symbol_vectors USING vec0(
                 symbol_id TEXT PRIMARY KEY,
-                embedding float[{dimensions}]
+                embedding float[{dimensions}] distance_metric=cosine
             )"
         );
         self.conn.execute(&create_sql, [])?;
