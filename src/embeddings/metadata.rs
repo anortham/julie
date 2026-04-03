@@ -135,7 +135,11 @@ pub fn format_symbol_metadata(symbol: &Symbol) -> String {
         }
     }
 
-    let joined = parts.join(" ");
+    let mut joined = parts.join(" ");
+    if !symbol.file_path.is_empty() {
+        joined.push_str("\nin: ");
+        joined.push_str(&symbol.file_path);
+    }
     truncate_on_word_boundary(&joined, MAX_METADATA_CHARS)
 }
 

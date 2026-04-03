@@ -193,7 +193,7 @@ mod tests {
         let text = format_symbol_metadata(&sym);
         assert_eq!(
             text,
-            "class UserService Manages user authentication and authorization."
+            "class UserService Manages user authentication and authorization.\nin: src/lib.rs"
         );
     }
 
@@ -209,7 +209,7 @@ mod tests {
         let text = format_symbol_metadata(&sym);
         assert_eq!(
             text,
-            "struct DatabaseConnection pub struct DatabaseConnection"
+            "struct DatabaseConnection pub struct DatabaseConnection\nin: src/lib.rs"
         );
     }
 
@@ -217,7 +217,7 @@ mod tests {
     fn test_format_name_only() {
         let sym = make_symbol("id4", "MyModule", SymbolKind::Module, None, None);
         let text = format_symbol_metadata(&sym);
-        assert_eq!(text, "module MyModule");
+        assert_eq!(text, "module MyModule\nin: src/lib.rs");
     }
 
     #[test]
@@ -430,7 +430,7 @@ mod tests {
         let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new());
 
         assert_eq!(batch.len(), 1);
-        assert_eq!(batch[0].1, "function standalone_func");
+        assert_eq!(batch[0].1, "function standalone_func\nin: src/lib.rs");
     }
 
     #[test]
@@ -780,6 +780,44 @@ mod tests {
         assert!(
             !text.contains("<see"),
             "Should strip inline XML tags: {text}"
+        );
+    }
+
+    // =========================================================================
+    // File path in metadata
+    // =========================================================================
+
+    #[test]
+    fn test_format_includes_file_path() {
+        let mut sym = make_symbol(
+            "id_fp1",
+            "process_payment",
+            SymbolKind::Function,
+            Some("fn process_payment(amount: f64) -> Result<Receipt>"),
+            None,
+        );
+        sym.file_path = "src/billing/processor.rs".to_string();
+        let text = format_symbol_metadata(&sym);
+        assert!(
+            text.contains("in: src/billing/processor.rs"),
+            "Should include file path as 'in: <path>': {text}"
+        );
+    }
+
+    #[test]
+    fn test_format_file_path_empty_when_missing() {
+        let mut sym = make_symbol(
+            "id_fp2",
+            "orphan_func",
+            SymbolKind::Function,
+            None,
+            None,
+        );
+        sym.file_path = String::new();
+        let text = format_symbol_metadata(&sym);
+        assert!(
+            !text.contains("in:"),
+            "Should not contain 'in:' when file_path is empty: {text}"
         );
     }
 
