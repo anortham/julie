@@ -1,0 +1,250 @@
+# **Architectural Evolution of Retrieval-Augmented Generation for Codebases: 2026 State-of-the-Art and Future Trajectories**
+
+The current system architecture represents a highly sophisticated, local-first retrieval infrastructure. The deployment of a Model Context Protocol (MCP) server utilizing 35 custom tree-sitter extractors, SQLite paired with sqlite-vec for vector storage, Tantivy for full-text search with code-idiom tokenizers, and the CodeRankEmbed model for semantic embeddings provides a robust baseline for code intelligence. However, the paradigm of Retrieval-Augmented Generation (RAG) has undergone a profound metamorphosis between 2024 and 2026\.1 The industry has shifted away from linear, static retrieval pipelines toward dynamic, agent-orchestrated "Context Engines" capable of multi-hop reasoning and deterministic graph traversal.2
+
+To determine whether this architecture should evolve and to identify novel capabilities that can be constructed upon it, an exhaustive analysis of the 2026 technological landscape is required. This analysis evaluates the foundational embedding and retrieval stack, explores structural chunking algorithms, dictates the transition from semantic search to repository-scale GraphRAG, outlines the integration of Agentic RAG control loops, and identifies advanced MCP tooling capabilities.
+
+## **1\. Evaluating and Evolving the Core Retrieval Stack**
+
+The dual-engine approach utilizing sqlite-vec for dense vector retrieval and Tantivy for sparse lexical retrieval provides the necessary foundation for a production-grade system. Nevertheless, the mechanisms by which these models generate embeddings, fuse results, and rank candidate chunks have seen significant architectural advancements that warrant integration.
+
+### **1.1 The Trajectory of Code-Specific Embedding Models**
+
+The current implementation relies on CodeRankEmbed, a 137M parameter bi-encoder that initialized its text encoder using Arctic-Embed-M-Long and was contrastively fine-tuned on the 21-million-example CoRNStack dataset.4 While CodeRankEmbed demonstrates exceptional zero-shot cross-task generalization and established a formidable benchmark upon its release, the 2026 landscape introduces highly optimized, domain-specific models. These modern embedding models leverage architectural innovations such as Matryoshka representation learning, advanced binary quantization, and task-specific Low-Rank Adaptation (LoRA) adapters.
+
+Evaluating the evolution of embedding models requires analyzing the trade-offs between retrieval accuracy, context window capacity, and the storage footprint required for local SQLite vector databases.
+
+| Embedding Model | Provider | Parameters / Dimensionality | Context Window | Key Architectural Innovations |
+| :---- | :---- | :---- | :---- | :---- |
+| **CodeRankEmbed** | Nomic AI | 137M / 768 | 8,192 tokens | CoRNStack fine-tuning; shared weights between text and code encoders.4 |
+| **voyage-code-3** | Voyage AI | Undisclosed / 256 to 2048 | 32,000 tokens | Matryoshka learning; int8, uint8, and binary quantization options.6 |
+| **jina-embeddings-v3** | Jina AI | 570M / 32 to 1024 | 8,192 tokens | Task-specific LoRA adapters applied at inference for retrieval vs. clustering.8 |
+| **Qwen3-Embedding** | Alibaba | 8B / 256 to 2048 | 32,768 tokens | Multilingual instruction-aware training; highly flexible vector sizes.9 |
+| **voyage-context-3** | Voyage AI | Undisclosed / 1024 | 32,000 tokens | Contextualized chunk embeddings preserving global document context without metadata.11 |
+
+The reliance on CodeRankEmbed provides excellent baseline accuracy, but it inherently processes chunks in isolation. The emergence of models such as voyage-context-3 introduces the concept of contextualized chunk embeddings. In this architecture, the neural network encodes not only the chunk's internal content but also captures global contextual information from the parent document or repository file.11 This mathematically reduces the sensitivity to suboptimal chunking boundaries and improves chunk-level retrieval accuracy over standard embeddings by over 14% on complex code retrieval datasets.11
+
+Furthermore, for local deployments backing an MCP server, memory and storage I/O are primary operational bottlenecks. Models utilizing Matryoshka representation learning allow for the downstream truncation of vector dimensions (e.g., compressing from 3072 to 256 dimensions) with negligible degradation in recall metrics.12 Voyage AI's implementation of binary quantization, which packs 32-bit floats into bit-packed int8 or uint8 representations, allows for 512-dimensional binary embeddings to outperform dense float vectors while reducing vector database storage costs by 99.48%.11 Evolving the current sqlite-vec implementation to support binary quantized embeddings from a model like voyage-code-3 would dramatically decrease the disk footprint and memory-mapped IO operations, accelerating local nearest-neighbor scans without sacrificing semantic precision.7
+
+### **1.2 Optimizing Hybrid Search via Reciprocal Rank Fusion**
+
+The architecture astutely combines Tantivy—a high-performance, Apache Lucene-style search engine written in Rust—with sqlite-vec.15 Lexical search via Tantivy utilizing the BM25 algorithm excels at identifying exact code idioms, specific error codes, abbreviations, and precise variable names that embedding models frequently misinterpret due to their sub-word tokenization strategies.16 Conversely, dense vector search captures semantic intent and overarching programmatic concepts.16
+
+However, the efficacy of hybrid search is entirely dependent on the fusion algorithm employed at query time. Cosine similarity scores derived from vector databases and BM25 Term Frequency-Inverse Document Frequency (TF-IDF) scores exist on mathematically disparate scales. A cosine distance of 0.85 cannot be meaningfully summed with a BM25 score of 12.4.17 The contemporary enterprise standard for resolving this dimensional mismatch is Reciprocal Rank Fusion (RRF).18
+
+RRF is a zero-shot, score-agnostic algorithm that ignores raw similarity scores and relies strictly on the ordinal rank of documents across different retrieval streams.17 The fusion score for a given document ![][image1] across a set of rankings ![][image2] is calculated as:
+
+![][image3]  
+The smoothing constant ![][image4] is critical to the success of the algorithm. Industry consensus establishes ![][image5] as the optimal baseline.18 A low ![][image4] value disproportionately rewards a single top-ranked result from a potentially weak or anomalous retrieval stream, whereas a high ![][image4] value enforces consensus, rewarding documents that consistently surface in both the lexical and semantic lists.18
+
+Because the current architecture leverages SQLite, RRF can be executed highly efficiently at the database layer using Common Table Expressions (CTEs). By calculating the row\_number() OVER (ORDER BY distance) for the sqlite-vec index and combining it via a FULL OUTER JOIN with the rank from the Tantivy FTS5 equivalent, the MCP server avoids moving large, unmerged datasets into application memory.18 This query-time fusion creates a natural filtering mechanism against "topic drift," ensuring the coding agent is provided with consensus-validated context that minimizes hallucination rates.17
+
+### **1.3 The Reranking Imperative: Bridging Retrieval and Generation**
+
+A critical vulnerability in the current architecture is the apparent absence of a dedicated reranking layer. In a modern 2026 RAG pipeline, the initial hybrid retrieval stage optimizes exclusively for recall—casting a wide net to fetch 50 to 200 candidates to ensure the relevant code snippet is captured.21 A reranker is then applied to optimize for precision, compressing the noisy candidate pool to 5 to 10 high-confidence chunks before injecting them into the LLM's context window.21
+
+Without a reranker, the system risks diluting the LLM's attention mechanism with marginally relevant code chunks, directly increasing both latency and token consumption while degrading output quality.22 The landscape of rerankers has diverged into three distinct architectural paths, each with specific trade-offs for an MCP server deployment.
+
+**Cross-Encoders:** Models such as bge-reranker-v2-m3 process the query and the document simultaneously through the transformer's self-attention layers. This joint processing yields near-expert sorting accuracy and state-of-the-art scores on benchmarks like MS MARCO.23 The drawback is severe computational latency, as each document rerank requires a full forward pass of the neural network.24 For an MCP server running locally, cross-encoding 100 retrieved code chunks may introduce unacceptably high latency for real-time coding assistants.
+
+**Late-Interaction Models (ColBERT):** These models bridge the gap between efficiency and accuracy by encoding queries and documents into multi-vector representations independently, and then performing interaction through token-level maximum similarity (MaxSim) operations at query time.25 While highly effective for long documents, they still require substantial memory overhead to store the token-level embeddings.
+
+**LLM-as-a-Judge and Novel Architectures:** Utilizing large language models directly as listwise rerankers, such as CodeRankLLM (a 7B parameter model trained on CoRNStack), allows for simultaneous scoring of multiple passages, enabling the model to weigh code candidates relative to one another rather than in isolation.5 However, running a 7B parameter model strictly for reranking is computationally heavy for edge deployments. A highly optimal evolution is the adoption of models like jina-reranker-v3 (597M parameters). This model utilizes a novel "Last-But-Not-Late" (LBNL) interaction approach, applying causal attention between the query and all documents within the same context window prior to extracting embeddings from each document's final token.26 This method achieves state-of-the-art performance (61.85 nDCG@10 on BEIR) at a fraction of the computational overhead of traditional cross-encoders, making it the premier choice for the local constraints of an MCP server.26
+
+## **2\. Structural Code Representation: The End of Heuristic Chunking**
+
+The current system wisely utilizes 35 custom tree-sitter extractors to identify code symbols. However, if the underlying chunking mechanism powering the semantic search relies on naive text splitting (e.g., fixed-size token or character splitting), the architectural benefits of tree-sitter are largely squandered. Code is not prose; it is a highly structured, relational entity.
+
+### **2.1 The Catastrophic Failure Modes of Token-Based Splitting**
+
+Standard RAG pipelines typically split text at arbitrary boundaries, such as 512 tokens with a 50-token sliding window overlap.28 Applying this heuristic to source code results in catastrophic semantic fragmentation.29 A fixed-boundary chunker might split a function directly down the middle, placing the function signature and variable declarations in one chunk, and the execution logic and return statement in another.29
+
+Consequently, the dense embedding generated by CodeRankEmbed loses all structural context. The vector representation of a fragmented if/else block is mathematically orphaned from its parent function's intent, leading to severe degradation in retrieval precision when an AI agent queries for specific logic flows.29
+
+### **2.2 Implementing cAST: Context-Aware Splitting with Tree-sitter**
+
+Given that the infrastructure already incorporates comprehensive tree-sitter capabilities, the system must evolve to implement Abstract Syntax Tree (AST)-based structural chunking. The 2026 state-of-the-art methodology for this is the cAST (Chunking via Abstract Syntax Trees) algorithm.30
+
+Abstract Syntax Trees natively encode language constructs—classes, loops, functions, and conditionals—as distinct, hierarchical nodes within a parsed structure.32 The cAST framework leverages a recursive "split-then-merge" algorithm to transform these AST representations into semantically coherent, syntactically valid code chunks.31 The algorithm operates in three distinct phases:
+
+1. **Top-Down Traversal:** The algorithm first traverses the AST in a top-down manner. It attempts to fit the largest possible semantic nodes (e.g., an entire module or a monolithic class) into the defined size budget. To account for variable tokenization logic across 35 languages, the budget is frequently measured in non-whitespace characters rather than tokens, which normalizes formatting and indentation disparities.31  
+2. **Recursive Splitting:** If an AST node exceeds the defined budget, the algorithm does not arbitrarily slice the text. Instead, it recursively processes the node's children, splitting the code strictly along its natural syntactic boundaries (e.g., safely breaking a large class into its constituent independent methods).31  
+3. **Greedy Merging:** Splitting by AST nodes can inadvertently produce a proliferation of micro-chunks—such as single-line import statements or isolated variable declarations—that lack semantic density. To counteract this, the algorithm performs a greedy merge. It concatenates adjacent, sibling AST nodes into a single consolidated chunk until the size budget is maximized, ensuring high information density while preserving syntax.31
+
+Empirical validation demonstrates that this structural alignment yields profound improvements in downstream coding agent performance, boosting Recall@5 by 4.3 points and generation accuracy (Pass@1) by 2.67 points on rigorous benchmarks like SWE-bench.30 Furthermore, coupling these AST chunks with injected metadata—such as file path, module lineage, and the names of neighboring symbols—ensures that vector similarity searches align strictly with functional code logic rather than arbitrary string overlaps.
+
+## **3\. The Strategic Pivot from Flat RAG to Repository-Scale GraphRAG**
+
+While vector search augmented with cAST and RRF accurately captures topical similarity, it consistently fails at multi-hop architectural reasoning.35 When an AI coding agent is tasked with debugging a repository or refactoring an API, it requires deep, transitive dependency context. The agent must understand that modifying *Controller A* impacts *Service B*, which ultimately relies on a data schema defined in *Repository C*.35
+
+Flat RAG architectures force LLMs into scenarios where they suffer from "lost in the middle" attention degradation, or they require the agent to perform iterative, token-heavy file exploration via repeated grep and file-read tool calls.38 The most significant evolutionary leap for this product is leveraging the existing tree-sitter extractors to build a Semantic Dependency Graph, successfully transitioning the architecture into a full-scale GraphRAG system.
+
+### **3.1 Constructing the Semantic Dependency Graph**
+
+To evolve into a GraphRAG system, the isolated symbols currently extracted by tree-sitter must be relationally linked. Importantly, a lightweight and highly performant graph can be built natively within the existing SQLite database, circumventing the need to deploy specialized, heavy graph databases like Neo4j in local environments.40
+
+This is achieved by implementing an Adjacency List Model comprising two primary relational tables 41:
+
+* **Entities (Nodes):** Representing the structural code elements (files, classes, functions, modules). Attributes for each node include a unique deterministic ID (typically a hash of the file path and AST node), the repository name, the symbol name, the entity type, and a foreign key pointing to its dense embedding stored in the sqlite-vec table.40  
+* **Relationships (Edges):** Representing the syntactic and structural links extracted via tree-sitter S-expression queries. Key edge typologies include CALLS (function invocations), IMPORTS (module dependencies), INHERITS (class hierarchies), and IMPLEMENTS (interface fulfillment).35
+
+The process of static AST extraction and edge generation is entirely deterministic, meaning the graph can be constructed accurately and rapidly. Benchmarks from open-source tools like codebase-memory-mcp demonstrate that a massive repository such as the Linux kernel (spanning 28 million lines of code and 75,000 files) can be parsed into 2.1 million nodes and 4.9 million edges in approximately three minutes using parallel worker pools.35
+
+By combining semantic similarity with this new structural proximity, the retrieval engine can perform a highly advanced two-stage fetch. Stage one utilizes sqlite-vec to find the functional node that semantically matches the user's query. Stage two utilizes SQL recursive CTEs to execute a Breadth-First Search (BFS) graph traversal out to a depth of 1 or 2 hops.40 This fetches the direct callers, the callees, and the imported dependencies of the target node.40 This guaranteed "blast radius" context assembly fundamentally solves the multi-hop reasoning deficit that plagues standard RAG systems.
+
+### **3.2 Cross-Language Context Resolution via Universal Node Typologies**
+
+The system's support for 35 programming languages via custom tree-sitter extractors is an immense strategic advantage. However, maintaining individualized graph generation logic for 35 disparate syntaxes introduces significant technical debt and maintenance overhead.
+
+The architecture should evolve toward a "Rosetta Stone" or Universal Node Factory configuration.44 Instead of hardcoding language-specific parsing logic within the backend, the system can utilize JSON-based configuration files. These configurations map specific language grammars generated by tree-sitter (e.g., mapping function\_definition in Python and method\_declaration in Java) to a unified, language-agnostic ontology of Universal Node Types, such as FUNCTION, CLASS, and VARIABLE.44
+
+This polyglot structural alignment allows the GraphRAG system to trace dependencies across language boundaries seamlessly. In a modern microservices architecture, an AI coding agent could successfully query how a Python backend API impacts a TypeScript frontend component by traversing an explicitly mapped HTTP\_CALL edge between the two universal nodes, providing full-stack context resolution that is impossible with text-based vector search alone.45
+
+## **4\. Agentic RAG: Orchestrating Autonomous Reasoning Loops**
+
+Standard RAG, and even basic GraphRAG, remains a passive, single-shot pipeline: a user query is fired, chunks are retrieved, and an answer is generated. In 2026, the forefront of enterprise AI engineering is defined by **Agentic RAG**—an architecture where the retrieval process is actively controlled by an autonomous, iterative reasoning loop.46
+
+### **4.1 The ReAct Framework and State-Aware Retrieval**
+
+An AI coding assistant backed by an Agentic RAG framework does not accept retrieval results blindly. It utilizes paradigms like the ReAct (Reasoning and Acting) framework to decompose complex software engineering tasks into manageable sub-operations.48
+
+In this architecture, the language model interleaves reasoning steps with strategic actions. The agent analyzes the user's intent, formulates a precise structural query to the MCP server, observes the returned graph sub-network, and crucially, reflects on whether the context is sufficient to answer the prompt.48 If the context reveals a missing dependency or an unresolved variable, the agent dynamically reformulates its query and initiates a secondary retrieval hop, creating a self-correcting cycle of discovery.48
+
+### **4.2 Monte Carlo Tree Search for Graph Traversal**
+
+For highly complex repository traversal, such as debugging undefined behaviors in a monorepo, advanced Agentic GraphRAG systems are moving beyond basic Cypher queries and employing Monte Carlo Tree Search (MCTS) algorithms.37
+
+When exploring the dependency graph for bug localization, the agent uses a lightweight bi-encoder to quickly expand promising candidate nodes in the graph. During the simulation phase of the MCTS, a highly accurate cross-encoder scores the nodes, serving as a reward signal.37 This sophisticated algorithm allows the agent to mathematically balance exploration (searching entirely new modules) with exploitation (drilling down deeply into a specific call chain).37 This dynamic, state-aware routing ensures the agent navigates massive 100,000-file repositories logically, avoiding endless hallucination loops and closely mirroring the cognitive workflow and code-tracing behavior of a senior software engineer.50
+
+## **5\. Advanced Model Context Protocol (MCP) Optimizations**
+
+The Model Context Protocol acts as the universal translation layer, allowing frontier language models to interact seamlessly with this advanced retrieval stack.51 As the MCP ecosystem has matured, naive server implementations have encountered severe scaling limitations that must be addressed to unlock enterprise-grade product capabilities.
+
+### **5.1 Mitigating Context Window Saturation**
+
+Currently, most MCP clients operate by loading all available tool definitions directly into the LLM's system prompt upon initialization.53 In an advanced GraphRAG system that exposes dozens of specialized structural queries (e.g., trace\_call\_path, get\_node\_siblings, detect\_dead\_code), exposing 50+ extensive JSON tool schemas can consume tens of thousands of tokens before a single user interaction occurs. This causes severe latency spikes, inflates API costs, and dilutes the model's attention span.53
+
+**Evolutionary Strategy: Dynamic Context Discovery** The system must evolve to support dynamic tool loading, heavily inspired by mechanisms like Anthropic's "Tool Search Tool".55 Instead of injecting the entire schema library upfront, the MCP server provides a single macro-tool that allows the agent to search for the specific capabilities it needs based on its current active objective. Once a capability is identified, only that specific tool's definition is dynamically loaded into the active context window, significantly minimizing prompt bloat and optimizing token efficiency.55
+
+### **5.2 Code Mode Execution and Sandboxing**
+
+A revolutionary orchestration approach gaining massive traction in 2026 is "Code Mode".57 Instead of defining every graph traversal operation or vector search as a distinct, JSON-RPC tool call—which forces the LLM to output and subsequently re-ingest massive serialized tool payloads—the MCP server exposes a typed SDK (e.g., a comprehensive TypeScript or Python library).
+
+The LLM is then instructed to write a short, programmatic script utilizing this SDK to execute its entire retrieval and reasoning strategy. This script acts as a compact plan, which is securely executed server-side in an isolated environment, such as a Dynamic Worker sandbox.57 The agent can explore tool operations, run for loops over graph nodes, compose multiple API calls, and return strictly the synthesized data it needs.58
+
+This technique exploits the architectural reality that LLMs are vastly superior at writing functional code against well-documented APIs than they are at managing sequential JSON tool chains. Research demonstrates that executing tasks via Code Mode reduces the number of input tokens used during complex agentic workflows by up to 99.9%, transforming a process that would normally exhaust a 1 million token context window into a highly efficient 1,000-token operation.57
+
+### **5.3 Optimizing Tool Description Smells**
+
+The efficacy of any MCP server is inherently tied to how well the LLM understands its tools. A 2026 empirical study analyzing 856 tools across 103 MCP servers revealed that 97.1% of tool descriptions contained "smells"—defects such as failing to state a clear purpose, omitting parameter constraints, or providing vague usage guidelines.22
+
+Systematically augmenting underspecified tool descriptions and applying strict prompt-engineering methodologies to the JSON schemas improves task success rates by a median of 5.85 percentage points.60 The system must ensure that every MCP tool exposed by the GraphRAG engine possesses highly explicit parameter typing, clear behavioral expectations, and concise error-handling instructions to prevent the agent from falling into infinite failure loops during graph traversal.
+
+## **6\. Novel Product Capabilities Unlocked by the Evolved Stack**
+
+By synthesizing the current infrastructure (SQLite, tree-sitter) with the evolved paradigms (cAST, GraphRAG, Agentic Control Loops, and optimized MCP routing), several highly lucrative and novel capabilities can be built that differentiate the product from standard semantic search tools.
+
+### **Capability A: Call-Path Tracing and Blast Radius Analysis**
+
+Leveraging the SQLite-backed dependency graph, the MCP server can expose highly specialized structural debugging tools. A trace\_call\_path tool can execute a bidirectional BFS traversal in sub-millisecond timeframes to map the exact lineage of function invocations.45 An AI agent can use this to identify every upstream API route that ultimately triggers a specific downstream database query.
+
+Similarly, a detect\_changes tool can perform deterministic impact analysis. By cross-referencing uncommitted or proposed code diffs against the graph edges, the server generates a "blast radius" report.43 The agent can proactively inform the developer of secondary services, downstream microservices, and adjacent functions that require testing or modification due to the current refactor, catching regressions before they reach Continuous Integration pipelines.
+
+### **Capability B: Semantic Dependency Summarization and Hub Detection**
+
+Large language models excel at summarization, but providing them with 50,000 files simultaneously is ineffective. By applying graph algorithms, such as Louvain community detection, over the extracted tree-sitter nodes, the system can automatically identify architectural "hubs" (heavily relied-upon utility classes) and distinct functional boundaries.43
+
+The MCP server can offer an architecture\_overview tool that condenses a massive repository into a high-level topographical summary in a single prompt. This provides an AI onboarding agent with instant situational awareness of the codebase's domain logic, workflows, and core abstractions without needing to read thousands of raw code files.45
+
+### **Capability C: Automated Technical Debt Remediation**
+
+The evolved retrieval engine can be paired seamlessly with static analysis tools and code-health metrics. By mapping metrics like cyclomatic complexity or code duplication directly onto the AST nodes within the GraphRAG database, an agentic coding assistant can continuously monitor the graph for "code smells" or isolated, undocumented legacy logic.64
+
+Operating autonomously in the background, the agent can generate surgical refactoring plans, test them utilizing the Code Mode sandbox execution, and submit Pull Requests with deterministic confidence. Because the semantic dependency graph guarantees visibility into all caller and callee relationships, the agent can confidently assert that its refactoring efforts will not break hidden dependencies, transforming the MCP server from a passive search index into an active software maintenance engine.66
+
+### **Capability D: Production-Aware Code Intelligence**
+
+A persistent gap in current AI coding assistants is their blindness to runtime behavior. They can analyze static code but are unaware of production telemetry.68 By extending the MCP server to integrate with observability platforms (e.g., ingesting OpenTelemetry traces or error logs), runtime data can be mapped directly onto the nodes of the semantic dependency graph.
+
+When a developer asks the AI agent to optimize a function, the agent queries the GraphRAG MCP server, which returns not only the function's structural dependencies and semantic embeddings but also its real-time production error rates and latency bottlenecks.63 This capability bridges the divide between development and production, allowing the agent to provide architectural suggestions grounded in actual application performance rather than purely theoretical best practices.
+
+#### **Works cited**
+
+1. RAG in 2026: How Retrieval-Augmented Generation Works for Enterprise AI \- Techment, accessed April 3, 2026, [https://www.techment.com/blogs/rag-in-2026/](https://www.techment.com/blogs/rag-in-2026/)  
+2. From RAG to Context \- A 2025 year-end review of RAG \- RAGFlow, accessed April 3, 2026, [https://ragflow.io/blog/rag-review-2025-from-rag-to-context](https://ragflow.io/blog/rag-review-2025-from-rag-to-context)  
+3. GraphRAG and Agentic Architecture: Practical Experimentation with Neo4j and NeoConverse, accessed April 3, 2026, [https://neo4j.com/blog/developer/graphrag-and-agentic-architecture-with-neoconverse/](https://neo4j.com/blog/developer/graphrag-and-agentic-architecture-with-neoconverse/)  
+4. nomic-ai/CodeRankEmbed \- Hugging Face, accessed April 3, 2026, [https://huggingface.co/nomic-ai/CodeRankEmbed](https://huggingface.co/nomic-ai/CodeRankEmbed)  
+5. CoRNStack: High-Quality Contrastive Data for Better Code Ranking \- Revanth Gangi Reddy, accessed April 3, 2026, [https://gangiswag.github.io/cornstack/](https://gangiswag.github.io/cornstack/)  
+6. 6 Best Code Embedding Models Compared: A Complete Guide \- Modal, accessed April 3, 2026, [https://modal.com/blog/6-best-code-embedding-models-compared](https://modal.com/blog/6-best-code-embedding-models-compared)  
+7. voyage-code-3: more accurate code retrieval with lower dimensional, quantized embeddings, accessed April 3, 2026, [https://blog.voyageai.com/2024/12/04/voyage-code-3/](https://blog.voyageai.com/2024/12/04/voyage-code-3/)  
+8. jina-embeddings-v3 \- Search Foundation Models, accessed April 3, 2026, [https://jina.ai/models/jina-embeddings-v3/](https://jina.ai/models/jina-embeddings-v3/)  
+9. Best Embedding Models for RAG (2026): Ranked by MTEB Score, Cost, and Self-Hosting, accessed April 3, 2026, [https://blog.premai.io/best-embedding-models-for-rag-2026-ranked-by-mteb-score-cost-and-self-hosting/](https://blog.premai.io/best-embedding-models-for-rag-2026-ranked-by-mteb-score-cost-and-self-hosting/)  
+10. Best Embedding Models for RAG in 2026: Comparison & Guide \- WebCraft, accessed April 3, 2026, [https://webscraft.org/blog/embeddingmodeli-dlya-rag-u-2026-yak-obrati-porivnyannya-provayderiv?lang=en](https://webscraft.org/blog/embeddingmodeli-dlya-rag-u-2026-yak-obrati-porivnyannya-provayderiv?lang=en)  
+11. Introducing Voyage-context-3: Focused Chunk-Level Details With Global Document Context, accessed April 3, 2026, [https://www.mongodb.com/company/blog/product-release-announcements/voyage-context-3-focused-chunk-level-details-global-document-context](https://www.mongodb.com/company/blog/product-release-announcements/voyage-context-3-focused-chunk-level-details-global-document-context)  
+12. Best Embedding Models 2025: MTEB Scores & Leaderboard (Cohere, OpenAI, BGE) \- Ailog, accessed April 3, 2026, [https://app.ailog.fr/en/blog/guides/choosing-embedding-models](https://app.ailog.fr/en/blog/guides/choosing-embedding-models)  
+13. Best Embedding Models 2026 \- 6 Tested for RAG & Search | PE Collective, accessed April 3, 2026, [https://pecollective.com/tools/best-embedding-models/](https://pecollective.com/tools/best-embedding-models/)  
+14. voyage-3-large: the new state-of-the-art general-purpose embedding model, accessed April 3, 2026, [https://blog.voyageai.com/2025/01/07/voyage-3-large/](https://blog.voyageai.com/2025/01/07/voyage-3-large/)  
+15. Beyond FTS5: Building Transactional Full-Text Search in TursoDB, accessed April 3, 2026, [https://turso.tech/blog/beyond-fts5](https://turso.tech/blog/beyond-fts5)  
+16. Hybrid Search: Smart Search Architecture with FTS5 \+ Vector \+ RRF \- CEAKSAN, accessed April 3, 2026, [https://ceaksan.com/en/hybrid-search-fts5-vector-rrf/](https://ceaksan.com/en/hybrid-search-fts5-vector-rrf/)  
+17. Advanced RAG — Understanding Reciprocal Rank Fusion in Hybrid Search, accessed April 3, 2026, [https://glaforge.dev/posts/2026/02/10/advanced-rag-understanding-reciprocal-rank-fusion-in-hybrid-search/](https://glaforge.dev/posts/2026/02/10/advanced-rag-understanding-reciprocal-rank-fusion-in-hybrid-search/)  
+18. Optimizing Hybrid Search Query with Reciprocal Rank Fusion (RRF) | Server \- MariaDB, accessed April 3, 2026, [https://mariadb.com/docs/server/reference/sql-structure/vectors/optimizing-hybrid-search-query-with-reciprocal-rank-fusion-rrf](https://mariadb.com/docs/server/reference/sql-structure/vectors/optimizing-hybrid-search-query-with-reciprocal-rank-fusion-rrf)  
+19. Relevance scoring in hybrid search using Reciprocal Rank Fusion (RRF) \- Microsoft Learn, accessed April 3, 2026, [https://learn.microsoft.com/en-us/azure/search/hybrid-search-ranking](https://learn.microsoft.com/en-us/azure/search/hybrid-search-ranking)  
+20. Simon Willison on full-text-search, accessed April 3, 2026, [https://simonwillison.net/tags/full-text-search/](https://simonwillison.net/tags/full-text-search/)  
+21. RAG Is More Than Retrieval — It's Search & Judge | by Fanghua (Joshua) Yu \- Medium, accessed April 3, 2026, [https://medium.com/@yu-joshua/rag-is-more-than-retrieval-its-search-judge-9f8e0364fe5b](https://medium.com/@yu-joshua/rag-is-more-than-retrieval-its-search-judge-9f8e0364fe5b)  
+22. Top 7 Rerankers for RAG \- Analytics Vidhya, accessed April 3, 2026, [https://www.analyticsvidhya.com/blog/2025/06/top-rerankers-for-rag/](https://www.analyticsvidhya.com/blog/2025/06/top-rerankers-for-rag/)  
+23. BAAI/bge-reranker-large \- Hugging Face, accessed April 3, 2026, [https://huggingface.co/BAAI/bge-reranker-large](https://huggingface.co/BAAI/bge-reranker-large)  
+24. Cross-Encoders, ColBERT, and LLM-Based Re-Rankers: A Practical Guide | by Michael Ryaboy | Medium, accessed April 3, 2026, [https://medium.com/@aimichael/cross-encoders-colbert-and-llm-based-re-rankers-a-practical-guide-a23570d88548](https://medium.com/@aimichael/cross-encoders-colbert-and-llm-based-re-rankers-a-practical-guide-a23570d88548)  
+25. jina-reranker-v3: Last but Not Late Interaction for Document Reranking \- arXiv, accessed April 3, 2026, [https://arxiv.org/html/2509.25085v2](https://arxiv.org/html/2509.25085v2)  
+26. jina-reranker-v3: Last but Not Late Interaction for Listwise Document Reranking \- arXiv, accessed April 3, 2026, [https://arxiv.org/html/2509.25085v3](https://arxiv.org/html/2509.25085v3)  
+27. CoRNStack: High-Quality Contrastive Data for Better Code Ranking \- arXiv, accessed April 3, 2026, [https://arxiv.org/html/2412.01007v1](https://arxiv.org/html/2412.01007v1)  
+28. Best Chunking Strategies for RAG (and LLMs) in 2026 \- Firecrawl, accessed April 3, 2026, [https://www.firecrawl.dev/blog/best-chunking-strategies-rag](https://www.firecrawl.dev/blog/best-chunking-strategies-rag)  
+29. Agent Brain: A Code-First RAG System for AI Coding Assistants | by Rick Hightower | Feb, 2026 | Spillwave Solutions, accessed April 3, 2026, [https://medium.com/spillwave-solutions/agent-brain-a-code-first-rag-system-for-ai-coding-assistants-83e95c972255](https://medium.com/spillwave-solutions/agent-brain-a-code-first-rag-system-for-ai-coding-assistants-83e95c972255)  
+30. Building code-chunk: AST Aware Code Chunking \- Supermemory, accessed April 3, 2026, [https://supermemory.ai/blog/building-code-chunk-ast-aware-code-chunking/](https://supermemory.ai/blog/building-code-chunk-ast-aware-code-chunking/)  
+31. \[Literature Review\] cAST: Enhancing Code Retrieval-Augmented Generation with Structural Chunking via Abstract Syntax Tree \- Moonlight, accessed April 3, 2026, [https://www.themoonlight.io/en/review/cast-enhancing-code-retrieval-augmented-generation-with-structural-chunking-via-abstract-syntax-tree](https://www.themoonlight.io/en/review/cast-enhancing-code-retrieval-augmented-generation-with-structural-chunking-via-abstract-syntax-tree)  
+32. CAST: Enhancing Code Retrieval-Augmented Generation with Structural Chunking via Abstract Syntax Tree \- ACL Anthology, accessed April 3, 2026, [https://aclanthology.org/2025.findings-emnlp.430.pdf](https://aclanthology.org/2025.findings-emnlp.430.pdf)  
+33. (PDF) cAST: Enhancing Code Retrieval-Augmented Generation with Structural Chunking via Abstract Syntax Tree \- ResearchGate, accessed April 3, 2026, [https://www.researchgate.net/publication/392839333\_cAST\_Enhancing\_Code\_Retrieval-Augmented\_Generation\_with\_Structural\_Chunking\_via\_Abstract\_Syntax\_Tree](https://www.researchgate.net/publication/392839333_cAST_Enhancing_Code_Retrieval-Augmented_Generation_with_Structural_Chunking_via_Abstract_Syntax_Tree)  
+34. cAST: Enhancing Code Retrieval-Augmented Generation with Structural Chunking via Abstract Syntax Tree \- ACL Anthology, accessed April 3, 2026, [https://aclanthology.org/2025.findings-emnlp.430/](https://aclanthology.org/2025.findings-emnlp.430/)  
+35. Reliable Graph-RAG for Codebases: AST-Derived Graphs vs LLM-Extracted Knowledge Graphs \- arXiv, accessed April 3, 2026, [https://arxiv.org/html/2601.08773v1](https://arxiv.org/html/2601.08773v1)  
+36. When to use Graphs in RAG: A Comprehensive Analysis for Graph Retrieval-Augmented Generation \- arXiv, accessed April 3, 2026, [https://arxiv.org/html/2506.05690v3](https://arxiv.org/html/2506.05690v3)  
+37. RANGER: Repository‑level Agent for Graph‑Enhanced Retrieval \- arXiv, accessed April 3, 2026, [https://arxiv.org/html/2509.25257v1](https://arxiv.org/html/2509.25257v1)  
+38. Codebase-Memory: Tree-Sitter-Based Knowledge Graphs for LLM Code Exploration via MCP \- arXiv, accessed April 3, 2026, [https://arxiv.org/pdf/2603.27277](https://arxiv.org/pdf/2603.27277)  
+39. How AI Knowledge Graphs Turn Legacy Code into Structured Intelligence \- SoftwareSeni, accessed April 3, 2026, [https://www.softwareseni.com/how-ai-knowledge-graphs-turn-legacy-code-into-structured-intelligence/](https://www.softwareseni.com/how-ai-knowledge-graphs-turn-legacy-code-into-structured-intelligence/)  
+40. The Simple Graph RAG Strategy That Finally Makes Multi-Repository Code Changes Reliable \- ByteBell, accessed April 3, 2026, [https://bytebell.ai/blog/simple-graph-rag](https://bytebell.ai/blog/simple-graph-rag)  
+41. Code Graph RAG by er77: An AI Engineer's Deep Dive \- Skywork.ai, accessed April 3, 2026, [https://skywork.ai/skypage/en/code-graph-ai-engineer/1977920346872287232](https://skywork.ai/skypage/en/code-graph-ai-engineer/1977920346872287232)  
+42. \[Feature Request\]: Support tree-sitter–based semantic code chunking in lightrag-server · Issue \#1930 \- GitHub, accessed April 3, 2026, [https://github.com/HKUDS/LightRAG/issues/1930](https://github.com/HKUDS/LightRAG/issues/1930)  
+43. Codebase-Memory: Tree-Sitter-Based Knowledge Graphs for LLM Code Exploration via MCP \- arXiv, accessed April 3, 2026, [https://arxiv.org/html/2603.27277v1](https://arxiv.org/html/2603.27277v1)  
+44. \[Feature\]: Add tree-sitter logic for the languages C\# and C++ in ..., accessed April 3, 2026, [https://github.com/topoteretes/cognee/issues/1502](https://github.com/topoteretes/cognee/issues/1502)  
+45. I built an MCP server that gives Claude Code a knowledge graph of your codebase — in average 20x fewer tokens for code exploration : r/ClaudeAI \- Reddit, accessed April 3, 2026, [https://www.reddit.com/r/ClaudeAI/comments/1rp6pkr/i\_built\_an\_mcp\_server\_that\_gives\_claude\_code\_a/](https://www.reddit.com/r/ClaudeAI/comments/1rp6pkr/i_built_an_mcp_server_that_gives_claude_code_a/)  
+46. 9 Components of an Agentic RAG System Every AI Engineer Should Understand | by Snehal Singh | Mar, 2026, accessed April 3, 2026, [https://medium.com/@snehal\_singh/9-components-of-an-agentic-rag-system-every-ai-engineer-should-understand-e3b669dd4af3](https://medium.com/@snehal_singh/9-components-of-an-agentic-rag-system-every-ai-engineer-should-understand-e3b669dd4af3)  
+47. Agentic RAG vs Classic RAG: From a Pipeline to a Control Loop | Towards Data Science, accessed April 3, 2026, [https://towardsdatascience.com/agentic-rag-vs-classic-rag-from-a-pipeline-to-a-control-loop/](https://towardsdatascience.com/agentic-rag-vs-classic-rag-from-a-pipeline-to-a-control-loop/)  
+48. Agentic RAG Frameworks: Why ReAct is Driving Smarter AI Systems \- Medium, accessed April 3, 2026, [https://medium.com/@asimsultan2/agentic-rag-frameworks-why-react-is-driving-smarter-ai-systems-6c834e4af81f](https://medium.com/@asimsultan2/agentic-rag-frameworks-why-react-is-driving-smarter-ai-systems-6c834e4af81f)  
+49. Agentic RAG: a comprehensive guide to intelligent retrieval and reasoning \- Kore.ai, accessed April 3, 2026, [https://www.kore.ai/blog/what-is-agentic-rag](https://www.kore.ai/blog/what-is-agentic-rag)  
+50. Why RAG Falls Short for Autonomous Coding Agents | by Animesh Sinha | Medium, accessed April 3, 2026, [https://medium.com/@animesh1997/why-rag-falls-short-for-autonomous-coding-agents-86cf5b3dcb69](https://medium.com/@animesh1997/why-rag-falls-short-for-autonomous-coding-agents-86cf5b3dcb69)  
+51. What is MCP (Model Context Protocol)? | Data Science Collective, accessed April 3, 2026, [https://medium.com/data-science-collective/what-is-mcp-bbea288586a3](https://medium.com/data-science-collective/what-is-mcp-bbea288586a3)  
+52. What is the Model Context Protocol (MCP)? \- Model Context Protocol, accessed April 3, 2026, [https://modelcontextprotocol.io/docs/getting-started/intro](https://modelcontextprotocol.io/docs/getting-started/intro)  
+53. Code execution with MCP: building more efficient AI agents \- Anthropic, accessed April 3, 2026, [https://www.anthropic.com/engineering/code-execution-with-mcp](https://www.anthropic.com/engineering/code-execution-with-mcp)  
+54. Writing effective tools for AI agents—using AI agents \- Anthropic, accessed April 3, 2026, [https://www.anthropic.com/engineering/writing-tools-for-agents](https://www.anthropic.com/engineering/writing-tools-for-agents)  
+55. Introducing advanced tool use on the Claude Developer Platform \- Anthropic, accessed April 3, 2026, [https://www.anthropic.com/engineering/advanced-tool-use](https://www.anthropic.com/engineering/advanced-tool-use)  
+56. Anthropic Have FINALLY Solved the MCP Context Nightmare, accessed April 3, 2026, [https://www.youtube.com/watch?v=1RpGVqgqLaE](https://www.youtube.com/watch?v=1RpGVqgqLaE)  
+57. Code Mode: the better way to use MCP \- The Cloudflare Blog, accessed April 3, 2026, [https://blog.cloudflare.com/code-mode/](https://blog.cloudflare.com/code-mode/)  
+58. Code Mode: give agents an entire API in 1,000 tokens \- The Cloudflare Blog, accessed April 3, 2026, [https://blog.cloudflare.com/code-mode-mcp/](https://blog.cloudflare.com/code-mode-mcp/)  
+59. Sandboxing AI agents, 100x faster \- The Cloudflare Blog, accessed April 3, 2026, [https://blog.cloudflare.com/dynamic-workers/](https://blog.cloudflare.com/dynamic-workers/)  
+60. Model Context Protocol (MCP) Tool Descriptions Are Smelly\! Towards Improving AI Agent Efficiency with Augmented MCP Tool Descriptions \- arXiv, accessed April 3, 2026, [https://arxiv.org/html/2602.14878v2](https://arxiv.org/html/2602.14878v2)  
+61. DeusData/codebase-memory-mcp: High-performance code ... \- GitHub, accessed April 3, 2026, [https://github.com/DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)  
+62. Context Graphs for AI Agents: The Complete Implementation Guide \- DEV Community, accessed April 3, 2026, [https://dev.to/cloudraft/context-graphs-for-ai-agents-the-complete-implementation-guide-4jko](https://dev.to/cloudraft/context-graphs-for-ai-agents-the-complete-implementation-guide-4jko)  
+63. LogicLens: Leveraging Semantic Code Graph to explore Multi Repository large systems, accessed April 3, 2026, [https://arxiv.org/html/2601.10773v1](https://arxiv.org/html/2601.10773v1)  
+64. CodeScene MCP Server \- GitHub, accessed April 3, 2026, [https://github.com/codescene-oss/codescene-mcp-server](https://github.com/codescene-oss/codescene-mcp-server)  
+65. Model Context Protocol (MCP) Tool Descriptions Are Smelly\! Towards Improving AI Agent Efficiency with Augmented MCP Tool Descriptions \- arXiv, accessed April 3, 2026, [https://arxiv.org/html/2602.14878v1](https://arxiv.org/html/2602.14878v1)  
+66. MCP Server – Early Access \- CodeScene, accessed April 3, 2026, [https://codescene.com/early-access-codescene-mcp-server](https://codescene.com/early-access-codescene-mcp-server)  
+67. How AI Coding Models Handle Context Switching and Multi-File Refactoring \- GoCodeo, accessed April 3, 2026, [https://www.gocodeo.com/post/how-ai-coding-models-handle-context-switching-and-multi-file-refactoring](https://www.gocodeo.com/post/how-ai-coding-models-handle-context-switching-and-multi-file-refactoring)  
+68. AI Coding Agents Meet Production Environment with the Inspector MCP Server \- Medium, accessed April 3, 2026, [https://medium.com/@valerio\_27709/ai-coding-agents-meet-production-environment-with-the-inspector-mcp-server-b49d242852c6](https://medium.com/@valerio_27709/ai-coding-agents-meet-production-environment-with-the-inspector-mcp-server-b49d242852c6)
+
+[image1]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAYCAYAAADDLGwtAAAAmElEQVR4XmNgGNrAAYj/I2GCAKToD7ogNgBS6I8uiA5kGIi09i4Q/0MXBIFABogJH4G4FcqegqICKvgLiX8cKoYC3KGCvEhi06FiKAAkcA2LGIpCG6iAJ7IgVAxFYQi6ABSAxKKAmAeIr4AEBKGCyCAXSWwNEJvDJIKA+D0Qu0EVyEPpSiA+AVMEA5JAXILEZwfiLCT+CAQAOWkoofvPyFQAAAAASUVORK5CYII=>
+
+[image2]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAYCAYAAAAlBadpAAAAsElEQVR4XmNgGAUg8B8PbgZiJoRS7GArA0SxMpKYClQMhPECfIrwyYEBSHILuiAU4NVcwwCRZEaXAILTDBC5CHQJGPjKgNtkvLaCAEwBOn6BrAgXwGY6NjEMwMIAUVSHJg6KW5C4B5o4CihngCjiQBM3hopXoImjAFzOe88AETdDl0AGIAXH0QUZEIaKQ/ntQCwBYmggSSJjZFANFesAYkYgvooqTRhYAPFLKB4FdAcA/Ug+KPTdyUoAAAAASUVORK5CYII=>
+
+[image3]: <data:image/png;base64,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>
+
+[image4]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAsAAAAYCAYAAAAs7gcTAAAAmUlEQVR4XmNgGNrgPxIuRZPDChQYIIrZ0cSxgtkMEMVEAZDCM+iCuABIsTC6IDYQwYDpBBD/O5oYGMBCAgSWArEfEIdAxTBsgyneBMSuUDEvqBgGgCm+CMTWaHIYAKRQjgHiBBD7Hqo0AjQxoFr3Co2PAr4C8WMkPrJnMaIeJKGAxIeFwhwg3o0kDgap6AJAIAvEAeiCowAGAM73J+u3AHXxAAAAAElFTkSuQmCC>
+
+[image5]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAAYCAYAAACvKj4oAAAB60lEQVR4Xu2WPUgcURDHR7SIiEWQVCk0hQQkKgQCQVFMxDRBQRAbU1kkxIggioWCCIpgugS0ECytrEOalIq92FgpJCAkKSQSBMGP+d+b3Z2d3TsU8d4V7wd/bub39m7fu/0kCgQClcI550ryzYz5ppkzxKm2AwL8BOexHbDUkltgtx3wCOZzxvkstWWfnMcfsMPZTg+nmaL8H/HBS0rPBUcR/Rfl3orTXOS4mH/kTtVKILpcrGsy/ZrqwaL4XDDwxkpPYC4rVhqwzbBxr8XXGJ85JZ5JjzxXvhz0k9svPn9J/Z/zUG3zQnyvcqBdPOaf4lQGwBinitMibjPaqAjRH3HTfHJfK8o6JdtG1EkfHZkR6TviLRxPxY8aH//gEmdO3ANxmcN9z/wgt1/cITVwx1JjAeg7k+EC0QJnjI8XeEjuluuTWXJz+Wi8Pqo9Ur+KRx1t4jNrgOzjLEuNi9UXA5TMR6MXiLMK9WAyXKBL/CMtJ0VGbKn+A7lrshTfb5kn7mslwf7Hc5yeJ+qvqgfz4lP8ofTz74jzW2o8OH2ASe7luFXVb3BOVA9+Us4CIfTrWaO4aU6r8uWkntwc3nEapMaLiAX+r9R4ZKDPvLNmbqnkXoPeW+mBA3JnEa7LYixwLjm7xgcCgUDgTlwDxMKROiNBZGEAAAAASUVORK5CYII=>
