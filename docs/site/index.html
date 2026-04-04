@@ -118,6 +118,12 @@
           <td class="with-julie"><span class="savings-icon" aria-hidden="true">✓</span>~800 tokens</td>
           <td class="savings-pct">~92%</td>
         </tr>
+        <tr class="data-row animate-on-scroll" data-delay="400">
+          <td>Edit a function</td>
+          <td class="without"><span class="savings-icon" aria-hidden="true">✗</span>~3,000+ tokens</td>
+          <td class="with-julie"><span class="savings-icon" aria-hidden="true">✓</span>~500 tokens</td>
+          <td class="savings-pct">~80%</td>
+        </tr>
       </tbody>
     </table>
   </section>
@@ -270,10 +276,22 @@
   <!-- Section 6: Skills -->
   <section id="skills" class="section">
     <h2 class="section-title">Skills</h2>
-    <p class="section-subtitle">9 pre-built workflows that combine tools into higher-level capabilities.</p>
+    <p class="section-subtitle">10 pre-built workflows that combine tools into higher-level capabilities.</p>
 
-    <div class="card-grid" style="grid-template-columns: repeat(2, 1fr);">
+    <div class="card-grid" style="grid-template-columns: repeat(3, 1fr);">
       <div class="card tool-card animate-on-scroll" data-delay="0">
+        <div class="tool-name">/editing</div>
+        <div class="tool-desc">Zero-read editing: understand and modify without reading files</div>
+        <div class="terminal">
+          <div><span class="prompt">$ </span><span class="command">/editing</span></div>
+          <div><span class="result">deep_dive → edit_symbol (dry_run)</span></div>
+          <div><span class="highlight">@@ -42,5 +42,5 @@</span></div>
+          <div><span class="result">-fn validate(t: &str) -> bool</span></div>
+          <div><span class="highlight">+fn validate(t: &str) -> Result</span></div>
+        </div>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="100">
         <div class="tool-name">/architecture</div>
         <div class="tool-desc">Architecture overview with entry points and dependency flow</div>
         <div class="terminal">
@@ -284,7 +302,7 @@
         </div>
       </div>
 
-      <div class="card tool-card animate-on-scroll" data-delay="100">
+      <div class="card tool-card animate-on-scroll" data-delay="200">
         <div class="tool-name">/metrics</div>
         <div class="tool-desc">Session performance and context efficiency report</div>
         <div class="terminal">
@@ -405,42 +423,6 @@
       </div>
 
       <div class="card tool-card animate-on-scroll" data-delay="500">
-        <div class="tool-name">rename_symbol</div>
-        <div class="tool-desc">Workspace-wide rename with dry-run preview</div>
-        <div class="terminal" aria-label="rename_symbol previewing rename of UserService to AccountService across 15 files">
-          <div><span class="prompt">$ </span><span class="command">rename_symbol("UserService", "AccountService", dry_run)</span></div>
-          <div><span class="highlight">Preview:</span> <span class="result">15 files, 23 replacements</span></div>
-          <div><span class="result">&nbsp; services.rs:42 &nbsp;UserService → AccountService</span></div>
-          <div><span class="result">&nbsp; handler.rs:15 &nbsp;&nbsp;UserService → AccountService</span></div>
-        </div>
-        <span class="token-badge">~500 tokens</span>
-      </div>
-
-      <div class="card tool-card animate-on-scroll" data-delay="600">
-        <div class="tool-name">manage_workspace</div>
-        <div class="tool-desc">Index, add, remove, refresh workspaces</div>
-        <div class="terminal" aria-label="manage_workspace indexing a project in under 2 seconds">
-          <div><span class="prompt">$ </span><span class="command">manage_workspace(index)</span></div>
-          <div><span class="result">Indexed: 1,247 symbols from 89 files</span></div>
-          <div><span class="result">Languages: Rust, TypeScript, Python</span></div>
-          <div><span class="comment">&nbsp; 1.8s</span></div>
-        </div>
-        <span class="token-badge">~100 tokens</span>
-      </div>
-
-      <div class="card tool-card animate-on-scroll" data-delay="700">
-        <div class="tool-name">query_metrics</div>
-        <div class="tool-desc">Session performance stats and context efficiency</div>
-        <div class="terminal" aria-label="query_metrics showing session performance and context efficiency">
-          <div><span class="prompt">$ </span><span class="command">query_metrics(category="session")</span></div>
-          <div><span class="result">fast_search</span>  12 calls  avg 4.1ms</div>
-          <div><span class="result">Source examined:</span> <span class="highlight">214KB</span></div>
-          <div><span class="result">NOT injected: </span> <span class="highlight">206KB</span></div>
-        </div>
-        <span class="token-badge">~300 tokens</span>
-      </div>
-
-      <div class="card tool-card animate-on-scroll" data-delay="800">
         <div class="tool-name">edit_file</div>
         <div class="tool-desc">Edit files without reading them first</div>
         <div class="terminal" aria-label="edit_file replacing a function signature with fuzzy matching and unified diff preview">
@@ -453,7 +435,7 @@
         <span class="token-badge">~200 tokens</span>
       </div>
 
-      <div class="card tool-card animate-on-scroll" data-delay="900">
+      <div class="card tool-card animate-on-scroll" data-delay="600">
         <div class="tool-name">edit_symbol</div>
         <div class="tool-desc">Edit a symbol by name without reading the file</div>
         <div class="terminal" aria-label="edit_symbol replacing a function definition by symbol name">
@@ -464,6 +446,42 @@
           <div><span class="comment">&nbsp; Symbol found in src/auth.rs:42</span></div>
         </div>
         <span class="token-badge">~250 tokens</span>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="700">
+        <div class="tool-name">rename_symbol</div>
+        <div class="tool-desc">Workspace-wide rename with dry-run preview</div>
+        <div class="terminal" aria-label="rename_symbol previewing rename of UserService to AccountService across 15 files">
+          <div><span class="prompt">$ </span><span class="command">rename_symbol("UserService", "AccountService", dry_run)</span></div>
+          <div><span class="highlight">Preview:</span> <span class="result">15 files, 23 replacements</span></div>
+          <div><span class="result">&nbsp; services.rs:42 &nbsp;UserService → AccountService</span></div>
+          <div><span class="result">&nbsp; handler.rs:15 &nbsp;&nbsp;UserService → AccountService</span></div>
+        </div>
+        <span class="token-badge">~500 tokens</span>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="800">
+        <div class="tool-name">manage_workspace</div>
+        <div class="tool-desc">Index, add, remove, refresh workspaces</div>
+        <div class="terminal" aria-label="manage_workspace indexing a project in under 2 seconds">
+          <div><span class="prompt">$ </span><span class="command">manage_workspace(index)</span></div>
+          <div><span class="result">Indexed: 1,247 symbols from 89 files</span></div>
+          <div><span class="result">Languages: Rust, TypeScript, Python</span></div>
+          <div><span class="comment">&nbsp; 1.8s</span></div>
+        </div>
+        <span class="token-badge">~100 tokens</span>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="900">
+        <div class="tool-name">query_metrics</div>
+        <div class="tool-desc">Session performance stats and context efficiency</div>
+        <div class="terminal" aria-label="query_metrics showing session performance and context efficiency">
+          <div><span class="prompt">$ </span><span class="command">query_metrics(category="session")</span></div>
+          <div><span class="result">fast_search</span>  12 calls  avg 4.1ms</div>
+          <div><span class="result">Source examined:</span> <span class="highlight">214KB</span></div>
+          <div><span class="result">NOT injected: </span> <span class="highlight">206KB</span></div>
+        </div>
+        <span class="token-badge">~300 tokens</span>
       </div>
     </div>
   </section>
