@@ -1124,6 +1124,86 @@ impl JulieServerHandler {
         self.record_tool_call("query_metrics", start.elapsed(), &report);
         Ok(result)
     }
+
+    // ========== Editing Tools ==========
+
+    #[tool(
+        name = "edit_file",
+        description = "Edit a file without reading it first. Provide old_text (fuzzy-matched via diff-match-patch) and new_text. Saves the full Read step that the built-in Edit tool requires. Use occurrence to control which match: \"first\" (default), \"last\", or \"all\". Always dry_run=true first to preview, then dry_run=false to apply.",
+        annotations(
+            title = "Edit File",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn edit_file(
+        &self,
+        Parameters(params): Parameters<crate::tools::editing::edit_file::EditFileTool>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("✏️ edit_file: {} (dry_run={})", params.file_path, params.dry_run);
+        let start = std::time::Instant::now();
+        let metadata = serde_json::json!({
+            "file": params.file_path,
+            "occurrence": params.occurrence,
+            "dry_run": params.dry_run,
+        });
+        let result = params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("edit_file failed: {}", e), None))?;
+        let output_bytes = Self::output_bytes_from_result(&result);
+        let source_file_paths = Self::extract_paths_from_result(&result);
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes,
+            metadata,
+            source_file_paths,
+        };
+        self.record_tool_call("edit_file", start.elapsed(), &report);
+        Ok(result)
+    }
+
+    #[tool(
+        name = "edit_symbol",
+        description = "Edit a symbol by name without reading the file. Operations: replace (swap entire definition), insert_after, insert_before. The symbol is looked up from Julie's index. Combine with deep_dive or get_symbols for zero-read editing workflows. Always dry_run=true first to preview, then dry_run=false to apply.",
+        annotations(
+            title = "Edit Symbol",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn edit_symbol(
+        &self,
+        Parameters(params): Parameters<crate::tools::editing::edit_symbol::EditSymbolTool>,
+    ) -> Result<CallToolResult, McpError> {
+        debug!("✏️ edit_symbol: {} {} (dry_run={})", params.operation, params.symbol, params.dry_run);
+        let start = std::time::Instant::now();
+        let metadata = serde_json::json!({
+            "symbol": params.symbol,
+            "operation": params.operation,
+            "dry_run": params.dry_run,
+        });
+        let result = params
+            .call_tool(self)
+            .await
+            .map_err(|e| McpError::internal_error(format!("edit_symbol failed: {}", e), None))?;
+        let output_bytes = Self::output_bytes_from_result(&result);
+        let source_file_paths = Self::extract_paths_from_result(&result);
+        let report = ToolCallReport {
+            result_count: None,
+            source_bytes: None,
+            output_bytes,
+            metadata,
+            source_file_paths,
+        };
+        self.record_tool_call("edit_symbol", start.elapsed(), &report);
+        Ok(result)
+    }
 }
 
 /// ServerHandler implementation with tool_handler macro

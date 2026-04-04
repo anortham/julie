@@ -6,6 +6,7 @@ pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransact
 mod edit_file_tests;
 mod edit_symbol_tests;
 mod markdown_section_tests;
+mod security_tests;
 mod validation_tests;
 
 use crate::tools::editing::EditingTransaction;
