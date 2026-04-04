@@ -3,6 +3,7 @@
 //! This module contains tests for EditingTransaction (used by rename_symbol).
 
 pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
+mod edit_file_tests;
 mod markdown_section_tests;
 mod validation_tests;
 
