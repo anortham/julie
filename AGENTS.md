@@ -417,4 +417,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-04 | **Status:** Production Ready (v6.6.0 — filewatcher gitignore leak fix, edit_file and edit_symbol tools with trimmed-line fuzzy matching, DMP length correction, unified diff hunk headers; markdown section line range fix, plugin distribution docs, daemon log location documented)
+**Last Updated:** 2026-04-04 | **Status:** Production Ready (v6.6.2 — web-research skill (browser39 + filewatcher + Julie tools), path relevance scoring fix; edit_file and edit_symbol tools, plugin distribution docs)
