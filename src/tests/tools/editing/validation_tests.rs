@@ -50,3 +50,42 @@ fn test_unified_diff_format() {
     assert!(diff.contains("-line2"), "Should show removed line");
     assert!(diff.contains("+modified"), "Should show added line");
 }
+
+#[test]
+fn test_unified_diff_insertion_does_not_cascade() {
+    // When a line is inserted in the middle, only the insertion should appear in the diff,
+    // not every subsequent line. This catches the naive index-comparison bug where
+    // before[i] vs after[i] misaligns after an insertion.
+    let before = "line1\nline2\nline3\nline4\nline5\n";
+    let after = "line1\nline2\nINSERTED\nline3\nline4\nline5\n";
+    let diff = format_unified_diff(before, after, "test.rs");
+
+    assert!(diff.contains("+INSERTED"), "Should show the inserted line");
+
+    // The diff should NOT show line3/line4/line5 as removed+re-added.
+    // If it contains "-line3" then the diff is cascading every subsequent line.
+    assert!(
+        !diff.contains("-line3"),
+        "Insertion should not cascade: line3 should not appear as removed. Got:\n{}",
+        diff
+    );
+    assert!(
+        !diff.contains("-line4"),
+        "Insertion should not cascade: line4 should not appear as removed. Got:\n{}",
+        diff
+    );
+}
+
+#[test]
+fn test_unified_diff_deletion_does_not_cascade() {
+    let before = "line1\nline2\nline3\nline4\nline5\n";
+    let after = "line1\nline3\nline4\nline5\n";
+    let diff = format_unified_diff(before, after, "test.rs");
+
+    assert!(diff.contains("-line2"), "Should show line2 as removed");
+    assert!(
+        !diff.contains("-line3"),
+        "Deletion should not cascade: line3 should not appear as removed. Got:\n{}",
+        diff
+    );
+}
