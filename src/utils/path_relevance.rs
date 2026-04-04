@@ -31,22 +31,14 @@ impl PathRelevanceScorer {
     /// Relevance multiplier (higher = more relevant)
     pub fn calculate_score(&self, file_path: &str) -> f32 {
         let path = Path::new(file_path);
-        let path_str = path.to_string_lossy().to_lowercase();
 
         // Base score from directory type
         let mut score = self.get_directory_score(path);
 
-        // Check if file is in a dedicated test directory (not just a test file in a production directory)
-        let in_test_directory = path_str.starts_with("test/")
-            || path_str.starts_with("tests/")
-            || path_str.starts_with("spec/")
-            || path_str.contains("/test/")
-            || path_str.contains("/tests/")
-            || path_str.contains("/spec/")
-            || path_str.contains("__tests__/");
-
-        // Apply test file penalty for test files outside dedicated test directories
-        if self.is_test_file(path) && !self.search_contains_test && !in_test_directory {
+        // Apply test file penalty uniformly. The directory score already graduates
+        // collocated tests (1.0 base from src/) vs dedicated test dirs (0.4 base),
+        // so the penalty just needs to de-prioritize all test files vs production.
+        if self.is_test_file(path) && !self.search_contains_test {
             score *= self.get_test_penalty();
         }
 
@@ -137,7 +129,7 @@ impl PathRelevanceScorer {
     /// Get test file penalty factor
     /// VERIFIED from PathRelevanceFactor.cs:151
     fn get_test_penalty(&self) -> f32 {
-        0.15 // 85% penalty for test files when not searching "test"
+        0.5 // 50% penalty for test files when not searching "test"
     }
 
     /// Get production code boost factor

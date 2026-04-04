@@ -13,9 +13,6 @@ open_questions:
   - "2026-03-31 | Sidecar venv CUDA torch swap fragility: if bootstrap recreates venv, it reinstalls CPU torch from PyPI. detect_nvidia_cuda() should handle this but needs testing on fresh machine."
   - "2026-04-03 | Known language extractor limitations (4 remaining): C++ header-only templates, Lua metatables, HTML/CSS structural relationships, JS CommonJS require() resolution."
 
-deferred_work:
-  - "2026-04-04 | Primary workspace has no filewatcher in daemon mode. Watchers only created for reference workspaces. Primary index goes stale when files are edited during a session, breaking deep_dive/fast_search on new or modified symbols. Root cause in watcher_pool.rs (watcher creation) and handler.rs (session connect). Reproduces by touching any file and checking daemon.log for zero events."
-
 gotchas:
   - "2026-03-31 | SidecarLaunchConfig.env was empty (no env vars passed to sidecar). Had to be extended to pass JULIE_EMBEDDING_DEVICE_PREFERENCE for CUDA support."
   - "2026-04-03 | Dart 3 modifier classes (sealed/base/final/interface/mixin class) require AST recovery patterns because tree-sitter grammar doesn't support Dart 3 syntax natively."
@@ -26,3 +23,4 @@ gotchas:
   - "2026-04-04 | DMP bitap has a 32-character pattern limit. edit_file uses exact substring search first with DMP fuzzy fallback only when exact match fails."
   - "2026-04-04 | initialize_embedding_provider() propagation in workspace/mod.rs is dead code: always called on workspace clones (which have watcher: None). Propagation must happen at actual write-back sites in embeddings.rs and nl_embeddings.rs."
   - "2026-04-04 | DMP bitap length mismatch: compute_fuzzy_end (using diff_main) corrects the splice width, but only after the MatchSpan refactor. Without MatchSpan, fuzzy-matched content of different length than old_text garbles the result."
+  - "2026-04-04 | ignore crate converts bare * to **/* at parse time via GitignoreBuilder::add(). Julie's collect_gitignore_files() flattens nested .gitignore files into a single root-scoped builder, so cache dir patterns (.ruff_cache, .pytest_cache, .venv containing *) leak globally and reject all source files. Fix: skip hidden directories when collecting .gitignore files."
