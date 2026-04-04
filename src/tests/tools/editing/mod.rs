@@ -4,6 +4,7 @@
 
 pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
 mod markdown_section_tests;
+mod validation_tests;
 
 use crate::tools::editing::EditingTransaction;
 use std::env;
