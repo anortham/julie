@@ -400,4 +400,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-03 | **Status:** Production Ready (v6.5.7 — edit_file and edit_symbol DMP-powered editing tools, markdown section line range fix, plugin distribution docs; daemon stale binary auto-restart, catch-up indexing on connect, graceful Windows shutdown)
+**Last Updated:** 2026-04-04 | **Status:** Production Ready (v6.6.0 — edit_file and edit_symbol tools with trimmed-line fuzzy matching, DMP length correction, unified diff hunk headers; markdown section line range fix, plugin distribution docs)
