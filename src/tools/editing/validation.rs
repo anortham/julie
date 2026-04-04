@@ -2,51 +2,49 @@
 
 use anyhow::Result;
 
-/// Check that all brackets, braces, and parentheses are matched in the content.
-///
-/// Returns Ok(()) if balanced, Err with details if unmatched.
-pub fn check_bracket_balance(content: &str) -> Result<()> {
-    let mut stack: Vec<char> = Vec::new();
-
+/// Count the net bracket balance in content (open minus close for each type).
+/// Counts raw characters without skipping strings or comments.
+fn count_bracket_balance(content: &str) -> (i32, i32, i32) {
+    let (mut braces, mut brackets, mut parens) = (0i32, 0i32, 0i32);
     for ch in content.chars() {
         match ch {
-            '{' | '[' | '(' => stack.push(ch),
-            '}' => {
-                if stack.last() == Some(&'{') {
-                    stack.pop();
-                } else {
-                    return Err(anyhow::anyhow!(
-                        "Unmatched closing brace '}}' -- edit would create invalid syntax"
-                    ));
-                }
-            }
-            ']' => {
-                if stack.last() == Some(&'[') {
-                    stack.pop();
-                } else {
-                    return Err(anyhow::anyhow!(
-                        "Unmatched closing bracket ']' -- edit would create invalid syntax"
-                    ));
-                }
-            }
-            ')' => {
-                if stack.last() == Some(&'(') {
-                    stack.pop();
-                } else {
-                    return Err(anyhow::anyhow!(
-                        "Unmatched closing paren ')' -- edit would create invalid syntax"
-                    ));
-                }
-            }
+            '{' => braces += 1,
+            '}' => braces -= 1,
+            '[' => brackets += 1,
+            ']' => brackets -= 1,
+            '(' => parens += 1,
+            ')' => parens -= 1,
             _ => {}
         }
     }
+    (braces, brackets, parens)
+}
 
-    if !stack.is_empty() {
-        let unmatched: String = stack.iter().collect();
+/// Check that an edit does not change the bracket balance of the file.
+///
+/// Compares net bracket counts before and after the edit. If the edit changes the
+/// balance (e.g., removes a closing brace without removing the opening one), it's
+/// likely a corruption. If the original file already had "unbalanced" brackets
+/// (common with string literals like `"foo())"`) and the edit preserves that
+/// balance, it passes.
+pub fn check_bracket_balance(before: &str, after: &str) -> Result<()> {
+    let (bb, kb, pb) = count_bracket_balance(before);
+    let (ba, ka, pa) = count_bracket_balance(after);
+
+    if bb != ba || kb != ka || pb != pa {
+        let mut issues = Vec::new();
+        if bb != ba {
+            issues.push(format!("braces {{}} changed by {}", ba - bb));
+        }
+        if kb != ka {
+            issues.push(format!("brackets [] changed by {}", ka - kb));
+        }
+        if pb != pa {
+            issues.push(format!("parens () changed by {}", pa - pb));
+        }
         return Err(anyhow::anyhow!(
-            "Unmatched opening bracket(s): '{}' -- edit would create invalid syntax",
-            unmatched
+            "Edit changes bracket balance ({}) -- may create invalid syntax",
+            issues.join(", ")
         ));
     }
 
@@ -64,8 +62,8 @@ pub fn should_check_balance(file_path: &str) -> bool {
         .any(|ext| file_path.ends_with(ext))
 }
 
-/// Format a unified diff between before and after content.
-/// Returns a compact diff string with context around changes.
+/// Format a unified diff between before and after content using LCS alignment.
+/// Produces compact output with 3 lines of context around changes.
 pub fn format_unified_diff(before: &str, after: &str, file_path: &str) -> String {
     use std::fmt::Write;
 
@@ -76,43 +74,148 @@ pub fn format_unified_diff(before: &str, after: &str, file_path: &str) -> String
     writeln!(output, "--- {}", file_path).unwrap();
     writeln!(output, "+++ {}", file_path).unwrap();
 
-    let max_len = before_lines.len().max(after_lines.len());
+    // Trim common prefix and suffix to minimize the LCS work
+    let mut prefix_len = 0;
+    while prefix_len < before_lines.len()
+        && prefix_len < after_lines.len()
+        && before_lines[prefix_len] == after_lines[prefix_len]
+    {
+        prefix_len += 1;
+    }
+
+    let mut suffix_len = 0;
+    while suffix_len < before_lines.len() - prefix_len
+        && suffix_len < after_lines.len() - prefix_len
+        && before_lines[before_lines.len() - 1 - suffix_len]
+            == after_lines[after_lines.len() - 1 - suffix_len]
+    {
+        suffix_len += 1;
+    }
+
+    let before_mid = &before_lines[prefix_len..before_lines.len() - suffix_len];
+    let after_mid = &after_lines[prefix_len..after_lines.len() - suffix_len];
+
+    // If nothing changed, return just the header
+    if before_mid.is_empty() && after_mid.is_empty() {
+        return output;
+    }
+
+    // Compute LCS on the differing middle section
+    let lcs_pairs = compute_lcs(before_mid, after_mid);
+
+    // Build edit operations from LCS
+    let mut ops: Vec<(char, &str)> = Vec::new();
+
+    // Common prefix (context only)
+    for line in &before_lines[..prefix_len] {
+        ops.push((' ', line));
+    }
+
+    // Middle section: walk both sequences using LCS matches as anchors
+    let mut ai = 0;
+    let mut bi = 0;
+    for &(la, lb) in &lcs_pairs {
+        while ai < la {
+            ops.push(('-', before_mid[ai]));
+            ai += 1;
+        }
+        while bi < lb {
+            ops.push(('+', after_mid[bi]));
+            bi += 1;
+        }
+        ops.push((' ', before_mid[ai]));
+        ai += 1;
+        bi += 1;
+    }
+    while ai < before_mid.len() {
+        ops.push(('-', before_mid[ai]));
+        ai += 1;
+    }
+    while bi < after_mid.len() {
+        ops.push(('+', after_mid[bi]));
+        bi += 1;
+    }
+
+    // Common suffix (context only)
+    for line in &before_lines[before_lines.len() - suffix_len..] {
+        ops.push((' ', line));
+    }
+
+    // Format with context: only show regions around changes
     let context = 3;
-    let mut last_change: Option<usize> = None;
+    let change_indices: Vec<usize> = ops
+        .iter()
+        .enumerate()
+        .filter(|(_, (op, _))| *op != ' ')
+        .map(|(i, _)| i)
+        .collect();
 
-    for i in 0..max_len {
-        let b = before_lines.get(i).copied();
-        let a = after_lines.get(i).copied();
+    if change_indices.is_empty() {
+        return output;
+    }
 
-        if b != a {
-            // Print context lines before the change (if we haven't recently)
-            let context_start = i.saturating_sub(context);
-            let print_from = match last_change {
-                Some(lc) if context_start <= lc + context => lc + context + 1,
-                _ => context_start,
-            };
-            for j in print_from..i {
-                if let Some(line) = before_lines.get(j) {
-                    writeln!(output, " {}", line).unwrap();
-                }
+    // Build visible ranges (change positions +/- context, merged when overlapping)
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    for &ci in &change_indices {
+        let start = ci.saturating_sub(context);
+        let end = (ci + context + 1).min(ops.len());
+        if let Some(last) = ranges.last_mut() {
+            if start <= last.1 {
+                last.1 = end;
+                continue;
             }
+        }
+        ranges.push((start, end));
+    }
 
-            if let Some(line) = b {
-                writeln!(output, "-{}", line).unwrap();
-            }
-            if let Some(line) = a {
-                writeln!(output, "+{}", line).unwrap();
-            }
-            last_change = Some(i);
-        } else if let Some(lc) = last_change {
-            // Print trailing context after a change
-            if i <= lc + context {
-                if let Some(line) = b {
-                    writeln!(output, " {}", line).unwrap();
-                }
-            }
+    for (start, end) in ranges {
+        for i in start..end {
+            let (op, line) = ops[i];
+            writeln!(output, "{}{}", op, line).unwrap();
         }
     }
 
     output
+}
+
+/// Compute the Longest Common Subsequence between two line sequences.
+/// Returns pairs of (index_in_a, index_in_b) for matching lines.
+fn compute_lcs<'a>(a: &[&'a str], b: &[&'a str]) -> Vec<(usize, usize)> {
+    let n = a.len();
+    let m = b.len();
+
+    if n == 0 || m == 0 {
+        return Vec::new();
+    }
+
+    // O(n*m) DP table. Fine for code files (typically <1000 lines in the diff region
+    // after prefix/suffix trimming).
+    let mut dp = vec![vec![0u32; m + 1]; n + 1];
+
+    for i in 1..=n {
+        for j in 1..=m {
+            if a[i - 1] == b[j - 1] {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            } else {
+                dp[i][j] = dp[i - 1][j].max(dp[i][j - 1]);
+            }
+        }
+    }
+
+    // Backtrack to find matching pairs
+    let mut pairs = Vec::new();
+    let (mut i, mut j) = (n, m);
+    while i > 0 && j > 0 {
+        if a[i - 1] == b[j - 1] {
+            pairs.push((i - 1, j - 1));
+            i -= 1;
+            j -= 1;
+        } else if dp[i - 1][j] > dp[i][j - 1] {
+            i -= 1;
+        } else {
+            j -= 1;
+        }
+    }
+    pairs.reverse();
+    pairs
 }

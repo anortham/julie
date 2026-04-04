@@ -267,7 +267,7 @@ impl EditSymbolTool {
 
         // Balance validation for code files
         if should_check_balance(symbol_file) {
-            if let Err(e) = check_bracket_balance(&modified_content) {
+            if let Err(e) = check_bracket_balance(&original_content, &modified_content) {
                 return Ok(CallToolResult::text_content(vec![Content::text(format!(
                     "Edit rejected: {}. Review the content and try again.",
                     e
