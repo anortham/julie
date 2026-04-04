@@ -203,7 +203,7 @@ All `env` values are optional — see the table below for defaults.
 
 Julie indexes your workspace automatically on first connection (~2-5s for most projects). All search capabilities are available immediately after indexing completes.
 
-## Tools (8)
+## Tools (10)
 
 ### Search & Navigation
 
@@ -229,6 +229,20 @@ Julie indexes your workspace automatically on first connection (~2-5s for most p
   - View file structure without reading full content
   - Extract specific symbols with complete code bodies
   - Structure/minimal/full reading modes
+
+### Editing
+
+- `edit_file` - Edit files without reading them first
+  - Three-phase matching: exact substring, trimmed-line (whitespace/indent tolerance), DMP fuzzy (typo tolerance)
+  - Supports first, last, or all occurrence replacement
+  - Dry-run preview with unified diff output (standard `@@` hunk headers)
+  - Bracket balance validation for code files
+  - CRLF-aware matching preserves line ending style
+- `edit_symbol` - Edit a symbol by name using Julie's indexed boundaries
+  - Operations: replace (entire definition), insert_after, insert_before
+  - Symbol lookup by qualified name (e.g., `MyClass::method`)
+  - Combine with deep_dive for zero-read editing workflows
+  - Dry-run preview with unified diff output
 
 ### Refactoring
 

@@ -341,7 +341,7 @@
   <!-- Section 7: Tools -->
   <section id="tools" class="section">
     <h2 class="section-title">Tools</h2>
-    <p class="section-subtitle">8 tools. Each one replaces dozens of file reads.</p>
+    <p class="section-subtitle">10 tools. Each one replaces dozens of file reads.</p>
 
     <div class="card-grid">
       <div class="card tool-card animate-on-scroll" data-delay="0">
@@ -438,6 +438,32 @@
           <div><span class="result">NOT injected: </span> <span class="highlight">206KB</span></div>
         </div>
         <span class="token-badge">~300 tokens</span>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="800">
+        <div class="tool-name">edit_file</div>
+        <div class="tool-desc">Edit files without reading them first</div>
+        <div class="terminal" aria-label="edit_file replacing a function signature with fuzzy matching and unified diff preview">
+          <div><span class="prompt">$ </span><span class="command">edit_file("src/auth.rs", old_text, new_text, dry_run)</span></div>
+          <div><span class="result">@@ -42,5 +42,5 @@</span></div>
+          <div><span class="comment">-fn validate(token: &str) -> bool {</span></div>
+          <div><span class="highlight">+fn validate(token: &str) -> Result&lt;Claims&gt; {</span></div>
+          <div><span class="comment">&nbsp; Fuzzy matched (trimmed-line)</span></div>
+        </div>
+        <span class="token-badge">~200 tokens</span>
+      </div>
+
+      <div class="card tool-card animate-on-scroll" data-delay="900">
+        <div class="tool-name">edit_symbol</div>
+        <div class="tool-desc">Edit a symbol by name without reading the file</div>
+        <div class="terminal" aria-label="edit_symbol replacing a function definition by symbol name">
+          <div><span class="prompt">$ </span><span class="command">edit_symbol("AuthService::validate", replace, dry_run)</span></div>
+          <div><span class="result">@@ -42,8 +42,10 @@</span></div>
+          <div><span class="comment">-fn validate(&self, ...) -> bool {</span></div>
+          <div><span class="highlight">+fn validate(&self, ...) -> Result&lt;Claims&gt; {</span></div>
+          <div><span class="comment">&nbsp; Symbol found in src/auth.rs:42</span></div>
+        </div>
+        <span class="token-badge">~250 tokens</span>
       </div>
     </div>
   </section>
