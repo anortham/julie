@@ -342,6 +342,55 @@ Key things that change frequently:
 
 ---
 
+## 🔌 Plugin Distribution (`julie-plugin`)
+
+Julie is distributed as a Claude Code plugin via a separate repo: `~/source/julie-plugin` (GitHub: `anortham/julie-plugin`). The plugin repo is a **pure distribution artifact**; all authoritative source lives here in the julie repo.
+
+### What lives where
+
+| Content | Source (julie) | Distribution (julie-plugin) |
+|---------|---------------|---------------------------|
+| Skills | `.claude/skills/<name>/SKILL.md` | `skills/<name>/SKILL.md` |
+| Hooks | `.claude/hooks/hooks.json` (dev-only) | `hooks/hooks.json` (distributed) |
+| Binaries | `cargo build --release` | `bin/archives/*.tar.gz\|*.zip` |
+| MCP server | `src/` (Rust source) | `hooks/run.cjs` (launch script) |
+| Agent instructions | `JULIE_AGENT_INSTRUCTIONS.md` | `hooks/session-start.cjs` (injected at startup) |
+
+### How distribution works
+
+On release, a GitHub Actions workflow in julie-plugin (`update-binaries.yml`):
+1. Downloads release binaries from `anortham/julie` 
+2. Clones the julie repo at the release tag
+3. Copies skills from `.claude/skills/` (hardcoded list in the workflow)
+4. Updates version in `plugin.json`, `package.json`, `marketplace.json`
+5. Commits and tags
+
+### When you add/modify plugin content
+
+**Adding a new skill:**
+1. Create `.claude/skills/<name>/SKILL.md` here in julie
+2. Copy it manually to `~/source/julie-plugin/skills/<name>/SKILL.md` for immediate availability
+3. Add `<name>` to the `for skill in ...` list in `julie-plugin/.github/workflows/update-binaries.yml`
+4. Update the skill count check in the same workflow
+
+**Modifying hooks:**
+- `.claude/hooks/hooks.json` in julie is dev-only (applies when working IN the julie repo)
+- `hooks/hooks.json` in julie-plugin is what gets distributed to users
+- These are intentionally separate; edit the plugin repo's copy for distribution changes
+
+**Modifying agent instructions:**
+- Edit `JULIE_AGENT_INSTRUCTIONS.md` here in julie (source of truth)
+- The plugin's `hooks/session-start.cjs` reads and injects this content at session startup
+
+**Adding a new MCP tool:**
+1. Implement in `src/tools/` and register in `src/handler.rs`
+2. Update `JULIE_AGENT_INSTRUCTIONS.md` with the tool description
+3. Update `.claude/settings.local.json` to allowlist the tool
+4. If the tool needs a skill, create one (see above)
+5. On release, the new binary is automatically distributed
+
+---
+
 ## 📝 Source-Controlled Artifacts
 
 **Always commit these with your work:**
@@ -351,4 +400,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-01 | **Status:** Production Ready (v6.5.2 — fix reference workspace storage routing in daemon mode; site/README token savings validated across 4 languages, shelved codehealth refs cleaned up, Observatory dashboard added to GH Pages site; sidecar review cleanup; token efficiency improvements: structure-default get_symbols, locations-only search, deep_dive token caps, group-by-file output, compact get_context; dashboard intelligence layer with centrality ranking, symbol kind distribution, complexity hotspots, story cards; daemon mode, Observatory dashboard with language breakdown, live search playground, shared workspaces, shared embedding pipeline, catch-up indexing on connect, graceful Windows shutdown)
+**Last Updated:** 2026-04-03 | **Status:** Production Ready (v6.5.7 — edit_file and edit_symbol DMP-powered editing tools, markdown section line range fix, plugin distribution docs; daemon stale binary auto-restart, catch-up indexing on connect, graceful Windows shutdown)
