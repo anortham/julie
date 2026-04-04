@@ -43,6 +43,15 @@ pub struct EditSymbolTool {
     pub dry_run: bool,
 }
 
+/// Detect the line ending used in source content.
+fn detect_line_ending(content: &str) -> &'static str {
+    if content.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
+}
+
 /// Replace lines start_line..=end_line (1-indexed, inclusive) with new content.
 pub fn replace_symbol_body(
     source: &str,
@@ -50,6 +59,7 @@ pub fn replace_symbol_body(
     end_line: u32,
     new_content: &str,
 ) -> Result<String> {
+    let eol = detect_line_ending(source);
     let lines: Vec<&str> = source.lines().collect();
     let start_idx = (start_line as usize).saturating_sub(1); // 1-indexed to 0-indexed
     let end_idx = end_line as usize; // 1-indexed end_line; used as exclusive bound
@@ -67,22 +77,25 @@ pub fn replace_symbol_body(
     // Lines before the symbol
     for line in &lines[..start_idx] {
         result.push_str(line);
-        result.push('\n');
+        result.push_str(eol);
     }
     // New content replacing the symbol
     result.push_str(new_content);
-    if !new_content.ends_with('\n') {
-        result.push('\n');
+    if !new_content.ends_with('\n') && !new_content.ends_with("\r\n") {
+        result.push_str(eol);
     }
     // Lines after the symbol
     for line in &lines[end_idx..] {
         result.push_str(line);
-        result.push('\n');
+        result.push_str(eol);
     }
 
     // Preserve original trailing newline behavior
     if !source.ends_with('\n') && result.ends_with('\n') {
         result.pop();
+        if eol == "\r\n" && result.ends_with('\r') {
+            result.pop();
+        }
     }
 
     Ok(result)
@@ -97,6 +110,7 @@ pub fn insert_near_symbol(
     new_content: &str,
     position: &str,
 ) -> Result<String> {
+    let eol = detect_line_ending(source);
     let lines: Vec<&str> = source.lines().collect();
     let anchor_idx = (anchor_line as usize).saturating_sub(1); // 1-indexed to 0-indexed
 
@@ -112,16 +126,16 @@ pub fn insert_near_symbol(
     for (i, line) in lines.iter().enumerate() {
         if i == anchor_idx && position == "before" {
             result.push_str(new_content);
-            if !new_content.ends_with('\n') {
-                result.push('\n');
+            if !new_content.ends_with('\n') && !new_content.ends_with("\r\n") {
+                result.push_str(eol);
             }
         }
         result.push_str(line);
-        result.push('\n');
+        result.push_str(eol);
         if i == anchor_idx && position == "after" {
             result.push_str(new_content);
-            if !new_content.ends_with('\n') {
-                result.push('\n');
+            if !new_content.ends_with('\n') && !new_content.ends_with("\r\n") {
+                result.push_str(eol);
             }
         }
     }
@@ -162,6 +176,7 @@ impl EditSymbolTool {
         // flat namespaces, parent/child resolution)
         let symbol_name = self.symbol.clone();
         let file_path_filter = self.file_path.clone();
+        let file_path_for_error = self.file_path.clone();
         let matches = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String, u32, u32)>> {
             let db = db_arc
                 .lock()
@@ -171,7 +186,18 @@ impl EditSymbolTool {
                 &symbol_name,
                 file_path_filter.as_deref(),
             )?;
-            Ok(symbols
+            // find_symbol falls back to unfiltered results when the file filter
+            // matches nothing. That's fine for read-only deep_dive, but for a write
+            // operation we must enforce the filter strictly.
+            let filtered = if let Some(ref fp) = file_path_filter {
+                symbols
+                    .into_iter()
+                    .filter(|s| s.file_path.contains(fp.as_str()))
+                    .collect()
+            } else {
+                symbols
+            };
+            Ok(filtered
                 .iter()
                 .map(|s| {
                     (
@@ -186,6 +212,13 @@ impl EditSymbolTool {
         .await??;
 
         if matches.is_empty() {
+            if let Some(ref fp) = file_path_for_error {
+                return Ok(CallToolResult::text_content(vec![Content::text(format!(
+                    "Error: symbol '{}' not found in '{}'. The symbol may exist in other files. \
+                     Use fast_search or get_symbols to verify the location.",
+                    self.symbol, fp
+                ))]));
+            }
             return Ok(CallToolResult::text_content(vec![Content::text(format!(
                 "Error: symbol '{}' not found in index. Use fast_search or get_symbols to verify the name.",
                 self.symbol
