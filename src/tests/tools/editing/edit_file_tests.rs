@@ -86,3 +86,111 @@ fn test_invalid_occurrence_returns_error() {
     let result = apply_edit("content", "con", "new", "invalid");
     assert!(result.is_err());
 }
+
+// --- Trimmed-line fuzzy matching tests ---
+
+#[test]
+fn test_fuzzy_indentation_difference() {
+    // File uses 4-space indent, old_text uses 2-space. Should match via trimmed lines.
+    let content = "fn main() {\n    let x = 1;\n    let y = 2;\n}\n";
+    let old_text = "  let x = 1;\n  let y = 2;";
+    let new_text = "    let x = 10;\n    let y = 20;";
+    let result = apply_edit(content, old_text, new_text, "first").unwrap();
+    assert_eq!(result, "fn main() {\n    let x = 10;\n    let y = 20;\n}\n");
+}
+
+#[test]
+fn test_fuzzy_long_single_line_wider_indent() {
+    // Single line >32 chars, 8-space indent in old_text vs 4-space in file.
+    // 8-space is NOT a substring of 4-space content, so exact fails and trimmed matches.
+    let content = "    some_function_with_a_very_long_name(param1, param2, param3);\n";
+    let old_text = "        some_function_with_a_very_long_name(param1, param2, param3);";
+    let new_text = "    some_function_with_a_very_long_name(param1, param2, param3, param4);";
+    let result = apply_edit(content, old_text, new_text, "first").unwrap();
+    assert_eq!(
+        result,
+        "    some_function_with_a_very_long_name(param1, param2, param3, param4);\n"
+    );
+}
+
+#[test]
+fn test_fuzzy_trailing_whitespace_difference() {
+    // File has trailing spaces on line 1, old_text doesn't.
+    let content = "let x = 1;  \nlet y = 2;\n";
+    let old_text = "let x = 1;\nlet y = 2;";
+    let new_text = "let x = 10;\nlet y = 20;";
+    let result = apply_edit(content, old_text, new_text, "first").unwrap();
+    assert_eq!(result, "let x = 10;\nlet y = 20;\n");
+}
+
+#[test]
+fn test_fuzzy_tabs_vs_spaces() {
+    // File uses tabs, old_text uses spaces.
+    let content = "\tfn process() {\n\t\tdo_work();\n\t}\n";
+    let old_text = "    fn process() {\n        do_work();\n    }";
+    let new_text = "\tfn process_v2() {\n\t\tdo_work();\n\t}";
+    let result = apply_edit(content, old_text, new_text, "first").unwrap();
+    assert_eq!(result, "\tfn process_v2() {\n\t\tdo_work();\n\t}\n");
+}
+
+#[test]
+fn test_fuzzy_no_match_still_errors() {
+    // Completely different content should still fail.
+    let content = "fn main() {\n    let x = 1;\n}\n";
+    let old_text = "fn nonexistent() {\n    something_else();\n}";
+    let result = apply_edit(content, old_text, "fn replaced() {}", "first");
+    assert!(result.is_err(), "Should error when no lines match");
+}
+
+#[test]
+fn test_dmp_fuzzy_handles_extra_char_in_content() {
+    // Content has an extra space ("let x  = 1;" is 11 chars vs old_text's 10).
+    // DMP bitap finds the match, but splice must replace 11 chars, not 10.
+    let content = "let x  = 1;\nmore stuff\n";
+    let old_text = "let x = 1;";
+    let new_text = "let x = 2;";
+    let result = apply_edit(content, old_text, new_text, "first").unwrap();
+    assert_eq!(result, "let x = 2;\nmore stuff\n");
+}
+
+#[test]
+fn test_dmp_fuzzy_handles_missing_char_in_content() {
+    // Content has a missing space ("letx = 1;" is 9 chars vs old_text's 10).
+    let content = "letx = 1;\nmore stuff\n";
+    let old_text = "let x = 1;";
+    let new_text = "let y = 2;";
+    let result = apply_edit(content, old_text, new_text, "first").unwrap();
+    assert_eq!(result, "let y = 2;\nmore stuff\n");
+}
+
+#[test]
+fn test_fuzzy_overlapping_spans_not_corrupted() {
+    // Repeated trimmed-equal lines create overlapping window matches.
+    // occurrence="all" must not produce overlapping spans.
+    let content = "  x\n  x\n  x\n";
+    let old_text = "x\nx";
+    let new_text = "Z";
+    let result = apply_edit(content, old_text, new_text, "all").unwrap();
+    // Should replace first match (lines 0-1) only; second would overlap so it's skipped.
+    assert_eq!(result, "Z\n  x\n");
+}
+
+#[test]
+fn test_fuzzy_crlf_line_endings_preserved() {
+    // Trimmed-line matching on CRLF files must not eat the \r.
+    let content = "  let x = 1;\r\n  let y = 2;\r\n";
+    let old_text = "let x = 1;\nlet y = 2;";
+    let new_text = "let x = 10;\r\nlet y = 20;";
+    let result = apply_edit(content, old_text, new_text, "first").unwrap();
+    assert_eq!(result, "let x = 10;\r\nlet y = 20;\r\n");
+}
+
+#[test]
+fn test_exact_match_still_preferred() {
+    // When exact match works, it should be used (no behavior change).
+    let content = "    let x = 1;\n    let y = 2;\n";
+    let old_text = "    let x = 1;\n    let y = 2;";
+    let new_text = "    let x = 10;\n    let y = 20;";
+    let result = apply_edit(content, old_text, new_text, "first").unwrap();
+    assert_eq!(result, "    let x = 10;\n    let y = 20;\n");
+}

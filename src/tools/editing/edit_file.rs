@@ -5,7 +5,7 @@
 //! fuzzy matching tolerates minor differences.
 
 use anyhow::{anyhow, Result};
-use diff_match_patch_rs::{Compat, DiffMatchPatch};
+use diff_match_patch_rs::{Compat, DiffMatchPatch, Ops};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -17,6 +17,15 @@ use rmcp::model::{CallToolResult, Content};
 
 use super::EditingTransaction;
 use super::validation::{check_bracket_balance, format_unified_diff, should_check_balance};
+
+/// A match location: character indices [start, end) in the file content.
+/// For exact matches, end - start == old_text.chars().count().
+/// For trimmed-line matches, end - start is the actual file content length (may differ).
+#[derive(Debug, Clone, Copy)]
+struct MatchSpan {
+    start: usize,
+    end: usize,
+}
 
 fn default_dry_run() -> bool {
     true
@@ -61,9 +70,9 @@ pub fn apply_edit(
         return Err(anyhow!("old_text cannot be empty"));
     }
 
-    let positions = find_all_matches(content, old_text)?;
+    let spans = find_all_matches(content, old_text)?;
 
-    if positions.is_empty() {
+    if spans.is_empty() {
         return Err(anyhow!(
             "No match found for the provided old_text ({} chars). \
              Verify the text exists in the file.",
@@ -71,10 +80,10 @@ pub fn apply_edit(
         ));
     }
 
-    let selected: Vec<usize> = match occurrence {
-        "first" => vec![positions[0]],
-        "last" => vec![*positions.last().unwrap()],
-        "all" => positions,
+    let selected: Vec<MatchSpan> = match occurrence {
+        "first" => vec![spans[0]],
+        "last" => vec![*spans.last().unwrap()],
+        "all" => spans,
         _ => {
             return Err(anyhow!(
                 "Invalid occurrence '{}': must be 'first', 'last', or 'all'",
@@ -84,57 +93,109 @@ pub fn apply_edit(
     };
 
     // Apply replacements in reverse order so character positions don't shift
-    let old_char_len = old_text.chars().count();
     let new_chars: Vec<char> = new_text.chars().collect();
     let mut result_chars: Vec<char> = content.chars().collect();
 
-    for &pos in selected.iter().rev() {
-        result_chars.splice(pos..pos + old_char_len, new_chars.iter().copied());
+    for span in selected.iter().rev() {
+        result_chars.splice(span.start..span.end, new_chars.iter().copied());
     }
 
     Ok(result_chars.into_iter().collect())
 }
 
-/// Find all match positions for old_text in content.
+/// Find all match spans for old_text in content.
 ///
-/// Strategy:
-/// 1. Exact substring search (works for any pattern length, always tried first)
-/// 2. If no exact matches and pattern fits within DMP's bitap limit (32 chars),
-///    fall back to DMP fuzzy matching (tolerates minor whitespace/typo differences)
+/// Strategy (first match wins):
+/// 1. Exact substring search (any pattern length)
+/// 2. Trimmed-line matching (whitespace/indentation tolerance, any length)
+/// 3. DMP bitap fuzzy matching (character-level tolerance, ≤32 chars only)
 ///
-/// Returns character positions sorted ascending.
-fn find_all_matches(content: &str, old_text: &str) -> Result<Vec<usize>> {
+/// Returns MatchSpans sorted by start position ascending.
+fn find_all_matches(content: &str, old_text: &str) -> Result<Vec<MatchSpan>> {
     let old_char_len = old_text.chars().count();
 
-    // Phase 1: try exact substring search (handles any pattern length)
+    // Phase 1: exact substring (any length, always tried first)
     let exact_positions = find_exact_matches(content, old_text);
     if !exact_positions.is_empty() {
-        return Ok(exact_positions);
+        return Ok(exact_positions
+            .into_iter()
+            .map(|pos| MatchSpan { start: pos, end: pos + old_char_len })
+            .collect());
     }
 
-    // Phase 2: DMP fuzzy fallback for short patterns only (bitap limit is 32 chars)
-    // This helps when the agent has minor whitespace/formatting differences.
+    // Phase 2: trimmed-line matching (handles indentation and trailing whitespace)
+    let trimmed = find_matches_by_trimmed_lines(content, old_text);
+    if !trimmed.is_empty() {
+        return Ok(trimmed);
+    }
+
+    // Phase 3: DMP bitap fuzzy (≤32 chars, handles minor typos)
     const DMP_BITAP_LIMIT: usize = 32;
     if old_char_len > DMP_BITAP_LIMIT {
-        // Pattern too long for DMP bitap; exact search was authoritative
         return Ok(Vec::new());
     }
 
     let dmp = DiffMatchPatch::new();
-    let mut positions = Vec::new();
+    let mut spans = Vec::new();
     let mut search_from: usize = 0;
+    let content_chars: Vec<char> = content.chars().collect();
 
     loop {
         match dmp.match_main::<Compat>(content, old_text, search_from) {
             Some(pos) if pos >= search_from => {
-                positions.push(pos);
-                search_from = pos + old_char_len;
+                let end = compute_fuzzy_end(&dmp, &content_chars, pos, old_text, old_char_len);
+                spans.push(MatchSpan { start: pos, end });
+                search_from = end;
             }
             _ => break,
         }
     }
 
-    Ok(positions)
+    Ok(spans)
+}
+
+/// After DMP bitap finds a fuzzy match at `pos`, compute the actual end position
+/// by diffing old_text against a content window and walking the diff operations.
+/// Falls back to `pos + old_char_len` if the diff fails for any reason.
+fn compute_fuzzy_end(
+    dmp: &DiffMatchPatch,
+    content_chars: &[char],
+    pos: usize,
+    old_text: &str,
+    old_char_len: usize,
+) -> usize {
+    let fallback = pos + old_char_len;
+    let window_end = (pos + old_char_len * 2).min(content_chars.len());
+    let window: String = content_chars[pos..window_end].iter().collect();
+
+    let diffs = match dmp.diff_main::<Compat>(old_text, &window) {
+        Ok(d) => d,
+        Err(_) => return fallback,
+    };
+
+    let mut old_pos = 0usize;
+    let mut content_pos = 0usize;
+
+    for diff in &diffs {
+        let len = diff.data().len();
+        match diff.op() {
+            Ops::Equal => {
+                old_pos += len;
+                content_pos += len;
+            }
+            Ops::Delete => {
+                old_pos += len;
+            }
+            Ops::Insert => {
+                content_pos += len;
+            }
+        }
+        if old_pos >= old_char_len {
+            break;
+        }
+    }
+
+    pos + content_pos
 }
 
 /// Exact substring search returning all character-index positions ascending.
@@ -152,6 +213,88 @@ fn find_exact_matches(content: &str, pattern: &str) -> Vec<usize> {
     }
 
     positions
+}
+
+/// Trimmed-line matching: finds blocks where each line matches after trim().
+/// Handles indentation differences (tabs vs spaces, 2 vs 4 spaces) and trailing whitespace.
+/// Returns spans covering the actual file content with original whitespace.
+fn find_matches_by_trimmed_lines(content: &str, old_text: &str) -> Vec<MatchSpan> {
+    let content_lines: Vec<&str> = content.lines().collect();
+    let old_lines: Vec<&str> = old_text.lines().collect();
+
+    if old_lines.is_empty() {
+        return vec![];
+    }
+
+    let old_trimmed: Vec<&str> = old_lines.iter().map(|l| l.trim()).collect();
+    let n = old_lines.len();
+
+    // Reject if ALL trimmed lines are empty (matching on only blank lines is too ambiguous)
+    if old_trimmed.iter().all(|l| l.is_empty()) {
+        return vec![];
+    }
+
+    if n > content_lines.len() {
+        return vec![];
+    }
+
+    // Collect chars for CRLF-aware end position calculation
+    let content_chars: Vec<char> = content.chars().collect();
+    let total_chars = content_chars.len();
+
+    // Precompute char offset of each line start
+    let mut line_starts = vec![0usize];
+    for (i, &c) in content_chars.iter().enumerate() {
+        if c == '\n' {
+            line_starts.push(i + 1);
+        }
+    }
+
+    let mut matches = vec![];
+
+    for i in 0..=content_lines.len() - n {
+        let all_match = (0..n).all(|j| content_lines[i + j].trim() == old_trimmed[j]);
+        if all_match {
+            let start = line_starts[i];
+            // End boundary: include trailing line ending only if old_text ends with \n
+            let end = if old_text.ends_with('\n') || old_text.ends_with("\r\n") {
+                if i + n < line_starts.len() {
+                    line_starts[i + n]
+                } else {
+                    total_chars
+                }
+            } else {
+                // Exclude trailing line ending (\n or \r\n) of the last matched line
+                let raw = if i + n < line_starts.len() {
+                    line_starts[i + n]
+                } else {
+                    total_chars
+                };
+                let mut e = raw;
+                if e > start && e > 0 && content_chars.get(e - 1) == Some(&'\n') {
+                    e -= 1;
+                }
+                if e > start && e > 0 && content_chars.get(e - 1) == Some(&'\r') {
+                    e -= 1;
+                }
+                e
+            };
+
+            matches.push(MatchSpan { start, end });
+        }
+    }
+
+    // Filter overlapping spans: keep non-overlapping matches in order
+    let mut filtered = Vec::with_capacity(matches.len());
+    let mut last_end = 0usize;
+    for span in &matches {
+        if span.start >= last_end {
+            filtered.push(*span);
+            last_end = span.end;
+        }
+    }
+
+    filtered
 }
 
 impl EditFileTool {

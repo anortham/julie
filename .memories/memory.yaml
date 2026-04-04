@@ -1,14 +1,12 @@
 decisions:
-  - "2026-03-01 | No symbol-level editing tools. Agents ignore custom editing in favor of built-in Edit. If revisited, insert_after_symbol has strongest case."
   - "2026-03-29 | Dashboard intelligence layer: server-side SVG donut via stroke-dasharray, no JS charting lib. Direct DB file open for inactive workspaces (bypasses WorkspacePool session side-effects)."
-  - "2026-03-31 | Token efficiency: vetoed changes to tool descriptions/server instructions. Cut batch deep_dive (complexity not justified), changed_symbols (git diff + Julie tools sufficient), path aliases (might hurt LLM accuracy). return_format=locations for definition search. deep_dive caps: overview=300, context=800, full=1800 tokens. Compact mode neighbor budget 2400 chars."
+  - "2026-03-31 | Token efficiency: vetoed batch deep_dive (complexity not justified), changed_symbols (git diff + Julie tools sufficient), path aliases (might hurt LLM accuracy). return_format=locations for definition search. deep_dive caps: overview=300, context=800, full=1800 tokens. Compact mode neighbor budget 2400 chars."
   - "2026-03-31 | Standardized on Python sidecar as sole embedding backend, removed ORT/fastembed entirely (net -2,601 lines). Sidecar handles CPU fallback fine."
-  - "2026-04-01 | Reference workspace storage bug: in daemon mode, workspace_db_path/workspace_tantivy_path ignored workspace_id when index_root_override was set. Fix: shared_indexes_dir() resolves parent and always appends workspace_id."
-  - "2026-04-02 | Daemon version mismatch fix: VERSION header check moved from handle_ipc_session into accept_loop BEFORE sessions.add_session(). Idle daemon shuts down immediately on mismatch; adapter restarts with new binary."
-  - "2026-04-02 | Dashboard stale embedding model name: daemon.db embedding_model column now updated after pipeline completion and on startup (changed from is_none() to != current_model comparison)."
   - "2026-04-03 | Dead code metric narrowed to functions/methods only (types too noisy due to implicit usage). Fixture/example/docs directories excluded. Undocumented symbols ranked by centrality."
-  - "2026-04-03 | Embedding enrichment approach: behavioral embeddings (file path, implementor names, field signatures) + query classification heuristic for dynamic keyword/semantic weighting. No model change (CodeRankEmbed stays, sqlite-vec stays). Evaluated through intelligence-per-token lens."
+  - "2026-04-03 | Embedding enrichment approach: behavioral embeddings (file path, implementor names, field signatures) + query classification heuristic for dynamic keyword/semantic weighting. No model change (CodeRankEmbed stays, sqlite-vec stays)."
   - "2026-04-03 | Julie's core value proposition is intelligence-per-token: minimizing tokens an agent needs to acquire understanding for a task. All features evaluated through this lens."
+  - "2026-04-04 | edit_file (DMP fuzzy replace) and edit_symbol (symbol-aware editing) added as MCP tools. Progressive rollout: Phase 1 = these two, Phase 2 = read_file replacement and hook escalation. Four-layer adoption: tool descriptions, SessionStart hook, PreToolUse nudge, editing skill. Rejected single multi-purpose edit tool and full Serena-style suite upfront."
+  - "2026-04-04 | Bracket validation changed from absolute check to delta-based (compare before vs after). Absolute check false-rejected edits where string literals contained intentionally unbalanced brackets."
 
 open_questions:
   - "2026-03-31 | Sidecar venv CUDA torch swap fragility: if bootstrap recreates venv, it reinstalls CPU torch from PyPI. detect_nvidia_cuda() should handle this but needs testing on fresh machine."
@@ -16,6 +14,7 @@ open_questions:
 
 deferred_work:
   - "2026-03-01 | Incomplete embedding backfill not resumed on daemon restart. Known issue as of v6.0.2."
+  - "2026-04-04 | DMP fuzzy match splice width: when DMP finds a fuzzy match, the replacement splice width may not exactly match the intended old_text boundary. Documented as known limitation, fix deferred to Phase 2 byte-precision editing."
 
 gotchas:
   - "2026-03-01 | sqlite-vec vec0 virtual tables don't support INSERT OR REPLACE; must DELETE then INSERT."
@@ -30,3 +29,5 @@ gotchas:
   - "2026-04-03 | sqlite-vec vec0 tables default to L2 distance, NOT cosine. Must specify distance_metric=cosine in CREATE TABLE. Without it, 768-dim cosine similarity formula produces garbage (negative values). Requires force re-index to fix."
   - "2026-04-03 | deep_dive similar symbols section must be reserved separately (150 tokens) before main body truncation. Appending last then truncating from end guarantees it gets cut at context depth."
   - "2026-04-03 | search_target='definitions' is required for conceptual queries to benefit from semantic/embedding search. Default 'content' mode is Tantivy-only and won't use embeddings."
+  - "2026-04-04 | DMP bitap has a 32-character pattern limit. edit_file uses exact substring search first with DMP fuzzy fallback only when exact match fails."
+  - "2026-04-04 | initialize_embedding_provider() propagation in workspace/mod.rs is dead code: always called on workspace clones (which have watcher: None). Propagation must happen at actual write-back sites in embeddings.rs and nl_embeddings.rs."

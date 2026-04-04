@@ -67,6 +67,61 @@ fn test_unified_diff_format() {
 }
 
 #[test]
+fn test_unified_diff_has_hunk_headers() {
+    // 5-line file, change at line 3. Entire file within context range = 1 hunk.
+    let before = "line1\nline2\nline3\nline4\nline5\n";
+    let after = "line1\nline2\nchanged\nline4\nline5\n";
+    let diff = format_unified_diff(before, after, "test.rs");
+    assert!(
+        diff.contains("@@ -1,5 +1,5 @@"),
+        "Hunk header should show correct line numbers. Got:\n{}",
+        diff
+    );
+}
+
+#[test]
+fn test_unified_diff_multiple_hunks_separated() {
+    // 20 lines, changes at line 3 and line 18 (far enough apart for 2 hunks)
+    let mut before_lines = Vec::new();
+    let mut after_lines = Vec::new();
+    for i in 1..=20 {
+        before_lines.push(format!("line{}", i));
+        if i == 3 {
+            after_lines.push("changed3".to_string());
+        } else if i == 18 {
+            after_lines.push("changed18".to_string());
+        } else {
+            after_lines.push(format!("line{}", i));
+        }
+    }
+    let before = before_lines.join("\n") + "\n";
+    let after = after_lines.join("\n") + "\n";
+    let diff = format_unified_diff(&before, &after, "test.rs");
+
+    // Each hunk header has @@ at start and end, so 2 hunks = 4 @@ markers
+    let at_count = diff.matches("@@").count();
+    assert_eq!(
+        at_count, 4,
+        "Should have 2 hunk headers (4 @@ markers). Got:\n{}",
+        diff
+    );
+}
+
+#[test]
+fn test_unified_diff_insertion_line_counts() {
+    // Insert a line: old has 5 lines, new has 6
+    let before = "line1\nline2\nline3\nline4\nline5\n";
+    let after = "line1\nline2\nINSERTED\nline3\nline4\nline5\n";
+    let diff = format_unified_diff(before, after, "test.rs");
+    // Entire file within context, insertion adds 1 new-side line
+    assert!(
+        diff.contains("@@ -1,5 +1,6 @@"),
+        "Insertion hunk should show old=5, new=6. Got:\n{}",
+        diff
+    );
+}
+
+#[test]
 fn test_unified_diff_insertion_does_not_cascade() {
     // When a line is inserted in the middle, only the insertion should appear in the diff,
     // not every subsequent line. This catches the naive index-comparison bug where

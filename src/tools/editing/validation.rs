@@ -168,7 +168,30 @@ pub fn format_unified_diff(before: &str, after: &str, file_path: &str) -> String
         ranges.push((start, end));
     }
 
+    // Precompute line numbers: (old_lineno, new_lineno) at each op position
+    let mut line_nos: Vec<(usize, usize)> = Vec::with_capacity(ops.len());
+    let mut old_no = 1usize;
+    let mut new_no = 1usize;
+    for &(op, _) in &ops {
+        line_nos.push((old_no, new_no));
+        match op {
+            '-' => old_no += 1,
+            '+' => new_no += 1,
+            _ => {
+                old_no += 1;
+                new_no += 1;
+            }
+        }
+    }
+
     for (start, end) in ranges {
+        // Hunk header: count old-side lines (context + removed) and new-side (context + added)
+        let old_start = line_nos[start].0;
+        let new_start = line_nos[start].1;
+        let old_count = ops[start..end].iter().filter(|(op, _)| *op != '+').count();
+        let new_count = ops[start..end].iter().filter(|(op, _)| *op != '-').count();
+        writeln!(output, "@@ -{},{} +{},{} @@", old_start, old_count, new_start, new_count).unwrap();
+
         for i in start..end {
             let (op, line) = ops[i];
             writeln!(output, "{}{}", op, line).unwrap();
