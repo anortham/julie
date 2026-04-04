@@ -249,7 +249,13 @@ impl MarkdownExtractor {
         }
 
         if let Some(heading) = heading_node {
-            return self.extract_heading(heading, parent_id, Some(section_content));
+            let mut symbol = self.extract_heading(heading, parent_id, Some(section_content))?;
+            // Fix: expand range to cover the full section, not just the heading line.
+            symbol.start_line = (node.start_position().row + 1) as u32;
+            symbol.end_line = (node.end_position().row + 1) as u32;
+            symbol.start_byte = node.start_byte() as u32;
+            symbol.end_byte = node.end_byte() as u32;
+            return Some(symbol);
         }
 
         None

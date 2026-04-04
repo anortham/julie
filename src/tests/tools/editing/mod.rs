@@ -3,6 +3,7 @@
 //! This module contains tests for EditingTransaction (used by rename_symbol).
 
 pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
+mod markdown_section_tests;
 
 use crate::tools::editing::EditingTransaction;
 use std::env;
