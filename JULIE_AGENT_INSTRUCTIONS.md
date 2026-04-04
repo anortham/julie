@@ -7,6 +7,7 @@
 3. **References before changes**: Always `fast_refs` before modifying any symbol.
 4. **Deep dive before modifying**: Use `deep_dive` before changing a symbol. One call replaces chaining fast_search + get_symbols + fast_refs + Read.
 5. **Trust results**: Pre-indexed and accurate. Never verify with grep/find/Read.
+6. **Edit without reading**: Use `edit_file` or `edit_symbol` instead of Read + Edit. They don't require reading the file first, saving tokens.
 
 ## Tools
 
@@ -17,6 +18,8 @@
 - `get_context`: Token-budgeted area orientation (pivots + neighbors). Use at start of task.
 - `rename_symbol`: Workspace-wide rename. Always preview with `dry_run=true` first.
 - `manage_workspace`: Index, add/remove references, health check. First action in new workspace: `operation="index"`.
+- `edit_file`: Edit a file without reading it first. DMP fuzzy matching for old_text. Always `dry_run=true` first.
+- `edit_symbol`: Edit a symbol by name. Operations: replace, insert_after, insert_before. Always `dry_run=true` first.
 - `query_metrics`: Code health (security/change risk, test coverage), session stats, trend history.
 
 ## Workflow
@@ -25,4 +28,6 @@
 - **Bug fix**: fast_search > deep_dive > write failing test > fix
 - **Refactor**: fast_refs > deep_dive > rename_symbol (dry_run first)
 
-Don't use grep/find when Julie tools are available. Don't read files without get_symbols first. Don't chain multiple tools when deep_dive does it in one call.
+- **Editing**: deep_dive symbol > edit_symbol (or edit_file for non-code) > dry_run first
+
+Don't use grep/find when Julie tools are available. Don't read files without get_symbols first. Don't chain multiple tools when deep_dive does it in one call. Don't use Read + Edit when edit_file or edit_symbol can do it in one step.

@@ -151,6 +151,8 @@
       "Read(//c/Users/CHS300372/.claude/**)",
       "mcp__plugin_goldfish_goldfish__recall",
       "mcp__julie__get_context",
+      "mcp__julie__edit_file",
+      "mcp__julie__edit_symbol",
       "Bash(export PATH=\"$HOME/.cargo/bin:$PATH\")",
       "Bash(rustup which:*)"
     ],

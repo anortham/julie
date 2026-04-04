@@ -1,3 +1,10 @@
 {
-  "hooks": {}
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit",
+        "command": "echo 'Tip: mcp__julie__edit_file and mcp__julie__edit_symbol edit without reading first, saving tokens. Consider using them instead.'"
+      }
+    ]
+  }
 }
