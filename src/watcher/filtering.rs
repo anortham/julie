@@ -21,7 +21,14 @@ pub fn build_supported_extensions() -> HashSet<String> {
 }
 
 /// Walk `dir` recursively (up to `max_depth` levels) and collect paths of all
-/// `.gitignore` files found, skipping blacklisted directories.
+/// `.gitignore` files found, skipping blacklisted and hidden directories.
+///
+/// Hidden directories (starting with `.`) are skipped because they are almost
+/// universally tool caches (`.ruff_cache`, `.pytest_cache`, `.mypy_cache`,
+/// `.venv`, etc.) whose `.gitignore` files contain bare `*` patterns. The
+/// `ignore` crate's `matched_path_or_any_parents` does not properly scope
+/// these patterns to their parent directory, causing them to match ALL files
+/// globally and silently breaking the file watcher.
 fn collect_gitignore_files(dir: &Path, max_depth: usize) -> Vec<std::path::PathBuf> {
     let mut found = Vec::new();
     if max_depth == 0 {
@@ -35,9 +42,15 @@ fn collect_gitignore_files(dir: &Path, max_depth: usize) -> Vec<std::path::PathB
         let path = entry.path();
         if path.is_dir() {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if !BLACKLISTED_DIRECTORIES.contains(&name) && name != ".git" {
-                found.extend(collect_gitignore_files(&path, max_depth - 1));
+            // Skip .git, blacklisted dirs, and hidden dirs (tool caches with
+            // overly broad * patterns that leak via the ignore crate).
+            if name == ".git"
+                || name.starts_with('.')
+                || BLACKLISTED_DIRECTORIES.contains(&name)
+            {
+                continue;
             }
+            found.extend(collect_gitignore_files(&path, max_depth - 1));
         } else if path.file_name().and_then(|n| n.to_str()) == Some(".gitignore") {
             found.push(path);
         }
@@ -666,6 +679,67 @@ mod tests {
                 .matched_path_or_any_parents("packages/core/index.ts", false)
                 .is_ignore(),
             "normal file should not be ignored"
+        );
+    }
+
+    /// Regression test: subdirectory `.gitignore` files containing `*` (common
+    /// in cache directories like .ruff_cache, .pytest_cache, .venv) must NOT
+    /// leak their patterns to the entire workspace. Without the fix, the `*`
+    /// pattern from `.ruff_cache/.gitignore` would match ALL source files,
+    /// causing the file watcher to silently reject every file change event.
+    #[test]
+    fn test_cache_dir_gitignore_star_does_not_leak_globally() {
+        use std::fs;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        // Root .gitignore with normal patterns
+        fs::write(root.join(".gitignore"), "target/\n*.log\n").unwrap();
+
+        // Create cache directories with `*` gitignore (replicates real-world
+        // .ruff_cache, .pytest_cache, .venv behavior)
+        for cache_dir in &[".ruff_cache", ".pytest_cache", ".mypy_cache"] {
+            let dir = root.join(cache_dir);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join(".gitignore"), "*\n").unwrap();
+        }
+
+        // Create a normal source file
+        fs::create_dir_all(root.join("src/watcher")).unwrap();
+        fs::write(root.join("src/watcher/filtering.rs"), "fn main() {}").unwrap();
+
+        let extensions = build_supported_extensions();
+        let matcher = build_gitignore_matcher(root).unwrap();
+
+        // The critical check: normal source files must NOT be ignored
+        assert!(
+            !matcher
+                .matched_path_or_any_parents("src/watcher/filtering.rs", false)
+                .is_ignore(),
+            "src/watcher/filtering.rs must NOT be matched by cache dir * patterns"
+        );
+
+        // should_index_file must accept normal source files
+        assert!(
+            should_index_file(
+                &root.join("src/watcher/filtering.rs"),
+                &extensions,
+                &matcher,
+                root
+            ),
+            "should_index_file must accept normal source files (watcher depends on this)"
+        );
+
+        // Cache directory contents SHOULD still be ignored (by root .gitignore
+        // or blacklisted directories, not by the cache's own .gitignore)
+        assert!(
+            !should_index_file(
+                &root.join(".ruff_cache/some_file.rs"),
+                &extensions,
+                &matcher,
+                root
+            ),
+            "files inside cache dirs should still be rejected"
         );
     }
 }

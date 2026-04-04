@@ -232,20 +232,35 @@ src/database/
 
 ## 🐛 Debugging & Monitoring
 
-### 🚨 LOG LOCATION
+### 🚨 LOG LOCATIONS
 
-Julie logs to the project-level `.julie/logs/` directory.
+Julie has TWO log locations depending on mode:
 
-**When checking logs, ALWAYS use:**
+**Daemon mode logs** (the daemon process, shared across sessions):
 ```bash
-# Julie logs (project-level)
+# Daemon log (rotated daily)
+tail -f ~/.julie/daemon.log.$(date +%Y-%m-%d)
+
+# Check watcher activity
+grep "Background task processing" ~/.julie/daemon.log.$(date +%Y-%m-%d)
+
+# Check watcher creation
+grep "File watcher created" ~/.julie/daemon.log.$(date +%Y-%m-%d)
+
+# View recent errors
+tail -100 ~/.julie/daemon.log.$(date +%Y-%m-%d) | grep -i error
+
+# List all daemon log files
+ls -lh ~/.julie/daemon.log.*
+```
+
+**Project-level logs** (per-project, stdio mode or session-specific):
+```bash
+# Project logs
 tail -f .julie/logs/julie.log.$(date +%Y-%m-%d)
 
 # Check indexing progress
 tail -50 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -E "Tantivy|indexing|Background"
-
-# View recent errors
-tail -100 .julie/logs/julie.log.$(date +%Y-%m-%d) | grep -i error
 
 # List all log files
 ls -lh .julie/logs/
@@ -400,4 +415,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-04 | **Status:** Production Ready (v6.6.0 — edit_file and edit_symbol tools with trimmed-line fuzzy matching, DMP length correction, unified diff hunk headers; markdown section line range fix, plugin distribution docs)
+**Last Updated:** 2026-04-04 | **Status:** Production Ready (v6.6.0 — filewatcher gitignore leak fix, edit_file and edit_symbol tools with trimmed-line fuzzy matching, DMP length correction, unified diff hunk headers; markdown section line range fix, plugin distribution docs, daemon log location documented)

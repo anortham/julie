@@ -7,22 +7,16 @@ decisions:
   - "2026-04-03 | Julie's core value proposition is intelligence-per-token: minimizing tokens an agent needs to acquire understanding for a task. All features evaluated through this lens."
   - "2026-04-04 | edit_file (DMP fuzzy replace) and edit_symbol (symbol-aware editing) added as MCP tools. Progressive rollout: Phase 1 = these two, Phase 2 = read_file replacement and hook escalation. Four-layer adoption: tool descriptions, SessionStart hook, PreToolUse nudge, editing skill. Rejected single multi-purpose edit tool and full Serena-style suite upfront."
   - "2026-04-04 | Bracket validation changed from absolute check to delta-based (compare before vs after). Absolute check false-rejected edits where string literals contained intentionally unbalanced brackets."
+  - "2026-04-04 | Trimmed-line fuzzy matching added as Phase 2 between exact and DMP bitap. Handles tabs-vs-spaces and indent width mismatches. MatchSpan struct carries start+end so fuzzy matches (different length than old_text) splice correctly. Rejects all-blank-line patterns as too ambiguous."
 
 open_questions:
   - "2026-03-31 | Sidecar venv CUDA torch swap fragility: if bootstrap recreates venv, it reinstalls CPU torch from PyPI. detect_nvidia_cuda() should handle this but needs testing on fresh machine."
   - "2026-04-03 | Known language extractor limitations (4 remaining): C++ header-only templates, Lua metatables, HTML/CSS structural relationships, JS CommonJS require() resolution."
 
 deferred_work:
-  - "2026-03-01 | Incomplete embedding backfill not resumed on daemon restart. Known issue as of v6.0.2."
-  - "2026-04-04 | DMP fuzzy match splice width: when DMP finds a fuzzy match, the replacement splice width may not exactly match the intended old_text boundary. Documented as known limitation, fix deferred to Phase 2 byte-precision editing."
+  - "2026-04-04 | Primary workspace has no filewatcher in daemon mode. Watchers only created for reference workspaces. Primary index goes stale when files are edited during a session, breaking deep_dive/fast_search on new or modified symbols. Root cause in watcher_pool.rs (watcher creation) and handler.rs (session connect). Reproduces by touching any file and checking daemon.log for zero events."
 
 gotchas:
-  - "2026-03-01 | sqlite-vec vec0 virtual tables don't support INSERT OR REPLACE; must DELETE then INSERT."
-  - "2026-03-01 | Atomic saves vs file watcher: editors do write-temp, delete-original, rename-temp. DELETE handler must check path.exists() before purging."
-  - "2026-03-01 | OneDrive sync storm: embedding cache on Windows must use LOCALAPPDATA, not $HOME/.cache/ (OneDrive-synced)."
-  - "2026-03-01 | WMI AdapterRAM 32-bit overflow: uint32 wraps at 4GB. Try nvidia-smi first; treat WMI < 2GB as wrapped."
-  - "2026-03-01 | spawn_blocking survives JoinHandle::abort(). Must use AtomicBool cancellation flag checked between batches."
-  - "2026-03-01 | Windows daemon CREATE_NO_WINDOW kills signal handling. Use Win32 named events, not tokio::signal::ctrl_c()."
   - "2026-03-31 | SidecarLaunchConfig.env was empty (no env vars passed to sidecar). Had to be extended to pass JULIE_EMBEDDING_DEVICE_PREFERENCE for CUDA support."
   - "2026-04-03 | Dart 3 modifier classes (sealed/base/final/interface/mixin class) require AST recovery patterns because tree-sitter grammar doesn't support Dart 3 syntax natively."
   - "2026-04-03 | PHP relationships were same-file-only by design. PSR-4 autoloading means classes are almost always cross-file; fixed to use PendingRelationship for new/extends/implements."
@@ -31,3 +25,4 @@ gotchas:
   - "2026-04-03 | search_target='definitions' is required for conceptual queries to benefit from semantic/embedding search. Default 'content' mode is Tantivy-only and won't use embeddings."
   - "2026-04-04 | DMP bitap has a 32-character pattern limit. edit_file uses exact substring search first with DMP fuzzy fallback only when exact match fails."
   - "2026-04-04 | initialize_embedding_provider() propagation in workspace/mod.rs is dead code: always called on workspace clones (which have watcher: None). Propagation must happen at actual write-back sites in embeddings.rs and nl_embeddings.rs."
+  - "2026-04-04 | DMP bitap length mismatch: compute_fuzzy_end (using diff_main) corrects the splice width, but only after the MatchSpan refactor. Without MatchSpan, fuzzy-matched content of different length than old_text garbles the result."
