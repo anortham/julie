@@ -40,6 +40,8 @@ cargo clippy                   # Lint
 
 **Commit messages:** Use conventional commits — `feat(scope): ...`, `fix(scope): ...`, `refactor(scope): ...`
 
+**Version bumps:** When changing the version in `Cargo.toml`, also update the version displayed on the gh-pages site (`docs/` or the site source). All three must stay in sync: `Cargo.toml`, `plugin.json` (via CI), and the gh-pages site.
+
 ---
 
 ## 🔴 CRITICAL: TDD Methodology (Non-Negotiable)
