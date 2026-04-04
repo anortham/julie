@@ -124,6 +124,16 @@ cd julie
 cargo build --release
 ```
 
+### Optional: Web Research
+
+To enable the `/web-research` skill for fetching and indexing web content:
+
+```bash
+cargo install browser39
+```
+
+This is optional. All other Julie features work without it.
+
 ### Connect Your AI Tool
 
 **Claude Code** (user-level, available in all projects):
@@ -297,7 +307,7 @@ These signals appear in `deep_dive` output, giving agents immediate awareness of
 
 ## Skills
 
-Julie ships with 9 pre-built skills, reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/architecture`) in harnesses that support them, or used as system prompt instructions.
+Julie ships with 10 pre-built skills, reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/architecture`) in harnesses that support them, or used as system prompt instructions.
 
 ### Report Skills
 
@@ -316,6 +326,12 @@ Julie ships with 9 pre-built skills, reusable prompt workflows that combine Juli
 | `/impact-analysis` | Analyze blast radius of changing a symbol — callers grouped by risk |
 | `/dependency-graph` | Show module dependencies by analyzing imports and cross-references |
 | `/type-flow` | Trace how types flow through a function — parameters, transforms, returns |
+
+### Research Skills
+
+| Skill | Description |
+|-------|-------------|
+| `/web-research` | Fetch web pages via browser39, index locally, and read selectively with Julie tools |
 
 ### Debugging Skills
 
