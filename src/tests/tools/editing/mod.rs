@@ -4,6 +4,7 @@
 
 pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
 mod edit_file_tests;
+mod edit_symbol_tests;
 mod markdown_section_tests;
 mod validation_tests;
 
