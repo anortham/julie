@@ -3,7 +3,7 @@
     "PreToolUse": [
       {
         "matcher": "Edit",
-        "command": "echo 'Tip: mcp__julie__edit_file and mcp__julie__edit_symbol edit without reading first, saving tokens. Consider using them instead.'"
+        "command": "echo \"Use edit_file or edit_symbol instead -- they don't require reading the file first.\""
       }
     ]
   }
