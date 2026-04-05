@@ -95,9 +95,9 @@ impl ManageWorkspaceTool {
             // Cancel any running embedding pipeline FIRST, before touching the DB.
             // This prevents GPU errors from concurrent DB access and avoids the
             // race where a running pipeline writes embeddings back after we clear.
-            {
-                let mut task_guard = handler.embedding_task.lock().await;
-                if let Some((cancel_flag, handle)) = task_guard.take() {
+            if let Some(ref ws_id) = handler.workspace_id {
+                let mut tasks = handler.embedding_tasks.lock().await;
+                if let Some((cancel_flag, handle)) = tasks.remove(ws_id) {
                     info!("🛑 Cancelling running embedding pipeline for force re-index");
                     cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                     handle.abort();

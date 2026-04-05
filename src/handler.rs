@@ -154,14 +154,17 @@ pub struct JulieServerHandler {
     pub indexing_status: Arc<IndexingStatus>,
     /// Per-session operational metrics (tool call timing, output sizes)
     pub session_metrics: Arc<SessionMetrics>,
-    /// Running embedding pipeline: cancellation flag + task handle.
-    /// Set the flag to stop the pipeline between batches, then abort the task.
-    pub(crate) embedding_task: Arc<
+    /// Per-workspace embedding pipeline: cancellation flag + task handle.
+    /// Keyed by workspace_id so concurrent workspaces don't cancel each other.
+    pub(crate) embedding_tasks: Arc<
         tokio::sync::Mutex<
-            Option<(
-                Arc<std::sync::atomic::AtomicBool>,
-                tokio::task::JoinHandle<()>,
-            )>,
+            std::collections::HashMap<
+                String,
+                (
+                    Arc<std::sync::atomic::AtomicBool>,
+                    tokio::task::JoinHandle<()>,
+                ),
+            >,
         >,
     >,
     /// rmcp tool router for handling tool calls
@@ -209,7 +212,7 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
             session_metrics: Arc::new(SessionMetrics::new()),
-            embedding_task: Arc::new(tokio::sync::Mutex::new(None)),
+            embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             tool_router: Self::tool_router(),
             project_log: None,
             daemon_db: None,
@@ -278,7 +281,7 @@ impl JulieServerHandler {
             is_indexed: Arc::new(RwLock::new(already_indexed)),
             indexing_status: Arc::new(IndexingStatus::new()),
             session_metrics: Arc::new(SessionMetrics::new()),
-            embedding_task: Arc::new(tokio::sync::Mutex::new(None)),
+            embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             tool_router: Self::tool_router(),
             project_log,
             daemon_db,

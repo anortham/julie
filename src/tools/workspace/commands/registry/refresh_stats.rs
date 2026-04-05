@@ -47,8 +47,8 @@ impl ManageWorkspaceTool {
                                 result.files_processed > 0 || result.orphans_cleaned > 0;
                             let embed_count = if db_mutated || force {
                                 if force {
-                                    let mut task_guard = handler.embedding_task.lock().await;
-                                    if let Some((cancel_flag, handle)) = task_guard.take() {
+                                    let mut tasks = handler.embedding_tasks.lock().await;
+                                    if let Some((cancel_flag, handle)) = tasks.remove(workspace_id) {
                                         info!(
                                             "Cancelling running embedding pipeline for force refresh"
                                         );

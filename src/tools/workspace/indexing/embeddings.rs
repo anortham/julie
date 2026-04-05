@@ -133,13 +133,13 @@ pub(crate) async fn spawn_workspace_embedding(
 
     let db_arc = Arc::new(Mutex::new(db));
 
-    // Cancel and abort any previously running embedding pipeline.
+    // Cancel and abort any previously running embedding pipeline for this workspace.
     // Setting the flag stops the spawn_blocking pipeline between batches;
     // aborting the handle kills the outer async wrapper.
     {
-        let mut task_guard = handler.embedding_task.lock().await;
-        if let Some((cancel_flag, handle)) = task_guard.take() {
-            info!("Cancelling previous embedding pipeline before starting new one");
+        let mut tasks = handler.embedding_tasks.lock().await;
+        if let Some((cancel_flag, handle)) = tasks.remove(&workspace_id) {
+            info!("Cancelling previous embedding pipeline for workspace {workspace_id}");
             cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
             handle.abort();
         }
@@ -152,8 +152,11 @@ pub(crate) async fn spawn_workspace_embedding(
     // Capture daemon_db so we can update vector_count on completion
     let daemon_db = handler.daemon_db.clone();
 
+    // Capture workspace_id for the store step (workspace_id is moved into spawn below)
+    let workspace_id_for_store = workspace_id.clone();
+
     // Spawn the pipeline in the background, storing handle + flag for cancellation.
-    let embedding_task_slot = handler.embedding_task.clone();
+    let embedding_task_slot = handler.embedding_tasks.clone();
     let self_cancel_flag = cancel_flag.clone();
     let handle = tokio::spawn(async move {
         info!("Starting workspace embedding for {workspace_id} ({total_symbols} symbols)...");
@@ -205,18 +208,18 @@ pub(crate) async fn spawn_workspace_embedding(
         // Clear the stored handle only if it's still ours. A newer pipeline may
         // have replaced the slot between our abort and this cleanup; wiping the
         // newer handle would make it invisible to future cancellation attempts.
-        let mut slot = embedding_task_slot.lock().await;
-        if let Some((ref stored_flag, _)) = *slot {
+        let mut tasks = embedding_task_slot.lock().await;
+        if let Some((stored_flag, _)) = tasks.get(&workspace_id) {
             if Arc::ptr_eq(stored_flag, &self_cancel_flag) {
-                *slot = None;
+                tasks.remove(&workspace_id);
             }
         }
     });
 
     // Store the handle + flag so it can be cancelled by a subsequent force reindex
     {
-        let mut task_guard = handler.embedding_task.lock().await;
-        *task_guard = Some((cancel_flag, handle));
+        let mut tasks = handler.embedding_tasks.lock().await;
+        tasks.insert(workspace_id_for_store.clone(), (cancel_flag, handle));
     }
 
     total_symbols
