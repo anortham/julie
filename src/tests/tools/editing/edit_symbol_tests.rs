@@ -113,3 +113,212 @@ fn test_balanced_edit_no_warning() {
     let result = check_bracket_balance(before, after);
     assert!(result.is_none(), "Balanced edit should produce no warning");
 }
+
+#[cfg(test)]
+mod integration {
+    use crate::handler::JulieServerHandler;
+    use crate::mcp_compat::CallToolResult;
+    use crate::tools::editing::edit_symbol::EditSymbolTool;
+    use crate::tools::workspace::ManageWorkspaceTool;
+    use anyhow::Result;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Extract all text from a CallToolResult by walking the content blocks.
+    fn extract_text(result: &CallToolResult) -> String {
+        result
+            .content
+            .iter()
+            .filter_map(|block| {
+                serde_json::to_value(block).ok().and_then(|json| {
+                    json.get("text")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Create a temp workspace with one Rust source file, index it, and return
+    /// the (TempDir, handler, relative-path-to-file) triple.
+    /// TempDir must stay alive for the duration of the test.
+    async fn setup_indexed_workspace(content: &str) -> Result<(TempDir, JulieServerHandler, String)> {
+        let temp_dir = TempDir::new()?;
+        let workspace_path = temp_dir.path().to_path_buf();
+
+        let src_dir = workspace_path.join("src");
+        fs::create_dir_all(&src_dir)?;
+        let file_path = src_dir.join("test.rs");
+        fs::write(&file_path, content)?;
+
+        // Construct the handler with the temp dir as workspace_root so that
+        // secure_path_resolution (used by the freshness guard) resolves relative
+        // paths like "src/test.rs" against the correct base.
+        let handler = JulieServerHandler::new(workspace_path.clone()).await?;
+
+        let index_tool = ManageWorkspaceTool {
+            operation: "index".to_string(),
+            workspace_id: None,
+            path: Some(workspace_path.to_string_lossy().to_string()),
+            name: None,
+            force: Some(false),
+            detailed: None,
+        };
+        index_tool.call_tool(&handler).await?;
+
+        Ok((temp_dir, handler, "src/test.rs".to_string()))
+    }
+
+    /// Index, replace one function body via call_tool, verify the on-disk file changed
+    /// correctly and the untouched function is preserved.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_edit_symbol_replace_via_index() -> Result<()> {
+        let source = "pub fn greet() {\n    println!(\"hello\");\n}\n\npub fn farewell() {\n    println!(\"goodbye\");\n}\n";
+        let (_temp_dir, handler, _rel_path) = setup_indexed_workspace(source).await?;
+
+        let tool = EditSymbolTool {
+            symbol: "greet".to_string(),
+            operation: "replace".to_string(),
+            content: "pub fn greet() {\n    println!(\"hi there\");\n}".to_string(),
+            file_path: None,
+            dry_run: false,
+        };
+
+        let result = tool.call_tool(&handler).await?;
+        let text = extract_text(&result);
+
+        // The tool should confirm the apply, not report an error.
+        assert!(
+            !text.contains("Error:"),
+            "Expected successful apply, got: {}",
+            text
+        );
+        assert!(
+            text.contains("Applied replace"),
+            "Expected 'Applied replace' in response, got: {}",
+            text
+        );
+
+        // Verify on-disk file reflects the change.
+        let workspace = handler.get_workspace().await?.expect("workspace must exist");
+        let abs_path = workspace.root.join("src").join("test.rs");
+        let on_disk = fs::read_to_string(&abs_path)?;
+
+        assert!(
+            on_disk.contains("hi there"),
+            "On-disk file should contain new body, got: {}",
+            on_disk
+        );
+        assert!(
+            !on_disk.contains("println!(\"hello\")"),
+            "Old body should be gone, got: {}",
+            on_disk
+        );
+        assert!(
+            on_disk.contains("fn farewell()"),
+            "Untouched function should be preserved, got: {}",
+            on_disk
+        );
+
+        Ok(())
+    }
+
+    /// Index a file, then mutate it on disk (simulating out-of-band change),
+    /// then attempt edit_symbol. The freshness guard should refuse with a stale-index error.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_edit_symbol_rejects_stale_index() -> Result<()> {
+        let source = "pub fn stable() {\n    // original\n}\n";
+        let (temp_dir, handler, _rel_path) = setup_indexed_workspace(source).await?;
+
+        // Mutate the file on disk without re-indexing.
+        let abs_path = temp_dir.path().join("src").join("test.rs");
+        fs::write(&abs_path, "pub fn stable() {\n    // mutated after indexing\n}\n")?;
+
+        let tool = EditSymbolTool {
+            symbol: "stable".to_string(),
+            operation: "replace".to_string(),
+            content: "pub fn stable() {\n    // new body\n}".to_string(),
+            file_path: None,
+            dry_run: false,
+        };
+
+        let result = tool.call_tool(&handler).await?;
+        let text = extract_text(&result);
+
+        assert!(
+            text.contains("changed since last indexing"),
+            "Expected stale-index error, got: {}",
+            text
+        );
+
+        Ok(())
+    }
+
+    /// Dry run with insert_after: response must contain the preview, but the
+    /// on-disk file must remain untouched.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_edit_symbol_insert_after_dry_run() -> Result<()> {
+        let source = "pub fn compute() {\n    let x = 1;\n}\n";
+        let (temp_dir, handler, _rel_path) = setup_indexed_workspace(source).await?;
+
+        let inserted = "pub fn helper() {\n    // assists compute\n}";
+        let tool = EditSymbolTool {
+            symbol: "compute".to_string(),
+            operation: "insert_after".to_string(),
+            content: inserted.to_string(),
+            file_path: None,
+            dry_run: true,
+        };
+
+        let result = tool.call_tool(&handler).await?;
+        let text = extract_text(&result);
+
+        assert!(
+            text.contains("Dry run preview"),
+            "Expected dry-run preview header, got: {}",
+            text
+        );
+        assert!(
+            text.contains("helper"),
+            "Preview should show inserted content, got: {}",
+            text
+        );
+
+        // File must be unchanged on disk.
+        let abs_path = temp_dir.path().join("src").join("test.rs");
+        let on_disk = fs::read_to_string(&abs_path)?;
+        assert_eq!(
+            on_disk, source,
+            "Dry run must not modify the file on disk"
+        );
+
+        Ok(())
+    }
+
+    /// Attempt to edit a symbol that was never indexed. Should get a "not found" error.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_edit_symbol_not_found() -> Result<()> {
+        let source = "pub fn real_function() {\n    // exists\n}\n";
+        let (_temp_dir, handler, _rel_path) = setup_indexed_workspace(source).await?;
+
+        let tool = EditSymbolTool {
+            symbol: "ghost_function_xyz".to_string(),
+            operation: "replace".to_string(),
+            content: "pub fn ghost_function_xyz() {}".to_string(),
+            file_path: None,
+            dry_run: false,
+        };
+
+        let result = tool.call_tool(&handler).await?;
+        let text = extract_text(&result);
+
+        assert!(
+            text.contains("not found"),
+            "Expected 'not found' error for missing symbol, got: {}",
+            text
+        );
+
+        Ok(())
+    }
+}
