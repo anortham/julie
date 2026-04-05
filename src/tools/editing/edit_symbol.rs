@@ -306,15 +306,12 @@ impl EditSymbolTool {
             _ => unreachable!(),
         };
 
-        // Balance validation for code files
-        if should_check_balance(symbol_file) {
-            if let Err(e) = check_bracket_balance(&original_content, &modified_content) {
-                return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                    "Edit rejected: {}. Review the content and try again.",
-                    e
-                ))]));
-            }
-        }
+        // Balance check: advisory warning only (cannot distinguish code from strings/comments)
+        let balance_warning = if should_check_balance(symbol_file) {
+            check_bracket_balance(&original_content, &modified_content)
+        } else {
+            None
+        };
 
         // Generate diff
         let diff = format_unified_diff(&original_content, &modified_content, symbol_file);
@@ -324,10 +321,11 @@ impl EditSymbolTool {
                 "edit_symbol dry_run for {} in {}",
                 self.symbol, symbol_file
             );
-            return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                "Dry run preview (set dry_run=false to apply):\n\n{}",
-                diff
-            ))]));
+            let mut msg = format!("Dry run preview (set dry_run=false to apply):\n\n{}", diff);
+            if let Some(ref warning) = balance_warning {
+                msg.push_str(&format!("\n\n{}", warning));
+            }
+            return Ok(CallToolResult::text_content(vec![Content::text(msg)]));
         }
 
         // Commit atomically
@@ -338,9 +336,13 @@ impl EditSymbolTool {
             "edit_symbol {} applied to {}",
             self.operation, symbol_file
         );
-        Ok(CallToolResult::text_content(vec![Content::text(format!(
+        let mut msg = format!(
             "Applied {} on '{}' in {}:\n\n{}",
             self.operation, self.symbol, symbol_file, diff
-        ))]))
+        );
+        if let Some(warning) = balance_warning {
+            msg.push_str(&format!("\n\n{}", warning));
+        }
+        Ok(CallToolResult::text_content(vec![Content::text(msg)]))
     }
 }

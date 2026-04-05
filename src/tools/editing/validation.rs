@@ -1,7 +1,5 @@
 //! Shared validation and formatting utilities for editing tools.
 
-use anyhow::Result;
-
 /// Count the net bracket balance in content (open minus close for each type).
 /// Counts raw characters without skipping strings or comments.
 fn count_bracket_balance(content: &str) -> (i32, i32, i32) {
@@ -20,14 +18,11 @@ fn count_bracket_balance(content: &str) -> (i32, i32, i32) {
     (braces, brackets, parens)
 }
 
-/// Check that an edit does not change the bracket balance of the file.
-///
-/// Compares net bracket counts before and after the edit. If the edit changes the
-/// balance (e.g., removes a closing brace without removing the opening one), it's
-/// likely a corruption. If the original file already had "unbalanced" brackets
-/// (common with string literals like `"foo())"`) and the edit preserves that
-/// balance, it passes.
-pub fn check_bracket_balance(before: &str, after: &str) -> Result<()> {
+/// Check if an edit changes bracket balance. Returns a warning string if
+/// the balance changed (possible syntax issue), or None if balanced.
+/// This is advisory, not a hard reject, because the check cannot distinguish
+/// brackets in code from brackets in strings/comments.
+pub fn check_bracket_balance(before: &str, after: &str) -> Option<String> {
     let (bb, kb, pb) = count_bracket_balance(before);
     let (ba, ka, pa) = count_bracket_balance(after);
 
@@ -42,13 +37,13 @@ pub fn check_bracket_balance(before: &str, after: &str) -> Result<()> {
         if pb != pa {
             issues.push(format!("parens () changed by {}", pa - pb));
         }
-        return Err(anyhow::anyhow!(
-            "Edit changes bracket balance ({}) -- may create invalid syntax",
+        return Some(format!(
+            "Warning: edit changes bracket balance ({}) -- verify this is intentional",
             issues.join(", ")
         ));
     }
 
-    Ok(())
+    None
 }
 
 /// Determine if a file should have bracket balance checked based on extension.

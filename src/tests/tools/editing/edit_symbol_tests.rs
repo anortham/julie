@@ -4,6 +4,7 @@
 //! not the full MCP tool flow (which requires an indexed workspace).
 
 use crate::tools::editing::edit_symbol::{insert_near_symbol, replace_symbol_body};
+use crate::tools::editing::validation::check_bracket_balance;
 
 #[test]
 fn test_replace_symbol_body() {
@@ -92,4 +93,23 @@ fn test_replace_helper_is_unguarded() {
     // In a stale-index scenario, this produces wrong output.
     // call_tool's freshness check prevents this from happening in practice.
     assert!(!content.contains("fn foo() {\n    bar()"), "Old foo body should be replaced");
+}
+
+#[test]
+fn test_bracket_in_string_warns_instead_of_rejecting() {
+    let before = "fn foo() {\n    println!(\"hello\");\n}\n";
+    let after = "fn foo() {\n    println!(\"hello {\");\n}\n";
+
+    let result = check_bracket_balance(before, after);
+    assert!(result.is_some(), "Should warn about bracket change");
+    assert!(result.unwrap().contains("Warning"), "Should be advisory warning");
+}
+
+#[test]
+fn test_balanced_edit_no_warning() {
+    let before = "fn foo() {\n    bar();\n}\n";
+    let after = "fn foo() {\n    baz();\n}\n";
+
+    let result = check_bracket_balance(before, after);
+    assert!(result.is_none(), "Balanced edit should produce no warning");
 }

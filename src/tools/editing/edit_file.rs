@@ -329,27 +329,23 @@ impl EditFileTool {
             }
         };
 
-        // Balance validation for code files
-        if should_check_balance(&self.file_path) {
-            if let Err(e) = check_bracket_balance(&original_content, &modified_content) {
-                return Ok(CallToolResult::text_content(vec![Content::text(
-                    format!(
-                        "Edit rejected: {}. The edit would create unbalanced brackets. \
-                         Review old_text/new_text and try again.",
-                        e
-                    ),
-                )]));
-            }
-        }
+        // Balance check: advisory warning only (cannot distinguish code from strings/comments)
+        let balance_warning = if should_check_balance(&self.file_path) {
+            check_bracket_balance(&original_content, &modified_content)
+        } else {
+            None
+        };
 
         // Generate diff preview
         let diff = format_unified_diff(&original_content, &modified_content, &self.file_path);
 
         if self.dry_run {
             debug!("edit_file dry_run for {}", self.file_path);
-            return Ok(CallToolResult::text_content(vec![Content::text(
-                format!("Dry run preview (set dry_run=false to apply):\n\n{}", diff),
-            )]));
+            let mut msg = format!("Dry run preview (set dry_run=false to apply):\n\n{}", diff);
+            if let Some(ref warning) = balance_warning {
+                msg.push_str(&format!("\n\n{}", warning));
+            }
+            return Ok(CallToolResult::text_content(vec![Content::text(msg)]));
         }
 
         // Commit the edit atomically
@@ -357,8 +353,10 @@ impl EditFileTool {
         txn.commit(&modified_content)?;
 
         debug!("edit_file applied to {}", self.file_path);
-        Ok(CallToolResult::text_content(vec![Content::text(
-            format!("Applied edit to {}:\n\n{}", self.file_path, diff),
-        )]))
+        let mut msg = format!("Applied edit to {}:\n\n{}", self.file_path, diff);
+        if let Some(warning) = balance_warning {
+            msg.push_str(&format!("\n\n{}", warning));
+        }
+        Ok(CallToolResult::text_content(vec![Content::text(msg)]))
     }
 }

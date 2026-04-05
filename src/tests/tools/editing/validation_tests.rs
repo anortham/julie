@@ -3,40 +3,40 @@
 use crate::tools::editing::validation::{check_bracket_balance, format_unified_diff, should_check_balance};
 
 #[test]
-fn test_balanced_edit_passes() {
+fn test_balanced_edit_no_warning() {
     let before = "fn main() {\n    println!(\"hello\");\n}\n";
     let after = "fn main() {\n    println!(\"world\");\n}\n";
-    assert!(check_bracket_balance(before, after).is_ok());
+    assert!(check_bracket_balance(before, after).is_none());
 }
 
 #[test]
-fn test_edit_removing_close_brace_fails() {
+fn test_edit_removing_close_brace_warns() {
     let before = "fn main() {\n    let x = 1;\n}\n";
     let after = "fn main() {\n    let x = 1;\n";
-    assert!(check_bracket_balance(before, after).is_err());
+    assert!(check_bracket_balance(before, after).is_some());
 }
 
 #[test]
-fn test_edit_adding_extra_close_paren_fails() {
+fn test_edit_adding_extra_close_paren_warns() {
     let before = "fn main() {\n    foo();\n}\n";
     let after = "fn main() {\n    foo());\n}\n";
-    assert!(check_bracket_balance(before, after).is_err());
+    assert!(check_bracket_balance(before, after).is_some());
 }
 
 #[test]
-fn test_empty_to_empty_passes() {
-    assert!(check_bracket_balance("", "").is_ok());
+fn test_empty_to_empty_no_warning() {
+    assert!(check_bracket_balance("", "").is_none());
 }
 
 #[test]
 fn test_string_literals_with_brackets_preserved() {
     // Both before and after have "unbalanced" brackets inside string literals.
-    // The delta is zero, so the edit should pass.
+    // The delta is zero, so no warning should be emitted.
     let before = "let s = \"foo())\";\nlet t = \"bar{\";\n";
     let after = "let s = \"baz())\";\nlet t = \"bar{\";\n";
     assert!(
-        check_bracket_balance(before, after).is_ok(),
-        "Edit preserving bracket balance in string literals should pass"
+        check_bracket_balance(before, after).is_none(),
+        "Edit preserving bracket balance in string literals should produce no warning"
     );
 }
 
