@@ -302,6 +302,35 @@ fn test_scan_workspace_files_returns_unix_style_paths() -> Result<()> {
     Ok(())
 }
 
+/// Given: A workspace with 3 indexed files, then 1 file is deleted from disk
+/// When: check_if_indexing_needed() is called
+/// Expected: Returns true (cleanup needed for deleted file)
+#[tokio::test]
+async fn test_deleted_file_detected_on_reconnect() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+
+    // Create 3 source files
+    let src_dir = workspace_path.join("src");
+    fs::create_dir_all(&src_dir)?;
+    fs::write(src_dir.join("a.rs"), "fn a() {}\n")?;
+    fs::write(src_dir.join("b.rs"), "fn b() {}\n")?;
+    fs::write(src_dir.join("c.rs"), "fn c() {}\n")?;
+
+    // Index the workspace
+    let handler = create_test_handler(workspace_path).await?;
+    index_workspace(&handler, workspace_path).await?;
+
+    // Delete one file (simulating deletion while daemon was down)
+    fs::remove_file(src_dir.join("b.rs"))?;
+
+    // check_if_indexing_needed should detect the deleted file
+    let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;
+    assert!(needs_indexing, "Should detect deleted file b.rs needs cleanup");
+
+    Ok(())
+}
+
 // ============================================================================
 // Test Helpers
 // ============================================================================

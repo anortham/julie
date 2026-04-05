@@ -126,6 +126,21 @@ pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bo
                     return Ok(true);
                 }
 
+                // Check for deleted files (indexed but no longer on disk)
+                let deleted_files: Vec<_> = indexed_files.difference(&workspace_files).collect();
+
+                if !deleted_files.is_empty() {
+                    info!(
+                        "📊 Found {} deleted files still in database - cleanup needed",
+                        deleted_files.len()
+                    );
+                    debug!("Deleted files: {:?}", deleted_files);
+                    // Note: returning true triggers index_workspace_files, which calls
+                    // filter_changed_files -> clean_orphaned_files. This cleans up the
+                    // deleted files' symbols and DB records.
+                    return Ok(true);
+                }
+
                 info!("✅ Index is up-to-date - no indexing needed");
                 Ok(false)
             }
