@@ -339,6 +339,8 @@ Julie ships with 11 pre-built skills, reusable prompt workflows that combine Jul
 |-------|-------------|
 | `/web-research` | Fetch web pages via browser39, index locally, and read selectively with Julie tools |
 
+Web research applies Julie's token-efficiency model to web content. Instead of dumping an entire documentation page into context (often 10,000+ tokens), `/web-research` fetches the page as clean markdown, saves it locally where Julie's filewatcher indexes it, then uses `fast_search` and `get_symbols` to read just the sections you need. Requires [browser39](https://crates.io/crates/browser39) (`cargo install browser39`).
+
 ### Debugging Skills
 
 | Skill | Description |

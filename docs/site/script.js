@@ -112,6 +112,7 @@
       { file: 'src/models/user.rs', tokens: 1456 },
       { file: 'src/database/queries.rs', tokens: 2231 },
       { file: 'src/middleware/session.rs', tokens: 1889 },
+      { file: 'src/services/user.rs', tokens: 1502, action: 'edit' },
     ];
     const totalCapacity = 16000;
     let currentTokens = 0;
@@ -122,7 +123,7 @@
       if (lineIndex >= fileReads.length) {
         // Session over
         setTimeout(() => {
-          message.textContent = 'Session over. You read 6 files.';
+          message.textContent = '14,952 tokens to change one function.';
           message.className = 'hero-message visible problem';
           // Pause, then Phase 2
           setTimeout(startPhase2, 2000);
@@ -136,7 +137,8 @@
 
       const line = document.createElement('div');
       line.className = 'file-read-line';
-      line.innerHTML = '<span class="filename">Reading ' + fr.file + '...</span> <span class="tokens">' + fr.tokens.toLocaleString() + ' tokens</span>';
+      const action = fr.action === 'edit' ? 'Edit' : 'Reading';
+      line.innerHTML = '<span class="filename">' + action + ' ' + fr.file + '...</span> <span class="tokens">' + fr.tokens.toLocaleString() + ' tokens</span>';
       reads.appendChild(line);
       requestAnimationFrame(() => line.classList.add('visible'));
 
