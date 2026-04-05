@@ -1171,7 +1171,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "edit_symbol",
-        description = "Edit a symbol by name without reading the file. Operations: replace (swap entire definition), insert_after, insert_before. The symbol is looked up from Julie's index. Combine with deep_dive or get_symbols for zero-read editing workflows. Always dry_run=true first to preview, then dry_run=false to apply.",
+        description = "Edit a symbol by name without reading the file. Operations: replace (swap entire definition), insert_after, insert_before. The symbol is resolved from Julie's index by its line range. Edits operate at line granularity (not byte/column), so same-line symbols or tightly formatted code may need manual adjustment. Always dry_run=true first to preview, then dry_run=false to apply.",
         annotations(
             title = "Edit Symbol",
             read_only_hint = false,
