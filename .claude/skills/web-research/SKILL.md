@@ -26,33 +26,9 @@ cargo install browser39
 
 ## Workflow
 
-### Step 1: Fetch a Page
+### Step 1: Fetch and Save
 
-Use browser39 batch mode to fetch a URL as markdown:
-
-```bash
-echo '{"id":"1","action":"fetch","v":1,"seq":1,"url":"THE_URL","options":{"selector":"article","strip_nav":true,"include_links":true}}' > /tmp/b39-cmd.jsonl
-browser39 batch /tmp/b39-cmd.jsonl --output /tmp/b39-out.jsonl
-```
-
-Extract the markdown from the JSONL output:
-
-```bash
-cat /tmp/b39-out.jsonl | python3 -c "
-import sys,json
-for line in sys.stdin:
-    d=json.loads(line)
-    url = d.get('url','')
-    if 'TARGET_DOMAIN' in url:
-        print(d.get('markdown',''))
-"
-```
-
-If the page content is empty or too short, try without the `selector` option, or try a different selector like `"main"`, `".content"`, or `"body"`.
-
-### Step 2: Save to docs/web/
-
-Write the markdown to `docs/web/{domain}/{path}.md`. The directory structure mirrors the URL:
+Determine the target file path from the URL. The directory structure mirrors the URL:
 
 ```
 docs/web/
@@ -61,11 +37,33 @@ docs/web/
   github.com/tokio-rs/tokio.md
 ```
 
-Create parent directories as needed (`mkdir -p`). Use the Write tool to save the file.
+Fetch the page and save directly to the target file. Never print full page content to stdout.
 
-The filewatcher automatically indexes the file within 1-2 seconds (symbols, full-text search, embeddings).
+```bash
+# Fetch
+echo '{"id":"1","action":"fetch","v":1,"seq":1,"url":"THE_URL","options":{"selector":"article","strip_nav":true,"include_links":true}}' > /tmp/b39-cmd.jsonl
+browser39 batch /tmp/b39-cmd.jsonl --output /tmp/b39-out.jsonl
 
-### Step 3: Explore the Content
+# Extract markdown directly to file (no stdout leak)
+mkdir -p docs/web/TARGET_DOMAIN/TARGET_PATH_DIR
+python3 -c "
+import sys,json
+with open('/tmp/b39-out.jsonl') as f:
+    for line in f:
+        d=json.loads(line)
+        md = d.get('markdown','')
+        if md:
+            with open('docs/web/TARGET_DOMAIN/TARGET_PATH.md','w') as out:
+                out.write(md)
+            print(f'Saved {len(md)} chars to docs/web/TARGET_DOMAIN/TARGET_PATH.md')
+"
+```
+
+If the page content is empty or too short, retry without the `selector` option, or try `"main"`, `".content"`, or `"body"`.
+
+The filewatcher automatically indexes the file within 1-2 seconds. If `get_symbols` returns no results, wait a moment and retry, or fall back to `Read` for the specific section you need.
+
+### Step 2: Explore the Content
 
 See the page structure (table of contents):
 
@@ -75,7 +73,7 @@ get_symbols(file_path="docs/web/{domain}/{path}.md", mode="structure")
 
 This returns section headings as a hierarchy, letting you see what's on the page without reading it.
 
-### Step 4: Read Selectively
+### Step 3: Read Selectively
 
 **Read a specific section** by name:
 
@@ -95,11 +93,11 @@ fast_search(query="your search terms", file_pattern="docs/web/**")
 get_context(query="concept or question", file_pattern="docs/web/**")
 ```
 
-### Step 5: Follow Links (Optional)
+### Step 4: Follow Links (Optional)
 
 The fetched markdown contains links. If you need more information, fetch additional pages by repeating Steps 1-2 with the linked URLs. The agent decides which links are worth following based on the research goal.
 
-### Step 6: Clean Up
+### Step 5: Clean Up
 
 When research is complete, suggest removing fetched content:
 
