@@ -364,6 +364,10 @@ impl IncrementalIndexer {
                     };
 
                     if should_skip {
+                        // Re-queue so the latest state gets processed on the next tick.
+                        // The event will be picked up ~1s later when the dedup window expires.
+                        let mut queue = queue_for_processing.lock().await;
+                        queue.push_back(event);
                         continue;
                     }
 
