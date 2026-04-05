@@ -352,6 +352,20 @@ impl EditFileTool {
         let txn = EditingTransaction::begin(&resolved_str)?;
         txn.commit(&modified_content)?;
 
+        // Update the file hash in the DB so subsequent edit_symbol calls don't
+        // fail the freshness check before the watcher re-indexes.
+        if let Some(workspace) = handler.get_workspace().await.ok().flatten() {
+            if let Some(ref db_arc) = workspace.db {
+                let new_hash = crate::database::calculate_file_hash(&resolved_path)
+                    .unwrap_or_default();
+                if !new_hash.is_empty() {
+                    if let Ok(db) = db_arc.lock() {
+                        let _ = db.update_file_hash(&self.file_path, &new_hash);
+                    }
+                }
+            }
+        }
+
         debug!("edit_file applied to {}", self.file_path);
         let mut msg = format!("Applied edit to {}:\n\n{}", self.file_path, diff);
         if let Some(warning) = balance_warning {

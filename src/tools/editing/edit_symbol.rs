@@ -332,6 +332,20 @@ impl EditSymbolTool {
         let txn = EditingTransaction::begin(&resolved_str)?;
         txn.commit(&modified_content)?;
 
+        // Update the file hash in the DB so subsequent edit_symbol calls don't
+        // fail the freshness check. The watcher will eventually re-extract symbols,
+        // but the hash update is needed immediately for back-to-back edits.
+        {
+            let new_hash = crate::database::calculate_file_hash(&resolved_path)
+                .unwrap_or_default();
+            if !new_hash.is_empty() {
+                let db = db_arc_for_freshness
+                    .lock()
+                    .map_err(|e| anyhow!("Database lock error: {}", e))?;
+                let _ = db.update_file_hash(symbol_file, &new_hash);
+            }
+        }
+
         debug!(
             "edit_symbol {} applied to {}",
             self.operation, symbol_file

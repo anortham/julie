@@ -95,10 +95,17 @@ impl ManageWorkspaceTool {
             // Cancel any running embedding pipeline FIRST, before touching the DB.
             // This prevents GPU errors from concurrent DB access and avoids the
             // race where a running pipeline writes embeddings back after we clear.
-            if let Some(ref ws_id) = handler.workspace_id {
+            // Use the TARGET workspace_id (may differ from primary when force-reindexing
+            // a reference workspace).
+            let cancel_ws_id = crate::workspace::registry::generate_workspace_id(
+                &original_path.to_string_lossy(),
+            )
+            .ok()
+            .or_else(|| handler.workspace_id.clone());
+            if let Some(ref ws_id) = cancel_ws_id {
                 let mut tasks = handler.embedding_tasks.lock().await;
                 if let Some((cancel_flag, handle)) = tasks.remove(ws_id) {
-                    info!("🛑 Cancelling running embedding pipeline for force re-index");
+                    info!("🛑 Cancelling running embedding pipeline for workspace {ws_id}");
                     cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
                     handle.abort();
                 }

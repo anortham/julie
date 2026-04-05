@@ -365,10 +365,11 @@ impl IncrementalIndexer {
 
                     if should_skip {
                         // Re-queue so the latest state gets processed on the next tick.
-                        // The event will be picked up ~1s later when the dedup window expires.
+                        // Break out of the inner loop so tick.tick().await introduces
+                        // the actual 1s delay before we pop this event again.
                         let mut queue = queue_for_processing.lock().await;
                         queue.push_back(event);
-                        continue;
+                        break;
                     }
 
                     info!("Background task processing: {:?}", event.path);
