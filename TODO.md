@@ -1,5 +1,37 @@
 # TODO
 
+## Code Review Findings (2026-04-05)
+
+Validated against source. All findings confirmed. **All fixed 2026-04-05.**
+
+### High Priority
+
+- [x] **edit_symbol stale index guard** -- Added blake3 hash freshness check in `call_tool` before applying indexed line ranges. Compares current file hash against stored hash; refuses with clear error if stale. (`src/tools/editing/edit_symbol.rs`)
+
+- [x] **Session-connect catch-up misses deletions** -- Added `indexed_files.difference(&workspace_files)` check to `check_if_indexing_needed()`. Returns true to trigger cleanup when files were deleted while daemon was down. (`src/startup.rs`)
+
+- [x] **Watcher 1s dedup drops real second saves** -- Changed from `continue` (drop) to `push_back` (re-queue) so the latest state is always eventually processed. (`src/watcher/mod.rs`)
+
+### Medium Priority
+
+- [x] **Embedding cancellation is global, not per-workspace** -- Changed `embedding_task` from single `Option` slot to `HashMap<String, ...>` keyed by workspace_id. Also updated cancel sites in `index.rs` and `refresh_stats.rs`. (`src/handler.rs`, `src/tools/workspace/indexing/embeddings.rs`)
+
+- [x] **web-research skill leaks full pages into context** -- Combined fetch+save into single step that pipes directly to file, never printing to stdout. (`.claude/skills/web-research/SKILL.md`)
+
+- [x] **edit_symbol is line-based at apply time** -- Documented line-granularity limitation in tool description. Long-term: byte offsets from tree-sitter for sub-line precision. (`src/handler.rs`)
+
+### Low/Medium Priority
+
+- [x] **Bracket-balance validation ignores strings and comments** -- Downgraded from `Err` (hard reject) to `Option<String>` (advisory warning appended to output). Updated call sites in both `edit_symbol.rs` and `edit_file.rs`. (`src/tools/editing/validation.rs`)
+
+### Opportunities (from review)
+
+- [ ] **Cap dry-run diff output for very large edits** -- The edit tools are token savers until the preview diff itself becomes the expensive part. Consider truncating diffs beyond a threshold (e.g., 200 lines) with a "diff truncated, N more lines" summary.
+
+- [x] **Add end-to-end edit_symbol tests** -- Added 4 integration tests: replace via index, stale index rejection, insert_after dry-run, symbol not found. (`src/tests/tools/editing/edit_symbol_tests.rs`)
+
+- [x] ~~**Document web-research fallbacks**~~ -- Removed. The filewatcher must index saved files reliably; if it doesn't, that's a bug to fix, not a workflow to document around.
+
 ## Architecture Questions
 
 - [ ] **Do reference workspaces need separate indexes?** -- Currently `manage_workspace add /path/to/dep` creates a full separate `indexes/{ref_id}/db/symbols.db` + `tantivy/` for each reference. The centralized daemon already manages per-workspace indexes. Having a separate "reference" concept with its own index path may be unnecessary indirection. Needs analysis: is the `workspace_references` linkage table the only thing that needs to exist?

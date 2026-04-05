@@ -61,7 +61,7 @@ with open('/tmp/b39-out.jsonl') as f:
 
 If the page content is empty or too short, retry without the `selector` option, or try `"main"`, `".content"`, or `"body"`.
 
-The filewatcher automatically indexes the file within 1-2 seconds. If `get_symbols` returns no results, wait a moment and retry, or fall back to `Read` for the specific section you need.
+The filewatcher automatically indexes the file within 1-2 seconds.
 
 ### Step 2: Explore the Content
 
@@ -118,4 +118,4 @@ The filewatcher automatically removes deleted files from the index.
 - **Large pages**: Use browser39's `max_tokens` option to limit the fetch, then paginate with `offset`
 - **Multiple pages at once**: Write multiple commands to the JSONL file (one per line) for batch fetching
 - **Searching across fetched content**: `file_pattern="docs/web/**"` scopes any Julie tool to just the fetched web content
-- **Empty results from get_symbols**: The filewatcher may not have finished indexing yet. Wait a moment and retry.
+- **Empty results from get_symbols**: The filewatcher indexes within 1-2 seconds. If results are empty, the file may not have been written correctly; check the file exists and has content.
