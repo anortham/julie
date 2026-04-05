@@ -1600,7 +1600,7 @@ dependencies = [
 
 [[package]]
 name = "julie"
-version = "6.6.3"
+version = "6.6.4"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -1817,9 +1817,9 @@ dependencies = [
 
 [[package]]
 name = "libz-sys"
-version = "1.1.26"
+version = "1.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "786a7c68b5bbe177567d237ec4940d11666206e97b20a983421b251092f24d7d"
+checksum = "fc3a226e576f50782b3305c5ccf458698f92798987f551c6a02efe8276721e22"
 dependencies = [
  "cc",
  "libc",
