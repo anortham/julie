@@ -141,7 +141,10 @@ impl Drop for EditingTransaction {
 /// Either all files are updated successfully, or none are changed.
 pub struct MultiFileTransaction {
     session_id: String,
-    files: HashMap<PathBuf, String>, // file_path -> original_content
+    /// Maps each enrolled file to its pre-transaction content.
+    /// `None` means the file did not exist before the transaction and must be
+    /// DELETED (not truncated to empty) if rollback is needed.
+    files: HashMap<PathBuf, Option<String>>,
     pending_content: HashMap<PathBuf, String>, // file_path -> new_content
     temp_files: Vec<PathBuf>,
 }
@@ -163,11 +166,12 @@ impl MultiFileTransaction {
     pub fn add_file(&mut self, file_path: &str) -> Result<()> {
         let path = PathBuf::from(file_path);
 
-        // Read original content if file exists
+        // Store None when the file doesn't exist so rollback can DELETE it instead
+        // of writing an empty placeholder.
         let original_content = if path.exists() {
-            fs::read_to_string(&path)?
+            Some(fs::read_to_string(&path)?)
         } else {
-            String::new()
+            None
         };
 
         self.files.insert(path.clone(), original_content);
@@ -249,12 +253,42 @@ impl MultiFileTransaction {
     fn rollback_partial_commit(&self, committed_paths: &[PathBuf]) -> Result<()> {
         // Restore files that were successfully renamed
         for file_path in committed_paths {
-            let original_content = &self.files[file_path];
-            if let Err(e) = fs::write(file_path, original_content) {
-                warn!(
-                    "Failed to restore file during rollback: {:?}: {}",
-                    file_path, e
-                );
+            match &self.files[file_path] {
+                None => {
+                    // File did not exist before the transaction: delete it rather than
+                    // leaving behind an empty placeholder.
+                    if file_path.exists() {
+                        if let Err(e) = fs::remove_file(file_path) {
+                            warn!(
+                                "Failed to delete new file during rollback: {:?}: {}",
+                                file_path, e
+                            );
+                        }
+                    }
+                }
+                Some(original_content) => {
+                    // File existed before: restore atomically via temp+rename to avoid
+                    // partial writes if the process is interrupted mid-rollback.
+                    let temp_name = format!(
+                        "{}.rollback.{}",
+                        file_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("file"),
+                        self.session_id
+                    );
+                    let temp_path = file_path.with_file_name(temp_name);
+                    if let Err(e) = fs::write(&temp_path, original_content)
+                        .and_then(|_| fs::rename(&temp_path, file_path))
+                    {
+                        // Clean up the temp if the rename failed
+                        let _ = fs::remove_file(&temp_path);
+                        warn!(
+                            "Failed to restore file during rollback: {:?}: {}",
+                            file_path, e
+                        );
+                    }
+                }
             }
         }
 
@@ -278,5 +312,15 @@ impl Drop for MultiFileTransaction {
                 let _ = fs::remove_file(temp_path);
             }
         }
+    }
+}
+
+#[cfg(test)]
+impl MultiFileTransaction {
+    /// Test-only accessor: call rollback_partial_commit directly with an explicit set of
+    /// committed paths.  Lets unit tests verify rollback behavior without having to trigger
+    /// an actual Phase 2 rename failure.
+    pub fn test_rollback_partial_commit(&self, committed: &[PathBuf]) -> Result<()> {
+        self.rollback_partial_commit(committed)
     }
 }

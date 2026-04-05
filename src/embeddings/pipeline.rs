@@ -410,7 +410,7 @@ pub fn run_embedding_pipeline_cancellable(
     let total_batches = (prepared.len() + EMBEDDING_BATCH_SIZE - 1) / EMBEDDING_BATCH_SIZE;
     for chunk in prepared.chunks(EMBEDDING_BATCH_SIZE) {
         // Check cancellation between batches (e.g., force reindex aborts old pipeline)
-        if cancel.map_or(false, |c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+        if cancel.map_or(false, |c| c.load(std::sync::atomic::Ordering::Acquire)) {
             info!(
                 "Embedding pipeline cancelled after {} batches ({} embeddings stored)",
                 stats.batches_processed, stats.symbols_embedded
@@ -470,6 +470,17 @@ pub fn run_embedding_pipeline_cancellable(
 
         stats.symbols_embedded += stored;
         stats.batches_processed += 1;
+
+        // Fix B part 1: post-batch cancel check. The pre-batch check catches cancellations
+        // set before the batch started; this check catches cancellations set DURING embed_batch
+        // (e.g., a concurrent force-reindex), stopping before the next batch begins.
+        if cancel.map_or(false, |c| c.load(std::sync::atomic::Ordering::Acquire)) {
+            info!(
+                "Embedding pipeline cancelled after batch write ({} embeddings stored)",
+                stats.symbols_embedded
+            );
+            break;
+        }
 
         info!(
             "Embedding batch {}/{}: stored {stored} embeddings ({} total so far)",

@@ -95,6 +95,33 @@ fn test_replace_helper_is_unguarded() {
     assert!(!content.contains("fn foo() {\n    bar()"), "Old foo body should be replaced");
 }
 
+/// insert_near_symbol must preserve the source's trailing-newline behavior.
+/// If source has no trailing newline, result must also have none.
+#[test]
+fn test_insert_near_symbol_no_trailing_newline_preserved() {
+    let source = "fn a() {}\nfn b() {}"; // no trailing newline
+    let result = insert_near_symbol(source, 1, "// inserted", "before")
+        .expect("Insert should succeed");
+    assert!(
+        !result.ends_with('\n'),
+        "insert_near_symbol must not add trailing newline when source has none, got: {:?}",
+        result
+    );
+}
+
+/// insert_near_symbol must preserve the source's trailing newline when present.
+#[test]
+fn test_insert_near_symbol_trailing_newline_preserved_when_present() {
+    let source = "fn a() {}\nfn b() {}\n"; // has trailing newline
+    let result = insert_near_symbol(source, 1, "// inserted", "before")
+        .expect("Insert should succeed");
+    assert!(
+        result.ends_with('\n'),
+        "insert_near_symbol must keep trailing newline when source has one, got: {:?}",
+        result
+    );
+}
+
 #[test]
 fn test_bracket_in_string_warns_instead_of_rejecting() {
     let before = "fn foo() {\n    println!(\"hello\");\n}\n";
@@ -317,6 +344,51 @@ mod integration {
             text.contains("not found"),
             "Expected 'not found' error for missing symbol, got: {}",
             text
+        );
+
+        Ok(())
+    }
+
+    /// After edit_symbol writes a file, the DB hash must NOT be updated (hash poisoning fix).
+    /// A second edit call before the watcher re-indexes must fail the freshness guard because
+    /// the file hash changed but the indexed hash is still the pre-edit value.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_edit_symbol_does_not_poison_watcher_hash() -> Result<()> {
+        let source = "pub fn target() {\n    let x = 1;\n}\n";
+        let (_temp_dir, handler, _rel_path) = setup_indexed_workspace(source).await?;
+
+        let first_edit = EditSymbolTool {
+            symbol: "target".to_string(),
+            operation: "replace".to_string(),
+            content: "pub fn target() {\n    let x = 2;\n}".to_string(),
+            file_path: None,
+            dry_run: false,
+        };
+        let result = first_edit.call_tool(&handler).await?;
+        let text = extract_text(&result);
+        assert!(
+            text.contains("Applied replace"),
+            "First edit should succeed, got: {}",
+            text
+        );
+
+        // Second edit with no watcher re-index must fail the freshness guard.
+        // Before the fix, update_file_hash() poisoned the DB so the second edit
+        // incorrectly succeeded. After the fix the DB still holds the pre-edit hash
+        // and the guard fires.
+        let second_edit = EditSymbolTool {
+            symbol: "target".to_string(),
+            operation: "replace".to_string(),
+            content: "pub fn target() {\n    let x = 3;\n}".to_string(),
+            file_path: None,
+            dry_run: false,
+        };
+        let result2 = second_edit.call_tool(&handler).await?;
+        let text2 = extract_text(&result2);
+        assert!(
+            text2.contains("changed since last indexing"),
+            "Second edit without re-index must fail (hash must not be poisoned), got: {}",
+            text2
         );
 
         Ok(())

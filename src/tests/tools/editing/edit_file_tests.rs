@@ -194,3 +194,26 @@ fn test_exact_match_still_preferred() {
     let result = apply_edit(content, old_text, new_text, "first").unwrap();
     assert_eq!(result, "    let x = 10;\n    let y = 20;\n");
 }
+
+/// DMP bitap loop must make forward progress on every iteration.
+/// Without the `end.max(pos + 1)` guard, if compute_fuzzy_end returns `pos`
+/// (possible when pos is at the tail of content and the window is empty),
+/// the loop would hang.  This test verifies "all" occurrence replacement
+/// on a short pattern completes and produces the correct output.
+#[test]
+fn test_dmp_loop_forward_progress_multiple_short_matches() {
+    // Pattern is <=32 chars (triggers DMP bitap path). Three occurrences.
+    let content = "abc xyz abc xyz abc";
+    let result = apply_edit(content, "abc", "ZZZ", "all").unwrap();
+    assert_eq!(result, "ZZZ xyz ZZZ xyz ZZZ");
+}
+
+/// DMP bitap at the very end of content: position near tail where the window
+/// would be empty. The guard must prevent the loop from re-visiting the same position.
+#[test]
+fn test_dmp_loop_forward_progress_match_near_tail() {
+    let content = "long prefix text then xy";
+    // "xy" is short (<=32 chars), match is at tail of content
+    let result = apply_edit(content, "xy", "AB", "first").unwrap();
+    assert_eq!(result, "long prefix text then AB");
+}

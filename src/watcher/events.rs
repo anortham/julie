@@ -6,17 +6,23 @@ use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind};
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::Mutex as TokioMutex;
 use tracing::debug;
 
-/// Process a file system event and queue any relevant changes
+/// Process a file system event and queue any relevant changes.
+///
+/// `needs_rescan` is set to true if the queue overflows (>1000 events). The caller
+/// should trigger a workspace-wide staleness check when this flag is observed.
 pub async fn process_file_system_event(
     supported_extensions: &HashSet<String>,
     gitignore: &Gitignore,
     workspace_root: &Path,
     index_queue: std::sync::Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
     event: Event,
+    needs_rescan: &Arc<AtomicBool>,
 ) -> Result<()> {
     debug!("Processing file system event: {:?}", event);
 
@@ -34,7 +40,7 @@ pub async fn process_file_system_event(
                         change_type: FileChangeType::Created,
                         timestamp: SystemTime::now(),
                     };
-                    queue_file_change(index_queue.clone(), change_event).await;
+                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
                 }
             }
         }
@@ -61,7 +67,7 @@ pub async fn process_file_system_event(
                         change_type: FileChangeType::Renamed { from, to },
                         timestamp: SystemTime::now(),
                     };
-                    queue_file_change(index_queue.clone(), change_event).await;
+                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
                 }
             }
         }
@@ -79,7 +85,7 @@ pub async fn process_file_system_event(
                         change_type: FileChangeType::Deleted,
                         timestamp: SystemTime::now(),
                     };
-                    queue_file_change(index_queue.clone(), change_event).await;
+                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
                 }
             }
         }
@@ -97,15 +103,34 @@ pub async fn process_file_system_event(
                         change_type: FileChangeType::Created,
                         timestamp: SystemTime::now(),
                     };
-                    queue_file_change(index_queue.clone(), change_event).await;
+                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
                 }
             }
         }
         // Unknown rename (macOS FSEvents emits RenameMode::Any with one path).
-        // Fall through to Modified so the affected file gets re-indexed.
+        // Fix A: check whether the path still exists to determine the correct event type.
+        // - Path gone: the file was moved away — emit Deleted to clean up stale DB entries.
+        // - Path exists: the file was moved here — emit Modified to re-index its content.
+        // Previously this always fell through to Modified, causing should_index_file to
+        // return false for a gone path (it checks path.is_file()), silently dropping the
+        // event and leaving orphaned symbols/embeddings in the database.
         EventKind::Modify(ModifyKind::Name(_)) => {
             for path in event.paths {
-                if filtering::should_index_file(
+                if path.exists() {
+                    if filtering::should_index_file(
+                        &path,
+                        supported_extensions,
+                        gitignore,
+                        workspace_root,
+                    ) {
+                        let change_event = FileChangeEvent {
+                            path: path.clone(),
+                            change_type: FileChangeType::Modified,
+                            timestamp: SystemTime::now(),
+                        };
+                        queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
+                    }
+                } else if filtering::should_process_deletion(
                     &path,
                     supported_extensions,
                     gitignore,
@@ -113,10 +138,10 @@ pub async fn process_file_system_event(
                 ) {
                     let change_event = FileChangeEvent {
                         path: path.clone(),
-                        change_type: FileChangeType::Modified,
+                        change_type: FileChangeType::Deleted,
                         timestamp: SystemTime::now(),
                     };
-                    queue_file_change(index_queue.clone(), change_event).await;
+                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
                 }
             }
         }
@@ -133,7 +158,7 @@ pub async fn process_file_system_event(
                         change_type: FileChangeType::Modified,
                         timestamp: SystemTime::now(),
                     };
-                    queue_file_change(index_queue.clone(), change_event).await;
+                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
                 }
             }
         }
@@ -150,7 +175,7 @@ pub async fn process_file_system_event(
                         change_type: FileChangeType::Deleted,
                         timestamp: SystemTime::now(),
                     };
-                    queue_file_change(index_queue.clone(), change_event).await;
+                    queue_file_change(index_queue.clone(), change_event, needs_rescan).await;
                 }
             }
         }
@@ -165,21 +190,27 @@ pub async fn process_file_system_event(
 const MAX_QUEUE_SIZE: usize = 1000;
 
 /// Queue a file change event, capping the queue at MAX_QUEUE_SIZE.
-/// If the queue is full, the oldest events are dropped with a warning.
+///
+/// If the queue is full, the oldest events are drained and `needs_rescan` is set.
+/// The background processor checks this flag after the queue drains and runs a
+/// staleness pass to catch any events that were lost in the overflow.
 async fn queue_file_change(
     index_queue: std::sync::Arc<TokioMutex<VecDeque<FileChangeEvent>>>,
     event: FileChangeEvent,
+    needs_rescan: &Arc<AtomicBool>,
 ) {
     debug!("Queueing file change: {:?}", event);
     let mut queue = index_queue.lock().await;
     if queue.len() >= MAX_QUEUE_SIZE {
         // Drain oldest events to stay within cap. A burst this large likely
-        // means a large directory operation (checkout, unzip) — we'll catch up
-        // on the next full re-index rather than processing stale events.
+        // means a large directory operation (checkout, unzip). Set the rescan
+        // flag so the processor re-checks all indexed files for staleness
+        // after the queue drains, recovering any dropped Create/Delete events.
         let drain_count = queue.len() - MAX_QUEUE_SIZE + 1;
         queue.drain(..drain_count);
+        needs_rescan.store(true, Ordering::Release);
         tracing::warn!(
-            "Watcher queue exceeded {} items; dropped {} oldest events (large directory operation?)",
+            "Watcher queue exceeded {} items; dropped {} oldest events — rescan scheduled",
             MAX_QUEUE_SIZE,
             drain_count,
         );

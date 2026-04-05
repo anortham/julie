@@ -302,6 +302,19 @@ impl ManageWorkspaceTool {
 
         let is_primary = _workspace_id == primary_workspace_id;
 
+        // Fix C part b: get the search index for Tantivy orphan cleanup.
+        // For primary, use the workspace's already-open index.
+        // For reference, open via the handler's workspace-aware helper.
+        let search_index = if is_primary {
+            primary_workspace.search_index.clone()
+        } else {
+            handler
+                .get_search_index_for_workspace(_workspace_id)
+                .await
+                .ok()
+                .flatten()
+        };
+
         // Get the correct database based on workspace type.
         // For reference workspaces, route through the handler's cached connection
         // instead of opening a separate database connection ([I-H4]).
@@ -343,6 +356,22 @@ impl ManageWorkspaceTool {
             let tx = db_lock.conn.transaction()?;
 
             for file_path in &orphaned_files {
+                // Fix C part b: delete embeddings BEFORE symbols.
+                // The embedding DELETE uses a subquery join on symbols; if symbols are
+                // deleted first the join returns nothing and embeddings become orphaned.
+                if let Err(e) = tx.execute(
+                    "DELETE FROM symbol_vectors WHERE symbol_id IN (
+                        SELECT id FROM symbols WHERE file_path = ?1
+                    )",
+                    rusqlite::params![file_path],
+                ) {
+                    warn!(
+                        "Failed to delete embeddings for orphaned file {}: {}",
+                        file_path, e
+                    );
+                    // Non-fatal: continue so the symbol/file records are still cleaned up.
+                }
+
                 // Delete relationships first (referential integrity)
                 if let Err(e) = tx.execute(
                     "DELETE FROM relationships WHERE from_symbol_id IN (SELECT id FROM symbols WHERE file_path = ?1)
@@ -380,6 +409,31 @@ impl ManageWorkspaceTool {
             }
 
             tx.commit()?;
+        }
+
+        // Fix C part b: remove Tantivy documents for orphaned files.
+        // Done after the SQLite commit since Tantivy is not part of the transaction.
+        // Non-fatal: a re-index would re-add correct docs; stale Tantivy docs only
+        // cause phantom search results, not data corruption.
+        if let Some(ref search_idx) = search_index {
+            match search_idx.lock() {
+                Ok(idx) => {
+                    for file_path in &orphaned_files {
+                        if let Err(e) = idx.remove_by_file_path(file_path) {
+                            warn!(
+                                "Failed to remove Tantivy docs for orphaned file {}: {}",
+                                file_path, e
+                            );
+                        }
+                    }
+                    if let Err(e) = idx.commit() {
+                        warn!("Failed to commit Tantivy after orphan cleanup: {}", e);
+                    }
+                }
+                Err(e) => {
+                    warn!("Tantivy index mutex poisoned during orphan cleanup: {}", e);
+                }
+            }
         }
 
         if cleaned_count > 0 && !is_primary {

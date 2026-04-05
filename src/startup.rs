@@ -264,64 +264,22 @@ pub(crate) fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<Stri
     Ok(files)
 }
 
-/// Check if a file is a supported code file based on extension
+/// Check if a file is a supported code file based on extension.
 ///
-/// Returns true for all file extensions that Julie's extractors support
+/// Fix D: delegates to `build_supported_extensions()` so this function and
+/// the file watcher share a single canonical list (julie_extractors).
+/// Previously maintained a hardcoded duplicate that was missing .scala, .ex,
+/// .exs, .regex, and any extension added to the extractors in the future.
 fn is_code_file(path: &Path) -> bool {
+    use std::sync::OnceLock;
+    static SUPPORTED: OnceLock<HashSet<String>> = OnceLock::new();
+    let supported =
+        SUPPORTED.get_or_init(crate::watcher::filtering::build_supported_extensions);
+
     let extension = match path.extension() {
         Some(ext) => ext.to_string_lossy().to_lowercase(),
         None => return false,
     };
 
-    // All supported language extensions
-    matches!(
-        extension.as_str(),
-        "rs" | "ts"
-            | "tsx"
-            | "js"
-            | "jsx"
-            | "py"
-            | "java"
-            | "cs"
-            | "php"
-            | "rb"
-            | "swift"
-            | "kt"
-            | "kts"
-            | "go"
-            | "c"
-            | "h"
-            | "cpp"
-            | "cc"
-            | "cxx"
-            | "hpp"
-            | "hxx"
-            | "lua"
-            | "sql"
-            | "html"
-            | "htm"
-            | "css"
-            | "scss"
-            | "sass"
-            | "vue"
-            | "razor"
-            | "cshtml"
-            | "sh"
-            | "bash"
-            | "zsh"
-            | "ps1"
-            | "psm1"
-            | "gd"
-            | "dart"
-            | "zig"
-            | "qml"   // QML (Qt Modeling Language)
-            | "r"     // R (Statistical Computing)
-            | "md"    // Markdown
-            | "markdown"
-            | "json"  // JSON
-            | "jsonl" // JSON Lines
-            | "toml"  // TOML
-            | "yml"   // YAML
-            | "yaml"
-    )
+    supported.contains(extension.as_str())
 }

@@ -526,18 +526,17 @@ async fn test_file_rename_absolute_paths() {
 // rollback_transaction helpers were deleted in favour of conn.transaction()
 // (RAII). Transaction leaks from that pattern are structurally impossible now.
 
-/// Test: DELETE event for a file that still exists on disk (atomic save pattern)
+/// Test: handle_file_deleted_static always cleans up regardless of disk state.
 ///
-/// Editors like VS Code, vim, and IntelliJ do atomic saves:
-///   1. Write temp file (e.g. foo.rs.tmp)
-///   2. Delete original (foo.rs) → DELETE event fires
-///   3. Rename temp to original (foo.rs.tmp → foo.rs)
+/// Fix B-a: The old path.exists() guard has been removed from handle_file_deleted_static.
+/// The atomic-save check (skip if file still exists) now lives exclusively in
+/// dispatch_file_event, which guards before calling this function. This eliminates
+/// the TOCTOU window where embeddings could be deleted by the caller while symbols
+/// survived because the file was recreated between the two independent checks.
 ///
-/// By the time we process the DELETE event, the file often already exists again.
-/// We should NOT delete symbols/embeddings in this case — the file was edited,
-/// not truly deleted.
+/// The handler now trusts the caller's decision to proceed with deletion.
 #[tokio::test]
-async fn test_delete_handler_skips_when_file_still_exists() {
+async fn test_delete_handler_always_cleans_up() {
     let temp_dir = crate::tests::helpers::unique_temp_dir("atomic_save");
     let workspace_root = temp_dir.path().canonicalize().unwrap();
 
@@ -570,25 +569,25 @@ async fn test_delete_handler_skips_when_file_still_exists() {
         assert_eq!(count, 1, "Should have 1 symbol before deletion event");
     }
 
-    // DO NOT delete the file — simulate atomic save where file still exists
-    // when we process the DELETE event
+    // File still exists on disk — but we call handle_file_deleted_static directly,
+    // simulating the scenario where the caller (dispatch_file_event) has already
+    // decided to proceed with deletion. The handler must trust the caller.
     assert!(
         test_file.exists(),
-        "File should still exist (atomic save simulation)"
+        "File still exists — handler must clean up regardless (trust caller)"
     );
 
-    // Call deletion handler with absolute path — file still on disk!
     handle_file_deleted_static(absolute_path, &db, &workspace_root, None)
         .await
         .expect("Delete handler should succeed");
 
-    // Symbols should NOT have been deleted — file still exists
+    // Symbols MUST be deleted — the handler no longer has its own path.exists() guard
     {
         let db_lock = db.lock().unwrap();
         let count = db_lock.count_symbols_for_workspace().unwrap();
         assert_eq!(
-            count, 1,
-            "Symbols should be preserved when file still exists (atomic save)"
+            count, 0,
+            "handle_file_deleted_static must clean up symbols regardless of disk state (Fix B-a)"
         );
     }
 }

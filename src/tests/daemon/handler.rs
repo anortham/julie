@@ -32,6 +32,7 @@ async fn test_new_with_shared_workspace_creates_handler() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("new_with_shared_workspace should succeed");
@@ -60,6 +61,7 @@ async fn test_shared_workspace_handler_has_own_metrics() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("handler1 should succeed");
@@ -67,6 +69,7 @@ async fn test_shared_workspace_handler_has_own_metrics() {
     let handler2 = JulieServerHandler::new_with_shared_workspace(
         Arc::clone(&ws),
         workspace_root.path().to_path_buf(),
+        None,
         None,
         None,
         None,
@@ -108,6 +111,7 @@ async fn test_shared_workspace_handler_shares_database() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("handler1 should succeed");
@@ -115,6 +119,7 @@ async fn test_shared_workspace_handler_shares_database() {
     let handler2 = JulieServerHandler::new_with_shared_workspace(
         Arc::clone(&ws),
         workspace_root.path().to_path_buf(),
+        None,
         None,
         None,
         None,
@@ -175,6 +180,7 @@ async fn test_handler_is_indexed_when_workspace_has_symbols() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("handler should succeed");
@@ -200,6 +206,7 @@ async fn test_handler_not_indexed_when_workspace_empty() {
     let handler = JulieServerHandler::new_with_shared_workspace(
         ws,
         workspace_root.path().to_path_buf(),
+        None,
         None,
         None,
         None,

@@ -751,6 +751,21 @@ impl JulieWorkspace {
         }
         Ok(())
     }
+
+    /// Pause the file watcher's event dispatch (Fix C part a).
+    /// Events continue to accumulate but are not processed until `resume_file_watching`.
+    pub fn pause_file_watching(&self) {
+        if let Some(ref watcher) = self.watcher {
+            watcher.pause();
+        }
+    }
+
+    /// Resume the file watcher after a `pause_file_watching()` call.
+    pub fn resume_file_watching(&self) {
+        if let Some(ref watcher) = self.watcher {
+            watcher.resume();
+        }
+    }
 }
 
 /// Health status of a Julie workspace

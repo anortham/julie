@@ -145,7 +145,10 @@ fn find_all_matches(content: &str, old_text: &str) -> Result<Vec<MatchSpan>> {
             Some(pos) if pos >= search_from => {
                 let end = compute_fuzzy_end(&dmp, &content_chars, pos, old_text, old_char_len);
                 spans.push(MatchSpan { start: pos, end });
-                search_from = end;
+                // Guard: if compute_fuzzy_end returns pos (possible when the content
+                // window is empty near the tail of the file), we must still advance
+                // search_from to prevent an infinite loop.
+                search_from = end.max(pos + 1);
             }
             _ => break,
         }
@@ -348,23 +351,12 @@ impl EditFileTool {
             return Ok(CallToolResult::text_content(vec![Content::text(msg)]));
         }
 
-        // Commit the edit atomically
+        // Commit the edit atomically.
+        // NOTE: do NOT call update_file_hash after writing. The watcher must see the
+        // hash mismatch to trigger symbol re-extraction. Updating the hash here would
+        // poison watcher change-detection and leave the index permanently stale.
         let txn = EditingTransaction::begin(&resolved_str)?;
         txn.commit(&modified_content)?;
-
-        // Update the file hash in the DB so subsequent edit_symbol calls don't
-        // fail the freshness check before the watcher re-indexes.
-        if let Some(workspace) = handler.get_workspace().await.ok().flatten() {
-            if let Some(ref db_arc) = workspace.db {
-                let new_hash = crate::database::calculate_file_hash(&resolved_path)
-                    .unwrap_or_default();
-                if !new_hash.is_empty() {
-                    if let Ok(db) = db_arc.lock() {
-                        let _ = db.update_file_hash(&self.file_path, &new_hash);
-                    }
-                }
-            }
-        }
 
         debug!("edit_file applied to {}", self.file_path);
         let mut msg = format!("Applied edit to {}:\n\n{}", self.file_path, diff);

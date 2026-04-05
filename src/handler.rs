@@ -182,6 +182,12 @@ pub struct JulieServerHandler {
     /// True when the daemon detects its binary has been rebuilt.
     /// Surfaced in `manage_workspace health`. None in stdio mode.
     pub(crate) restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+    /// Fix G: prevents concurrent catch-up auto-indexing scans.
+    /// CAS'd to true by the first `run_auto_indexing` call; cleared on exit.
+    catchup_in_progress: Arc<AtomicBool>,
+    /// Fix C part c: shared watcher pool for pausing reference workspace watchers
+    /// during force reindex. None in stdio mode.
+    pub(crate) watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
     /// Bounded channel sender for background metrics writes (M03).
     /// A single background task drains this; try_send drops on backpressure
     /// rather than spawning unbounded tasks.
@@ -219,6 +225,8 @@ impl JulieServerHandler {
             workspace_id: None,
             embedding_service: None,
             restart_pending: None,
+            catchup_in_progress: Arc::new(AtomicBool::new(false)),
+            watcher_pool: None,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx: None,
@@ -244,6 +252,7 @@ impl JulieServerHandler {
         embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
         restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
+        watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
     ) -> Result<Self> {
         info!(
             "Creating daemon-mode handler (workspace_root: {:?})",
@@ -288,6 +297,8 @@ impl JulieServerHandler {
             workspace_id,
             embedding_service,
             restart_pending,
+            catchup_in_progress: Arc::new(AtomicBool::new(false)),
+            watcher_pool,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
             dashboard_tx,
@@ -514,6 +525,22 @@ impl JulieServerHandler {
         Ok(workspace_guard.clone())
     }
 
+    /// Pause the file watcher's event dispatch during catch-up indexing (Fix C part a).
+    pub async fn pause_watcher(&self) {
+        let guard = self.workspace.read().await;
+        if let Some(ref ws) = *guard {
+            ws.pause_file_watching();
+        }
+    }
+
+    /// Resume the file watcher after catch-up indexing completes (Fix C part a).
+    pub async fn resume_watcher(&self) {
+        let guard = self.workspace.read().await;
+        if let Some(ref ws) = *guard {
+            ws.resume_file_watching();
+        }
+    }
+
     /// Ensure workspace is initialized for operations that require it
     pub async fn ensure_workspace(&self) -> Result<()> {
         if self.workspace.read().await.is_some() {
@@ -655,8 +682,35 @@ impl JulieServerHandler {
     /// Run auto-indexing in background (called after MCP handshake)
     async fn run_auto_indexing(&self) {
         use crate::startup::check_if_indexing_needed;
+        use std::sync::atomic::Ordering;
+
+        // Fix G: prevent concurrent catch-up scans (e.g. two sessions connecting simultaneously).
+        // Only the first caller proceeds; the second sees the flag set and bails out.
+        if self
+            .catchup_in_progress
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            info!("Catch-up auto-indexing already in progress for this workspace, skipping");
+            return;
+        }
 
         info!("🔍 Starting background auto-indexing check...");
+
+        // Fix C part a: pause the watcher while we run the staleness scan.
+        // Without this, the watcher can dispatch Create/Delete events for files
+        // that the catch-up scan is concurrently processing, leading to double
+        // re-indexing and transient orphan cleanup on the same file.
+        //
+        // In daemon mode, workspace.watcher is None (watchers live in WatcherPool),
+        // so pause_watcher() is a no-op. Use the shared WatcherPool instead.
+        if let Some(ref pool) = self.watcher_pool {
+            if let Some(ref ws_id) = self.workspace_id {
+                pool.pause_workspace(ws_id).await;
+            }
+        } else {
+            self.pause_watcher().await;
+        }
 
         // Check if indexing is needed
         match check_if_indexing_needed(self).await {
@@ -688,6 +742,21 @@ impl JulieServerHandler {
                 warn!("⚠️ Failed to check indexing status: {}", e);
             }
         }
+
+        // Fix C part a: resume the watcher now that the catch-up scan is done.
+        // Any events that arrived while paused are still in the queue and will
+        // be dispatched on the next queue processor tick.
+        if let Some(ref pool) = self.watcher_pool {
+            if let Some(ref ws_id) = self.workspace_id {
+                pool.resume_workspace(ws_id).await;
+            }
+        } else {
+            self.resume_watcher().await;
+        }
+
+        // Fix G: release the dedup flag so the next catch-up can proceed.
+        self.catchup_in_progress
+            .store(false, Ordering::Release);
     }
 
     // ========== Workspace Access Helpers ==========
@@ -1232,20 +1301,29 @@ impl ServerHandler for JulieServerHandler {
         // Atomically claim the indexing slot. Two concurrent on_initialized calls on
         // a shared handler clone would both see is_indexed=false with a read lock;
         // upgrading to a write lock serializes them so only one proceeds.
-        {
+        // Fix E: capture the outcome as a bool and drop the write lock BEFORE any .await.
+        // Holding a Tokio RwLock write guard across .await blocks all readers.
+        let already_indexed = {
             let mut indexed = self.is_indexed.write().await;
             if *indexed {
-                info!("Workspace already indexed, running staleness check");
-                self.backfill_vector_count().await;
-                // Still check for stale files in the background. The index
-                // may be outdated if files changed while the daemon was down.
-                let handler = self.clone();
-                tokio::spawn(async move {
-                    handler.run_auto_indexing().await;
-                });
-                return;
+                true
+            } else {
+                *indexed = true;
+                false
             }
-            *indexed = true;
+        };
+        // Write lock released here.
+
+        if already_indexed {
+            info!("Workspace already indexed, running staleness check");
+            self.backfill_vector_count().await;
+            // Still check for stale files in the background. The index
+            // may be outdated if files changed while the daemon was down.
+            let handler = self.clone();
+            tokio::spawn(async move {
+                handler.run_auto_indexing().await;
+            });
+            return;
         }
 
         // Run auto-indexing in background task

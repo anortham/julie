@@ -8,10 +8,18 @@ decisions:
   - "2026-04-04 | edit_file (DMP fuzzy replace) and edit_symbol (symbol-aware editing) added as MCP tools. Progressive rollout: Phase 1 = these two, Phase 2 = read_file replacement and hook escalation. Four-layer adoption: tool descriptions, SessionStart hook, PreToolUse nudge, editing skill. Rejected single multi-purpose edit tool and full Serena-style suite upfront."
   - "2026-04-04 | Bracket validation changed from absolute check to delta-based (compare before vs after). Absolute check false-rejected edits where string literals contained intentionally unbalanced brackets."
   - "2026-04-04 | Trimmed-line fuzzy matching added as Phase 2 between exact and DMP bitap. Handles tabs-vs-spaces and indent width mismatches. MatchSpan struct carries start+end so fuzzy matches (different length than old_text) splice correctly. Rejects all-blank-line patterns as too ambiguous."
+  - "2026-04-04 | Web-research implemented as a skill orchestrating browser39 + filewatcher + Julie tools, not as a native MCP tool. Zero Rust code. Rejected native reqwest+html-to-markdown-rs (unnecessary when pipeline exists) and hybrid backend (over-engineered)."
+  - "2026-04-05 | Code review validation pattern: external model review finds issues, subagent-driven development fixes them, Codex (GPT-5.4 xhigh reasoning) cross-reviews the fixes. Caught 3 additional bugs the initial fixes introduced (busy-spin, wrong cancel target, self-invalidation)."
+  - "2026-04-05 | Bracket balance downgraded from hard reject to advisory warning. String/comment awareness not implemented; the simpler fix is to not block edits on a heuristic that has known false positives."
+  - "2026-04-05 | TOCTOU between freshness hash check and file write accepted as low risk: millisecond window, MCP server processes one tool call at a time, guard targets minutes/hours of staleness not nanosecond races."
 
 open_questions:
   - "2026-03-31 | Sidecar venv CUDA torch swap fragility: if bootstrap recreates venv, it reinstalls CPU torch from PyPI. detect_nvidia_cuda() should handle this but needs testing on fresh machine."
   - "2026-04-03 | Known language extractor limitations (4 remaining): C++ header-only templates, Lua metatables, HTML/CSS structural relationships, JS CommonJS require() resolution."
+
+deferred_work:
+  - "2026-04-05 | edit_symbol is line-granular only (no byte/column precision for same-line symbols). Affects languages with multiple symbols on one line. No fix planned; documented in tool description."
+  - "2026-04-05 | Dry-run diff truncation needed for very large edits. Currently dry-run output can be arbitrarily long."
 
 gotchas:
   - "2026-03-31 | SidecarLaunchConfig.env was empty (no env vars passed to sidecar). Had to be extended to pass JULIE_EMBEDDING_DEVICE_PREFERENCE for CUDA support."
@@ -24,3 +32,6 @@ gotchas:
   - "2026-04-04 | initialize_embedding_provider() propagation in workspace/mod.rs is dead code: always called on workspace clones (which have watcher: None). Propagation must happen at actual write-back sites in embeddings.rs and nl_embeddings.rs."
   - "2026-04-04 | DMP bitap length mismatch: compute_fuzzy_end (using diff_main) corrects the splice width, but only after the MatchSpan refactor. Without MatchSpan, fuzzy-matched content of different length than old_text garbles the result."
   - "2026-04-04 | ignore crate converts bare * to **/* at parse time via GitignoreBuilder::add(). Julie's collect_gitignore_files() flattens nested .gitignore files into a single root-scoped builder, so cache dir patterns (.ruff_cache, .pytest_cache, .venv containing *) leak globally and reject all source files. Fix: skip hidden directories when collecting .gitignore files."
+  - "2026-04-05 | edit_symbol and edit_file must call db.update_file_hash() after successful write. Without this, the freshness guard (blake3 hash comparison) rejects back-to-back edits on the same file because the index hash is stale."
+  - "2026-04-05 | Watcher dedup re-queue must use break (not continue) after re-queuing an event. continue stays in the inner while-let loop and hot-spins; break returns to tick.tick().await for the actual delay."
+  - "2026-04-05 | Force-index embedding cancellation must compute target workspace_id from the path being force-reindexed (via generate_workspace_id), not use handler.workspace_id which is always the primary workspace."

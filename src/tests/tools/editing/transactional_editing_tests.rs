@@ -307,4 +307,81 @@ mod transactional_editing_tests {
         println!("✅ Large file memory efficiency test passed");
         Ok(())
     }
+
+    /// Rollback must DELETE files that didn't exist before the transaction
+    /// instead of writing an empty placeholder (the old behavior).
+    ///
+    /// This exercises rollback_partial_commit with a path whose pre-transaction
+    /// content is None (not "").
+    #[tokio::test]
+    async fn test_rollback_deletes_new_file_not_truncates() -> Result<()> {
+        let fixture = TransactionalTestFixture::new()?;
+
+        // file_existing: was on disk before the transaction
+        let file_existing = fixture.create_test_file("existing.txt", "original")?;
+
+        // file_new: did NOT exist before the transaction
+        let file_new = fixture.get_temp_dir().join("brand_new.txt");
+        assert!(!file_new.exists(), "Precondition: brand_new.txt must not exist");
+
+        // Build the transaction so add_file records the pre-transaction state.
+        let mut txn = MultiFileTransaction::new("test-rollback-delete")?;
+        txn.add_file(file_existing.to_str().unwrap())?;
+        txn.add_file(file_new.to_str().unwrap())?;
+        txn.set_content(file_existing.to_str().unwrap(), "modified")?;
+        txn.set_content(file_new.to_str().unwrap(), "brand new content")?;
+
+        // Simulate Phase 2 having committed file_new (rename succeeded) but not yet
+        // processed file_existing when the failure occurred.  We do this by physically
+        // creating file_new on disk (as the rename would have) and then calling the
+        // internal rollback directly via the test helper.
+        fs::write(&file_new, "brand new content")?;
+        assert!(file_new.exists(), "Manually created to simulate committed rename");
+
+        // Call rollback for the paths that were "committed" (just file_new here).
+        txn.test_rollback_partial_commit(&[file_new.clone()])?;
+
+        // After rollback:
+        // - file_new MUST NOT EXIST (old code wrote "" here, creating an empty file)
+        // - file_existing is untouched (it wasn't in committed_paths)
+        assert!(
+            !file_new.exists(),
+            "Rollback must delete a file that didn't exist before the transaction (not truncate it)"
+        );
+        assert_eq!(
+            fs::read_to_string(&file_existing)?,
+            "original",
+            "Existing file should be unchanged (it wasn't in committed_paths)"
+        );
+
+        Ok(())
+    }
+
+    /// Atomic rollback must use temp+rename, not plain write, when restoring existing files.
+    /// The existing file content must be restored exactly, not corrupted on crash.
+    #[tokio::test]
+    async fn test_rollback_restores_existing_file_atomically() -> Result<()> {
+        let fixture = TransactionalTestFixture::new()?;
+        let file = fixture.create_test_file("restore_me.txt", "original content")?;
+
+        let mut txn = MultiFileTransaction::new("test-rollback-atomic")?;
+        txn.add_file(file.to_str().unwrap())?;
+        txn.set_content(file.to_str().unwrap(), "modified content")?;
+
+        // Simulate Phase 2 committing the file (write modified content as rename would)
+        fs::write(&file, "modified content")?;
+
+        // Rollback should restore to original
+        txn.test_rollback_partial_commit(&[file.clone()])?;
+
+        assert_eq!(
+            fs::read_to_string(&file)?,
+            "original content",
+            "Rollback must restore existing file to its pre-transaction content"
+        );
+        // No leftover temp files
+        fixture.verify_no_backup_files()?;
+
+        Ok(())
+    }
 }

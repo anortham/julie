@@ -140,7 +140,7 @@ pub(crate) async fn spawn_workspace_embedding(
         let mut tasks = handler.embedding_tasks.lock().await;
         if let Some((cancel_flag, handle)) = tasks.remove(&workspace_id) {
             info!("Cancelling previous embedding pipeline for workspace {workspace_id}");
-            cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            cancel_flag.store(true, std::sync::atomic::Ordering::Release);
             handle.abort();
         }
     }
@@ -180,18 +180,6 @@ pub(crate) async fn spawn_workspace_embedding(
                     "Workspace {workspace_id} embedding complete: {}/{} symbols embedded ({} skipped)",
                     stats.symbols_embedded, stats.symbols_scanned, stats.symbols_skipped
                 );
-                // Write vector count and embedding model back to daemon.db.
-                // Use embedding_count() from the workspace DB rather than
-                // stats.symbols_embedded so partial re-embeds and no-op runs
-                // don't make daemon.db drift from reality.
-                if let Some(ref daemon) = daemon_db {
-                    let actual_count = {
-                        let db_lock = db_arc.lock().unwrap_or_else(|p| p.into_inner());
-                        db_lock.embedding_count().unwrap_or(stats.symbols_embedded as i64)
-                    };
-                    let _ = daemon.update_vector_count(&workspace_id, actual_count);
-                    let _ = daemon.update_embedding_model(&workspace_id, &model_name);
-                }
             }
             Ok(Err(e)) => {
                 warn!("Workspace {workspace_id} embedding failed: {e:#}");
@@ -203,6 +191,19 @@ pub(crate) async fn spawn_workspace_embedding(
                     warn!("Workspace {workspace_id} embedding task panicked: {e}");
                 }
             }
+        }
+
+        // Fix B part 2: unconditionally update daemon.db with the actual vector count.
+        // Use embedding_count() (ground-truth DB total) rather than stats.symbols_embedded
+        // (this-run delta). Runs after all outcomes: success, failure, and cancellation,
+        // so daemon.db never drifts from the workspace DB regardless of pipeline fate.
+        if let Some(ref daemon) = daemon_db {
+            let actual_count = {
+                let db_lock = db_arc.lock().unwrap_or_else(|p| p.into_inner());
+                db_lock.embedding_count().unwrap_or(0)
+            };
+            let _ = daemon.update_vector_count(&workspace_id, actual_count);
+            let _ = daemon.update_embedding_model(&workspace_id, &model_name);
         }
 
         // Clear the stored handle only if it's still ours. A newer pipeline may

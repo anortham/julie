@@ -366,6 +366,8 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let watcher_pool = Arc::new(WatcherPool::new(Duration::from_secs(300)));
     let reaper_handle = watcher_pool.spawn_reaper(Duration::from_secs(60));
     info!("WatcherPool started (grace=300s, reaper=60s)");
+    // Keep a clone so per-session handlers can pause/resume reference workspace watchers.
+    let watcher_pool_for_handlers = Arc::clone(&watcher_pool);
 
     let pool = Arc::new(WorkspacePool::new(
         paths.indexes_dir(),
@@ -479,7 +481,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
 
     // Accept loop with graceful shutdown
     let result = tokio::select! {
-        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify, dashboard_tx) => res,
+        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify, dashboard_tx, watcher_pool_for_handlers) => res,
         res = shutdown_signal() => {
             if let Err(e) = res {
                 warn!("Signal handler setup failed: {}", e);
@@ -554,6 +556,7 @@ async fn accept_loop(
     restart_pending: &Arc<AtomicBool>,
     restart_notify: &Arc<Notify>,
     dashboard_tx: broadcast::Sender<DashboardEvent>,
+    watcher_pool: Arc<WatcherPool>,
 ) -> Result<()> {
     loop {
         let stream = match listener.accept().await {
@@ -675,6 +678,7 @@ async fn accept_loop(
             "New IPC session accepted"
         );
 
+        let watcher_pool_for_session = Arc::clone(&watcher_pool);
         tokio::spawn(async move {
             let dashboard_tx_disconnect = dashboard_tx.clone();
             if let Err(e) = handle_ipc_session(
@@ -686,6 +690,7 @@ async fn accept_loop(
                 &restart_pending,
                 Some(dashboard_tx),
                 workspace_path,
+                Some(watcher_pool_for_session),
             )
             .await
             {
@@ -739,6 +744,7 @@ async fn handle_ipc_session(
     restart_pending: &Arc<AtomicBool>,
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
     workspace_path: PathBuf,
+    watcher_pool: Option<Arc<WatcherPool>>,
 ) -> Result<()> {
     // Compute workspace ID from path. Use generate_workspace_id() directly
     // (produces e.g. "julie_316c0b08"). Do NOT wrap in another prefix; the
@@ -774,6 +780,7 @@ async fn handle_ipc_session(
             Some(Arc::clone(embedding_service)),
             Some(Arc::clone(restart_pending)),
             dashboard_tx,
+            watcher_pool,
         )
         .await
         .context("Failed to create handler for IPC session")?;

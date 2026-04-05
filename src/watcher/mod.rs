@@ -71,37 +71,47 @@ pub struct IncrementalIndexer {
     /// Shared flag checked by spawned tasks — when set to true, tasks exit their loops.
     cancel_flag: Arc<AtomicBool>,
 
+    /// When true, the queue processor skips dispatching events (events remain buffered).
+    /// Used to pause the watcher during catch-up indexing to prevent concurrent updates.
+    pub(crate) pause_flag: Arc<AtomicBool>,
+
+    /// Set to true when the event queue overflows (>1000 events).
+    /// The queue processor and external callers check this to trigger a full rescan.
+    pub(crate) needs_rescan: Arc<AtomicBool>,
+
+    /// Relative paths of files whose SQLite update succeeded but Tantivy update
+    /// failed. Retried at the start of each queue-processor tick (Fix B-b).
+    tantivy_dirty: Arc<StdMutex<std::collections::HashSet<String>>>,
+
     /// Join handles for the event detector and queue processor tasks.
-    /// Stored so stop() can abort and await them for a clean shutdown.
+    /// Stored so stop() can join them for a clean, non-aborting shutdown (Fix D).
     event_task: Option<tokio::task::JoinHandle<()>>,
     queue_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// Dispatch a single file change event to the appropriate handler.
 ///
-/// `on_atomic_delete` is called (with the file path) when a DELETE event is
-/// skipped because the file still exists (atomic-save pattern). The background
-/// task uses this to clear the dedup entry so the follow-up Create/Modify event
-/// is not suppressed.
-async fn dispatch_file_event<F>(
+/// Returns `Some(path)` when a DELETE event is skipped because the file still
+/// exists (atomic-save pattern). The caller should remove that path from its
+/// dedup map so the follow-up Create/Modify event is not suppressed (Fix F:
+/// replaces the old detached `tokio::spawn` callback approach).
+async fn dispatch_file_event(
     event: FileChangeEvent,
     db: &Arc<StdMutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
     search_index: &Option<Arc<StdMutex<crate::search::SearchIndex>>>,
     embedding_provider: &Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
     workspace_root: &std::path::Path,
-    lang_configs: &crate::search::language_config::LanguageConfigs,
-    on_atomic_delete: Option<F>,
-) where
-    F: FnOnce(&std::path::Path),
-{
+    lang_configs: &Arc<crate::search::language_config::LanguageConfigs>,
+    tantivy_dirty: &Arc<StdMutex<std::collections::HashSet<String>>>,
+) -> Option<PathBuf> {
     let relative_for_embed =
         crate::utils::paths::to_relative_unix_style(&event.path, workspace_root).ok();
 
     match event.change_type {
         FileChangeType::Created | FileChangeType::Modified => {
             let rel_path = relative_for_embed.clone();
-            if let Err(e) = handlers::handle_file_created_or_modified_static(
+            match handlers::handle_file_created_or_modified_static(
                 event.path,
                 db,
                 extractor_manager,
@@ -110,17 +120,42 @@ async fn dispatch_file_event<F>(
             )
             .await
             {
-                warn!("Failed to handle file change: {}", e);
-            } else if let (Some(provider), Some(rel)) = (embedding_provider, &rel_path) {
-                if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(
-                    db,
-                    provider.as_ref(),
-                    rel,
-                    Some(lang_configs),
-                ) {
-                    warn!("Incremental embedding failed for {}: {}", rel, e);
+                Err(e) => {
+                    warn!("Failed to handle file change: {}", e);
+                }
+                Ok(tantivy_ok) => {
+                    // Fix B-b: track Tantivy failures for retry on next tick
+                    if !tantivy_ok {
+                        if let Some(ref rel) = rel_path {
+                            let mut dirty = tantivy_dirty
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner());
+                            dirty.insert(rel.clone());
+                            warn!("Tantivy update failed for {}; queued for retry", rel);
+                        }
+                    }
+                    // Fix E: wrap blocking IPC call in spawn_blocking
+                    if let (Some(provider), Some(rel)) = (embedding_provider, &rel_path) {
+                        let db_clone = Arc::clone(db);
+                        let provider_clone = Arc::clone(provider);
+                        let rel_owned = rel.clone();
+                        let lc = Arc::clone(lang_configs);
+                        if let Err(e) = tokio::task::spawn_blocking(move || {
+                            crate::embeddings::pipeline::reembed_symbols_for_file(
+                                &db_clone,
+                                provider_clone.as_ref(),
+                                &rel_owned,
+                                Some(lc.as_ref()),
+                            )
+                        })
+                        .await
+                        {
+                            warn!("Incremental embedding task panicked: {}", e);
+                        }
+                    }
                 }
             }
+            None
         }
         FileChangeType::Deleted => {
             // Guard: if the file still exists, this was likely an atomic
@@ -131,28 +166,34 @@ async fn dispatch_file_event<F>(
                     "Skipping DELETE for {} (file still exists, likely atomic save)",
                     event.path.display()
                 );
-                if let Some(cb) = on_atomic_delete {
-                    cb(&event.path);
-                }
-            } else {
-                if let Some(ref rel) = relative_for_embed {
-                    if let Ok(mut db_guard) = db.lock() {
-                        if let Err(e) = db_guard.delete_embeddings_for_file(rel) {
-                            warn!("Failed to delete embeddings for {}: {}", rel, e);
-                        }
+                // Fix F: return the path for inline dedup-map clearing instead
+                // of spawning a detached tokio task (W7).
+                return Some(event.path);
+            }
+
+            if let Some(ref rel) = relative_for_embed {
+                if let Ok(mut db_guard) = db.lock() {
+                    if let Err(e) = db_guard.delete_embeddings_for_file(rel) {
+                        warn!("Failed to delete embeddings for {}: {}", rel, e);
                     }
                 }
-                if let Err(e) = handlers::handle_file_deleted_static(
-                    event.path,
-                    db,
-                    workspace_root,
-                    search_index.as_ref(),
-                )
-                .await
-                {
-                    warn!("Failed to handle file deletion: {}", e);
-                }
             }
+            if let Err(e) = handlers::handle_file_deleted_static(
+                event.path,
+                db,
+                workspace_root,
+                search_index.as_ref(),
+            )
+            .await
+            {
+                warn!("Failed to handle file deletion: {}", e);
+            }
+            // Clear dirty-retry entry: file is deleted, retrying Tantivy
+            // would recreate a phantom doc for a nonexistent file.
+            if let Some(ref rel) = relative_for_embed {
+                tantivy_dirty.lock().unwrap_or_else(|p| p.into_inner()).remove(rel);
+            }
+            None
         }
         FileChangeType::Renamed { from, to } => {
             if let Ok(ref rel_from) =
@@ -161,8 +202,10 @@ async fn dispatch_file_event<F>(
                 if let Ok(mut db_guard) = db.lock() {
                     let _ = db_guard.delete_embeddings_for_file(rel_from);
                 }
+                // Clear old path from dirty-retry set (file no longer exists at old path).
+                tantivy_dirty.lock().unwrap_or_else(|p| p.into_inner()).remove(rel_from);
             }
-            if let Err(e) = handlers::handle_file_renamed_static(
+            match handlers::handle_file_renamed_static(
                 from,
                 to.clone(),
                 db,
@@ -172,20 +215,44 @@ async fn dispatch_file_event<F>(
             )
             .await
             {
-                warn!("Failed to handle file rename: {}", e);
-            } else if let (Some(provider), Ok(rel_to)) = (
+                Err(e) => {
+                    warn!("Failed to handle file rename: {}", e);
+                }
+                Ok(tantivy_ok) => {
+                    // Track Tantivy failure on rename's create side for dirty-retry.
+                    if !tantivy_ok {
+                        if let Ok(ref rel_to) =
+                            crate::utils::paths::to_relative_unix_style(&to, workspace_root)
+                        {
+                            tantivy_dirty.lock().unwrap_or_else(|p| p.into_inner()).insert(rel_to.clone());
+                            warn!("Tantivy update failed for rename target {}; queued for retry", rel_to);
+                        }
+                    }
+                }
+            }
+            if let (Some(provider), Ok(rel_to)) = (
                 embedding_provider,
                 crate::utils::paths::to_relative_unix_style(&to, workspace_root),
             ) {
-                if let Err(e) = crate::embeddings::pipeline::reembed_symbols_for_file(
-                    db,
-                    provider.as_ref(),
-                    &rel_to,
-                    Some(lang_configs),
-                ) {
-                    warn!("Incremental embedding failed for {}: {}", rel_to, e);
+                // Fix E: wrap blocking IPC call in spawn_blocking
+                let db_clone = Arc::clone(db);
+                let provider_clone = Arc::clone(provider);
+                let rel_owned = rel_to.clone();
+                let lc = Arc::clone(lang_configs);
+                if let Err(e) = tokio::task::spawn_blocking(move || {
+                    crate::embeddings::pipeline::reembed_symbols_for_file(
+                        &db_clone,
+                        provider_clone.as_ref(),
+                        &rel_owned,
+                        Some(lc.as_ref()),
+                    )
+                })
+                .await
+                {
+                    warn!("Incremental embedding task panicked for rename: {}", e);
                 }
             }
+            None
         }
     }
 }
@@ -216,6 +283,9 @@ impl IncrementalIndexer {
             gitignore,
             workspace_root,
             cancel_flag: Arc::new(AtomicBool::new(false)),
+            pause_flag: Arc::new(AtomicBool::new(false)),
+            needs_rescan: Arc::new(AtomicBool::new(false)),
+            tantivy_dirty: Arc::new(StdMutex::new(std::collections::HashSet::new())),
             event_task: None,
             queue_task: None,
         })
@@ -263,6 +333,7 @@ impl IncrementalIndexer {
         let workspace_root_for_events = self.workspace_root.clone();
         let index_queue = self.index_queue.clone();
         let cancel_flag_events = self.cancel_flag.clone();
+        let needs_rescan_for_events = self.needs_rescan.clone();
 
         let event_handle = tokio::spawn(async move {
             info!("File system event detector started");
@@ -280,6 +351,7 @@ impl IncrementalIndexer {
                             &workspace_root_for_events,
                             index_queue.clone(),
                             event,
+                            &needs_rescan_for_events,
                         )
                         .await
                         {
@@ -305,6 +377,10 @@ impl IncrementalIndexer {
         let last_processed = self.last_processed.clone();
         let workspace_root = self.workspace_root.clone();
         let cancel_flag_queue = self.cancel_flag.clone();
+        let pause_flag_queue = self.pause_flag.clone();
+        let needs_rescan = self.needs_rescan.clone();
+        let tantivy_dirty = self.tantivy_dirty.clone();
+        let supported_extensions_queue = self.supported_extensions.clone();
 
         let queue_handle = tokio::spawn(async move {
             use tokio::time::{Duration, interval};
@@ -315,8 +391,98 @@ impl IncrementalIndexer {
                 tick.tick().await;
 
                 if cancel_flag_queue.load(Ordering::Acquire) {
+                    // Drain remaining queued events before exiting so we don't
+                    // lose in-flight work (e.g., edits queued just before shutdown).
+                    let remaining = queue_for_processing.lock().await.len();
+                    if remaining > 0 {
+                        info!("Queue processor shutting down, draining {} remaining events", remaining);
+                        while let Some(event) = queue_for_processing.lock().await.pop_front() {
+                            let provider_snap = embedding_provider
+                                .read()
+                                .unwrap_or_else(|p| p.into_inner())
+                                .clone();
+                            dispatch_file_event(
+                                event,
+                                &db,
+                                &extractor_manager,
+                                &search_index,
+                                &provider_snap,
+                                &workspace_root,
+                                &lang_configs,
+                                &tantivy_dirty,
+                            )
+                            .await;
+                        }
+                        // Final Tantivy commit for drained events
+                        if let Some(ref si) = search_index {
+                            let si_arc = Arc::clone(si);
+                            let _ = tokio::task::spawn_blocking(move || {
+                                let idx = si_arc.lock().unwrap_or_else(|p| p.into_inner());
+                                if let Err(e) = idx.commit() {
+                                    warn!("Failed to commit Tantivy during shutdown drain: {}", e);
+                                }
+                            }).await;
+                        }
+                    }
                     info!("Queue processor cancelled, exiting");
                     break;
+                }
+
+                // Fix C part a: skip dispatch while paused (catch-up indexing in progress).
+                // Events accumulate in the queue and are processed after resume().
+                if pause_flag_queue.load(Ordering::Acquire) {
+                    continue;
+                }
+
+                // Fix B-b: Retry Tantivy for any files that failed in previous ticks.
+                // SQLite already has correct data; this just syncs Tantivy to match it.
+                {
+                    let dirty_paths: Vec<String> = {
+                        let d = tantivy_dirty.lock().unwrap_or_else(|p| p.into_inner());
+                        d.iter().cloned().collect()
+                    };
+                    if !dirty_paths.is_empty() {
+                        if let Some(ref si) = search_index {
+                            for rel_path in dirty_paths {
+                                let (symbol_docs, file_doc) = {
+                                    let db_guard = db.lock().unwrap_or_else(|p| p.into_inner());
+                                    let symbols = db_guard.get_symbols_for_file(&rel_path).unwrap_or_default();
+                                    let content = db_guard.get_file_content(&rel_path).unwrap_or(None).unwrap_or_default();
+                                    let language = symbols.first()
+                                        .map(|s| s.language.clone())
+                                        .unwrap_or_else(|| "unknown".to_string());
+                                    let docs: Vec<_> = symbols.iter()
+                                        .map(crate::search::SymbolDocument::from_symbol)
+                                        .collect();
+                                    let fd = crate::search::FileDocument {
+                                        file_path: rel_path.clone(),
+                                        content,
+                                        language,
+                                    };
+                                    (docs, fd)
+                                };
+                                let si_arc = Arc::clone(si);
+                                let rel_clone = rel_path.clone();
+                                let retry_result = tokio::task::spawn_blocking(move || {
+                                    let idx = si_arc.lock().unwrap_or_else(|p| p.into_inner());
+                                    idx.remove_by_file_path(&rel_clone)?;
+                                    for doc in &symbol_docs {
+                                        idx.add_symbol(doc)?;
+                                    }
+                                    idx.add_file_content(&file_doc)?;
+                                    Ok::<(), anyhow::Error>(())
+                                }).await;
+                                match retry_result {
+                                    Ok(Ok(())) => {
+                                        tantivy_dirty.lock().unwrap_or_else(|p| p.into_inner()).remove(&rel_path);
+                                        info!("Tantivy retry succeeded for {}", rel_path);
+                                    }
+                                    Ok(Err(e)) => warn!("Tantivy retry failed for {}: {}", rel_path, e),
+                                    Err(e) => warn!("Tantivy retry task panicked for {}: {}", rel_path, e),
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Process all items currently in the queue
@@ -330,10 +496,21 @@ impl IncrementalIndexer {
                 }
 
                 let mut processed_count = 0usize;
-                while let Some(event) = {
-                    let mut queue = queue_for_processing.lock().await;
-                    queue.pop_front()
-                } {
+                // Cap iterations at queue_size to prevent hot-spinning.
+                // When all events are within the dedup window, they're pushed back
+                // and we exit after one pass. Without this cap, a single deduped
+                // event would pop/push/continue in an infinite loop at CPU speed.
+                let max_this_tick = queue_size;
+                let mut iterations = 0;
+                while iterations < max_this_tick {
+                    let event = match {
+                        let mut queue = queue_for_processing.lock().await;
+                        queue.pop_front()
+                    } {
+                        Some(e) => e,
+                        None => break,
+                    };
+                    iterations += 1;
                     // Deduplication: Skip if we processed this file very recently (within 1 second)
                     // This prevents duplicate processing when notify fires multiple events (Create + Modify)
                     let should_skip = {
@@ -364,31 +541,26 @@ impl IncrementalIndexer {
                     };
 
                     if should_skip {
-                        // Re-queue so the latest state gets processed on the next tick.
-                        // Break out of the inner loop so tick.tick().await introduces
-                        // the actual 1s delay before we pop this event again.
+                        // Fix C (HOL blocking): re-queue and CONTINUE (not break) so
+                        // subsequent events for other files are not blocked by a single
+                        // deduped event. Only the re-queued file waits for the next tick;
+                        // everything behind it can still be processed now.
                         let mut queue = queue_for_processing.lock().await;
                         queue.push_back(event);
-                        break;
+                        continue; // Fix C: was 'break', which stalled the whole queue
                     }
 
                     info!("Background task processing: {:?}", event.path);
-
-                    let clear_dedup_on_delete = {
-                        let lp = last_processed.clone();
-                        move |path: &std::path::Path| {
-                            let path = path.to_path_buf();
-                            tokio::spawn(async move {
-                                lp.lock().await.remove(&path);
-                            });
-                        }
-                    };
 
                     let provider_snapshot = embedding_provider
                         .read()
                         .unwrap_or_else(|p| p.into_inner())
                         .clone();
-                    dispatch_file_event(
+
+                    // Fix F: dispatch_file_event returns Some(path) when an atomic-delete
+                    // is skipped. Inline the dedup-map removal here instead of spawning
+                    // a detached task (eliminates the detached tokio::spawn).
+                    let atomic_delete_path = dispatch_file_event(
                         event,
                         &db,
                         &extractor_manager,
@@ -396,9 +568,14 @@ impl IncrementalIndexer {
                         &provider_snapshot,
                         &workspace_root,
                         &lang_configs,
-                        Some(clear_dedup_on_delete),
+                        &tantivy_dirty,
                     )
                     .await;
+
+                    if let Some(path) = atomic_delete_path {
+                        last_processed.lock().await.remove(&path);
+                    }
+
                     processed_count += 1;
                 }
 
@@ -430,6 +607,104 @@ impl IncrementalIndexer {
                         .await;
                     }
                 }
+
+                // Fix C (overflow recovery): after the queue drains, trigger a
+                // workspace-wide staleness scan to recover any events that were dropped
+                // when the queue exceeded 1000 items (e.g., large git checkout).
+                let queue_now_empty = queue_for_processing.lock().await.is_empty();
+                if queue_now_empty && needs_rescan.load(Ordering::Acquire) {
+                    needs_rescan.store(false, Ordering::Release);
+                    info!("Queue overflow detected: full workspace rescan for staleness + new files");
+
+                    // 1. Check all indexed files for modifications or deletions.
+                    let indexed_files = {
+                        let db_guard = db.lock().unwrap_or_else(|p| p.into_inner());
+                        db_guard.get_all_indexed_files().unwrap_or_default()
+                    };
+                    let indexed_set: std::collections::HashSet<String> =
+                        indexed_files.iter().cloned().collect();
+
+                    let provider_snap = embedding_provider.read().unwrap_or_else(|p| p.into_inner()).clone();
+                    for rel_path in &indexed_files {
+                        let abs_path = workspace_root.join(std::path::Path::new(rel_path));
+                        let change_type = if abs_path.is_file() {
+                            FileChangeType::Modified
+                        } else {
+                            FileChangeType::Deleted
+                        };
+                        let rescan_event = FileChangeEvent {
+                            path: abs_path,
+                            change_type,
+                            timestamp: SystemTime::now(),
+                        };
+                        dispatch_file_event(
+                            rescan_event,
+                            &db,
+                            &extractor_manager,
+                            &search_index,
+                            &provider_snap,
+                            &workspace_root,
+                            &lang_configs,
+                            &tantivy_dirty,
+                        )
+                        .await;
+                    }
+
+                    // 2. Walk filesystem to discover NEW files not in DB.
+                    // Overflow may have dropped Create events for brand-new files.
+                    let mut new_file_count = 0usize;
+                    let walker = ignore::WalkBuilder::new(&workspace_root)
+                        .hidden(true)
+                        .git_ignore(true)
+                        .build();
+                    for entry in walker.filter_map(|e| e.ok()).filter(|e| {
+                        e.file_type().map_or(false, |ft| ft.is_file())
+                    }) {
+                        if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
+                            if supported_extensions_queue.contains(ext) {
+                                if let Ok(rel) = crate::utils::paths::to_relative_unix_style(
+                                    entry.path(),
+                                    &workspace_root,
+                                ) {
+                                    if !indexed_set.contains(&rel) {
+                                        let event = FileChangeEvent {
+                                            path: entry.into_path(),
+                                            change_type: FileChangeType::Created,
+                                            timestamp: SystemTime::now(),
+                                        };
+                                        dispatch_file_event(
+                                            event,
+                                            &db,
+                                            &extractor_manager,
+                                            &search_index,
+                                            &provider_snap,
+                                            &workspace_root,
+                                            &lang_configs,
+                                            &tantivy_dirty,
+                                        )
+                                        .await;
+                                        new_file_count += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    info!(
+                        "Post-overflow rescan: checked {} indexed files, discovered {} new files",
+                        indexed_files.len(),
+                        new_file_count
+                    );
+                    // Commit Tantivy after rescan batch
+                    if let Some(ref si) = search_index {
+                        let si_arc = Arc::clone(si);
+                        let _ = tokio::task::spawn_blocking(move || {
+                            let idx = si_arc.lock().unwrap_or_else(|p| p.into_inner());
+                            if let Err(e) = idx.commit() {
+                                warn!("Failed to commit Tantivy after rescan: {}", e);
+                            }
+                        }).await;
+                    }
+                }
             }
         });
         self.queue_task = Some(queue_handle);
@@ -450,6 +725,7 @@ impl IncrementalIndexer {
                 .read()
                 .unwrap_or_else(|p| p.into_inner())
                 .clone();
+            // dispatch returns Some(path) for atomic-save skips; no dedup tracking here.
             dispatch_file_event(
                 event,
                 &self.db,
@@ -458,7 +734,7 @@ impl IncrementalIndexer {
                 &provider_snapshot,
                 &self.workspace_root,
                 &self.lang_configs,
-                None::<fn(&std::path::Path)>,
+                &self.tantivy_dirty,
             )
             .await;
             processed_count += 1;
@@ -485,26 +761,50 @@ impl IncrementalIndexer {
     }
 
     /// Stop the file watcher and signal spawned tasks to exit.
+    ///
+    /// Fix D: Uses cancel flag + join instead of abort(). abort() cuts the task
+    /// at the next await point — if that happens after the SQLite commit but before
+    /// the Tantivy commit, state is inconsistent. With this approach:
+    ///   - Event task: exits when rx yields None (watcher dropped closes the channel).
+    ///   - Queue task: checks cancel_flag at the top of each tick; exits within 1s.
+    /// Neither task is interrupted mid-event.
     pub async fn stop(&mut self) -> Result<()> {
-        // Release ordering ensures all stores above this point are visible to
-        // task threads that load the flag with Acquire ordering.
+        // Signal all tasks to stop after their current work item.
         self.cancel_flag.store(true, Ordering::Release);
 
-        // Abort and await spawned tasks for a clean shutdown.
+        // Drop the watcher first — this closes the notify channel sender (tx),
+        // causing the event task's rx.recv().await to return None and exit cleanly.
+        if let Some(watcher) = self.watcher.take() {
+            drop(watcher);
+        }
+
+        // Join event task (exits quickly once rx yields None).
         if let Some(handle) = self.event_task.take() {
-            handle.abort();
             let _ = handle.await;
         }
+        // Join queue task (checks cancel_flag at each tick; exits within ~1s).
         if let Some(handle) = self.queue_task.take() {
-            handle.abort();
             let _ = handle.await;
         }
 
-        if let Some(watcher) = self.watcher.take() {
-            drop(watcher);
-            info!("File watcher stopped");
-        }
+        info!("File watcher stopped");
         Ok(())
+    }
+
+    /// Pause event dispatch. Events continue to accumulate in the queue
+    /// but are not dispatched until `resume()` is called.
+    ///
+    /// Used by `run_auto_indexing` to prevent the watcher from racing with
+    /// the catch-up staleness scan (Fix C part a).
+    pub fn pause(&self) {
+        self.pause_flag.store(true, Ordering::Release);
+        debug!("File watcher paused");
+    }
+
+    /// Resume event dispatch after a `pause()`.
+    pub fn resume(&self) {
+        self.pause_flag.store(false, Ordering::Release);
+        debug!("File watcher resumed");
     }
 }
 

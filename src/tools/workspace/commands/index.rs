@@ -50,7 +50,18 @@ impl ManageWorkspaceTool {
                 false
             }
         } else {
-            false
+            // Stdio mode: if workspace is already loaded and the requested path
+            // differs from the primary root, treat as reference. Without this,
+            // resolve_workspace_path walks up to the primary's markers (e.g. .git)
+            // and conflates the reference path with the primary workspace.
+            let primary_canonical = handler
+                .workspace_root
+                .canonicalize()
+                .unwrap_or_else(|_| handler.workspace_root.clone());
+            let request_canonical = original_path
+                .canonicalize()
+                .unwrap_or_else(|_| original_path.clone());
+            request_canonical != primary_canonical
         };
 
         // For reference workspaces, use the original path directly (no workspace root resolution)
@@ -226,11 +237,30 @@ impl ManageWorkspaceTool {
             }
         }
 
+        // Fix C part c: pause the reference workspace's watcher during force reindex
+        // to prevent the watcher from dispatching concurrent incremental updates to
+        // the same reference DB while the full reindex is running.
+        let ref_watcher_id: Option<String> = if is_reference_workspace && force_reindex {
+            let path_str = canonical_path.to_string_lossy().to_string();
+            crate::workspace::registry::generate_workspace_id(&path_str).ok()
+        } else {
+            None
+        };
+        if let (Some(id), Some(pool)) = (&ref_watcher_id, &handler.watcher_pool) {
+            pool.pause_workspace(id).await;
+        }
+
         // Perform indexing
-        match self
+        let index_result = self
             .index_workspace_files(handler, &canonical_path, force_reindex)
-            .await
-        {
+            .await;
+
+        // Resume reference watcher before handling the result (whether Ok or Err).
+        if let (Some(id), Some(pool)) = (&ref_watcher_id, &handler.watcher_pool) {
+            pool.resume_workspace(id).await;
+        }
+
+        match index_result {
             Ok(result) => {
                 let files_total = result.files_total;
                 let symbols_total = result.symbols_total;
@@ -244,11 +274,18 @@ impl ManageWorkspaceTool {
                 let canonical_path_str = canonical_path.to_string_lossy().to_string();
 
                 if let Some(ref daemon_db) = handler.daemon_db {
-                    // Daemon mode: persist stats to daemon.db
-                    let workspace_id = handler.workspace_id.clone().unwrap_or_else(|| {
+                    // Daemon mode: persist stats to daemon.db.
+                    // Fix A: reference workspaces must derive workspace_id from their own path,
+                    // NOT from handler.workspace_id (which belongs to the primary workspace).
+                    let workspace_id = if is_reference_workspace {
                         crate::workspace::registry::generate_workspace_id(&canonical_path_str)
                             .unwrap_or_default()
-                    });
+                    } else {
+                        handler.workspace_id.clone().unwrap_or_else(|| {
+                            crate::workspace::registry::generate_workspace_id(&canonical_path_str)
+                                .unwrap_or_default()
+                        })
+                    };
                     let _ = daemon_db.upsert_workspace(&workspace_id, &canonical_path_str, "ready");
                     let _ = daemon_db.update_workspace_stats(
                         &workspace_id,

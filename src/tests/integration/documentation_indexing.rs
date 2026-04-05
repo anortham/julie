@@ -325,9 +325,17 @@ async fn test_documentation_update_on_change() -> Result<()> {
         "# API Reference\n\nVersion 2.0 API with new endpoints",
     )?;
 
-    // Re-index
+    // Re-index (force=true creates a new workspace/DB, so re-acquire the reference)
     index_workspace(&handler, workspace_path).await?;
 
+    let workspace = handler
+        .get_workspace()
+        .await?
+        .expect("Workspace should still exist after re-index");
+    let db_arc = workspace
+        .db
+        .as_ref()
+        .expect("Database should exist after re-index");
     let db = db_arc.lock().unwrap();
 
     // Get updated doc_comment content

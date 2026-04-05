@@ -47,6 +47,8 @@ Validated against source. All findings confirmed. **All fixed 2026-04-05.**
 
 ## Future Ideas
 
+- [ ] **Full CLI mode for all Julie tools** -- Add CLI subcommands so every MCP tool can be called from the terminal (e.g., `julie search "query" --definitions`, `julie deep-dive SymbolName`, `julie get-symbols src/foo.rs`). Two modes: daemon client (fast, connects via IPC to running daemon) and standalone (initializes workspace, runs, exits). Benefits: (1) live validation of new builds without restarting Claude Code, (2) automated integration test scripts that call real tools and assert on output, (3) search quality regression suites as shell scripts, (4) dogfooding without needing an MCP client session. Architecture: clap frontend dispatching to the same handler functions the MCP server uses. Needs full brainstorm before implementation.
+
 - [ ] **AST-based complexity metrics** -- Add cyclomatic complexity calculation during AST extraction. Store as symbol metadata. Enables a `/hotspots` skill (complexity x centrality = refactoring targets). Deferred because it requires per-language node-kind mapping across 33 extractors.
 - [ ] **Function body hashing for duplication detection** -- Hash normalized function bodies during extraction to detect near-duplicate functions across a codebase. Low priority.
 - [ ] **Scoped path extraction for Rust** -- Capture `crate::module::func()` qualified paths as implicit import edges. Would improve call graph quality for Rust codebases specifically.

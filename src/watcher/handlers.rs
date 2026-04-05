@@ -17,13 +17,17 @@ use tracing::{debug, error, info, warn};
 /// Extracts ALL data (symbols, identifiers, types, relationships) and updates
 /// both SQLite and Tantivy atomically. Pass `None` for `search_index` if
 /// Tantivy updates are not needed (e.g., in tests).
+///
+/// Returns `Ok(true)` if both SQLite and Tantivy succeeded, `Ok(false)` if SQLite
+/// succeeded but Tantivy had errors. The caller can use this to track files for
+/// Tantivy retry on the next queue-processor tick.
 pub async fn handle_file_created_or_modified_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
     search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
-) -> Result<()> {
+) -> Result<bool> {
     info!("Processing file: {}", path.display());
 
     // 1. Read file content and calculate hash
@@ -57,7 +61,7 @@ pub async fn handle_file_created_or_modified_static(
                     "File {} unchanged (Blake3 hash match), skipping",
                     path.display()
                 );
-                return Ok(());
+                return Ok(true); // Hash match = nothing to do, not a failure
             }
         }
     }
@@ -76,7 +80,7 @@ pub async fn handle_file_created_or_modified_static(
         Ok(results) => results,
         Err(e) => {
             error!("Extraction failed for {}: {}", relative_path, e);
-            return Ok(()); // Skip update to preserve existing data
+            return Ok(true); // Skip update to preserve existing data; not a Tantivy failure
         }
     };
 
@@ -111,7 +115,7 @@ pub async fn handle_file_created_or_modified_static(
                 existing_symbols.len(),
                 relative_path
             );
-            return Ok(());
+            return Ok(true); // Safeguard skip; not a Tantivy failure
         }
 
         // Build FileInfo from the already-read content and hash to avoid a TOCTOU race:
@@ -168,7 +172,8 @@ pub async fn handle_file_created_or_modified_static(
     // 6. Update Tantivy search index (if available)
     // CRITICAL: Must re-add BOTH symbol docs AND file content doc after removal.
     // remove_by_file_path() deletes all doc types for the file path.
-    if let Some(search_index) = search_index {
+    // Fix B-b: Track Tantivy success so callers can add to a dirty-file retry set.
+    let tantivy_ok = if let Some(search_index) = search_index {
         let symbol_docs: Vec<_> = results
             .symbols
             .iter()
@@ -191,52 +196,58 @@ pub async fn handle_file_created_or_modified_static(
                 }
             };
 
+            let mut ok = true;
             // Delete old documents for this file, then add new ones
             if let Err(e) = idx.remove_by_file_path(&file_to_clean) {
                 warn!("Failed to remove Tantivy docs for {}: {}", file_to_clean, e);
+                ok = false;
             }
             for doc in &symbol_docs {
                 if let Err(e) = idx.add_symbol(doc) {
                     warn!("Failed to add Tantivy symbol doc: {}", e);
+                    ok = false;
                 }
             }
             // Re-add file content doc (required for content search / line-mode search)
             if let Err(e) = idx.add_file_content(&file_content_doc) {
                 warn!("Failed to add Tantivy file content doc: {}", e);
+                ok = false;
             }
             // NOTE: commit is intentionally deferred — the caller batches
             // multiple file operations and commits once per tick to avoid
             // Tantivy segment-merge conflicts (FileDoesNotExist on .term files).
+            ok
         })
         .await;
 
-        if let Err(e) = tantivy_result {
-            warn!("Tantivy update task panicked: {}", e);
+        match tantivy_result {
+            Ok(ok) => ok,
+            Err(e) => {
+                warn!("Tantivy update task panicked: {}", e);
+                false
+            }
         }
-    }
+    } else {
+        true // No search index configured — nothing to fail
+    };
 
     info!("Successfully indexed {}", path.display());
-    Ok(())
+    Ok(tantivy_ok)
 }
 
-/// Handle file deletion
+/// Handle file deletion.
+///
+/// Fix B-a: The `path.exists()` guard has been removed. The caller (`dispatch_file_event`)
+/// already performs this check before deciding to call this function. Having a second
+/// check here creates a TOCTOU race: embeddings can be deleted by the caller while
+/// this function bails out if the file is recreated between the two checks, leaving
+/// symbols/Tantivy docs orphaned. Trust the caller's decision.
 pub async fn handle_file_deleted_static(
     path: PathBuf,
     db: &Arc<std::sync::Mutex<SymbolDatabase>>,
     workspace_root: &Path,
     search_index: Option<&Arc<std::sync::Mutex<crate::search::SearchIndex>>>,
 ) -> Result<()> {
-    // Guard against atomic save patterns (write-temp → delete → rename).
-    // If the file still exists when we process the DELETE event, the deletion
-    // was transient — skip it so we don't nuke valid symbols/embeddings.
-    if path.exists() {
-        info!(
-            "Skipping DELETE for {} (file still exists, likely atomic save)",
-            path.display()
-        );
-        return Ok(());
-    }
-
     info!("Processing file deletion: {}", path.display());
 
     // CRITICAL FIX: Convert absolute path to relative for database operations
@@ -330,17 +341,17 @@ pub async fn handle_file_renamed_static(
     extractor_manager: &Arc<ExtractorManager>,
     workspace_root: &Path,
     search_index: Option<&Arc<std::sync::Mutex<SearchIndex>>>,
-) -> Result<()> {
+) -> Result<bool> {
     info!(
         "Handling file rename: {} -> {}",
         from.display(),
         to.display()
     );
 
-    // Delete + create
+    // Delete old path, then create/modify new path.
+    // Returns the Tantivy success status from the create side so the caller
+    // can track failures in the dirty-retry set.
     handle_file_deleted_static(from, db, workspace_root, search_index).await?;
     handle_file_created_or_modified_static(to, db, extractor_manager, workspace_root, search_index)
-        .await?;
-
-    Ok(())
+        .await
 }

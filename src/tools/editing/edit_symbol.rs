@@ -140,19 +140,27 @@ pub fn insert_near_symbol(
         }
     }
 
+    // Preserve original trailing newline behavior (matches replace_symbol_body).
+    if !source.ends_with('\n') && result.ends_with('\n') {
+        result.pop();
+        if eol == "\r\n" && result.ends_with('\r') {
+            result.pop();
+        }
+    }
+
     Ok(result)
 }
 
 /// Check if a file's current content matches what was indexed.
 /// Returns Ok(()) if fresh, Err with a descriptive message if stale.
+///
+/// `current_hash` must be computed BEFORE acquiring the DB lock to avoid
+/// blocking I/O while holding a MutexGuard.
 fn check_file_freshness(
     db: &std::sync::MutexGuard<'_, crate::database::SymbolDatabase>,
     file_path: &str,
-    resolved_path: &std::path::Path,
+    current_hash: &str,
 ) -> Result<()> {
-    let current_hash = crate::database::calculate_file_hash(resolved_path)
-        .map_err(|e| anyhow!("Cannot hash file '{}': {}", file_path, e))?;
-
     match db.get_file_hash(file_path)? {
         Some(indexed_hash) if indexed_hash == current_hash => Ok(()),
         Some(_) => Err(anyhow!(
@@ -277,11 +285,20 @@ impl EditSymbolTool {
         // Freshness guard: verify the file hasn't changed since it was indexed.
         // If the index is stale, the start_line/end_line from find_symbol may point
         // at wrong content. Refuse rather than silently corrupt.
+        //
+        // Hash is computed BEFORE acquiring the DB lock to avoid blocking I/O while
+        // holding a MutexGuard (which would delay every other DB operation).
+        //
+        // NOTE: do NOT call update_file_hash after writing. The watcher must see the
+        // mismatch and re-extract symbols. Updating the hash here would poison the
+        // watcher's change-detection and leave the index permanently stale.
+        let current_hash = crate::database::calculate_file_hash(&resolved_path)
+            .map_err(|e| anyhow!("Cannot hash file '{}': {}", symbol_file, e))?;
         {
             let db = db_arc_for_freshness
                 .lock()
                 .map_err(|e| anyhow!("Database lock error: {}", e))?;
-            if let Err(e) = check_file_freshness(&db, symbol_file, &resolved_path) {
+            if let Err(e) = check_file_freshness(&db, symbol_file, &current_hash) {
                 return Ok(CallToolResult::text_content(vec![Content::text(format!(
                     "Error: {}", e
                 ))]));
@@ -331,20 +348,6 @@ impl EditSymbolTool {
         // Commit atomically
         let txn = EditingTransaction::begin(&resolved_str)?;
         txn.commit(&modified_content)?;
-
-        // Update the file hash in the DB so subsequent edit_symbol calls don't
-        // fail the freshness check. The watcher will eventually re-extract symbols,
-        // but the hash update is needed immediately for back-to-back edits.
-        {
-            let new_hash = crate::database::calculate_file_hash(&resolved_path)
-                .unwrap_or_default();
-            if !new_hash.is_empty() {
-                let db = db_arc_for_freshness
-                    .lock()
-                    .map_err(|e| anyhow!("Database lock error: {}", e))?;
-                let _ = db.update_file_hash(symbol_file, &new_hash);
-            }
-        }
 
         debug!(
             "edit_symbol {} applied to {}",
