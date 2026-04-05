@@ -143,6 +143,32 @@ pub fn insert_near_symbol(
     Ok(result)
 }
 
+/// Check if a file's current content matches what was indexed.
+/// Returns Ok(()) if fresh, Err with a descriptive message if stale.
+fn check_file_freshness(
+    db: &std::sync::MutexGuard<'_, crate::database::SymbolDatabase>,
+    file_path: &str,
+    resolved_path: &std::path::Path,
+) -> Result<()> {
+    let current_hash = crate::database::calculate_file_hash(resolved_path)
+        .map_err(|e| anyhow!("Cannot hash file '{}': {}", file_path, e))?;
+
+    match db.get_file_hash(file_path)? {
+        Some(indexed_hash) if indexed_hash == current_hash => Ok(()),
+        Some(_) => Err(anyhow!(
+            "File '{}' has changed since last indexing. \
+             Run manage_workspace(operation=\"index\") or wait for the file watcher to catch up, \
+             then retry.",
+            file_path
+        )),
+        None => Err(anyhow!(
+            "File '{}' is not in the index. \
+             Run manage_workspace(operation=\"index\") first.",
+            file_path
+        )),
+    }
+}
+
 impl EditSymbolTool {
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
         // Validate parameters
@@ -177,6 +203,7 @@ impl EditSymbolTool {
         let symbol_name = self.symbol.clone();
         let file_path_filter = self.file_path.clone();
         let file_path_for_error = self.file_path.clone();
+        let db_arc_for_freshness = db_arc.clone();
         let matches = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String, u32, u32)>> {
             let db = db_arc
                 .lock()
@@ -246,6 +273,20 @@ impl EditSymbolTool {
         let workspace_root = &handler.workspace_root;
         let resolved_path = secure_path_resolution(symbol_file, workspace_root)?;
         let resolved_str = resolved_path.to_string_lossy().to_string();
+
+        // Freshness guard: verify the file hasn't changed since it was indexed.
+        // If the index is stale, the start_line/end_line from find_symbol may point
+        // at wrong content. Refuse rather than silently corrupt.
+        {
+            let db = db_arc_for_freshness
+                .lock()
+                .map_err(|e| anyhow!("Database lock error: {}", e))?;
+            if let Err(e) = check_file_freshness(&db, symbol_file, &resolved_path) {
+                return Ok(CallToolResult::text_content(vec![Content::text(format!(
+                    "Error: {}", e
+                ))]));
+            }
+        }
 
         // Read file content internally
         let original_content = std::fs::read_to_string(&resolved_path)

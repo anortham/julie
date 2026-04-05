@@ -78,3 +78,18 @@ fn test_insert_at_invalid_line() {
     let result = insert_near_symbol(source, 100, "new code", "after");
     assert!(result.is_err(), "Should fail for out-of-range line");
 }
+
+#[test]
+fn test_replace_helper_is_unguarded() {
+    // replace_symbol_body is a pure line-manipulation helper with no freshness check.
+    // The freshness guard lives in EditSymbolTool::call_tool (blake3 hash comparison).
+    // This test documents that the helper applies blindly -- callers must verify freshness.
+    let modified_file = "line1\nnew_line_inserted\nfn foo() {\n    bar()\n}\nline5\n";
+    let result = replace_symbol_body(modified_file, 2, 4, "fn foo() {\n    baz()\n}");
+    assert!(result.is_ok());
+    let content = result.unwrap();
+    // The helper replaces lines 2-4 regardless of what's there.
+    // In a stale-index scenario, this produces wrong output.
+    // call_tool's freshness check prevents this from happening in practice.
+    assert!(!content.contains("fn foo() {\n    bar()"), "Old foo body should be replaced");
+}
