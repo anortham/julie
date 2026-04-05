@@ -307,7 +307,13 @@ These signals appear in `deep_dive` output, giving agents immediate awareness of
 
 ## Skills
 
-Julie ships with 10 pre-built skills, reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/architecture`) in harnesses that support them, or used as system prompt instructions.
+Julie ships with 11 pre-built skills, reusable prompt workflows that combine Julie's tools into higher-level capabilities. Skills are invoked as slash commands (e.g., `/architecture`) in harnesses that support them, or used as system prompt instructions.
+
+### Editing Skills
+
+| Skill | Description |
+|-------|-------------|
+| `/editing` | Zero-read editing: understand and modify code using edit_file and edit_symbol without reading files first |
 
 ### Report Skills
 
