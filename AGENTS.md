@@ -417,4 +417,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-05 | **Status:** Production Ready (v6.6.5 — sidecar memory fix: MPS GPU cache clearing + float16 inference)
+**Last Updated:** 2026-04-06 | **Status:** Production Ready (v6.6.7 — browser39 binary release instructions, web-research skill fixes)
