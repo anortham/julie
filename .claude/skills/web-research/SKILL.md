@@ -1,6 +1,6 @@
 ---
 name: web-research
-description: Fetch web pages and index them locally for token-efficient research. Use when you need to read documentation, articles, or any web content. Fetches via browser39, saves as markdown, indexes via Julie's filewatcher, then uses Julie tools for selective reading. Requires browser39 (`cargo install browser39`).
+description: Fetch web pages and index them locally for token-efficient research. Use when you need to read documentation, articles, or any web content. Fetches via browser39, saves as markdown, indexes via Julie's filewatcher, then uses Julie tools for selective reading. Requires browser39 (binary release from GitHub).
 user-invocable: true
 arguments: "<url or research topic>"
 allowed-tools: mcp__julie__fast_search, mcp__julie__get_symbols, mcp__julie__get_context, Bash, Write
@@ -18,11 +18,7 @@ browser39 must be installed. Check with:
 which browser39
 ```
 
-If missing, tell the user to install it:
-
-```bash
-cargo install browser39
-```
+If missing, tell the user to download the latest binary release from [browser39 releases](https://github.com/alejandroqh/browser39/releases) and add it to their PATH.
 
 ## Workflow
 
@@ -40,8 +36,9 @@ docs/web/
 Fetch the page and save directly to the target file. Never print full page content to stdout.
 
 ```bash
-# Fetch
+# Fetch (rm ensures no stale results — --output appends, not overwrites)
 echo '{"id":"1","action":"fetch","v":1,"seq":1,"url":"THE_URL","options":{"selector":"article","strip_nav":true,"include_links":true}}' > /tmp/b39-cmd.jsonl
+rm -f /tmp/b39-out.jsonl
 browser39 batch /tmp/b39-cmd.jsonl --output /tmp/b39-out.jsonl
 
 # Extract markdown directly to file (no stdout leak)
