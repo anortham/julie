@@ -40,7 +40,8 @@ const VARIABLE_EMBEDDING_POLICY: VariableEmbeddingPolicy = VariableEmbeddingPoli
 /// History:
 ///   1 = original format (symbol name + signature + children names)
 ///   2 = enriched format (+ file path, implementor names, field signatures)
-pub const EMBEDDING_FORMAT_VERSION: u32 = 2;
+///   3 = float16 inference (model weights loaded in half precision on GPU)
+pub const EMBEDDING_FORMAT_VERSION: u32 = 3;
 
 /// Statistics from an embedding pipeline run.
 #[derive(Debug, Clone)]

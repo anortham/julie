@@ -359,3 +359,56 @@ def test_embed_batch_zero_vector_for_unencodable() -> None:
     assert len(vectors) == 1
     assert len(vectors[0]) == 384
     assert all(v == 0.0 for v in vectors[0])
+
+
+# =========================================================================
+# GPU memory management
+# =========================================================================
+
+
+def test_embed_batch_clears_mps_device_cache() -> None:
+    """embed_batch should release MPS cached buffers after encoding.
+
+    Without torch.mps.empty_cache(), PyTorch's MPS caching allocator
+    grows to ~6 GB for a 500 MB model on Apple Silicon.
+    """
+    cache_cleared = [False]
+
+    torch_mod = _torch_stub(mps=True)
+    # torch.mps.empty_cache() lives at torch.mps, not torch.backends.mps
+    torch_mod.mps = SimpleNamespace(
+        empty_cache=lambda: cache_cleared.__setitem__(0, True),
+    )
+
+    rt = build_runtime(
+        model_factory=lambda **_kwargs: _GoodModel(),
+        torch_module=torch_mod,
+    )
+    rt.embed_batch(["hello"])
+    assert cache_cleared[0], "torch.mps.empty_cache() was not called"
+
+
+def test_embed_batch_clears_cuda_device_cache() -> None:
+    """embed_batch should release CUDA cached buffers after encoding."""
+    cache_cleared = [False]
+
+    torch_mod = _torch_stub(cuda=True)
+    torch_mod.cuda.empty_cache = lambda: cache_cleared.__setitem__(0, True)
+
+    rt = build_runtime(
+        model_factory=lambda **_kwargs: _GoodModel(),
+        torch_module=torch_mod,
+    )
+    rt.embed_batch(["hello"])
+    assert cache_cleared[0], "torch.cuda.empty_cache() was not called"
+
+
+def test_embed_batch_no_crash_on_cpu_without_cache() -> None:
+    """CPU device should not attempt GPU cache clearing."""
+    rt = build_runtime(
+        model_factory=lambda **_kwargs: _GoodModel(),
+        torch_module=_torch_stub(),
+    )
+    vectors = rt.embed_batch(["hello"])
+    assert len(vectors) == 1
+    assert len(vectors[0]) == 384

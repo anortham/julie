@@ -247,11 +247,13 @@ class SentenceTransformerRuntime:
         model_id: str,
         device: str,
         batch_size: int,
+        torch_module: Any = None,
     ) -> None:
         self._model = model
         self._model_id = model_id
         self.device = device
         self._batch_size = batch_size
+        self._torch = torch_module
         self.ready = True
         self.dims = self._resolve_declared_dims()
         self._guard_dims(self.dims, context="init")
@@ -268,6 +270,28 @@ class SentenceTransformerRuntime:
             "model_id": self._model_id,
         }
 
+    def _empty_device_cache(self) -> None:
+        """Release cached GPU buffers back to the system.
+
+        PyTorch's MPS and CUDA backends use caching allocators that hold
+        freed buffers for reuse. Without explicit clearing, MPS memory
+        can grow to ~6 GB for a 500 MB model on Apple Silicon.
+        """
+        if self._torch is None:
+            return
+        if self.device == "mps":
+            mps = getattr(self._torch, "mps", None)
+            if mps is not None:
+                empty = getattr(mps, "empty_cache", None)
+                if callable(empty):
+                    empty()
+        elif self.device == "cuda":
+            cuda = getattr(self._torch, "cuda", None)
+            if cuda is not None:
+                empty = getattr(cuda, "empty_cache", None)
+                if callable(empty):
+                    empty()
+
     def embed_query(self, text: str) -> list[float]:
         vectors = self.embed_batch([text])
         return vectors[0]
@@ -283,6 +307,7 @@ class SentenceTransformerRuntime:
         # Without this, DirectML leaks GPU memory across many forward passes
         # until the driver crashes.
         gc.collect()
+        self._empty_device_cache()
         vectors = _as_vectors(raw_vectors)
         if len(vectors) != len(texts):
             raise ValueError(
@@ -392,9 +417,34 @@ def build_runtime(
         model = model_factory(model_id=model_id, device=backend_device)
     else:
         sentence_transformers = _import_module("sentence_transformers")
-        model = sentence_transformers.SentenceTransformer(
-            model_id, device=backend_device, trust_remote_code=True
-        )
+        # Use float16 on GPU to halve model weight memory.
+        # CodeRankEmbed weights are stored as float16 in safetensors;
+        # loading without specifying dtype upcasts to float32, doubling memory.
+        model_kwargs: dict[str, Any] = {}
+        use_half = backend_device in ("mps", "cuda")
+        if use_half:
+            half_dtype = getattr(torch, "float16", None)
+            if half_dtype is not None:
+                model_kwargs["torch_dtype"] = half_dtype
+        try:
+            model = sentence_transformers.SentenceTransformer(
+                model_id, device=backend_device, trust_remote_code=True,
+                model_kwargs=model_kwargs,
+            )
+        except Exception:
+            if use_half and model_kwargs:
+                import sys as _sys
+                print(
+                    f"[sidecar] float16 model load failed, retrying in float32",
+                    file=_sys.stderr,
+                )
+                model_kwargs.pop("torch_dtype", None)
+                model = sentence_transformers.SentenceTransformer(
+                    model_id, device=backend_device, trust_remote_code=True,
+                    model_kwargs=model_kwargs,
+                )
+            else:
+                raise
 
     # Probe encode: verify the model can actually produce embeddings on this
     # device. Some models (e.g., CodeRankEmbed with rotary embeddings) load
@@ -439,6 +489,15 @@ def build_runtime(
                 )
                 del model
                 gc.collect()
+                # Release GPU buffers held by the caching allocator
+                if telemetry_device == "mps":
+                    mps = getattr(torch, "mps", None)
+                    if mps is not None and callable(getattr(mps, "empty_cache", None)):
+                        mps.empty_cache()
+                elif telemetry_device == "cuda":
+                    cuda_mod = getattr(torch, "cuda", None)
+                    if cuda_mod is not None and callable(getattr(cuda_mod, "empty_cache", None)):
+                        cuda_mod.empty_cache()
 
                 model = sentence_transformers.SentenceTransformer(
                     model_id, device="cpu", trust_remote_code=True
@@ -465,4 +524,5 @@ def build_runtime(
         model_id=model_id,
         device=telemetry_device,
         batch_size=batch_size,
+        torch_module=torch,
     )
