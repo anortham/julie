@@ -417,4 +417,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-05 | **Status:** Production Ready (v6.6.4 — pipeline reliability: 27 fixes across watcher, indexing, embeddings, editing tools; Codex-reviewed)
+**Last Updated:** 2026-04-05 | **Status:** Production Ready (v6.6.5 — sidecar memory fix: MPS GPU cache clearing + float16 inference)
