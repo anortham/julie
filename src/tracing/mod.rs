@@ -6,6 +6,8 @@
 //! This module defines types and concepts for cross-language tracing but the actual
 //! implementation has been superseded by the tool-based architecture.
 
+#![allow(dead_code)]
+
 use crate::database::SymbolDatabase;
 use crate::extractors::Symbol;
 use anyhow::Result;

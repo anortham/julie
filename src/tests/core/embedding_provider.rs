@@ -11,7 +11,7 @@ mod tests {
     use crate::embeddings::create_embedding_provider;
     use crate::embeddings::{
         BackendResolverCapabilities, DeviceInfo, EmbeddingBackend, EmbeddingConfig,
-        EmbeddingProvider, EmbeddingProviderFactory, EmbeddingRuntimeStatus,
+        EmbeddingProviderFactory, EmbeddingRuntimeStatus,
         parse_provider_preference, resolve_backend_preference,
         should_disable_for_strict_acceleration, strict_acceleration_enabled_from_env_value,
     };

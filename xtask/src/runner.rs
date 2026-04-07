@@ -158,6 +158,16 @@ unsafe extern "C" {
     fn setsid() -> i32;
 }
 
+/// Transforms a `cargo test` command into a `cargo llvm-cov --no-report` command
+/// for coverage accumulation. Non-`cargo test` commands are returned unchanged.
+pub fn transform_command_for_coverage(command: &str) -> String {
+    if let Some(rest) = command.strip_prefix("cargo test") {
+        format!("cargo llvm-cov --no-report test{rest}")
+    } else {
+        command.to_string()
+    }
+}
+
 pub fn render_manifest_listing(manifest: &TestManifest) -> String {
     let mut output = String::from("TIERS\n");
     for (tier_name, buckets) in &manifest.tiers {
@@ -184,6 +194,7 @@ pub fn run_tier<E, W>(
     manifest: &TestManifest,
     tier_name: &str,
     timeout_multiplier: u64,
+    coverage: bool,
     executor: &E,
     writer: &mut W,
 ) -> std::result::Result<RunSummary, RunFailure>
@@ -204,7 +215,7 @@ where
     let mut bucket_results = Vec::with_capacity(bucket_names.len());
 
     for bucket_name in &bucket_names {
-        match execute_bucket(manifest, bucket_name, timeout_multiplier, executor, writer) {
+        match execute_bucket(manifest, bucket_name, timeout_multiplier, coverage, executor, writer) {
             Ok(bucket_result) => {
                 total_elapsed += bucket_result.elapsed;
                 bucket_results.push(bucket_result);
@@ -243,6 +254,7 @@ pub fn run_bucket<E, W>(
     manifest: &TestManifest,
     bucket_name: &str,
     timeout_multiplier: u64,
+    coverage: bool,
     executor: &E,
     writer: &mut W,
 ) -> std::result::Result<RunSummary, RunFailure>
@@ -250,7 +262,7 @@ where
     E: CommandExecutor,
     W: Write,
 {
-    match execute_bucket(manifest, bucket_name, timeout_multiplier, executor, writer) {
+    match execute_bucket(manifest, bucket_name, timeout_multiplier, coverage, executor, writer) {
         Ok(bucket_result) => Ok(RunSummary {
             bucket_names: vec![bucket_name.to_string()],
             passed_buckets: usize::from(bucket_result.status == BucketStatus::Passed),
@@ -291,6 +303,7 @@ fn execute_bucket<E, W>(
     manifest: &TestManifest,
     bucket_name: &str,
     timeout_multiplier: u64,
+    coverage: bool,
     executor: &E,
     writer: &mut W,
 ) -> std::result::Result<BucketResult, BucketFailure>
@@ -324,7 +337,12 @@ where
             message: error.to_string(),
         })?;
 
-    for command in &bucket.commands {
+    for raw_command in &bucket.commands {
+        let command = if coverage {
+            &transform_command_for_coverage(raw_command)
+        } else {
+            raw_command
+        };
         let remaining_timeout = timeout.checked_sub(elapsed).unwrap_or(Duration::ZERO);
         if remaining_timeout.is_zero() {
             let result = build_bucket_result(bucket_name, BucketStatus::TimedOut, elapsed, bucket);

@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_definition_search_grouped_other_matches_include_line_anchors() {
-        use crate::extractors::base::{Symbol, SymbolKind};
+        use crate::extractors::base::SymbolKind;
         use crate::tools::search::formatting::format_definition_search_results;
         use crate::tools::shared::OptimizedResponse;
 

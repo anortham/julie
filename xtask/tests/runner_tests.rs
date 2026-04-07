@@ -10,7 +10,7 @@ use xtask::manifest::TestManifest;
 use xtask::runner::{
     BucketResult, BucketStatus, CommandExecutor, CommandOutcome, ProcessCommandExecutor,
     RunSummary, render_bucket_result, render_manifest_listing, render_summary, run_bucket,
-    run_tier,
+    run_tier, transform_command_for_coverage,
 };
 
 #[test]
@@ -30,7 +30,7 @@ fn runner_tests_run_tier_executes_buckets_in_manifest_order() {
     let executor = FakeExecutor::successful();
     let mut output = Vec::new();
 
-    let result = run_tier(&manifest, "dev", 1, &executor, &mut output).unwrap();
+    let result = run_tier(&manifest, "dev", 1, false, &executor, &mut output).unwrap();
 
     assert_eq!(
         result.bucket_names,
@@ -53,7 +53,7 @@ fn runner_tests_timeout_error_names_the_bucket_and_budget() {
     )]);
     let mut output = Vec::new();
 
-    let error = run_bucket(&manifest, "workspace-init", 2, &executor, &mut output).unwrap_err();
+    let error = run_bucket(&manifest, "workspace-init", 2, false, &executor, &mut output).unwrap_err();
     let message = error.to_string();
 
     assert!(message.contains("workspace-init"));
@@ -112,6 +112,7 @@ fn runner_tests_cli_contract_supports_tiers_list_and_bucket() {
         Ok(TestCommand::Tier {
             name,
             timeout_multiplier: 1,
+            coverage: false,
         }) if name == "smoke"
     ));
 
@@ -132,6 +133,7 @@ fn runner_tests_cli_contract_supports_tiers_list_and_bucket() {
         Ok(TestCommand::Bucket {
             name,
             timeout_multiplier: 3,
+            coverage: false,
         }) if name == "tools-search"
     ));
 }
@@ -161,6 +163,7 @@ fn runner_tests_cli_validation_accepts_manifest_defined_tiers_without_hardcoded_
         TestCommand::Tier {
             name,
             timeout_multiplier: 1,
+            coverage: false,
         } if name == "dogfood"
     ));
 }
@@ -181,9 +184,8 @@ fn runner_tests_cli_rejects_extra_args_after_tier() {
     let error = parse_test_command(["xtask", "test", "smoke", "oops"]).unwrap_err();
 
     assert!(
-        error
-            .to_string()
-            .contains("expected optional `--timeout-multiplier <n>`")
+        error.to_string().contains("unexpected argument: oops"),
+        "got: {error}"
     );
 }
 
@@ -193,9 +195,8 @@ fn runner_tests_cli_rejects_extra_args_after_bucket() {
         parse_test_command(["xtask", "test", "bucket", "tools-search", "oops"]).unwrap_err();
 
     assert!(
-        error
-            .to_string()
-            .contains("expected optional `--timeout-multiplier <n>`")
+        error.to_string().contains("unexpected argument: oops"),
+        "got: {error}"
     );
 }
 
@@ -242,7 +243,7 @@ fn runner_tests_run_bucket_emits_fail_marker_through_execution_path() {
     )]);
     let mut output = Vec::new();
 
-    let error = run_bucket(&manifest, "tools-search", 1, &executor, &mut output).unwrap_err();
+    let error = run_bucket(&manifest, "tools-search", 1, false, &executor, &mut output).unwrap_err();
     let rendered = String::from_utf8(output).unwrap();
 
     assert!(error.to_string().contains("exit code: 9"));
@@ -263,7 +264,7 @@ fn runner_tests_run_bucket_emits_timeout_marker_through_execution_path() {
     )]);
     let mut output = Vec::new();
 
-    let error = run_bucket(&manifest, "workspace-init", 2, &executor, &mut output).unwrap_err();
+    let error = run_bucket(&manifest, "workspace-init", 2, false, &executor, &mut output).unwrap_err();
     let rendered = String::from_utf8(output).unwrap();
 
     assert!(error.to_string().contains("timed out after 120s"));
@@ -295,7 +296,7 @@ fn runner_tests_bucket_timeout_is_consumed_across_commands() {
     ]);
     let mut output = Vec::new();
 
-    let error = run_bucket(&manifest, "tools-search", 1, &executor, &mut output).unwrap_err();
+    let error = run_bucket(&manifest, "tools-search", 1, false, &executor, &mut output).unwrap_err();
 
     assert!(error.to_string().contains("timed out after 50s"));
     assert_eq!(
@@ -314,7 +315,7 @@ fn runner_tests_run_bucket_returns_structured_result() {
     let executor = FakeExecutor::successful();
     let mut output = Vec::new();
 
-    let summary = run_bucket(&manifest, "tools-search", 1, &executor, &mut output).unwrap();
+    let summary = run_bucket(&manifest, "tools-search", 1, false, &executor, &mut output).unwrap();
 
     assert_eq!(summary.bucket_results.len(), 1);
     assert_eq!(summary.bucket_results[0].bucket_name, "tools-search");
@@ -334,7 +335,7 @@ fn runner_tests_run_tier_failure_preserves_partial_structured_results() {
     )]);
     let mut output = Vec::new();
 
-    let error = run_tier(&manifest, "dev", 1, &executor, &mut output).unwrap_err();
+    let error = run_tier(&manifest, "dev", 1, false, &executor, &mut output).unwrap_err();
 
     assert_eq!(error.summary.bucket_results.len(), 2);
     assert_eq!(error.summary.bucket_results[0].bucket_name, "cli");
@@ -432,6 +433,7 @@ commands = [
 struct FakeExecutor {
     outcomes: Rc<RefCell<HashMap<String, VecDeque<CommandOutcome>>>>,
     calls: Rc<RefCell<Vec<String>>>,
+    commands: Rc<RefCell<Vec<String>>>,
     timeouts: Rc<RefCell<HashMap<String, Vec<Duration>>>>,
 }
 
@@ -440,6 +442,7 @@ impl FakeExecutor {
         Self {
             outcomes: Rc::new(RefCell::new(HashMap::new())),
             calls: Rc::new(RefCell::new(Vec::new())),
+            commands: Rc::new(RefCell::new(Vec::new())),
             timeouts: Rc::new(RefCell::new(HashMap::new())),
         }
     }
@@ -453,12 +456,17 @@ impl FakeExecutor {
         Self {
             outcomes: Rc::new(RefCell::new(outcomes)),
             calls: Rc::new(RefCell::new(Vec::new())),
+            commands: Rc::new(RefCell::new(Vec::new())),
             timeouts: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
     fn bucket_calls(&self) -> Vec<String> {
         self.calls.borrow().clone()
+    }
+
+    fn command_calls(&self) -> Vec<String> {
+        self.commands.borrow().clone()
     }
 
     fn timeouts_for_bucket(&self, bucket: &str) -> Vec<Duration> {
@@ -473,6 +481,7 @@ impl FakeExecutor {
 impl CommandExecutor for FakeExecutor {
     fn run(&self, bucket: &str, command: &str, timeout: Duration) -> Result<CommandOutcome> {
         self.calls.borrow_mut().push(bucket.to_string());
+        self.commands.borrow_mut().push(command.to_string());
         self.timeouts
             .borrow_mut()
             .entry(bucket.to_string())
@@ -534,4 +543,136 @@ fn cleanup_process(pid: u32) {
         .args(["-TERM", &pid.to_string()])
         .stderr(std::process::Stdio::null())
         .status();
+}
+
+// --- Coverage flag tests ---
+
+#[test]
+fn runner_tests_cli_parses_coverage_flag_for_tier() {
+    assert!(matches!(
+        parse_test_command(["xtask", "test", "dev", "--coverage"]),
+        Ok(TestCommand::Tier {
+            name,
+            timeout_multiplier: 1,
+            coverage: true,
+        }) if name == "dev"
+    ));
+}
+
+#[test]
+fn runner_tests_cli_parses_coverage_flag_for_bucket() {
+    assert!(matches!(
+        parse_test_command(["xtask", "test", "bucket", "cli", "--coverage"]),
+        Ok(TestCommand::Bucket {
+            name,
+            timeout_multiplier: 1,
+            coverage: true,
+        }) if name == "cli"
+    ));
+}
+
+#[test]
+fn runner_tests_cli_coverage_and_timeout_multiplier_together() {
+    assert!(matches!(
+        parse_test_command([
+            "xtask",
+            "test",
+            "dev",
+            "--coverage",
+            "--timeout-multiplier",
+            "3",
+        ]),
+        Ok(TestCommand::Tier {
+            name,
+            timeout_multiplier: 3,
+            coverage: true,
+        }) if name == "dev"
+    ));
+}
+
+#[test]
+fn runner_tests_cli_timeout_multiplier_before_coverage() {
+    assert!(matches!(
+        parse_test_command([
+            "xtask",
+            "test",
+            "dev",
+            "--timeout-multiplier",
+            "2",
+            "--coverage",
+        ]),
+        Ok(TestCommand::Tier {
+            name,
+            timeout_multiplier: 2,
+            coverage: true,
+        }) if name == "dev"
+    ));
+}
+
+// --- Command transformation tests ---
+
+#[test]
+fn runner_tests_transform_cargo_test_to_llvm_cov() {
+    assert_eq!(
+        transform_command_for_coverage("cargo test --lib tests::cli_tests"),
+        "cargo llvm-cov --no-report test --lib tests::cli_tests"
+    );
+}
+
+#[test]
+fn runner_tests_transform_preserves_skip_args() {
+    assert_eq!(
+        transform_command_for_coverage(
+            "cargo test --lib tests::core::database -- --skip search_quality"
+        ),
+        "cargo llvm-cov --no-report test --lib tests::core::database -- --skip search_quality"
+    );
+}
+
+#[test]
+fn runner_tests_transform_preserves_package_flag() {
+    assert_eq!(
+        transform_command_for_coverage("cargo test -p xtask"),
+        "cargo llvm-cov --no-report test -p xtask"
+    );
+}
+
+#[test]
+fn runner_tests_coverage_mode_transforms_commands_sent_to_executor() {
+    let manifest = sample_manifest();
+    let executor = FakeExecutor::successful();
+    let mut output = Vec::new();
+
+    run_tier(&manifest, "smoke", 1, true, &executor, &mut output).unwrap();
+
+    let calls = executor.command_calls();
+    assert!(
+        calls
+            .iter()
+            .all(|c| c.starts_with("cargo llvm-cov --no-report")),
+        "expected all commands to be transformed, got: {calls:?}"
+    );
+}
+
+#[test]
+fn runner_tests_non_coverage_mode_leaves_commands_unchanged() {
+    let manifest = sample_manifest();
+    let executor = FakeExecutor::successful();
+    let mut output = Vec::new();
+
+    run_tier(&manifest, "smoke", 1, false, &executor, &mut output).unwrap();
+
+    let calls = executor.command_calls();
+    assert!(
+        calls.iter().all(|c| c.starts_with("cargo test")),
+        "expected original commands, got: {calls:?}"
+    );
+}
+
+#[test]
+fn runner_tests_transform_leaves_non_cargo_test_unchanged() {
+    assert_eq!(
+        transform_command_for_coverage("echo hello"),
+        "echo hello"
+    );
 }

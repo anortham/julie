@@ -8,10 +8,12 @@ pub enum TestCommand {
     Tier {
         name: String,
         timeout_multiplier: u64,
+        coverage: bool,
     },
     Bucket {
         name: String,
         timeout_multiplier: u64,
+        coverage: bool,
     },
 }
 
@@ -43,17 +45,19 @@ where
             let Some(name) = tail.next() else {
                 bail!("missing bucket name for `cargo xtask test bucket <name>`");
             };
-            let timeout_multiplier = parse_timeout_multiplier(tail.collect())?;
+            let options = parse_options(tail.collect())?;
             Ok(TestCommand::Bucket {
                 name,
-                timeout_multiplier,
+                timeout_multiplier: options.timeout_multiplier,
+                coverage: options.coverage,
             })
         }
         other => {
-            let timeout_multiplier = parse_timeout_multiplier(tail.collect())?;
+            let options = parse_options(tail.collect())?;
             Ok(TestCommand::Tier {
                 name: other.to_string(),
-                timeout_multiplier,
+                timeout_multiplier: options.timeout_multiplier,
+                coverage: options.coverage,
             })
         }
     }
@@ -64,11 +68,13 @@ pub fn validate_test_command(manifest: &TestManifest, command: TestCommand) -> R
         TestCommand::Tier {
             name,
             timeout_multiplier,
+            coverage,
         } => {
             if manifest.tiers.contains_key(&name) {
                 Ok(TestCommand::Tier {
                     name,
                     timeout_multiplier,
+                    coverage,
                 })
             } else {
                 bail!("unsupported xtask test command `{name}`")
@@ -78,24 +84,38 @@ pub fn validate_test_command(manifest: &TestManifest, command: TestCommand) -> R
     }
 }
 
-fn parse_timeout_multiplier(args: Vec<String>) -> Result<u64> {
-    if args.is_empty() {
-        return Ok(1);
+struct ParsedOptions {
+    timeout_multiplier: u64,
+    coverage: bool,
+}
+
+fn parse_options(args: Vec<String>) -> Result<ParsedOptions> {
+    let mut timeout_multiplier = 1u64;
+    let mut coverage = false;
+    let mut iter = args.into_iter();
+
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--coverage" => coverage = true,
+            "--timeout-multiplier" => {
+                let raw_value = iter
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("missing value for --timeout-multiplier"))?;
+                timeout_multiplier = raw_value.parse::<u64>().map_err(|_| {
+                    anyhow::anyhow!("invalid `--timeout-multiplier` value `{raw_value}`")
+                })?;
+                if timeout_multiplier == 0 {
+                    bail!("timeout multiplier must be greater than zero");
+                }
+            }
+            other => bail!("unexpected argument: {other}"),
+        }
     }
 
-    if args.len() != 2 || args[0] != "--timeout-multiplier" {
-        bail!("expected optional `--timeout-multiplier <n>`");
-    }
-
-    let raw_value = &args[1];
-    let timeout_multiplier = raw_value
-        .parse::<u64>()
-        .map_err(|_| anyhow::anyhow!("invalid `--timeout-multiplier` value `{raw_value}`"))?;
-    if timeout_multiplier == 0 {
-        bail!("timeout multiplier must be greater than zero");
-    }
-
-    Ok(timeout_multiplier)
+    Ok(ParsedOptions {
+        timeout_multiplier,
+        coverage,
+    })
 }
 
 fn ensure_no_extra_args(args: Vec<String>) -> Result<()> {
