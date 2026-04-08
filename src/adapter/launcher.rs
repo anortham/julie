@@ -52,9 +52,23 @@ impl DaemonLauncher {
         PidFile::check_running(&self.paths.daemon_pid()).is_some()
     }
 
+    /// Probe the IPC endpoint to check if the daemon is accepting connections.
+    /// Used as a fallback when the state file is missing (old binary, write failure).
+    fn probe_ipc_endpoint(&self) -> bool {
+        let ipc_addr = self.paths.daemon_ipc_addr();
+
+        #[cfg(unix)]
+        return std::os::unix::net::UnixStream::connect(&ipc_addr).is_ok();
+
+        #[cfg(windows)]
+        return win_pipe_exists(&ipc_addr);
+    }
+
     /// Assess the daemon's lifecycle phase from PID + state file.
     ///
     /// Cleans up stale files as a side effect when the daemon is dead.
+    /// When PID is alive but the state file is missing or unreadable (old binary,
+    /// write failure, permissions), falls back to probing the IPC endpoint.
     pub fn daemon_readiness(&self) -> DaemonReadiness {
         match PidFile::check_running(&self.paths.daemon_pid()) {
             None => {
@@ -65,7 +79,16 @@ impl DaemonLauncher {
                 match std::fs::read_to_string(self.paths.daemon_state()) {
                     Ok(s) if s.trim() == "ready" => DaemonReadiness::Ready,
                     Ok(s) if s.trim() == "stopping" => DaemonReadiness::Stopping,
-                    _ => DaemonReadiness::Starting,
+                    _ => {
+                        // State file missing or unreadable (old binary, write failure).
+                        // Fall back to IPC probe: if the socket accepts connections,
+                        // the daemon is ready regardless of state file.
+                        if self.probe_ipc_endpoint() {
+                            DaemonReadiness::Ready
+                        } else {
+                            DaemonReadiness::Starting
+                        }
+                    }
                 }
             }
         }

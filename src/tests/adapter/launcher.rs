@@ -167,6 +167,28 @@ mod tests {
         assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
     }
 
+    /// IPC fallback: live PID + no state file + listening socket = Ready.
+    /// Covers version-skew (old daemon binary without state file support) and
+    /// write_daemon_state failures.
+    #[cfg(unix)]
+    #[test]
+    fn test_readiness_ready_via_ipc_fallback_when_no_state_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+
+        // Simulate a live daemon PID
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+
+        // Create a real Unix listener on the daemon socket path (simulates a listening daemon)
+        let socket_path = paths.daemon_socket();
+        let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+
+        // No state file at all, but IPC is reachable
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Ready);
+    }
+
     #[test]
     fn test_readiness_stopping_with_live_pid() {
         let dir = tempfile::tempdir().unwrap();
