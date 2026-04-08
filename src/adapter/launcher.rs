@@ -14,6 +14,21 @@ use crate::daemon::pid::PidFile;
 use crate::paths::DaemonPaths;
 
 /// Manages daemon lifecycle from the adapter's perspective: detect, launch, wait.
+/// The daemon's current lifecycle phase, as seen by the adapter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DaemonReadiness {
+    /// PID alive, state file says "ready". Safe to connect.
+    Ready,
+    /// PID alive, state file says "starting" or is missing/unreadable.
+    /// Daemon is initializing; wait, don't spawn a second one.
+    Starting,
+    /// PID alive, state file says "stopping".
+    /// Daemon is shutting down; wait for exit, then spawn fresh.
+    Stopping,
+    /// No PID file, or PID is dead. Safe to spawn a new daemon.
+    Dead,
+}
+
 pub struct DaemonLauncher {
     paths: DaemonPaths,
 }
@@ -35,6 +50,25 @@ impl DaemonLauncher {
     /// stale PID files as a side effect.
     pub fn is_daemon_running(&self) -> bool {
         PidFile::check_running(&self.paths.daemon_pid()).is_some()
+    }
+
+    /// Assess the daemon's lifecycle phase from PID + state file.
+    ///
+    /// Cleans up stale files as a side effect when the daemon is dead.
+    pub fn daemon_readiness(&self) -> DaemonReadiness {
+        match PidFile::check_running(&self.paths.daemon_pid()) {
+            None => {
+                let _ = std::fs::remove_file(self.paths.daemon_state());
+                DaemonReadiness::Dead
+            }
+            Some(_pid) => {
+                match std::fs::read_to_string(self.paths.daemon_state()) {
+                    Ok(s) if s.trim() == "ready" => DaemonReadiness::Ready,
+                    Ok(s) if s.trim() == "stopping" => DaemonReadiness::Stopping,
+                    _ => DaemonReadiness::Starting,
+                }
+            }
+        }
     }
 
     /// Ensure the daemon is running, launching it if necessary.

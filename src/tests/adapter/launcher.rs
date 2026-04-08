@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests {
     use crate::adapter::launcher::DaemonLauncher;
+    use crate::adapter::launcher::DaemonReadiness;
     use crate::daemon::pid::PidFile;
     use crate::paths::DaemonPaths;
     use std::fs;
@@ -116,5 +117,79 @@ mod tests {
             result.is_err(),
             "Should fail when socket file exists but no daemon is listening"
         );
+    }
+
+    #[test]
+    fn test_readiness_dead_when_no_pid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Dead);
+    }
+
+    #[test]
+    fn test_readiness_dead_cleans_stale_state_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::write(paths.daemon_state(), "ready").unwrap();
+        let launcher = DaemonLauncher::new(paths.clone());
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Dead);
+        assert!(!paths.daemon_state().exists(), "stale state file should be cleaned up");
+    }
+
+    #[test]
+    fn test_readiness_ready_with_live_pid_and_ready_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        fs::write(paths.daemon_state(), "ready").unwrap();
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Ready);
+    }
+
+    #[test]
+    fn test_readiness_starting_with_live_pid_and_starting_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        fs::write(paths.daemon_state(), "starting").unwrap();
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
+    }
+
+    #[test]
+    fn test_readiness_starting_with_live_pid_and_no_state_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
+    }
+
+    #[test]
+    fn test_readiness_stopping_with_live_pid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        fs::write(paths.daemon_state(), "stopping").unwrap();
+        let launcher = DaemonLauncher::new(paths);
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Stopping);
+    }
+
+    #[test]
+    fn test_readiness_dead_with_stale_pid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+        fs::write(paths.daemon_pid(), "99999999").unwrap();
+        fs::write(paths.daemon_state(), "ready").unwrap();
+        let launcher = DaemonLauncher::new(paths.clone());
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Dead);
+        assert!(!paths.daemon_state().exists());
+        assert!(!paths.daemon_pid().exists());
     }
 }
