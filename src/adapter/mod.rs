@@ -45,8 +45,8 @@ pub async fn run_adapter(workspace_root: PathBuf) -> Result<()> {
     const MAX_RETRIES: u32 = 2;
     let mut stream = None;
     for attempt in 0..=MAX_RETRIES {
-        tokio::task::block_in_place(|| launcher.ensure_daemon_running())
-            .context("Failed to ensure daemon is running")?;
+        tokio::task::block_in_place(|| launcher.ensure_daemon_ready())
+            .context("Failed to ensure daemon is ready")?;
 
         match connect_and_handshake(&paths, &workspace_root).await {
             Ok(s) => {

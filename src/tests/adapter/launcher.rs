@@ -192,4 +192,43 @@ mod tests {
         assert!(!paths.daemon_state().exists());
         assert!(!paths.daemon_pid().exists());
     }
+
+    #[test]
+    fn test_ensure_daemon_ready_returns_ok_when_ready() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+
+        // Simulate a ready daemon: live PID + "ready" state
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        fs::write(paths.daemon_state(), "ready").unwrap();
+
+        let launcher = DaemonLauncher::new(paths);
+        // Fast path: should return immediately
+        let result = launcher.ensure_daemon_ready();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_ensure_daemon_ready_waits_for_starting_to_ready() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        fs::create_dir_all(dir.path()).unwrap();
+
+        let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        let state_path = paths.daemon_state();
+        fs::write(&state_path, "starting").unwrap();
+
+        // Spawn a thread that transitions to "ready" after 200ms
+        let state_path_clone = state_path.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            fs::write(&state_path_clone, "ready").unwrap();
+        });
+
+        let launcher = DaemonLauncher::new(paths);
+        let result = launcher.ensure_daemon_ready();
+        handle.join().unwrap();
+        assert!(result.is_ok());
+    }
 }

@@ -71,19 +71,18 @@ impl DaemonLauncher {
         }
     }
 
-    /// Ensure the daemon is running, launching it if necessary.
+    /// Ensure the daemon is running and ready to accept connections.
     ///
-    /// Uses an advisory file lock (`daemon.lock`) to serialize startup across
-    /// multiple concurrent adapters. The sequence:
-    /// 1. Acquire exclusive lock on `daemon.lock`
-    /// 2. Double-check PID (another adapter may have started it while we waited)
-    /// 3. Spawn daemon process if still not running
-    /// 4. Release lock
-    /// 5. Wait for socket to appear
-    pub fn ensure_daemon_running(&self) -> io::Result<()> {
-        // Fast path: already running
-        if self.is_daemon_running() {
-            debug!("Daemon already running (fast path)");
+    /// State-file aware: instead of just checking PID liveness, reads the
+    /// daemon.state file to distinguish starting/ready/stopping. Holds
+    /// daemon.lock through the entire readiness check to prevent multi-adapter
+    /// races.
+    pub fn ensure_daemon_ready(&self) -> io::Result<()> {
+        // Fast path (no lock): if daemon is already ready, skip the lock.
+        // If the daemon transitions to stopping between this check and
+        // connect_and_handshake, run_adapter's retry loop catches it.
+        if matches!(self.daemon_readiness(), DaemonReadiness::Ready) {
+            debug!("Daemon already ready (fast path)");
             return Ok(());
         }
 
@@ -106,29 +105,130 @@ impl DaemonLauncher {
         debug!("Acquiring daemon startup lock: {}", lock_path.display());
         lock_file.lock_exclusive()?;
 
-        // Double-check after acquiring lock (another adapter may have started it)
-        let need_spawn = !self.is_daemon_running();
+        let deadline = Instant::now() + Duration::from_secs(60);
 
-        if need_spawn {
-            info!("Daemon not running, spawning...");
-            self.spawn_daemon()?;
-        } else {
-            debug!("Daemon already running (detected after lock acquisition)");
-        }
+        let result = self.wait_for_daemon_ready(deadline);
 
-        // Release lock before waiting for socket
+        // Release lock
         lock_file.unlock()?;
         drop(lock_file);
 
-        if need_spawn {
-            // Wait for the socket to appear (daemon needs time to bind)
-            // Timeout must exceed the daemon's cold-start time, which includes
-            // ORT embedding model loading (can take 25-30s on Windows with DirectML).
-            self.wait_for_socket(Duration::from_secs(45))?;
-            info!("Daemon socket ready");
-        }
+        result
+    }
 
-        Ok(())
+    /// Internal: poll until the daemon reaches Ready state or deadline expires.
+    fn wait_for_daemon_ready(&self, deadline: Instant) -> io::Result<()> {
+        loop {
+            if Instant::now() >= deadline {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Timed out waiting for daemon readiness",
+                ));
+            }
+
+            match self.daemon_readiness() {
+                DaemonReadiness::Ready => {
+                    debug!("Daemon is ready");
+                    return Ok(());
+                }
+                DaemonReadiness::Starting => {
+                    debug!("Daemon is starting, waiting for ready...");
+                    match self.poll_for_state_change("ready", deadline) {
+                        Ok(()) => {} // Will re-check in next loop iteration
+                        Err(e) if e.kind() == io::ErrorKind::Interrupted => {
+                            // State became "stopping"; loop back to re-assess
+                            continue;
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+                DaemonReadiness::Stopping => {
+                    info!("Daemon is stopping, waiting for exit...");
+                    self.wait_for_pid_exit(deadline)?;
+                    // PID gone; fall through to Dead on next iteration
+                }
+                DaemonReadiness::Dead => {
+                    info!("Daemon not running, spawning...");
+                    self.spawn_daemon()?;
+                    match self.poll_for_state_change("ready", deadline) {
+                        Ok(()) => {} // Will re-check in next loop iteration
+                        Err(e) if e.kind() == io::ErrorKind::Interrupted => {
+                            continue;
+                        }
+                        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => {
+                            // Daemon died during startup; loop back to re-assess
+                            // (will see Dead again and respawn, up to deadline)
+                            continue;
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+        }
+    }
+
+    /// Poll the state file until it contains `target_state`, the daemon dies,
+    /// or the state becomes "stopping" (when waiting for "ready").
+    fn poll_for_state_change(&self, target_state: &str, deadline: Instant) -> io::Result<()> {
+        let mut delay = Duration::from_millis(50);
+        let max_delay = Duration::from_millis(500);
+
+        loop {
+            if Instant::now() >= deadline {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("Timed out waiting for daemon state '{}'", target_state),
+                ));
+            }
+
+            std::thread::sleep(delay);
+            delay = (delay * 2).min(max_delay);
+
+            // Check if daemon died while we were waiting
+            if !self.is_daemon_running() {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "Daemon exited while waiting for readiness",
+                ));
+            }
+
+            // Check current state
+            if let Ok(s) = std::fs::read_to_string(self.paths.daemon_state()) {
+                let state = s.trim();
+                if state == target_state {
+                    return Ok(());
+                }
+                if target_state == "ready" && state == "stopping" {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Interrupted,
+                        "Daemon transitioned to stopping before reaching ready",
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Poll until the daemon's PID file is gone (process exited).
+    fn wait_for_pid_exit(&self, deadline: Instant) -> io::Result<()> {
+        let mut delay = Duration::from_millis(50);
+        let max_delay = Duration::from_millis(500);
+
+        loop {
+            if Instant::now() >= deadline {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Timed out waiting for daemon to exit",
+                ));
+            }
+
+            if !self.is_daemon_running() {
+                let _ = std::fs::remove_file(self.paths.daemon_state());
+                return Ok(());
+            }
+
+            std::thread::sleep(delay);
+            delay = (delay * 2).min(max_delay);
+        }
     }
 
     /// Spawn the daemon as a detached background process.
