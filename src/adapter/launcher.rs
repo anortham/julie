@@ -48,7 +48,7 @@ impl DaemonLauncher {
     ///
     /// Reads the PID file, validates the process is alive, and cleans up
     /// stale PID files as a side effect.
-    pub fn is_daemon_running(&self) -> bool {
+    fn is_daemon_running(&self) -> bool {
         PidFile::check_running(&self.paths.daemon_pid()).is_some()
     }
 

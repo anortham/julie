@@ -22,18 +22,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         let launcher = DaemonLauncher::new(paths);
-        assert!(!launcher.is_daemon_running());
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Dead);
     }
 
     #[test]
     fn test_daemon_detected_as_running_with_valid_pid() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
-        // Write current process PID (definitely alive)
         fs::create_dir_all(dir.path()).unwrap();
         let _pid_file = PidFile::create(&paths.daemon_pid()).unwrap();
+        // No state file = Starting (PID alive but state unknown)
         let launcher = DaemonLauncher::new(paths);
-        assert!(launcher.is_daemon_running());
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Starting);
     }
 
     #[test]
@@ -41,11 +41,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
         fs::create_dir_all(dir.path()).unwrap();
-        // Write a bogus PID that doesn't correspond to any running process
         fs::write(paths.daemon_pid(), "99999999\n").unwrap();
         let launcher = DaemonLauncher::new(paths.clone());
-        assert!(!launcher.is_daemon_running());
-        // Stale PID file should have been cleaned up
+        assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Dead);
         assert!(!paths.daemon_pid().exists());
     }
 
