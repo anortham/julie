@@ -3,6 +3,8 @@
 use crate::daemon::pid::PidFile;
 use crate::paths::DaemonPaths;
 use tracing::info;
+#[cfg(unix)]
+use libc;
 
 /// Current state of the Julie daemon process.
 #[derive(Debug, PartialEq)]
@@ -50,8 +52,6 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
                 if signaled {
                     info!("Signaled shutdown event: {}", event_name);
                 } else {
-                    // Daemon predates the event mechanism (or event creation
-                    // failed at startup). Fall back to force-kill.
                     info!("Shutdown event not found, falling back to taskkill /F");
                     let _ = std::process::Command::new("taskkill")
                         .args(["/F", "/T", "/PID", &pid.to_string()])
@@ -59,28 +59,38 @@ pub fn stop_daemon(paths: &DaemonPaths) -> anyhow::Result<()> {
                 }
             }
 
-            // Poll until the process exits (up to 5s), then clean up stale files.
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            // Wait for the process to actually exit (up to 10s).
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
             loop {
                 if !PidFile::is_process_alive(pid) {
-                    break;
+                    // Process exited. Clean up any stale files the daemon
+                    // didn't get to (e.g., if it crashed mid-shutdown).
+                    let _ = std::fs::remove_file(paths.daemon_pid());
+                    let _ = std::fs::remove_file(paths.daemon_state());
+                    #[cfg(unix)]
+                    let _ = std::fs::remove_file(paths.daemon_socket());
+                    info!("Daemon stopped");
+                    return Ok(());
                 }
                 if std::time::Instant::now() >= deadline {
-                    break;
+                    // Process is still alive. Do NOT delete files under it.
+                    anyhow::bail!(
+                        "Daemon did not stop within 10s (PID {}). \
+                         Use `kill {}` to force.",
+                        pid,
+                        pid
+                    );
                 }
-                std::thread::sleep(std::time::Duration::from_millis(50));
+                std::thread::sleep(std::time::Duration::from_millis(100));
             }
-
-            // Clean up stale files if the daemon didn't get to them in time
-            let _ = std::fs::remove_file(paths.daemon_pid());
-            #[cfg(unix)]
-            let _ = std::fs::remove_file(paths.daemon_socket());
-
-            info!("Daemon stopped");
-            Ok(())
         }
         None => {
-            info!("Daemon is not running");
+            // No live daemon. Clean up any stale files.
+            let _ = std::fs::remove_file(paths.daemon_pid());
+            let _ = std::fs::remove_file(paths.daemon_state());
+            #[cfg(unix)]
+            let _ = std::fs::remove_file(paths.daemon_socket());
+            info!("Daemon is not running (cleaned stale files if any)");
             Ok(())
         }
     }
