@@ -9,7 +9,7 @@ license = "MIT"
 
 [package]
 name = "julie"
-version = "6.6.8"
+version = "6.6.9"
 edition.workspace = true
 authors.workspace = true
 description = "Julie - Cross-Platform Code Intelligence Server"
