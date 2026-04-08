@@ -417,4 +417,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-06 | **Status:** Production Ready (v6.6.7 — browser39 binary release instructions, web-research skill fixes)
+**Last Updated:** 2026-04-08 | **Status:** Production Ready (v6.6.8 — subagent Julie tool propagation via hooks)

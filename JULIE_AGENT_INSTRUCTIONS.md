@@ -35,3 +35,17 @@
 - **Refactor**: fast_refs > deep_dive > rename_symbol (dry_run first)
 
 Do not use grep/find when Julie tools are available. Do not read files without get_symbols first. Do not chain multiple tools when deep_dive does it in one call.
+
+## Subagent Dispatching
+
+Subagents (Agent tool) do NOT receive Julie's session guidance. When dispatching subagents that will explore or modify code, paste this block into the prompt:
+
+    ## Code Intelligence Tools (use instead of Grep/Glob/Read)
+    You have Julie MCP tools. Use them instead of basic Glob/Grep/Read chains:
+    - fast_search(query, search_target="definitions") to find code
+    - get_symbols(file_path) to see file structure before reading
+    - deep_dive(symbol) to understand a symbol before modifying it
+    - fast_refs(symbol) to find all references (REQUIRED before any change)
+    - edit_file(old_text, new_text, dry_run=true) to edit without reading first
+    - edit_symbol(symbol, operation, content, dry_run=true) to edit by name
+    Do NOT fall back to Glob/Read/Grep chains. Julie tools return targeted context in 1-2 calls.
