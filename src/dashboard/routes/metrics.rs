@@ -207,3 +207,81 @@ pub async fn table(
 
     render_template(&state, "partials/metrics_table.html", context).await
 }
+
+/// Returns just the summary cards partial for htmx polling.
+pub async fn summary(
+    State(state): State<AppState>,
+    Query(params): Query<MetricsParams>,
+) -> Result<Html<String>, StatusCode> {
+    let db = match state.dashboard.daemon_db() {
+        Some(db) => db,
+        None => return Ok(Html("<p>No data</p>".to_string())),
+    };
+
+    let workspaces = db.list_workspaces().unwrap_or_default();
+    let workspace_id = params.workspace.as_deref().unwrap_or("");
+
+    let history = if workspace_id.is_empty() {
+        let mut total = crate::database::HistorySummary::default();
+        for ws in &workspaces {
+            if let Ok(h) = db.query_tool_call_history(&ws.workspace_id, params.days) {
+                total.session_count += h.session_count;
+                total.total_calls += h.total_calls;
+                total.total_source_bytes += h.total_source_bytes;
+                total.total_output_bytes += h.total_output_bytes;
+                for tool in h.per_tool {
+                    if let Some(existing) = total
+                        .per_tool
+                        .iter_mut()
+                        .find(|t| t.tool_name == tool.tool_name)
+                    {
+                        existing.call_count += tool.call_count;
+                    } else {
+                        total.per_tool.push(tool);
+                    }
+                }
+            }
+        }
+        total
+    } else {
+        db.query_tool_call_history(workspace_id, params.days)
+            .unwrap_or_default()
+    };
+
+    let source_bytes = history.total_source_bytes;
+    let output_bytes = history.total_output_bytes;
+    let saved_bytes = source_bytes.saturating_sub(output_bytes);
+
+    let (success_total, success_ok) = if workspace_id.is_empty() {
+        let mut total = 0i64;
+        let mut ok = 0i64;
+        for ws in &workspaces {
+            if let Ok((t, o)) = db.get_tool_success_rate(&ws.workspace_id, params.days) {
+                total += t;
+                ok += o;
+            }
+        }
+        (total, ok)
+    } else {
+        db.get_tool_success_rate(workspace_id, params.days)
+            .unwrap_or((0, 0))
+    };
+
+    let success_rate = if success_total > 0 {
+        (success_ok as f64 / success_total as f64) * 100.0
+    } else {
+        100.0
+    };
+
+    let mut context = tera::Context::new();
+    context.insert("total_calls", &history.total_calls);
+    context.insert("session_count", &history.session_count);
+    context.insert("tools", &history.per_tool);
+    context.insert("source_bytes", &source_bytes);
+    context.insert("output_bytes", &output_bytes);
+    context.insert("saved_bytes", &saved_bytes);
+    context.insert("success_rate", &success_rate);
+    context.insert("success_total", &success_total);
+
+    render_template(&state, "partials/metrics_summary.html", context).await
+}

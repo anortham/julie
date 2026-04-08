@@ -1,0 +1,64 @@
+<div class="columns">
+  <div class="column">
+    <div class="julie-card" style="text-align: center;">
+      <p class="label-text">Total Tool Calls</p>
+      <p class="value-text">{{ total_calls }}</p>
+    </div>
+  </div>
+  <div class="column">
+    <div class="julie-card" style="text-align: center;">
+      <p class="label-text">Sessions</p>
+      <p class="value-text">{{ session_count }}</p>
+    </div>
+  </div>
+  <div class="column">
+    <div class="julie-card" style="text-align: center;">
+      <p class="label-text">Tools Active</p>
+      <p class="value-text">{{ tools | length }}</p>
+    </div>
+  </div>
+  <div class="column">
+    <div class="julie-card" style="text-align: center;"
+         title="Data examined by Julie but NOT sent to the LLM context window">
+      <p class="label-text">Context Saved</p>
+      {% if source_bytes > 0 %}
+        <p class="value-text" style="color: var(--julie-success);">
+          {% if saved_bytes >= 1048576 %}{{ (saved_bytes / 1048576) | round(precision=1) }} MB
+          {% elif saved_bytes >= 1024 %}{{ (saved_bytes / 1024) | round(precision=1) }} KB
+          {% else %}{{ saved_bytes }} B{% endif %}
+        </p>
+        <p style="color: var(--julie-text-muted); font-size: 0.68rem; margin-top: 0.3rem;">
+          {{ (source_bytes / 1024) | round(precision=1) }}KB examined /
+          {{ (output_bytes / 1024) | round(precision=1) }}KB returned
+        </p>
+      {% elif output_bytes > 0 %}
+        <p class="value-text">
+          {% if output_bytes >= 1048576 %}{{ (output_bytes / 1048576) | round(precision=1) }} MB
+          {% elif output_bytes >= 1024 %}{{ (output_bytes / 1024) | round(precision=1) }} KB
+          {% else %}{{ output_bytes }} B{% endif %}
+        </p>
+        <p style="color: var(--julie-text-muted); font-size: 0.68rem; margin-top: 0.3rem;">
+          returned (older calls lack source tracking)
+        </p>
+      {% else %}
+        <p class="value-text" style="color: var(--julie-text-muted);">&mdash;</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="column">
+    <div class="julie-card" style="text-align: center;"
+         title="Percentage of tool calls that completed successfully">
+      <p class="label-text">Success Rate</p>
+      {% if success_total > 0 %}
+        <p class="value-text" style="color:
+          {% if success_rate >= 99.0 %}var(--julie-success)
+          {% elif success_rate >= 95.0 %}var(--julie-warning)
+          {% else %}var(--julie-danger){% endif %};">
+          {{ success_rate | round(precision=1) }}%
+        </p>
+      {% else %}
+        <p class="value-text" style="color: var(--julie-text-muted);">&mdash;</p>
+      {% endif %}
+    </div>
+  </div>
+</div>

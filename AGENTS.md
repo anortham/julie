@@ -417,4 +417,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-08 | **Status:** Production Ready (v6.6.9 — daemon lifecycle state file for robust restart)
+**Last Updated:** 2026-04-08 | **Status:** Production Ready (v6.6.10 — daemon lifecycle state file for robust restart)

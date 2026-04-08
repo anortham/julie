@@ -140,6 +140,7 @@ pub fn create_router(
         .route("/projects/{id}/detail", get(routes::projects::detail))
         .route("/metrics", get(routes::metrics::index))
         .route("/metrics/table", get(routes::metrics::table))
+        .route("/metrics/summary", get(routes::metrics::summary))
         .route("/search", get(routes::search::index))
         .route("/search", post(routes::search::search))
         .route(
