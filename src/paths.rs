@@ -147,6 +147,11 @@ impl DaemonPaths {
         self.julie_home.join("daemon.port")
     }
 
+    /// Daemon lifecycle state file (starting/ready/stopping)
+    pub fn daemon_state(&self) -> PathBuf {
+        self.julie_home.join("daemon.state")
+    }
+
     /// Migration state file
     pub fn migration_state(&self) -> PathBuf {
         self.julie_home.join("migration.json")

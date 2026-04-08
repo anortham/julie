@@ -9,6 +9,14 @@ mod tests {
     use std::time::Duration;
 
     #[test]
+    fn test_daemon_paths_includes_state_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DaemonPaths::with_home(dir.path().to_path_buf());
+        let state_path = paths.daemon_state();
+        assert_eq!(state_path, dir.path().join("daemon.state"));
+    }
+
+    #[test]
     fn test_daemon_not_running_when_no_pid_file() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DaemonPaths::with_home(dir.path().to_path_buf());
