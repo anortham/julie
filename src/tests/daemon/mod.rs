@@ -9,5 +9,6 @@ pub mod server;
 pub mod session;
 #[cfg(windows)]
 pub mod shutdown_event;
+pub mod state;
 pub mod watcher_pool;
 pub mod workspace_pool;

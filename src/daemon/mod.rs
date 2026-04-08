@@ -107,6 +107,15 @@ fn binary_mtime() -> Option<SystemTime> {
         .and_then(|m| m.modified().ok())
 }
 
+/// Write the daemon lifecycle state to the state file.
+/// Best-effort: logs a warning if the write fails but does not propagate the error.
+/// The state file is advisory; failure to write should not crash the daemon.
+pub(crate) fn write_daemon_state(path: &std::path::Path, state: &str) {
+    if let Err(e) = std::fs::write(path, state) {
+        warn!("Failed to write daemon state '{}': {}", state, e);
+    }
+}
+
 /// Backfill vector_count in daemon.db for all workspaces with embeddings on disk.
 ///
 /// Scans each workspace's symbols.db for stored embeddings and writes the count
@@ -275,6 +284,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let pid_file =
         PidFile::create_exclusive(&paths.daemon_pid()).context("Failed to start daemon")?;
     info!(pid = std::process::id(), "Daemon PID file created");
+    write_daemon_state(&paths.daemon_state(), "starting");
 
     // Open persistent daemon database, resetting stale session counts from
     // any previous run (crash recovery) and pruning old tool call records.
@@ -478,6 +488,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         endpoint = %paths.daemon_ipc_addr().display(),
         "Daemon listening for IPC connections"
     );
+    write_daemon_state(&paths.daemon_state(), "ready");
 
     // Accept loop with graceful shutdown
     let result = tokio::select! {
@@ -498,6 +509,9 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
             Ok(())
         }
     };
+
+    // Signal to adapters that we are shutting down before any cleanup begins.
+    write_daemon_state(&paths.daemon_state(), "stopping");
 
     // Give active sessions time to finish before tearing down shared resources.
     // Without this drain, sessions that are mid-request get dropped immediately
@@ -536,6 +550,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     if let Err(e) = pid_file.cleanup() {
         warn!("Failed to clean up PID file: {}", e);
     }
+    let _ = std::fs::remove_file(paths.daemon_state());
 
     info!("Daemon stopped");
     result
