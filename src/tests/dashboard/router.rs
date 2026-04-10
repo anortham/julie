@@ -16,7 +16,7 @@ fn test_state() -> DashboardState {
         None,
         Arc::new(AtomicBool::new(false)),
         Instant::now(),
-        false,
+        None, // no embedding service in tests
         None,
         50,
     )

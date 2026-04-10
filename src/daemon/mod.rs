@@ -398,12 +398,16 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     }
 
     // --- Dashboard HTTP server ---
+    // Pass the EmbeddingService Arc directly so DashboardState reads its
+    // state live. With lazy init, the service starts in Initializing and
+    // transitions to Ready (or Unavailable) once the background task
+    // finishes — the dashboard reflects this without a restart.
     let dashboard_state = crate::dashboard::state::DashboardState::new(
         Arc::clone(&sessions),
         daemon_db.clone(),
         Arc::clone(&restart_pending),
         std::time::Instant::now(),
-        embedding_service.is_available(),
+        Some(Arc::clone(&embedding_service)),
         Some(Arc::clone(&pool)),
         50, // error buffer capacity
     );

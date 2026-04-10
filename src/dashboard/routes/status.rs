@@ -68,6 +68,12 @@ pub async fn live(State(state): State<AppState>) -> Result<impl IntoResponse, St
         "active_sessions": active_sessions,
         "workspace_count": workspace_count,
         "restart_pending": state.dashboard.is_restart_pending(),
+        // Surfaced in the live polling response so the dashboard reflects
+        // the embedding service transitioning from Initializing -> Ready
+        // (or Unavailable) without requiring a manual page refresh. With
+        // the daemon's lazy-init lifecycle this flips ~36-39s after cold
+        // start.
+        "embedding_available": state.dashboard.embedding_available(),
     })
     .to_string();
 

@@ -7,9 +7,11 @@ use std::time::{Duration, Instant};
 use tokio::sync::broadcast;
 
 use crate::daemon::database::DaemonDatabase;
+use crate::daemon::embedding_service::EmbeddingService;
 use crate::daemon::session::SessionTracker;
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::dashboard::error_buffer::{ErrorBuffer, LogEntry};
+use crate::embeddings::EmbeddingRuntimeStatus;
 
 // ---------------------------------------------------------------------------
 // DashboardEvent
@@ -42,7 +44,13 @@ pub struct DashboardState {
     restart_pending: Arc<AtomicBool>,
     start_time: Instant,
     error_buffer: ErrorBuffer,
-    embedding_available: bool,
+    /// Live reference to the daemon's shared embedding service. Stored as a
+    /// reference (not a snapshot bool) so the dashboard reflects state
+    /// transitions as the background init task progresses from
+    /// `Initializing` -> `Ready` (or `Unavailable`) without needing a restart.
+    /// `None` in test contexts that don't wire up a service; the
+    /// `embedding_available` accessor returns `false` in that case.
+    embedding_service: Option<Arc<EmbeddingService>>,
     workspace_pool: Option<Arc<WorkspacePool>>,
     tx: broadcast::Sender<DashboardEvent>,
 }
@@ -57,7 +65,7 @@ impl DashboardState {
         daemon_db: Option<Arc<DaemonDatabase>>,
         restart_pending: Arc<AtomicBool>,
         start_time: Instant,
-        embedding_available: bool,
+        embedding_service: Option<Arc<EmbeddingService>>,
         workspace_pool: Option<Arc<WorkspacePool>>,
         error_buffer_capacity: usize,
     ) -> Self {
@@ -69,7 +77,7 @@ impl DashboardState {
             restart_pending,
             start_time,
             error_buffer,
-            embedding_available,
+            embedding_service,
             workspace_pool,
             tx,
         }
@@ -105,9 +113,24 @@ impl DashboardState {
         self.error_buffer.recent_entries()
     }
 
-    /// Whether an embedding provider is available.
+    /// Whether an embedding provider is currently available. Reads the
+    /// `EmbeddingService` state live on each call, so the dashboard reflects
+    /// the background init task's progress (Initializing -> Ready) without
+    /// needing a restart. Returns `false` when no service is configured.
     pub fn embedding_available(&self) -> bool {
-        self.embedding_available
+        self.embedding_service
+            .as_ref()
+            .is_some_and(|svc| svc.is_available())
+    }
+
+    /// Current embedding runtime status, if available. Reads the
+    /// `EmbeddingService` state live on each call. Returns `None` when no
+    /// service is configured or when the service has no runtime status
+    /// (e.g. still in `Initializing`).
+    pub fn embedding_runtime_status(&self) -> Option<EmbeddingRuntimeStatus> {
+        self.embedding_service
+            .as_ref()
+            .and_then(|svc| svc.runtime_status())
     }
 
     /// Reference to the workspace pool, if available.
