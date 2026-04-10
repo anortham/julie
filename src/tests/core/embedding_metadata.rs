@@ -107,7 +107,13 @@ mod tests {
             make_symbol_with_lang("s5", "SearchTool", SymbolKind::Class, "csharp"),
         ];
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert_eq!(batch.len(), 3, "Should filter out markdown and toml");
 
         let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
@@ -327,7 +333,13 @@ mod tests {
             make_symbol("s5", "MyTrait", SymbolKind::Trait, None, None),
         ];
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert_eq!(batch.len(), 3, "Should filter to 3 embeddable symbols");
 
         let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
@@ -336,7 +348,13 @@ mod tests {
 
     #[test]
     fn test_prepare_batch_empty_input() {
-        let batch = prepare_batch_for_embedding(&[], None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &[],
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert!(batch.is_empty());
     }
 
@@ -348,7 +366,13 @@ mod tests {
             make_symbol("s3", "z", SymbolKind::Import, None, None),
         ];
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert!(
             batch.is_empty(),
             "All non-embeddable should produce empty batch"
@@ -382,7 +406,13 @@ mod tests {
         method3.parent_id = Some("c1".to_string());
 
         let symbols = vec![class_sym, method1, method2, method3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         // Class + 3 methods = 4 embeddable symbols
         assert_eq!(batch.len(), 4);
@@ -412,7 +442,13 @@ mod tests {
         method2.parent_id = Some("i1".to_string());
 
         let symbols = vec![iface, method1, method2];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         let iface_entry = batch.iter().find(|(id, _)| id == "i1").unwrap();
         assert!(
@@ -427,7 +463,13 @@ mod tests {
         let func = make_symbol("f1", "standalone_func", SymbolKind::Function, None, None);
 
         let symbols = vec![func];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         assert_eq!(batch.len(), 1);
         assert_eq!(batch[0].1, "function standalone_func\nin: src/lib.rs");
@@ -456,7 +498,13 @@ mod tests {
             symbols.push(method);
         }
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
 
         assert!(
@@ -489,7 +537,13 @@ mod tests {
         prop4.parent_id = Some("c1".to_string());
 
         let symbols = vec![class_sym, prop1, prop2, prop3, prop4];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         // Only the class should be embedded (properties are not embeddable kinds)
         assert_eq!(batch.len(), 1);
@@ -527,7 +581,13 @@ mod tests {
         field3.parent_id = Some("i1".to_string());
 
         let symbols = vec![iface, field1, field2, field3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         assert_eq!(batch.len(), 1);
 
@@ -556,7 +616,13 @@ mod tests {
         prop.parent_id = Some("c1".to_string());
 
         let symbols = vec![class_sym, method, prop];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         let class_entry = batch.iter().find(|(id, _)| id == "c1").unwrap();
         assert!(
@@ -596,7 +662,13 @@ mod tests {
         field3.parent_id = Some("s1".to_string());
 
         let symbols = vec![struct_sym, field1, field2, field3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         let struct_entry = batch.iter().find(|(id, _)| id == "s1").unwrap();
         assert!(
@@ -630,7 +702,13 @@ mod tests {
         v3.parent_id = Some("e1".to_string());
 
         let symbols = vec![enum_sym, v1, v2, v3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         // Only the enum itself should be embedded (EnumMember is not an embeddable kind)
         assert_eq!(batch.len(), 1);
@@ -673,7 +751,13 @@ mod tests {
         v3.parent_id = Some("e1".to_string());
 
         let symbols = vec![enum_sym, v1, v2, v3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         assert_eq!(batch.len(), 1);
         let enum_entry = &batch[0];
@@ -721,7 +805,13 @@ mod tests {
             symbols.push(prop);
         }
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         let class_entry = &batch[0];
 
         // With a reasonable limit, a class with 12 properties should retain most of them
@@ -806,13 +896,7 @@ mod tests {
 
     #[test]
     fn test_format_file_path_empty_when_missing() {
-        let mut sym = make_symbol(
-            "id_fp2",
-            "orphan_func",
-            SymbolKind::Function,
-            None,
-            None,
-        );
+        let mut sym = make_symbol("id_fp2", "orphan_func", SymbolKind::Function, None, None);
         sym.file_path = String::new();
         let text = format_symbol_metadata(&sym);
         assert!(

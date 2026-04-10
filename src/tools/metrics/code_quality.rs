@@ -29,10 +29,7 @@ pub fn format_doc_coverage(
     if !undocumented.is_empty() {
         lines.push("Highest-Impact Undocumented Symbols:".to_string());
         for sym in undocumented {
-            let sig = sym
-                .signature
-                .as_deref()
-                .unwrap_or(&sym.name);
+            let sig = sym.signature.as_deref().unwrap_or(&sym.name);
             // Truncate long signatures
             let display_sig = if sig.len() > 60 {
                 format!("{}...", &sig[..57])
@@ -64,7 +61,10 @@ pub fn format_dead_code(
     ));
     if total_public > 0 {
         let pct = (total_dead as f64 / total_public as f64) * 100.0;
-        lines.push(format!("({:.1}% of {} public symbols)\n", pct, total_public));
+        lines.push(format!(
+            "({:.1}% of {} public symbols)\n",
+            pct, total_public
+        ));
     } else {
         lines.push(String::new());
     }
@@ -92,10 +92,7 @@ pub fn format_dead_code(
     for (kind, syms) in &by_kind {
         lines.push(format!("{} ({}):", kind, syms.len()));
         for sym in syms {
-            let sig = sym
-                .signature
-                .as_deref()
-                .unwrap_or(&sym.name);
+            let sig = sym.signature.as_deref().unwrap_or(&sym.name);
             let display_sig = if sig.len() > 60 {
                 format!("{}...", &sig[..57])
             } else {

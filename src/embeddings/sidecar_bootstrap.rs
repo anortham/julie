@@ -381,9 +381,7 @@ pub(super) fn ensure_sidecar_package_installed(
                 Ok(()) => tracing::info!("CUDA-enabled torch installed successfully"),
                 Err(err) => {
                     // Non-fatal: CPU torch still works, sidecar falls back gracefully
-                    tracing::warn!(
-                        "CUDA torch install failed (CPU fallback available): {err:#}"
-                    );
+                    tracing::warn!("CUDA torch install failed (CPU fallback available): {err:#}");
                 }
             }
         }

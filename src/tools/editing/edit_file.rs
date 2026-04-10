@@ -4,7 +4,7 @@
 //! old_text (what to find) and new_text (what to replace with). DMP's
 //! fuzzy matching tolerates minor differences.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use diff_match_patch_rs::{Compat, DiffMatchPatch, Ops};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -88,7 +88,7 @@ pub fn apply_edit(
             return Err(anyhow!(
                 "Invalid occurrence '{}': must be 'first', 'last', or 'all'",
                 occurrence
-            ))
+            ));
         }
     };
 
@@ -119,7 +119,10 @@ fn find_all_matches(content: &str, old_text: &str) -> Result<Vec<MatchSpan>> {
     if !exact_positions.is_empty() {
         return Ok(exact_positions
             .into_iter()
-            .map(|pos| MatchSpan { start: pos, end: pos + old_char_len })
+            .map(|pos| MatchSpan {
+                start: pos,
+                end: pos + old_char_len,
+            })
             .collect());
     }
 
@@ -326,9 +329,10 @@ impl EditFileTool {
         ) {
             Ok(content) => content,
             Err(e) => {
-                return Ok(CallToolResult::text_content(vec![Content::text(
-                    format!("Error: {}", e),
-                )]));
+                return Ok(CallToolResult::text_content(vec![Content::text(format!(
+                    "Error: {}",
+                    e
+                ))]));
             }
         };
 

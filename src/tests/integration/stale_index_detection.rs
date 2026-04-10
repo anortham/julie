@@ -326,7 +326,10 @@ async fn test_deleted_file_detected_on_reconnect() -> Result<()> {
 
     // check_if_indexing_needed should detect the deleted file
     let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;
-    assert!(needs_indexing, "Should detect deleted file b.rs needs cleanup");
+    assert!(
+        needs_indexing,
+        "Should detect deleted file b.rs needs cleanup"
+    );
 
     Ok(())
 }

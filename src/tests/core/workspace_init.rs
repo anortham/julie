@@ -798,7 +798,8 @@ fn test_workspace_paths_differ_per_workspace_id_with_override() {
     let ref_db = workspace.workspace_db_path(ref_id);
 
     assert_ne!(
-        primary_db, ref_db,
+        primary_db,
+        ref_db,
         "workspace_db_path must return different paths for different workspace IDs. \
          Got same path for both: {}",
         primary_db.display()
@@ -834,7 +835,13 @@ fn test_workspace_paths_differ_per_workspace_id_with_override() {
 
     // Verify both paths share the same parent (shared indexes dir)
     let db_parent = ref_db.parent().unwrap().parent().unwrap().parent().unwrap();
-    let expected_parent = primary_db.parent().unwrap().parent().unwrap().parent().unwrap();
+    let expected_parent = primary_db
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
     assert_eq!(
         db_parent, expected_parent,
         "Both workspace paths should share the same indexes parent directory"

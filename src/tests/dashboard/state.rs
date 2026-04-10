@@ -61,8 +61,7 @@ fn test_dashboard_state_embedding_available_reflects_service_live() {
     );
 
     // Background init "completes" — publish a ready state with a fake provider.
-    let provider: Arc<dyn crate::embeddings::EmbeddingProvider> =
-        Arc::new(NoopProvider::default());
+    let provider: Arc<dyn crate::embeddings::EmbeddingProvider> = Arc::new(NoopProvider::default());
     let status = crate::embeddings::EmbeddingRuntimeStatus {
         requested_backend: crate::embeddings::EmbeddingBackend::Unresolved,
         resolved_backend: crate::embeddings::EmbeddingBackend::Unresolved,

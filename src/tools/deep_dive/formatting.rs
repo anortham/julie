@@ -68,7 +68,9 @@ pub fn format_symbol_context(ctx: &SymbolContext, depth: &str) -> String {
     // Need to truncate. Reserve space for similar section (up to 150 tokens)
     // and truncation notice (~20 tokens).
     let similar_reserve = similar_tokens.min(150);
-    let main_budget = token_limit.saturating_sub(similar_reserve).saturating_sub(20);
+    let main_budget = token_limit
+        .saturating_sub(similar_reserve)
+        .saturating_sub(20);
     let target_chars = main_budget * 4;
 
     let truncated_main = if target_chars < out.len() {

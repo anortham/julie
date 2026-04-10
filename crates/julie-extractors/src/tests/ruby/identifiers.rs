@@ -6,7 +6,6 @@
 /// - Scope resolution: `Sinatra::Base`
 /// These must produce TypeUsage identifiers so the centrality pipeline can
 /// boost well-connected classes/modules.
-
 use crate::base::IdentifierKind;
 use crate::ruby::RubyExtractor;
 use std::path::PathBuf;

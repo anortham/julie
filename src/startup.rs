@@ -273,8 +273,7 @@ pub(crate) fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<Stri
 fn is_code_file(path: &Path) -> bool {
     use std::sync::OnceLock;
     static SUPPORTED: OnceLock<HashSet<String>> = OnceLock::new();
-    let supported =
-        SUPPORTED.get_or_init(crate::watcher::filtering::build_supported_extensions);
+    let supported = SUPPORTED.get_or_init(crate::watcher::filtering::build_supported_extensions);
 
     let extension = match path.extension() {
         Some(ext) => ext.to_string_lossy().to_lowercase(),

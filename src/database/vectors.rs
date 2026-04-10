@@ -259,7 +259,12 @@ impl SymbolDatabase {
     }
 
     /// Update the embedding config with a new model name, dimensions, and format version.
-    pub fn set_embedding_config(&mut self, model_name: &str, dimensions: usize, format_version: u32) -> Result<()> {
+    pub fn set_embedding_config(
+        &mut self,
+        model_name: &str,
+        dimensions: usize,
+        format_version: u32,
+    ) -> Result<()> {
         self.conn.execute(
             "UPDATE embedding_config SET model_name = ?1, dimensions = ?2, format_version = ?3 WHERE id = 1",
             rusqlite::params![model_name, dimensions as i32, format_version as i32],

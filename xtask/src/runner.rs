@@ -215,7 +215,14 @@ where
     let mut bucket_results = Vec::with_capacity(bucket_names.len());
 
     for bucket_name in &bucket_names {
-        match execute_bucket(manifest, bucket_name, timeout_multiplier, coverage, executor, writer) {
+        match execute_bucket(
+            manifest,
+            bucket_name,
+            timeout_multiplier,
+            coverage,
+            executor,
+            writer,
+        ) {
             Ok(bucket_result) => {
                 total_elapsed += bucket_result.elapsed;
                 bucket_results.push(bucket_result);
@@ -262,7 +269,14 @@ where
     E: CommandExecutor,
     W: Write,
 {
-    match execute_bucket(manifest, bucket_name, timeout_multiplier, coverage, executor, writer) {
+    match execute_bucket(
+        manifest,
+        bucket_name,
+        timeout_multiplier,
+        coverage,
+        executor,
+        writer,
+    ) {
         Ok(bucket_result) => Ok(RunSummary {
             bucket_names: vec![bucket_name.to_string()],
             passed_buckets: usize::from(bucket_result.status == BucketStatus::Passed),

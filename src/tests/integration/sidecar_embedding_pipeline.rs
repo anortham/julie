@@ -98,7 +98,11 @@ mod tests {
             // The fake sidecar returns model_id=None in its health response, so the
             // provider falls back to "BAAI/bge-small-en-v1.5".
             db_guard
-                .set_embedding_config("BAAI/bge-small-en-v1.5", 384, crate::embeddings::pipeline::EMBEDDING_FORMAT_VERSION)
+                .set_embedding_config(
+                    "BAAI/bge-small-en-v1.5",
+                    384,
+                    crate::embeddings::pipeline::EMBEDDING_FORMAT_VERSION,
+                )
                 .unwrap();
             db_guard
                 .store_embeddings(&[
@@ -151,7 +155,11 @@ mod tests {
         {
             let mut db_guard = db.lock().unwrap();
             db_guard
-                .set_embedding_config("fake-old-model/v1", 384, crate::embeddings::pipeline::EMBEDDING_FORMAT_VERSION)
+                .set_embedding_config(
+                    "fake-old-model/v1",
+                    384,
+                    crate::embeddings::pipeline::EMBEDDING_FORMAT_VERSION,
+                )
                 .unwrap();
         }
 

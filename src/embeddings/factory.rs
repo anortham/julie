@@ -51,9 +51,7 @@ pub fn parse_provider_preference(provider: &str) -> Result<EmbeddingBackend> {
     match provider.trim().to_ascii_lowercase().as_str() {
         "auto" => Ok(EmbeddingBackend::Auto),
         "sidecar" => Ok(EmbeddingBackend::Sidecar),
-        "ort" => bail!(
-            "ORT embedding backend has been removed. Use 'auto' or 'sidecar' instead."
-        ),
+        "ort" => bail!("ORT embedding backend has been removed. Use 'auto' or 'sidecar' instead."),
         unknown => bail!(
             "Unknown embedding provider: {} (valid: auto|sidecar)",
             unknown

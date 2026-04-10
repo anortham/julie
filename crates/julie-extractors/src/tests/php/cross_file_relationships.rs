@@ -404,7 +404,10 @@ function make_app() {
         }
         println!("=== pending_relationships ===");
         for p in &results.pending_relationships {
-            println!("  {:?}: {} -> '{}'", p.kind, p.from_symbol_id, p.callee_name);
+            println!(
+                "  {:?}: {} -> '{}'",
+                p.kind, p.from_symbol_id, p.callee_name
+            );
         }
 
         let instantiates: Vec<_> = results
@@ -425,7 +428,10 @@ function make_app() {
             app_instantiation.is_some(),
             "PendingRelationship callee_name should be 'App'.\n\
              Found: {:?}",
-            instantiates.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            instantiates
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -458,7 +464,10 @@ function make_controller() {
             ctrl_instantiation.is_some(),
             "PendingRelationship callee_name should be 'Controller' (namespace stripped).\n\
              Found: {:?}",
-            instantiates.iter().map(|p| &p.callee_name).collect::<Vec<_>>()
+            instantiates
+                .iter()
+                .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
         );
     }
 
@@ -486,7 +495,10 @@ class Controller extends BaseController {
         }
         println!("=== pending_relationships ===");
         for p in &results.pending_relationships {
-            println!("  {:?}: {} -> '{}'", p.kind, p.from_symbol_id, p.callee_name);
+            println!(
+                "  {:?}: {} -> '{}'",
+                p.kind, p.from_symbol_id, p.callee_name
+            );
         }
 
         // BaseController is not in the same file, so it should be a PendingRelationship
@@ -541,7 +553,10 @@ class Router implements RouterInterface {
         }
         println!("=== pending_relationships ===");
         for p in &results.pending_relationships {
-            println!("  {:?}: {} -> '{}'", p.kind, p.from_symbol_id, p.callee_name);
+            println!(
+                "  {:?}: {} -> '{}'",
+                p.kind, p.from_symbol_id, p.callee_name
+            );
         }
 
         // RouterInterface is not in the same file, should be PendingRelationship
@@ -562,7 +577,10 @@ class Router implements RouterInterface {
             fabricated_ids.is_empty(),
             "Should NOT create relationships with fabricated 'php-interface:' IDs.\n\
              Found: {:?}",
-            fabricated_ids.iter().map(|r| &r.to_symbol_id).collect::<Vec<_>>()
+            fabricated_ids
+                .iter()
+                .map(|r| &r.to_symbol_id)
+                .collect::<Vec<_>>()
         );
 
         assert!(

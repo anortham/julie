@@ -52,9 +52,7 @@ pub fn should_check_balance(file_path: &str) -> bool {
     let skip_extensions = [
         ".md", ".yaml", ".yml", ".json", ".toml", ".txt", ".csv", ".xml", ".html",
     ];
-    !skip_extensions
-        .iter()
-        .any(|ext| file_path.ends_with(ext))
+    !skip_extensions.iter().any(|ext| file_path.ends_with(ext))
 }
 
 /// Format a unified diff between before and after content using LCS alignment.
@@ -185,7 +183,12 @@ pub fn format_unified_diff(before: &str, after: &str, file_path: &str) -> String
         let new_start = line_nos[start].1;
         let old_count = ops[start..end].iter().filter(|(op, _)| *op != '+').count();
         let new_count = ops[start..end].iter().filter(|(op, _)| *op != '-').count();
-        writeln!(output, "@@ -{},{} +{},{} @@", old_start, old_count, new_start, new_count).unwrap();
+        writeln!(
+            output,
+            "@@ -{},{} +{},{} @@",
+            old_start, old_count, new_start, new_count
+        )
+        .unwrap();
 
         for i in start..end {
             let (op, line) = ops[i];

@@ -53,7 +53,15 @@ fn runner_tests_timeout_error_names_the_bucket_and_budget() {
     )]);
     let mut output = Vec::new();
 
-    let error = run_bucket(&manifest, "workspace-init", 2, false, &executor, &mut output).unwrap_err();
+    let error = run_bucket(
+        &manifest,
+        "workspace-init",
+        2,
+        false,
+        &executor,
+        &mut output,
+    )
+    .unwrap_err();
     let message = error.to_string();
 
     assert!(message.contains("workspace-init"));
@@ -243,7 +251,8 @@ fn runner_tests_run_bucket_emits_fail_marker_through_execution_path() {
     )]);
     let mut output = Vec::new();
 
-    let error = run_bucket(&manifest, "tools-search", 1, false, &executor, &mut output).unwrap_err();
+    let error =
+        run_bucket(&manifest, "tools-search", 1, false, &executor, &mut output).unwrap_err();
     let rendered = String::from_utf8(output).unwrap();
 
     assert!(error.to_string().contains("exit code: 9"));
@@ -264,7 +273,15 @@ fn runner_tests_run_bucket_emits_timeout_marker_through_execution_path() {
     )]);
     let mut output = Vec::new();
 
-    let error = run_bucket(&manifest, "workspace-init", 2, false, &executor, &mut output).unwrap_err();
+    let error = run_bucket(
+        &manifest,
+        "workspace-init",
+        2,
+        false,
+        &executor,
+        &mut output,
+    )
+    .unwrap_err();
     let rendered = String::from_utf8(output).unwrap();
 
     assert!(error.to_string().contains("timed out after 120s"));
@@ -296,7 +313,8 @@ fn runner_tests_bucket_timeout_is_consumed_across_commands() {
     ]);
     let mut output = Vec::new();
 
-    let error = run_bucket(&manifest, "tools-search", 1, false, &executor, &mut output).unwrap_err();
+    let error =
+        run_bucket(&manifest, "tools-search", 1, false, &executor, &mut output).unwrap_err();
 
     assert!(error.to_string().contains("timed out after 50s"));
     assert_eq!(
@@ -671,8 +689,5 @@ fn runner_tests_non_coverage_mode_leaves_commands_unchanged() {
 
 #[test]
 fn runner_tests_transform_leaves_non_cargo_test_unchanged() {
-    assert_eq!(
-        transform_command_for_coverage("echo hello"),
-        "echo hello"
-    );
+    assert_eq!(transform_command_for_coverage("echo hello"), "echo hello");
 }

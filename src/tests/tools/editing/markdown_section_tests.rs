@@ -14,8 +14,7 @@ fn extract_markdown_symbols(source: &str) -> Vec<Symbol> {
 
 #[test]
 fn test_section_line_range_covers_content() {
-    let markdown =
-        "# Title\n\nFirst paragraph.\n\n## Section A\n\nContent of section A.\n\nMore content.\n\n## Section B\n\nContent of section B.\n";
+    let markdown = "# Title\n\nFirst paragraph.\n\n## Section A\n\nContent of section A.\n\nMore content.\n\n## Section B\n\nContent of section B.\n";
 
     let symbols = extract_markdown_symbols(markdown);
 

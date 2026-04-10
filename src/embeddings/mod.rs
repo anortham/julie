@@ -122,8 +122,8 @@ pub trait EmbeddingProvider: Send + Sync {
 // Re-exports
 pub use factory::{
     BackendResolverCapabilities, EmbeddingConfig, EmbeddingProviderFactory,
-    parse_provider_preference, resolve_backend_preference,
-    should_disable_for_strict_acceleration, strict_acceleration_enabled_from_env_value,
+    parse_provider_preference, resolve_backend_preference, should_disable_for_strict_acceleration,
+    strict_acceleration_enabled_from_env_value,
 };
 pub use init::create_embedding_provider;
 #[cfg(feature = "embeddings-sidecar")]

@@ -51,12 +51,7 @@ fn test_clear_embeddings_on_separate_db_does_not_affect_other() {
 
     // Insert a symbol into each DB so store_embeddings has a valid FK target.
     insert_test_symbol(&mut primary_db, "sym_primary", "primary_fn", "src/main.rs");
-    insert_test_symbol(
-        &mut reference_db,
-        "sym_ref",
-        "reference_fn",
-        "lib/lib.rs",
-    );
+    insert_test_symbol(&mut reference_db, "sym_ref", "reference_fn", "lib/lib.rs");
 
     // Store one embedding in each DB.
     primary_db
@@ -285,11 +280,18 @@ fn test_pipeline_cancel_flag_stops_run_with_acquire_ordering() {
     cancel.store(true, Ordering::Release);
 
     let result = run_embedding_pipeline_cancellable(&db_arc, &NoopProvider, None, Some(&cancel));
-    assert!(result.is_ok(), "Pipeline failed: {:?}", result.as_ref().err());
+    assert!(
+        result.is_ok(),
+        "Pipeline failed: {:?}",
+        result.as_ref().err()
+    );
     let stats = result.unwrap();
 
     // Cancel was set before start — pipeline should embed nothing.
-    assert_eq!(stats.symbols_embedded, 0, "cancelled pipeline must embed 0 symbols");
+    assert_eq!(
+        stats.symbols_embedded, 0,
+        "cancelled pipeline must embed 0 symbols"
+    );
 
     let db_guard = db_arc.lock().unwrap();
     assert_eq!(
@@ -378,7 +380,11 @@ fn test_pipeline_cancel_after_batch_stops_before_next_batch() {
     let db_arc = Arc::new(Mutex::new(db));
 
     let result = run_embedding_pipeline_cancellable(&db_arc, &provider, None, Some(&cancel));
-    assert!(result.is_ok(), "Pipeline failed: {:?}", result.as_ref().err());
+    assert!(
+        result.is_ok(),
+        "Pipeline failed: {:?}",
+        result.as_ref().err()
+    );
     let stats = result.unwrap();
 
     let batch_count = *batches_called.lock().unwrap();
@@ -401,8 +407,8 @@ fn test_pipeline_cancel_after_batch_stops_before_next_batch() {
 /// With the AtomicBool guard in run_auto_indexing, only one concurrent scan runs.
 #[test]
 fn test_catchup_dedup_flag_prevents_concurrent_scans() {
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     let in_progress = Arc::new(AtomicBool::new(false));
 

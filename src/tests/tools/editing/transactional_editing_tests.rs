@@ -322,7 +322,10 @@ mod transactional_editing_tests {
 
         // file_new: did NOT exist before the transaction
         let file_new = fixture.get_temp_dir().join("brand_new.txt");
-        assert!(!file_new.exists(), "Precondition: brand_new.txt must not exist");
+        assert!(
+            !file_new.exists(),
+            "Precondition: brand_new.txt must not exist"
+        );
 
         // Build the transaction so add_file records the pre-transaction state.
         let mut txn = MultiFileTransaction::new("test-rollback-delete")?;
@@ -336,7 +339,10 @@ mod transactional_editing_tests {
         // creating file_new on disk (as the rename would have) and then calling the
         // internal rollback directly via the test helper.
         fs::write(&file_new, "brand new content")?;
-        assert!(file_new.exists(), "Manually created to simulate committed rename");
+        assert!(
+            file_new.exists(),
+            "Manually created to simulate committed rename"
+        );
 
         // Call rollback for the paths that were "committed" (just file_new here).
         txn.test_rollback_partial_commit(&[file_new.clone()])?;

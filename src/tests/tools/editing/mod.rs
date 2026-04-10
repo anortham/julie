@@ -2,11 +2,11 @@
 //!
 //! This module contains tests for EditingTransaction (used by rename_symbol).
 
-pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
 mod edit_file_tests;
 mod edit_symbol_tests;
 mod markdown_section_tests;
 mod security_tests;
+pub mod transactional_editing_tests; // EditingTransaction and MultiFileTransaction tests
 mod validation_tests;
 
 use crate::tools::editing::EditingTransaction;

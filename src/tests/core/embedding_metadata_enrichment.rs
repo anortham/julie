@@ -755,7 +755,13 @@ mod tests {
         let source_class = make_symbol("s2", "Router", SymbolKind::Class, None, None);
 
         let symbols = vec![test_func, test_class, source_func, source_class];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         assert_eq!(batch.len(), 2, "Should exclude both test symbols");
         let ids: Vec<&str> = batch.iter().map(|(id, _)| id.as_str()).collect();
@@ -824,8 +830,13 @@ mod tests {
             ],
         );
 
-        let batch =
-            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &callees_by_symbol,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         assert_eq!(batch.len(), 3);
 
         let (_, text) = batch.iter().find(|(id, _)| id == "f1").unwrap();
@@ -859,7 +870,8 @@ mod tests {
             vec!["save".to_string(), "validate".to_string()],
         );
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new(), &HashMap::new());
+        let batch =
+            prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new(), &HashMap::new());
         let (_, text) = &batch[0];
         assert!(
             text.contains("calls: save, validate"),
@@ -874,7 +886,8 @@ mod tests {
         let mut callees = HashMap::new();
         callees.insert("c1".to_string(), vec!["something".to_string()]);
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new(), &HashMap::new());
+        let batch =
+            prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new(), &HashMap::new());
         let (_, text) = &batch[0];
         assert!(
             !text.contains("calls:"),
@@ -908,7 +921,8 @@ mod tests {
             ],
         );
 
-        let batch = prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new(), &HashMap::new());
+        let batch =
+            prepare_batch_for_embedding(&symbols, None, &callees, &HashMap::new(), &HashMap::new());
         let (_, text) = &batch[0];
 
         assert!(
@@ -952,8 +966,13 @@ mod tests {
             ],
         );
 
-        let batch =
-            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol, &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &callees_by_symbol,
+            &fields_by_symbol,
+            &HashMap::new(),
+        );
         assert_eq!(batch.len(), 1);
 
         let (_, text) = &batch[0];
@@ -980,8 +999,13 @@ mod tests {
         let mut fields_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
         fields_by_symbol.insert("c1".to_string(), vec!["some_field".to_string()]);
 
-        let batch =
-            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol, &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &callees_by_symbol,
+            &fields_by_symbol,
+            &HashMap::new(),
+        );
         let (_, text) = &batch[0];
 
         assert!(
@@ -1007,8 +1031,13 @@ mod tests {
         let mut fields_by_symbol: HashMap<String, Vec<String>> = HashMap::new();
         fields_by_symbol.insert("f1".to_string(), vec!["config".to_string()]);
 
-        let batch =
-            prepare_batch_for_embedding(&symbols, None, &callees_by_symbol, &fields_by_symbol, &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &callees_by_symbol,
+            &fields_by_symbol,
+            &HashMap::new(),
+        );
         let (_, text) = &batch[0];
 
         assert!(
@@ -1061,17 +1090,13 @@ mod tests {
 
     #[test]
     fn test_prepare_batch_enriches_interface_with_implementors() {
-        let iface =
-            make_symbol_with_lang("i1", "ISearchService", SymbolKind::Interface, "csharp");
+        let iface = make_symbol_with_lang("i1", "ISearchService", SymbolKind::Interface, "csharp");
         let mut method = make_symbol_with_lang("m1", "Search", SymbolKind::Method, "csharp");
         method.parent_id = Some("i1".to_string());
 
         let symbols = vec![iface, method];
         let mut implementors: HashMap<String, Vec<String>> = HashMap::new();
-        implementors.insert(
-            "i1".to_string(),
-            vec!["LuceneSearchService".to_string()],
-        );
+        implementors.insert("i1".to_string(), vec!["LuceneSearchService".to_string()]);
 
         let batch = prepare_batch_for_embedding(
             &symbols,
@@ -1128,7 +1153,13 @@ mod tests {
         field3.signature = None;
 
         let symbols = vec![struct_sym, field1, field2, field3];
-        let batch = prepare_batch_for_embedding(&symbols, None, &HashMap::new(), &HashMap::new(), &HashMap::new());
+        let batch = prepare_batch_for_embedding(
+            &symbols,
+            None,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+        );
 
         // Only the struct is embeddable (Field is not in EMBEDDABLE_KINDS)
         assert_eq!(batch.len(), 1);

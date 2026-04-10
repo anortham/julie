@@ -127,9 +127,7 @@ async fn dispatch_file_event(
                     // Fix B-b: track Tantivy failures for retry on next tick
                     if !tantivy_ok {
                         if let Some(ref rel) = rel_path {
-                            let mut dirty = tantivy_dirty
-                                .lock()
-                                .unwrap_or_else(|p| p.into_inner());
+                            let mut dirty = tantivy_dirty.lock().unwrap_or_else(|p| p.into_inner());
                             dirty.insert(rel.clone());
                             warn!("Tantivy update failed for {}; queued for retry", rel);
                         }
@@ -191,7 +189,10 @@ async fn dispatch_file_event(
             // Clear dirty-retry entry: file is deleted, retrying Tantivy
             // would recreate a phantom doc for a nonexistent file.
             if let Some(ref rel) = relative_for_embed {
-                tantivy_dirty.lock().unwrap_or_else(|p| p.into_inner()).remove(rel);
+                tantivy_dirty
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .remove(rel);
             }
             None
         }
@@ -203,7 +204,10 @@ async fn dispatch_file_event(
                     let _ = db_guard.delete_embeddings_for_file(rel_from);
                 }
                 // Clear old path from dirty-retry set (file no longer exists at old path).
-                tantivy_dirty.lock().unwrap_or_else(|p| p.into_inner()).remove(rel_from);
+                tantivy_dirty
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .remove(rel_from);
             }
             match handlers::handle_file_renamed_static(
                 from,
@@ -224,8 +228,14 @@ async fn dispatch_file_event(
                         if let Ok(ref rel_to) =
                             crate::utils::paths::to_relative_unix_style(&to, workspace_root)
                         {
-                            tantivy_dirty.lock().unwrap_or_else(|p| p.into_inner()).insert(rel_to.clone());
-                            warn!("Tantivy update failed for rename target {}; queued for retry", rel_to);
+                            tantivy_dirty
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner())
+                                .insert(rel_to.clone());
+                            warn!(
+                                "Tantivy update failed for rename target {}; queued for retry",
+                                rel_to
+                            );
                         }
                     }
                 }
@@ -268,7 +278,8 @@ impl IncrementalIndexer {
     ) -> Result<Self> {
         let supported_extensions = filtering::build_supported_extensions();
         let gitignore = filtering::build_gitignore_matcher(&workspace_root)?;
-        let lang_configs = Arc::new(crate::search::language_config::LanguageConfigs::load_embedded());
+        let lang_configs =
+            Arc::new(crate::search::language_config::LanguageConfigs::load_embedded());
 
         Ok(Self {
             watcher: None,
@@ -395,7 +406,10 @@ impl IncrementalIndexer {
                     // lose in-flight work (e.g., edits queued just before shutdown).
                     let remaining = queue_for_processing.lock().await.len();
                     if remaining > 0 {
-                        info!("Queue processor shutting down, draining {} remaining events", remaining);
+                        info!(
+                            "Queue processor shutting down, draining {} remaining events",
+                            remaining
+                        );
                         while let Some(event) = queue_for_processing.lock().await.pop_front() {
                             let provider_snap = embedding_provider
                                 .read()
@@ -421,7 +435,8 @@ impl IncrementalIndexer {
                                 if let Err(e) = idx.commit() {
                                     warn!("Failed to commit Tantivy during shutdown drain: {}", e);
                                 }
-                            }).await;
+                            })
+                            .await;
                         }
                     }
                     info!("Queue processor cancelled, exiting");
@@ -446,12 +461,19 @@ impl IncrementalIndexer {
                             for rel_path in dirty_paths {
                                 let (symbol_docs, file_doc) = {
                                     let db_guard = db.lock().unwrap_or_else(|p| p.into_inner());
-                                    let symbols = db_guard.get_symbols_for_file(&rel_path).unwrap_or_default();
-                                    let content = db_guard.get_file_content(&rel_path).unwrap_or(None).unwrap_or_default();
-                                    let language = symbols.first()
+                                    let symbols = db_guard
+                                        .get_symbols_for_file(&rel_path)
+                                        .unwrap_or_default();
+                                    let content = db_guard
+                                        .get_file_content(&rel_path)
+                                        .unwrap_or(None)
+                                        .unwrap_or_default();
+                                    let language = symbols
+                                        .first()
                                         .map(|s| s.language.clone())
                                         .unwrap_or_else(|| "unknown".to_string());
-                                    let docs: Vec<_> = symbols.iter()
+                                    let docs: Vec<_> = symbols
+                                        .iter()
                                         .map(crate::search::SymbolDocument::from_symbol)
                                         .collect();
                                     let fd = crate::search::FileDocument {
@@ -471,14 +493,22 @@ impl IncrementalIndexer {
                                     }
                                     idx.add_file_content(&file_doc)?;
                                     Ok::<(), anyhow::Error>(())
-                                }).await;
+                                })
+                                .await;
                                 match retry_result {
                                     Ok(Ok(())) => {
-                                        tantivy_dirty.lock().unwrap_or_else(|p| p.into_inner()).remove(&rel_path);
+                                        tantivy_dirty
+                                            .lock()
+                                            .unwrap_or_else(|p| p.into_inner())
+                                            .remove(&rel_path);
                                         info!("Tantivy retry succeeded for {}", rel_path);
                                     }
-                                    Ok(Err(e)) => warn!("Tantivy retry failed for {}: {}", rel_path, e),
-                                    Err(e) => warn!("Tantivy retry task panicked for {}: {}", rel_path, e),
+                                    Ok(Err(e)) => {
+                                        warn!("Tantivy retry failed for {}: {}", rel_path, e)
+                                    }
+                                    Err(e) => {
+                                        warn!("Tantivy retry task panicked for {}: {}", rel_path, e)
+                                    }
                                 }
                             }
                         }
@@ -614,7 +644,9 @@ impl IncrementalIndexer {
                 let queue_now_empty = queue_for_processing.lock().await.is_empty();
                 if queue_now_empty && needs_rescan.load(Ordering::Acquire) {
                     needs_rescan.store(false, Ordering::Release);
-                    info!("Queue overflow detected: full workspace rescan for staleness + new files");
+                    info!(
+                        "Queue overflow detected: full workspace rescan for staleness + new files"
+                    );
 
                     // 1. Check all indexed files for modifications or deletions.
                     let indexed_files = {
@@ -624,7 +656,10 @@ impl IncrementalIndexer {
                     let indexed_set: std::collections::HashSet<String> =
                         indexed_files.iter().cloned().collect();
 
-                    let provider_snap = embedding_provider.read().unwrap_or_else(|p| p.into_inner()).clone();
+                    let provider_snap = embedding_provider
+                        .read()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .clone();
                     for rel_path in &indexed_files {
                         let abs_path = workspace_root.join(std::path::Path::new(rel_path));
                         let change_type = if abs_path.is_file() {
@@ -657,9 +692,10 @@ impl IncrementalIndexer {
                         .hidden(true)
                         .git_ignore(true)
                         .build();
-                    for entry in walker.filter_map(|e| e.ok()).filter(|e| {
-                        e.file_type().map_or(false, |ft| ft.is_file())
-                    }) {
+                    for entry in walker
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.file_type().map_or(false, |ft| ft.is_file()))
+                    {
                         if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
                             if supported_extensions_queue.contains(ext) {
                                 if let Ok(rel) = crate::utils::paths::to_relative_unix_style(
@@ -702,7 +738,8 @@ impl IncrementalIndexer {
                             if let Err(e) = idx.commit() {
                                 warn!("Failed to commit Tantivy after rescan: {}", e);
                             }
-                        }).await;
+                        })
+                        .await;
                     }
                 }
             }

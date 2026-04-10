@@ -1,6 +1,8 @@
 //! Tests for bracket balance validation and diff formatting.
 
-use crate::tools::editing::validation::{check_bracket_balance, format_unified_diff, should_check_balance};
+use crate::tools::editing::validation::{
+    check_bracket_balance, format_unified_diff, should_check_balance,
+};
 
 #[test]
 fn test_balanced_edit_no_warning() {

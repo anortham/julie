@@ -233,7 +233,11 @@ mod tests {
 
         // Output should be compact: one header line + one line per result
         let lines: Vec<&str> = output.lines().collect();
-        assert_eq!(lines.len(), 3, "Expected 1 header + 2 result lines, got: {output}");
+        assert_eq!(
+            lines.len(),
+            3,
+            "Expected 1 header + 2 result lines, got: {output}"
+        );
     }
 
     #[test]
@@ -283,12 +287,24 @@ mod tests {
         );
 
         // Both code contexts should be indented under the group
-        assert!(output.contains("  42→ fn foo()"), "First match context missing. Output:\n{output}");
-        assert!(output.contains("  100→ fn bar()"), "Second match context missing. Output:\n{output}");
+        assert!(
+            output.contains("  42→ fn foo()"),
+            "First match context missing. Output:\n{output}"
+        );
+        assert!(
+            output.contains("  100→ fn bar()"),
+            "Second match context missing. Output:\n{output}"
+        );
 
         // Single-match file can use either format; just verify it appears
-        assert!(output.contains("src/other.rs"), "Other file should appear. Output:\n{output}");
-        assert!(output.contains("  5→ fn baz()"), "Third match context missing. Output:\n{output}");
+        assert!(
+            output.contains("src/other.rs"),
+            "Other file should appear. Output:\n{output}"
+        );
+        assert!(
+            output.contains("  5→ fn baz()"),
+            "Third match context missing. Output:\n{output}"
+        );
     }
 
     #[test]

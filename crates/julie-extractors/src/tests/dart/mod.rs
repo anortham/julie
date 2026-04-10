@@ -2663,7 +2663,8 @@ interface class Ref<State extends Object?> {
                     .collect::<Vec<_>>()
             );
             assert_eq!(
-                extends_pending.unwrap().callee_name, "AsyncValue",
+                extends_pending.unwrap().callee_name,
+                "AsyncValue",
                 "PendingRelationship should target AsyncValue"
             );
         }

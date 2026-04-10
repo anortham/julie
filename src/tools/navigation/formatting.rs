@@ -154,10 +154,7 @@ pub fn format_lean_refs_results(
                         file_path, rel.line_number, name, kind
                     ));
                 } else {
-                    output.push_str(&format!(
-                        "  {}:{} ({})\n",
-                        file_path, rel.line_number, kind
-                    ));
+                    output.push_str(&format!("  {}:{} ({})\n", file_path, rel.line_number, kind));
                 }
             } else {
                 // Multiple refs in same file: group under file header
@@ -166,10 +163,8 @@ pub fn format_lean_refs_results(
                     let kind = format!("{:?}", rel.kind);
                     let name = source_names.get(&rel.from_symbol_id);
                     if let Some(name) = name {
-                        output.push_str(&format!(
-                            "    :{}  {} ({})\n",
-                            rel.line_number, name, kind
-                        ));
+                        output
+                            .push_str(&format!("    :{}  {} ({})\n", rel.line_number, name, kind));
                     } else {
                         output.push_str(&format!("    :{} ({})\n", rel.line_number, kind));
                     }

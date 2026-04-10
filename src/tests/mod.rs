@@ -146,11 +146,11 @@ pub mod integration {
     pub mod real_world_validation; // Real-world code validation tests
     pub mod reference_workspace; // Reference workspace tests
     pub mod search_regression_tests; // Regression tests for recurring search issues (glob patterns, Tantivy query semantics, limit/ranking)
-    pub mod sidecar_test_helpers; // Shared fake-sidecar helpers for integration tests
-    #[cfg(feature = "embeddings-sidecar")]
-    pub mod sidecar_embedding_pipeline; // Sidecar equivalents of embedding_pipeline tests
     #[cfg(feature = "embeddings-sidecar")]
     pub mod sidecar_embedding_incremental; // Sidecar equivalents of embedding_incremental tests
+    #[cfg(feature = "embeddings-sidecar")]
+    pub mod sidecar_embedding_pipeline; // Sidecar equivalents of embedding_pipeline tests
+    pub mod sidecar_test_helpers; // Shared fake-sidecar helpers for integration tests
     pub mod stale_index_detection; // Stale index detection tests
     pub mod tracing;
     pub mod watcher; // File watcher tests

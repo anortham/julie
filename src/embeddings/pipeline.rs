@@ -138,7 +138,10 @@ fn build_implementor_map(db: &SymbolDatabase, symbols: &[Symbol]) -> HashMap<Str
 
     let mut implementors: HashMap<String, Vec<String>> = HashMap::new();
     for rel in &relationships {
-        if matches!(rel.kind, RelationshipKind::Implements | RelationshipKind::Extends) {
+        if matches!(
+            rel.kind,
+            RelationshipKind::Implements | RelationshipKind::Extends
+        ) {
             let impl_name = id_to_name
                 .get(rel.from_symbol_id.as_str())
                 .copied()
@@ -202,11 +205,16 @@ pub fn run_embedding_pipeline_cancellable(
         let provider_dims = provider.dimensions();
         let provider_model = provider.device_info().model_name;
 
-        if stored_dims != provider_dims || stored_model != provider_model || stored_fmt_ver != EMBEDDING_FORMAT_VERSION {
+        if stored_dims != provider_dims
+            || stored_model != provider_model
+            || stored_fmt_ver != EMBEDDING_FORMAT_VERSION
+        {
             let reason = if stored_fmt_ver != EMBEDDING_FORMAT_VERSION {
                 format!("format version change (v{stored_fmt_ver} -> v{EMBEDDING_FORMAT_VERSION})")
             } else {
-                format!("model change ({stored_model} {stored_dims}d -> {provider_model} {provider_dims}d)")
+                format!(
+                    "model change ({stored_model} {stored_dims}d -> {provider_model} {provider_dims}d)"
+                )
             };
             info!(
                 "Embedding pipeline: {reason}, recreating vector table and clearing all embeddings"

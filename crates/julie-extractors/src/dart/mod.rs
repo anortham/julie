@@ -126,7 +126,11 @@ impl DartExtractor {
                 // level rather than inside an ERROR.  Detect the pattern here and recover.
                 if node.parent().map_or(false, |p| p.kind() == "program") {
                     if let Some((class_sym, body_opt, container_start)) =
-                        recover_dart3_generic_modifier_class(&mut self.base, &node, current_parent_id.as_deref())
+                        recover_dart3_generic_modifier_class(
+                            &mut self.base,
+                            &node,
+                            current_parent_id.as_deref(),
+                        )
                     {
                         let class_id = class_sym.id.clone();
                         // Extract inheritance from source text before pushing symbol

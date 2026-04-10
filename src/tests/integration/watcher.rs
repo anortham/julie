@@ -228,7 +228,10 @@ async fn test_blake3_change_detection() {
         let db_lock = db.lock().unwrap();
         db_lock.get_symbols_for_file("example.rs").unwrap().len()
     };
-    assert!(count_after_first > 0, "Symbol should be indexed after first pass");
+    assert!(
+        count_after_first > 0,
+        "Symbol should be indexed after first pass"
+    );
 
     // 2. Index same content again — blake3 hash matches, so this should be a no-op
     // We can detect this by modifying the DB state and confirming it's unchanged after
@@ -236,7 +239,13 @@ async fn test_blake3_change_detection() {
     {
         let db_lock = db.lock().unwrap();
         // Tamper: clear symbols to detect whether a re-index happens
-        db_lock.conn.execute("UPDATE files SET symbol_count = 999 WHERE path = 'example.rs'", []).unwrap();
+        db_lock
+            .conn
+            .execute(
+                "UPDATE files SET symbol_count = 999 WHERE path = 'example.rs'",
+                [],
+            )
+            .unwrap();
     }
 
     handle_file_created_or_modified_static(
@@ -252,15 +261,27 @@ async fn test_blake3_change_detection() {
     // Tampered value should survive — handler skipped due to hash match
     let tampered_count = {
         let db_lock = db.lock().unwrap();
-        let row: i64 = db_lock.conn
-            .query_row("SELECT symbol_count FROM files WHERE path = 'example.rs'", [], |r| r.get(0))
+        let row: i64 = db_lock
+            .conn
+            .query_row(
+                "SELECT symbol_count FROM files WHERE path = 'example.rs'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         row
     };
-    assert_eq!(tampered_count, 999, "Same content: handler should have skipped (blake3 match)");
+    assert_eq!(
+        tampered_count, 999,
+        "Same content: handler should have skipped (blake3 match)"
+    );
 
     // 3. Write different content — hash changes, should trigger re-index
-    fs::write(&test_file, "pub fn goodbye() -> &'static str { \"goodbye\" }").unwrap();
+    fs::write(
+        &test_file,
+        "pub fn goodbye() -> &'static str { \"goodbye\" }",
+    )
+    .unwrap();
 
     handle_file_created_or_modified_static(
         test_file.clone(),
@@ -275,12 +296,20 @@ async fn test_blake3_change_detection() {
     // Tampered value should be reset — handler re-indexed due to hash mismatch
     let reset_count = {
         let db_lock = db.lock().unwrap();
-        let row: i64 = db_lock.conn
-            .query_row("SELECT symbol_count FROM files WHERE path = 'example.rs'", [], |r| r.get(0))
+        let row: i64 = db_lock
+            .conn
+            .query_row(
+                "SELECT symbol_count FROM files WHERE path = 'example.rs'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         row
     };
-    assert_ne!(reset_count, 999, "Different content: handler should have re-indexed (blake3 mismatch)");
+    assert_ne!(
+        reset_count, 999,
+        "Different content: handler should have re-indexed (blake3 mismatch)"
+    );
 
     // Verify new symbol exists
     let symbols = {
@@ -302,7 +331,10 @@ async fn test_blake3_change_detection() {
 #[tokio::test]
 async fn test_rename_any_nonexistent_path_emits_deleted() {
     use crate::watcher::events::process_file_system_event;
-    use notify::{Event, EventKind, event::{ModifyKind, RenameMode}};
+    use notify::{
+        Event, EventKind,
+        event::{ModifyKind, RenameMode},
+    };
     use std::collections::{HashSet, VecDeque};
     use std::sync::{Arc, atomic::AtomicBool};
     use tokio::sync::Mutex as TokioMutex;
@@ -362,7 +394,10 @@ async fn test_rename_any_nonexistent_path_emits_deleted() {
 #[tokio::test]
 async fn test_rename_any_existing_path_emits_modified() {
     use crate::watcher::events::process_file_system_event;
-    use notify::{Event, EventKind, event::{ModifyKind, RenameMode}};
+    use notify::{
+        Event, EventKind,
+        event::{ModifyKind, RenameMode},
+    };
     use std::collections::{HashSet, VecDeque};
     use std::sync::{Arc, atomic::AtomicBool};
     use tokio::sync::Mutex as TokioMutex;
@@ -397,9 +432,16 @@ async fn test_rename_any_existing_path_emits_modified() {
     .expect("Event processing should succeed");
 
     let queue_lock = queue.lock().await;
-    assert_eq!(queue_lock.len(), 1, "Existing renamed path should be queued");
+    assert_eq!(
+        queue_lock.len(),
+        1,
+        "Existing renamed path should be queued"
+    );
     assert!(
-        matches!(queue_lock[0].change_type, crate::watcher::types::FileChangeType::Modified),
+        matches!(
+            queue_lock[0].change_type,
+            crate::watcher::types::FileChangeType::Modified
+        ),
         "Event type should be Modified for existing renamed path"
     );
 }
@@ -414,7 +456,9 @@ async fn test_rename_any_existing_path_emits_modified() {
 async fn test_delete_handler_trusts_caller_no_toctou() {
     use crate::database::SymbolDatabase;
     use crate::extractors::ExtractorManager;
-    use crate::watcher::handlers::{handle_file_created_or_modified_static, handle_file_deleted_static};
+    use crate::watcher::handlers::{
+        handle_file_created_or_modified_static, handle_file_deleted_static,
+    };
     use std::sync::{Arc, Mutex};
 
     let dir = tempfile::tempdir().unwrap();
@@ -425,9 +469,15 @@ async fn test_delete_handler_trusts_caller_no_toctou() {
     // Index a real file first
     let test_file = dir.path().join("toctou.rs");
     fs::write(&test_file, "pub fn will_be_deleted() {}").unwrap();
-    handle_file_created_or_modified_static(test_file.clone(), &db, &extractor_manager, dir.path(), None)
-        .await
-        .unwrap();
+    handle_file_created_or_modified_static(
+        test_file.clone(),
+        &db,
+        &extractor_manager,
+        dir.path(),
+        None,
+    )
+    .await
+    .unwrap();
 
     let before = {
         let db_lock = db.lock().unwrap();
@@ -437,7 +487,10 @@ async fn test_delete_handler_trusts_caller_no_toctou() {
 
     // Simulate TOCTOU: file still exists on disk, but call the delete handler directly
     // (mimicking the scenario where the file is recreated between the two checks)
-    assert!(test_file.exists(), "File must still exist to test TOCTOU fix");
+    assert!(
+        test_file.exists(),
+        "File must still exist to test TOCTOU fix"
+    );
     handle_file_deleted_static(test_file.clone(), &db, dir.path(), None)
         .await
         .unwrap();
@@ -446,7 +499,10 @@ async fn test_delete_handler_trusts_caller_no_toctou() {
         let db_lock = db.lock().unwrap();
         db_lock.get_symbols_for_file("toctou.rs").unwrap().len()
     };
-    assert_eq!(after, 0, "handle_file_deleted_static must clean up symbols even when file still exists on disk");
+    assert_eq!(
+        after, 0,
+        "handle_file_deleted_static must clean up symbols even when file still exists on disk"
+    );
 }
 
 /// Fix C (HOL blocking): after a dedup re-queue, subsequent events for OTHER files
@@ -474,8 +530,16 @@ async fn test_dedup_requeue_does_not_block_subsequent_events() {
     // Push file_a then file_b
     {
         let mut q = queue.lock().await;
-        q.push_back(FileChangeEvent { path: file_a.clone(), change_type: FileChangeType::Modified, timestamp: SystemTime::now() });
-        q.push_back(FileChangeEvent { path: file_b.clone(), change_type: FileChangeType::Modified, timestamp: SystemTime::now() });
+        q.push_back(FileChangeEvent {
+            path: file_a.clone(),
+            change_type: FileChangeType::Modified,
+            timestamp: SystemTime::now(),
+        });
+        q.push_back(FileChangeEvent {
+            path: file_b.clone(),
+            change_type: FileChangeType::Modified,
+            timestamp: SystemTime::now(),
+        });
     }
 
     // file_a is "recently processed" — dedup should skip it and re-queue it
@@ -499,7 +563,8 @@ async fn test_dedup_requeue_does_not_block_subsequent_events() {
         };
         let Some(event) = event else { break };
 
-        let should_skip = last_processed.get(&event.path)
+        let should_skip = last_processed
+            .get(&event.path)
             .and_then(|t| SystemTime::now().duration_since(*t).ok())
             .map(|e| e.as_millis() < 1000)
             .unwrap_or(false);
@@ -540,7 +605,10 @@ async fn test_queue_overflow_sets_needs_rescan() {
     use crate::watcher::events::process_file_system_event;
     use notify::{Event, EventKind, event::CreateKind};
     use std::collections::{HashSet, VecDeque};
-    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
     use tokio::sync::Mutex as TokioMutex;
 
     let temp_dir = tempfile::tempdir().unwrap();

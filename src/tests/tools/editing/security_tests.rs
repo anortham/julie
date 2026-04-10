@@ -7,11 +7,15 @@ use tempfile::TempDir;
 fn test_absolute_path_outside_workspace_rejected() {
     let workspace = TempDir::new().unwrap();
     let result = secure_path_resolution("/etc/passwd", workspace.path());
-    assert!(result.is_err(), "Absolute path outside workspace should be rejected");
+    assert!(
+        result.is_err(),
+        "Absolute path outside workspace should be rejected"
+    );
     let err = result.unwrap_err().to_string();
     assert!(
         err.contains("Security") || err.contains("traversal"),
-        "Error should mention security: {}", err
+        "Error should mention security: {}",
+        err
     );
 }
 
@@ -30,7 +34,10 @@ fn test_symlink_outside_workspace_rejected() {
     let link_path = workspace.path().join("evil_link");
     symlink("/etc/passwd", &link_path).unwrap();
     let result = secure_path_resolution("evil_link", workspace.path());
-    assert!(result.is_err(), "Symlink pointing outside workspace should be rejected");
+    assert!(
+        result.is_err(),
+        "Symlink pointing outside workspace should be rejected"
+    );
 }
 
 #[test]

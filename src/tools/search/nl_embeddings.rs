@@ -63,7 +63,10 @@ pub(super) async fn maybe_initialize_embeddings_for_nl_definitions(
     // and masking the real provider.
     if let Some(svc) = handler.embedding_service.as_ref() {
         use crate::daemon::embedding_service::EmbeddingServiceSettled;
-        match svc.wait_until_settled(std::time::Duration::from_secs(3)).await {
+        match svc
+            .wait_until_settled(std::time::Duration::from_secs(3))
+            .await
+        {
             EmbeddingServiceSettled::Ready(_) => {
                 // Provider is now published; the caller's next
                 // handler.embedding_provider() will see it. Return without

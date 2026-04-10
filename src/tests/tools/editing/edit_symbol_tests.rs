@@ -8,13 +8,17 @@ use crate::tools::editing::validation::check_bracket_balance;
 
 #[test]
 fn test_replace_symbol_body() {
-    let source = "fn hello() {\n    println!(\"hello\");\n}\n\nfn world() {\n    println!(\"world\");\n}\n";
+    let source =
+        "fn hello() {\n    println!(\"hello\");\n}\n\nfn world() {\n    println!(\"world\");\n}\n";
 
     let result = replace_symbol_body(source, 1, 3, "fn hello() {\n    println!(\"goodbye\");\n}")
         .expect("Replace should succeed");
 
     assert!(result.contains("goodbye"), "Should contain new body");
-    assert!(result.contains("fn world()"), "Should preserve other functions");
+    assert!(
+        result.contains("fn world()"),
+        "Should preserve other functions"
+    );
     assert!(
         !result.contains("println!(\"hello\")"),
         "Should not contain old body"
@@ -55,14 +59,19 @@ fn test_insert_before_symbol() {
 
 #[test]
 fn test_replace_preserves_surrounding_content() {
-    let source =
-        "// header comment\n\nfn target() {\n    old_code();\n}\n\n// footer comment\n";
+    let source = "// header comment\n\nfn target() {\n    old_code();\n}\n\n// footer comment\n";
 
     let result = replace_symbol_body(source, 3, 5, "fn target() {\n    new_code();\n}")
         .expect("Replace should succeed");
 
-    assert!(result.contains("// header comment"), "Should preserve header");
-    assert!(result.contains("// footer comment"), "Should preserve footer");
+    assert!(
+        result.contains("// header comment"),
+        "Should preserve header"
+    );
+    assert!(
+        result.contains("// footer comment"),
+        "Should preserve footer"
+    );
     assert!(result.contains("new_code()"), "Should contain new code");
 }
 
@@ -92,7 +101,10 @@ fn test_replace_helper_is_unguarded() {
     // The helper replaces lines 2-4 regardless of what's there.
     // In a stale-index scenario, this produces wrong output.
     // call_tool's freshness check prevents this from happening in practice.
-    assert!(!content.contains("fn foo() {\n    bar()"), "Old foo body should be replaced");
+    assert!(
+        !content.contains("fn foo() {\n    bar()"),
+        "Old foo body should be replaced"
+    );
 }
 
 /// insert_near_symbol must preserve the source's trailing-newline behavior.
@@ -100,8 +112,8 @@ fn test_replace_helper_is_unguarded() {
 #[test]
 fn test_insert_near_symbol_no_trailing_newline_preserved() {
     let source = "fn a() {}\nfn b() {}"; // no trailing newline
-    let result = insert_near_symbol(source, 1, "// inserted", "before")
-        .expect("Insert should succeed");
+    let result =
+        insert_near_symbol(source, 1, "// inserted", "before").expect("Insert should succeed");
     assert!(
         !result.ends_with('\n'),
         "insert_near_symbol must not add trailing newline when source has none, got: {:?}",
@@ -113,8 +125,8 @@ fn test_insert_near_symbol_no_trailing_newline_preserved() {
 #[test]
 fn test_insert_near_symbol_trailing_newline_preserved_when_present() {
     let source = "fn a() {}\nfn b() {}\n"; // has trailing newline
-    let result = insert_near_symbol(source, 1, "// inserted", "before")
-        .expect("Insert should succeed");
+    let result =
+        insert_near_symbol(source, 1, "// inserted", "before").expect("Insert should succeed");
     assert!(
         result.ends_with('\n'),
         "insert_near_symbol must keep trailing newline when source has one, got: {:?}",
@@ -129,7 +141,10 @@ fn test_bracket_in_string_warns_instead_of_rejecting() {
 
     let result = check_bracket_balance(before, after);
     assert!(result.is_some(), "Should warn about bracket change");
-    assert!(result.unwrap().contains("Warning"), "Should be advisory warning");
+    assert!(
+        result.unwrap().contains("Warning"),
+        "Should be advisory warning"
+    );
 }
 
 #[test]
@@ -170,7 +185,9 @@ mod integration {
     /// Create a temp workspace with one Rust source file, index it, and return
     /// the (TempDir, handler, relative-path-to-file) triple.
     /// TempDir must stay alive for the duration of the test.
-    async fn setup_indexed_workspace(content: &str) -> Result<(TempDir, JulieServerHandler, String)> {
+    async fn setup_indexed_workspace(
+        content: &str,
+    ) -> Result<(TempDir, JulieServerHandler, String)> {
         let temp_dir = TempDir::new()?;
         let workspace_path = temp_dir.path().to_path_buf();
 
@@ -228,7 +245,10 @@ mod integration {
         );
 
         // Verify on-disk file reflects the change.
-        let workspace = handler.get_workspace().await?.expect("workspace must exist");
+        let workspace = handler
+            .get_workspace()
+            .await?
+            .expect("workspace must exist");
         let abs_path = workspace.root.join("src").join("test.rs");
         let on_disk = fs::read_to_string(&abs_path)?;
 
@@ -260,7 +280,10 @@ mod integration {
 
         // Mutate the file on disk without re-indexing.
         let abs_path = temp_dir.path().join("src").join("test.rs");
-        fs::write(&abs_path, "pub fn stable() {\n    // mutated after indexing\n}\n")?;
+        fs::write(
+            &abs_path,
+            "pub fn stable() {\n    // mutated after indexing\n}\n",
+        )?;
 
         let tool = EditSymbolTool {
             symbol: "stable".to_string(),
@@ -315,10 +338,7 @@ mod integration {
         // File must be unchanged on disk.
         let abs_path = temp_dir.path().join("src").join("test.rs");
         let on_disk = fs::read_to_string(&abs_path)?;
-        assert_eq!(
-            on_disk, source,
-            "Dry run must not modify the file on disk"
-        );
+        assert_eq!(on_disk, source, "Dry run must not modify the file on disk");
 
         Ok(())
     }

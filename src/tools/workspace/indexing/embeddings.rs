@@ -42,7 +42,9 @@ pub(crate) async fn spawn_workspace_embedding(
             .await
         {
             EmbeddingServiceSettled::Ready(p) => {
-                debug!("Daemon embedding service became Ready; proceeding with workspace embedding");
+                debug!(
+                    "Daemon embedding service became Ready; proceeding with workspace embedding"
+                );
                 p
             }
             EmbeddingServiceSettled::Unavailable(reason) => {

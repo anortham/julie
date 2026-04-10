@@ -755,8 +755,7 @@ impl JulieServerHandler {
         }
 
         // Fix G: release the dedup flag so the next catch-up can proceed.
-        self.catchup_in_progress
-            .store(false, Ordering::Release);
+        self.catchup_in_progress.store(false, Ordering::Release);
     }
 
     // ========== Workspace Access Helpers ==========
@@ -1214,7 +1213,10 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<crate::tools::editing::edit_file::EditFileTool>,
     ) -> Result<CallToolResult, McpError> {
-        debug!("✏️ edit_file: {} (dry_run={})", params.file_path, params.dry_run);
+        debug!(
+            "✏️ edit_file: {} (dry_run={})",
+            params.file_path, params.dry_run
+        );
         let start = std::time::Instant::now();
         let metadata = serde_json::json!({
             "file": params.file_path,
@@ -1253,7 +1255,10 @@ impl JulieServerHandler {
         &self,
         Parameters(params): Parameters<crate::tools::editing::edit_symbol::EditSymbolTool>,
     ) -> Result<CallToolResult, McpError> {
-        debug!("✏️ edit_symbol: {} {} (dry_run={})", params.operation, params.symbol, params.dry_run);
+        debug!(
+            "✏️ edit_symbol: {} {} (dry_run={})",
+            params.operation, params.symbol, params.dry_run
+        );
         let start = std::time::Instant::now();
         let metadata = serde_json::json!({
             "symbol": params.symbol,

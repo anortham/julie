@@ -1,9 +1,9 @@
 use crate::daemon::lifecycle::{DaemonStatus, check_status, stop_daemon};
 use crate::daemon::pid::PidFile;
 use crate::paths::DaemonPaths;
-use std::fs;
 #[cfg(unix)]
 use libc;
+use std::fs;
 
 #[test]
 fn test_status_reports_not_running_when_no_pid() {

@@ -33,7 +33,10 @@ fn test_exact_replace() {
     )
     .expect("Edit should succeed");
 
-    assert_eq!(result, expected, "Output should match golden master (exact replace)");
+    assert_eq!(
+        result, expected,
+        "Output should match golden master (exact replace)"
+    );
 }
 
 #[test]
@@ -41,10 +44,12 @@ fn test_replace_all_occurrences() {
     let source = load(&fixture_source("dmp_rust_module.rs"));
     let expected = load(&fixture_control("rust_replace_all.rs"));
 
-    let result = apply_edit(&source, "(&self", "(&mut self", "all")
-        .expect("Edit should succeed");
+    let result = apply_edit(&source, "(&self", "(&mut self", "all").expect("Edit should succeed");
 
-    assert_eq!(result, expected, "Output should match golden master (replace all)");
+    assert_eq!(
+        result, expected,
+        "Output should match golden master (replace all)"
+    );
 }
 
 #[test]
@@ -55,10 +60,12 @@ fn test_markdown_edit() {
     let old_text = "Add advanced features and testing.\n\n- Task C: Integration tests\n- Task D: Performance tuning";
     let new_text = "Redesigned to focus on security hardening.\n\n- Task C: Security audit\n- Task D: Penetration testing\n- Task E: Fix vulnerabilities";
 
-    let result = apply_edit(&source, old_text, new_text, "first")
-        .expect("Edit should succeed");
+    let result = apply_edit(&source, old_text, new_text, "first").expect("Edit should succeed");
 
-    assert_eq!(result, expected, "Output should match golden master (markdown edit)");
+    assert_eq!(
+        result, expected,
+        "Output should match golden master (markdown edit)"
+    );
 }
 
 #[test]

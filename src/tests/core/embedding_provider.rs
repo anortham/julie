@@ -11,9 +11,9 @@ mod tests {
     use crate::embeddings::create_embedding_provider;
     use crate::embeddings::{
         BackendResolverCapabilities, DeviceInfo, EmbeddingBackend, EmbeddingConfig,
-        EmbeddingProviderFactory, EmbeddingRuntimeStatus,
-        parse_provider_preference, resolve_backend_preference,
-        should_disable_for_strict_acceleration, strict_acceleration_enabled_from_env_value,
+        EmbeddingProviderFactory, EmbeddingRuntimeStatus, parse_provider_preference,
+        resolve_backend_preference, should_disable_for_strict_acceleration,
+        strict_acceleration_enabled_from_env_value,
     };
     use crate::workspace::{JulieWorkspace, build_embedding_runtime_log_fields};
 
@@ -271,8 +271,7 @@ while True:
             target_arch: "x86_64",
         };
 
-        let err =
-            resolve_backend_preference(EmbeddingBackend::Sidecar, &capabilities).unwrap_err();
+        let err = resolve_backend_preference(EmbeddingBackend::Sidecar, &capabilities).unwrap_err();
         let message = err.to_string();
         assert!(
             message.contains("sidecar") && message.contains("not available"),
@@ -547,7 +546,8 @@ while True:
             Err(err) => err,
         };
         assert!(
-            err.to_string().contains("ORT embedding backend has been removed"),
+            err.to_string()
+                .contains("ORT embedding backend has been removed"),
             "Expected ORT removal message, got: {err}"
         );
     }

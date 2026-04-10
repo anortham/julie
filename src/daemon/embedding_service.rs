@@ -185,18 +185,12 @@ impl EmbeddingService {
 
     /// `true` iff state is `Ready`. Non-blocking.
     pub fn is_available(&self) -> bool {
-        matches!(
-            *self.state_rx.borrow(),
-            EmbeddingServiceState::Ready { .. }
-        )
+        matches!(*self.state_rx.borrow(), EmbeddingServiceState::Ready { .. })
     }
 
     /// `true` iff state is not `Initializing`. Non-blocking.
     pub fn is_settled(&self) -> bool {
-        !matches!(
-            *self.state_rx.borrow(),
-            EmbeddingServiceState::Initializing
-        )
+        !matches!(*self.state_rx.borrow(), EmbeddingServiceState::Initializing)
     }
 
     /// Wait for the service to leave `Initializing`, up to `timeout`.
@@ -318,7 +312,10 @@ mod tests {
         assert!(!service.is_available());
         assert!(service.provider().is_none());
         assert!(service.runtime_status().is_none());
-        assert!(service.is_settled(), "None provider should settle to Unavailable");
+        assert!(
+            service.is_settled(),
+            "None provider should settle to Unavailable"
+        );
     }
 
     /// `initializing()` starts in `Initializing`. `is_available` is false,
@@ -341,9 +338,7 @@ mod tests {
         let service = EmbeddingService::initializing();
         service.publish_ready(fake_provider, status);
 
-        let outcome = service
-            .wait_until_settled(Duration::from_millis(100))
-            .await;
+        let outcome = service.wait_until_settled(Duration::from_millis(100)).await;
         assert!(matches!(outcome, EmbeddingServiceSettled::Ready(_)));
     }
 
@@ -354,9 +349,7 @@ mod tests {
         let service = EmbeddingService::initializing();
         service.publish_unavailable("boom".to_string(), None);
 
-        let outcome = service
-            .wait_until_settled(Duration::from_millis(100))
-            .await;
+        let outcome = service.wait_until_settled(Duration::from_millis(100)).await;
         match outcome {
             EmbeddingServiceSettled::Unavailable(reason) => assert_eq!(reason, "boom"),
             _ => panic!("expected Unavailable"),
@@ -378,9 +371,7 @@ mod tests {
             })
         };
 
-        let outcome = service
-            .wait_until_settled(Duration::from_millis(500))
-            .await;
+        let outcome = service.wait_until_settled(Duration::from_millis(500)).await;
         publisher.await.unwrap();
         assert!(
             matches!(outcome, EmbeddingServiceSettled::Ready(_)),
@@ -392,9 +383,7 @@ mod tests {
     #[tokio::test]
     async fn test_wait_until_settled_timeout() {
         let service = EmbeddingService::initializing();
-        let outcome = service
-            .wait_until_settled(Duration::from_millis(20))
-            .await;
+        let outcome = service.wait_until_settled(Duration::from_millis(20)).await;
         assert!(matches!(outcome, EmbeddingServiceSettled::Timeout));
     }
 
@@ -408,9 +397,7 @@ mod tests {
         for _ in 0..waiter_count {
             let service = Arc::clone(&service);
             handles.push(tokio::spawn(async move {
-                service
-                    .wait_until_settled(Duration::from_millis(500))
-                    .await
+                service.wait_until_settled(Duration::from_millis(500)).await
             }));
         }
 
@@ -462,7 +449,10 @@ mod tests {
             service.runtime_status().is_none(),
             "provider=none skips initialization entirely, so no runtime_status"
         );
-        assert!(service.is_settled(), "service should be settled after initialize()");
+        assert!(
+            service.is_settled(),
+            "service should be settled after initialize()"
+        );
     }
 
     /// `publish_unavailable` that carries a runtime status exposes it via

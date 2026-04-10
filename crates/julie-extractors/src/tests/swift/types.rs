@@ -43,7 +43,11 @@ mod tests {
         );
 
         let session = session.unwrap();
-        assert_eq!(session.kind, SymbolKind::Class, "Session should be SymbolKind::Class");
+        assert_eq!(
+            session.kind,
+            SymbolKind::Class,
+            "Session should be SymbolKind::Class"
+        );
 
         let sig = session.signature.as_deref().unwrap_or("");
         // @unchecked must NOT be pulled into class modifiers; it belongs to the inheritance clause

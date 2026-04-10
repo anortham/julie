@@ -97,26 +97,24 @@ pub async fn search(
     // Build centrality ranks (name -> rank 1..=20) for badge display.
     // Only show badges when a specific workspace is selected; cross-workspace
     // badges would be misleading since ranks come from one workspace.
-    let centrality_ranks: std::collections::HashMap<String, usize> =
-        if !workspace_id.is_empty() && let Some(pool) = state.dashboard.workspace_pool() {
-            let ws_id = workspace_id.to_string();
+    let centrality_ranks: std::collections::HashMap<String, usize> = if !workspace_id.is_empty()
+        && let Some(pool) = state.dashboard.workspace_pool()
+    {
+        let ws_id = workspace_id.to_string();
 
-            if let Some(ws) = pool.get(&ws_id).await {
-                if let Some(db) = &ws.db {
-                    if let Ok(guard) = db.lock() {
-                        guard
-                            .get_top_symbols_by_centrality(20)
-                            .ok()
-                            .map(|syms| {
-                                syms.into_iter()
-                                    .enumerate()
-                                    .map(|(i, s)| (s.name, i + 1))
-                                    .collect()
-                            })
-                            .unwrap_or_default()
-                    } else {
-                        Default::default()
-                    }
+        if let Some(ws) = pool.get(&ws_id).await {
+            if let Some(db) = &ws.db {
+                if let Ok(guard) = db.lock() {
+                    guard
+                        .get_top_symbols_by_centrality(20)
+                        .ok()
+                        .map(|syms| {
+                            syms.into_iter()
+                                .enumerate()
+                                .map(|(i, s)| (s.name, i + 1))
+                                .collect()
+                        })
+                        .unwrap_or_default()
                 } else {
                     Default::default()
                 }
@@ -125,7 +123,10 @@ pub async fn search(
             }
         } else {
             Default::default()
-        };
+        }
+    } else {
+        Default::default()
+    };
     context.insert("centrality_ranks", &centrality_ranks);
 
     render_template(&state, "partials/search_results.html", context).await

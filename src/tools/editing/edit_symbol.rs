@@ -3,7 +3,7 @@
 //! The agent references a symbol by name. Julie looks up its location in the
 //! index, then applies the edit. No file read required by the agent.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -200,9 +200,7 @@ impl EditSymbolTool {
             .db
             .as_ref()
             .ok_or_else(|| {
-                anyhow!(
-                    "Database not available. Run manage_workspace(operation=\"index\") first."
-                )
+                anyhow!("Database not available. Run manage_workspace(operation=\"index\") first.")
             })?
             .clone();
 
@@ -212,39 +210,40 @@ impl EditSymbolTool {
         let file_path_filter = self.file_path.clone();
         let file_path_for_error = self.file_path.clone();
         let db_arc_for_freshness = db_arc.clone();
-        let matches = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String, u32, u32)>> {
-            let db = db_arc
-                .lock()
-                .map_err(|e| anyhow!("Database lock error: {}", e))?;
-            let symbols = crate::tools::deep_dive::data::find_symbol(
-                &db,
-                &symbol_name,
-                file_path_filter.as_deref(),
-            )?;
-            // find_symbol falls back to unfiltered results when the file filter
-            // matches nothing. That's fine for read-only deep_dive, but for a write
-            // operation we must enforce the filter strictly.
-            let filtered = if let Some(ref fp) = file_path_filter {
-                symbols
-                    .into_iter()
-                    .filter(|s| s.file_path.contains(fp.as_str()))
-                    .collect()
-            } else {
-                symbols
-            };
-            Ok(filtered
-                .iter()
-                .map(|s| {
-                    (
-                        s.name.clone(),
-                        s.file_path.clone(),
-                        s.start_line,
-                        s.end_line,
-                    )
-                })
-                .collect())
-        })
-        .await??;
+        let matches =
+            tokio::task::spawn_blocking(move || -> Result<Vec<(String, String, u32, u32)>> {
+                let db = db_arc
+                    .lock()
+                    .map_err(|e| anyhow!("Database lock error: {}", e))?;
+                let symbols = crate::tools::deep_dive::data::find_symbol(
+                    &db,
+                    &symbol_name,
+                    file_path_filter.as_deref(),
+                )?;
+                // find_symbol falls back to unfiltered results when the file filter
+                // matches nothing. That's fine for read-only deep_dive, but for a write
+                // operation we must enforce the filter strictly.
+                let filtered = if let Some(ref fp) = file_path_filter {
+                    symbols
+                        .into_iter()
+                        .filter(|s| s.file_path.contains(fp.as_str()))
+                        .collect()
+                } else {
+                    symbols
+                };
+                Ok(filtered
+                    .iter()
+                    .map(|s| {
+                        (
+                            s.name.clone(),
+                            s.file_path.clone(),
+                            s.start_line,
+                            s.end_line,
+                        )
+                    })
+                    .collect())
+            })
+            .await??;
 
         if matches.is_empty() {
             if let Some(ref fp) = file_path_for_error {
@@ -263,9 +262,7 @@ impl EditSymbolTool {
         if matches.len() > 1 {
             let locations: Vec<String> = matches
                 .iter()
-                .map(|(name, path, start, end)| {
-                    format!("  {} at {}:{}-{}", name, path, start, end)
-                })
+                .map(|(name, path, start, end)| format!("  {} at {}:{}-{}", name, path, start, end))
                 .collect();
             return Ok(CallToolResult::text_content(vec![Content::text(format!(
                 "Error: '{}' matches {} symbols. Provide file_path to disambiguate:\n{}",
@@ -300,7 +297,8 @@ impl EditSymbolTool {
                 .map_err(|e| anyhow!("Database lock error: {}", e))?;
             if let Err(e) = check_file_freshness(&db, symbol_file, &current_hash) {
                 return Ok(CallToolResult::text_content(vec![Content::text(format!(
-                    "Error: {}", e
+                    "Error: {}",
+                    e
                 ))]));
             }
         }
@@ -334,10 +332,7 @@ impl EditSymbolTool {
         let diff = format_unified_diff(&original_content, &modified_content, symbol_file);
 
         if self.dry_run {
-            debug!(
-                "edit_symbol dry_run for {} in {}",
-                self.symbol, symbol_file
-            );
+            debug!("edit_symbol dry_run for {} in {}", self.symbol, symbol_file);
             let mut msg = format!("Dry run preview (set dry_run=false to apply):\n\n{}", diff);
             if let Some(ref warning) = balance_warning {
                 msg.push_str(&format!("\n\n{}", warning));
@@ -349,10 +344,7 @@ impl EditSymbolTool {
         let txn = EditingTransaction::begin(&resolved_str)?;
         txn.commit(&modified_content)?;
 
-        debug!(
-            "edit_symbol {} applied to {}",
-            self.operation, symbol_file
-        );
+        debug!("edit_symbol {} applied to {}", self.operation, symbol_file);
         let mut msg = format!(
             "Applied {} on '{}' in {}:\n\n{}",
             self.operation, self.symbol, symbol_file, diff

@@ -1394,7 +1394,9 @@ mod formatting_tests {
             SymbolKind::Function,
             "src/engine.rs",
             1,
-            Some("pub fn big_function(a: &BigStruct, b: &mut OtherStruct) -> Result<LongReturnType>"),
+            Some(
+                "pub fn big_function(a: &BigStruct, b: &mut OtherStruct) -> Result<LongReturnType>",
+            ),
             Some(Visibility::Public),
             Some(&code_100_lines),
         );

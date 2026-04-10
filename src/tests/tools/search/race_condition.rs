@@ -259,7 +259,7 @@ pub fn helper_function() {}
                 search_target: "content".to_string(),
                 context_lines: None,
                 exclude_tests: None,
-            ..Default::default()
+                ..Default::default()
             };
 
             let fast_search_query_b = FastSearchTool {
@@ -271,7 +271,7 @@ pub fn helper_function() {}
                 search_target: "content".to_string(),
                 context_lines: None,
                 exclude_tests: None,
-            ..Default::default()
+                ..Default::default()
             };
 
             let get_symbols_main = GetSymbolsTool {

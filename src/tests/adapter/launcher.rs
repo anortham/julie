@@ -132,7 +132,10 @@ mod tests {
         fs::write(paths.daemon_state(), "ready").unwrap();
         let launcher = DaemonLauncher::new(paths.clone());
         assert_eq!(launcher.daemon_readiness(), DaemonReadiness::Dead);
-        assert!(!paths.daemon_state().exists(), "stale state file should be cleaned up");
+        assert!(
+            !paths.daemon_state().exists(),
+            "stale state file should be cleaned up"
+        );
     }
 
     #[test]

@@ -108,11 +108,10 @@ impl ManageWorkspaceTool {
             // race where a running pipeline writes embeddings back after we clear.
             // Use the TARGET workspace_id (may differ from primary when force-reindexing
             // a reference workspace).
-            let cancel_ws_id = crate::workspace::registry::generate_workspace_id(
-                &original_path.to_string_lossy(),
-            )
-            .ok()
-            .or_else(|| handler.workspace_id.clone());
+            let cancel_ws_id =
+                crate::workspace::registry::generate_workspace_id(&original_path.to_string_lossy())
+                    .ok()
+                    .or_else(|| handler.workspace_id.clone());
             if let Some(ref ws_id) = cancel_ws_id {
                 let mut tasks = handler.embedding_tasks.lock().await;
                 if let Some((cancel_flag, handle)) = tasks.remove(ws_id) {
@@ -321,8 +320,7 @@ impl ManageWorkspaceTool {
                     } else {
                         // Only run embedding pipeline when the DB actually mutated.
                         // Matches the gate in handle_refresh_command.
-                        let db_mutated =
-                            result.files_processed > 0 || result.orphans_cleaned > 0;
+                        let db_mutated = result.files_processed > 0 || result.orphans_cleaned > 0;
 
                         if db_mutated || force {
                             // Force re-index: pipeline was already cancelled at the top
@@ -338,16 +336,13 @@ impl ManageWorkspaceTool {
                                     if is_reference_workspace {
                                         // Open the REFERENCE workspace DB directly.
                                         // handler.get_workspace().db is the PRIMARY, not the reference.
-                                        let ref_db_path =
-                                            workspace.workspace_db_path(&ws_id);
+                                        let ref_db_path = workspace.workspace_db_path(&ws_id);
                                         if ref_db_path.exists() {
                                             let path = ref_db_path;
                                             let clear_result =
                                                 tokio::task::spawn_blocking(move || {
                                                     let mut ref_db =
-                                                        crate::database::SymbolDatabase::new(
-                                                            path,
-                                                        )?;
+                                                        crate::database::SymbolDatabase::new(path)?;
                                                     ref_db.clear_all_embeddings()
                                                 })
                                                 .await;
@@ -376,9 +371,9 @@ impl ManageWorkspaceTool {
                                             Ok(()) => info!(
                                                 "🗑️ Cleared all embeddings for force re-embed"
                                             ),
-                                            Err(e) => tracing::warn!(
-                                                "Failed to clear embeddings: {e}"
-                                            ),
+                                            Err(e) => {
+                                                tracing::warn!("Failed to clear embeddings: {e}")
+                                            }
                                         }
                                     }
                                 }

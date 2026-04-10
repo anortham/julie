@@ -44,10 +44,7 @@ fn collect_gitignore_files(dir: &Path, max_depth: usize) -> Vec<std::path::PathB
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             // Skip .git, blacklisted dirs, and hidden dirs (tool caches with
             // overly broad * patterns that leak via the ignore crate).
-            if name == ".git"
-                || name.starts_with('.')
-                || BLACKLISTED_DIRECTORIES.contains(&name)
-            {
+            if name == ".git" || name.starts_with('.') || BLACKLISTED_DIRECTORIES.contains(&name) {
                 continue;
             }
             found.extend(collect_gitignore_files(&path, max_depth - 1));

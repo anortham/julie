@@ -2,9 +2,9 @@
 
 use crate::daemon::pid::PidFile;
 use crate::paths::DaemonPaths;
-use tracing::info;
 #[cfg(unix)]
 use libc;
+use tracing::info;
 
 /// Current state of the Julie daemon process.
 #[derive(Debug, PartialEq)]

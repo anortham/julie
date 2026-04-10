@@ -336,7 +336,9 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     // docs/plans/2026-04-09-daemon-lazy-embedding-init-design.md for the
     // full rationale.
     let embedding_service = Arc::new(EmbeddingService::initializing());
-    info!("Shared embedding service constructed in Initializing state; background init will start after IPC bind");
+    info!(
+        "Shared embedding service constructed in Initializing state; background init will start after IPC bind"
+    );
 
     // Capture binary mtime at startup for stale-binary detection.
     // If the binary is rebuilt while the daemon is running, the next session
@@ -498,10 +500,9 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         let watcher_pool_for_init = Arc::clone(&watcher_pool_for_handlers);
         tokio::spawn(async move {
             info!("Background embedding init task started");
-            let init_result = tokio::task::spawn_blocking(|| {
-                crate::embeddings::create_embedding_provider()
-            })
-            .await;
+            let init_result =
+                tokio::task::spawn_blocking(|| crate::embeddings::create_embedding_provider())
+                    .await;
 
             match init_result {
                 Ok((Some(provider), Some(status))) => {
@@ -533,8 +534,8 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
                                 if ws.vector_count.map_or(false, |v| v > 0)
                                     && ws.embedding_model.as_deref() != Some(model_name.as_str())
                                 {
-                                    let _ = db
-                                        .update_embedding_model(&ws.workspace_id, &model_name);
+                                    let _ =
+                                        db.update_embedding_model(&ws.workspace_id, &model_name);
                                     count += 1;
                                 }
                             }
@@ -746,22 +747,19 @@ async fn accept_loop(
         // (0 sessions), enabling immediate shutdown + restart instead of
         // serving a full session with stale code.
         let mut stream = stream;
-        let headers = match tokio::time::timeout(
-            Duration::from_secs(5),
-            read_ipc_headers(&mut stream),
-        )
-        .await
-        {
-            Ok(Ok(h)) => h,
-            Ok(Err(e)) => {
-                warn!("Failed to read IPC headers, dropping connection: {e}");
-                continue;
-            }
-            Err(_) => {
-                warn!("IPC header read timed out (5s), dropping connection");
-                continue;
-            }
-        };
+        let headers =
+            match tokio::time::timeout(Duration::from_secs(5), read_ipc_headers(&mut stream)).await
+            {
+                Ok(Ok(h)) => h,
+                Ok(Err(e)) => {
+                    warn!("Failed to read IPC headers, dropping connection: {e}");
+                    continue;
+                }
+                Err(_) => {
+                    warn!("IPC header read timed out (5s), dropping connection");
+                    continue;
+                }
+            };
 
         let workspace_path = headers.workspace;
         info!(workspace = %workspace_path.display(), "IPC headers received");

@@ -231,8 +231,9 @@ impl super::SymbolDatabase {
                {TEST_PATH_EXCLUSION}
                {NON_SOURCE_EXCLUSION}"
         );
-        let (total, documented): (i64, i64) =
-            self.conn.query_row(&sql, [], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        let (total, documented): (i64, i64) = self
+            .conn
+            .query_row(&sql, [], |row| Ok((row.get(0)?, row.get(1)?)))?;
 
         let coverage_pct = if total > 0 {
             (documented as f64 / total as f64) * 100.0

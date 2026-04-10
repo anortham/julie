@@ -66,7 +66,8 @@ pub fn classify_query(query: &str) -> QueryIntent {
 
     // Check for code-like patterns
     let has_snake_case = trimmed.contains('_') && trimmed.chars().any(|c| c.is_lowercase());
-    let has_qualified = trimmed.contains("::") || (trimmed.contains('.') && !trimmed.ends_with('.'));
+    let has_qualified =
+        trimmed.contains("::") || (trimmed.contains('.') && !trimmed.ends_with('.'));
     let has_camel_case = trimmed.chars().any(|c| c.is_uppercase())
         && trimmed.chars().any(|c| c.is_lowercase())
         && !trimmed.contains(' ');
