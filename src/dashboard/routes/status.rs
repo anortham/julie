@@ -23,6 +23,7 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
     let restart_pending = state.dashboard.is_restart_pending();
     let errors = state.dashboard.error_entries();
     let embedding_available = state.dashboard.embedding_available();
+    let embedding_initializing = state.dashboard.embedding_initializing();
 
     let workspace_count = state
         .dashboard
@@ -38,6 +39,7 @@ pub async fn index(State(state): State<AppState>) -> Result<Html<String>, Status
     context.insert("workspace_count", &workspace_count);
     context.insert("restart_pending", &restart_pending);
     context.insert("embedding_available", &embedding_available);
+    context.insert("embedding_initializing", &embedding_initializing);
     context.insert("errors", &errors);
 
     render_template(&state, "status.html", context).await
@@ -74,6 +76,7 @@ pub async fn live(State(state): State<AppState>) -> Result<impl IntoResponse, St
         // the daemon's lazy-init lifecycle this flips ~36-39s after cold
         // start.
         "embedding_available": state.dashboard.embedding_available(),
+        "embedding_initializing": state.dashboard.embedding_initializing(),
     })
     .to_string();
 

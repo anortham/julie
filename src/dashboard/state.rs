@@ -123,6 +123,15 @@ impl DashboardState {
             .is_some_and(|svc| svc.is_available())
     }
 
+    /// `true` when the embedding service is configured but still starting up.
+    /// Reads `EmbeddingService` state live. Returns `false` when no service is
+    /// configured (that's "Not configured", not "Initializing").
+    pub fn embedding_initializing(&self) -> bool {
+        self.embedding_service
+            .as_ref()
+            .is_some_and(|svc| !svc.is_settled())
+    }
+
     /// Current embedding runtime status, if available. Reads the
     /// `EmbeddingService` state live on each call. Returns `None` when no
     /// service is configured or when the service has no runtime status

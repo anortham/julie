@@ -85,6 +85,68 @@ fn test_dashboard_state_embedding_available_reflects_service_live() {
 /// → embedding_available stays false, but runtime_status surfaces if
 /// the publish carried one.
 #[test]
+    /// Dashboard must distinguish "Initializing" from "Not configured" so the
+    /// template can show a spinner instead of the misleading "Not configured".
+    #[test]
+    fn test_dashboard_state_embedding_initializing_reflects_service_lifecycle() {
+        let sessions = Arc::new(SessionTracker::new());
+        let restart_pending = Arc::new(AtomicBool::new(false));
+
+        // No service at all → not initializing (it's "Not configured")
+        let state_no_svc = DashboardState::new(
+            Arc::clone(&sessions),
+            None,
+            Arc::clone(&restart_pending),
+            Instant::now(),
+            None,
+            None,
+            50,
+        );
+        assert!(
+            !state_no_svc.embedding_initializing(),
+            "no service → not initializing, it's not configured"
+        );
+
+        // Service in Initializing state → should report initializing
+        let service = Arc::new(EmbeddingService::initializing());
+        let state = DashboardState::new(
+            Arc::clone(&sessions),
+            None,
+            Arc::clone(&restart_pending),
+            Instant::now(),
+            Some(Arc::clone(&service)),
+            None,
+            50,
+        );
+        assert!(
+            state.embedding_initializing(),
+            "service in Initializing state → embedding_initializing should be true"
+        );
+        assert!(
+            !state.embedding_available(),
+            "service in Initializing state → embedding_available should be false"
+        );
+
+        // Transition to Ready → no longer initializing
+        let provider: Arc<dyn crate::embeddings::EmbeddingProvider> =
+            Arc::new(NoopProvider::default());
+        let status = crate::embeddings::EmbeddingRuntimeStatus {
+            requested_backend: crate::embeddings::EmbeddingBackend::Unresolved,
+            resolved_backend: crate::embeddings::EmbeddingBackend::Unresolved,
+            accelerated: false,
+            degraded_reason: None,
+        };
+        service.publish_ready(provider, status);
+        assert!(
+            !state.embedding_initializing(),
+            "after publish_ready → embedding_initializing should be false"
+        );
+        assert!(
+            state.embedding_available(),
+            "after publish_ready → embedding_available should be true"
+        );
+    }
+
 fn test_dashboard_state_embedding_unavailable_with_runtime_status() {
     let sessions = Arc::new(SessionTracker::new());
     let restart_pending = Arc::new(AtomicBool::new(false));

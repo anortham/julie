@@ -54,6 +54,16 @@ setInterval(async () => {
     if (el('stat-uptime')) el('stat-uptime').textContent = d.uptime;
     if (el('stat-sessions')) el('stat-sessions').textContent = d.active_sessions;
     if (el('stat-workspaces')) el('stat-workspaces').textContent = d.workspace_count;
+    const emb = el('embedding-status');
+    if (emb) {
+      if (d.embedding_available) {
+        emb.innerHTML = '<span class="status-dot is-healthy"></span> Available';
+      } else if (d.embedding_initializing) {
+        emb.innerHTML = '<span class="status-dot is-warning"></span> <span style="color: var(--julie-warning);">Initializing</span>';
+      } else {
+        emb.innerHTML = '<span class="status-dot is-muted"></span> <span style="color: var(--julie-text-muted);">Not configured</span>';
+      }
+    }
   } catch (_) {}
 }, 5000);
 </script>

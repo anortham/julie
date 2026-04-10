@@ -14,9 +14,12 @@
       </tr>
       <tr>
         <td>Embedding Service</td>
-        <td>
+        <td id="embedding-status">
           {% if embedding_available %}
             <span class="status-dot is-healthy"></span> Available
+          {% elif embedding_initializing %}
+            <span class="status-dot is-warning"></span>
+            <span style="color: var(--julie-warning);">Initializing</span>
           {% else %}
             <span class="status-dot is-muted"></span>
             <span style="color: var(--julie-text-muted);">Not configured</span>
