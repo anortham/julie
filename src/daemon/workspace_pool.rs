@@ -257,9 +257,7 @@ impl WorkspacePool {
     /// Returns `None` when no embedding service is configured or when the
     /// service initialized without a provider (e.g., model download failed).
     fn shared_embedding_provider(&self) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
-        self.embedding_service
-            .as_ref()
-            .and_then(|svc| svc.provider().cloned())
+        self.embedding_service.as_ref().and_then(|svc| svc.provider())
     }
 
     /// Initialize a `JulieWorkspace` with its index root redirected to the pool's

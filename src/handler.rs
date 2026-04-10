@@ -330,7 +330,7 @@ impl JulieServerHandler {
     ) -> Option<Arc<dyn crate::embeddings::EmbeddingProvider>> {
         // Daemon mode: use shared service
         if let Some(ref service) = self.embedding_service {
-            return service.provider().cloned();
+            return service.provider();
         }
         // Stdio mode: use per-workspace provider
         let ws = self.workspace.read().await;
@@ -342,7 +342,7 @@ impl JulieServerHandler {
         &self,
     ) -> Option<crate::embeddings::EmbeddingRuntimeStatus> {
         if let Some(ref service) = self.embedding_service {
-            return service.runtime_status().cloned();
+            return service.runtime_status();
         }
         let ws = self.workspace.read().await;
         ws.as_ref()
