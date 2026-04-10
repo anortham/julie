@@ -25,6 +25,17 @@ pub fn create_embedding_provider() -> (
     Option<Arc<dyn EmbeddingProvider>>,
     Option<EmbeddingRuntimeStatus>,
 ) {
+    // Test-only knob: simulate a slow `create_embedding_provider` by sleeping
+    // for the specified milliseconds at the very start. Used by the daemon
+    // lazy-init integration test to verify the daemon reaches `ready` BEFORE
+    // this function returns. Production callers do not set this env var, so
+    // it's a zero-cost no-op in normal operation.
+    if let Ok(delay_ms) = std::env::var("JULIE_EMBEDDING_TEST_DELAY_MS") {
+        if let Ok(ms) = delay_ms.parse::<u64>() {
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+        }
+    }
+
     let strict_accel = std::env::var("JULIE_EMBEDDING_STRICT_ACCEL")
         .ok()
         .is_some_and(|value| strict_acceleration_enabled_from_env_value(&value));

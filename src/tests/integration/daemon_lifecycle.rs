@@ -86,6 +86,107 @@ mod tests {
     }
 
     // ---------------------------------------------------------------
+    // Lazy embedding init: daemon reaches `ready` before slow init completes
+    // ---------------------------------------------------------------
+
+    /// The whole point of the lazy-init refactor (Tasks 1-6 of the daemon
+    /// lazy embedding init plan): even when `create_embedding_provider`
+    /// blocks for a long time (Python sidecar + torch + model load on
+    /// production hardware, simulated here via `JULIE_EMBEDDING_TEST_DELAY_MS`),
+    /// the daemon must reach `ready` state and bind the IPC listener
+    /// concurrently — not after the embedding init completes.
+    ///
+    /// This test simulates a 2 second slow init and asserts that the
+    /// `daemon.state` file contains `ready` well before that 2 seconds
+    /// elapses. If anyone re-blocks the init on the critical path, this
+    /// test will fail because `ready` will be written after the 2s sleep
+    /// instead of within ~1s of PID file creation.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_daemon_reaches_ready_before_slow_embedding_init_completes() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
+        paths.ensure_dirs().expect("ensure_dirs");
+
+        // SAFETY: env vars are not thread-safe in Rust 2024. This test sets
+        // them just before spawning the daemon and removes them on cleanup.
+        // Other tests in this module use serial_test or env_guard patterns;
+        // we rely on cargo test's per-test thread isolation here.
+        unsafe {
+            // Force the embedding service to use a no-provider path so we
+            // skip the real Python sidecar machinery.
+            std::env::set_var("JULIE_EMBEDDING_PROVIDER", "none");
+            // Make `create_embedding_provider` sleep 2 seconds before
+            // returning, simulating slow Python sidecar bootstrap.
+            std::env::set_var("JULIE_EMBEDDING_TEST_DELAY_MS", "2000");
+        }
+
+        let paths_for_daemon = paths.clone();
+        let spawn_time = std::time::Instant::now();
+        let daemon_handle =
+            tokio::spawn(async move { crate::daemon::run_daemon(paths_for_daemon, 0, true).await });
+
+        // Poll for daemon.state == "ready". The new lazy-init path should
+        // reach this state in well under the 2 second slow-init sleep,
+        // because the embedding init runs in a background task spawned
+        // AFTER write_daemon_state("ready").
+        let state_path = paths.daemon_state();
+        let ready_deadline = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+        let mut ready_observed_at = None;
+        loop {
+            if let Ok(contents) = std::fs::read_to_string(&state_path) {
+                if contents.trim() == "ready" {
+                    ready_observed_at = Some(std::time::Instant::now());
+                    break;
+                }
+            }
+            if std::time::Instant::now() >= ready_deadline {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+
+        let ready_at = ready_observed_at.unwrap_or_else(|| {
+            // Clean up env before panicking.
+            unsafe {
+                std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
+                std::env::remove_var("JULIE_EMBEDDING_TEST_DELAY_MS");
+            }
+            daemon_handle.abort();
+            panic!(
+                "daemon.state did not become 'ready' within 1500ms. \
+                 Either the daemon failed to start or someone reverted the \
+                 lazy-init change and put create_embedding_provider back on \
+                 the critical path. State file: {}",
+                state_path.display()
+            );
+        });
+
+        let ready_elapsed = ready_at.duration_since(spawn_time);
+        // Critical assertion: the daemon reached ready BEFORE the simulated
+        // 2 second embedding init could possibly have completed. We check
+        // <1500ms which gives a wide margin for slow CI hardware while
+        // still definitively proving the lazy property.
+        assert!(
+            ready_elapsed < std::time::Duration::from_millis(1500),
+            "daemon reached ready in {:?}, which is too slow — \
+             create_embedding_provider should NOT be on the critical path. \
+             Expected <1500ms; the embedding init was simulated to take 2000ms.",
+            ready_elapsed
+        );
+
+        // Clean up env vars before stopping the daemon (so test cleanup
+        // doesn't see them set if the abort below races).
+        unsafe {
+            std::env::remove_var("JULIE_EMBEDDING_PROVIDER");
+            std::env::remove_var("JULIE_EMBEDDING_TEST_DELAY_MS");
+        }
+
+        daemon_handle.abort();
+        let _ = daemon_handle.await;
+        let _ = stop_daemon(&paths);
+    }
+
+    // ---------------------------------------------------------------
     // Test 2: WorkspacePool sharing across sessions
     // ---------------------------------------------------------------
 
