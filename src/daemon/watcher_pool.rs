@@ -162,6 +162,42 @@ impl WatcherPool {
         self.decrement_ref(workspace_id).await;
     }
 
+    /// Push a new embedding provider into every active watcher's shared
+    /// RwLock cell. Used by the daemon's background embedding init task to
+    /// propagate the freshly-created provider to watchers that were attached
+    /// during the daemon warmup window (when the shared service was still
+    /// `Initializing` and `shared_embedding_provider()` returned `None`).
+    ///
+    /// Without this, a watcher attached during warmup would hold `None` in
+    /// its RwLock forever, even after the daemon publishes Ready, and
+    /// incremental file changes during that watcher's lifetime would never
+    /// generate embeddings.
+    ///
+    /// Watchers attached AFTER `publish_ready` get the provider directly via
+    /// `attach`'s `embedding_provider` argument (sourced from
+    /// `WorkspacePool::shared_embedding_provider`), so this only fixes the
+    /// warmup-window race.
+    pub async fn update_all_provider(
+        &self,
+        provider: Option<Arc<dyn crate::embeddings::EmbeddingProvider>>,
+    ) -> usize {
+        let guard = self.entries.read().await;
+        let mut updated = 0usize;
+        for entry in guard.values() {
+            if let Some(ref watcher) = entry.watcher {
+                watcher.update_embedding_provider(provider.clone());
+                updated += 1;
+            }
+        }
+        if updated > 0 {
+            info!(
+                count = updated,
+                "Pushed updated embedding provider to active watchers (post-init propagation)"
+            );
+        }
+        updated
+    }
+
     /// Reap all entries whose grace deadline has passed.
     ///
     /// Stops the `IncrementalIndexer` for each reaped entry (if one exists)

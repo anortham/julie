@@ -495,6 +495,7 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     {
         let embedding_service_for_init = Arc::clone(&embedding_service);
         let daemon_db_for_init = daemon_db.clone();
+        let watcher_pool_for_init = Arc::clone(&watcher_pool_for_handlers);
         tokio::spawn(async move {
             info!("Background embedding init task started");
             let init_result = tokio::task::spawn_blocking(|| {
@@ -506,6 +507,19 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
                 Ok((Some(provider), Some(status))) => {
                     let model_name = provider.device_info().model_name.clone();
                     embedding_service_for_init.publish_ready(Arc::clone(&provider), status);
+
+                    // Propagate the provider to any watchers that were
+                    // attached during the warmup window. They start with
+                    // None in their SharedEmbeddingProvider RwLock cell
+                    // (because shared_embedding_provider() returned None
+                    // while the service was Initializing), and would never
+                    // see the new provider without this push. Watchers
+                    // attached AFTER publish_ready get the provider via
+                    // their normal attach path, so this only matters for
+                    // the warmup race.
+                    watcher_pool_for_init
+                        .update_all_provider(Some(Arc::clone(&provider)))
+                        .await;
 
                     // Sync embedding_model for workspaces that have vectors
                     // but a missing or stale model name. Previously ran on the
@@ -553,7 +567,11 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
                                 .to_string(),
                         ),
                     };
-                    embedding_service_for_init.publish_ready(provider, status);
+                    embedding_service_for_init.publish_ready(Arc::clone(&provider), status);
+                    // Propagate to warmup-window watchers (see (Some, Some) arm comment).
+                    watcher_pool_for_init
+                        .update_all_provider(Some(provider))
+                        .await;
                 }
                 Ok((None, status)) => {
                     // Provider failed to initialize or was intentionally

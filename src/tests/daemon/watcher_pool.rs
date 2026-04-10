@@ -72,3 +72,33 @@ async fn test_reaper_leaves_entries_within_grace() {
     // Entry should still be there
     assert!(pool.has_grace_deadline("ws1").await);
 }
+
+/// `update_all_provider` on an empty pool should be a no-op and return 0,
+/// not panic. The daemon's background init task always calls this on
+/// publish_ready, even if no sessions have connected yet.
+#[tokio::test]
+async fn test_update_all_provider_empty_pool() {
+    let pool = WatcherPool::new(Duration::from_secs(300));
+    let count = pool.update_all_provider(None).await;
+    assert_eq!(count, 0, "empty pool should return 0 watchers updated");
+}
+
+/// `update_all_provider` should also be a no-op when entries exist via
+/// `increment_ref` (which doesn't create the inner `IncrementalIndexer`).
+/// The actual file watcher only gets created on `attach`, which requires
+/// a real workspace + db. The plain `increment_ref` path leaves
+/// `entry.watcher == None`, so update_all_provider should skip those.
+#[tokio::test]
+async fn test_update_all_provider_skips_entries_without_watcher() {
+    let pool = WatcherPool::new(Duration::from_secs(300));
+    pool.increment_ref("ws1").await;
+    pool.increment_ref("ws2").await;
+
+    // Both entries exist but neither has an IncrementalIndexer (no attach
+    // was called). update_all_provider should iterate cleanly and return 0.
+    let count = pool.update_all_provider(None).await;
+    assert_eq!(
+        count, 0,
+        "entries without an IncrementalIndexer should not be counted"
+    );
+}
