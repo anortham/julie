@@ -178,6 +178,29 @@ For project-level only, use `--scope project` or omit the scope flag. When using
 > `${workspaceFolder}` is a VS Code variable that resolves to the root of your open project.
 > All `env` values are optional — see the [env options table](#available-env-options) below for defaults.
 
+**Codex CLI** (`~/.codex/config.toml` or `.codex/config.toml`):
+
+```toml
+[mcp_servers.julie]
+command = "/path/to/julie-server"
+```
+
+> Codex CLI usually starts Julie from your current project directory, so `JULIE_WORKSPACE` is not needed in the normal case.
+> If you built Julie from source, `command` will usually be `/path/to/julie/target/release/julie-server`.
+
+**Codex Desktop** (`.codex/config.toml` in the repo root):
+
+```toml
+[mcp_servers.julie]
+command = "/path/to/julie-server"
+env = { JULIE_WORKSPACE = "/absolute/path/to/your/project" }
+```
+
+> Put this file at `.codex/config.toml` in the project root if you want a project-scoped Codex Desktop setup.
+> Codex loads project config only for trusted projects, and project config overrides `~/.codex/config.toml`.
+> Codex Desktop may start Julie with an unreliable working directory, so set `JULIE_WORKSPACE` explicitly here.
+> Use an absolute path for `JULIE_WORKSPACE`. Codex does not document `${workspaceFolder}`-style interpolation for this config.
+
 **Cursor / Windsurf / Other MCP Clients:**
 
 ```json

@@ -351,7 +351,7 @@
     'opencode': '{\n  "mcp": {\n    "julie": {\n      "type": "local",\n      "command": ["/path/to/julie-server"],\n      "enabled": true\n    }\n  }\n}',
     'cursor': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
     'gemini': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
-    'codex': '{\n  "mcpServers": {\n    "julie": {\n      "command": "/path/to/julie-server"\n    }\n  }\n}',
+    'codex': '# Codex Desktop project config (.codex/config.toml)\n[mcp_servers.julie]\ncommand = "/path/to/julie-server"\nenv = { JULIE_WORKSPACE = "/absolute/path/to/your/project" }',
   };
 
   document.querySelectorAll('.copy-btn').forEach((btn) => {
