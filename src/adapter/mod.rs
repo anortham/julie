@@ -10,13 +10,19 @@ pub mod launcher;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use tokio::io::{AsyncWriteExt, copy};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, copy};
 use tracing::{error, info};
 
 use crate::daemon::ipc::{IpcClientStream, IpcConnector};
 use crate::paths::DaemonPaths;
 
 use self::launcher::DaemonLauncher;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ForwardOutcome {
+    SessionEnded,
+    ImmediateDaemonDisconnect,
+}
 
 /// Run the adapter: auto-start daemon, connect, forward bytes.
 ///
@@ -38,51 +44,62 @@ pub async fn run_adapter(workspace_root: PathBuf) -> Result<()> {
     let paths = DaemonPaths::new();
     let launcher = DaemonLauncher::new(paths.clone());
 
-    // Retry loop for initial connection. The daemon may reject our connection
-    // if it detects a stale binary (rebuilt since daemon started). In that case
-    // it shuts down before accepting, so connect_and_handshake fails. We wait
-    // briefly for the old daemon to exit, then re-launch and reconnect.
+    // Retry loop for initial connection and immediate restart handoffs. The
+    // daemon may reject our connection before handshake, or it may accept the
+    // connection, read our headers, decide it is stale, and close immediately
+    // so a fresh daemon can be spawned from this binary.
     const MAX_RETRIES: u32 = 2;
-    let mut stream = None;
     for attempt in 0..=MAX_RETRIES {
         tokio::task::block_in_place(|| launcher.ensure_daemon_ready())
             .context("Failed to ensure daemon is ready")?;
 
-        match connect_and_handshake(&paths, &workspace_root).await {
-            Ok(s) => {
-                stream = Some(s);
-                break;
-            }
+        let stream = match connect_and_handshake(&paths, &workspace_root).await {
+            Ok(s) => s,
             Err(e) => {
                 if attempt < MAX_RETRIES {
                     info!(
                         "Connection attempt {} failed ({}), retrying after daemon restart...",
-                        attempt + 1, e
+                        attempt + 1,
+                        e
                     );
                     // Give the old daemon time to fully shut down and release
                     // the socket before we try to spawn a new one.
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    continue;
                 } else {
                     return Err(e).context("Failed to connect to daemon after retries");
                 }
             }
+        };
+
+        info!("Adapter connected to daemon, forwarding bytes");
+
+        match forward_bytes(stream).await {
+            Ok(ForwardOutcome::SessionEnded) => {
+                info!("Adapter session ended normally");
+                return Ok(());
+            }
+            Ok(ForwardOutcome::ImmediateDaemonDisconnect) => {
+                if attempt < MAX_RETRIES {
+                    info!("Daemon closed immediately after handshake, retrying after restart...");
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    continue;
+                }
+
+                anyhow::bail!(
+                    "Daemon closed immediately after handshake after {} attempts",
+                    MAX_RETRIES + 1
+                );
+            }
+            Err(e) => {
+                error!("Adapter connection lost: {}", e);
+                // Exit cleanly; the MCP client will restart the adapter
+                return Ok(());
+            }
         }
     }
-    let stream = stream.expect("loop guarantees stream is set on success");
 
-    info!("Adapter connected to daemon, forwarding bytes");
-
-    match forward_bytes(stream).await {
-        Ok(()) => {
-            info!("Adapter session ended normally");
-            Ok(())
-        }
-        Err(e) => {
-            error!("Adapter connection lost: {}", e);
-            // Exit cleanly; the MCP client will restart the adapter
-            Ok(())
-        }
-    }
+    unreachable!("retry loop either returns success or exits with an error")
 }
 
 /// Connect to the daemon IPC endpoint and send the workspace header.
@@ -117,17 +134,51 @@ async fn connect_and_handshake(
 /// last message or exited), we shut down the IPC write side to signal the
 /// daemon, then keep draining daemon-to-stdout until the daemon is done.
 /// When stdout closes (client gone), we stop immediately.
-async fn forward_bytes(stream: IpcClientStream) -> Result<()> {
+async fn forward_bytes(stream: IpcClientStream) -> Result<ForwardOutcome> {
     let (mut ipc_read, mut ipc_write) = tokio::io::split(stream);
     let mut stdin = tokio::io::stdin();
     let mut stdout = tokio::io::stdout();
 
+    forward_streams_inner(&mut ipc_read, &mut ipc_write, &mut stdin, &mut stdout).await
+}
+
+pub(crate) async fn forward_streams<S, In, Out>(
+    stream: S,
+    stdin: &mut In,
+    stdout: &mut Out,
+) -> Result<ForwardOutcome>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    In: AsyncRead + Unpin,
+    Out: AsyncWrite + Unpin,
+{
+    let (mut ipc_read, mut ipc_write) = tokio::io::split(stream);
+    forward_streams_inner(&mut ipc_read, &mut ipc_write, stdin, stdout).await
+}
+
+async fn forward_streams_inner<IpcRead, IpcWrite, In, Out>(
+    ipc_read: &mut IpcRead,
+    ipc_write: &mut IpcWrite,
+    stdin: &mut In,
+    stdout: &mut Out,
+) -> Result<ForwardOutcome>
+where
+    IpcRead: AsyncRead + Unpin,
+    IpcWrite: AsyncWrite + Unpin,
+    In: AsyncRead + Unpin,
+    Out: AsyncWrite + Unpin,
+{
+    enum BranchOutcome {
+        SessionEnded,
+        ImmediateDaemonDisconnect,
+    }
+
     // Run both directions concurrently with tokio::select!, but when
     // stdin->daemon finishes, don't return immediately. Instead, fall
     // through to drain the daemon->stdout direction.
-    let stdout_result;
+    let outcome;
     tokio::select! {
-        result = copy(&mut stdin, &mut ipc_write) => {
+        result = copy(stdin, ipc_write) => {
             match result {
                 Ok(bytes) => info!("stdin->daemon forwarding ended ({} bytes)", bytes),
                 Err(e) => {
@@ -143,26 +194,40 @@ async fn forward_bytes(stream: IpcClientStream) -> Result<()> {
             // Signal daemon that no more input is coming
             let _ = ipc_write.shutdown().await;
             // Now drain the daemon's remaining output to stdout
-            stdout_result = copy(&mut ipc_read, &mut stdout).await;
+            outcome = match copy(ipc_read, stdout).await {
+                Ok(bytes) => {
+                    info!("daemon->stdout forwarding ended ({} bytes)", bytes);
+                    BranchOutcome::SessionEnded
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                    info!("stdout closed (client exited)");
+                    BranchOutcome::SessionEnded
+                }
+                Err(e) => return Err(anyhow::anyhow!("daemon->stdout forwarding error: {}", e)),
+            };
         }
-        result = copy(&mut ipc_read, &mut stdout) => {
+        result = copy(ipc_read, stdout) => {
             // Daemon closed its side or stdout broke. Nothing more to do.
-            stdout_result = result;
+            outcome = match result {
+                Ok(0) => BranchOutcome::ImmediateDaemonDisconnect,
+                Ok(bytes) => {
+                    info!("daemon->stdout forwarding ended ({} bytes)", bytes);
+                    BranchOutcome::SessionEnded
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                    info!("stdout closed (client exited)");
+                    BranchOutcome::SessionEnded
+                }
+                Err(e) => return Err(anyhow::anyhow!("daemon->stdout forwarding error: {}", e)),
+            };
         }
     }
 
-    match stdout_result {
-        Ok(bytes) => {
-            info!("daemon->stdout forwarding ended ({} bytes)", bytes);
-            Ok(())
-        }
-        Err(e) => {
-            if e.kind() == std::io::ErrorKind::BrokenPipe {
-                info!("stdout closed (client exited)");
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("daemon->stdout forwarding error: {}", e))
-            }
+    match outcome {
+        BranchOutcome::SessionEnded => Ok(ForwardOutcome::SessionEnded),
+        BranchOutcome::ImmediateDaemonDisconnect => {
+            info!("daemon closed immediately after handshake");
+            Ok(ForwardOutcome::ImmediateDaemonDisconnect)
         }
     }
 }
