@@ -326,40 +326,17 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         backfill_all_vector_counts(db, &paths.indexes_dir());
     }
 
-    // Initialize shared embedding service (blocking: model load / sidecar bootstrap)
-    let embedding_service = Arc::new(
-        tokio::task::spawn_blocking(|| EmbeddingService::initialize())
-            .await
-            .context("Embedding service initialization panicked")?,
-    );
-    info!(
-        available = embedding_service.is_available(),
-        "Shared embedding service initialized"
-    );
-
-    // Sync embedding_model for workspaces that have vectors but a missing or
-    // stale model name. Runs after embedding service init so we know the
-    // current model. Covers both fresh backfill (None) and model changes
-    // (e.g. jina-code -> CodeRankEmbed) that daemon.db missed.
-    if let Some(ref db) = daemon_db {
-        if let Some(provider) = embedding_service.provider() {
-            let model = provider.device_info().model_name.clone();
-            if let Ok(workspaces) = db.list_workspaces() {
-                let mut count = 0;
-                for ws in &workspaces {
-                    if ws.vector_count.map_or(false, |v| v > 0)
-                        && ws.embedding_model.as_deref() != Some(model.as_str())
-                    {
-                        let _ = db.update_embedding_model(&ws.workspace_id, &model);
-                        count += 1;
-                    }
-                }
-                if count > 0 {
-                    info!(count, model, "Synced embedding_model for workspaces");
-                }
-            }
-        }
-    }
+    // Construct the shared embedding service in `Initializing` state. The
+    // real provider bootstrap (Python sidecar + PyTorch + CodeRankEmbed model
+    // load, ~36-39s on typical hardware) runs as a background task spawned
+    // below, AFTER the IPC listener is bound and `ready` state is published.
+    // This keeps the daemon off the critical path so MCP clients (e.g.
+    // Claude Code, whose MCP_TIMEOUT defaults to 30s) don't time out on the
+    // first connection after a cold start. See
+    // docs/plans/2026-04-09-daemon-lazy-embedding-init-design.md for the
+    // full rationale.
+    let embedding_service = Arc::new(EmbeddingService::initializing());
+    info!("Shared embedding service constructed in Initializing state; background init will start after IPC bind");
 
     // Capture binary mtime at startup for stale-binary detection.
     // If the binary is rebuilt while the daemon is running, the next session
@@ -461,11 +438,18 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     let dashboard_url = format!("http://localhost:{}", actual_port);
     info!(port = actual_port, url = %dashboard_url, "Dashboard HTTP server started");
 
-    // Auto-open browser unless suppressed
+    // Auto-open browser unless suppressed. Runs in a background task so
+    // `opener::open` (which shells out to `cmd /c start <url>` on Windows
+    // and can take 1-3s on a cold system) doesn't block the IPC listener
+    // bind below. Browser launch is purely a UX nicety; it has no bearing
+    // on daemon readiness.
     if !no_dashboard {
-        if let Err(e) = opener::open(&dashboard_url) {
-            warn!("Failed to open browser: {}", e);
-        }
+        let url = dashboard_url.clone();
+        tokio::spawn(async move {
+            if let Err(e) = opener::open(&url) {
+                warn!("Failed to open browser: {}", e);
+            }
+        });
     }
 
     // Spawn HTTP server as background task
@@ -489,6 +473,113 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
         "Daemon listening for IPC connections"
     );
     write_daemon_state(&paths.daemon_state(), "ready");
+
+    // Spawn the background embedding provider initialization task. This runs
+    // concurrently with the accept loop so the daemon becomes IPC-ready in
+    // <2s even though `create_embedding_provider` itself takes ~36-39s
+    // (Python sidecar + torch + model load). Downstream callers that need
+    // the provider (spawn_workspace_embedding, nl_embeddings, watchers, the
+    // dashboard) are all daemon-mode aware and wait on
+    // `EmbeddingService::wait_until_settled` with a bounded timeout rather
+    // than hanging indefinitely. See Task 2 of
+    // docs/plans/2026-04-09-daemon-lazy-embedding-init.md for the rationale
+    // and failure-mode analysis, especially the `Err(join_err)` arm — that
+    // arm is critical: without it, a panicking init task would leave the
+    // service stuck in `Initializing` forever and every future
+    // `wait_until_settled` would time out rather than report the real
+    // failure.
+    {
+        let embedding_service_for_init = Arc::clone(&embedding_service);
+        let daemon_db_for_init = daemon_db.clone();
+        tokio::spawn(async move {
+            info!("Background embedding init task started");
+            let init_result = tokio::task::spawn_blocking(|| {
+                crate::embeddings::create_embedding_provider()
+            })
+            .await;
+
+            match init_result {
+                Ok((Some(provider), Some(status))) => {
+                    let model_name = provider.device_info().model_name.clone();
+                    embedding_service_for_init.publish_ready(Arc::clone(&provider), status);
+
+                    // Sync embedding_model for workspaces that have vectors
+                    // but a missing or stale model name. Previously ran on the
+                    // critical path right after EmbeddingService::initialize;
+                    // now it runs here, once the background init actually
+                    // produces a provider.
+                    if let Some(ref db) = daemon_db_for_init {
+                        if let Ok(workspaces) = db.list_workspaces() {
+                            let mut count = 0;
+                            for ws in &workspaces {
+                                if ws.vector_count.map_or(false, |v| v > 0)
+                                    && ws.embedding_model.as_deref() != Some(model_name.as_str())
+                                {
+                                    let _ = db
+                                        .update_embedding_model(&ws.workspace_id, &model_name);
+                                    count += 1;
+                                }
+                            }
+                            if count > 0 {
+                                info!(
+                                    count,
+                                    model = %model_name,
+                                    "Synced embedding_model for workspaces"
+                                );
+                            }
+                        }
+                    }
+                }
+                Ok((Some(provider), None)) => {
+                    // create_embedding_provider invariants say this should
+                    // never happen — success always produces a runtime
+                    // status. Handle it defensively by publishing Ready
+                    // with a synthesized status so the provider is still
+                    // usable.
+                    warn!(
+                        "create_embedding_provider returned a provider without runtime status; \
+                         publishing Ready with synthesized status"
+                    );
+                    let status = crate::embeddings::EmbeddingRuntimeStatus {
+                        requested_backend: crate::embeddings::EmbeddingBackend::Unresolved,
+                        resolved_backend: crate::embeddings::EmbeddingBackend::Unresolved,
+                        accelerated: false,
+                        degraded_reason: Some(
+                            "provider returned without runtime status (invariant violation)"
+                                .to_string(),
+                        ),
+                    };
+                    embedding_service_for_init.publish_ready(provider, status);
+                }
+                Ok((None, status)) => {
+                    // Provider failed to initialize or was intentionally
+                    // disabled (e.g. JULIE_EMBEDDING_PROVIDER=none). Status
+                    // is Some on failure, None on explicit disable.
+                    let reason = status
+                        .as_ref()
+                        .and_then(|s| s.degraded_reason.clone())
+                        .unwrap_or_else(|| {
+                            "embedding provider disabled or failed to initialize".to_string()
+                        });
+                    embedding_service_for_init.publish_unavailable(reason, status);
+                }
+                Err(join_err) => {
+                    // The spawn_blocking task panicked or was cancelled.
+                    // CRITICAL: publish Unavailable so callers parked on
+                    // wait_until_settled see the failure instead of hanging
+                    // until their timeout elapses.
+                    warn!(
+                        error = ?join_err,
+                        "Background embedding init task panicked or was cancelled; publishing Unavailable"
+                    );
+                    embedding_service_for_init.publish_unavailable(
+                        format!("init task panicked/cancelled: {}", join_err),
+                        None,
+                    );
+                }
+            }
+        });
+    }
 
     // Accept loop with graceful shutdown
     let result = tokio::select! {
