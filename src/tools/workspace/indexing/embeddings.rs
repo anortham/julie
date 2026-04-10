@@ -27,11 +27,38 @@ pub(crate) async fn spawn_workspace_embedding(
     // Fast path: check handler (daemon shared service or workspace provider)
     let provider = if let Some(p) = handler.embedding_provider().await {
         p
-    } else if handler.embedding_service.is_some() {
-        // Daemon mode but no provider available (e.g., init failed). Don't
-        // attempt the stdio lazy-init path; just skip embeddings.
-        debug!("Daemon mode but no embedding provider available, skipping workspace embedding");
-        return 0;
+    } else if let Some(svc) = handler.embedding_service.as_ref() {
+        // Daemon mode. The shared service may still be in `Initializing`
+        // (background bootstrap of the Python sidecar + torch + model load
+        // takes ~36-39s on cold start). Wait up to 120s for it to settle
+        // before falling back. 120s is intentionally generous: this is a
+        // background indexing task, not a user-facing query, and skipping
+        // embedding for a freshly-indexed workspace is far worse than
+        // waiting. If the service genuinely fails (publishes Unavailable),
+        // we degrade to keyword-only cleanly.
+        use crate::daemon::embedding_service::EmbeddingServiceSettled;
+        match svc
+            .wait_until_settled(std::time::Duration::from_secs(120))
+            .await
+        {
+            EmbeddingServiceSettled::Ready(p) => {
+                debug!("Daemon embedding service became Ready; proceeding with workspace embedding");
+                p
+            }
+            EmbeddingServiceSettled::Unavailable(reason) => {
+                debug!(
+                    %reason,
+                    "Daemon embedding service settled to Unavailable; skipping workspace embedding"
+                );
+                return 0;
+            }
+            EmbeddingServiceSettled::Timeout => {
+                warn!(
+                    "Daemon embedding service did not settle within 120s; skipping workspace embedding"
+                );
+                return 0;
+            }
+        }
     } else {
         // Stdio mode: provider not yet initialized. Do it now (deferred from
         // workspace init to avoid blocking symbol extraction and Tantivy indexing).
