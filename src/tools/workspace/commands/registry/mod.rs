@@ -13,4 +13,5 @@ pub use super::ManageWorkspaceTool;
 mod add_remove;
 mod health;
 mod list_clean;
+mod open;
 mod refresh_stats;

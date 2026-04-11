@@ -1,6 +1,7 @@
 use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
+use crate::tools::workspace::paths::daemon_workspace_index_dir;
 use crate::workspace::registry::generate_workspace_id;
 use anyhow::Result;
 use tracing::{debug, info, warn};
@@ -13,7 +14,7 @@ impl ManageWorkspaceTool {
         path: &str,
         name: Option<String>,
     ) -> Result<CallToolResult> {
-        info!("Adding reference workspace: {}", path);
+        info!("Registering reference workspace pairing: {}", path);
 
         // Daemon mode: use DaemonDatabase for registry operations
         if let Some(ref db) = handler.daemon_db {
@@ -39,27 +40,29 @@ impl ManageWorkspaceTool {
                 .unwrap_or(&ref_workspace_id);
             let display_name = name.unwrap_or_else(|| dir_name.to_string());
 
-            // Instant attach: if already indexed, just record the reference relationship
+            // If already indexed, record the pairing metadata without activating it.
             if let Ok(Some(existing)) = db.get_workspace(&ref_workspace_id) {
                 if existing.status == "ready" {
                     debug!(
-                        "Reference workspace {} already indexed, instant attach",
+                        "Reference workspace {} already indexed, recording pairing metadata",
                         ref_workspace_id
                     );
                     if let Err(e) = db.add_reference(primary_workspace_id, &ref_workspace_id) {
                         warn!("Failed to record reference relationship: {}", e);
                     }
                     let message = format!(
-                        "Reference workspace attached (already indexed)!\n\
+                        "Reference workspace pairing recorded.\n\
                          Workspace ID: {}\n\
                          Display Name: {}\n\
                          Path: {}\n\
-                         Files: {} | Symbols: {}",
+                         Files: {} | Symbols: {}\n\
+                         Use manage_workspace(operation=\"open\", workspace_id=\"{}\") to activate it in this session.",
                         ref_workspace_id,
                         display_name,
                         existing.path,
                         existing.file_count.unwrap_or(0),
                         existing.symbol_count.unwrap_or(0),
+                        ref_workspace_id,
                     );
                     return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                 }
@@ -103,17 +106,19 @@ impl ManageWorkspaceTool {
                         .await;
 
                     let mut message = format!(
-                        "Reference workspace added and indexed!\n\
+                        "Reference workspace registered and paired.\n\
                          Workspace ID: {}\n\
                          Display Name: {}\n\
                          Path: {}\n\
-                         {} files, {} symbols, {} relationships",
+                         {} files, {} symbols, {} relationships\n\
+                         Use manage_workspace(operation=\"open\", workspace_id=\"{}\") to activate it in this session.",
                         ref_workspace_id,
                         display_name,
                         path_str,
                         result.files_total,
                         result.symbols_total,
                         result.relationships_total,
+                        ref_workspace_id,
                     );
                     if embed_count > 0 {
                         message.push_str(&format!(
@@ -128,7 +133,7 @@ impl ManageWorkspaceTool {
                         warn!("Failed to update workspace status to error: {}", ue);
                     }
                     let message = format!(
-                        "Reference workspace registered but indexing failed!\n\
+                        "Reference workspace pairing recorded, but indexing failed.\n\
                          Workspace ID: {}\n\
                          Display Name: {}\n\
                          Path: {}\n\
@@ -160,18 +165,9 @@ impl ManageWorkspaceTool {
 
             match db.get_workspace(workspace_id) {
                 Ok(Some(ws_row)) => {
-                    // Delete index directory. In daemon mode, ref workspace indexes live
-                    // under the primary workspace's index root (workspace_index_path).
-                    if let Ok(Some(primary_ws)) = handler.get_workspace().await {
-                        // indexes_root_path() in daemon mode = ~/.julie/indexes/{primary_id}
-                        // Ref workspace index = indexes_root_path()/{ref_id}/db
-                        let workspace_index_path =
-                            primary_ws.indexes_root_path().join(workspace_id).join("db");
-                        let index_dir = workspace_index_path
-                            .parent()
-                            .unwrap_or(&workspace_index_path);
-                        if index_dir.exists() {
-                            match tokio::fs::remove_dir_all(index_dir).await {
+                    match daemon_workspace_index_dir(workspace_id) {
+                        Ok(index_dir) if index_dir.exists() => {
+                            match tokio::fs::remove_dir_all(&index_dir).await {
                                 Ok(()) => {
                                     info!("Deleted workspace index for {}", workspace_id);
                                 }
@@ -183,9 +179,16 @@ impl ManageWorkspaceTool {
                                 }
                             }
                         }
+                        Ok(_) => {}
+                        Err(e) => {
+                            warn!(
+                                "Failed to resolve daemon index directory for {}: {}",
+                                workspace_id, e
+                            );
+                        }
                     }
 
-                    // Remove reference relationship
+                    // Remove pairing metadata for the current workspace if present.
                     if let Err(e) = db.remove_reference(primary_workspace_id, workspace_id) {
                         warn!("Failed to remove reference relationship: {}", e);
                     }

@@ -84,10 +84,12 @@ pub mod tools {
 
     pub mod workspace {
         pub mod discovery; // Vendor pattern detection and .julieignore auto-generation tests
+        pub mod global_targeting; // Explicit workspace open/activation tests
         pub mod index_embedding_tests; // Embedding pipeline fixes: embedding_count reflects DB total
         pub mod isolation; // Workspace isolation tests
         pub mod management_token; // ManageWorkspaceTool token optimization tests
         pub mod mod_tests; // Workspace module functionality tests
+        pub mod refresh_routing; // Primary force-refresh should reuse full index path
         pub mod registry; // Workspace registry tests
         pub mod resolver; // Cross-file relationship resolution tests
         pub mod utils; // Workspace utilities tests // Registry service tests

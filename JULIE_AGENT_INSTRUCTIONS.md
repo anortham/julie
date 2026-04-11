@@ -16,7 +16,7 @@
 - `fast_refs`: All references to a symbol. Required before any change. Use `reference_kind` to filter.
 - `get_context`: Token-budgeted area orientation (pivots + neighbors). Use at start of task.
 - `rename_symbol`: Workspace-wide rename. Always preview with `dry_run=true` first.
-- `manage_workspace`: Index, add/remove references, health check. First action in new workspace: `operation="index"`.
+- `manage_workspace`: Index, open, add/remove workspace metadata, list, refresh, stats, and health-check workspaces. For cross-workspace work in daemon mode, call `operation="open"` first, then pass the returned `workspace_id` to search, navigation, and editing tools.
 - `edit_file`: Edit a file without reading it first. DMP fuzzy matching for old_text. Always `dry_run=true` first.
 - `edit_symbol`: Edit a symbol by name. Operations: replace, insert_after, insert_before. Always `dry_run=true` first.
 - `query_metrics`: Code health (security/change risk, test coverage), session stats, trend history.

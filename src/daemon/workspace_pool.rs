@@ -92,13 +92,7 @@ impl WorkspacePool {
         };
 
         if let Some(ws) = cached_ws {
-            if let Some(ref db) = self.daemon_db {
-                let db = Arc::clone(db);
-                let id = workspace_id.to_string();
-                tokio::task::spawn_blocking(move || {
-                    let _ = db.increment_session_count(&id);
-                });
-            }
+            self.update_session_count(workspace_id, true).await;
             if let Some(ref wp) = self.watcher_pool {
                 let provider = self.shared_embedding_provider();
                 if let Err(e) = wp.attach(workspace_id, &ws, provider).await {
@@ -118,13 +112,7 @@ impl WorkspacePool {
         if let Some(entry) = guard.get(workspace_id) {
             let ws = Arc::clone(&entry.workspace);
             drop(guard);
-            if let Some(ref db) = self.daemon_db {
-                let db = Arc::clone(db);
-                let id = workspace_id.to_string();
-                tokio::task::spawn_blocking(move || {
-                    let _ = db.increment_session_count(&id);
-                });
-            }
+            self.update_session_count(workspace_id, true).await;
             if let Some(ref wp) = self.watcher_pool {
                 let provider = self.shared_embedding_provider();
                 if let Err(e) = wp.attach(workspace_id, &ws, provider).await {
@@ -163,13 +151,7 @@ impl WorkspacePool {
             .with_context(|| format!("Failed to initialize workspace '{workspace_id}' in pool"))?;
 
         // Increment only after successful init — safe to count now.
-        if let Some(ref db) = self.daemon_db {
-            let db = Arc::clone(db);
-            let id = workspace_id.to_string();
-            tokio::task::spawn_blocking(move || {
-                let _ = db.increment_session_count(&id);
-            });
-        }
+        self.update_session_count(workspace_id, true).await;
 
         let ws = Arc::new(workspace);
         guard.insert(
@@ -234,15 +216,43 @@ impl WorkspacePool {
     /// Session count is clamped to 0 (never goes negative). Watcher ref
     /// decrement starts the grace period when the last session disconnects.
     pub async fn disconnect_session(&self, workspace_id: &str) {
-        if let Some(ref db) = self.daemon_db {
-            let db = Arc::clone(db);
-            let id = workspace_id.to_string();
-            tokio::task::spawn_blocking(move || {
-                let _ = db.decrement_session_count(&id);
-            });
-        }
+        self.update_session_count(workspace_id, false).await;
         if let Some(ref wp) = self.watcher_pool {
             wp.detach(workspace_id).await;
+        }
+    }
+
+    async fn update_session_count(&self, workspace_id: &str, increment: bool) {
+        let Some(db) = self.daemon_db.as_ref().map(Arc::clone) else {
+            return;
+        };
+        let workspace_id = workspace_id.to_string();
+        let workspace_id_for_log = workspace_id.clone();
+        let op = if increment { "increment" } else { "decrement" };
+
+        let result = tokio::task::spawn_blocking(move || {
+            if increment {
+                db.increment_session_count(&workspace_id)
+            } else {
+                db.decrement_session_count(&workspace_id)
+            }
+        })
+        .await;
+
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                warn!(
+                    workspace_id = workspace_id_for_log,
+                    "Failed to {op} workspace session count in daemon.db: {e}"
+                );
+            }
+            Err(e) => {
+                warn!(
+                    workspace_id = workspace_id_for_log,
+                    "Failed to run session count {op} in background task: {e}"
+                );
+            }
         }
     }
 

@@ -1,10 +1,144 @@
+use super::super::index::indexing_lock_for_path;
 use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
 use tracing::{info, warn};
 
+pub(crate) struct RefreshWorkspaceSuccess {
+    pub(crate) workspace_id: String,
+    pub(crate) workspace_path: String,
+    pub(crate) status: String,
+    pub(crate) files_total: usize,
+    pub(crate) symbols_total: usize,
+    pub(crate) relationships_total: usize,
+    pub(crate) embed_count: usize,
+}
+
+pub(crate) enum RefreshWorkspaceOutcome {
+    Success(RefreshWorkspaceSuccess),
+    Failure(String),
+}
+
 impl ManageWorkspaceTool {
+    pub(crate) async fn refresh_workspace_internal(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_id: &str,
+    ) -> Result<RefreshWorkspaceOutcome> {
+        let Some(ref db) = handler.daemon_db else {
+            let message = format!(
+                "Workspace refresh requires daemon mode. Start the daemon with `julie daemon`.\n\
+                 (Workspace ID: {})",
+                workspace_id
+            );
+            return Ok(RefreshWorkspaceOutcome::Failure(message));
+        };
+
+        match db.get_workspace(workspace_id) {
+            Ok(Some(ws_row)) => {
+                let workspace_path = std::path::PathBuf::from(&ws_row.path);
+                let canonical_path = workspace_path
+                    .canonicalize()
+                    .unwrap_or_else(|_| workspace_path.clone());
+                let index_lock = indexing_lock_for_path(&canonical_path);
+                let _index_guard = index_lock.lock().await;
+                info!("Starting re-indexing of workspace: {}", workspace_id);
+
+                let force = self.force.unwrap_or(false);
+                let ref_watcher_id = if force && handler.workspace_id.as_deref() != Some(workspace_id)
+                {
+                    Some(workspace_id.to_string())
+                } else {
+                    None
+                };
+                if let (Some(id), Some(pool)) = (&ref_watcher_id, &handler.watcher_pool) {
+                    pool.pause_workspace(id).await;
+                }
+
+                let index_result = self.index_workspace_files(handler, &workspace_path, force).await;
+
+                if let (Some(id), Some(pool)) = (&ref_watcher_id, &handler.watcher_pool) {
+                    pool.resume_workspace(id).await;
+                }
+
+                match index_result {
+                    Ok(result) => {
+                        if let Err(e) = db.update_workspace_stats(
+                            workspace_id,
+                            result.symbols_total as i64,
+                            result.files_total as i64,
+                            None,
+                            None,
+                            Some(result.duration_ms),
+                        ) {
+                            warn!("Failed to update workspace stats: {}", e);
+                        }
+
+                        let db_mutated = result.files_processed > 0 || result.orphans_cleaned > 0;
+                        let embed_count = if db_mutated || force {
+                            if force {
+                                let mut tasks = handler.embedding_tasks.lock().await;
+                                if let Some((cancel_flag, handle)) = tasks.remove(workspace_id) {
+                                    info!(
+                                        "Cancelling running embedding pipeline for force refresh"
+                                    );
+                                    cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                    handle.abort();
+                                }
+                            }
+
+                            crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
+                                handler,
+                                workspace_id.to_string(),
+                            )
+                            .await
+                        } else {
+                            0
+                        };
+
+                        let status = if result.files_processed == 0 {
+                            "Already up-to-date.".to_string()
+                        } else if force {
+                            format!("Full re-index: {} files processed.", result.files_processed)
+                        } else {
+                            format!("{} changed files re-indexed.", result.files_processed)
+                        };
+
+                        Ok(RefreshWorkspaceOutcome::Success(RefreshWorkspaceSuccess {
+                            workspace_id: workspace_id.to_string(),
+                            workspace_path: ws_row.path,
+                            status,
+                            files_total: result.files_total,
+                            symbols_total: result.symbols_total,
+                            relationships_total: result.relationships_total,
+                            embed_count,
+                        }))
+                    }
+                    Err(e) => {
+                        let message = format!(
+                            "Workspace Refresh Failed\n\
+                            Workspace: {}\n\
+                            Path: {}\n\
+                            Error: {}\n\
+                            Check that the path exists and contains readable files",
+                            workspace_id, ws_row.path, e,
+                        );
+                        Ok(RefreshWorkspaceOutcome::Failure(message))
+                    }
+                }
+            }
+            Ok(None) => Ok(RefreshWorkspaceOutcome::Failure(format!(
+                "Workspace not found: {}",
+                workspace_id
+            ))),
+            Err(e) => Ok(RefreshWorkspaceOutcome::Failure(format!(
+                "Failed to look up workspace: {}",
+                e
+            ))),
+        }
+    }
+
     /// Handle refresh command - re-index workspace
     pub(crate) async fn handle_refresh_command(
         &self,
@@ -12,123 +146,39 @@ impl ManageWorkspaceTool {
         workspace_id: &str,
     ) -> Result<CallToolResult> {
         info!("Refreshing workspace: {}", workspace_id);
-
-        // Daemon mode: use DaemonDatabase
-        if let Some(ref db) = handler.daemon_db {
-            match db.get_workspace(workspace_id) {
-                Ok(Some(ws_row)) => {
-                    let workspace_path = std::path::PathBuf::from(&ws_row.path);
-                    info!("Starting re-indexing of workspace: {}", workspace_id);
-
-                    let force = self.force.unwrap_or(false);
-                    match self
-                        .index_workspace_files(handler, &workspace_path, force)
-                        .await
-                    {
-                        Ok(result) => {
-                            if let Err(e) = db.update_workspace_stats(
-                                workspace_id,
-                                result.symbols_total as i64,
-                                result.files_total as i64,
-                                None,
-                                None,
-                                Some(result.duration_ms),
-                            ) {
-                                warn!("Failed to update workspace stats: {}", e);
-                            }
-
-                            // Only run embedding pipeline when the DB actually mutated.
-                            // files_processed: new/modified files re-indexed
-                            // orphans_cleaned: deleted files whose symbols were removed
-                            // force: user-requested full rebuild
-                            // When nothing changed, existing embeddings are still valid;
-                            // live file changes are handled by the file watcher's per-file embedder.
-                            let db_mutated =
-                                result.files_processed > 0 || result.orphans_cleaned > 0;
-                            let embed_count = if db_mutated || force {
-                                if force {
-                                    let mut tasks = handler.embedding_tasks.lock().await;
-                                    if let Some((cancel_flag, handle)) = tasks.remove(workspace_id)
-                                    {
-                                        info!(
-                                            "Cancelling running embedding pipeline for force refresh"
-                                        );
-                                        cancel_flag
-                                            .store(true, std::sync::atomic::Ordering::Relaxed);
-                                        handle.abort();
-                                    }
-                                }
-
-                                crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding(
-                                    handler,
-                                    workspace_id.to_string(),
-                                ).await
-                            } else {
-                                0
-                            };
-
-                            let status = if result.files_processed == 0 {
-                                "Already up-to-date.".to_string()
-                            } else if force {
-                                format!(
-                                    "Full re-index: {} files processed.",
-                                    result.files_processed
-                                )
-                            } else {
-                                format!("{} changed files re-indexed.", result.files_processed)
-                            };
-
-                            let mut message = format!(
-                                "Workspace Refresh: {}\n\
-                                {}\n\
-                                Path: {}\n\
-                                Totals: {} files, {} symbols, {} relationships",
-                                workspace_id,
-                                status,
-                                ws_row.path,
-                                result.files_total,
-                                result.symbols_total,
-                                result.relationships_total,
-                            );
-                            if embed_count > 0 {
-                                message.push_str(&format!(
-                                    "\nEmbedding {} symbols in background...",
-                                    embed_count
-                                ));
-                            }
-                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                        }
-                        Err(e) => {
-                            let message = format!(
-                                "Workspace Refresh Failed\n\
-                                Workspace: {}\n\
-                                Path: {}\n\
-                                Error: {}\n\
-                                Check that the path exists and contains readable files",
-                                workspace_id, ws_row.path, e,
-                            );
-                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                        }
-                    }
-                }
-                Ok(None) => {
-                    let message = format!("Workspace not found: {}", workspace_id);
-                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                }
-                Err(e) => {
-                    let message = format!("Failed to look up workspace: {}", e);
-                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                }
-            }
+        if self.force.unwrap_or(false) && handler.workspace_id.as_deref() == Some(workspace_id) {
+            return self.handle_index_command(handler, None, true, false).await;
         }
 
-        // Stdio mode: workspace refresh requires daemon mode
-        let message = format!(
-            "Workspace refresh requires daemon mode. Start the daemon with `julie daemon`.\n\
-             (Workspace ID: {})",
-            workspace_id
-        );
-        Ok(CallToolResult::text_content(vec![Content::text(message)]))
+        match self
+            .refresh_workspace_internal(handler, workspace_id)
+            .await?
+        {
+            RefreshWorkspaceOutcome::Success(success) => {
+                let mut message = format!(
+                    "Workspace Refresh: {}\n\
+                    {}\n\
+                    Path: {}\n\
+                    Totals: {} files, {} symbols, {} relationships",
+                    success.workspace_id,
+                    success.status,
+                    success.workspace_path,
+                    success.files_total,
+                    success.symbols_total,
+                    success.relationships_total,
+                );
+                if success.embed_count > 0 {
+                    message.push_str(&format!(
+                        "\nEmbedding {} symbols in background...",
+                        success.embed_count
+                    ));
+                }
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+            }
+            RefreshWorkspaceOutcome::Failure(message) => {
+                Ok(CallToolResult::text_content(vec![Content::text(message)]))
+            }
+        }
     }
 
     /// Handle stats command - show workspace statistics
@@ -183,37 +233,42 @@ impl ManageWorkspaceTool {
                     }
                 },
                 None => {
-                    // Show overall stats: primary + all references
-                    let primary_row = db.get_workspace(primary_workspace_id).ok().flatten();
-                    let references = db.list_references(primary_workspace_id).unwrap_or_default();
+                    let all_workspaces = match db.list_workspaces() {
+                        Ok(workspaces) => workspaces,
+                        Err(e) => {
+                            let message = format!("Failed to list workspaces: {}", e);
+                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                        }
+                    };
+                    let pair_count = match db.list_references(primary_workspace_id) {
+                        Ok(references) => references.len(),
+                        Err(e) => {
+                            let message = format!("Failed to list workspace pairings: {}", e);
+                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                        }
+                    };
 
-                    let total_files: i64 =
-                        primary_row.as_ref().and_then(|r| r.file_count).unwrap_or(0)
-                            + references
-                                .iter()
-                                .map(|r| r.file_count.unwrap_or(0))
-                                .sum::<i64>();
-                    let total_symbols: i64 = primary_row
-                        .as_ref()
-                        .and_then(|r| r.symbol_count)
-                        .unwrap_or(0)
-                        + references
-                            .iter()
-                            .map(|r| r.symbol_count.unwrap_or(0))
-                            .sum::<i64>();
+                    let total_files: i64 = all_workspaces
+                        .iter()
+                        .map(|r| r.file_count.unwrap_or(0))
+                        .sum();
+                    let total_symbols: i64 = all_workspaces
+                        .iter()
+                        .map(|r| r.symbol_count.unwrap_or(0))
+                        .sum();
 
                     let message = format!(
                         "Overall Workspace Statistics\n\n\
                         Registry Status\n\
-                        Primary Workspace: {}\n\
-                        Reference Workspaces: {}\n\n\
+                        Current Workspace: {}\n\
+                        Known Workspaces: {}\n\
+                        Current Workspace Pairings: {}\n\n\
                         Storage Usage\n\
                         Total Files: {}\n\
                         Total Symbols: {}",
-                        primary_row
-                            .map(|r| r.workspace_id)
-                            .unwrap_or_else(|| primary_workspace_id.to_string()),
-                        references.len(),
+                        primary_workspace_id,
+                        all_workspaces.len(),
+                        pair_count,
                         total_files,
                         total_symbols,
                     );

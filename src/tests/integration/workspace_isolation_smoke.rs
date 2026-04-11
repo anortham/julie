@@ -224,10 +224,11 @@ mod workspace_isolation_smoke_tests {
         Ok(())
     }
 
-    /// Test 3: Verify invalid workspace ID returns clear error
+    /// Test 3: Verify stdio mode treats an unknown workspace ID as an isolated reference target
     ///
-    /// Attempting to search a non-existent workspace should return a
-    /// helpful error message, not crash or return confusing results.
+    /// In stdio mode there is no workspace registry, so non-`primary` IDs are accepted
+    /// permissively. The search should succeed, but it must not fall back to the primary
+    /// workspace when that reference workspace does not exist.
     #[tokio::test(flavor = "multi_thread")]
     #[serial_test::serial] // Shared fixtures (tiny-primary, tiny-reference)
     async fn test_invalid_workspace_id_returns_error() -> Result<()> {
@@ -250,9 +251,11 @@ mod workspace_isolation_smoke_tests {
         index_primary.call_tool(&handler).await?;
         mark_index_ready(&handler).await;
 
-        // Try to search non-existent workspace
+        // Search for a symbol that exists in the primary workspace using an unknown workspace ID.
+        // In stdio mode this should be treated as an isolated reference workspace, not an error
+        // and not a fallback to primary.
         let search_invalid = FastSearchTool {
-            query: "anything".to_string(),
+            query: "calculate_sum".to_string(),
             language: None,
             file_pattern: None,
             limit: 10,
@@ -263,19 +266,23 @@ mod workspace_isolation_smoke_tests {
             ..Default::default()
         };
 
-        let result = search_invalid.call_tool(&handler).await;
+        let result = search_invalid.call_tool(&handler).await?;
+        let response = extract_text_from_result(&result);
 
-        // Should return an error
         assert!(
-            result.is_err(),
-            "Searching with invalid workspace ID should return error"
+            response.contains("Workspace not indexed yet"),
+            "Searching with an unknown workspace ID in stdio mode should return the unindexed-workspace message: {}",
+            response
         );
-
-        let error_message = result.unwrap_err().to_string();
         assert!(
-            error_message.contains("not found") || error_message.contains("does not exist"),
-            "Error message should indicate workspace not found: {}",
-            error_message
+            response.contains("manage_workspace(operation=\"index\")"),
+            "Search response should preserve the normal indexing guidance: {}",
+            response
+        );
+        assert!(
+            !response.contains("src/main.rs"),
+            "Unknown workspace ID must not fall back to the primary workspace: {}",
+            response
         );
 
         Ok(())

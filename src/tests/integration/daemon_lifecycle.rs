@@ -37,6 +37,61 @@ mod tests {
         }
     }
 
+    async fn wait_for_daemon_ready(
+        paths: &DaemonPaths,
+        daemon_handle: &mut tokio::task::JoinHandle<anyhow::Result<()>>,
+        timeout: std::time::Duration,
+    ) -> anyhow::Result<()> {
+        let deadline = tokio::time::Instant::now() + timeout;
+        let state_path = paths.daemon_state();
+        let ipc_addr = paths.daemon_ipc_addr();
+
+        loop {
+            if daemon_handle.is_finished() {
+                match daemon_handle.await {
+                    Ok(Ok(())) => anyhow::bail!(
+                        "daemon exited before readiness; state_path={}, ipc_addr={}",
+                        state_path.display(),
+                        ipc_addr.display()
+                    ),
+                    Ok(Err(err)) => anyhow::bail!(
+                        "daemon exited before readiness: {err:#}; state_path={}, ipc_addr={}",
+                        state_path.display(),
+                        ipc_addr.display()
+                    ),
+                    Err(err) => anyhow::bail!(
+                        "daemon task ended before readiness: {err}; state_path={}, ipc_addr={}",
+                        state_path.display(),
+                        ipc_addr.display()
+                    ),
+                }
+            }
+
+            let ready_state = std::fs::read_to_string(&state_path)
+                .map(|contents| contents.trim() == "ready")
+                .unwrap_or(false);
+
+            if ready_state || IpcConnector::connect(&ipc_addr).await.is_ok() {
+                return Ok(());
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                let state = std::fs::read_to_string(&state_path)
+                    .map(|contents| contents.trim().to_owned())
+                    .unwrap_or_else(|_| "<missing>".to_string());
+                anyhow::bail!(
+                    "daemon did not become ready within {:?}; state={}, state_path={}, ipc_addr={}",
+                    timeout,
+                    state,
+                    state_path.display(),
+                    ipc_addr.display()
+                );
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_daemon_starts_creates_pid_and_socket_then_stops() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -45,7 +100,7 @@ mod tests {
 
         // Spawn the daemon; it blocks on the accept loop until a signal arrives.
         let paths_for_daemon = paths.clone();
-        let daemon_handle =
+        let mut daemon_handle =
             tokio::spawn(async move { crate::daemon::run_daemon(paths_for_daemon, 0, true).await });
 
         // Poll for the PID file rather than using a fixed sleep. The embedding
@@ -61,27 +116,37 @@ mod tests {
         let pid: u32 = pid_str.trim().parse().expect("PID should be numeric");
         assert_eq!(pid, std::process::id(), "PID should match our process");
 
-        // Socket file should exist (IPC binds after embedding init completes).
-        let socket_path = paths.daemon_socket();
-        assert!(
-            wait_for_file(&socket_path, std::time::Duration::from_secs(30)).await,
-            "Socket file should appear within 30s at {}",
-            socket_path.display()
-        );
+        // Socket-path existence is a flaky proxy under suite load. The daemon
+        // writes `ready` immediately after IPC bind, and a live IPC connect is
+        // the real signal that matters.
+        wait_for_daemon_ready(&paths, &mut daemon_handle, std::time::Duration::from_secs(30))
+            .await
+            .expect("daemon should become ready within 30s");
 
-        // Stop via lifecycle::stop_daemon. This sends SIGTERM to ourselves,
-        // which the daemon's shutdown_signal handler catches.
-        // In test context, we abort the task instead (SIGTERM to self is tricky).
+        let socket_path = paths.daemon_socket();
+
+        // In this test the daemon runs as an in-process task, so abort it
+        // directly instead of sending SIGTERM to the current test process.
         daemon_handle.abort();
         let _ = daemon_handle.await;
 
-        // After abort, cleanup may not have run. Manually invoke stop_daemon
-        // to exercise the cleanup path (it should handle the not-running case).
+        // `stop_daemon` is for an out-of-process daemon. Drop the in-process
+        // PID file first so it takes the stale cleanup path instead of waiting
+        // for the current test process to exit.
+        let _ = std::fs::remove_file(&pid_path);
         let stop_result = stop_daemon(&paths);
         assert!(
             stop_result.is_ok(),
             "stop_daemon should succeed: {:?}",
             stop_result
+        );
+        assert!(
+            !socket_path.exists(),
+            "Socket file should be removed during cleanup"
+        );
+        assert!(
+            !paths.daemon_state().exists(),
+            "Daemon state file should be removed during cleanup"
         );
     }
 
@@ -181,8 +246,13 @@ mod tests {
             std::env::remove_var("JULIE_EMBEDDING_TEST_DELAY_MS");
         }
 
+        // Like the sibling lifecycle test, this daemon runs as an in-process
+        // task, so `stop_daemon` must take the stale-cleanup path instead of
+        // signaling the current cargo test process.
+        let pid_path = paths.daemon_pid();
         daemon_handle.abort();
         let _ = daemon_handle.await;
+        let _ = std::fs::remove_file(&pid_path);
         let _ = stop_daemon(&paths);
     }
 

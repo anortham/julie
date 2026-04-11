@@ -33,6 +33,7 @@ async fn test_new_with_shared_workspace_creates_handler() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("new_with_shared_workspace should succeed");
@@ -62,6 +63,7 @@ async fn test_shared_workspace_handler_has_own_metrics() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("handler1 should succeed");
@@ -69,6 +71,7 @@ async fn test_shared_workspace_handler_has_own_metrics() {
     let handler2 = JulieServerHandler::new_with_shared_workspace(
         Arc::clone(&ws),
         workspace_root.path().to_path_buf(),
+        None,
         None,
         None,
         None,
@@ -112,6 +115,7 @@ async fn test_shared_workspace_handler_shares_database() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("handler1 should succeed");
@@ -119,6 +123,7 @@ async fn test_shared_workspace_handler_shares_database() {
     let handler2 = JulieServerHandler::new_with_shared_workspace(
         Arc::clone(&ws),
         workspace_root.path().to_path_buf(),
+        None,
         None,
         None,
         None,
@@ -181,6 +186,7 @@ async fn test_handler_is_indexed_when_workspace_has_symbols() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("handler should succeed");
@@ -212,6 +218,7 @@ async fn test_handler_not_indexed_when_workspace_empty() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect("handler should succeed");
@@ -221,4 +228,69 @@ async fn test_handler_not_indexed_when_workspace_empty() {
         !*indexed,
         "is_indexed should be false when workspace has no symbols"
     );
+}
+
+#[tokio::test]
+async fn test_active_workspace_set_is_seeded_from_primary() {
+    let indexes_dir = temp_indexes_dir();
+    let workspace_root = temp_workspace_root();
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+
+    let ws = pool
+        .get_or_init("primary_ws", workspace_root.path().to_path_buf())
+        .await
+        .expect("get_or_init should succeed");
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        ws,
+        workspace_root.path().to_path_buf(),
+        None,
+        Some("primary_ws".to_string()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("new_with_shared_workspace should succeed");
+
+    let active_workspaces = handler.active_workspace_ids().await;
+    assert_eq!(active_workspaces, vec!["primary_ws".to_string()]);
+}
+
+#[tokio::test]
+async fn test_active_workspace_set_tracks_secondary_activation() {
+    let indexes_dir = temp_indexes_dir();
+    let workspace_root = temp_workspace_root();
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+
+    let ws = pool
+        .get_or_init("primary_ws", workspace_root.path().to_path_buf())
+        .await
+        .expect("get_or_init should succeed");
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        ws,
+        workspace_root.path().to_path_buf(),
+        None,
+        Some("primary_ws".to_string()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("new_with_shared_workspace should succeed");
+
+    handler.activate_workspace("secondary_ws").await;
+
+    let mut active_workspaces = handler.active_workspace_ids().await;
+    active_workspaces.sort();
+
+    assert!(active_workspaces.contains(&"primary_ws".to_string()));
+    assert!(active_workspaces.contains(&"secondary_ws".to_string()));
+    assert_eq!(active_workspaces.len(), 2);
+    assert!(handler.is_workspace_active("secondary_ws").await);
 }

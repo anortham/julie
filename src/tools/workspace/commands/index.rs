@@ -3,7 +3,7 @@ use crate::handler::JulieServerHandler;
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::{debug, error, info, warn};
@@ -11,6 +11,24 @@ use tracing::{debug, error, info, warn};
 fn indexing_lock_cache() -> &'static StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>> {
     static LOCKS: OnceLock<StdMutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>> = OnceLock::new();
     LOCKS.get_or_init(|| StdMutex::new(HashMap::new()))
+}
+
+pub(super) fn indexing_lock_for_path(path: &Path) -> Arc<AsyncMutex<()>> {
+    let mut locks = match indexing_lock_cache().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                "Indexing lock cache mutex poisoned, recovering: {}",
+                poisoned
+            );
+            poisoned.into_inner()
+        }
+    };
+
+    locks
+        .entry(path.to_path_buf())
+        .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+        .clone()
 }
 
 impl ManageWorkspaceTool {
@@ -77,22 +95,7 @@ impl ManageWorkspaceTool {
             .canonicalize()
             .unwrap_or_else(|_| workspace_path.clone());
 
-        let index_lock = {
-            let mut locks = match indexing_lock_cache().lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    warn!(
-                        "Indexing lock cache mutex poisoned, recovering: {}",
-                        poisoned
-                    );
-                    poisoned.into_inner()
-                }
-            };
-            locks
-                .entry(canonical_path.clone())
-                .or_insert_with(|| Arc::new(AsyncMutex::new(())))
-                .clone()
-        };
+        let index_lock = indexing_lock_for_path(&canonical_path);
 
         let _index_guard = index_lock.lock().await;
         let force_reindex = force;
@@ -130,36 +133,7 @@ impl ManageWorkspaceTool {
         // They are indexed into the primary workspace's indexes/{workspace_id}/ directory
         let workspace_already_loaded = handler.get_workspace().await?.is_some();
 
-        // Check if this path is a reference workspace (check ORIGINAL path, not resolved path!)
-        let is_reference_workspace = if let Some(ref db) = handler.daemon_db {
-            // Daemon mode: registered but not the primary workspace → reference
-            if let Some(ref primary_id) = handler.workspace_id {
-                match db.get_workspace_by_path(original_path.to_string_lossy().as_ref()) {
-                    Ok(Some(row)) => {
-                        let is_ref = row.workspace_id != *primary_id;
-                        debug!(
-                            "Found in daemon.db - workspace_id: {}, is_reference: {}",
-                            row.workspace_id, is_ref
-                        );
-                        is_ref
-                    }
-                    Ok(None) => {
-                        debug!("Path not found in daemon.db");
-                        false
-                    }
-                    Err(e) => {
-                        debug!("Error checking daemon.db: {}", e);
-                        false
-                    }
-                }
-            } else {
-                debug!("No primary workspace ID");
-                false
-            }
-        } else {
-            debug!("No daemon.db - stdio mode");
-            false
-        };
+        let is_reference_workspace = is_reference_check;
 
         // Only initialize if:
         // 1. Workspace not loaded yet, OR
@@ -406,5 +380,25 @@ impl ManageWorkspaceTool {
                 Ok(CallToolResult::text_content(vec![Content::text(message)]))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::indexing_lock_for_path;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_shared_index_lock_reuses_lock_for_same_path() {
+        let path = PathBuf::from("/tmp/julie-shared-lock");
+
+        let first = indexing_lock_for_path(&path);
+        let second = indexing_lock_for_path(&path);
+
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "same canonical path should reuse the same indexing lock"
+        );
     }
 }

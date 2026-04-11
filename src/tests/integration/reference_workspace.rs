@@ -393,15 +393,22 @@ mod reference_workspace_tests {
 
         // Re-index the reference workspace to trigger orphan cleanup
         let reindex_tool = ManageWorkspaceTool {
-            operation: "refresh".to_string(),
-            path: None,
+            operation: "index".to_string(),
+            path: Some(reference_path.to_string_lossy().to_string()),
             force: Some(false), // Incremental mode should trigger orphan cleanup
             name: None,
-            workspace_id: Some(reference_id.clone()),
+            workspace_id: None,
             detailed: None,
         };
 
-        let _reindex_result = reindex_tool.call_tool(&handler).await?;
+        let reindex_result = reindex_tool.call_tool(&handler).await?;
+        let reindex_response = extract_text_from_result(&reindex_result);
+
+        assert!(
+            !reindex_response.contains("Error") && !reindex_response.contains("Failed"),
+            "Reference workspace reindex should succeed before cleanup assertion: {}",
+            reindex_response
+        );
 
         // Search for the deleted file - should NOT be found
         let search_deleted = FastSearchTool {

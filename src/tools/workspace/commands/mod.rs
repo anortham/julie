@@ -23,7 +23,7 @@ pub enum WorkspaceCommand {
         /// Force complete re-indexing even if cache exists
         force: bool,
     },
-    /// Add reference workspace for cross-project search
+    /// Register workspace metadata or save a pairing for later selection
     Add {
         /// Path to the workspace to add
         path: String,
@@ -44,6 +44,13 @@ pub enum WorkspaceCommand {
         /// Workspace ID to refresh
         workspace_id: String,
     },
+    /// Open and activate a workspace for the current daemon session
+    Open {
+        /// Optional path to the workspace to open
+        path: Option<String>,
+        /// Optional workspace ID to open
+        workspace_id: Option<String>,
+    },
     /// Show workspace statistics
     Stats {
         /// Optional specific workspace ID (defaults to all)
@@ -58,24 +65,27 @@ pub enum WorkspaceCommand {
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ManageWorkspaceTool {
-    /// Operation to perform: "index", "list", "add", "remove", "stats", "clean", "refresh", "health"
+    /// Operation to perform: "index", "list", "add", "remove", "stats", "clean", "refresh", "open", "health"
     ///
     /// EXAMPLES:
     /// Index workspace:      {"operation": "index", "path": null, "force": false}
     /// List workspaces:      {"operation": "list"}
     /// Show stats:           {"operation": "stats", "workspace_id": null}
-    /// Add workspace:        {"operation": "add", "path": "/path/to/project", "name": "My Project"}
+    /// Register workspace:   {"operation": "add", "path": "/path/to/project", "name": "My Project"}
+    /// Open workspace:       {"operation": "open", "workspace_id": "workspace-id"}
+    /// Open by path:         {"operation": "open", "path": "/path/to/project"}
     /// Clean workspaces:     {"operation": "clean"}
     /// Refresh workspace:    {"operation": "refresh", "workspace_id": "workspace-id", "force": true}
+    /// Open and force sync:   {"operation": "open", "workspace_id": "workspace-id", "force": true}
     /// Health check:         {"operation": "health", "detailed": true}
     pub operation: String,
 
     // Optional parameters used by various operations
-    /// Path to workspace (used by: index, add)
+    /// Path to workspace (used by: index, add, open)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 
-    /// Force complete re-indexing, bypassing incremental check (used by: index, refresh). Use when indexing code changed but source files are unchanged on disk
+    /// Force complete re-indexing, bypassing incremental check (used by: index, refresh, open). Use when indexing code changed but source files are unchanged on disk
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
@@ -83,11 +93,11 @@ pub struct ManageWorkspaceTool {
     )]
     pub force: Option<bool>,
 
-    /// Display name for workspace (used by: add)
+    /// Display name for workspace metadata (used by: add)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 
-    /// Workspace ID (used by: remove, refresh, stats)
+    /// Workspace ID (used by: remove, refresh, open, stats)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
 
@@ -156,6 +166,7 @@ impl ManageWorkspaceTool {
                 })?;
                 self.handle_refresh_command(handler, workspace_id).await
             }
+            "open" => self.handle_open_command(handler).await,
             "stats" => {
                 self.handle_stats_command(handler, self.workspace_id.clone())
                     .await
@@ -165,7 +176,7 @@ impl ManageWorkspaceTool {
                     .await
             }
             _ => Err(anyhow::anyhow!(
-                "Unknown operation: '{}'. Valid operations: index, list, add, remove, stats, clean, refresh, health",
+                "Unknown operation: '{}'. Valid operations: index, list, add, remove, stats, clean, refresh, open, health",
                 self.operation
             )),
         }

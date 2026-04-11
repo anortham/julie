@@ -142,6 +142,7 @@ async fn forward_bytes(stream: IpcClientStream) -> Result<ForwardOutcome> {
     forward_streams_inner(&mut ipc_read, &mut ipc_write, &mut stdin, &mut stdout).await
 }
 
+#[cfg(test)]
 pub(crate) async fn forward_streams<S, In, Out>(
     stream: S,
     stdin: &mut In,

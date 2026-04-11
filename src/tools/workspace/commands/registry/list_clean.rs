@@ -16,50 +16,56 @@ impl ManageWorkspaceTool {
         if let Some(ref db) = handler.daemon_db {
             let primary_workspace_id = handler.workspace_id.as_deref().unwrap_or("primary");
 
-            let references = db.list_references(primary_workspace_id).unwrap_or_default();
-            let primary_row = db.get_workspace(primary_workspace_id).ok().flatten();
+            let all_workspaces = match db.list_workspaces() {
+                Ok(workspaces) => workspaces,
+                Err(e) => {
+                    let message = format!("Failed to list workspaces: {}", e);
+                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                }
+            };
+            let paired_ids: std::collections::HashSet<String> =
+                match db.list_references(primary_workspace_id) {
+                    Ok(references) => references.into_iter().map(|ws| ws.workspace_id).collect(),
+                    Err(e) => {
+                        let message = format!("Failed to list workspace pairings: {}", e);
+                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    }
+                };
 
-            if primary_row.is_none() && references.is_empty() {
+            if all_workspaces.is_empty() {
                 let message = "No workspaces registered.";
                 return Ok(CallToolResult::text_content(vec![Content::text(message)]));
             }
 
             let mut output = String::from("Registered Workspaces:\n\n");
 
-            if let Some(pw) = primary_row {
-                output.push_str(&format!(
-                    "{} ({}) [PRIMARY]\n\
-                    Path: {}\n\
-                    Status: {} | Sessions: {}\n\
-                    Files: {} | Symbols: {}\n\n",
-                    pw.workspace_id
-                        .split('_')
-                        .next()
-                        .unwrap_or(&pw.workspace_id),
-                    pw.workspace_id,
-                    pw.path,
-                    pw.status,
-                    pw.session_count,
-                    pw.file_count.unwrap_or(0),
-                    pw.symbol_count.unwrap_or(0),
-                ));
-            }
-
-            for ws in &references {
+            for ws in &all_workspaces {
                 let path_exists = std::path::Path::new(&ws.path).exists();
                 let status_str = if !path_exists { "MISSING" } else { &ws.status };
+                let mut labels = Vec::new();
+                if ws.workspace_id == primary_workspace_id {
+                    labels.push("CURRENT");
+                }
+                if paired_ids.contains(&ws.workspace_id) {
+                    labels.push("PAIRED");
+                }
+                if labels.is_empty() {
+                    labels.push("KNOWN");
+                }
                 output.push_str(&format!(
-                    "{} ({}) [REFERENCE]\n\
-                    Path: {}\n\
-                    Status: {}\n\
-                    Files: {} | Symbols: {}\n\n",
+                    "{} ({}) [{}]\n\
+                     Path: {}\n\
+                    Status: {} | Sessions: {}\n\
+                     Files: {} | Symbols: {}\n\n",
                     ws.workspace_id
                         .split('_')
                         .next()
                         .unwrap_or(&ws.workspace_id),
                     ws.workspace_id,
+                    labels.join(", "),
                     ws.path,
                     status_str,
+                    ws.session_count,
                     ws.file_count.unwrap_or(0),
                     ws.symbol_count.unwrap_or(0),
                 ));

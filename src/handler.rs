@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use rmcp::{
@@ -177,6 +177,8 @@ pub struct JulieServerHandler {
     pub(crate) daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
     /// This session's workspace ID (e.g. "julie_ab12cd34"). None in stdio mode.
     pub(crate) workspace_id: Option<String>,
+    /// Workspace IDs active in this session (primary + activated references).
+    pub(crate) active_workspaces: Arc<RwLock<HashSet<String>>>,
     /// Shared embedding service for daemon mode. None in stdio mode.
     pub(crate) embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
     /// True when the daemon detects its binary has been rebuilt.
@@ -194,6 +196,8 @@ pub struct JulieServerHandler {
     metrics_tx: tokio::sync::mpsc::Sender<MetricsTask>,
     /// Cache for reference workspace DB connections, keyed by workspace_id (M22).
     ref_db_cache: Arc<RwLock<HashMap<String, Arc<std::sync::Mutex<SymbolDatabase>>>>>,
+    /// Shared daemon workspace pool for explicit workspace activation.
+    pub(crate) workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     /// Broadcast sender for dashboard live-feed events. None in stdio/test mode.
     dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
 }
@@ -223,12 +227,14 @@ impl JulieServerHandler {
             project_log: None,
             daemon_db: None,
             workspace_id: None,
+            active_workspaces: Arc::new(RwLock::new(HashSet::new())),
             embedding_service: None,
             restart_pending: None,
             catchup_in_progress: Arc::new(AtomicBool::new(false)),
             watcher_pool: None,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
+            workspace_pool: None,
             dashboard_tx: None,
         })
     }
@@ -253,6 +259,7 @@ impl JulieServerHandler {
         restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
         dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
         watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
+        workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     ) -> Result<Self> {
         info!(
             "Creating daemon-mode handler (workspace_root: {:?})",
@@ -265,9 +272,6 @@ impl JulieServerHandler {
         // Daemon manages embeddings separately (Phase 3).
         ws_clone.embedding_provider = None;
 
-        // Determine is_indexed by checking if the database already has symbols.
-        // This lets a second session skip auto-indexing when the first has already
-        // indexed the workspace.
         let already_indexed = if let Some(ref db_arc) = ws_clone.db {
             let db = db_arc.lock().unwrap_or_else(|p| p.into_inner());
             let count = db.count_symbols_for_workspace().unwrap_or(0);
@@ -275,6 +279,12 @@ impl JulieServerHandler {
         } else {
             false
         };
+
+        let active_workspaces = Arc::new(RwLock::new(HashSet::new()));
+        if let Some(ref id) = workspace_id {
+            let mut guard = active_workspaces.write().await;
+            guard.insert(id.clone());
+        }
 
         // Create per-project logger for daemon mode
         let project_log = Some(Arc::new(crate::daemon::project_log::ProjectLog::new(
@@ -295,12 +305,14 @@ impl JulieServerHandler {
             project_log,
             daemon_db,
             workspace_id,
+            active_workspaces,
             embedding_service,
             restart_pending,
             catchup_in_progress: Arc::new(AtomicBool::new(false)),
             watcher_pool,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
+            workspace_pool,
             dashboard_tx,
         })
     }
@@ -760,6 +772,56 @@ impl JulieServerHandler {
 
     // ========== Workspace Access Helpers ==========
 
+    /// Active workspace IDs for this session, sorted for stable output.
+    pub async fn active_workspace_ids(&self) -> Vec<String> {
+        let mut ids: Vec<String> = self
+            .active_workspaces
+            .read()
+            .await
+            .iter()
+            .cloned()
+            .collect();
+        ids.sort();
+        ids
+    }
+
+    /// Check whether a workspace ID is currently active for this session.
+    pub async fn is_workspace_active(&self, workspace_id: &str) -> bool {
+        self.active_workspaces.read().await.contains(workspace_id)
+    }
+
+    /// Add a workspace ID to this session's active set.
+    pub async fn mark_workspace_active(&self, workspace_id: &str) {
+        let mut guard = self.active_workspaces.write().await;
+        guard.insert(workspace_id.to_string());
+    }
+
+    /// Activate a workspace for this session. Returns `true` if this was a new activation.
+    pub async fn activate_workspace(&self, workspace_id: &str) -> bool {
+        let mut guard = self.active_workspaces.write().await;
+        guard.insert(workspace_id.to_string())
+    }
+
+    /// Load a workspace through the daemon pool, then mark it active for this session.
+    pub async fn activate_workspace_with_root(
+        &self,
+        workspace_id: &str,
+        workspace_root: PathBuf,
+    ) -> Result<bool> {
+        if self.is_workspace_active(workspace_id).await {
+            return Ok(false);
+        }
+
+        if let Some(pool) = &self.workspace_pool {
+            if self.workspace_id.as_deref() != Some(workspace_id) {
+                pool.get_or_init(workspace_id, workspace_root).await?;
+                pool.sync_indexed_from_db(workspace_id).await;
+            }
+        }
+
+        Ok(self.activate_workspace(workspace_id).await)
+    }
+
     /// Get the database for a specific workspace by ID.
     ///
     /// In stdio mode: looks in `{project}/.julie/indexes/{workspace_id}/db/symbols.db`.
@@ -1131,7 +1193,7 @@ impl JulieServerHandler {
 
     #[tool(
         name = "manage_workspace",
-        description = "Manage workspace: index, add/remove reference workspaces, view status.",
+        description = "Manage workspaces: index, open, register metadata, remove, list, refresh, stats, and health-check. For cross-workspace work, call open first, then pass the workspace_id to other tools.",
         annotations(
             title = "Manage Workspace",
             read_only_hint = false,

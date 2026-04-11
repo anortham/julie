@@ -69,9 +69,10 @@ fn suggest_closest_workspace(workspace_id: &str, known_ids: &[&str]) -> Result<W
 /// Resolve workspace parameter to a WorkspaceTarget.
 ///
 /// - `None` or `"primary"` → `WorkspaceTarget::Primary`
-/// - Any other string → validated as a reference workspace ID → `WorkspaceTarget::Reference(id)`
+/// - Any other string in daemon mode → must be a known workspace ID that is active in the current session
+/// - Any other string in stdio mode → accepted permissively as `WorkspaceTarget::Reference(id)`
 ///
-/// Workspace IDs are validated against `WorkspaceRegistryService`.
+/// Daemon mode validates against the daemon registry, then enforces the active-session gate.
 pub async fn resolve_workspace_filter(
     workspace_param: Option<&str>,
     handler: &JulieServerHandler,
@@ -84,7 +85,17 @@ pub async fn resolve_workspace_filter(
             // Daemon mode: validate against DaemonDatabase and suggest closest match
             if let Some(ref db) = handler.daemon_db {
                 return match db.get_workspace(workspace_id)? {
-                    Some(_) => Ok(WorkspaceTarget::Reference(workspace_id.to_string())),
+                    Some(_) => {
+                        if handler.is_workspace_active(workspace_id).await {
+                            Ok(WorkspaceTarget::Reference(workspace_id.to_string()))
+                        } else {
+                            Err(anyhow::anyhow!(
+                                "Workspace '{}' is known but not active in this session. Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
+                                workspace_id,
+                                workspace_id
+                            ))
+                        }
+                    }
                     None => {
                         let all_workspaces = db.list_workspaces().unwrap_or_default();
                         let workspace_ids: Vec<&str> = all_workspaces

@@ -1,7 +1,7 @@
 # Workspace Architecture
 
-**Last Updated:** 2026-03-22
-**Status:** Production (v6 — stdio + daemon modes)
+**Last Updated:** 2026-04-10
+**Status:** Production (v6, stdio + daemon modes)
 
 This document provides detailed information about Julie's workspace architecture, routing, and storage.
 
@@ -9,42 +9,61 @@ This document provides detailed information about Julie's workspace architecture
 
 Julie runs in two modes with different storage topologies:
 
-### Stdio Mode (default)
+### Stdio Mode
 Each MCP session is independent. Indexes live under the project:
 
 ```
 <project>/.julie/indexes/
-├── julie_316c0b08/              ← PRIMARY workspace
+├── julie_316c0b08/
 │   ├── db/symbols.db            ← SQLite database
 │   └── tantivy/                 ← Tantivy search index
 │
-└── coa-mcp-framework_c77f81e4/  ← REFERENCE workspace (also here)
+└── coa-mcp-framework_c77f81e4/
     ├── db/symbols.db
     └── tantivy/
 ```
 
-Reference workspaces, `add`, `refresh`, and `stats` operations require daemon mode.
+Stdio mode is centered on the current workspace and has no persistent global registry. It can still index another path and accepts non-`primary` workspace IDs permissively, but the supported global registration and activation flow lives in daemon mode.
 
 ### Daemon Mode (`julie daemon`)
-A background process shares indexes across all MCP sessions. Indexes live in the user home:
+A background process shares indexes across all MCP sessions. Workspace indexes live under `~/.julie/indexes/<workspace_id>`:
 
 ```
 ~/.julie/
 ├── daemon.db                    ← Registry: workspaces, references, snapshots, tool calls
 └── indexes/
-    ├── julie_316c0b08/          ← PRIMARY workspace (shared across sessions)
+    ├── julie_316c0b08/
     │   ├── db/symbols.db
     │   └── tantivy/
-    └── coa-mcp-framework_c77f81e4/  ← REFERENCE workspace
+    └── coa-mcp-framework_c77f81e4/
         ├── db/symbols.db
         └── tantivy/
 ```
 
 `daemon.db` is the authoritative registry (replaces the old `registry.json`). It tracks:
-- All workspaces (ID, path, status, file/symbol counts)
-- Reference workspace relationships
+- All known workspaces (ID, path, status, file/symbol counts)
+- Pairing metadata and other convenience metadata
 - Per-session codehealth snapshots
 - Tool call history (retained 7 days)
+
+## Global Workspace Targeting
+
+Daemon mode is the supported global-workspace path and uses four workspace concepts:
+
+- **Current workspace**: the workspace rooted at the session's project directory.
+- **Known workspace**: any workspace recorded in daemon metadata.
+- **Active workspace**: a known workspace opened for the current daemon session.
+- **Target workspace**: the active workspace selected for a tool call.
+
+In daemon mode, cross-workspace work goes through one front door:
+
+1. Call `manage_workspace(operation="open", path=<path>)` or `manage_workspace(operation="open", workspace_id=<id>)`.
+2. Julie resolves the workspace, indexes or refreshes it as needed, then activates it for the current session.
+3. Search, navigation, and editing tools route by the resulting `workspace_id`.
+
+`manage_workspace(operation="add", ...)` still records a pairing or registers a workspace, but that metadata does not activate the workspace and does not grant routing authority.
+
+Outside daemon mode, Julie does not have the same registry-backed activation model. Stdio still accepts explicit non-`primary` workspace IDs and can index another path, but that behavior is permissive compatibility behavior, not the supported global-workspace flow.
 
 ## How Workspace Isolation Works
 
@@ -54,28 +73,25 @@ Each workspace has its own PHYSICAL database and Tantivy index files. Workspace 
 2. Handler routes to `indexes/{workspace_id}/db/symbols.db`
 3. Connection is locked to that workspace — cannot query others from same connection
 
-**Tool-level `workspace` parameters are ESSENTIAL** — they route to the correct DB file.
+**Tool-level `workspace` parameters are essential**. They route to the correct workspace database. In daemon mode the target workspace must already be active for the current session. In stdio mode non-`primary` IDs are still accepted without daemon registry validation.
 
-## Primary vs Reference Workspaces
+## Pairings And Watchers
 
-**Primary Workspace:**
-- Where you're actively developing
-- Has full `JulieWorkspace` object with indexer, searcher, embedding machinery
-- In daemon mode: its session is tracked in `daemon.db` with session count
-- In daemon mode: embedding provider is shared via `EmbeddingService` (not per-workspace)
+Persistent pairings are convenience metadata.
 
-**Reference Workspaces:**
-- Other codebases you want to search/reference (daemon mode only)
-- Do NOT have their own `.julie/` directories
-- Indexed into the same `indexes/` directory as primary
-- Just indexed data — not independent workspace objects
+- They can help Julie suggest or recall related workspaces.
+- They do not activate a workspace.
+- They do not decide routing.
+- They do not bypass freshness checks.
+
+Watcher coverage follows active workspaces, not every known workspace in `daemon.db`. If a workspace is known but not active in the current session, Julie does not keep a live watcher attached to it for that session.
 
 ## Storage Location Summary
 
-| Mode   | Workspace data            | Registry                |
-|--------|---------------------------|-------------------------|
-| Stdio  | `<project>/.julie/`       | None (ephemeral)        |
-| Daemon | `~/.julie/indexes/`       | `~/.julie/daemon.db`    |
+| Mode   | Workspace data                 | Registry             |
+|--------|--------------------------------|----------------------|
+| Stdio  | `<project>/.julie/indexes/`    | None (ephemeral)     |
+| Daemon | `~/.julie/indexes/<workspace_id>/` | `~/.julie/daemon.db` |
 
 ## Log Location
 
@@ -91,7 +107,8 @@ Logs are PROJECT-LEVEL (not user-level) in both modes:
 
 ## Key Benefits
 
-- Complete workspace isolation — each workspace has own db/tantivy index
-- Centralized storage — all indexes in one location, trivial deletion
+- Complete workspace isolation, each workspace has its own db/tantivy index
+- Explicit activation flow for cross-workspace work via `manage_workspace(operation="open", ...)`
+- Centralized daemon storage under `~/.julie/indexes/`
 - Daemon mode enables cross-session sharing and persistent metrics
 - Stdio mode works fully offline with no daemon dependency
