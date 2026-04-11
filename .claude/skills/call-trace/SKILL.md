@@ -92,4 +92,4 @@ These don't overlap — the functions may not be connected.
 - **Track visited set** — avoid infinite loops from recursive calls
 - **Prefer shortest path** — if multiple paths exist, the first found (BFS-like) is usually most direct
 - **Generic names** (e.g., `new`, `from`, `into`) should be filtered — they create false connections
-- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to all tool calls when tracing in a non-primary workspace
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls

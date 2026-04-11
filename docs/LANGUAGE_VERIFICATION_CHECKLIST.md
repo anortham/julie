@@ -5,7 +5,7 @@
 
 ## How to Use This Checklist
 
-For each language, index a real-world project as a reference workspace and run the verification queries below. A language passes when all applicable checks produce correct results.
+For each language, open a real-world project as a target workspace and run the verification queries below. A language passes when all applicable checks produce correct results.
 
 **Pick representative projects** (verified projects in `~/source`):
 
@@ -247,8 +247,8 @@ These are the expected ranges from real-world verification projects. Large devia
 ## Running the Verification
 
 ```bash
-# 1. Add reference workspace
-manage_workspace(operation="add", path="/path/to/project", name="project")
+# 1. Open target workspace
+manage_workspace(operation="open", path="/path/to/project")
 
 # 2. Check stats
 manage_workspace(operation="stats", workspace_id="project_XXXX")

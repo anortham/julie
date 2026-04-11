@@ -273,8 +273,8 @@ ls -lh .julie/logs/
 ## 🔥 WORKSPACE ARCHITECTURE (Overview)
 
 **Each workspace has SEPARATE PHYSICAL FILES:**
-- Primary workspace: `.julie/indexes/{workspace_id}/db/symbols.db` + `tantivy/`
-- Reference workspace: `.julie/indexes/{ref_workspace_id}/db/symbols.db` + `tantivy/`
+- Current workspace: `.julie/indexes/{workspace_id}/db/symbols.db` + `tantivy/`
+- Other workspaces: `.julie/indexes/{workspace_id}/db/symbols.db` + `tantivy/`
 
 **WORKSPACE ISOLATION HAPPENS AT FILE LEVEL, NOT QUERY LEVEL:**
 - Tool receives workspace param → Routes to correct .db file → Opens connection
@@ -296,7 +296,7 @@ See: **docs/WORKSPACE_ARCHITECTURE.md** for complete details.
 1. **Tantivy Search**: Code-aware full-text search with CamelCase/snake_case tokenization + English stemming
 2. **Graph Centrality Ranking**: Pre-computed reference scores boost well-connected symbols in search results
 3. **Per-Workspace Isolation**: Each workspace gets own db/tantivy in `indexes/{workspace_id}/`. In stdio mode: under `{project}/.julie/indexes/`. In daemon mode: under `~/.julie/indexes/` (shared across all sessions).
-   - **Daemon mode** (`julie daemon`): starts a background process that shares workspace indexes and a single embedding provider across MCP sessions. Enables reference workspaces, symbol/file count snapshots, and tool call history. Registry lives in `~/.julie/daemon.db` (DaemonDatabase). The shared `EmbeddingService` ensures one sidecar process serves all sessions. Workspace operations (add, refresh, stats) require daemon mode; they return helpful errors in stdio mode.
+   - **Daemon mode** (`julie daemon`): starts a background process that shares workspace indexes and a single embedding provider across MCP sessions. Enables cross-workspace targeting (via `manage_workspace(operation="open")`), symbol/file count snapshots, and tool call history. Registry lives in `~/.julie/daemon.db` (DaemonDatabase). The shared `EmbeddingService` ensures one sidecar process serves all sessions. Workspace operations (add, refresh, stats) require daemon mode; they return helpful errors in stdio mode.
    - **Adapter mode** (default): when `julie-server` is run without arguments, it auto-starts the daemon (if not already running) and forwards stdio JSON-RPC to the daemon via IPC. This is the standard MCP client integration path.
    - **Stale binary auto-restart**: the daemon captures its binary's mtime at startup. On each new connection and session disconnect, it compares the current binary mtime. If the daemon is idle (0 sessions) when a stale binary is detected, it shuts down immediately before accepting the connection. If sessions are active, it sets `restart_pending` and exits after the last session disconnects. The adapter restarts it automatically with the new binary.
    - **Catch-up indexing on session connect**: when a session connects and the workspace is already indexed, a background staleness check runs (mtime comparison, then blake3 hash comparison via `filter_changed_files`). Files that changed while the daemon was down are incrementally re-indexed without requiring `force: true`. This closes the gap between the file watcher (which only sees live events) and daemon restarts.
@@ -417,4 +417,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-08 | **Status:** Production Ready (v6.6.10 — daemon lifecycle state file for robust restart)
+**Last Updated:** 2026-04-11 | **Status:** Production Ready (v6.7.0 — global workspace targeting, explicit open activation)

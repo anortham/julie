@@ -103,4 +103,4 @@ Suggested Starting Point:
   ```
   get_context(query="...", language="rust", file_pattern="src/tools/**")
   ```
-- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to explore a non-primary workspace
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls

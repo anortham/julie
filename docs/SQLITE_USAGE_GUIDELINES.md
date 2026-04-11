@@ -251,13 +251,13 @@ See `src/tests/core/database.rs`:
 
 ---
 
-## Reference Workspaces
+## Cross-Workspace Database Isolation
 
-Each reference workspace has **separate physical database**:
-- Primary: `.julie/indexes/julie_316c0b08/db/symbols.db`
-- Reference: `.julie/indexes/ref_workspace_id/db/symbols.db`
+Each workspace has its own **separate physical database**:
+- Current: `.julie/indexes/julie_316c0b08/db/symbols.db`
+- Other: `.julie/indexes/{workspace_id}/db/symbols.db`
 
-**Opening reference workspace DBs**:
+**Opening another workspace's DB**:
 ```rust
 // ✅ CORRECT: Via SymbolDatabase::new()
 let ref_db_path = workspace.workspace_db_path(&ref_workspace_id);

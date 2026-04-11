@@ -95,4 +95,4 @@ Type Flow:
 - **Generic types**: Note type parameters (e.g., `Vec<T>` where T matters)
 - **Trait objects**: `dyn Trait` or `impl Trait` — note what concrete types are used
 - **Closures**: Types of closure parameters are often inferred, state what they are
-- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to all tool calls when analyzing a non-primary workspace
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls

@@ -94,4 +94,4 @@ Returns: Result<CallToolResult> — MCP response with formatted search results
 - **Focus on the interesting parts** — skip boilerplate, highlight decisions
 - **For large functions (>100 lines)**: Summarize sections rather than explaining every line
 - **For trait methods**: Note which implementations exist and which is being analyzed
-- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to all tool calls when analyzing a non-primary workspace
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls

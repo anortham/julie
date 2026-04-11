@@ -115,4 +115,4 @@ Recommendation:
 - **Not every "missing" result is a bug** — if the query is ambiguous, the correct result may legitimately rank lower than a more central symbol with the same name
 - **Check tokenization first** — most search misses are tokenization issues (the query doesn't split/stem to match the symbol name)
 - **Centrality is intentional** — well-connected symbols ranking higher is a feature, not a bug. Only flag it if the centrality score seems wrong
-- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to debug searches in a non-primary workspace
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls

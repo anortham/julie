@@ -102,4 +102,4 @@ Recommendation:
 - **Always check test coverage** — high-risk changes with no test references are especially dangerous
 - **Type changes cascade** — if the symbol is a type/struct, any field change affects all users
 - **Interface/trait changes are widest** — changing an interface method, trait, or abstract class affects all implementors
-- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to all tool calls when analyzing a non-primary workspace
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls

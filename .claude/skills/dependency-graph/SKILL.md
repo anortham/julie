@@ -85,4 +85,4 @@ Summary:
 - **Focus on public API** — private symbols don't affect other modules
 - **Count references** to gauge coupling — a module with 50+ external references is tightly coupled
 - **Watch for circular dependencies** — if A imports B and B imports A, flag it
-- **Reference workspaces**: Pass `workspace: "<workspace_id>"` to all tool calls when analyzing a non-primary workspace
+- **Cross-workspace**: Call `manage_workspace(operation="open", path="<path>")` first, then pass the returned `workspace_id` to all tool calls
