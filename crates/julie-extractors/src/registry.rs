@@ -223,7 +223,10 @@ macro_rules! define_data_only_extractors {
     };
 }
 
-define_full_language_extractors![(extract_elixir, "elixir", crate::elixir::ElixirExtractor)];
+define_full_language_extractors![
+    (extract_elixir, "elixir", crate::elixir::ElixirExtractor),
+    (extract_vbnet, "vbnet", crate::vbnet::VbNetExtractor)
+];
 
 define_structured_full_language_extractors![
     (extract_rust, "rust", crate::rust::RustExtractor),
@@ -722,6 +725,7 @@ const REGISTRY: &[LanguageRegistryEntry] = &[
     entry("python", FULL_CAPABILITIES, extract_python),
     entry("java", FULL_CAPABILITIES, extract_java),
     entry("csharp", FULL_CAPABILITIES, extract_csharp),
+    entry("vbnet", FULL_CAPABILITIES, extract_vbnet),
     entry("php", FULL_CAPABILITIES, extract_php),
     entry("ruby", FULL_CAPABILITIES, extract_ruby),
     entry("swift", FULL_CAPABILITIES, extract_swift),
@@ -782,7 +786,7 @@ mod registry_tests {
 
     #[test]
     fn registry_matches_supported_language_count() {
-        assert_eq!(supported_languages().len(), 35);
+        assert_eq!(supported_languages().len(), 36);
         assert!(
             capabilities_for_language("rust")
                 .unwrap()

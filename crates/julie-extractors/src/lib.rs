@@ -72,6 +72,7 @@ pub mod sql;
 pub mod swift;
 pub mod toml;
 pub mod typescript;
+pub mod vbnet;
 pub mod vue;
 pub mod yaml;
 pub mod zig;
