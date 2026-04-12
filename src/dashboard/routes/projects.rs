@@ -27,6 +27,7 @@ pub(crate) fn lang_css_var(lang: &str) -> &'static str {
         "python" => "var(--lang-python)",
         "java" => "var(--lang-java)",
         "c_sharp" | "csharp" | "c#" => "var(--lang-csharp)",
+        "vbnet" | "vb.net" | "vb" => "var(--lang-vbnet)",
         "go" => "var(--lang-go)",
         "c" => "var(--lang-c)",
         "cpp" | "c++" => "var(--lang-cpp)",
