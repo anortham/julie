@@ -11,4 +11,7 @@ pub fn init_parser() -> Parser {
 }
 
 pub mod core;
+pub mod identifiers;
 pub mod members;
+pub mod relationships;
+pub mod types;

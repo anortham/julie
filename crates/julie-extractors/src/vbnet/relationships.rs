@@ -26,7 +26,7 @@ fn visit_relationships(
         "interface_block" => {
             extract_interface_relationships(extractor, node, symbols, relationships);
         }
-        "invocation_expression" => {
+        "invocation_expression" | "invocation" => {
             extract_call_relationships(extractor, node, symbols, relationships);
         }
         _ => {}
@@ -197,7 +197,7 @@ fn extract_call_relationships(
         if let Some(first_child) = children.first() {
             match first_child.kind() {
                 "identifier" => base.get_node_text(first_child),
-                "member_access_expression" => {
+                "member_access_expression" | "member_access" => {
                     let mut mc = first_child.walk();
                     let inner: Vec<_> = first_child.children(&mut mc).collect();
                     inner

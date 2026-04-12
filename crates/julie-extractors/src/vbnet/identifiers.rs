@@ -30,7 +30,7 @@ fn extract_identifier_from_node(
     symbol_map: &HashMap<String, &Symbol>,
 ) {
     match node.kind() {
-        "invocation_expression" => {
+        "invocation_expression" | "invocation" => {
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
                 if child.kind() == "identifier" {
@@ -43,7 +43,9 @@ fn extract_identifier_from_node(
                         containing_symbol_id,
                     );
                     break;
-                } else if child.kind() == "member_access_expression" {
+                } else if child.kind() == "member_access_expression"
+                    || child.kind() == "member_access"
+                {
                     let mut mc = child.walk();
                     let children: Vec<_> = child.children(&mut mc).collect();
                     if let Some(name_node) = children
@@ -65,9 +67,11 @@ fn extract_identifier_from_node(
                 }
             }
         }
-        "member_access_expression" => {
+        "member_access_expression" | "member_access" => {
             if let Some(parent) = node.parent() {
-                if parent.kind() == "invocation_expression" {
+                if parent.kind() == "invocation_expression"
+                    || parent.kind() == "invocation"
+                {
                     return;
                 }
             }
