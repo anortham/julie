@@ -45,6 +45,7 @@ pub mod swift;
 pub mod toml;
 pub mod type_invariants;
 pub mod typescript;
+pub mod vbnet;
 pub mod vue;
 pub mod yaml;
 pub mod zig;

@@ -14,11 +14,7 @@ pub fn extract_method(
     let modifiers = helpers::extract_modifiers(base, &node);
     let visibility = helpers::determine_visibility(&modifiers);
 
-    let mut cursor = node.walk();
-    let is_function = node.children(&mut cursor).any(|c| {
-        base.get_node_text(&c).eq_ignore_ascii_case("Function")
-    });
-
+    let is_function = node.child_by_field_name("return_type").is_some();
     let keyword = if is_function { "Function" } else { "Sub" };
     let params = helpers::extract_parameters(base, &node);
     let type_params = helpers::extract_type_parameters(base, &node)
@@ -306,11 +302,7 @@ pub fn extract_declare(
     let modifiers = helpers::extract_modifiers(base, &node);
     let visibility = helpers::determine_visibility(&modifiers);
 
-    let mut cursor = node.walk();
-    let is_function = node.children(&mut cursor).any(|c| {
-        base.get_node_text(&c).eq_ignore_ascii_case("Function")
-    });
-
+    let is_function = node.child_by_field_name("return_type").is_some();
     let keyword = if is_function { "Function" } else { "Sub" };
     let params = helpers::extract_parameters(base, &node);
 
