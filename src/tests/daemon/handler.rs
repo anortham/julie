@@ -537,8 +537,30 @@ async fn test_same_root_reinit_reuses_pool_entry_without_double_attach() {
     );
 
     // And the pool entry is still there and reusable.
+    let pooled = pool
+        .get(&workspace_id)
+        .await
+        .expect("pool entry must survive a same-root non-force reinit");
+
+    // Decisive invariant: the loaded workspace must share the pool entry's
+    // `index_root_override` (the daemon-shared `~/.julie/indexes/...` path).
+    // `JulieWorkspace::initialize` — the project-local branch that caused
+    // the original bug — leaves `index_root_override == None`, so checking
+    // for equality here uniquely distinguishes "took pool.get" from "quietly
+    // re-ran the project-local initializer while the pool entry coincidentally
+    // still existed" (Codex round-3 test-gap flag).
+    let loaded = handler
+        .get_workspace()
+        .await
+        .expect("get_workspace")
+        .expect("loaded workspace after init");
+    assert_eq!(
+        loaded.index_root_override, pooled.index_root_override,
+        "loaded workspace must mirror the pool entry's index_root_override \
+         (proves pool.get was the source, not a silent project-local rebind)"
+    );
     assert!(
-        pool.get(&workspace_id).await.is_some(),
-        "pool entry must survive a same-root non-force reinit"
+        loaded.index_root_override.is_some(),
+        "pooled workspace must have an index_root_override set"
     );
 }
