@@ -284,7 +284,7 @@ Before: the `"primary"` sentinel made `list_references("primary")` return an emp
 
 **Fix:** for `list`/`remove`, make primary id optional (err → empty `paired_ids`, skip pairing cleanup). For `add`, keep hard fail but return `"Cannot add a reference workspace before a primary is bound. Open a primary first via client roots or manage_workspace(operation=\"open\", path=...)."`
 
-#### Finding #28 🟡 `refresh` re-initializes primary outside `PrimarySwapRollback` machinery
+#### Finding #28 🟡 `refresh` re-initializes primary outside `PrimarySwapRollback` machinery ✅ FIXED (commit 4)
 
 **Where:** `registry/refresh_stats.rs:152-172`.
 
@@ -292,17 +292,17 @@ After a successful `refresh_single_workspace`, when `current_workspace_id == wor
 
 Two risks: (1) concurrent `ensure_primary_workspace_for_request` mid-swap races and can partially clobber swap state; (2) `force=false` means a no-op reinit if primary hasn't been indexed at the new root — caller sees "Refresh success" but loaded workspace stays stale.
 
-**Fix:** route through swap machinery, or guard with `is_primary_workspace_swap_in_progress()`. At minimum, verify refresh actually populated the target index.
+**Fix applied:** entry-point guard on `handle_refresh_command` that returns an error the moment `is_primary_workspace_swap_in_progress()` is true, plus a defensive re-check immediately before the `initialize_workspace_with_force` rebind (async code can yield between the two points). The guard is unconditional on purpose: `current_workspace_id()` returns `None` during a swap, so gating on "target is current primary" would be a no-op. Retry is the right remedy — the swap flag is held only briefly.
 
-**Synthesis note:** #28 and #29 together represent a class of hazard — secondary code paths mutating the same state the swap machinery guards. Even if nothing fails today, this is the bug shape the machinery exists to prevent. Worth closing on this branch.
+**Synthesis note:** #28 and #29 together represent a class of hazard — secondary code paths mutating the same state the swap machinery guards. Even if nothing fails today, this is the bug shape the machinery exists to prevent. Closed on this branch.
 
-#### Finding #29 🟡 `open` on an unindexed primary bypasses the swap path
+#### Finding #29 🟡 `open` on an unindexed primary bypasses the swap path ✅ FIXED (commit 4)
 
 **Where:** `registry/open.rs:110-122`.
 
 When `target.is_primary == true` and `target.status != "ready"`, we call `handle_index_command(..., force, false)`. `explicit_path_requested=true` picks `current_workspace_root()` (not `require_primary_workspace_root()`), and if `loaded_workspace_matches_target=false`, directly calls `initialize_workspace_with_force` — same pattern as #28, same risk.
 
-**Fix:** guard `handle_open_command` top with `is_primary_workspace_swap_in_progress()`, or funnel all "become-primary" transitions through the swap machinery.
+**Fix applied:** entry-point guard on `handle_open_command` returning an error when `is_primary_workspace_swap_in_progress()` is set. Two regression tests cover both commands (`test_manage_workspace_open_refuses_while_primary_swap_in_progress` and `test_manage_workspace_refresh_refuses_primary_mutation_while_swap_in_progress`).
 
 #### Finding #30 ✅ FIXED — Editing tools reject unknown fields loudly
 

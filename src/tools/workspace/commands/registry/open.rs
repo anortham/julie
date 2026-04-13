@@ -35,6 +35,16 @@ impl ManageWorkspaceTool {
                 "Workspace open requires daemon mode. Start the daemon with `julie daemon`.";
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
         };
+
+        // A primary workspace swap is already in progress; refuse to mutate
+        // session state or primary binding concurrently. The swap machinery
+        // holds this flag only briefly, so retry is the right remedy.
+        if handler.is_primary_workspace_swap_in_progress() {
+            return Err(anyhow!(
+                "Primary workspace swap in progress; retry 'open' after the swap completes."
+            ));
+        }
+
         let current_primary_id = handler.current_workspace_id();
 
         let target = if let Some(path) = self.path.as_ref() {
