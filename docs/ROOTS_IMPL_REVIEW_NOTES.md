@@ -474,6 +474,34 @@ This is the test reviewer D praised for verifying "helper-call failure when rebo
 
 **Fix in Commit 1.5:** trace `get_database_for_workspace` for non-pool-resident workspace IDs, restore the expected error contract.
 
+### Finding #39 🔴 FIXED — `on_initialized` eager roots probe deadlocked Claude Code (no tools ever published)
+
+Diagnosed by Codex after live-test failure: after all prior fixes landed, Claude Code's `/mcp` showed Julie connected with "Capabilities: none" and no tools. The lead's speculation (project-scoped vs user-scoped MCP, fresh-identity `claude mcp add`, etc.) was wrong. Codex read the actual code and found the real bug.
+
+**Where:** `src/handler.rs:2773-2797` (pre-fix).
+
+**What:** `ServerHandler::on_initialized` is an MCP notification handler — it's supposed to fire-and-forget. The pre-fix code was making a synchronous server→client **request** from inside it:
+
+```rust
+match self.list_roots_from_peer(&context.peer).await {
+    Ok(roots) if !roots.is_empty() => { ... return; }
+    Ok(_) => { ... return; }
+    Err(err) => { warn!(...); ... return; }
+}
+```
+
+Claude Code does not respond to a `roots/list` request until it has finished processing `initialized`, but Julie was blocking inside `on_initialized` waiting for that response. The session wedges: the `tools/list` request that would normally follow `initialized` never gets serviced, so the client sees "connected, no capabilities."
+
+**Why it was redundant:** `ensure_primary_workspace_for_request` already resolves roots at request time on the first primary-scoped tool call. The eager probe was belt-and-suspenders that turned out to be a hanging noose.
+
+**Fix:** drop the `list_roots_from_peer` match block entirely; `on_initialized` now just logs the deferred-resolution intent and returns. The first request's `ensure_primary_workspace_for_request` call does all the roots work, where it belongs.
+
+**Test:** `src/tests/daemon/roots.rs` — collapsed the old `InitializedRootsProbeOutcome` matrix (which was implicitly asserting the eager probe existed) into `test_initialized_weak_cwd_does_not_probe_roots_before_first_request`, which holds for 250ms after `initialized` and asserts **zero inbound roots/list traffic**. This is now the regression guard: any future attempt to re-introduce an eager probe will fail this test.
+
+**Load-bearing diagnostic lesson:** my stdin probe of the server (raw `initialize` + `tools/list` over stdio) worked because *nothing was driving `on_initialized`* — rmcp's serve layer only invokes it in response to a real client `notifications/initialized`. The probe tested the parser, not the protocol flow. A regression test that exercises full `initialize` → `notifications/initialized` → `tools/list` round-trip would have caught this class of bug; the roots test suite now effectively covers it (since it uses the real rmcp duplex-stream harness), but a minimal-stub standalone test would be cheap insurance.
+
+**Discovered during:** live-test of Claude Code integration after all prior fixes landed. Misdiagnosed by lead for ~30 minutes before user redirected to `/codex-cli`.
+
 ---
 
 ## Pass 4 — Consolidated Punch List

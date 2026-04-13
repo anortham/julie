@@ -2762,7 +2762,7 @@ impl ServerHandler for JulieServerHandler {
         self.tool_router.get(name).cloned()
     }
 
-    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
+    async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
         info!("MCP connection established - client initialized");
 
         let startup_hint = self.workspace_startup_hint();
@@ -2770,31 +2770,11 @@ impl ServerHandler for JulieServerHandler {
             && self.client_supports_workspace_roots()
         {
             self.mark_deferred_auto_index_pending(true);
-            match self.list_roots_from_peer(&context.peer).await {
-                Ok(roots) if !roots.is_empty() => {
-                    info!(
-                        root_count = roots.len(),
-                        startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
-                        "Deferring auto-indexing until a request resolves the primary workspace from client roots"
-                    );
-                    return;
-                }
-                Ok(_) => {
-                    info!(
-                        startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
-                        "Initialization roots probe returned no roots, keeping primary resolution deferred until the first request"
-                    );
-                    return;
-                }
-                Err(err) => {
-                    warn!("Failed to query client roots during initialization: {err}");
-                    info!(
-                        startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
-                        "Keeping primary resolution deferred so the first primary-scoped request can retry roots discovery"
-                    );
-                    return;
-                }
-            }
+            info!(
+                startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
+                "Deferring auto-indexing until the first primary-scoped request resolves client roots"
+            );
+            return;
         }
 
         self.mark_deferred_auto_index_pending(false);

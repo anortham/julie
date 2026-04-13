@@ -109,14 +109,8 @@ async fn answer_roots_request_error(
     }
 }
 
-enum InitializedRootsProbeOutcome {
-    Empty,
-    Error(&'static str),
-}
-
-async fn assert_initialized_weak_cwd_probe_retries_request_time_roots(
-    initialized_probe: InitializedRootsProbeOutcome,
-) -> Result<()> {
+#[tokio::test]
+async fn test_initialized_weak_cwd_does_not_probe_roots_before_first_request() -> Result<()> {
     let indexes_dir = tempfile::tempdir()?;
     let startup_root = tempfile::tempdir()?;
     let roots_root = tempfile::tempdir()?;
@@ -176,24 +170,24 @@ async fn assert_initialized_weak_cwd_probe_retries_request_time_roots(
     )
     .await?;
 
-    match initialized_probe {
-        InitializedRootsProbeOutcome::Empty => {
-            let empty_roots_paths: [&Path; 0] = [];
-            answer_roots_request(&mut lines, &mut write_half, &empty_roots_paths).await?;
+    match tokio::time::timeout(Duration::from_millis(250), read_server_message(&mut lines)).await {
+        Ok(Ok(message)) => {
+            panic!(
+                "weak cwd startup should defer roots/list until the first primary-scoped request, got: {message:?}"
+            );
         }
-        InitializedRootsProbeOutcome::Error(message) => {
-            answer_roots_request_error(&mut lines, &mut write_half, message).await?;
-        }
+        Ok(Err(err)) => return Err(err),
+        Err(_) => {}
     }
 
     assert_eq!(
         handler.current_workspace_id(),
         None,
-        "initialized empty/error roots probe should keep weak cwd startup sessions unbound"
+        "weak cwd startup should remain unbound after on_initialized"
     );
     assert!(
         !*handler.is_indexed.read().await,
-        "initialized empty/error roots probe should keep auto-indexing deferred until request-time resolution"
+        "weak cwd startup should keep auto-indexing deferred until request-time resolution"
     );
 
     let roots_paths = [roots_root.path()];
@@ -208,7 +202,7 @@ async fn assert_initialized_weak_cwd_probe_retries_request_time_roots(
             .expect("manage_workspace list args")
             .clone(),
         ),
-        RequestContext::new(NumberOrString::Number(200), service.peer().clone()),
+        RequestContext::new(NumberOrString::Number(300), service.peer().clone()),
     );
     let (roots_result, list_result) = tokio::time::timeout(Duration::from_secs(10), async {
         tokio::join!(roots_reply, list_future)
@@ -236,22 +230,6 @@ async fn assert_initialized_weak_cwd_probe_retries_request_time_roots(
     drop(lines);
     let _ = service.cancel().await;
     Ok(())
-}
-
-#[tokio::test]
-async fn test_initialized_weak_cwd_probe_empty_retries_request_time_roots() -> Result<()> {
-    assert_initialized_weak_cwd_probe_retries_request_time_roots(
-        InitializedRootsProbeOutcome::Empty,
-    )
-    .await
-}
-
-#[tokio::test]
-async fn test_initialized_weak_cwd_probe_error_retries_request_time_roots() -> Result<()> {
-    assert_initialized_weak_cwd_probe_retries_request_time_roots(
-        InitializedRootsProbeOutcome::Error("initial roots/list failure"),
-    )
-    .await
 }
 
 fn extract_text(result: &rmcp::model::CallToolResult) -> String {
@@ -341,7 +319,6 @@ async fn test_manage_workspace_index_uses_roots_over_cwd_hint() -> Result<()> {
     let (read_half, mut write_half) = tokio::io::split(client_transport);
     let mut lines = BufReader::new(read_half).lines();
 
-    let init_roots_paths = [roots_root.path()];
     send_json_line(
         &mut write_half,
         &serde_json::json!({
@@ -350,7 +327,6 @@ async fn test_manage_workspace_index_uses_roots_over_cwd_hint() -> Result<()> {
         }),
     )
     .await?;
-    answer_roots_request(&mut lines, &mut write_half, &init_roots_paths).await?;
 
     assert_eq!(
         handler.current_workspace_id(),
@@ -543,8 +519,8 @@ async fn test_roots_attach_failure_does_not_leave_stuck_primary_binding() -> Res
 }
 
 #[tokio::test]
-async fn test_roots_list_changed_initialized_snapshot_handles_transient_first_request_failure(
-) -> Result<()> {
+async fn test_first_request_roots_failure_falls_back_to_startup_hint_without_initialized_snapshot()
+-> Result<()> {
     let indexes_dir = tempfile::tempdir()?;
     let startup_root = tempfile::tempdir()?;
     let roots_root = tempfile::tempdir()?;
@@ -597,7 +573,6 @@ async fn test_roots_list_changed_initialized_snapshot_handles_transient_first_re
     let (read_half, mut write_half) = tokio::io::split(client_transport);
     let mut lines = BufReader::new(read_half).lines();
 
-    let init_roots_paths = [roots_root.path()];
     send_json_line(
         &mut write_half,
         &serde_json::json!({
@@ -606,12 +581,11 @@ async fn test_roots_list_changed_initialized_snapshot_handles_transient_first_re
         }),
     )
     .await?;
-    answer_roots_request(&mut lines, &mut write_half, &init_roots_paths).await?;
 
     assert_eq!(
         handler.current_workspace_id(),
         None,
-        "initialized roots snapshot should keep weak cwd startup sessions unbound"
+        "weak cwd startup should stay unbound until a primary-scoped request resolves roots"
     );
 
     let first_roots_reply =
@@ -635,18 +609,15 @@ async fn test_roots_list_changed_initialized_snapshot_handles_transient_first_re
     first_roots_result?;
     let first_result = first_list_result?;
 
-    let roots_workspace_id = crate::workspace::registry::generate_workspace_id(
-        &roots_root.path().canonicalize()?.to_string_lossy(),
-    )?;
     assert_eq!(
         handler.current_workspace_id().as_deref(),
-        Some(roots_workspace_id.as_str()),
-        "a transient request-time roots failure should reuse the initialized roots snapshot instead of falling back to startup"
+        Some(startup_workspace_id.as_str()),
+        "without an initialized roots snapshot, a transient request-time roots failure should fall back to startup cwd"
     );
-    assert_eq!(handler.current_workspace_root(), roots_root.path().canonicalize()?);
+    assert_eq!(handler.current_workspace_root(), startup_path);
     assert!(
-        extract_text(&first_result).contains(&roots_workspace_id),
-        "the primary-scoped request should still resolve against the cached roots workspace"
+        extract_text(&first_result).contains(&startup_workspace_id),
+        "the primary-scoped request should fall back to the startup workspace when request-time roots lookup fails"
     );
 
     drop(write_half);
@@ -1775,7 +1746,7 @@ async fn test_fast_search_reference_definitions_first_request_succeeds_without_p
     let service =
         serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
     let (read_half, mut write_half) = tokio::io::split(client_transport);
-    let mut lines = BufReader::new(read_half).lines();
+    let lines = BufReader::new(read_half).lines();
 
     send_json_line(
         &mut write_half,
@@ -1785,8 +1756,6 @@ async fn test_fast_search_reference_definitions_first_request_succeeds_without_p
         }),
     )
     .await?;
-    let init_roots = [roots_root.path(), secondary_root.path()];
-    answer_roots_request(&mut lines, &mut write_half, &init_roots).await?;
     handler.mark_workspace_active(&secondary_id).await;
 
     assert_eq!(
