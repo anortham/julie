@@ -17,9 +17,17 @@ use tempfile::TempDir;
 /// Given: Database is up-to-date with all files
 /// When: check_if_indexing_needed() is called
 /// Expected: Returns false (no indexing needed)
+///
+/// Previously flaky because `check_if_indexing_needed` compares `max_file_mtime > db_mtime`
+/// and filesystem timestamp resolution (ext4/APFS nanoseconds vs HFS+/FAT 1-2s) can leave
+/// file mtime and db mtime indistinguishable or inverted on coarse-grained filesystems.
+/// We now explicitly backdate the source file's mtime after indexing so the comparison
+/// has a deterministic >1s gap regardless of host filesystem resolution.
 #[tokio::test]
-#[ignore = "Flaky due to filesystem timestamp resolution - needs investigation"]
 async fn test_fresh_index_no_reindex_needed() -> Result<()> {
+    use std::fs::File;
+    use std::time::{Duration, SystemTime};
+
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
     }
@@ -35,9 +43,14 @@ async fn test_fresh_index_no_reindex_needed() -> Result<()> {
     let handler = create_test_handler(workspace_path).await?;
     index_workspace(&handler, workspace_path).await?;
 
-    // Small delay to ensure database mtime is definitely > file mtime
-    // (filesystem timestamp resolution can cause issues otherwise)
-    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    // Seed mtime explicitly: backdate the source file 10s so db_mtime (written during
+    // indexing, ~now) is unambiguously newer. This removes dependence on sub-second
+    // filesystem clock resolution.
+    let backdated = SystemTime::now() - Duration::from_secs(10);
+    File::options()
+        .write(true)
+        .open(&test_file)?
+        .set_modified(backdated)?;
 
     // Verify: No indexing needed (database is fresh)
     let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;

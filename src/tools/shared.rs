@@ -71,6 +71,10 @@ pub const BLACKLISTED_FILENAMES: &[&str] = &[
     ".readthedocs.yaml",
     "book.toml",
     "_config.yml",
+    // Julie's own auto-generated config — never contains source symbols and would
+    // otherwise cause a scan/index asymmetry (scan_workspace_files filters by
+    // extension and excludes it; the indexer accepts extensionless text files).
+    ".julieignore",
 ];
 
 /// Blacklisted directory names - directories to exclude from indexing
