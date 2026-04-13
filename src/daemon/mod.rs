@@ -769,29 +769,49 @@ async fn accept_loop(
         // Check version mismatch BEFORE adding the session. This catches
         // plugin updates where the binary mtime didn't change (e.g. Windows
         // file lock prevented re-extraction over the running executable).
-        if let Some(ref adapter_version) = headers.version {
-            let daemon_version = env!("CARGO_PKG_VERSION");
-            if adapter_version != daemon_version {
-                if sessions.active_count() == 0 {
+        let daemon_version = env!("CARGO_PKG_VERSION");
+        match crate::daemon::ipc_session::evaluate_version_gate(
+            headers.version.as_deref(),
+            daemon_version,
+            sessions.active_count(),
+        ) {
+            crate::daemon::ipc_session::VersionGateOutcome::Proceed => {}
+            crate::daemon::ipc_session::VersionGateOutcome::ShutdownImmediately => {
+                warn!(
+                    adapter_version = headers.version.as_deref().unwrap_or("<none>"),
+                    daemon_version,
+                    "Version mismatch with no active sessions. \
+                     Shutting down for restart."
+                );
+                restart_pending.store(true, Ordering::Relaxed);
+                restart_notify.notify_one();
+                drop(stream);
+                return Ok(());
+            }
+            crate::daemon::ipc_session::VersionGateOutcome::RejectAndFlagForRestart => {
+                // Reject this new session cleanly. Closing the stream triggers
+                // the adapter's ImmediateDaemonDisconnect retry (see
+                // `adapter::forward_streams_inner`) once existing sessions
+                // drain and the daemon restarts. Previously fell through and
+                // served the mismatched session — see Finding #1 in
+                // ROOTS_IMPL_REVIEW_NOTES.md.
+                if !restart_pending.load(Ordering::Relaxed) {
                     warn!(
-                        adapter_version,
+                        adapter_version = headers.version.as_deref().unwrap_or("<none>"),
                         daemon_version,
-                        "Version mismatch with no active sessions. \
-                         Shutting down for restart."
+                        "Adapter/daemon version mismatch. Rejecting new session; \
+                         daemon will restart when current sessions disconnect."
                     );
-                    restart_pending.store(true, Ordering::Relaxed);
-                    restart_notify.notify_one();
-                    drop(stream);
-                    return Ok(());
-                } else if !restart_pending.load(Ordering::Relaxed) {
-                    restart_pending.store(true, Ordering::Relaxed);
+                } else {
                     warn!(
-                        adapter_version,
+                        adapter_version = headers.version.as_deref().unwrap_or("<none>"),
                         daemon_version,
-                        "Adapter/daemon version mismatch. \
-                         Daemon will restart when all sessions disconnect."
+                        "Rejecting adapter session while daemon waits to restart."
                     );
                 }
+                restart_pending.store(true, Ordering::Relaxed);
+                drop(stream);
+                continue;
             }
         }
 

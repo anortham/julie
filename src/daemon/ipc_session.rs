@@ -19,6 +19,47 @@ use super::ipc::IpcStream;
 use super::watcher_pool::WatcherPool;
 use super::workspace_pool::WorkspacePool;
 
+/// Outcome of the adapter ↔ daemon version compatibility check at session accept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VersionGateOutcome {
+    /// Versions match (or adapter is pre-VERSION-header). Serve normally.
+    Proceed,
+    /// Mismatch and the daemon has no active sessions. The daemon should set
+    /// `restart_pending`, notify, drop the stream, and exit. The adapter's
+    /// retry loop will respawn a fresh daemon from its own binary.
+    ShutdownImmediately,
+    /// Mismatch with active sessions. The daemon should set `restart_pending`,
+    /// log once, and **reject this new session cleanly** so the adapter retries
+    /// after existing sessions drain. Previously fell through and served the
+    /// mismatched session — see Finding #1 in ROOTS_IMPL_REVIEW_NOTES.md.
+    RejectAndFlagForRestart,
+}
+
+/// Decide what to do with an incoming adapter session based on version headers.
+///
+/// This is a pure function so it's trivially testable. The accept loop handles
+/// the side effects (setting `restart_pending`, notifying, closing the stream).
+pub fn evaluate_version_gate(
+    adapter_version: Option<&str>,
+    daemon_version: &str,
+    active_sessions: usize,
+) -> VersionGateOutcome {
+    let Some(adapter_version) = adapter_version else {
+        // Pre-v6.5.3 adapters don't send VERSION. Preserve backwards compat.
+        return VersionGateOutcome::Proceed;
+    };
+
+    if adapter_version == daemon_version {
+        return VersionGateOutcome::Proceed;
+    }
+
+    if active_sessions == 0 {
+        VersionGateOutcome::ShutdownImmediately
+    } else {
+        VersionGateOutcome::RejectAndFlagForRestart
+    }
+}
+
 pub(crate) fn workspace_ids_to_disconnect(
     startup_workspace_id: &str,
     attached_workspace_ids: Vec<String>,
