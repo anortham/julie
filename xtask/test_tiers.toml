@@ -3,12 +3,12 @@
 [tiers]
 # Smoke: keep this tiny for frequent local runs.
 smoke = ["cli", "core-database", "core-embeddings", "tools-get-context"]
-dev = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast"]
+dev = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon"]
 # System coverage kept separate from fast local buckets.
 system = ["workspace-init", "integration"]
 # Dogfood stays isolated because it is the long pole.
 dogfood = ["search-quality"]
-full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "workspace-init", "integration", "search-quality"]
+full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-search", "tools-workspace", "tools-misc", "core-fast", "daemon", "workspace-init", "integration", "search-quality"]
 
 [blocked_tiers]
 
@@ -115,6 +115,14 @@ commands = [
   "cargo test --lib tests::core::tracing -- --skip search_quality",
   "cargo test --lib tests::core::vector_storage -- --skip search_quality",
 ]
+
+[buckets.daemon]
+# Daemon-mode tests: handler construction, IPC headers, IPC session lifecycle,
+# MCP roots flow, and SessionWorkspaceState invariants. Real duplex-stream
+# coverage of the protocol; needs to run in CI to defend the rebind machinery.
+expected_seconds = 12
+timeout_seconds = 60
+commands = ["cargo test --lib tests::daemon -- --skip search_quality"]
 
 [buckets.workspace-init]
 # System setup path; currently pathological enough that it needs investigation, not a pretend-fast budget.

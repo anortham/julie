@@ -421,7 +421,11 @@ Fields like `code_context: Some("pub fn rebound_primary_symbol() {}".to_string()
 
 ## Findings discovered during fix-up (post-Pass 4)
 
-### Finding #37 🔴 `tests::daemon::*` runs in no xtask tier
+### Finding #37 ✅ FIXED — daemon bucket added to xtask `dev` and `full`
+
+Implemented in Commit 1.5. Added `[buckets.daemon]` to `xtask/test_tiers.toml` (~12s expected, 60s timeout) and updated the manifest contract test so future drift is caught. Now runs ~180 tests in `cargo xtask test dev`.
+
+**Original description:**
 
 **Where:** `xtask` tier definitions (verified via `cargo xtask test list`).
 
@@ -437,7 +441,13 @@ Total: ~4,200 lines of high-quality tests (per reviewer D's 8/10 audit) silently
 
 **Fix in Commit 1.5:** add a `daemon` bucket to `xtask/src/buckets.rs`, include it in `dev` and `full`.
 
-### Finding #38 🔴 `test_handle_ipc_session_helper_calls_fail_when_rebound_daemon_workspace_missing_from_pool` fails on HEAD
+### Finding #38 ✅ FIXED — daemon-mode helpers fail loudly when primary missing from pool
+
+Implemented in Commit 1.5. Split the contract: `workspace_storage_anchor` and `workspace_db_file_path_for` stay lenient (path computation only — needed by `manage_workspace(add)` and refresh-routing tests that rebind before the pool catches up). Added `ensure_primary_pool_membership_for` guard to `get_database_for_workspace` and `get_search_index_for_workspace` — these actually open connections, so they enforce the daemon-mode invariant.
+
+This is also a defense-in-depth backstop against the bug shape Findings #28/#29 flag: any rebind path that bypasses `attach_daemon_primary_binding_if_needed` now fails loudly the moment it tries to open the DB.
+
+**Original description:**
 
 **Where:** `src/tests/daemon/ipc_session.rs:679-683, 694-698`. Verified pre-existing by stashing my changes — fails identically on `4b2e1fbc`.
 

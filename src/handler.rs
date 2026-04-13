@@ -1975,6 +1975,12 @@ impl JulieServerHandler {
                     ));
                 }
 
+                // Path computation stays lenient when the rebound primary isn't
+                // pool-resident yet — operations like manage_workspace(add) and
+                // refresh routing need to compute target paths even before the
+                // pool catches up. Strict pool-membership enforcement happens in
+                // the connection-opening helpers (get_database_for_workspace and
+                // get_search_index_for_workspace) where it actually matters.
                 if loaded_workspace_id.as_deref() != Some(current_id.as_str()) {
                     return Ok((
                         self.current_workspace_root(),
@@ -2034,6 +2040,37 @@ impl JulieServerHandler {
         Ok((
             loaded_workspace.root.clone(),
             loaded_workspace.index_root_override.clone(),
+        ))
+    }
+
+    /// Daemon-mode invariant guard: when accessing the *current primary*
+    /// workspace's storage, the workspace must be attached in the workspace
+    /// pool. Path computation stays lenient (see `workspace_storage_anchor`)
+    /// because operations like `manage_workspace(add)` need to compute target
+    /// paths before the pool catches up — but actually opening the DB or
+    /// search index against a non-pool-resident primary indicates a rebind
+    /// that bypassed `attach_daemon_primary_binding_if_needed` (see Findings
+    /// #28/#29 in ROOTS_IMPL_REVIEW_NOTES.md).
+    ///
+    /// Secondary workspaces (workspace_id != current primary) are exempt:
+    /// they are accessed lazily via on-disk paths and don't require a pool
+    /// entry to function.
+    async fn ensure_primary_pool_membership_for(&self, workspace_id: &str) -> Result<()> {
+        let Some(pool) = self.workspace_pool.as_ref() else {
+            return Ok(());
+        };
+        let Some(current_id) = self.current_workspace_id() else {
+            return Ok(());
+        };
+        if current_id != workspace_id {
+            return Ok(());
+        }
+        if pool.get(workspace_id).await.is_some() {
+            return Ok(());
+        }
+        Err(anyhow::anyhow!(
+            "Current primary workspace '{}' is not attached in the daemon workspace pool",
+            workspace_id
         ))
     }
 
@@ -2097,6 +2134,7 @@ impl JulieServerHandler {
         &self,
         workspace_id: &str,
     ) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
+        self.ensure_primary_pool_membership_for(workspace_id).await?;
         let db_path = self.workspace_db_file_path_for(workspace_id).await?;
 
         // Fast path: return cached connection for this session (M22).
@@ -2144,6 +2182,7 @@ impl JulieServerHandler {
         &self,
         workspace_id: &str,
     ) -> Result<Option<Arc<std::sync::Mutex<SearchIndex>>>> {
+        self.ensure_primary_pool_membership_for(workspace_id).await?;
         let tantivy_path = self.workspace_tantivy_dir_for(workspace_id).await?;
         if !tantivy_path.join("meta.json").exists() {
             return Ok(None);

@@ -85,6 +85,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "tools-workspace".to_string(),
                 "tools-misc".to_string(),
                 "core-fast".to_string(),
+                "daemon".to_string(),
             ],
         ),
         ("dogfood".to_string(), vec!["search-quality".to_string()]),
@@ -99,6 +100,7 @@ fn expected_tiers() -> BTreeMap<String, Vec<String>> {
                 "tools-workspace".to_string(),
                 "tools-misc".to_string(),
                 "core-fast".to_string(),
+                "daemon".to_string(),
                 "workspace-init".to_string(),
                 "integration".to_string(),
                 "search-quality".to_string(),
@@ -178,6 +180,14 @@ fn expected_buckets() -> BTreeMap<&'static str, ExpectedBucket> {
                     "cargo test --lib tests::core::tracing -- --skip search_quality",
                     "cargo test --lib tests::core::vector_storage -- --skip search_quality",
                 ],
+            },
+        ),
+        (
+            "daemon",
+            ExpectedBucket {
+                expected_seconds: 12,
+                timeout_seconds: 60,
+                commands: &["cargo test --lib tests::daemon -- --skip search_quality"],
             },
         ),
         (
