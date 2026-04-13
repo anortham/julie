@@ -9,6 +9,7 @@
 //! - Workspace registry for multi-project indexing
 
 pub mod registry;
+pub mod startup_hint;
 
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};

@@ -18,7 +18,7 @@ impl ManageWorkspaceTool {
 
         // Daemon mode: use DaemonDatabase for registry operations
         if let Some(ref db) = handler.daemon_db {
-            let primary_workspace_id = handler.workspace_id.as_deref().unwrap_or("primary");
+            let primary_workspace_id = handler.require_primary_workspace_identity()?;
             let workspace_path = std::path::PathBuf::from(path);
             let path_str = workspace_path
                 .canonicalize()
@@ -47,7 +47,7 @@ impl ManageWorkspaceTool {
                         "Reference workspace {} already indexed, recording pairing metadata",
                         ref_workspace_id
                     );
-                    if let Err(e) = db.add_reference(primary_workspace_id, &ref_workspace_id) {
+                    if let Err(e) = db.add_reference(&primary_workspace_id, &ref_workspace_id) {
                         warn!("Failed to record reference relationship: {}", e);
                     }
                     let message = format!(
@@ -94,7 +94,7 @@ impl ManageWorkspaceTool {
                     ) {
                         warn!("Failed to update reference workspace stats: {}", e);
                     }
-                    if let Err(e) = db.add_reference(primary_workspace_id, &ref_workspace_id) {
+                    if let Err(e) = db.add_reference(&primary_workspace_id, &ref_workspace_id) {
                         warn!("Failed to record reference relationship: {}", e);
                     }
 
@@ -161,7 +161,7 @@ impl ManageWorkspaceTool {
 
         // Daemon mode: use DaemonDatabase
         if let Some(ref db) = handler.daemon_db {
-            let primary_workspace_id = handler.workspace_id.as_deref().unwrap_or("primary");
+            let primary_workspace_id = handler.require_primary_workspace_identity()?;
 
             match db.get_workspace(workspace_id) {
                 Ok(Some(ws_row)) => {
@@ -189,7 +189,7 @@ impl ManageWorkspaceTool {
                     }
 
                     // Remove pairing metadata for the current workspace if present.
-                    if let Err(e) = db.remove_reference(primary_workspace_id, workspace_id) {
+                    if let Err(e) = db.remove_reference(&primary_workspace_id, workspace_id) {
                         warn!("Failed to remove reference relationship: {}", e);
                     }
 

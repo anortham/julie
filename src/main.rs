@@ -5,12 +5,12 @@ use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use clap::Parser;
-use julie::cli::{Cli, Command, resolve_workspace_root};
+use julie::cli::{Cli, Command, resolve_workspace_startup_hint};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let workspace_root = resolve_workspace_root(cli.workspace);
+    let startup_hint = resolve_workspace_startup_hint(cli.workspace);
 
     match cli.command {
         Some(Command::Daemon { port, no_dashboard }) => {
@@ -85,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
         }
         None => {
             // Adapter mode: auto-start daemon, forward stdio to IPC
-            julie::adapter::run_adapter(workspace_root).await?;
+            julie::adapter::run_adapter(startup_hint).await?;
         }
     }
 

@@ -48,17 +48,17 @@ impl ManageWorkspaceTool {
             .await?
             .ok_or_else(|| anyhow::anyhow!("No workspace available for indexing"))?;
 
-        // Check if this is the primary workspace by comparing against the handler's workspace root.
-        // Previously compared against std::env::current_dir() which is WRONG — in tests and any
-        // scenario where CWD != workspace root, this incorrectly treated the primary workspace
-        // as a reference workspace, creating a disconnected SearchIndex whose commits silently failed.
+        // Check if this is the primary workspace by comparing against the session's
+        // current root candidate. In deferred daemon sessions there may be no bound
+        // primary identity yet, but the startup hint still tells us which root should
+        // count as primary for this comparison.
         let workspace_canonical = workspace_path
             .canonicalize()
             .unwrap_or_else(|_| workspace_path.to_path_buf());
-        let root_canonical = workspace
-            .root
+        let primary_root = handler.current_workspace_root();
+        let root_canonical = primary_root
             .canonicalize()
-            .unwrap_or_else(|_| workspace.root.clone());
+            .unwrap_or_else(|_| primary_root.clone());
         let is_primary_workspace = workspace_canonical == root_canonical;
         debug!(
             "Workspace comparison: path={:?}, root={:?}, is_primary={}",
@@ -195,7 +195,7 @@ impl ManageWorkspaceTool {
             }
         } else {
             // Reference workspace Tantivy handling
-            let tantivy_path = workspace.workspace_tantivy_path(&workspace_id);
+            let tantivy_path = handler.workspace_tantivy_dir_for(&workspace_id).await?;
 
             if force_reindex {
                 // Clear reference Tantivy directory so process_files_optimized rebuilds it
@@ -208,7 +208,7 @@ impl ManageWorkspaceTool {
                 }
             } else if !tantivy_path.join("meta.json").exists() {
                 // Tantivy index missing or empty — backfill from reference DB
-                let ref_db_path = workspace.workspace_db_path(&workspace_id);
+                let ref_db_path = handler.workspace_db_file_path_for(&workspace_id).await?;
                 if ref_db_path.exists() {
                     self.backfill_reference_tantivy(&ref_db_path, &tantivy_path)
                         .await?;
@@ -240,7 +240,7 @@ impl ManageWorkspaceTool {
             } else {
                 // Reference workspace - must have been created in process_files_optimized
                 // Get the reference workspace database we just indexed
-                let ref_db_path = workspace.workspace_db_path(&workspace_id);
+                let ref_db_path = handler.workspace_db_file_path_for(&workspace_id).await?;
                 if ref_db_path.exists() {
                     // Open the reference workspace database for reading final counts
                     match tokio::task::spawn_blocking(move || {

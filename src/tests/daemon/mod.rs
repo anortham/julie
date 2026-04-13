@@ -2,11 +2,15 @@ pub mod database;
 pub mod embedding_service;
 pub mod handler;
 pub mod ipc;
+pub mod ipc_headers;
+pub mod ipc_session;
 pub mod lifecycle;
 pub mod paths;
 pub mod pid;
+pub mod roots;
 pub mod server;
 pub mod session;
+pub mod session_workspace;
 #[cfg(windows)]
 pub mod shutdown_event;
 pub mod state;

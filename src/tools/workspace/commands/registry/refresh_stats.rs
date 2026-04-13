@@ -46,7 +46,8 @@ impl ManageWorkspaceTool {
                 info!("Starting re-indexing of workspace: {}", workspace_id);
 
                 let force = self.force.unwrap_or(false);
-                let ref_watcher_id = if force && handler.workspace_id.as_deref() != Some(workspace_id)
+                let current_primary_id = handler.current_workspace_id();
+                let ref_watcher_id = if force && current_primary_id.as_deref() != Some(workspace_id)
                 {
                     Some(workspace_id.to_string())
                 } else {
@@ -56,7 +57,9 @@ impl ManageWorkspaceTool {
                     pool.pause_workspace(id).await;
                 }
 
-                let index_result = self.index_workspace_files(handler, &workspace_path, force).await;
+                let index_result = self
+                    .index_workspace_files(handler, &workspace_path, force)
+                    .await;
 
                 if let (Some(id), Some(pool)) = (&ref_watcher_id, &handler.watcher_pool) {
                     pool.resume_workspace(id).await;
@@ -146,8 +149,12 @@ impl ManageWorkspaceTool {
         workspace_id: &str,
     ) -> Result<CallToolResult> {
         info!("Refreshing workspace: {}", workspace_id);
-        if self.force.unwrap_or(false) && handler.workspace_id.as_deref() == Some(workspace_id) {
-            return self.handle_index_command(handler, None, true, false).await;
+        if self.force.unwrap_or(false)
+            && handler.current_workspace_id().as_deref() == Some(workspace_id)
+        {
+            return self
+                .handle_index_command(handler, None, self.force.unwrap_or(false), false)
+                .await;
         }
 
         match self
@@ -155,6 +162,17 @@ impl ManageWorkspaceTool {
             .await?
         {
             RefreshWorkspaceOutcome::Success(success) => {
+                if handler.current_workspace_id().as_deref() == Some(workspace_id)
+                    && handler.loaded_workspace_id().as_deref() != Some(workspace_id)
+                {
+                    handler
+                        .initialize_workspace_with_force(
+                            Some(success.workspace_path.clone()),
+                            false,
+                        )
+                        .await?;
+                }
+
                 let mut message = format!(
                     "Workspace Refresh: {}\n\
                     {}\n\
@@ -191,8 +209,6 @@ impl ManageWorkspaceTool {
 
         // Daemon mode: use DaemonDatabase
         if let Some(ref db) = handler.daemon_db {
-            let primary_workspace_id = handler.workspace_id.as_deref().unwrap_or("primary");
-
             match workspace_id {
                 Some(ref id) => match db.get_workspace(id) {
                     Ok(Some(ws)) => {
@@ -233,6 +249,7 @@ impl ManageWorkspaceTool {
                     }
                 },
                 None => {
+                    let primary_workspace_id = handler.require_primary_workspace_identity()?;
                     let all_workspaces = match db.list_workspaces() {
                         Ok(workspaces) => workspaces,
                         Err(e) => {
@@ -240,7 +257,7 @@ impl ManageWorkspaceTool {
                             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                         }
                     };
-                    let pair_count = match db.list_references(primary_workspace_id) {
+                    let pair_count = match db.list_references(&primary_workspace_id) {
                         Ok(references) => references.len(),
                         Err(e) => {
                             let message = format!("Failed to list workspace pairings: {}", e);

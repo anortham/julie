@@ -139,8 +139,63 @@ impl FastSearchTool {
 
         match readiness {
             SystemStatus::NotReady => {
+                if let WorkspaceTarget::Primary = &workspace_target {
+                    if !handler.is_primary_workspace_swap_in_progress()
+                        && handler.get_workspace().await?.is_none()
+                    {
+                        let message = "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
+                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    }
+
+                    let primary_id = handler.require_primary_workspace_identity()?;
+
+                    if handler
+                        .get_database_for_workspace(&primary_id)
+                        .await
+                        .is_ok()
+                        && handler
+                            .get_search_index_for_workspace(&primary_id)
+                            .await?
+                            .is_none()
+                    {
+                        let message = if use_line_mode {
+                            "Line-level content search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.".to_string()
+                        } else {
+                            "Definition search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.".to_string()
+                        };
+                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    }
+                }
+
+                if let Some(ref target_workspace_id) = target_workspace_id {
+                    if handler
+                        .get_database_for_workspace(target_workspace_id)
+                        .await
+                        .is_ok()
+                        && handler
+                            .get_search_index_for_workspace(target_workspace_id)
+                            .await?
+                            .is_none()
+                    {
+                        let message = if use_line_mode {
+                            format!(
+                                "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
+                                target_workspace_id, target_workspace_id
+                            )
+                        } else {
+                            format!(
+                                "Definition search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
+                                target_workspace_id, target_workspace_id
+                            )
+                        };
+                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    }
+                }
+
                 if use_line_mode {
-                    debug!("Line-mode search before readiness; attempting SQLite fallback");
+                    debug!(
+                        "Line-mode search before readiness; attempting workspace-specific resolution"
+                    );
                 } else {
                     let message = "Workspace not indexed yet. Run manage_workspace(operation=\"index\") first.";
                     return Ok(CallToolResult::text_content(vec![Content::text(message)]));
@@ -156,6 +211,30 @@ impl FastSearchTool {
 
         // Route: content search → line mode, definition search → symbol mode
         if use_line_mode {
+            match &workspace_target {
+                WorkspaceTarget::Primary => {
+                    let primary_id = handler.require_primary_workspace_identity()?;
+                    if handler
+                        .get_search_index_for_workspace(&primary_id)
+                        .await?
+                        .is_none()
+                    {
+                        let message = "Line-level content search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.";
+                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    }
+                }
+                WorkspaceTarget::Reference(id) => {
+                    handler.get_database_for_workspace(id).await?;
+                    if handler.get_search_index_for_workspace(id).await?.is_none() {
+                        let message = format!(
+                            "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
+                            id, id
+                        );
+                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                    }
+                }
+            }
+
             return line_mode::line_mode_search(
                 &self.query,
                 &self.language,
@@ -169,28 +248,51 @@ impl FastSearchTool {
         }
 
         // Definition search → Tantivy symbol mode
-        // Convert WorkspaceTarget to Option<Vec<String>> for text_search_impl
-        let workspace_ids = match workspace_target {
+        match &workspace_target {
             WorkspaceTarget::Primary => {
-                // Resolve the actual primary workspace ID for Tantivy filtering
-                if let Some(workspace) = handler.get_workspace().await? {
-                    let primary_id = if let Some(ref id) = handler.workspace_id {
-                        id.clone()
-                    } else {
-                        crate::workspace::registry::generate_workspace_id(
-                            &workspace.root.to_string_lossy(),
-                        )
-                        .unwrap_or_default()
-                    };
-                    if primary_id.is_empty() {
-                        None
-                    } else {
-                        Some(vec![primary_id])
-                    }
-                } else {
-                    None
+                let primary_id = handler.require_primary_workspace_identity()?;
+                if handler
+                    .get_search_index_for_workspace(&primary_id)
+                    .await?
+                    .is_none()
+                {
+                    let message = "Definition search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first.";
+                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                 }
             }
+            WorkspaceTarget::Reference(id) => {
+                handler.get_database_for_workspace(id).await?;
+                if handler.get_search_index_for_workspace(id).await?.is_none() {
+                    let message = format!(
+                        "Definition search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
+                        id, id
+                    );
+                    return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                }
+            }
+        }
+
+        if let Some(ref target_workspace_id) = target_workspace_id {
+            if handler
+                .get_database_for_workspace(target_workspace_id)
+                .await
+                .is_ok()
+                && handler
+                    .get_search_index_for_workspace(target_workspace_id)
+                    .await?
+                    .is_none()
+            {
+                let message = format!(
+                    "Definition search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
+                    target_workspace_id, target_workspace_id
+                );
+                return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+            }
+        }
+
+        // Convert WorkspaceTarget to Option<Vec<String>> for text_search_impl
+        let workspace_ids = match workspace_target {
+            WorkspaceTarget::Primary => Some(vec![handler.require_primary_workspace_identity()?]),
             WorkspaceTarget::Reference(id) => Some(vec![id]),
         };
         let (symbols, relaxed, pre_trunc_total) = text_search::text_search_impl(

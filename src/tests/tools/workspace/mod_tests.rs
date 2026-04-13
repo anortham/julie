@@ -7,6 +7,11 @@ use crate::tools::workspace::ManageWorkspaceTool;
 #[cfg(feature = "embeddings-sidecar")]
 use crate::tools::workspace::indexing::embeddings::spawn_workspace_embedding;
 use crate::workspace::JulieWorkspace;
+use rmcp::{
+    ServerHandler,
+    model::{CallToolRequestParams, NumberOrString, ServerJsonRpcMessage, ServerRequest},
+    service::{RequestContext, serve_directly},
+};
 #[cfg(feature = "embeddings-sidecar")]
 use serial_test::serial;
 #[cfg(feature = "embeddings-sidecar")]
@@ -18,6 +23,7 @@ use std::sync::Arc;
 #[cfg(feature = "embeddings-sidecar")]
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 struct NoopEmbeddingProvider;
 
@@ -57,6 +63,26 @@ fn extract_text_from_result(result: &CallToolResult) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+async fn send_json_line(writer: &mut (impl AsyncWriteExt + Unpin), value: &serde_json::Value) {
+    writer
+        .write_all(serde_json::to_string(value).unwrap().as_bytes())
+        .await
+        .unwrap();
+    writer.write_all(b"\n").await.unwrap();
+    writer.flush().await.unwrap();
+}
+
+async fn read_server_message(
+    lines: &mut tokio::io::Lines<BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>>,
+) -> ServerJsonRpcMessage {
+    let line = lines
+        .next_line()
+        .await
+        .unwrap()
+        .expect("server should emit a JSON-RPC message line");
+    serde_json::from_str(&line).unwrap()
 }
 
 #[cfg(feature = "embeddings-sidecar")]
@@ -627,6 +653,913 @@ async fn test_manage_workspace_health_reports_initialized_when_not_degraded() {
     assert!(health.contains("Degraded: none"), "{health}");
 }
 
+#[tokio::test]
+async fn test_manage_workspace_health_uses_rebound_session_primary() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::workspace::registry::generate_workspace_id;
+
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir).unwrap();
+
+    let loaded_primary_root = temp_dir.path().join("loaded-primary");
+    let rebound_primary_root = temp_dir.path().join("rebound-primary");
+    fs::create_dir_all(&loaded_primary_root).unwrap();
+    fs::create_dir_all(&rebound_primary_root).unwrap();
+    fs::write(
+        loaded_primary_root.join("main.rs"),
+        "fn loaded_primary() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        rebound_primary_root.join("lib.rs"),
+        "fn rebound_primary() {}\n",
+    )
+    .unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.clone(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
+    let loaded_primary_path_str = loaded_primary_path.to_string_lossy().to_string();
+    let loaded_primary_id = generate_workspace_id(&loaded_primary_path_str).unwrap();
+    let loaded_primary_ws = pool
+        .get_or_init(&loaded_primary_id, loaded_primary_path.clone())
+        .await
+        .unwrap();
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        loaded_primary_ws,
+        loaded_primary_path,
+        Some(Arc::clone(&daemon_db)),
+        Some(loaded_primary_id.clone()),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await
+    .unwrap();
+    {
+        let mut loaded_workspace = handler.workspace.write().await;
+        loaded_workspace
+            .as_mut()
+            .expect("loaded workspace should exist")
+            .search_index = None;
+    }
+
+    let rebound_primary_path = rebound_primary_root.canonicalize().unwrap();
+    let rebound_primary_path_str = rebound_primary_path.to_string_lossy().to_string();
+    let rebound_primary_id = generate_workspace_id(&rebound_primary_path_str).unwrap();
+    daemon_db
+        .upsert_workspace(&loaded_primary_id, &loaded_primary_path_str, "ready")
+        .unwrap();
+    daemon_db
+        .upsert_workspace(&rebound_primary_id, &rebound_primary_path_str, "ready")
+        .unwrap();
+
+    let rebound_ws = pool
+        .get_or_init(&rebound_primary_id, rebound_primary_path.clone())
+        .await
+        .unwrap();
+    {
+        let mut rebound_guard = rebound_ws.db.as_ref().unwrap().lock().unwrap();
+        let file_info = crate::database::types::FileInfo {
+            path: "lib.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "rebound_hash".to_string(),
+            size: 32,
+            last_modified: 1,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 1,
+            content: None,
+        };
+        let symbol = crate::extractors::Symbol {
+            id: "rebound_symbol".to_string(),
+            name: "rebound_primary".to_string(),
+            kind: crate::extractors::SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "lib.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 20,
+            start_byte: 0,
+            end_byte: 20,
+            signature: Some("fn rebound_primary()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        };
+        rebound_guard
+            .bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_primary_id)
+            .unwrap();
+    }
+
+    handler.set_current_primary_binding(rebound_primary_id, rebound_primary_path);
+
+    let tool = ManageWorkspaceTool {
+        operation: "health".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: Some(false),
+    };
+
+    let result = tool.call_tool(&handler).await.unwrap();
+    let health = extract_text_from_result(&result);
+
+    assert!(
+        health.contains("SQLite Status: HEALTHY"),
+        "health should use rebound current primary database: {health}"
+    );
+    assert!(
+        health.contains("1 symbols across 1 files"),
+        "health should report rebound primary stats, not stale loaded workspace stats: {health}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_manage_workspace_health_keeps_primary_snapshot_after_completed_swap() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::health::{HealthChecker, SystemStatus};
+    use crate::workspace::registry::generate_workspace_id;
+    use futures::poll;
+
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir).unwrap();
+
+    let original_root = temp_dir.path().join("loaded-primary");
+    let rebound_root = temp_dir.path().join("rebound-primary");
+    fs::create_dir_all(original_root.join("src")).unwrap();
+    fs::create_dir_all(rebound_root.join("src")).unwrap();
+    fs::write(
+        original_root.join("src").join("main.rs"),
+        "fn loaded_primary() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        rebound_root.join("src").join("lib.rs"),
+        "fn rebound_primary() {}\n",
+    )
+    .unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.clone(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let original_path = original_root.canonicalize().unwrap();
+    let original_path_str = original_path.to_string_lossy().to_string();
+    let original_id = generate_workspace_id(&original_path_str).unwrap();
+    daemon_db
+        .upsert_workspace(&original_id, &original_path_str, "ready")
+        .unwrap();
+    let original_ws = pool
+        .get_or_init(&original_id, original_path.clone())
+        .await
+        .unwrap();
+    let original_meta_path = indexes_dir
+        .join(&original_id)
+        .join("tantivy")
+        .join("meta.json");
+    if original_meta_path.exists() {
+        fs::remove_file(&original_meta_path).unwrap();
+    }
+    let mut original_handler_ws = (*original_ws).clone();
+    original_handler_ws.search_index = None;
+    {
+        let mut original_guard = original_ws.db.as_ref().unwrap().lock().unwrap();
+        let file_info = crate::database::types::FileInfo {
+            path: "src/main.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "original_hash".to_string(),
+            size: 24,
+            last_modified: 1,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 1,
+            content: None,
+        };
+        let symbol = crate::extractors::Symbol {
+            id: "original_symbol".to_string(),
+            name: "loaded_primary".to_string(),
+            kind: crate::extractors::SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/main.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 19,
+            start_byte: 0,
+            end_byte: 19,
+            signature: Some("fn loaded_primary()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        };
+        original_guard
+            .bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &original_id)
+            .unwrap();
+    }
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        Arc::new(original_handler_ws),
+        original_path.clone(),
+        Some(Arc::clone(&daemon_db)),
+        Some(original_id.clone()),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await
+    .unwrap();
+
+    let rebound_path = rebound_root.canonicalize().unwrap();
+    let rebound_path_str = rebound_path.to_string_lossy().to_string();
+    let rebound_id = generate_workspace_id(&rebound_path_str).unwrap();
+    daemon_db
+        .upsert_workspace(&rebound_id, &rebound_path_str, "ready")
+        .unwrap();
+    pool.get_or_init(&rebound_id, rebound_path.clone())
+        .await
+        .unwrap();
+
+    let workspace_write_guard = handler.workspace.write().await;
+    let mut readiness_future = Box::pin(HealthChecker::check_system_readiness(&handler, None));
+    assert!(
+        poll!(readiness_future.as_mut()).is_pending(),
+        "health check should block on the first await while the workspace lock is held"
+    );
+
+    handler.set_current_primary_binding(rebound_id, rebound_path);
+    drop(workspace_write_guard);
+    assert!(
+        !handler.is_primary_workspace_swap_in_progress(),
+        "swap should be completed before the readiness future resumes"
+    );
+
+    match readiness_future.await.unwrap() {
+        SystemStatus::SqliteOnly { symbol_count } => {
+            assert_eq!(
+                symbol_count, 1,
+                "health should stay bound to the original snapshot"
+            )
+        }
+        other => panic!("expected SqliteOnly from the original primary snapshot, got {other:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_manage_workspace_health_detailed_uses_rebound_session_primary() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::health::HealthChecker;
+    use crate::workspace::registry::generate_workspace_id;
+
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir).unwrap();
+
+    let loaded_primary_root = temp_dir.path().join("loaded-primary-detailed");
+    let rebound_primary_root = temp_dir.path().join("rebound-primary-detailed");
+    fs::create_dir_all(&loaded_primary_root).unwrap();
+    fs::create_dir_all(&rebound_primary_root).unwrap();
+    fs::write(
+        loaded_primary_root.join("main.rs"),
+        "fn loaded_primary_detailed() {}\n",
+    )
+    .unwrap();
+    fs::write(
+        rebound_primary_root.join("lib.rs"),
+        "fn rebound_primary_detailed() {}\n",
+    )
+    .unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.clone(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let loaded_primary_path = loaded_primary_root.canonicalize().unwrap();
+    let loaded_primary_path_str = loaded_primary_path.to_string_lossy().to_string();
+    let loaded_primary_id = generate_workspace_id(&loaded_primary_path_str).unwrap();
+    let loaded_primary_ws = pool
+        .get_or_init(&loaded_primary_id, loaded_primary_path.clone())
+        .await
+        .unwrap();
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        loaded_primary_ws,
+        loaded_primary_path,
+        Some(Arc::clone(&daemon_db)),
+        Some(loaded_primary_id.clone()),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await
+    .unwrap();
+
+    let rebound_primary_path = rebound_primary_root.canonicalize().unwrap();
+    let rebound_primary_path_str = rebound_primary_path.to_string_lossy().to_string();
+    let rebound_primary_id = generate_workspace_id(&rebound_primary_path_str).unwrap();
+    daemon_db
+        .upsert_workspace(&loaded_primary_id, &loaded_primary_path_str, "ready")
+        .unwrap();
+    daemon_db
+        .upsert_workspace(&rebound_primary_id, &rebound_primary_path_str, "ready")
+        .unwrap();
+
+    let rebound_ws = pool
+        .get_or_init(&rebound_primary_id, rebound_primary_path.clone())
+        .await
+        .unwrap();
+    {
+        let mut rebound_guard = rebound_ws.db.as_ref().unwrap().lock().unwrap();
+        let file_info = crate::database::types::FileInfo {
+            path: "lib.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "rebound_detailed_hash".to_string(),
+            size: 41,
+            last_modified: 1,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 1,
+            content: None,
+        };
+        let symbol = crate::extractors::Symbol {
+            id: "rebound_detailed_symbol".to_string(),
+            name: "rebound_primary_detailed".to_string(),
+            kind: crate::extractors::SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "lib.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 29,
+            start_byte: 0,
+            end_byte: 29,
+            signature: Some("fn rebound_primary_detailed()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        };
+        rebound_guard
+            .bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_primary_id)
+            .unwrap();
+    }
+
+    handler.set_current_primary_binding(rebound_primary_id, rebound_primary_path);
+
+    let report = HealthChecker::get_detailed_health_report(&handler)
+        .await
+        .unwrap();
+
+    assert!(
+        report.contains("📊 Database: 1 symbols, 1 files, 0 relationships"),
+        "detailed health should use rebound current-primary stats, not the stale loaded workspace: {report}"
+    );
+    assert!(
+        report.contains("✅ Tantivy search ready"),
+        "detailed health should use rebound current-primary search readiness instead of stale loaded workspace state: {report}"
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_health_loaded_primary_without_tantivy_is_sqlite_only() {
+    use crate::health::{HealthChecker, SystemStatus};
+
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_path = temp_dir.path().to_path_buf();
+    fs::create_dir_all(workspace_path.join("src")).unwrap();
+    fs::write(
+        workspace_path.join("src").join("main.rs"),
+        "fn sqlite_only_loaded_primary() {}\n",
+    )
+    .unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&workspace_path.to_string_lossy())
+            .unwrap();
+    let tantivy_dir = handler
+        .workspace_tantivy_dir_for(&workspace_id)
+        .await
+        .unwrap();
+    let meta_path = tantivy_dir.join("meta.json");
+    if meta_path.exists() {
+        fs::remove_file(meta_path).unwrap();
+    }
+
+    let readiness = HealthChecker::check_system_readiness(&handler, None)
+        .await
+        .unwrap();
+    match readiness {
+        SystemStatus::SqliteOnly { symbol_count } => assert!(symbol_count > 0),
+        other => panic!("expected SqliteOnly for loaded primary without Tantivy, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_manage_workspace_health_rejects_neutral_gap_without_primary_identity() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_path = temp_dir.path().to_path_buf();
+    fs::create_dir_all(workspace_path.join("src")).unwrap();
+    fs::write(
+        workspace_path.join("src").join("main.rs"),
+        "fn neutral_gap_health_target() {}\n",
+    )
+    .unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+
+    handler.publish_loaded_workspace_swap_intent_for_test();
+
+    let tool = ManageWorkspaceTool {
+        operation: "health".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: Some(false),
+    };
+
+    let err = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("neutral gap should reject primary health requests");
+
+    assert!(
+        err.to_string()
+            .contains("Primary workspace identity unavailable during swap"),
+        "unexpected error: {err:#}"
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_health_cold_start_returns_index_first_guidance() {
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+
+    let result = ManageWorkspaceTool {
+        operation: "health".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: Some(false),
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+
+    let health = extract_text_from_result(&result);
+
+    assert!(
+        health
+            .contains("No workspace initialized. Run manage_workspace(operation=\"index\") first."),
+        "cold start should keep index-first guidance, got: {health}"
+    );
+    assert!(
+        !health.contains("Primary workspace identity unavailable during swap"),
+        "cold start should not be classified as a swap gap: {health}"
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_health_true_swap_gap_uses_swap_gap_classification() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_path = temp_dir.path().to_path_buf();
+    fs::create_dir_all(workspace_path.join("src")).unwrap();
+    fs::write(
+        workspace_path.join("src").join("main.rs"),
+        "fn true_swap_gap_health_target() {}\n",
+    )
+    .unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+
+    handler
+        .publish_loaded_workspace_swap_teardown_gap_for_test()
+        .await;
+
+    let err = ManageWorkspaceTool {
+        operation: "health".to_string(),
+        path: None,
+        force: None,
+        name: None,
+        workspace_id: None,
+        detailed: Some(false),
+    }
+    .call_tool(&handler)
+    .await
+    .expect_err("true swap gap should reject primary health requests");
+
+    assert!(
+        err.to_string()
+            .contains("Primary workspace identity unavailable during swap"),
+        "unexpected error: {err:#}"
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_health_triggers_roots_resolution_when_primary_missing() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::extractors::SymbolKind;
+    use crate::workspace::registry::generate_workspace_id;
+
+    let temp_dir = TempDir::new().unwrap();
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir).unwrap();
+
+    let startup_root = temp_dir.path().join("startup");
+    let roots_root = temp_dir.path().join("roots");
+    fs::create_dir_all(&startup_root).unwrap();
+    fs::create_dir_all(&roots_root).unwrap();
+    fs::write(startup_root.join("main.rs"), "fn startup() {}\n").unwrap();
+    fs::write(roots_root.join("lib.rs"), "fn roots_health() {}\n").unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir,
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let startup_path = startup_root.canonicalize().unwrap();
+    let startup_id = generate_workspace_id(&startup_path.to_string_lossy()).unwrap();
+    daemon_db
+        .upsert_workspace(&startup_id, &startup_path.to_string_lossy(), "ready")
+        .unwrap();
+    let startup_ws = pool
+        .get_or_init(&startup_id, startup_path.clone())
+        .await
+        .unwrap();
+
+    let roots_path = roots_root.canonicalize().unwrap();
+    let roots_id = generate_workspace_id(&roots_path.to_string_lossy()).unwrap();
+    daemon_db
+        .upsert_workspace(&roots_id, &roots_path.to_string_lossy(), "ready")
+        .unwrap();
+    let roots_ws = pool
+        .get_or_init(&roots_id, roots_path.clone())
+        .await
+        .unwrap();
+    {
+        let mut roots_db = roots_ws.db.as_ref().unwrap().lock().unwrap();
+        let file_info = crate::database::types::FileInfo {
+            path: "lib.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "roots_health_hash".to_string(),
+            size: 24,
+            last_modified: 1,
+            last_indexed: 0,
+            symbol_count: 1,
+            line_count: 1,
+            content: None,
+        };
+        let symbol = crate::extractors::Symbol {
+            id: "roots_health_symbol".to_string(),
+            name: "roots_health".to_string(),
+            kind: SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "lib.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 18,
+            start_byte: 0,
+            end_byte: 18,
+            signature: Some("fn roots_health()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        };
+        roots_db
+            .bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &roots_id)
+            .unwrap();
+    }
+
+    let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
+        startup_ws,
+        crate::workspace::startup_hint::WorkspaceStartupHint {
+            path: startup_path.clone(),
+            source: Some(crate::workspace::startup_hint::WorkspaceStartupSource::Cwd),
+        },
+        Some(Arc::clone(&daemon_db)),
+        Some(startup_id.clone()),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await
+    .unwrap();
+    handler.set_client_supports_workspace_roots_for_test(true);
+    assert_eq!(handler.current_workspace_id(), None);
+
+    let (server_transport, client_transport) = tokio::io::duplex(256);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+    let (read_half, mut write_half) = tokio::io::split(client_transport);
+    let mut lines = BufReader::new(read_half).lines();
+
+    let roots_reply = async {
+        match read_server_message(&mut lines).await {
+            ServerJsonRpcMessage::Request(request) => match request.request {
+                ServerRequest::ListRootsRequest(_) => {
+                    send_json_line(
+                        &mut write_half,
+                        &serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": request.id,
+                            "result": {
+                                "roots": [{ "uri": format!("file://{}", roots_path.to_string_lossy()) }]
+                            }
+                        }),
+                    )
+                    .await;
+                }
+                other => panic!("unexpected server request: {other:?}"),
+            },
+            other => panic!("unexpected server message: {other:?}"),
+        }
+    };
+
+    let health = <JulieServerHandler as ServerHandler>::call_tool(
+        &handler,
+        CallToolRequestParams::new("manage_workspace").with_arguments(
+            serde_json::json!({
+                "operation": "health",
+                "detailed": false
+            })
+            .as_object()
+            .expect("health args")
+            .clone(),
+        ),
+        RequestContext::new(NumberOrString::Number(12), service.peer().clone()),
+    );
+    let (_, result) = tokio::join!(roots_reply, health);
+    let result = result.unwrap();
+    let text = extract_text_from_result(&result);
+
+    assert!(
+        text.contains("SQLite Status: HEALTHY"),
+        "health should succeed after roots resolution: {text}"
+    );
+    assert!(
+        text.contains("1 symbols across 1 files"),
+        "health should report the roots-bound workspace stats: {text}"
+    );
+    assert_eq!(
+        handler.current_workspace_id().as_deref(),
+        Some(roots_id.as_str()),
+        "health should bind the roots-selected current primary"
+    );
+
+    drop(write_half);
+    drop(lines);
+    let _ = service.cancel().await;
+}
+
+#[tokio::test]
+async fn test_manage_workspace_index_rejects_neutral_gap_without_primary_identity() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_path = temp_dir.path().to_path_buf();
+    fs::create_dir_all(workspace_path.join("src")).unwrap();
+    fs::write(
+        workspace_path.join("src").join("main.rs"),
+        "fn neutral_gap_index_target() {}\n",
+    )
+    .unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+
+    handler.publish_loaded_workspace_swap_intent_for_test();
+
+    let tool = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: None,
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    };
+
+    let err = tool
+        .call_tool(&handler)
+        .await
+        .expect_err("neutral gap should reject primary index requests");
+
+    assert!(
+        err.to_string()
+            .contains("Primary workspace identity unavailable during swap"),
+        "unexpected error: {err:#}"
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_index_rejects_neutral_gap_without_primary_identity_after_teardown() {
+    unsafe {
+        std::env::set_var("JULIE_SKIP_SEARCH_INDEX", "1");
+    }
+
+    let temp_dir = TempDir::new().unwrap();
+    let workspace_path = temp_dir.path().to_path_buf();
+    fs::create_dir_all(workspace_path.join("src")).unwrap();
+    fs::write(
+        workspace_path.join("src").join("main.rs"),
+        "fn teardown_gap_index_target() {}\n",
+    )
+    .unwrap();
+
+    let handler = JulieServerHandler::new_for_test().await.unwrap();
+    handler
+        .initialize_workspace_with_force(Some(workspace_path.to_string_lossy().to_string()), true)
+        .await
+        .unwrap();
+
+    ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: Some(workspace_path.to_string_lossy().to_string()),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .unwrap();
+
+    handler
+        .publish_loaded_workspace_swap_teardown_gap_for_test()
+        .await;
+
+    let err = ManageWorkspaceTool {
+        operation: "index".to_string(),
+        path: None,
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .expect_err("post-teardown swap gap should reject primary index requests");
+
+    assert!(
+        err.to_string()
+            .contains("Primary workspace identity unavailable during swap"),
+        "unexpected error: {err:#}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore] // HANGS: Concurrent indexing stress test - not critical for CLI tools
 // Run manually with: cargo test test_concurrent_manage_workspace --ignored
@@ -1135,7 +2068,10 @@ async fn test_refresh_no_changes_skips_embedding_pipeline() {
     // Create handler with daemon_db
     let mut handler = JulieServerHandler::new_for_test().await.unwrap();
     handler.daemon_db = Some(daemon_db.clone());
-    handler.workspace_id = Some(workspace_id.clone());
+    *handler
+        .workspace_id
+        .write()
+        .unwrap_or_else(|p| p.into_inner()) = Some(workspace_id.clone());
 
     handler
         .initialize_workspace_with_force(Some(workspace_path_str.clone()), true)

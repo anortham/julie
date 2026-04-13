@@ -109,22 +109,8 @@ impl DeepDiveTool {
             }
         }
 
-        // Primary workspace: use shared database via Arc<Mutex>
-        let workspace = handler.get_workspace().await?.ok_or_else(|| {
-            anyhow::anyhow!(
-                "No workspace initialized. Run manage_workspace(operation=\"index\") first."
-            )
-        })?;
-
-        let db_arc = workspace
-            .db
-            .as_ref()
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Database not available. Run manage_workspace(operation=\"index\") first."
-                )
-            })?
-            .clone();
+        // Primary workspace: use the current-primary DB store, not the stale loaded one.
+        let db_arc = handler.primary_database().await?;
 
         // All database work in spawn_blocking (SQLite is synchronous)
         let result = tokio::task::spawn_blocking(move || -> Result<String> {

@@ -1,7 +1,9 @@
 use super::ManageWorkspaceTool;
 use crate::handler::JulieServerHandler;
+use crate::health::{HealthChecker, PrimaryWorkspaceHealth};
 use crate::mcp_compat::{CallToolResult, CallToolResultExt, Content};
 use anyhow::Result;
+use std::sync::{Arc, Mutex};
 use tracing::{info, warn};
 
 impl ManageWorkspaceTool {
@@ -16,26 +18,33 @@ impl ManageWorkspaceTool {
             detailed
         );
 
-        let primary_workspace = match handler.get_workspace().await? {
-            Some(ws) => ws,
-            None => {
-                let message = "CRITICAL: No primary workspace found!\n\
-                               Run 'index' command to initialize workspace.";
+        let (database, search_index_ready) = match HealthChecker::primary_workspace_health(handler)
+            .await?
+        {
+            PrimaryWorkspaceHealth::ColdStart => {
+                let message =
+                    "No workspace initialized. Run manage_workspace(operation=\"index\") first.";
                 return Ok(CallToolResult::text_content(vec![Content::text(message)]));
             }
+            PrimaryWorkspaceHealth::Ready {
+                database,
+                search_index_ready,
+            } => (database, search_index_ready),
         };
 
         let mut health_report = String::from("JULIE SYSTEM HEALTH REPORT\n\n");
 
         // PHASE 1: SQLite Database Health
         health_report.push_str("SQLite Database (Source of Truth)\n");
-        let db_status = self.check_database_health(&primary_workspace).await?;
+        let db_status = self.check_database_health(database.as_ref()).await?;
         health_report.push_str(&db_status);
         health_report.push('\n');
 
         // PHASE 2: Search Engine Health
         health_report.push_str("Search Engine (Tantivy)\n");
-        let search_status = self.check_search_engine_health(&primary_workspace).await?;
+        let search_status = self
+            .check_search_engine_health(database.is_some(), search_index_ready)
+            .await?;
         health_report.push_str(&search_status);
         health_report.push('\n');
 
@@ -60,7 +69,9 @@ impl ManageWorkspaceTool {
 
         // PHASE 5: Overall System Assessment
         health_report.push_str("Overall System Assessment\n");
-        let overall_status = self.assess_overall_health(&primary_workspace).await?;
+        let overall_status = self
+            .assess_overall_health(database.is_some(), search_index_ready)
+            .await?;
         health_report.push_str(&overall_status);
 
         Ok(CallToolResult::text_content(vec![Content::text(
@@ -71,11 +82,11 @@ impl ManageWorkspaceTool {
     /// Check SQLite database health and statistics
     async fn check_database_health(
         &self,
-        workspace: &crate::workspace::JulieWorkspace,
+        db_arc: Option<&Arc<Mutex<crate::database::SymbolDatabase>>>,
     ) -> Result<String> {
         let mut status = String::new();
 
-        match &workspace.db {
+        match db_arc {
             Some(db_arc) => {
                 let db = match db_arc.lock() {
                     Ok(guard) => guard,
@@ -139,12 +150,15 @@ impl ManageWorkspaceTool {
     /// Check Tantivy search engine health
     async fn check_search_engine_health(
         &self,
-        workspace: &crate::workspace::JulieWorkspace,
+        db_ready: bool,
+        search_index_ready: bool,
     ) -> Result<String> {
         let mut status = String::new();
 
-        if workspace.db.is_some() {
+        if db_ready && search_index_ready {
             status.push_str("Tantivy Status: READY\n");
+        } else if db_ready {
+            status.push_str("Tantivy Status: NOT AVAILABLE (search index not initialized)\n");
         } else {
             status.push_str("Tantivy Status: NOT AVAILABLE (database not initialized)\n");
         }
@@ -219,11 +233,10 @@ impl ManageWorkspaceTool {
     /// Assess overall system health and readiness
     async fn assess_overall_health(
         &self,
-        workspace: &crate::workspace::JulieWorkspace,
+        db_ready: bool,
+        search_index_ready: bool,
     ) -> Result<String> {
-        let db_ready = workspace.db.is_some();
-
-        let status = if db_ready {
+        let status = if db_ready && search_index_ready {
             "FULLY OPERATIONAL - All systems ready!"
         } else {
             "INITIALIZING - Please wait for indexing to complete"
@@ -234,10 +247,14 @@ impl ManageWorkspaceTool {
         assessment.push_str(&format!(
             "System Readiness:\n\
             • SQLite Database (with Tantivy search): {}\n\n",
-            if db_ready { "READY" } else { "BUILDING" },
+            if db_ready && search_index_ready {
+                "READY"
+            } else {
+                "BUILDING"
+            },
         ));
 
-        if !db_ready {
+        if !db_ready || !search_index_ready {
             assessment.push_str("Action: Run 'manage_workspace index' to initialize database\n");
         }
 

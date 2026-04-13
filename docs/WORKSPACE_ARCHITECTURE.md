@@ -1,6 +1,6 @@
 # Workspace Architecture
 
-**Last Updated:** 2026-04-10
+**Last Updated:** 2026-04-12
 **Status:** Production (v6, stdio + daemon modes)
 
 This document provides detailed information about Julie's workspace architecture, routing, and storage.
@@ -65,6 +65,24 @@ In daemon mode, cross-workspace work goes through one front door:
 
 Outside daemon mode, Julie does not have the same registry-backed activation model. Stdio still accepts explicit non-`primary` workspace IDs and can index another path, but that behavior is permissive compatibility behavior, not the supported global-workspace flow.
 
+## Startup Hint And Roots Model
+
+Julie now treats startup path resolution and client roots as separate inputs.
+
+- **Startup hint** is the path Julie gets from CLI, `JULIE_WORKSPACE`, or process `cwd` at session startup.
+- **Primary workspace binding** is the session's current `primary` target.
+- **Client roots** are request-time hints from MCP hosts that support `roots/list`.
+
+The startup hint is not always authoritative. When Julie starts from a weak hint such as `cwd`, daemon sessions can remain unbound until the first primary-scoped request. On that request boundary, Julie asks the client for roots, binds the first root as the session primary, and keeps any additional roots active as secondary workspaces for explicit targeting.
+
+This keeps default tool behavior stable:
+
+- Omitted `workspace` parameters still mean the current primary workspace only.
+- Secondary roots do not expand default search scope.
+- Secondary roots stay active in the session so explicit `workspace=<id>` calls keep working after primary rebinds.
+
+`notifications/roots/list_changed` is request-bound, not immediate. Julie marks the session roots state dirty when the notification arrives, then refreshes `roots/list` on the next primary-scoped request. That follow-up request reconciles the primary binding and any newly reported secondary roots. Julie does not switch workspaces in the middle of an in-flight tool call.
+
 ## How Workspace Isolation Works
 
 Each workspace has its own PHYSICAL database and Tantivy index files. Workspace selection happens when opening the DB connection:
@@ -112,3 +130,19 @@ Logs are PROJECT-LEVEL (not user-level) in both modes:
 - Centralized daemon storage under `~/.julie/indexes/`
 - Daemon mode enables cross-session sharing and persistent metrics
 - Stdio mode works fully offline with no daemon dependency
+
+## Startup Hint And Roots Policy
+
+Julie keeps startup intent and MCP roots separate.
+
+- `WorkspaceStartupHint` records where the session started and why: CLI flag, `JULIE_WORKSPACE`, or process `cwd`.
+- Client roots are only authoritative for weak `cwd` startup sessions.
+- Explicit CLI and env startup remain authoritative even if the client advertises roots support.
+
+On weak `cwd` startup, Julie can leave the session unbound, then resolve the primary workspace from `roots/list` at the next primary-scoped request. Extra roots from that response stay active as secondary workspaces for explicit targeting.
+
+`notifications/roots/list_changed` is request-bound. The notification only marks session roots state dirty. Julie refreshes `roots/list` and may rebind the primary workspace on the next primary-scoped request, but only for weak `cwd` startup sessions.
+
+For explicit CLI or env startup sessions, a dirty roots notification is settled back to the startup hint on the next primary-scoped request. Julie clears the dirty state there, but does not re-query roots or rebind away from the explicit startup root.
+
+Julie does not switch workspaces in the middle of an in-flight tool call.

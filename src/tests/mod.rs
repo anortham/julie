@@ -74,6 +74,7 @@ pub mod tools {
 
     pub mod editing; // EditingTransaction tests (used by rename_symbol)
 
+    pub mod deep_dive_primary_rebind_tests; // DeepDiveTool current-primary rebound routing tests
     pub mod deep_dive_tests; // DeepDiveTool tests (formatting + data layer)
     pub mod search; // Search tool tests (line mode, quality, race conditions)
     pub mod search_context_lines;
@@ -104,6 +105,7 @@ pub mod tools {
     pub mod get_context_graph_expansion_tests; // get_context graph expansion tests
     pub mod get_context_pipeline_relevance_tests;
     pub mod get_context_pipeline_tests; // get_context pipeline integration tests
+    pub mod get_context_primary_rebind_tests; // GetContextTool current-primary rebound routing tests
     pub mod get_context_quality_tests; // get_context fixed-query quality regression tests
     pub mod get_context_relevance_tests; // get_context fallback relevance guardrail tests
     pub mod get_context_scoring_tests; // get_context namespace/module de-boost scoring tests
@@ -113,6 +115,7 @@ pub mod tools {
     pub mod hybrid_search_tests; // RRF merge algorithm tests (hybrid keyword + semantic search)
     pub mod query_classification_tests; // QueryIntent classification heuristics (symbol, conceptual, mixed)
 
+    pub mod fast_refs_primary_rebind_tests; // FastRefsTool current-primary rebound routing tests
     pub mod formatting_tests; // Navigation formatting tests (lean refs, qualified name parsing)
     pub mod metrics; // QueryMetricsTool metrics query tests
     pub mod reference_workspace_fast_refs_tests; // Reference workspace fast_refs parity (limit, reference_kind, identifiers)

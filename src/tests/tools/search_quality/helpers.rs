@@ -399,6 +399,14 @@ incremental_updates = true
         *workspace_guard = Some(workspace);
     }
 
+    let workspace_id = crate::workspace::registry::generate_workspace_id(&temp_root.to_string_lossy())
+        .expect("fixture workspace id should generate");
+    *handler
+        .workspace_id
+        .write()
+        .unwrap_or_else(|p| p.into_inner()) = Some(workspace_id.clone());
+    handler.set_current_primary_binding(workspace_id, temp_root.clone());
+
     // Mark indexing as complete so searches work immediately
     // We're loading from a pre-indexed fixture, so this status is accurate
     handler

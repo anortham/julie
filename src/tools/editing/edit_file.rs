@@ -312,8 +312,8 @@ impl EditFileTool {
         }
 
         // Resolve and validate file path (security check)
-        let workspace_root = &handler.workspace_root;
-        let resolved_path = secure_path_resolution(&self.file_path, workspace_root)?;
+        let workspace_root = handler.require_primary_workspace_root()?;
+        let resolved_path = secure_path_resolution(&self.file_path, &workspace_root)?;
         let resolved_str = resolved_path.to_string_lossy().to_string();
 
         // Read file content internally (not costing agent context tokens)

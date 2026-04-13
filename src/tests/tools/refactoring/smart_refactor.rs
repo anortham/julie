@@ -47,6 +47,17 @@ impl RefactoringTestFixture {
     fn read_file(&self, path: &str) -> Result<String> {
         Ok(fs::read_to_string(path)?)
     }
+
+    async fn new_handler(&self) -> Result<JulieServerHandler> {
+        let handler = JulieServerHandler::new(self.temp_dir.path().to_path_buf()).await?;
+        handler
+            .initialize_workspace_with_force(
+                Some(self.temp_dir.path().to_string_lossy().to_string()),
+                true,
+            )
+            .await?;
+        Ok(handler)
+    }
 }
 
 #[cfg(test)]
@@ -78,7 +89,7 @@ function processUser() {
             workspace: None,
         };
 
-        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let handler = fixture.new_handler().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
@@ -117,7 +128,7 @@ class UserService {
             workspace: None,
         };
 
-        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let handler = fixture.new_handler().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
@@ -172,6 +183,8 @@ class UserService {
 
     #[tokio::test]
     async fn test_rename_symbol_no_references_found() {
+        let fixture = RefactoringTestFixture::new().unwrap();
+
         let tool = RenameSymbolTool {
             old_name: "NonExistentSymbol".to_string(),
             new_name: "NewName".to_string(),
@@ -180,7 +193,7 @@ class UserService {
             workspace: None,
         };
 
-        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let handler = fixture.new_handler().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);
@@ -263,7 +276,7 @@ export class UserValidator {
             workspace: None,
         };
 
-        let handler = JulieServerHandler::new_for_test().await.unwrap();
+        let handler = fixture.new_handler().await.unwrap();
         let result = tool.call_tool(&handler).await.unwrap();
 
         let response = extract_text_from_result(&result);

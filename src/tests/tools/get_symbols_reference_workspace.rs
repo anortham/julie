@@ -14,6 +14,9 @@ use crate::extractors::base::Symbol;
 use crate::handler::JulieServerHandler;
 use crate::mcp_compat::CallToolResult;
 use crate::tools::{GetSymbolsTool, ManageWorkspaceTool};
+use crate::workspace::registry::{
+    RegistryConfig, WorkspaceEntry, WorkspaceRegistry, WorkspaceType,
+};
 
 fn extract_text_from_result(result: &CallToolResult) -> String {
     result
@@ -452,6 +455,278 @@ pub struct Another { pub field: String }
     let text_limit = extract_text_from_result(&result_limit);
 
     assert!(!text_limit.is_empty(), "limit=2 should return some symbols");
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_get_symbols_reference_workspace_relative_paths_after_primary_rebind() -> Result<()> {
+    let first_primary_dir = TempDir::new()?;
+    let rebound_primary_dir = TempDir::new()?;
+    let reference_dir = TempDir::new()?;
+
+    let first_primary_path = first_primary_dir.path().to_path_buf();
+    let rebound_primary_path = rebound_primary_dir.path().to_path_buf();
+    let reference_path = reference_dir.path().to_path_buf();
+
+    fs::create_dir_all(first_primary_path.join("src"))?;
+    fs::create_dir_all(rebound_primary_path.join("src"))?;
+    fs::create_dir_all(reference_path.join("src"))?;
+
+    fs::write(
+        first_primary_path.join("src").join("old.rs"),
+        "fn old_primary() {}\n",
+    )?;
+    fs::write(
+        rebound_primary_path.join("src").join("new.rs"),
+        "fn rebound_primary() {}\n",
+    )?;
+    let reference_file_path = reference_path.join("src").join("reference.rs");
+    fs::write(
+        &reference_file_path,
+        "pub fn rebound_reference_symbol() {\n    println!(\"reference body\");\n}\n",
+    )?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(
+            Some(first_primary_path.to_string_lossy().to_string()),
+            true,
+        )
+        .await?;
+    handler
+        .initialize_workspace_with_force(
+            Some(rebound_primary_path.to_string_lossy().to_string()),
+            true,
+        )
+        .await?;
+
+    let reference_workspace_id =
+        crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
+    let ref_db_path = rebound_primary_path
+        .join(".julie")
+        .join("indexes")
+        .join(&reference_workspace_id)
+        .join("db")
+        .join("symbols.db");
+    fs::create_dir_all(ref_db_path.parent().unwrap())?;
+
+    {
+        let mut ref_db = SymbolDatabase::new(&ref_db_path)?;
+        ref_db.bulk_store_fresh_atomic(
+            &[crate::database::types::FileInfo {
+                path: "src/reference.rs".to_string(),
+                language: "rust".to_string(),
+                hash: "ref-hash".to_string(),
+                size: 1,
+                last_modified: 1,
+                last_indexed: 1,
+                symbol_count: 1,
+                line_count: 3,
+                content: Some(
+                    "pub fn rebound_reference_symbol() {\n    println!(\"reference body\");\n}\n"
+                        .to_string(),
+                ),
+            }],
+            &[Symbol {
+                id: "ref_fn_1".to_string(),
+                name: "rebound_reference_symbol".to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: "src/reference.rs".to_string(),
+                signature: Some("pub fn rebound_reference_symbol()".to_string()),
+                start_line: 1,
+                start_column: 0,
+                end_line: 3,
+                end_column: 1,
+                start_byte: 0,
+                end_byte: 68,
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                code_context: None,
+                content_type: None,
+            }],
+            &[],
+            &[],
+            &[],
+            &reference_workspace_id,
+        )?;
+    }
+
+    let config = RegistryConfig::default();
+    let reference_entry = WorkspaceEntry::new(
+        reference_path.to_string_lossy().to_string(),
+        WorkspaceType::Reference,
+        &config,
+    )?;
+    let mut registry = WorkspaceRegistry::default();
+    registry
+        .reference_workspaces
+        .insert(reference_workspace_id.clone(), reference_entry);
+    let registry_path = rebound_primary_path
+        .join(".julie")
+        .join("workspace_registry.json");
+    fs::create_dir_all(registry_path.parent().unwrap())?;
+    fs::write(&registry_path, serde_json::to_string_pretty(&registry)?)?;
+
+    let get_symbols_tool = GetSymbolsTool {
+        file_path: "src/reference.rs".to_string(),
+        max_depth: 1,
+        target: None,
+        limit: None,
+        mode: Some("full".to_string()),
+        workspace: Some(reference_workspace_id.clone()),
+    };
+
+    let result = get_symbols_tool.call_tool(&handler).await?;
+    let result_text = extract_text_from_result(&result);
+
+    assert!(
+        result_text.contains("rebound_reference_symbol"),
+        "reference get_symbols should resolve relative paths under the reference root after primary rebind: {}",
+        result_text
+    );
+    assert!(
+        result_text.contains("reference body"),
+        "body extraction should read from the reference root, not the stale loaded root: {}",
+        result_text
+    );
+
+    for file_path in ["./src/reference.rs", "src/../src/reference.rs"] {
+        let get_symbols_tool = GetSymbolsTool {
+            file_path: file_path.to_string(),
+            max_depth: 1,
+            target: None,
+            limit: None,
+            mode: Some("full".to_string()),
+            workspace: Some(reference_workspace_id.clone()),
+        };
+
+        let result = get_symbols_tool.call_tool(&handler).await?;
+        let result_text = extract_text_from_result(&result);
+        assert!(
+            result_text.contains("rebound_reference_symbol"),
+            "reference get_symbols should normalize relative path variant '{}' against the reference root: {}",
+            file_path,
+            result_text
+        );
+        assert!(
+            result_text.contains("reference body"),
+            "body extraction should succeed for relative path variant '{}': {}",
+            file_path,
+            result_text
+        );
+    }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_get_workspace_root_for_target_rejects_swap_gap_root_resolution() -> Result<()> {
+    let primary_dir = TempDir::new()?;
+    let primary_path = primary_dir.path().to_path_buf();
+    fs::create_dir_all(primary_path.join("src"))?;
+    fs::write(
+        primary_path.join("src").join("primary.rs"),
+        "fn primary() {}\n",
+    )?;
+
+    let reference_dir = TempDir::new()?;
+    let reference_path = reference_dir.path().to_path_buf();
+    fs::create_dir_all(reference_path.join("src"))?;
+    fs::write(
+        reference_path.join("src").join("reference.rs"),
+        "pub fn reference_symbol() {}\n",
+    )?;
+
+    let handler = JulieServerHandler::new_for_test().await?;
+    handler
+        .initialize_workspace_with_force(Some(primary_path.to_string_lossy().to_string()), true)
+        .await?;
+
+    let reference_workspace_id =
+        crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())?;
+    let ref_db_path = primary_path
+        .join(".julie")
+        .join("indexes")
+        .join(&reference_workspace_id)
+        .join("db")
+        .join("symbols.db");
+    fs::create_dir_all(ref_db_path.parent().unwrap())?;
+
+    {
+        let mut ref_db = SymbolDatabase::new(&ref_db_path)?;
+        ref_db.bulk_store_fresh_atomic(
+            &[crate::database::types::FileInfo {
+                path: "src/reference.rs".to_string(),
+                language: "rust".to_string(),
+                hash: "ref-hash".to_string(),
+                size: 1,
+                last_modified: 1,
+                last_indexed: 1,
+                symbol_count: 1,
+                line_count: 1,
+                content: Some("pub fn reference_symbol() {}\n".to_string()),
+            }],
+            &[Symbol {
+                id: "ref_fn_1".to_string(),
+                name: "reference_symbol".to_string(),
+                kind: SymbolKind::Function,
+                language: "rust".to_string(),
+                file_path: "src/reference.rs".to_string(),
+                signature: Some("pub fn reference_symbol()".to_string()),
+                start_line: 1,
+                start_column: 0,
+                end_line: 1,
+                end_column: 27,
+                start_byte: 0,
+                end_byte: 27,
+                doc_comment: None,
+                visibility: None,
+                parent_id: None,
+                metadata: None,
+                semantic_group: None,
+                confidence: None,
+                code_context: None,
+                content_type: None,
+            }],
+            &[],
+            &[],
+            &[],
+            &reference_workspace_id,
+        )?;
+    }
+
+    let config = RegistryConfig::default();
+    let reference_entry = WorkspaceEntry::new(
+        reference_path.to_string_lossy().to_string(),
+        WorkspaceType::Reference,
+        &config,
+    )?;
+    let mut registry = WorkspaceRegistry::default();
+    registry
+        .reference_workspaces
+        .insert(reference_workspace_id.clone(), reference_entry);
+    let registry_path = primary_path.join(".julie").join("workspace_registry.json");
+    fs::create_dir_all(registry_path.parent().unwrap())?;
+    fs::write(&registry_path, serde_json::to_string_pretty(&registry)?)?;
+
+    handler.publish_loaded_workspace_swap_intent_for_test();
+
+    let err = handler
+        .get_workspace_root_for_target(&reference_workspace_id)
+        .await
+        .expect_err("swap gap should reject reference-target root resolution");
+
+    assert!(
+        err.to_string()
+            .contains("Primary workspace identity unavailable during swap"),
+        "unexpected error: {err:#}"
+    );
 
     Ok(())
 }

@@ -41,16 +41,37 @@ impl ManageWorkspaceTool {
         skip_embeddings: bool,
     ) -> Result<CallToolResult> {
         info!("📚 Starting workspace indexing...");
+        let explicit_path_requested = path.is_some();
+
+        if handler.is_primary_workspace_swap_in_progress() {
+            return Err(anyhow::anyhow!(
+                "Primary workspace identity unavailable during swap"
+            ));
+        }
+
+        let loaded_workspace = handler.get_workspace().await?;
+        let current_primary_root = if explicit_path_requested || loaded_workspace.is_none() {
+            handler.current_workspace_root()
+        } else {
+            handler.require_primary_workspace_root()?
+        };
+        let current_primary_id = handler.current_workspace_id().or_else(|| {
+            crate::workspace::registry::generate_workspace_id(
+                &current_primary_root.to_string_lossy(),
+            )
+            .ok()
+        });
+        let bound_primary_id = handler.current_workspace_id();
 
         // Get original path for reference workspace check BEFORE resolution.
-        // Uses handler.workspace_root as the authoritative fallback — it was already
+        // Uses the session-owned current primary root as the authoritative fallback.
         // resolved in main.rs from CLI --workspace > JULIE_WORKSPACE env > current_dir.
         let original_path = match path {
             Some(ref p) => {
                 let expanded = shellexpand::tilde(p).to_string();
                 PathBuf::from(expanded)
             }
-            None => handler.workspace_root.clone(),
+            None => current_primary_root.clone(),
         };
 
         // 🔥 CRITICAL FIX: Check if this is a reference workspace FIRST before calling find_workspace_root
@@ -58,7 +79,7 @@ impl ManageWorkspaceTool {
         // to the primary workspace and return the wrong path!
         let is_reference_check = if let Some(ref db) = handler.daemon_db {
             // Daemon mode: registered but not the primary workspace → treat as reference
-            if let Some(ref primary_id) = handler.workspace_id {
+            if let Some(ref primary_id) = bound_primary_id {
                 db.get_workspace_by_path(original_path.to_string_lossy().as_ref())
                     .ok()
                     .flatten()
@@ -69,17 +90,17 @@ impl ManageWorkspaceTool {
             }
         } else {
             // Stdio mode: if workspace is already loaded and the requested path
-            // differs from the primary root, treat as reference. Without this,
+            // is outside the current primary root, treat as reference. Without this,
             // resolve_workspace_path walks up to the primary's markers (e.g. .git)
             // and conflates the reference path with the primary workspace.
-            let primary_canonical = handler
-                .workspace_root
+            let primary_canonical = current_primary_root
                 .canonicalize()
-                .unwrap_or_else(|_| handler.workspace_root.clone());
+                .unwrap_or_else(|_| current_primary_root.clone());
             let request_canonical = original_path
                 .canonicalize()
                 .unwrap_or_else(|_| original_path.clone());
             request_canonical != primary_canonical
+                && !request_canonical.starts_with(&primary_canonical)
         };
 
         // For reference workspaces, use the original path directly (no workspace root resolution)
@@ -88,7 +109,7 @@ impl ManageWorkspaceTool {
             debug!("Reference workspace detected - using original path directly");
             original_path.clone()
         } else {
-            self.resolve_workspace_path(path, Some(&handler.workspace_root))?
+            self.resolve_workspace_path(path, Some(&current_primary_root))?
         };
 
         let canonical_path = workspace_path
@@ -114,7 +135,7 @@ impl ManageWorkspaceTool {
             let cancel_ws_id =
                 crate::workspace::registry::generate_workspace_id(&original_path.to_string_lossy())
                     .ok()
-                    .or_else(|| handler.workspace_id.clone());
+                    .or_else(|| current_primary_id.clone());
             if let Some(ref ws_id) = cancel_ws_id {
                 let mut tasks = handler.embedding_tasks.lock().await;
                 if let Some((cancel_flag, handle)) = tasks.remove(ws_id) {
@@ -131,14 +152,26 @@ impl ManageWorkspaceTool {
         // 🔥 CRITICAL FIX: Only initialize workspace if it's the PRIMARY workspace being indexed
         // Reference workspaces should NEVER reinitialize the handler's workspace!
         // They are indexed into the primary workspace's indexes/{workspace_id}/ directory
-        let workspace_already_loaded = handler.get_workspace().await?.is_some();
+        let workspace_already_loaded = loaded_workspace.is_some();
+        let loaded_workspace_matches_target =
+            loaded_workspace.as_ref().map_or(false, |workspace| {
+                let loaded_root = workspace
+                    .root
+                    .canonicalize()
+                    .unwrap_or_else(|_| workspace.root.clone());
+                loaded_root == canonical_path
+            });
 
         let is_reference_workspace = is_reference_check;
 
         // Only initialize if:
         // 1. Workspace not loaded yet, OR
-        // 2. Forcing reindex AND this is NOT a reference workspace
-        if !workspace_already_loaded || (force_reindex && !is_reference_workspace) {
+        // 2. Current primary target differs from the loaded workspace, OR
+        // 3. Forcing reindex AND this is NOT a reference workspace
+        if !workspace_already_loaded
+            || (!is_reference_workspace && !loaded_workspace_matches_target)
+            || (force_reindex && !is_reference_workspace)
+        {
             handler
                 .initialize_workspace_with_force(
                     Some(canonical_path.to_string_lossy().to_string()),
@@ -198,10 +231,16 @@ impl ManageWorkspaceTool {
                     );
 
                     // Ensure daemon.db status reflects reality.
+                    let final_current_primary_id = if explicit_path_requested {
+                        crate::workspace::registry::generate_workspace_id(
+                            &canonical_path.to_string_lossy(),
+                        )?
+                    } else {
+                        handler.require_primary_workspace_identity()?
+                    };
                     if let Some(ref daemon_db) = handler.daemon_db {
-                        if let Some(ref ws_id) = handler.workspace_id {
-                            let _ = daemon_db.update_workspace_status(ws_id, "ready");
-                        }
+                        let _ =
+                            daemon_db.update_workspace_status(&final_current_primary_id, "ready");
                     }
                     // Fall through to index_workspace_files with force=false.
                     // The incremental pipeline will hash-compare and only
@@ -247,6 +286,11 @@ impl ManageWorkspaceTool {
                 let canonical_path_str = canonical_path.to_string_lossy().to_string();
 
                 if let Some(ref daemon_db) = handler.daemon_db {
+                    let final_current_primary_id = if explicit_path_requested {
+                        crate::workspace::registry::generate_workspace_id(&canonical_path_str)?
+                    } else {
+                        handler.require_primary_workspace_identity()?
+                    };
                     // Daemon mode: persist stats to daemon.db.
                     // Fix A: reference workspaces must derive workspace_id from their own path,
                     // NOT from handler.workspace_id (which belongs to the primary workspace).
@@ -254,10 +298,7 @@ impl ManageWorkspaceTool {
                         crate::workspace::registry::generate_workspace_id(&canonical_path_str)
                             .unwrap_or_default()
                     } else {
-                        handler.workspace_id.clone().unwrap_or_else(|| {
-                            crate::workspace::registry::generate_workspace_id(&canonical_path_str)
-                                .unwrap_or_default()
-                        })
+                        final_current_primary_id
                     };
                     let _ = daemon_db.upsert_workspace(&workspace_id, &canonical_path_str, "ready");
                     let _ = daemon_db.update_workspace_stats(
@@ -306,38 +347,36 @@ impl ManageWorkspaceTool {
                             // workspace. For reference workspaces we must open the
                             // reference DB via workspace_db_path() instead.
                             if force {
-                                if let Ok(Some(workspace)) = handler.get_workspace().await {
-                                    if is_reference_workspace {
-                                        // Open the REFERENCE workspace DB directly.
-                                        // handler.get_workspace().db is the PRIMARY, not the reference.
-                                        let ref_db_path = workspace.workspace_db_path(&ws_id);
-                                        if ref_db_path.exists() {
-                                            let path = ref_db_path;
-                                            let clear_result =
-                                                tokio::task::spawn_blocking(move || {
-                                                    let mut ref_db =
-                                                        crate::database::SymbolDatabase::new(path)?;
-                                                    ref_db.clear_all_embeddings()
-                                                })
-                                                .await;
-                                            match clear_result {
-                                                Ok(Ok(())) => info!(
-                                                    "🗑️ Cleared reference workspace embeddings for force re-embed"
-                                                ),
-                                                Ok(Err(e)) => tracing::warn!(
-                                                    "Failed to clear reference embeddings: {e}"
-                                                ),
-                                                Err(e) => tracing::warn!(
-                                                    "Reference embedding clear task panicked: {e}"
-                                                ),
-                                            }
-                                        } else {
-                                            debug!(
-                                                "Reference DB does not exist at {}, nothing to clear",
-                                                ref_db_path.display()
-                                            );
+                                if is_reference_workspace {
+                                    let ref_db_path =
+                                        handler.workspace_db_file_path_for(&ws_id).await?;
+                                    if ref_db_path.exists() {
+                                        let path = ref_db_path;
+                                        let clear_result = tokio::task::spawn_blocking(move || {
+                                            let mut ref_db =
+                                                crate::database::SymbolDatabase::new(path)?;
+                                            ref_db.clear_all_embeddings()
+                                        })
+                                        .await;
+                                        match clear_result {
+                                            Ok(Ok(())) => info!(
+                                                "🗑️ Cleared reference workspace embeddings for force re-embed"
+                                            ),
+                                            Ok(Err(e)) => tracing::warn!(
+                                                "Failed to clear reference embeddings: {e}"
+                                            ),
+                                            Err(e) => tracing::warn!(
+                                                "Reference embedding clear task panicked: {e}"
+                                            ),
                                         }
-                                    } else if let Some(ref db) = workspace.db {
+                                    } else {
+                                        debug!(
+                                            "Reference DB does not exist at {}, nothing to clear",
+                                            ref_db_path.display()
+                                        );
+                                    }
+                                } else if let Ok(Some(workspace)) = handler.get_workspace().await {
+                                    if let Some(ref db) = workspace.db {
                                         // Primary workspace: clear from the handler's workspace DB.
                                         let mut db_lock =
                                             db.lock().unwrap_or_else(|p| p.into_inner());

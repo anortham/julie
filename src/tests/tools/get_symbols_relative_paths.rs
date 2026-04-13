@@ -4,11 +4,54 @@
 //! after Phase 2 implementation (relative Unix-style path storage).
 
 use crate::handler::JulieServerHandler;
+use crate::mcp_compat::CallToolResult;
 use crate::tools::symbols::GetSymbolsTool;
 use crate::tools::workspace::ManageWorkspaceTool;
 use anyhow::Result;
+use rmcp::{
+    ServerHandler,
+    model::{CallToolRequestParams, NumberOrString, ServerJsonRpcMessage, ServerRequest},
+    service::{RequestContext, serve_directly},
+};
 use std::fs;
+use std::sync::Arc;
 use tempfile::TempDir;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+fn extract_text_from_result(result: &CallToolResult) -> String {
+    result
+        .content
+        .iter()
+        .filter_map(|content_block| {
+            serde_json::to_value(content_block).ok().and_then(|json| {
+                json.get("text")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+async fn send_json_line(writer: &mut (impl AsyncWriteExt + Unpin), value: &serde_json::Value) {
+    writer
+        .write_all(serde_json::to_string(value).unwrap().as_bytes())
+        .await
+        .unwrap();
+    writer.write_all(b"\n").await.unwrap();
+    writer.flush().await.unwrap();
+}
+
+async fn read_server_message(
+    lines: &mut tokio::io::Lines<BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>>,
+) -> ServerJsonRpcMessage {
+    let line = lines
+        .next_line()
+        .await
+        .unwrap()
+        .expect("server should emit a JSON-RPC message line");
+    serde_json::from_str(&line).unwrap()
+}
 
 /// Test that get_symbols can find symbols when given a relative path
 ///
@@ -138,6 +181,400 @@ async fn test_get_symbols_with_absolute_path() -> Result<()> {
         result_text
     );
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_get_symbols_relative_path_uses_rebound_current_primary_root() -> Result<()> {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::workspace::registry::generate_workspace_id;
+    use std::sync::Arc;
+
+    let temp_dir = TempDir::new()?;
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir)?;
+
+    let original_root = temp_dir.path().join("original-primary");
+    let rebound_root = temp_dir.path().join("rebound-primary");
+    fs::create_dir_all(original_root.join("src"))?;
+    fs::create_dir_all(rebound_root.join("src"))?;
+    fs::write(
+        original_root.join("src").join("old.rs"),
+        "fn old_root_only() {}\n",
+    )?;
+    fs::write(
+        rebound_root.join("src").join("rebound.rs"),
+        "pub fn rebound_symbol() {}\n",
+    )?;
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir,
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let original_path = original_root.canonicalize()?;
+    let original_path_str = original_path.to_string_lossy().to_string();
+    let original_id = generate_workspace_id(&original_path_str)?;
+    let original_ws = pool
+        .get_or_init(&original_id, original_path.clone())
+        .await?;
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        original_ws,
+        original_path.clone(),
+        Some(Arc::clone(&daemon_db)),
+        Some(original_id.clone()),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await?;
+
+    daemon_db.upsert_workspace(&original_id, &original_path_str, "ready")?;
+
+    let rebound_path = rebound_root.canonicalize()?;
+    let rebound_path_str = rebound_path.to_string_lossy().to_string();
+    let rebound_id = generate_workspace_id(&rebound_path_str)?;
+    daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
+
+    let rebound_ws = pool.get_or_init(&rebound_id, rebound_path.clone()).await?;
+    {
+        let rebound_db = rebound_ws.db.as_ref().unwrap().clone();
+        let mut rebound_db = rebound_db.lock().unwrap();
+        let file_info = crate::database::types::FileInfo {
+            path: "src/rebound.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "rebound-hash".to_string(),
+            size: 1,
+            last_modified: 1,
+            last_indexed: 1,
+            symbol_count: 1,
+            line_count: 1,
+            content: Some("pub fn rebound_symbol() {}\n".to_string()),
+        };
+        let symbol = crate::extractors::Symbol {
+            id: "rebound-symbol-id".to_string(),
+            name: "rebound_symbol".to_string(),
+            kind: crate::extractors::SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/rebound.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 24,
+            start_byte: 0,
+            end_byte: 24,
+            signature: Some("pub fn rebound_symbol()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        };
+        rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_id)?;
+    }
+
+    handler.set_current_primary_binding(rebound_id.clone(), rebound_path.clone());
+
+    let tool = GetSymbolsTool {
+        file_path: "src/rebound.rs".to_string(),
+        max_depth: 1,
+        mode: None,
+        limit: None,
+        target: None,
+        workspace: Some(rebound_id),
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let result_text = format!("{:?}", result);
+    assert!(
+        result_text.contains("rebound_symbol"),
+        "relative get_symbols should resolve against rebound current primary root, not stale loaded root: {}",
+        result_text
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_get_symbols_primary_uses_rebound_current_primary_root() -> Result<()> {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::workspace::registry::generate_workspace_id;
+    use std::sync::Arc;
+
+    let temp_dir = TempDir::new()?;
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir)?;
+
+    let original_root = temp_dir.path().join("original-primary");
+    let rebound_root = temp_dir.path().join("rebound-primary");
+    fs::create_dir_all(original_root.join("src"))?;
+    fs::create_dir_all(rebound_root.join("src"))?;
+    fs::write(
+        original_root.join("src").join("old.rs"),
+        "fn old_root_only() {}\n",
+    )?;
+    fs::write(
+        rebound_root.join("src").join("rebound.rs"),
+        "pub fn rebound_primary_symbol() {}\n",
+    )?;
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir,
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let original_path = original_root.canonicalize()?;
+    let original_path_str = original_path.to_string_lossy().to_string();
+    let original_id = generate_workspace_id(&original_path_str)?;
+    let original_ws = pool
+        .get_or_init(&original_id, original_path.clone())
+        .await?;
+
+    let handler = JulieServerHandler::new_with_shared_workspace(
+        original_ws,
+        original_path.clone(),
+        Some(Arc::clone(&daemon_db)),
+        Some(original_id.clone()),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await?;
+
+    daemon_db.upsert_workspace(&original_id, &original_path_str, "ready")?;
+
+    let rebound_path = rebound_root.canonicalize()?;
+    let rebound_path_str = rebound_path.to_string_lossy().to_string();
+    let rebound_id = generate_workspace_id(&rebound_path_str)?;
+    daemon_db.upsert_workspace(&rebound_id, &rebound_path_str, "ready")?;
+
+    let rebound_ws = pool.get_or_init(&rebound_id, rebound_path.clone()).await?;
+    {
+        let rebound_db = rebound_ws.db.as_ref().unwrap().clone();
+        let mut rebound_db = rebound_db.lock().unwrap();
+        let file_info = crate::database::types::FileInfo {
+            path: "src/rebound.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "rebound-primary-hash".to_string(),
+            size: 1,
+            last_modified: 1,
+            last_indexed: 1,
+            symbol_count: 1,
+            line_count: 1,
+            content: Some("pub fn rebound_primary_symbol() {}\n".to_string()),
+        };
+        let symbol = crate::extractors::Symbol {
+            id: "rebound-primary-symbol-id".to_string(),
+            name: "rebound_primary_symbol".to_string(),
+            kind: crate::extractors::SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/rebound.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 32,
+            start_byte: 0,
+            end_byte: 32,
+            signature: Some("pub fn rebound_primary_symbol()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: None,
+            content_type: None,
+        };
+        rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &rebound_id)?;
+    }
+
+    handler.set_current_primary_binding(rebound_id.clone(), rebound_path.clone());
+
+    let tool = GetSymbolsTool {
+        file_path: "src/rebound.rs".to_string(),
+        max_depth: 1,
+        mode: None,
+        limit: None,
+        target: None,
+        workspace: Some("primary".to_string()),
+    };
+
+    let result = tool.call_tool(&handler).await?;
+    let result_text = format!("{:?}", result);
+    assert!(
+        result_text.contains("rebound_primary_symbol"),
+        "primary get_symbols should resolve against rebound current primary root, not stale loaded root: {}",
+        result_text
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_get_symbols_primary_wrapper_resolves_roots_before_reading() -> Result<()> {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::workspace_pool::WorkspacePool;
+    use crate::workspace::registry::generate_workspace_id;
+
+    let temp_dir = TempDir::new()?;
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir)?;
+
+    let startup_root = temp_dir.path().join("startup-primary");
+    let roots_root = temp_dir.path().join("roots-primary");
+    fs::create_dir_all(startup_root.join("src"))?;
+    fs::create_dir_all(roots_root.join("src"))?;
+    fs::write(startup_root.join("src/old.rs"), "fn old_root_only() {}\n")?;
+    fs::write(
+        roots_root.join("src/rebound.rs"),
+        "pub fn rebound_primary_symbol() {}\n",
+    )?;
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db"))?);
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir,
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let startup_path = startup_root.canonicalize()?;
+    let startup_id = generate_workspace_id(&startup_path.to_string_lossy())?;
+    let startup_ws = pool.get_or_init(&startup_id, startup_path.clone()).await?;
+
+    let roots_path = roots_root.canonicalize()?;
+    let roots_id = generate_workspace_id(&roots_path.to_string_lossy())?;
+    daemon_db.upsert_workspace(&startup_id, &startup_path.to_string_lossy(), "ready")?;
+    daemon_db.upsert_workspace(&roots_id, &roots_path.to_string_lossy(), "ready")?;
+    let roots_ws = pool.get_or_init(&roots_id, roots_path.clone()).await?;
+    {
+        let rebound_db = roots_ws.db.as_ref().unwrap().clone();
+        let mut rebound_db = rebound_db.lock().unwrap();
+        let file_info = crate::database::types::FileInfo {
+            path: "src/rebound.rs".to_string(),
+            language: "rust".to_string(),
+            hash: "roots-wrapper-hash".to_string(),
+            size: 1,
+            last_modified: 1,
+            last_indexed: 1,
+            symbol_count: 1,
+            line_count: 1,
+            content: Some("pub fn rebound_primary_symbol() {}\n".to_string()),
+        };
+        let symbol = crate::extractors::Symbol {
+            id: "roots-wrapper-symbol-id".to_string(),
+            name: "rebound_primary_symbol".to_string(),
+            kind: crate::extractors::SymbolKind::Function,
+            language: "rust".to_string(),
+            file_path: "src/rebound.rs".to_string(),
+            start_line: 1,
+            start_column: 0,
+            end_line: 1,
+            end_column: 32,
+            start_byte: 0,
+            end_byte: 32,
+            signature: Some("fn rebound_primary_symbol()".to_string()),
+            doc_comment: None,
+            visibility: None,
+            parent_id: None,
+            metadata: None,
+            semantic_group: None,
+            confidence: None,
+            code_context: Some("pub fn rebound_primary_symbol() {}".to_string()),
+            content_type: None,
+        };
+        rebound_db.bulk_store_fresh_atomic(&[file_info], &[symbol], &[], &[], &[], &roots_id)?;
+    }
+
+    let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
+        startup_ws,
+        crate::workspace::startup_hint::WorkspaceStartupHint {
+            path: startup_path.clone(),
+            source: Some(crate::workspace::startup_hint::WorkspaceStartupSource::Cwd),
+        },
+        Some(Arc::clone(&daemon_db)),
+        Some(startup_id.clone()),
+        None,
+        None,
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await?;
+    handler.set_client_supports_workspace_roots_for_test(true);
+
+    let (server_transport, client_transport) = tokio::io::duplex(256);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+    let (read_half, mut write_half) = tokio::io::split(client_transport);
+    let mut lines = BufReader::new(read_half).lines();
+
+    let roots_reply = async {
+        match read_server_message(&mut lines).await {
+            ServerJsonRpcMessage::Request(request) => match request.request {
+                ServerRequest::ListRootsRequest(_) => {
+                    send_json_line(
+                        &mut write_half,
+                        &serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": request.id,
+                            "result": {
+                                "roots": [{ "uri": format!("file://{}", roots_path.to_string_lossy()) }]
+                            }
+                        }),
+                    )
+                    .await;
+                }
+                other => panic!("unexpected server request: {other:?}"),
+            },
+            other => panic!("unexpected server message: {other:?}"),
+        }
+    };
+
+    let get_symbols = <JulieServerHandler as ServerHandler>::call_tool(
+        &handler,
+        CallToolRequestParams::new("get_symbols").with_arguments(
+            serde_json::json!({
+                "file_path": "src/rebound.rs",
+                "workspace": "primary",
+                "max_depth": 1,
+                "mode": "structure",
+                "limit": 10
+            })
+            .as_object()
+            .expect("get_symbols args")
+            .clone(),
+        ),
+        RequestContext::new(NumberOrString::Number(21), service.peer().clone()),
+    );
+    let (_, result) = tokio::join!(roots_reply, get_symbols);
+    let text = extract_text_from_result(&result?);
+
+    assert!(
+        text.contains("rebound_primary_symbol"),
+        "get_symbols should read from roots-bound primary: {text}"
+    );
+    assert_eq!(handler.current_workspace_id(), Some(roots_id));
+
+    drop(write_half);
+    drop(lines);
+    let _ = service.cancel().await;
     Ok(())
 }
 

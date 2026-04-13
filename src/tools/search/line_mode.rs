@@ -62,24 +62,16 @@ pub async fn line_mode_search(
     // Search the single target workspace
     let all_line_matches: Vec<LineMatch> = match workspace_target {
         WorkspaceTarget::Primary => {
-            // Search primary workspace using Tantivy index + shared DB for content
-            let workspace_struct = handler.get_workspace().await?.ok_or_else(|| {
+            // Capture the primary binding and storage handles together so a completed
+            // swap can't pair stale loaded-workspace handles with the new primary identity.
+            let primary_snapshot = handler.primary_workspace_snapshot().await?;
+            let db = primary_snapshot.database;
+            let search_index = primary_snapshot.search_index.ok_or_else(|| {
                 anyhow::anyhow!(
-                    "No workspace initialized. Run manage_workspace(operation=\"index\") first."
+                    "Line-level content search requires a Tantivy index for the current primary workspace. Run manage_workspace(operation=\"refresh\") first."
                 )
             })?;
 
-            let db = workspace_struct
-                .db
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("No database available for line search"))?;
-
-            let search_index = workspace_struct.search_index.as_ref().ok_or_else(|| {
-                anyhow::anyhow!("Search index not initialized. Run 'manage_workspace index' first.")
-            })?;
-
-            let search_index = search_index.clone();
-            let db = db.clone();
             let query = query.to_string();
             let match_strategy = match_strategy.clone();
             let file_pattern_clone = file_pattern.clone();
@@ -110,21 +102,18 @@ pub async fn line_mode_search(
                         break;
                     }
 
-                    // Apply file_pattern filter BEFORE expensive DB content retrieval
                     if let Some(ref pattern) = file_pattern_clone {
                         if !matches_glob_pattern(&file_result.file_path, pattern) {
                             continue;
                         }
                     }
 
-                    // Apply language filter BEFORE DB lookup (defense-in-depth; Tantivy also filters)
                     if let Some(ref lang) = language_clone {
                         if !file_matches_language(&file_result.file_path, lang) {
                             continue;
                         }
                     }
 
-                    // Skip test files when exclude_tests is set
                     if exclude_test_files
                         && crate::search::scoring::is_test_path(&file_result.file_path)
                     {
@@ -150,6 +139,7 @@ pub async fn line_mode_search(
             // Search reference workspace using handler helpers for DB + SearchIndex access
             let db_arc = handler.get_database_for_workspace(ref_id).await?;
             let si_arc = handler.get_search_index_for_workspace(ref_id).await?;
+            let ref_workspace_id = ref_id.clone();
 
             let query_clone = query.to_string();
             let strategy = match_strategy.clone();
@@ -160,8 +150,11 @@ pub async fn line_mode_search(
                 let si_arc = match si_arc {
                     Some(si) => si,
                     None => {
-                        debug!("No search index for reference workspace, skipping");
-                        return Ok(Vec::new());
+                        return Err(anyhow::anyhow!(
+                            "Line-level content search requires a Tantivy index for workspace '{}'. Run manage_workspace(operation=\"refresh\", workspace_id=\"{}\") first.",
+                            ref_workspace_id,
+                            ref_workspace_id
+                        ));
                     }
                 };
                 let ref_index = si_arc

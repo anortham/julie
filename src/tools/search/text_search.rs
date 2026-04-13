@@ -40,22 +40,16 @@ pub async fn text_search_impl(
     )
     .await;
 
-    let workspace = handler.get_workspace().await?.ok_or_else(|| {
-        anyhow::anyhow!(
-            "No workspace initialized. Run manage_workspace(operation=\"index\") first."
-        )
-    })?;
+    let current_primary_id = handler.current_workspace_id();
+    let loaded_workspace_id = handler.loaded_workspace_id();
 
     // Determine if we're targeting a reference workspace
     let ref_workspace_id = if let Some(ref ids) = workspace_ids {
         if let Some(id) = ids.first() {
-            let primary_id = if let Some(ref ws_id) = handler.workspace_id {
-                ws_id.clone()
-            } else {
-                crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
-                    .unwrap_or_default()
-            };
-            if *id != primary_id {
+            let loaded_startup_without_primary =
+                current_primary_id.is_none() && loaded_workspace_id.as_ref() == Some(id);
+
+            if loaded_startup_without_primary || current_primary_id.as_ref() != Some(id) {
                 Some(id.clone())
             } else {
                 None
@@ -138,21 +132,19 @@ pub async fn text_search_impl(
         ));
     }
 
-    // Primary workspace: use shared search index
-    let search_index = workspace.search_index.as_ref().ok_or_else(|| {
-        anyhow::anyhow!("Search index not initialized. Run 'manage_workspace index' first.")
-    })?;
-    let search_index_clone = search_index.clone();
-    let db_clone = workspace.db.clone();
-    let embedding_provider = handler.embedding_provider().await;
+    // Primary workspace: use the current-primary DB/search store. When current primary
+    // differs from the loaded workspace, route through handler helpers instead of the
+    // stale loaded workspace object.
+    let (search_index_clone, db_clone, embedding_provider) = {
+        let (db, search_index) = handler.primary_database_and_search_index().await?;
+        (search_index, db, handler.embedding_provider().await)
+    };
 
     let results = tokio::task::spawn_blocking(move || -> Result<(Vec<Symbol>, bool, usize)> {
         let index = search_index_clone.lock().unwrap_or_else(|p| p.into_inner());
-        let db_guard = db_clone.as_ref().map(|arc| {
-            arc.lock().unwrap_or_else(|poisoned| {
-                warn!("Database mutex poisoned, recovering");
-                poisoned.into_inner()
-            })
+        let db_guard = db_clone.lock().unwrap_or_else(|poisoned| {
+            warn!("Database mutex poisoned, recovering");
+            poisoned.into_inner()
         });
 
         if search_target_clone == "definitions" {
@@ -161,17 +153,11 @@ pub async fn text_search_impl(
                 &filter,
                 limit_usize,
                 &index,
-                db_guard.as_deref(),
+                Some(&db_guard),
                 embedding_provider.as_deref(),
             )
         } else {
-            content_search_with_index(
-                &query_clone,
-                &filter,
-                limit_usize,
-                &index,
-                db_guard.as_deref(),
-            )
+            content_search_with_index(&query_clone, &filter, limit_usize, &index, Some(&db_guard))
         }
     })
     .await??;

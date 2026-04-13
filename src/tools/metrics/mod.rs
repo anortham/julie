@@ -68,16 +68,7 @@ impl QueryMetricsTool {
                 let workspace_target =
                     resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
                 let db_arc = match workspace_target {
-                    WorkspaceTarget::Primary => {
-                        let workspace = handler
-                            .get_workspace()
-                            .await?
-                            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
-                        workspace
-                            .db
-                            .clone()
-                            .ok_or_else(|| anyhow::anyhow!("No database available"))?
-                    }
+                    WorkspaceTarget::Primary => handler.primary_database().await?,
                     WorkspaceTarget::Reference(ref id) => {
                         handler.get_database_for_workspace(id).await?
                     }
@@ -102,16 +93,7 @@ impl QueryMetricsTool {
                 let workspace_target =
                     resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
                 let db_arc = match workspace_target {
-                    WorkspaceTarget::Primary => {
-                        let workspace = handler
-                            .get_workspace()
-                            .await?
-                            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
-                        workspace
-                            .db
-                            .clone()
-                            .ok_or_else(|| anyhow::anyhow!("No database available"))?
-                    }
+                    WorkspaceTarget::Primary => handler.primary_database().await?,
                     WorkspaceTarget::Reference(ref id) => {
                         handler.get_database_for_workspace(id).await?
                     }
@@ -143,16 +125,7 @@ impl QueryMetricsTool {
                 let workspace_target =
                     resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
                 let db_arc = match workspace_target {
-                    WorkspaceTarget::Primary => {
-                        let workspace = handler
-                            .get_workspace()
-                            .await?
-                            .ok_or_else(|| anyhow::anyhow!("No workspace initialized"))?;
-                        workspace
-                            .db
-                            .clone()
-                            .ok_or_else(|| anyhow::anyhow!("No database available"))?
-                    }
+                    WorkspaceTarget::Primary => handler.primary_database().await?,
                     WorkspaceTarget::Reference(ref id) => {
                         handler.get_database_for_workspace(id).await?
                     }

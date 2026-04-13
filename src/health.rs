@@ -4,7 +4,8 @@
 // to ensure consistent behavior across the entire Julie system.
 
 use crate::handler::JulieServerHandler;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
+use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
 
 /// System readiness levels for graceful degradation
@@ -21,7 +22,67 @@ pub enum SystemStatus {
 /// Centralized health checker used by all tools
 pub struct HealthChecker;
 
+pub(crate) enum PrimaryWorkspaceHealth {
+    ColdStart,
+    Ready {
+        database: Option<Arc<Mutex<crate::database::SymbolDatabase>>>,
+        search_index_ready: bool,
+    },
+}
+
 impl HealthChecker {
+    pub(crate) async fn primary_workspace_health(
+        handler: &JulieServerHandler,
+    ) -> Result<PrimaryWorkspaceHealth> {
+        match handler.primary_workspace_snapshot().await {
+            Ok(snapshot) => {
+                let search_index_ready = handler
+                    .get_search_index_for_workspace(&snapshot.binding.workspace_id)
+                    .await?
+                    .is_some();
+
+                Ok(PrimaryWorkspaceHealth::Ready {
+                    database: Some(snapshot.database),
+                    search_index_ready,
+                })
+            }
+            Err(err) => {
+                let target_workspace_id = match handler.require_primary_workspace_identity() {
+                    Ok(id) => id,
+                    Err(identity_err) => {
+                        if handler.is_primary_workspace_swap_in_progress() {
+                            return Err(identity_err);
+                        }
+
+                        return Ok(PrimaryWorkspaceHealth::ColdStart);
+                    }
+                };
+
+                if handler.is_primary_workspace_swap_in_progress() {
+                    return Err(err);
+                }
+
+                let database = match handler
+                    .get_database_for_workspace(&target_workspace_id)
+                    .await
+                {
+                    Ok(db) => Some(db),
+                    Err(_) => None,
+                };
+
+                let search_index_ready = handler
+                    .get_search_index_for_workspace(&target_workspace_id)
+                    .await?
+                    .is_some();
+
+                Ok(PrimaryWorkspaceHealth::Ready {
+                    database,
+                    search_index_ready,
+                })
+            }
+        }
+    }
+
     /// Get comprehensive system readiness status
     ///
     /// This is the SINGLE SOURCE OF TRUTH for system health across all tools
@@ -29,78 +90,75 @@ impl HealthChecker {
         handler: &JulieServerHandler,
         workspace_id: Option<&str>,
     ) -> Result<SystemStatus> {
-        // Step 1: Check if workspace and database exist
-        let workspace = match handler.get_workspace().await? {
-            Some(ws) => ws,
-            None => {
-                debug!("❌ Health check failed: handler.get_workspace() returned None");
-                return Ok(SystemStatus::NotReady);
-            }
-        };
+        if workspace_id.is_some_and(|id| id != "primary") {
+            let target_workspace_id = workspace_id.unwrap().to_string();
+            return Self::check_workspace_store_readiness(handler, &target_workspace_id).await;
+        }
 
-        let primary_workspace_id = if let Some(ref id) = handler.workspace_id {
-            id.clone()
-        } else {
-            crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
-                .unwrap_or_else(|_| "primary".to_string())
-        };
+        match Self::primary_workspace_health(handler).await? {
+            PrimaryWorkspaceHealth::ColdStart => Ok(SystemStatus::NotReady),
+            PrimaryWorkspaceHealth::Ready {
+                database,
+                search_index_ready,
+            } => {
+                let Some(db) = database else {
+                    debug!("❌ Health check failed: primary workspace database is unavailable");
+                    return Ok(SystemStatus::NotReady);
+                };
 
-        let target_workspace_id = workspace_id
-            .map(|id| {
-                // Normalize "primary" to actual primary workspace ID
-                // This allows users to pass workspace="primary" consistently
-                if id == "primary" {
-                    primary_workspace_id.clone()
-                } else {
-                    id.to_string()
-                }
-            })
-            .unwrap_or_else(|| primary_workspace_id.clone());
+                let symbol_count = match db.try_lock() {
+                    Ok(db_lock) => db_lock.get_symbol_count_for_workspace().unwrap_or(0),
+                    Err(_busy) => {
+                        debug!(
+                            "Primary symbol database busy during readiness check; assuming data present"
+                        );
+                        1
+                    }
+                };
 
-        if target_workspace_id == primary_workspace_id {
-            let db = match &workspace.db {
-                Some(db_arc) => db_arc,
-                None => {
-                    debug!("❌ Health check failed: workspace.db is None for primary workspace");
+                if symbol_count == 0 {
+                    debug!("❌ Health check failed: symbol_count is 0 for primary workspace");
                     return Ok(SystemStatus::NotReady);
                 }
-            };
 
-            let symbol_count = match db.try_lock() {
-                Ok(db_lock) => db_lock.get_symbol_count_for_workspace().unwrap_or(0),
-                Err(_busy) => {
-                    debug!(
-                        "Primary symbol database busy during readiness check; assuming data present"
-                    );
-                    1
+                if search_index_ready {
+                    Ok(SystemStatus::FullyReady { symbol_count })
+                } else {
+                    Ok(SystemStatus::SqliteOnly { symbol_count })
                 }
-            };
-
-            if symbol_count == 0 {
-                debug!("❌ Health check failed: symbol_count is 0 for primary workspace");
-                return Ok(SystemStatus::NotReady);
             }
+        }
+    }
 
-            // With Tantivy as the search engine, if symbols are indexed we're fully ready
+    async fn check_workspace_store_readiness(
+        handler: &JulieServerHandler,
+        workspace_id: &str,
+    ) -> Result<SystemStatus> {
+        let db = match handler.get_database_for_workspace(workspace_id).await {
+            Ok(db) => db,
+            Err(_) => return Ok(SystemStatus::NotReady),
+        };
+
+        let symbol_count = match db.try_lock() {
+            Ok(db_lock) => db_lock.get_symbol_count_for_workspace().unwrap_or(0),
+            Err(_busy) => {
+                debug!("Symbol database busy during readiness check; assuming data present");
+                1
+            }
+        };
+
+        if symbol_count == 0 {
+            return Ok(SystemStatus::NotReady);
+        }
+
+        let has_search_index = handler
+            .get_search_index_for_workspace(workspace_id)
+            .await?
+            .is_some();
+
+        if has_search_index {
             Ok(SystemStatus::FullyReady { symbol_count })
         } else {
-            // Stdio mode: reference workspaces stored under handler's root
-            let ref_db_path = workspace.workspace_db_path(&target_workspace_id);
-            if !ref_db_path.exists() {
-                return Ok(SystemStatus::NotReady);
-            }
-
-            let symbol_count = tokio::task::spawn_blocking(move || -> Result<i64> {
-                let ref_db = crate::database::SymbolDatabase::new(&ref_db_path)?;
-                ref_db.get_symbol_count_for_workspace()
-            })
-            .await
-            .map_err(|e| anyhow!("Failed to open reference workspace database: {}", e))??;
-
-            if symbol_count == 0 {
-                return Ok(SystemStatus::NotReady);
-            }
-
             Ok(SystemStatus::SqliteOnly { symbol_count })
         }
     }
@@ -122,7 +180,7 @@ impl HealthChecker {
                 Ok("❌ System not ready. Run 'manage_workspace index' to initialize.".to_string())
             }
             SystemStatus::SqliteOnly { symbol_count } => Ok(format!(
-                "🟢 Ready: {} symbols available via Tantivy search",
+                "🟡 Partially ready: {} symbols available in SQLite, Tantivy search unavailable",
                 symbol_count
             )),
             SystemStatus::FullyReady { symbol_count } => Ok(format!(
@@ -134,15 +192,20 @@ impl HealthChecker {
 
     /// Generate detailed health report for diagnostics
     pub async fn get_detailed_health_report(handler: &JulieServerHandler) -> Result<String> {
-        let workspace = match handler.get_workspace().await? {
-            Some(ws) => ws,
-            None => return Ok("❌ No workspace found".to_string()),
+        let (database, search_index_ready) = match Self::primary_workspace_health(handler).await? {
+            PrimaryWorkspaceHealth::ColdStart => {
+                return Ok("❌ No workspace found".to_string());
+            }
+            PrimaryWorkspaceHealth::Ready {
+                database,
+                search_index_ready,
+            } => (database, search_index_ready),
         };
 
         let mut report = String::new();
 
         // Database status
-        if let Some(db) = &workspace.db {
+        if let Some(db) = database.as_ref() {
             let db_lock = match db.lock() {
                 Ok(guard) => guard,
                 Err(poisoned) => {
@@ -169,7 +232,7 @@ impl HealthChecker {
         }
 
         // Search status
-        if workspace.search_index.is_some() {
+        if search_index_ready {
             report.push_str("✅ Tantivy search ready\n");
         } else {
             report.push_str("❌ Tantivy search index not initialized\n");

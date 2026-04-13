@@ -111,13 +111,8 @@ pub(crate) async fn resolve_workspace_root(
 ) -> Result<PathBuf> {
     let workspace_param = workspace_param.unwrap_or("primary");
 
-    let primary_workspace = handler
-        .get_workspace()
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("Workspace not initialized"))?;
-
     if workspace_param == "primary" {
-        return Ok(primary_workspace.root.clone());
+        return handler.require_primary_workspace_root();
     }
 
     // Reference workspace — look up path from DaemonDatabase

@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
+
 #[derive(Parser)]
 #[command(
     name = "julie-server",
@@ -46,51 +48,77 @@ pub enum Command {
 ///
 /// Paths are canonicalized to prevent duplicate workspace IDs for the same logical directory.
 /// Tilde expansion is performed for paths like "~/projects/foo".
-pub fn resolve_workspace_root(cli_workspace: Option<PathBuf>) -> PathBuf {
-    // 1. CLI argument (clap already parsed it, but we still need tilde expansion + canonicalization)
-    if let Some(raw_path) = cli_workspace {
-        let path_str = raw_path.to_string_lossy();
-        let expanded = shellexpand::tilde(&path_str).to_string();
-        let path = PathBuf::from(expanded);
-
-        if path.exists() {
-            let canonical = path.canonicalize().unwrap_or_else(|e| {
-                eprintln!("Warning: Could not canonicalize path {:?}: {}", path, e);
-                path.clone()
-            });
-            eprintln!("Using workspace from CLI argument: {:?}", canonical);
-            return canonical;
-        } else {
-            eprintln!("Warning: --workspace path does not exist: {:?}", path);
-        }
+pub fn resolve_workspace_startup_hint(cli_workspace: Option<PathBuf>) -> WorkspaceStartupHint {
+    if let Some(path) = resolve_explicit_workspace_candidate(
+        cli_workspace,
+        "CLI argument",
+        "--workspace path does not exist",
+    ) {
+        return WorkspaceStartupHint {
+            path,
+            source: Some(WorkspaceStartupSource::Cli),
+        };
     }
 
-    // 2. JULIE_WORKSPACE environment variable
-    if let Ok(path_str) = std::env::var("JULIE_WORKSPACE") {
-        let expanded = shellexpand::tilde(&path_str).to_string();
-        let path = PathBuf::from(expanded);
-
-        if path.exists() {
-            let canonical = path.canonicalize().unwrap_or_else(|e| {
-                eprintln!("Warning: Could not canonicalize path {:?}: {}", path, e);
-                path.clone()
-            });
-            eprintln!(
-                "Using workspace from JULIE_WORKSPACE env var: {:?}",
-                canonical
-            );
-            return canonical;
-        } else {
-            eprintln!("Warning: JULIE_WORKSPACE path does not exist: {:?}", path);
-        }
+    if let Some(path) = resolve_explicit_workspace_candidate(
+        std::env::var("JULIE_WORKSPACE").ok().map(PathBuf::from),
+        "JULIE_WORKSPACE env var",
+        "JULIE_WORKSPACE path does not exist",
+    ) {
+        return WorkspaceStartupHint {
+            path,
+            source: Some(WorkspaceStartupSource::Env),
+        };
     }
 
-    // 3. Fallback to current directory
     let current = std::env::current_dir().unwrap_or_else(|e| {
         eprintln!("Warning: Could not determine current directory: {}", e);
         eprintln!("Using fallback path '.'");
         PathBuf::from(".")
     });
 
-    current.canonicalize().unwrap_or(current)
+    WorkspaceStartupHint {
+        path: current.canonicalize().unwrap_or(current),
+        source: Some(WorkspaceStartupSource::Cwd),
+    }
+}
+
+pub fn resolve_workspace_root(cli_workspace: Option<PathBuf>) -> PathBuf {
+    resolve_workspace_startup_hint(cli_workspace).path
+}
+
+fn resolve_explicit_workspace_candidate(
+    raw_path: Option<PathBuf>,
+    source_label: &str,
+    missing_warning: &str,
+) -> Option<PathBuf> {
+    let raw_path = raw_path?;
+    let path_str = raw_path.to_string_lossy();
+    let expanded = shellexpand::tilde(&path_str).to_string();
+    let path = PathBuf::from(expanded);
+    let absolute_path = if path.is_absolute() {
+        path.clone()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|e| {
+                eprintln!("Warning: Could not determine current directory: {}", e);
+                PathBuf::from(".")
+            })
+            .join(&path)
+    };
+
+    if !absolute_path.exists() {
+        eprintln!("Warning: {}: {:?}", missing_warning, absolute_path);
+        return Some(absolute_path);
+    }
+
+    let canonical = absolute_path.canonicalize().unwrap_or_else(|e| {
+        eprintln!(
+            "Warning: Could not canonicalize path {:?}: {}",
+            absolute_path, e
+        );
+        absolute_path.clone()
+    });
+    eprintln!("Using workspace from {}: {:?}", source_label, canonical);
+    Some(canonical)
 }

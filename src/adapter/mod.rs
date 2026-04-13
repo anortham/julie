@@ -7,14 +7,13 @@
 
 pub mod launcher;
 
-use std::path::PathBuf;
-
 use anyhow::{Context, Result};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, copy};
 use tracing::{error, info};
 
 use crate::daemon::ipc::{IpcClientStream, IpcConnector};
 use crate::paths::DaemonPaths;
+use crate::workspace::startup_hint::WorkspaceStartupHint;
 
 use self::launcher::DaemonLauncher;
 
@@ -29,7 +28,7 @@ pub(crate) enum ForwardOutcome {
 /// This is the default entry point when no subcommand is given. It:
 /// 1. Ensures the daemon is running (spawning it if necessary)
 /// 2. Connects to the daemon's IPC socket
-/// 3. Sends the workspace header (`WORKSPACE:/path\n`)
+/// 3. Sends the workspace headers (`WORKSPACE:/path\n`, source, version)
 /// 4. Bidirectionally forwards stdin/stdout to/from the IPC stream
 ///
 /// On connection loss during forwarding, logs the error and exits cleanly.
@@ -40,7 +39,7 @@ pub(crate) enum ForwardOutcome {
 /// However, initial connection failures ARE retried: the daemon may have just
 /// shut down for a stale-binary restart, and the adapter needs to re-launch it.
 /// Without this retry, the MCP client sees "failed" on every rebuild cycle.
-pub async fn run_adapter(workspace_root: PathBuf) -> Result<()> {
+pub async fn run_adapter(startup_hint: WorkspaceStartupHint) -> Result<()> {
     let paths = DaemonPaths::new();
     let launcher = DaemonLauncher::new(paths.clone());
 
@@ -53,7 +52,7 @@ pub async fn run_adapter(workspace_root: PathBuf) -> Result<()> {
         tokio::task::block_in_place(|| launcher.ensure_daemon_ready())
             .context("Failed to ensure daemon is ready")?;
 
-        let stream = match connect_and_handshake(&paths, &workspace_root).await {
+        let stream = match connect_and_handshake(&paths, &startup_hint).await {
             Ok(s) => s,
             Err(e) => {
                 if attempt < MAX_RETRIES {
@@ -105,7 +104,7 @@ pub async fn run_adapter(workspace_root: PathBuf) -> Result<()> {
 /// Connect to the daemon IPC endpoint and send the workspace header.
 async fn connect_and_handshake(
     paths: &DaemonPaths,
-    workspace_root: &PathBuf,
+    startup_hint: &WorkspaceStartupHint,
 ) -> Result<IpcClientStream> {
     let ipc_addr = paths.daemon_ipc_addr();
     let mut stream = IpcConnector::connect(&ipc_addr)
@@ -115,17 +114,28 @@ async fn connect_and_handshake(
     // Send IPC headers: workspace path, then adapter version.
     // Path is sent as-is (native format); generate_workspace_id() normalizes
     // internally so the workspace ID is consistent regardless of separators.
-    let header = format!(
-        "WORKSPACE:{}\nVERSION:{}\n",
-        workspace_root.to_string_lossy(),
-        env!("CARGO_PKG_VERSION"),
-    );
+    let header = build_ipc_header(startup_hint);
     stream
         .write_all(header.as_bytes())
         .await
         .context("Failed to send IPC headers")?;
 
     Ok(stream)
+}
+
+pub(crate) fn build_ipc_header(startup_hint: &WorkspaceStartupHint) -> String {
+    let mut header = format!(
+        "WORKSPACE:{}\nVERSION:{}\n",
+        startup_hint.path.to_string_lossy(),
+        env!("CARGO_PKG_VERSION"),
+    );
+
+    if let Some(source) = startup_hint.source {
+        header.push_str(&format!("WORKSPACE_SOURCE:{}\n", source.as_header_value()));
+    }
+
+    header.push('\n');
+    header
 }
 
 /// Bidirectional byte forwarding between stdin/stdout and the IPC stream.

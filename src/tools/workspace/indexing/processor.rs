@@ -46,13 +46,7 @@ impl ManageWorkspaceTool {
         // Primary workspace uses the existing handler.get_workspace().db connection
         let ref_workspace_db = if !is_primary_workspace {
             // This is a REFERENCE workspace - open its separate database
-            let primary_workspace = handler.get_workspace().await?.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "No workspace initialized. Run manage_workspace(operation=\"index\") first."
-                )
-            })?;
-
-            let ref_db_path = primary_workspace.workspace_db_path(&workspace_id);
+            let ref_db_path = handler.workspace_db_file_path_for(&workspace_id).await?;
             debug!(
                 "🗄️ Opening reference workspace DB: {}",
                 ref_db_path.display()
@@ -470,10 +464,17 @@ impl ManageWorkspaceTool {
                 );
 
                 // Capture codehealth snapshot in daemon.db (daemon mode only)
-                // Use handler.workspace_id (the daemon pool's ID, e.g. "julie_julie_31")
-                // not the local workspace_id (the indexing pipeline's hash, e.g. "julie_316c0b08")
+                // Use the session-owned current primary id when present so force refresh
+                // after primary rebinding attributes snapshots to the active primary.
                 if let Some(ref daemon_db) = handler.daemon_db {
-                    let snapshot_ws_id = handler.workspace_id.as_deref().unwrap_or(&workspace_id);
+                    let current_primary_id = if is_primary_workspace {
+                        handler
+                            .current_workspace_id()
+                            .or_else(|| handler.loaded_workspace_id())
+                    } else {
+                        None
+                    };
+                    let snapshot_ws_id = current_primary_id.as_deref().unwrap_or(&workspace_id);
                     if let Err(e) = daemon_db.snapshot_codehealth_from_db(snapshot_ws_id, &db_lock)
                     {
                         warn!("Failed to capture codehealth snapshot: {}", e);

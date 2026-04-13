@@ -192,17 +192,10 @@ impl EditSymbolTool {
             ))]));
         }
 
-        // Get workspace and database
-        let workspace = handler.get_workspace().await?.ok_or_else(|| {
-            anyhow!("No workspace initialized. Run manage_workspace(operation=\"index\") first.")
-        })?;
-        let db_arc = workspace
-            .db
-            .as_ref()
-            .ok_or_else(|| {
-                anyhow!("Database not available. Run manage_workspace(operation=\"index\") first.")
-            })?
-            .clone();
+        // Capture the authoritative primary binding and handles together so a
+        // completed swap can't mix the old root with the new workspace DB.
+        let primary_snapshot = handler.primary_workspace_snapshot().await?;
+        let db_arc = primary_snapshot.database.clone();
 
         // Look up symbol using deep_dive's find_symbol (handles qualified names,
         // flat namespaces, parent/child resolution)
@@ -275,8 +268,8 @@ impl EditSymbolTool {
         let (_, symbol_file, start_line, end_line) = &matches[0];
 
         // Resolve the file path (security check)
-        let workspace_root = &handler.workspace_root;
-        let resolved_path = secure_path_resolution(symbol_file, workspace_root)?;
+        let workspace_root = primary_snapshot.binding.workspace_root;
+        let resolved_path = secure_path_resolution(symbol_file, &workspace_root)?;
         let resolved_str = resolved_path.to_string_lossy().to_string();
 
         // Freshness guard: verify the file hasn't changed since it was indexed.

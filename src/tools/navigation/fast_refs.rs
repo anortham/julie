@@ -12,14 +12,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+use super::formatting::format_lean_refs_results;
+use super::reference_workspace;
+use super::resolution::{WorkspaceTarget, parse_qualified_name, resolve_workspace_filter};
 use crate::extractors::{Relationship, RelationshipKind, Symbol, SymbolKind};
 use crate::handler::JulieServerHandler;
 use crate::utils::cross_language_intelligence::generate_naming_variants;
 use std::collections::{HashMap, HashSet};
-
-use super::formatting::format_lean_refs_results;
-use super::reference_workspace;
-use super::resolution::{WorkspaceTarget, parse_qualified_name, resolve_workspace_filter};
+use std::sync::{Arc, Mutex};
 
 fn default_true() -> bool {
     true
@@ -76,7 +76,12 @@ impl FastRefsTool {
     /// Embeds the symbol name on the fly and finds similar symbols by vector distance.
     /// Returns formatted semantic results or empty string.
     /// Skips for reference workspace queries (may lack embeddings).
-    async fn try_semantic_fallback(&self, handler: &JulieServerHandler) -> String {
+    async fn try_semantic_fallback(
+        &self,
+        handler: &JulieServerHandler,
+        workspace_target: &WorkspaceTarget,
+        primary_db: Option<Arc<Mutex<crate::database::SymbolDatabase>>>,
+    ) -> String {
         use super::formatting::format_semantic_fallback;
         use crate::search::similarity;
 
@@ -92,65 +97,50 @@ impl FastRefsTool {
             Err(_) => return String::new(),
         };
 
-        // Use the correct DB: reference workspace DB if specified, primary otherwise
-        let is_reference = self.workspace.is_some() && self.workspace.as_deref() != Some("primary");
-
         // Use a lower threshold than MIN_SIMILARITY_SCORE (0.5) because we're
         // comparing a raw symbol name against rich metadata embeddings (kind +
         // name + signature + docstring). Different input domains = lower scores.
         const QUERY_SIMILARITY_THRESHOLD: f32 = 0.2;
 
-        if is_reference {
-            let ref_id = self.workspace.as_deref().unwrap_or("primary");
-            debug!("Semantic fallback: reference workspace '{}'", ref_id);
-            let db_arc = match handler.get_database_for_workspace(ref_id).await {
-                Ok(db) => db,
-                Err(e) => {
-                    debug!("Semantic fallback: DB error for '{}': {}", ref_id, e);
-                    return String::new();
+        let db_arc = match workspace_target {
+            WorkspaceTarget::Reference(ref_workspace_id) => {
+                debug!(
+                    "Semantic fallback: reference workspace '{}'",
+                    ref_workspace_id
+                );
+                match handler.get_database_for_workspace(ref_workspace_id).await {
+                    Ok(db) => db,
+                    Err(e) => {
+                        debug!(
+                            "Semantic fallback: DB error for '{}': {}",
+                            ref_workspace_id, e
+                        );
+                        return String::new();
+                    }
                 }
-            };
-            let db_guard = match db_arc.lock() {
-                Ok(guard) => guard,
-                Err(_) => return String::new(),
-            };
-            let similar = match similarity::find_similar_by_query(
-                &db_guard,
-                &query_vector,
-                5,
-                QUERY_SIMILARITY_THRESHOLD,
-            ) {
-                Ok(results) => results,
-                Err(e) => {
-                    debug!("Semantic fallback: KNN error: {}", e);
-                    return String::new();
-                }
-            };
-            format_semantic_fallback(&self.symbol, &similar)
-        } else {
-            let workspace = match handler.get_workspace().await {
-                Ok(Some(w)) => w,
-                _ => return String::new(),
-            };
-            let db = match workspace.db.as_ref() {
-                Some(db) => db,
+            }
+            WorkspaceTarget::Primary => match primary_db {
+                Some(db_arc) => db_arc,
                 None => return String::new(),
-            };
-            let db_guard = match db.lock() {
-                Ok(guard) => guard,
-                Err(_) => return String::new(),
-            };
-            let similar = match similarity::find_similar_by_query(
-                &db_guard,
-                &query_vector,
-                5,
-                QUERY_SIMILARITY_THRESHOLD,
-            ) {
-                Ok(results) => results,
-                Err(_) => return String::new(),
-            };
-            format_semantic_fallback(&self.symbol, &similar)
-        }
+            },
+        };
+        let db_guard = match db_arc.lock() {
+            Ok(guard) => guard,
+            Err(_) => return String::new(),
+        };
+        let similar = match similarity::find_similar_by_query(
+            &db_guard,
+            &query_vector,
+            5,
+            QUERY_SIMILARITY_THRESHOLD,
+        ) {
+            Ok(results) => results,
+            Err(e) => {
+                debug!("Semantic fallback: KNN error: {}", e);
+                return String::new();
+            }
+        };
+        format_semantic_fallback(&self.symbol, &similar)
     }
 
     pub async fn call_tool(&self, handler: &JulieServerHandler) -> Result<CallToolResult> {
@@ -158,15 +148,21 @@ impl FastRefsTool {
 
         // Resolve workspace target (primary or reference workspace)
         let workspace_target = resolve_workspace_filter(self.workspace.as_deref(), handler).await?;
+        let primary_db = match &workspace_target {
+            WorkspaceTarget::Primary => Some(handler.primary_database().await?),
+            WorkspaceTarget::Reference(_) => None,
+        };
 
         // Find references (workspace resolution is handled by workspace_target)
         let (definitions, references) = self
-            .find_references_and_definitions(handler, workspace_target.clone())
+            .find_references_and_definitions(handler, workspace_target.clone(), primary_db.clone())
             .await?;
 
         if definitions.is_empty() && references.is_empty() {
             // Attempt semantic fallback (works for both primary and reference workspaces)
-            let semantic_section = self.try_semantic_fallback(handler).await;
+            let semantic_section = self
+                .try_semantic_fallback(handler, &workspace_target, primary_db.clone())
+                .await;
 
             let empty_names = HashMap::new();
             let mut result_text = format_lean_refs_results(&self.symbol, &[], &[], &empty_names);
@@ -179,7 +175,7 @@ impl FastRefsTool {
         // Resolve from_symbol_id → name for each reference so the formatter
         // can show the calling symbol's name (e.g., "format_definition_search_results (Calls)")
         let source_names = self
-            .resolve_source_names(handler, &references, &workspace_target)
+            .resolve_source_names(handler, &references, &workspace_target, primary_db)
             .await;
 
         // Respect include_definition parameter
@@ -201,6 +197,7 @@ impl FastRefsTool {
         handler: &JulieServerHandler,
         references: &[Relationship],
         workspace_target: &WorkspaceTarget,
+        primary_db: Option<Arc<Mutex<crate::database::SymbolDatabase>>>,
     ) -> HashMap<String, String> {
         let ids: Vec<String> = references
             .iter()
@@ -235,28 +232,22 @@ impl FastRefsTool {
                 .unwrap_or_default()
             }
             WorkspaceTarget::Primary => {
-                if let Ok(Some(workspace)) = handler.get_workspace().await {
-                    if let Some(db) = workspace.db.as_ref() {
-                        let db_arc = db.clone();
-                        tokio::task::spawn_blocking(move || {
-                            let db_lock =
-                                super::lock_db(&db_arc, "fast_refs source name resolution");
-                            match db_lock.get_symbols_by_ids(&ids) {
-                                Ok(symbols) => symbols
-                                    .into_iter()
-                                    .map(|s| (s.id.clone(), s.name.clone()))
-                                    .collect(),
-                                Err(_) => HashMap::new(),
-                            }
-                        })
-                        .await
-                        .unwrap_or_default()
-                    } else {
-                        HashMap::new()
+                let db_arc = match primary_db {
+                    Some(db_arc) => db_arc,
+                    None => return HashMap::new(),
+                };
+                tokio::task::spawn_blocking(move || {
+                    let db_lock = super::lock_db(&db_arc, "fast_refs source name resolution");
+                    match db_lock.get_symbols_by_ids(&ids) {
+                        Ok(symbols) => symbols
+                            .into_iter()
+                            .map(|s| (s.id.clone(), s.name.clone()))
+                            .collect(),
+                        Err(_) => HashMap::new(),
                     }
-                } else {
-                    HashMap::new()
-                }
+                })
+                .await
+                .unwrap_or_default()
             }
         }
     }
@@ -265,6 +256,7 @@ impl FastRefsTool {
         &self,
         handler: &JulieServerHandler,
         workspace_target: WorkspaceTarget,
+        primary_db: Option<Arc<Mutex<crate::database::SymbolDatabase>>>,
     ) -> Result<(Vec<Symbol>, Vec<Relationship>)> {
         debug!(
             "Searching for references to '{}' using indexed search",
@@ -292,103 +284,94 @@ impl FastRefsTool {
             None => (self.symbol.clone(), None),
         };
 
-        // Primary workspace search - use handler.get_workspace().db
+        // Primary workspace search - use the current-primary DB store.
         // Strategy 1: Use SQLite for O(log n) indexed name lookup
-        let mut definitions = Vec::new();
+        let db_arc = primary_db.ok_or_else(|| {
+            anyhow::anyhow!("Primary workspace database unavailable during fast_refs lookup")
+        })?;
 
         // Use SQLite for exact name lookup (indexed)
-        if let Some(workspace) = handler.get_workspace().await? {
-            if let Some(db) = workspace.db.as_ref() {
-                // spawn_blocking to avoid blocking tokio runtime during DB I/O
-                let symbol = effective_symbol.clone();
-                let parent_filter_clone = parent_filter.clone();
-                let db_arc = db.clone();
+        let symbol = effective_symbol.clone();
+        let parent_filter_clone = parent_filter.clone();
+        let db_arc_for_exact = db_arc.clone();
 
-                definitions =
-                    tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<Symbol>> {
-                        let db_lock = super::lock_db(&db_arc, "fast_refs exact lookup");
-                        let mut defs = db_lock.get_symbols_by_name(&symbol)?;
+        let mut definitions =
+            tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<Symbol>> {
+                let db_lock = super::lock_db(&db_arc_for_exact, "fast_refs exact lookup");
+                let mut defs = db_lock.get_symbols_by_name(&symbol)?;
 
-                        // If a parent filter is specified, filter definitions to those
-                        // whose parent symbol has the matching name
-                        if let Some(ref parent_name) = parent_filter_clone {
-                            let parent_ids: Vec<String> = defs
-                                .iter()
-                                .filter_map(|s| s.parent_id.clone())
-                                .collect::<std::collections::HashSet<_>>()
-                                .into_iter()
-                                .collect();
+                // If a parent filter is specified, filter definitions to those
+                // whose parent symbol has the matching name
+                if let Some(ref parent_name) = parent_filter_clone {
+                    let parent_ids: Vec<String> = defs
+                        .iter()
+                        .filter_map(|s| s.parent_id.clone())
+                        .collect::<std::collections::HashSet<_>>()
+                        .into_iter()
+                        .collect();
 
-                            if !parent_ids.is_empty() {
-                                let parents = db_lock.get_symbols_by_ids(&parent_ids)?;
-                                let matching_parent_ids: std::collections::HashSet<String> =
-                                    parents
-                                        .into_iter()
-                                        .filter(|p| p.name == *parent_name)
-                                        .map(|p| p.id)
-                                        .collect();
+                    if !parent_ids.is_empty() {
+                        let parents = db_lock.get_symbols_by_ids(&parent_ids)?;
+                        let matching_parent_ids: std::collections::HashSet<String> = parents
+                            .into_iter()
+                            .filter(|p| p.name == *parent_name)
+                            .map(|p| p.id)
+                            .collect();
 
-                                defs.retain(|s| {
-                                    s.parent_id
-                                        .as_deref()
-                                        .map(|pid| matching_parent_ids.contains(pid))
-                                        .unwrap_or(false)
-                                });
-                            } else {
-                                // No definitions have parent_id — qualified search finds nothing
-                                defs.clear();
-                            }
-                        }
+                        defs.retain(|s| {
+                            s.parent_id
+                                .as_deref()
+                                .map(|pid| matching_parent_ids.contains(pid))
+                                .unwrap_or(false)
+                        });
+                    } else {
+                        // No definitions have parent_id — qualified search finds nothing
+                        defs.clear();
+                    }
+                }
 
-                        Ok(defs)
-                    })
-                    .await
-                    .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
+                Ok(defs)
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))??;
 
-                debug!("⚡ SQLite found {} exact matches", definitions.len());
-            }
-        }
+        debug!("⚡ SQLite found {} exact matches", definitions.len());
 
         // ✨ INTELLIGENCE: Cross-language naming convention matching
         // Use our shared utility to generate variants (snake_case, camelCase, PascalCase)
         let variants = generate_naming_variants(&effective_symbol);
         debug!("🔍 Cross-language search variants: {:?}", variants);
 
-        if let Ok(Some(workspace)) = handler.get_workspace().await {
-            if let Some(db) = workspace.db.as_ref() {
-                // spawn_blocking to avoid blocking tokio runtime during DB I/O
-                let symbol = effective_symbol.clone();
-                let db_arc = db.clone();
+        let symbol = effective_symbol.clone();
+        let db_arc_for_variants = db_arc.clone();
 
-                let variant_matches = tokio::task::spawn_blocking(move || {
-                    let db_lock = super::lock_db(&db_arc, "fast_refs variant lookup");
-                    let mut matches = Vec::new();
+        let variant_matches = tokio::task::spawn_blocking(move || {
+            let db_lock = super::lock_db(&db_arc_for_variants, "fast_refs variant lookup");
+            let mut matches = Vec::new();
 
-                    for variant in variants {
-                        if variant != symbol {
-                            // Avoid duplicate searches
-                            if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
-                                for s in variant_symbols {
-                                    // Exact match on variant name
-                                    if s.name == variant {
-                                        debug!(
-                                            "✨ Found cross-language match: {} (variant: {})",
-                                            s.name, variant
-                                        );
-                                        matches.push(s);
-                                    }
-                                }
+            for variant in variants {
+                if variant != symbol {
+                    // Avoid duplicate searches
+                    if let Ok(variant_symbols) = db_lock.get_symbols_by_name(&variant) {
+                        for s in variant_symbols {
+                            // Exact match on variant name
+                            if s.name == variant {
+                                debug!(
+                                    "✨ Found cross-language match: {} (variant: {})",
+                                    s.name, variant
+                                );
+                                matches.push(s);
                             }
                         }
                     }
-                    matches
-                })
-                .await
-                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
-
-                definitions.extend(variant_matches);
+                }
             }
-        }
+            matches
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+
+        definitions.extend(variant_matches);
 
         // Remove duplicates
         definitions.sort_by(|a, b| a.id.cmp(&b.id));
@@ -427,116 +410,106 @@ impl FastRefsTool {
             _ => import_refs,
         };
 
-        if let Ok(Some(workspace)) = handler.get_workspace().await {
-            if let Some(db) = workspace.db.as_ref() {
-                // spawn_blocking to avoid blocking tokio runtime during DB I/O
-                // Collect definition IDs before moving into spawn_blocking
-                let definition_ids: Vec<String> =
-                    definitions.iter().map(|d| d.id.clone()).collect();
-                let db_arc = db.clone();
+        // spawn_blocking to avoid blocking tokio runtime during DB I/O
+        // Collect definition IDs before moving into spawn_blocking
+        let definition_ids: Vec<String> = definitions.iter().map(|d| d.id.clone()).collect();
+        let db_arc_for_relationships = db_arc.clone();
 
-                let reference_kind_filter = self.reference_kind.clone();
-                let symbol_references = tokio::task::spawn_blocking(move || {
-                    let db_lock = super::lock_db(&db_arc, "fast_refs relationships");
-                    // Single batch query, optionally filtered by identifier kind
-                    if let Some(kind) = reference_kind_filter {
-                        db_lock
-                            .get_relationships_to_symbols_filtered_by_kind(&definition_ids, &kind)
-                    } else {
-                        db_lock.get_relationships_to_symbols(&definition_ids)
-                    }
-                })
-                .await
-                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
-
-                if let Ok(refs) = symbol_references {
-                    references.extend(refs);
-                }
+        let reference_kind_filter = self.reference_kind.clone();
+        let symbol_references = tokio::task::spawn_blocking(move || {
+            let db_lock = super::lock_db(&db_arc_for_relationships, "fast_refs relationships");
+            // Single batch query, optionally filtered by identifier kind
+            if let Some(kind) = reference_kind_filter {
+                db_lock.get_relationships_to_symbols_filtered_by_kind(&definition_ids, &kind)
+            } else {
+                db_lock.get_relationships_to_symbols(&definition_ids)
             }
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+
+        if let Ok(refs) = symbol_references {
+            references.extend(refs);
         }
 
         // Strategy 3: Identifier-based reference discovery
         // The identifiers table stores every usage site extracted by all 31 language extractors.
         // This catches references that relationships miss (struct type usages, function calls
         // without extracted relationships, member accesses, etc.)
-        if let Ok(Some(workspace)) = handler.get_workspace().await {
-            if let Some(db) = workspace.db.as_ref() {
-                let db_arc = db.clone();
-                let symbol = effective_symbol.clone();
-                let reference_kind_for_ident = self.reference_kind.clone();
+        let db_arc_for_identifiers = db_arc.clone();
+        let symbol = effective_symbol.clone();
+        let reference_kind_for_ident = self.reference_kind.clone();
 
-                // Collect all name variants for batch query
-                let mut all_names = vec![symbol.clone()];
-                let variants = generate_naming_variants(&symbol);
-                for v in variants {
-                    if v != symbol {
-                        all_names.push(v);
-                    }
-                }
-
-                // First definition ID for to_symbol_id in converted Relationships
-                let first_def_id = definitions
-                    .first()
-                    .map(|d| d.id.clone())
-                    .unwrap_or_default();
-
-                let identifier_refs = tokio::task::spawn_blocking(move || {
-                    let db_lock = super::lock_db(&db_arc, "fast_refs identifiers");
-                    if let Some(kind) = reference_kind_for_ident {
-                        db_lock.get_identifiers_by_names_and_kind(&all_names, &kind)
-                    } else {
-                        db_lock.get_identifiers_by_names(&all_names)
-                    }
-                })
-                .await
-                .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
-
-                if let Ok(ident_refs) = identifier_refs {
-                    // Build dedup set from existing relationships AND definitions
-                    // so identifier entries at definition sites don't create duplicates
-                    let mut existing_refs: HashSet<(String, u32)> = references
-                        .iter()
-                        .map(|r| (r.file_path.clone(), r.line_number))
-                        .collect();
-                    for def in &definitions {
-                        existing_refs.insert((def.file_path.clone(), def.start_line));
-                    }
-
-                    let mut added = 0;
-                    for ident in ident_refs {
-                        let key = (ident.file_path.clone(), ident.start_line);
-                        if existing_refs.contains(&key) {
-                            continue; // Prefer existing relationship (richer data)
-                        }
-
-                        // Convert IdentifierKind string to RelationshipKind
-                        let rel_kind = match ident.kind.as_str() {
-                            "call" => RelationshipKind::Calls,
-                            "import" => RelationshipKind::Imports,
-                            "type_usage" => RelationshipKind::Uses,
-                            "member_access" => RelationshipKind::References,
-                            _ => RelationshipKind::References,
-                        };
-
-                        references.push(Relationship {
-                            id: format!("ident_{}_{}", ident.file_path, ident.start_line),
-                            from_symbol_id: ident.containing_symbol_id.unwrap_or_default(),
-                            to_symbol_id: first_def_id.clone(),
-                            kind: rel_kind,
-                            file_path: ident.file_path,
-                            line_number: ident.start_line,
-                            confidence: ident.confidence,
-                            metadata: None,
-                        });
-                        added += 1;
-                    }
-
-                    debug!(
-                        "🔓 Identifiers added {} new references (deduped from existing relationships)",
-                        added
-                    );
-                }
+        // Collect all name variants for batch query
+        let mut all_names = vec![symbol.clone()];
+        let variants = generate_naming_variants(&symbol);
+        for v in variants {
+            if v != symbol {
+                all_names.push(v);
             }
+        }
+
+        // First definition ID for to_symbol_id in converted Relationships
+        let first_def_id = definitions
+            .first()
+            .map(|d| d.id.clone())
+            .unwrap_or_default();
+
+        let identifier_refs = tokio::task::spawn_blocking(move || {
+            let db_lock = super::lock_db(&db_arc_for_identifiers, "fast_refs identifiers");
+            if let Some(kind) = reference_kind_for_ident {
+                db_lock.get_identifiers_by_names_and_kind(&all_names, &kind)
+            } else {
+                db_lock.get_identifiers_by_names(&all_names)
+            }
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("spawn_blocking join error: {}", e))?;
+
+        if let Ok(ident_refs) = identifier_refs {
+            // Build dedup set from existing relationships AND definitions
+            // so identifier entries at definition sites don't create duplicates
+            let mut existing_refs: HashSet<(String, u32)> = references
+                .iter()
+                .map(|r| (r.file_path.clone(), r.line_number))
+                .collect();
+            for def in &definitions {
+                existing_refs.insert((def.file_path.clone(), def.start_line));
+            }
+
+            let mut added = 0;
+            for ident in ident_refs {
+                let key = (ident.file_path.clone(), ident.start_line);
+                if existing_refs.contains(&key) {
+                    continue; // Prefer existing relationship (richer data)
+                }
+
+                // Convert IdentifierKind string to RelationshipKind
+                let rel_kind = match ident.kind.as_str() {
+                    "call" => RelationshipKind::Calls,
+                    "import" => RelationshipKind::Imports,
+                    "type_usage" => RelationshipKind::Uses,
+                    "member_access" => RelationshipKind::References,
+                    _ => RelationshipKind::References,
+                };
+
+                references.push(Relationship {
+                    id: format!("ident_{}_{}", ident.file_path, ident.start_line),
+                    from_symbol_id: ident.containing_symbol_id.unwrap_or_default(),
+                    to_symbol_id: first_def_id.clone(),
+                    kind: rel_kind,
+                    file_path: ident.file_path,
+                    line_number: ident.start_line,
+                    confidence: ident.confidence,
+                    metadata: None,
+                });
+                added += 1;
+            }
+
+            debug!(
+                "🔓 Identifiers added {} new references (deduped from existing relationships)",
+                added
+            );
         }
 
         // Sort references by confidence and location

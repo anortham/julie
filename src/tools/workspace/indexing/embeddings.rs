@@ -124,11 +124,11 @@ pub(crate) async fn spawn_workspace_embedding(
         }
     };
 
-    let db_path = {
-        let ws_guard = handler.workspace.read().await;
-        match ws_guard.as_ref() {
-            Some(ws) => ws.workspace_db_path(&workspace_id),
-            None => return 0,
+    let db_path = match handler.workspace_db_file_path_for(&workspace_id).await {
+        Ok(path) => path,
+        Err(e) => {
+            warn!("Failed to resolve workspace DB path for embedding: {e}");
+            return 0;
         }
     };
     if !db_path.exists() {

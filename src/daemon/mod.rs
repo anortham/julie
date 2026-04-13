@@ -7,6 +7,7 @@
 pub mod database;
 pub mod embedding_service;
 pub mod ipc;
+pub mod ipc_session;
 pub mod lifecycle;
 pub mod pid;
 pub mod project_log;
@@ -17,7 +18,7 @@ pub mod watcher_pool;
 pub mod workspace_pool;
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime};
@@ -25,21 +26,21 @@ use std::time::{Duration, SystemTime};
 use anyhow::{Context, Result};
 #[cfg(unix)]
 use libc;
-use rmcp::ServiceExt;
-use tokio::io::AsyncReadExt;
 use tokio::sync::Notify;
 use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
 use crate::dashboard::state::DashboardEvent;
 
-use crate::handler::JulieServerHandler;
 use crate::paths::DaemonPaths;
 use crate::workspace::registry::generate_workspace_id;
 
 use self::database::DaemonDatabase;
 use self::embedding_service::EmbeddingService;
-use self::ipc::{IpcListener, IpcStream};
+use self::ipc::IpcListener;
+pub(crate) use self::ipc_session::{
+    PrefixedIpcStream, handle_ipc_session, parse_ipc_headers_block, read_ipc_headers,
+};
 use self::pid::PidFile;
 use self::session::SessionTracker;
 use self::watcher_pool::WatcherPool;
@@ -747,7 +748,7 @@ async fn accept_loop(
         // (0 sessions), enabling immediate shutdown + restart instead of
         // serving a full session with stale code.
         let mut stream = stream;
-        let headers =
+        let parsed_headers =
             match tokio::time::timeout(Duration::from_secs(5), read_ipc_headers(&mut stream)).await
             {
                 Ok(Ok(h)) => h,
@@ -760,8 +761,9 @@ async fn accept_loop(
                     continue;
                 }
             };
-
-        let workspace_path = headers.workspace;
+        let headers = parsed_headers.headers;
+        let workspace_startup_hint = headers.workspace_startup_hint();
+        let workspace_path = workspace_startup_hint.path.clone();
         info!(workspace = %workspace_path.display(), "IPC headers received");
 
         // Check version mismatch BEFORE adding the session. This catches
@@ -793,6 +795,8 @@ async fn accept_loop(
             }
         }
 
+        let session_stream = PrefixedIpcStream::new(stream, parsed_headers.buffered_bytes);
+
         let session_id = sessions.add_session();
         let _ = dashboard_tx.send(DashboardEvent::SessionChange {
             active_count: sessions.active_count(),
@@ -808,14 +812,14 @@ async fn accept_loop(
         tokio::spawn(async move {
             let dashboard_tx_disconnect = dashboard_tx.clone();
             if let Err(e) = handle_ipc_session(
-                stream,
+                session_stream,
                 pool,
                 &session_id,
                 &daemon_db,
                 &embedding_service,
                 &restart_pending,
                 Some(dashboard_tx),
-                workspace_path,
+                workspace_startup_hint,
                 Some(watcher_pool_for_session),
             )
             .await
@@ -860,184 +864,6 @@ async fn accept_loop(
     }
 }
 
-/// Handle a single IPC session: read the workspace header, then serve MCP.
-async fn handle_ipc_session(
-    stream: IpcStream,
-    pool: Arc<WorkspacePool>,
-    session_id: &str,
-    daemon_db: &Option<Arc<DaemonDatabase>>,
-    embedding_service: &Arc<EmbeddingService>,
-    restart_pending: &Arc<AtomicBool>,
-    dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
-    workspace_path: PathBuf,
-    watcher_pool: Option<Arc<WatcherPool>>,
-) -> Result<()> {
-    // Compute workspace ID from path. Use generate_workspace_id() directly
-    // (produces e.g. "julie_316c0b08"). Do NOT wrap in another prefix; the
-    // indexing pipeline also calls generate_workspace_id() and the IDs must match
-    // for daemon.db FK constraints and workspace_db_path() to resolve correctly.
-    let path_str = workspace_path.to_string_lossy().to_string();
-    let full_workspace_id =
-        generate_workspace_id(&path_str).context("Failed to generate workspace ID")?;
-
-    info!(
-        session_id = %session_id,
-        workspace_id = %full_workspace_id,
-        "Getting or initializing workspace from pool"
-    );
-
-    // Get or create shared workspace from the pool
-    let workspace = pool
-        .get_or_init(&full_workspace_id, workspace_path.clone())
-        .await
-        .context("Failed to initialize workspace in pool")?;
-
-    // From this point, disconnect_session must run on all exit paths — even
-    // on errors from handler creation or MCP serving. Wrap the session work in
-    // an async block so `?` propagates to the block result rather than the
-    // outer function, allowing cleanup to always execute afterwards.
-    let session_result: Result<(Vec<String>, Result<(), anyhow::Error>)> = async {
-        // Create a per-session handler backed by the shared workspace
-        let handler = JulieServerHandler::new_with_shared_workspace(
-            workspace,
-            workspace_path,
-            daemon_db.clone(),
-            Some(full_workspace_id.clone()),
-            Some(Arc::clone(embedding_service)),
-            Some(Arc::clone(restart_pending)),
-            dashboard_tx,
-            watcher_pool,
-            Some(Arc::clone(&pool)),
-        )
-        .await
-        .context("Failed to create handler for IPC session")?;
-
-        // Grab project log before serve() consumes the handler
-        let project_log = handler.project_log.clone();
-        let active_workspaces = Arc::clone(&handler.active_workspaces);
-
-        // Log session start to project log
-        if let Some(ref log) = project_log {
-            log.session_start(session_id);
-        }
-
-        // Serve MCP over the IPC stream. IpcStream implements AsyncRead + AsyncWrite,
-        // so rmcp's blanket IntoTransport impl handles the conversion automatically.
-        let service_result = match handler.serve(stream).await {
-            Ok(service) => {
-                // Block until the MCP session ends (client disconnect or error)
-                match service.waiting().await {
-                    Ok(_reason) => {
-                        info!(session_id = %session_id, "MCP session completed normally");
-                        Ok(())
-                    }
-                    Err(e) => {
-                        warn!(session_id = %session_id, "MCP session ended with error: {}", e);
-                        Err(anyhow::anyhow!("MCP session error: {}", e))
-                    }
-                }
-            }
-            Err(e) => {
-                warn!(session_id = %session_id, "MCP serve failed: {}", e);
-                Err(anyhow::anyhow!("MCP serve failed: {}", e))
-            }
-        };
-
-        // Log session end to project log
-        if let Some(ref log) = project_log {
-            log.session_end(session_id);
-        }
-
-        let active_workspace_ids = {
-            let mut ids: Vec<String> = active_workspaces.read().await.iter().cloned().collect();
-            ids.sort();
-            ids
-        };
-        Ok((active_workspace_ids, service_result))
-    }
-    .await;
-
-    // Capture active workspace IDs even on successful completion. If initialization
-    // fails before any handler is created, return only the primary workspace for
-    // cleanup so the session-level pool count does not leak.
-    let (session_result, active_workspace_ids) = match session_result {
-        Ok((ids, result)) => (result, ids),
-        Err(error) => (Err(error), vec![full_workspace_id.clone()]),
-    };
-
-    // Sync the pool's in-memory `indexed` flag from daemon.db. If indexing ran
-    // during this session, handle_index_command will have already written "ready"
-    // to daemon.db; propagate that status to the pool so is_indexed() returns true
-    // for subsequent sessions without requiring another indexing pass.
-    pool.sync_indexed_from_db(&full_workspace_id).await;
-
-    // Decrement session count in daemon.db for every workspace active in this session.
-    for workspace_id in active_workspace_ids {
-        pool.disconnect_session(&workspace_id).await;
-    }
-
-    session_result
-}
-
-/// IPC headers sent by the adapter on connect.
-struct IpcHeaders {
-    workspace: PathBuf,
-    /// Adapter binary version (None if old adapter without version support).
-    version: Option<String>,
-}
-
-/// Read IPC headers from the adapter.
-///
-/// The adapter sends:
-///   WORKSPACE:/path/to/project\n
-///   VERSION:6.5.2\n            (optional, added in v6.5.3)
-///
-/// We read byte-by-byte to avoid BufReader consuming bytes past the headers,
-/// which would break the subsequent MCP JSON-RPC framing.
-async fn read_ipc_headers(stream: &mut IpcStream) -> Result<IpcHeaders> {
-    let first_line = read_header_line(stream).await?;
-    let path = first_line.strip_prefix("WORKSPACE:").ok_or_else(|| {
-        anyhow::anyhow!(
-            "Invalid IPC header: expected WORKSPACE:<path>, got: {}",
-            first_line
-        )
-    })?;
-
-    // Read the VERSION: header. The adapter always sends this (added in the
-    // same release as this daemon code). The adapter and daemon are built from
-    // the same source, so there's no backward-compat concern.
-    let version_line = read_header_line(stream).await?;
-    let version = version_line.strip_prefix("VERSION:").map(|v| v.to_string());
-
-    Ok(IpcHeaders {
-        workspace: PathBuf::from(path),
-        version,
-    })
-}
-
-/// Read a single newline-terminated header line from the IPC stream.
-async fn read_header_line(stream: &mut IpcStream) -> Result<String> {
-    let mut line = Vec::new();
-    let mut buf = [0u8; 1];
-
-    loop {
-        stream
-            .read_exact(&mut buf)
-            .await
-            .context("Failed to read IPC header")?;
-        if buf[0] == b'\n' {
-            break;
-        }
-        line.push(buf[0]);
-
-        if line.len() > 4096 {
-            anyhow::bail!("IPC header line too long (>4096 bytes)");
-        }
-    }
-
-    String::from_utf8(line).context("IPC header is not valid UTF-8")
-}
-
 /// Wait for a shutdown signal (SIGTERM or SIGINT on Unix).
 async fn shutdown_signal() -> Result<()> {
     #[cfg(unix)]
@@ -1063,255 +889,4 @@ async fn shutdown_signal() -> Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-#[cfg(unix)]
-mod tests {
-    use std::path::PathBuf;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
-    use std::time::Duration;
-
-    use anyhow::Context;
-    use tokio::io::AsyncWriteExt;
-    use tokio::net::UnixStream;
-    use tokio::time::sleep;
-
-    use crate::daemon::database::DaemonDatabase;
-    use crate::daemon::embedding_service::EmbeddingService;
-    use crate::daemon::workspace_pool::WorkspacePool;
-
-    fn wait_for_session_count(
-        daemon_db: &DaemonDatabase,
-        workspace_id: &str,
-        expected: i64,
-    ) -> impl std::future::Future<Output = ()> {
-        async move {
-            let mut last = None;
-            for _ in 0..100 {
-                if let Ok(Some(row)) = daemon_db.get_workspace(workspace_id) {
-                    if row.session_count == expected {
-                        return;
-                    }
-                    last = Some(row.session_count);
-                }
-                sleep(Duration::from_millis(50)).await;
-            }
-
-            let last = last.unwrap_or(-1);
-            panic!(
-                "Timed out waiting for workspace '{workspace_id}' session_count={expected}, last observed={last}"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn test_handle_ipc_session_cleans_up_references_on_serve_error() {
-        let indexes_dir = tempfile::tempdir().expect("temporary index directory");
-        let primary_workspace_root = tempfile::tempdir().expect("primary workspace root");
-        let reference_workspace_root = tempfile::tempdir().expect("reference workspace root");
-
-        std::fs::create_dir_all(primary_workspace_root.path().join(".julie"))
-            .expect("create primary .julie");
-        std::fs::create_dir_all(reference_workspace_root.path().join(".julie"))
-            .expect("create reference .julie");
-
-        let primary_path = primary_workspace_root.path().to_path_buf();
-        let reference_path = reference_workspace_root.path().to_path_buf();
-
-        let primary_id =
-            crate::workspace::registry::generate_workspace_id(&primary_path.to_string_lossy())
-                .expect("generate primary workspace id");
-        let reference_id =
-            crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())
-                .expect("generate reference workspace id");
-
-        let daemon_db_path = PathBuf::from(indexes_dir.path()).join("daemon.db");
-        let daemon_db = Arc::new(
-            DaemonDatabase::open(&daemon_db_path)
-                .context("open daemon db")
-                .expect("open daemon db"),
-        );
-
-        daemon_db
-            .upsert_workspace(&primary_id, &primary_path.to_string_lossy(), "ready")
-            .expect("insert primary workspace row");
-        daemon_db
-            .upsert_workspace(&reference_id, &reference_path.to_string_lossy(), "ready")
-            .expect("insert reference workspace row");
-        daemon_db
-            .add_reference(&primary_id, &reference_id)
-            .expect("add workspace reference row");
-
-        let embedding_service = Arc::new(EmbeddingService::initializing());
-        let daemon_db_for_pool = Arc::clone(&daemon_db);
-        let pool = Arc::new(WorkspacePool::new(
-            indexes_dir.path().to_path_buf(),
-            Some(daemon_db_for_pool),
-            None,
-            Some(Arc::clone(&embedding_service)),
-        ));
-
-        // Preload both workspaces in the shared pool and normalize the session counts
-        // to zero before running fast-failure handling checks.
-        pool.get_or_init(&primary_id, primary_path.clone())
-            .await
-            .expect("preload primary workspace");
-        pool.get_or_init(&reference_id, reference_path.clone())
-            .await
-            .expect("preload reference workspace");
-        pool.disconnect_session(&primary_id).await;
-        pool.disconnect_session(&reference_id).await;
-        wait_for_session_count(&daemon_db, &primary_id, 0).await;
-        wait_for_session_count(&daemon_db, &reference_id, 0).await;
-
-        for _ in 0..50 {
-            let (mut client_stream, server_stream) = UnixStream::pair().expect("stream pair");
-            let restart_pending = Arc::new(AtomicBool::new(false));
-
-            let session_future = tokio::spawn({
-                let pool = Arc::clone(&pool);
-                let daemon_db = Some(Arc::clone(&daemon_db));
-                let embedding_service = Arc::clone(&embedding_service);
-                let restart_pending = Arc::clone(&restart_pending);
-                let workspace_path = primary_path.clone();
-
-                async move {
-                    super::handle_ipc_session(
-                        server_stream,
-                        pool,
-                        "session-handle-ipc",
-                        &daemon_db,
-                        &embedding_service,
-                        &restart_pending,
-                        None,
-                        workspace_path,
-                        None,
-                    )
-                    .await
-                }
-            });
-
-            client_stream
-                .write_all(&[0xff])
-                .await
-                .expect("send malformed MCP frame");
-            client_stream
-                .shutdown()
-                .await
-                .expect("shutdown malformed client stream");
-
-            session_future
-                .await
-                .expect("handle_ipc_session task completed")
-                .expect_err("expected malformed MCP to produce error");
-
-            wait_for_session_count(&daemon_db, &primary_id, 0).await;
-            wait_for_session_count(&daemon_db, &reference_id, 0).await;
-        }
-    }
-
-    #[tokio::test]
-    async fn test_paired_workspace_is_not_auto_activated_on_new_session() {
-        let indexes_dir = tempfile::tempdir().expect("temporary index directory");
-        let primary_workspace_root = tempfile::tempdir().expect("primary workspace root");
-        let reference_workspace_root = tempfile::tempdir().expect("reference workspace root");
-
-        std::fs::create_dir_all(primary_workspace_root.path().join(".julie"))
-            .expect("create primary .julie");
-        std::fs::create_dir_all(reference_workspace_root.path().join(".julie"))
-            .expect("create reference .julie");
-
-        let primary_path = primary_workspace_root.path().to_path_buf();
-        let reference_path = reference_workspace_root.path().to_path_buf();
-
-        let primary_id =
-            crate::workspace::registry::generate_workspace_id(&primary_path.to_string_lossy())
-                .expect("generate primary workspace id");
-        let reference_id =
-            crate::workspace::registry::generate_workspace_id(&reference_path.to_string_lossy())
-                .expect("generate reference workspace id");
-
-        let daemon_db_path = PathBuf::from(indexes_dir.path()).join("daemon.db");
-        let daemon_db = Arc::new(
-            DaemonDatabase::open(&daemon_db_path)
-                .context("open daemon db")
-                .expect("open daemon db"),
-        );
-
-        daemon_db
-            .upsert_workspace(&primary_id, &primary_path.to_string_lossy(), "ready")
-            .expect("insert primary workspace row");
-        daemon_db
-            .upsert_workspace(&reference_id, &reference_path.to_string_lossy(), "ready")
-            .expect("insert reference workspace row");
-        daemon_db
-            .add_reference(&primary_id, &reference_id)
-            .expect("persist reference pairing");
-
-        let embedding_service = Arc::new(EmbeddingService::initializing());
-        let pool = Arc::new(WorkspacePool::new(
-            indexes_dir.path().to_path_buf(),
-            Some(Arc::clone(&daemon_db)),
-            None,
-            Some(Arc::clone(&embedding_service)),
-        ));
-
-        pool.get_or_init(&primary_id, primary_path.clone())
-            .await
-            .expect("preload primary workspace");
-        pool.get_or_init(&reference_id, reference_path.clone())
-            .await
-            .expect("preload reference workspace");
-        pool.disconnect_session(&primary_id).await;
-        pool.disconnect_session(&reference_id).await;
-        wait_for_session_count(&daemon_db, &primary_id, 0).await;
-        wait_for_session_count(&daemon_db, &reference_id, 0).await;
-
-        let (client_stream, server_stream) = UnixStream::pair().expect("stream pair");
-        let restart_pending = Arc::new(AtomicBool::new(false));
-
-        let session_future = tokio::spawn({
-            let pool = Arc::clone(&pool);
-            let daemon_db = Some(Arc::clone(&daemon_db));
-            let embedding_service = Arc::clone(&embedding_service);
-            let restart_pending = Arc::clone(&restart_pending);
-            let workspace_path = primary_path.clone();
-
-            async move {
-                super::handle_ipc_session(
-                    server_stream,
-                    pool,
-                    "session-no-auto-attach",
-                    &daemon_db,
-                    &embedding_service,
-                    &restart_pending,
-                    None,
-                    workspace_path,
-                    None,
-                )
-                .await
-            }
-        });
-
-        wait_for_session_count(&daemon_db, &primary_id, 1).await;
-        let reference_row = daemon_db
-            .get_workspace(&reference_id)
-            .expect("load reference workspace row")
-            .expect("reference workspace row should exist");
-        assert_eq!(
-            reference_row.session_count, 0,
-            "persisted pairing metadata must not auto-activate the reference workspace"
-        );
-
-        drop(client_stream);
-
-        let _ = session_future
-            .await
-            .expect("handle_ipc_session task completed");
-
-        wait_for_session_count(&daemon_db, &primary_id, 0).await;
-        wait_for_session_count(&daemon_db, &reference_id, 0).await;
-    }
 }

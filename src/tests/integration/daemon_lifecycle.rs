@@ -119,9 +119,13 @@ mod tests {
         // Socket-path existence is a flaky proxy under suite load. The daemon
         // writes `ready` immediately after IPC bind, and a live IPC connect is
         // the real signal that matters.
-        wait_for_daemon_ready(&paths, &mut daemon_handle, std::time::Duration::from_secs(30))
-            .await
-            .expect("daemon should become ready within 30s");
+        wait_for_daemon_ready(
+            &paths,
+            &mut daemon_handle,
+            std::time::Duration::from_secs(30),
+        )
+        .await
+        .expect("daemon should become ready within 30s");
 
         let socket_path = paths.daemon_socket();
 

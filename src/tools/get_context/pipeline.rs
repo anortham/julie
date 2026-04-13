@@ -578,28 +578,8 @@ pub async fn run(tool: &GetContextTool, handler: &JulieServerHandler) -> Result<
             Ok(result)
         }
         WorkspaceTarget::Primary => {
-            // Primary workspace: use shared DB and SearchIndex via Arc<Mutex>
-            let workspace = handler.get_workspace().await?.ok_or_else(|| {
-                anyhow::anyhow!(
-                    "No workspace initialized. Run manage_workspace(operation=\"index\") first."
-                )
-            })?;
-
-            let search_index = workspace
-                .search_index
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("Search index not initialized. Run manage_workspace(operation=\"index\") first."))?
-                .clone();
-
-            let db = workspace
-                .db
-                .as_ref()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Database not initialized. Run manage_workspace(operation=\"index\") first."
-                    )
-                })?
-                .clone();
+            // Primary workspace: use the current-primary DB/search store.
+            let (db, search_index) = handler.primary_database_and_search_index().await?;
 
             let embedding_provider = handler.embedding_provider().await;
 

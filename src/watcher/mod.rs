@@ -843,6 +843,14 @@ impl IncrementalIndexer {
         self.pause_flag.store(false, Ordering::Release);
         debug!("File watcher resumed");
     }
+
+    #[cfg(test)]
+    pub fn is_running_for_test(&self) -> bool {
+        self.watcher.is_some()
+            && self.event_task.is_some()
+            && self.queue_task.is_some()
+            && !self.cancel_flag.load(Ordering::Acquire)
+    }
 }
 
 // Test integration with new module structure

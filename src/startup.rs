@@ -4,27 +4,40 @@
 //! and automatic indexing on server startup.
 
 use crate::handler::JulieServerHandler;
+use crate::workspace::startup_hint::WorkspaceStartupSource;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::SystemTime;
 use tracing::{debug, info, warn};
+
+pub(crate) fn startup_source_prefers_request_roots(source: Option<WorkspaceStartupSource>) -> bool {
+    matches!(source, Some(WorkspaceStartupSource::Cwd))
+}
 
 /// Checkpoint the active workspace database WAL if a workspace is initialized.
 pub async fn checkpoint_active_workspace_wal(
     handler: &JulieServerHandler,
 ) -> Result<Option<(i32, i32, i32)>> {
-    let workspace = match handler.get_workspace().await? {
-        Some(workspace) => workspace,
-        None => return Ok(None),
-    };
+    let primary_snapshot = match handler.primary_workspace_snapshot().await {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+            if handler.is_primary_workspace_swap_in_progress() {
+                return Err(err);
+            }
 
-    let Some(db_arc) = workspace.db else {
-        return Ok(None);
+            if handler.get_workspace().await?.is_none() {
+                return Ok(None);
+            }
+
+            return Err(err);
+        }
     };
+    let db_arc = primary_snapshot.database;
 
     tokio::task::spawn_blocking(move || -> Result<Option<(i32, i32, i32)>> {
-        let mut db = db_arc.lock().map_err(|e| {
+        let mut db = db_arc.try_lock().map_err(|e| {
             anyhow::anyhow!("Could not acquire database lock for checkpoint: {}", e)
         })?;
         Ok(Some(db.checkpoint_wal()?))
@@ -40,151 +53,133 @@ pub async fn checkpoint_active_workspace_wal(
 /// 2. If files have been modified since last index (staleness)
 /// 3. If new files exist that aren't in the database
 pub async fn check_if_indexing_needed(handler: &JulieServerHandler) -> Result<bool> {
-    // Get workspace to check database
-    let workspace = match handler.get_workspace().await? {
-        Some(ws) => ws,
-        None => {
-            debug!("No workspace found - indexing needed");
-            return Ok(true);
+    let primary_snapshot = match handler.primary_workspace_snapshot().await {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+            if handler.is_primary_workspace_swap_in_progress() {
+                return Err(err);
+            }
+
+            if handler.get_workspace().await?.is_none() {
+                debug!("No workspace found - indexing needed");
+                return Ok(true);
+            }
+
+            return Err(err);
         }
     };
 
-    // Check if database exists and has symbols
-    if let Some(db_arc) = &workspace.db {
-        // Compute workspace ID: use daemon workspace_id if available, else derive from path
-        let primary_workspace_id = if let Some(ref ws_id) = handler.workspace_id {
-            ws_id.clone()
-        } else {
-            crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
-                .unwrap_or_else(|_| {
-                    debug!("Failed to generate workspace ID - indexing needed");
-                    String::new()
-                })
-        };
+    let current_primary_root = primary_snapshot.binding.workspace_root.clone();
+    let db_path = crate::handler::metrics_db_path_for_workspace(
+        primary_snapshot.index_root_override.as_deref(),
+        &current_primary_root,
+        &primary_snapshot.binding.workspace_id,
+    );
+    let db_arc = Arc::clone(&primary_snapshot.database);
 
-        // Now lock database (no await while holding this lock)
-        let db = match db_arc.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!(
-                    "Database mutex poisoned during startup check, recovering: {}",
-                    poisoned
-                );
-                poisoned.into_inner()
+    if !db_path.exists() {
+        debug!("No database connection - indexing needed");
+        return Ok(true);
+    }
+
+    // Now lock database (no await while holding this lock)
+    let db: std::sync::MutexGuard<'_, crate::database::SymbolDatabase> = match db_arc.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!(
+                "Database mutex poisoned during startup check, recovering: {}",
+                poisoned
+            );
+            poisoned.into_inner()
+        }
+    };
+
+    match db.has_symbols_for_workspace() {
+        Ok(has_symbols) => {
+            if !has_symbols {
+                info!("📊 Database is empty - indexing needed");
+                return Ok(true);
             }
-        };
 
-        match db.has_symbols_for_workspace() {
-            Ok(has_symbols) => {
-                if !has_symbols {
-                    info!("📊 Database is empty - indexing needed");
-                    return Ok(true);
-                }
+            // ✅ NEW: Check if index is stale
+            // Compare file modification times with database timestamp
+            let db_mtime = get_database_mtime(&db_path)?;
+            let max_file_mtime = get_max_file_mtime_in_workspace(&current_primary_root)?;
 
-                // ✅ NEW: Check if index is stale
-                // Compare file modification times with database timestamp
-                let db_mtime = get_database_mtime(&workspace.root, &primary_workspace_id)?;
-                let max_file_mtime = get_max_file_mtime_in_workspace(&workspace.root)?;
+            debug!(
+                "Staleness check: db_mtime={:?}, max_file_mtime={:?}, stale={}",
+                db_mtime,
+                max_file_mtime,
+                max_file_mtime > db_mtime
+            );
 
-                debug!(
-                    "Staleness check: db_mtime={:?}, max_file_mtime={:?}, stale={}",
-                    db_mtime,
-                    max_file_mtime,
-                    max_file_mtime > db_mtime
-                );
+            if max_file_mtime > db_mtime {
+                info!("📊 Database is stale (files modified after last index) - indexing needed");
+                return Ok(true);
+            }
 
-                if max_file_mtime > db_mtime {
-                    info!(
-                        "📊 Database is stale (files modified after last index) - indexing needed"
-                    );
-                    return Ok(true);
-                }
+            // ✅ NEW: Check for new files not in database
+            let indexed_files_raw: Vec<String> = db.get_all_indexed_files()?;
 
-                // ✅ NEW: Check for new files not in database
-                let indexed_files_raw: Vec<String> = db.get_all_indexed_files()?;
+            // Database stores relative Unix-style paths per CLAUDE.md Path Handling Contract
+            // No normalization needed - indexed_files are already relative
+            let indexed_files: HashSet<String> = indexed_files_raw.into_iter().collect();
 
-                // Database stores relative Unix-style paths per CLAUDE.md Path Handling Contract
-                // No normalization needed - indexed_files are already relative
-                let indexed_files: HashSet<String> = indexed_files_raw.into_iter().collect();
+            let workspace_files = scan_workspace_files(&current_primary_root)?;
+            let new_files: Vec<_> = workspace_files.difference(&indexed_files).collect();
 
-                let workspace_files = scan_workspace_files(&workspace.root)?;
-                let new_files: Vec<_> = workspace_files.difference(&indexed_files).collect();
+            debug!(
+                "New file check: indexed={}, workspace={}, new={}",
+                indexed_files.len(),
+                workspace_files.len(),
+                new_files.len()
+            );
 
-                debug!(
-                    "New file check: indexed={}, workspace={}, new={}",
-                    indexed_files.len(),
-                    workspace_files.len(),
+            if !new_files.is_empty() {
+                info!(
+                    "📊 Found {} new files not in database - indexing needed",
                     new_files.len()
                 );
-
-                if !new_files.is_empty() {
-                    info!(
-                        "📊 Found {} new files not in database - indexing needed",
-                        new_files.len()
-                    );
-                    debug!("New files: {:?}", new_files);
-                    return Ok(true);
-                }
-
-                // Check for deleted files (indexed but no longer on disk)
-                let deleted_files: Vec<_> = indexed_files.difference(&workspace_files).collect();
-
-                if !deleted_files.is_empty() {
-                    info!(
-                        "📊 Found {} deleted files still in database - cleanup needed",
-                        deleted_files.len()
-                    );
-                    debug!("Deleted files: {:?}", deleted_files);
-                    // Note: returning true triggers index_workspace_files, which calls
-                    // filter_changed_files -> clean_orphaned_files. This cleans up the
-                    // deleted files' symbols and DB records.
-                    return Ok(true);
-                }
-
-                info!("✅ Index is up-to-date - no indexing needed");
-                Ok(false)
+                debug!("New files: {:?}", new_files);
+                return Ok(true);
             }
-            Err(e) => {
-                debug!(
-                    "Error checking database symbols: {} - assuming indexing needed",
-                    e
+
+            // Check for deleted files (indexed but no longer on disk)
+            let deleted_files: Vec<_> = indexed_files.difference(&workspace_files).collect();
+
+            if !deleted_files.is_empty() {
+                info!(
+                    "📊 Found {} deleted files still in database - cleanup needed",
+                    deleted_files.len()
                 );
-                Ok(true)
+                debug!("Deleted files: {:?}", deleted_files);
+                // Note: returning true triggers index_workspace_files, which calls
+                // filter_changed_files -> clean_orphaned_files. This cleans up the
+                // deleted files' symbols and DB records.
+                return Ok(true);
             }
+
+            info!("✅ Index is up-to-date - no indexing needed");
+            Ok(false)
         }
-    } else {
-        debug!("No database connection - indexing needed");
-        Ok(true)
+        Err(e) => {
+            debug!(
+                "Error checking database symbols: {} - assuming indexing needed",
+                e
+            );
+            Ok(true)
+        }
     }
 }
 
 /// Get the modification time of the SQLite database file
 ///
 /// Returns the mtime of the symbols.db file for the given workspace
-fn get_database_mtime(workspace_root: &Path, workspace_id: &str) -> Result<SystemTime> {
-    // Check both daemon-mode path (~/.julie/indexes/) and stdio-mode path ({root}/.julie/indexes/)
-    let daemon_path = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".julie")
-        .join("indexes")
-        .join(workspace_id)
-        .join("db")
-        .join("symbols.db");
-    let stdio_path = workspace_root
-        .join(".julie")
-        .join("indexes")
-        .join(workspace_id)
-        .join("db")
-        .join("symbols.db");
-
-    let db_path = if daemon_path.exists() {
-        daemon_path
-    } else if stdio_path.exists() {
-        stdio_path
-    } else {
+fn get_database_mtime(db_path: &Path) -> Result<SystemTime> {
+    if !db_path.exists() {
         // Database doesn't exist - return epoch (very old time)
         return Ok(SystemTime::UNIX_EPOCH);
-    };
+    }
 
     let metadata = std::fs::metadata(&db_path)
         .with_context(|| format!("Failed to get metadata for database: {}", db_path.display()))?;

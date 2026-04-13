@@ -14,7 +14,7 @@ impl ManageWorkspaceTool {
 
         // Daemon mode: use DaemonDatabase
         if let Some(ref db) = handler.daemon_db {
-            let primary_workspace_id = handler.workspace_id.as_deref().unwrap_or("primary");
+            let primary_workspace_id = handler.require_primary_workspace_identity()?;
 
             let all_workspaces = match db.list_workspaces() {
                 Ok(workspaces) => workspaces,
@@ -24,7 +24,7 @@ impl ManageWorkspaceTool {
                 }
             };
             let paired_ids: std::collections::HashSet<String> =
-                match db.list_references(primary_workspace_id) {
+                match db.list_references(&primary_workspace_id) {
                     Ok(references) => references.into_iter().map(|ws| ws.workspace_id).collect(),
                     Err(e) => {
                         let message = format!("Failed to list workspace pairings: {}", e);

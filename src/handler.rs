@@ -1,25 +1,33 @@
+pub mod session_workspace;
+
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
-    handler::server::tool::ToolRouter,
+    handler::server::tool::{ToolCallContext, ToolRouter},
     handler::server::wrapper::Parameters,
-    model::{CallToolResult, Implementation, ServerCapabilities, ServerInfo},
-    service::NotificationContext,
-    tool, tool_handler, tool_router,
+    model::{
+        CallToolRequestParams, CallToolResult, Implementation, InitializeRequestParams,
+        ListToolsResult, ServerCapabilities, ServerInfo, Tool,
+    },
+    service::{NotificationContext, Peer, RequestContext},
+    tool, tool_router,
 };
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, RwLock as StdRwLock};
 use tokio::sync::broadcast;
 use tracing::{debug, info, warn};
 
 use crate::dashboard::state::DashboardEvent;
 
+use self::session_workspace::{PrimaryWorkspaceBinding, SessionWorkspaceState};
 use crate::database::SymbolDatabase;
 use crate::search::SearchIndex;
 use crate::workspace::JulieWorkspace;
+use crate::workspace::startup_hint::WorkspaceStartupHint;
+use crate::workspace::startup_hint::WorkspaceStartupSource;
 use tokio::sync::RwLock;
 
 // Import tool parameter types
@@ -35,6 +43,8 @@ use crate::tools::{
 /// Avoids spawning a new task per tool call (M03).
 struct MetricsTask {
     workspace: Arc<RwLock<Option<JulieWorkspace>>>,
+    workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
+    current_workspace_root: PathBuf,
     session_metrics: Arc<SessionMetrics>,
     session_id: String,
     tool_name: String,
@@ -47,14 +57,163 @@ struct MetricsTask {
     workspace_id: Option<String>,
 }
 
+pub(crate) struct PrimaryWorkspaceSnapshot {
+    pub binding: PrimaryWorkspaceBinding,
+    pub database: Arc<std::sync::Mutex<SymbolDatabase>>,
+    pub search_index: Option<Arc<std::sync::Mutex<SearchIndex>>>,
+    pub index_root_override: Option<PathBuf>,
+}
+
+#[derive(Clone)]
+struct PrimarySwapRollback {
+    workspace: Option<JulieWorkspace>,
+    loaded_workspace_id: Option<String>,
+    loaded_workspace_root: Option<PathBuf>,
+    session_workspace: SessionWorkspaceState,
+}
+
+impl PrimarySwapRollback {
+    async fn capture(handler: &JulieServerHandler) -> Self {
+        let workspace = handler.workspace.read().await.clone();
+        let loaded_workspace_root = workspace.as_ref().map(|workspace| workspace.root.clone());
+        let loaded_workspace_id = handler
+            .workspace_id
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        let session_workspace = handler
+            .session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+
+        Self {
+            workspace,
+            loaded_workspace_id,
+            loaded_workspace_root,
+            session_workspace,
+        }
+    }
+
+    async fn restore(self, handler: &JulieServerHandler) -> Result<()> {
+        let mut restored_workspace = match (
+            self.loaded_workspace_id.as_deref(),
+            self.loaded_workspace_root.clone(),
+        ) {
+            (Some(workspace_id), Some(workspace_root))
+                if handler.workspace_pool.is_some() && handler.daemon_db.is_some() =>
+            {
+                Some(
+                    handler
+                        .acquire_pooled_workspace_for_rebind(workspace_id, workspace_root)
+                        .await?,
+                )
+            }
+            (_, Some(workspace_root)) => JulieWorkspace::detect_and_load(workspace_root)
+                .await?
+                .or(self.workspace),
+            (_, None) => self.workspace,
+        };
+
+        if handler.workspace_pool.is_none() && handler.daemon_db.is_none() {
+            if let Some(workspace) = restored_workspace.as_mut() {
+                if workspace.config.incremental_updates {
+                    workspace.initialize_file_watcher()?;
+                    workspace.start_file_watching().await?;
+                }
+            }
+        }
+
+        *handler.workspace.write().await = restored_workspace;
+        handler.set_loaded_workspace_id(self.loaded_workspace_id);
+        *handler
+            .session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner()) = self.session_workspace;
+        Ok(())
+    }
+}
+
+pub(crate) fn metrics_db_path_for_workspace(
+    index_root_override: Option<&std::path::Path>,
+    current_workspace_root: &std::path::Path,
+    workspace_id: &str,
+) -> PathBuf {
+    if let Some(override_root) = index_root_override {
+        override_root
+            .parent()
+            .map(|shared_indexes| {
+                shared_indexes
+                    .join(workspace_id)
+                    .join("db")
+                    .join("symbols.db")
+            })
+            .unwrap_or_else(|| {
+                current_workspace_root
+                    .join(".julie")
+                    .join("indexes")
+                    .join(workspace_id)
+                    .join("db")
+                    .join("symbols.db")
+            })
+    } else {
+        current_workspace_root
+            .join(".julie")
+            .join("indexes")
+            .join(workspace_id)
+            .join("db")
+            .join("symbols.db")
+    }
+}
+
 /// Single background task that drains the metrics channel and writes to SQLite.
 async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<MetricsTask>) {
     while let Some(task) = rx.recv().await {
         // Compute source_bytes from the workspace DB, then use it for both writes.
         let mut source_bytes: Option<u64> = None;
-        let guard = task.workspace.read().await;
-        if let Some(ws) = guard.as_ref() {
-            if let Some(db_arc) = &ws.db {
+        let mut resolved_workspace = task.workspace.read().await.clone();
+        if resolved_workspace.is_none() {
+            if let (Some(pool), Some(workspace_id)) =
+                (&task.workspace_pool, task.workspace_id.as_ref())
+            {
+                resolved_workspace = pool.get(workspace_id).await.map(|ws| (*ws).clone());
+            }
+        }
+
+        if let Some(ws) = resolved_workspace.as_ref() {
+            if let Some(ref workspace_id) = task.workspace_id {
+                let db_path = metrics_db_path_for_workspace(
+                    ws.index_root_override.as_deref(),
+                    &task.current_workspace_root,
+                    workspace_id,
+                );
+                if db_path.exists() {
+                    if let Ok(db) = SymbolDatabase::new(db_path) {
+                        source_bytes = if !task.source_file_paths.is_empty() {
+                            let path_refs: Vec<&str> =
+                                task.source_file_paths.iter().map(|s| s.as_str()).collect();
+                            db.get_total_file_sizes(&path_refs).ok()
+                        } else {
+                            None
+                        };
+                        if let Some(sb) = source_bytes {
+                            task.session_metrics
+                                .total_source_bytes
+                                .fetch_add(sb, std::sync::atomic::Ordering::Relaxed);
+                        }
+                        let _ = db.insert_tool_call(
+                            &task.session_id,
+                            &task.tool_name,
+                            task.duration_ms,
+                            task.result_count,
+                            source_bytes,
+                            Some(task.output_bytes),
+                            true,
+                            task.metadata_str.as_deref(),
+                        );
+                    }
+                }
+            } else if let Some(db_arc) = &ws.db {
                 if let Ok(db) = db_arc.lock() {
                     source_bytes = if !task.source_file_paths.is_empty() {
                         let path_refs: Vec<&str> =
@@ -80,8 +239,36 @@ async fn run_metrics_writer(mut rx: tokio::sync::mpsc::Receiver<MetricsTask>) {
                     );
                 }
             }
+        } else if let Some(ref workspace_id) = task.workspace_id {
+            let db_path =
+                metrics_db_path_for_workspace(None, &task.current_workspace_root, workspace_id);
+            if db_path.exists() {
+                if let Ok(db) = SymbolDatabase::new(db_path) {
+                    source_bytes = if !task.source_file_paths.is_empty() {
+                        let path_refs: Vec<&str> =
+                            task.source_file_paths.iter().map(|s| s.as_str()).collect();
+                        db.get_total_file_sizes(&path_refs).ok()
+                    } else {
+                        None
+                    };
+                    if let Some(sb) = source_bytes {
+                        task.session_metrics
+                            .total_source_bytes
+                            .fetch_add(sb, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    let _ = db.insert_tool_call(
+                        &task.session_id,
+                        &task.tool_name,
+                        task.duration_ms,
+                        task.result_count,
+                        source_bytes,
+                        Some(task.output_bytes),
+                        true,
+                        task.metadata_str.as_deref(),
+                    );
+                }
+            }
         }
-        drop(guard);
 
         if let Some(daemon_db) = task.daemon_db {
             let workspace_id = task.workspace_id.unwrap_or_default();
@@ -146,6 +333,9 @@ pub struct JulieServerHandler {
     /// Resolved workspace root path (single source of truth).
     /// Set once at construction from CLI args / JULIE_WORKSPACE / cwd.
     pub(crate) workspace_root: PathBuf,
+    /// Session-owned workspace state. This is the mutable source of truth for
+    /// startup hint, root tracking, primary binding, and secondary activations.
+    pub(crate) session_workspace: Arc<StdRwLock<SessionWorkspaceState>>,
     /// Workspace managing persistent storage
     pub workspace: Arc<RwLock<Option<JulieWorkspace>>>,
     /// Flag to track if workspace has been indexed
@@ -175,10 +365,10 @@ pub struct JulieServerHandler {
     /// Daemon-level database for persistent metrics and workspace registry.
     /// None in stdio mode, Some in daemon mode.
     pub(crate) daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
-    /// This session's workspace ID (e.g. "julie_ab12cd34"). None in stdio mode.
-    pub(crate) workspace_id: Option<String>,
-    /// Workspace IDs active in this session (primary + activated references).
-    pub(crate) active_workspaces: Arc<RwLock<HashSet<String>>>,
+    /// Workspace ID for the workspace currently stored in `handler.workspace`.
+    /// Keep this separate from `current_workspace_id()`, which reads session-owned
+    /// mutable state and may diverge during rebinding.
+    pub(crate) workspace_id: Arc<StdRwLock<Option<String>>>,
     /// Shared embedding service for daemon mode. None in stdio mode.
     pub(crate) embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
     /// True when the daemon detects its binary has been rebuilt.
@@ -187,6 +377,9 @@ pub struct JulieServerHandler {
     /// Fix G: prevents concurrent catch-up auto-indexing scans.
     /// CAS'd to true by the first `run_auto_indexing` call; cleared on exit.
     catchup_in_progress: Arc<AtomicBool>,
+    /// Set when on_initialized defers auto-indexing until the primary workspace
+    /// is resolved from client roots. Consumed by the first successful bind.
+    deferred_auto_index_pending: Arc<AtomicBool>,
     /// Fix C part c: shared watcher pool for pausing reference workspace watchers
     /// during force reindex. None in stdio mode.
     pub(crate) watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
@@ -194,8 +387,10 @@ pub struct JulieServerHandler {
     /// A single background task drains this; try_send drops on backpressure
     /// rather than spawning unbounded tasks.
     metrics_tx: tokio::sync::mpsc::Sender<MetricsTask>,
-    /// Cache for reference workspace DB connections, keyed by workspace_id (M22).
-    ref_db_cache: Arc<RwLock<HashMap<String, Arc<std::sync::Mutex<SymbolDatabase>>>>>,
+    /// Cache for reference workspace DB connections, keyed by workspace_id with
+    /// the resolved physical db path so root-anchor changes in stdio do not reuse
+    /// stale handles across different `.julie/indexes/...` trees.
+    ref_db_cache: Arc<RwLock<HashMap<String, (PathBuf, Arc<std::sync::Mutex<SymbolDatabase>>)>>>,
     /// Shared daemon workspace pool for explicit workspace activation.
     pub(crate) workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     /// Broadcast sender for dashboard live-feed events. None in stdio/test mode.
@@ -203,6 +398,404 @@ pub struct JulieServerHandler {
 }
 
 impl JulieServerHandler {
+    fn canonicalize_workspace_path(path: PathBuf) -> PathBuf {
+        path.canonicalize().unwrap_or(path)
+    }
+
+    fn decode_root_uri_path(uri_path: &str) -> Option<String> {
+        let mut decoded = Vec::with_capacity(uri_path.len());
+        let bytes = uri_path.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'%' {
+                if i + 2 >= bytes.len() {
+                    return None;
+                }
+                let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).ok()?;
+                decoded.push(u8::from_str_radix(hex, 16).ok()?);
+                i += 3;
+            } else {
+                decoded.push(bytes[i]);
+                i += 1;
+            }
+        }
+
+        String::from_utf8(decoded).ok()
+    }
+
+    fn workspace_path_from_root_uri(uri: &str) -> Option<PathBuf> {
+        let uri_path = uri.strip_prefix("file://")?;
+        let mut decoded = Self::decode_root_uri_path(uri_path)?;
+
+        if let Some(rest) = decoded.strip_prefix("localhost/") {
+            decoded = format!("/{}", rest);
+        } else if decoded == "localhost" {
+            decoded = "/".to_string();
+        }
+
+        #[cfg(windows)]
+        let decoded = if decoded.starts_with('/') && decoded.as_bytes().get(2) == Some(&b':') {
+            decoded[1..].to_string()
+        } else if !decoded.starts_with('/') && decoded.contains('/') {
+            format!(r"\\{}", decoded.replace('/', r"\"))
+        } else {
+            decoded
+        };
+
+        Some(PathBuf::from(decoded))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn workspace_path_from_root_uri_for_test(uri: &str) -> Option<PathBuf> {
+        Self::workspace_path_from_root_uri(uri)
+    }
+
+    fn client_supports_workspace_roots(&self) -> bool {
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .client_supports_workspace_roots
+    }
+
+    fn record_client_roots_capability(&self, supported: bool) {
+        self.session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .client_supports_workspace_roots = supported;
+    }
+
+    fn record_roots_snapshot(&self, roots: &[PathBuf]) {
+        let mut state = self
+            .session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner());
+        state.last_roots_snapshot = Some(roots.to_vec());
+    }
+
+    fn last_roots_snapshot(&self) -> Option<Vec<PathBuf>> {
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .last_roots_snapshot
+            .clone()
+    }
+
+    fn roots_dirty(&self) -> bool {
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .roots_dirty()
+    }
+
+    fn mark_roots_dirty(&self) {
+        self.session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .mark_roots_dirty();
+    }
+
+    async fn list_roots_from_peer(&self, peer: &Peer<RoleServer>) -> Result<Vec<PathBuf>> {
+        let roots = peer
+            .list_roots()
+            .await
+            .map_err(|err| anyhow::anyhow!("roots/list failed: {err}"))?
+            .roots
+            .into_iter()
+            .filter_map(|root| {
+                let path = Self::workspace_path_from_root_uri(&root.uri);
+                if path.is_none() {
+                    warn!(uri = %root.uri, "Ignoring unsupported root URI");
+                }
+                path
+            })
+            .map(Self::canonicalize_workspace_path)
+            .collect::<Vec<_>>();
+
+        self.record_roots_snapshot(&roots);
+        Ok(roots)
+    }
+
+    fn primary_binding_for_root(&self, workspace_root: PathBuf) -> Result<PrimaryWorkspaceBinding> {
+        let workspace_root = Self::canonicalize_workspace_path(workspace_root);
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&workspace_root.to_string_lossy())?;
+        Ok(PrimaryWorkspaceBinding {
+            workspace_id,
+            workspace_root,
+        })
+    }
+
+    fn activate_primary_binding(&self, binding: &PrimaryWorkspaceBinding) {
+        self.rebind_current_primary(binding.workspace_id.clone(), binding.workspace_root.clone());
+    }
+
+    fn mark_deferred_auto_index_pending(&self, pending: bool) {
+        use std::sync::atomic::Ordering;
+
+        self.deferred_auto_index_pending
+            .store(pending, Ordering::Release);
+    }
+
+    fn resume_deferred_auto_index_if_needed(&self) {
+        use std::sync::atomic::Ordering;
+
+        if !self
+            .deferred_auto_index_pending
+            .swap(false, Ordering::AcqRel)
+        {
+            return;
+        }
+
+        let handler = self.clone();
+        tokio::spawn(async move {
+            handler.run_auto_indexing().await;
+        });
+    }
+
+    async fn attach_daemon_primary_binding_if_needed(
+        &self,
+        binding: &PrimaryWorkspaceBinding,
+    ) -> Result<()> {
+        let Some(pool) = &self.workspace_pool else {
+            return Ok(());
+        };
+
+        if self
+            .was_workspace_attached_in_session(&binding.workspace_id)
+            .await
+        {
+            return Ok(());
+        }
+
+        pool.get_or_init(&binding.workspace_id, binding.workspace_root.clone())
+            .await?;
+        self.session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .mark_workspace_attached(binding.workspace_id.clone());
+        Ok(())
+    }
+
+    async fn reconcile_primary_workspace_roots(&self, roots: Vec<PathBuf>) -> Result<bool> {
+        let Some(primary_root) = roots.first().cloned() else {
+            return Ok(false);
+        };
+
+        let primary_binding = self.primary_binding_for_root(primary_root)?;
+        self.attach_daemon_primary_binding_if_needed(&primary_binding)
+            .await?;
+
+        let mut secondary_workspace_ids = {
+            let state = self
+                .session_workspace
+                .read()
+                .unwrap_or_else(|p| p.into_inner());
+            let current_primary_id = state.current_workspace_id();
+            state
+                .active_workspace_ids()
+                .into_iter()
+                .filter(|workspace_id| Some(workspace_id.as_str()) != current_primary_id.as_deref())
+                .collect::<HashSet<_>>()
+        };
+        for root in roots.iter().skip(1).cloned() {
+            let binding = self.primary_binding_for_root(root)?;
+            self.activate_workspace_with_root(
+                &binding.workspace_id,
+                binding.workspace_root.clone(),
+            )
+            .await?;
+            secondary_workspace_ids.insert(binding.workspace_id);
+        }
+
+        self.session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .apply_root_snapshot(primary_binding, secondary_workspace_ids, roots);
+        Ok(true)
+    }
+
+    async fn reconcile_primary_workspace_to_startup_hint(&self) -> Result<()> {
+        let startup_binding = self.primary_binding_for_root(self.workspace_startup_hint().path)?;
+        self.attach_daemon_primary_binding_if_needed(&startup_binding)
+            .await?;
+        let secondary_workspace_ids = {
+            let state = self
+                .session_workspace
+                .read()
+                .unwrap_or_else(|p| p.into_inner());
+            let current_primary_id = state.current_workspace_id();
+            state
+                .active_workspace_ids()
+                .into_iter()
+                .filter(|workspace_id| Some(workspace_id.as_str()) != current_primary_id.as_deref())
+                .collect()
+        };
+        self.session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .apply_root_snapshot(startup_binding, secondary_workspace_ids, Vec::new());
+        Ok(())
+    }
+
+    async fn ensure_primary_workspace_for_request(&self, peer: &Peer<RoleServer>) -> Result<()> {
+        let existing_binding = match self.require_primary_binding() {
+            Ok(binding) => Some(binding),
+            Err(err) if self.is_primary_workspace_swap_in_progress() => return Err(err),
+            Err(_) => None,
+        };
+        let prefers_request_roots = crate::startup::startup_source_prefers_request_roots(
+            self.workspace_startup_hint().source,
+        );
+
+        if !prefers_request_roots {
+            if self.roots_dirty() || existing_binding.is_none() {
+                self.reconcile_primary_workspace_to_startup_hint().await?;
+                self.resume_deferred_auto_index_if_needed();
+            }
+            return Ok(());
+        }
+
+        if existing_binding.is_some() && !self.roots_dirty() {
+            return Ok(());
+        }
+
+        if self.client_supports_workspace_roots() {
+            match self.list_roots_from_peer(peer).await {
+                Ok(roots) => {
+                    if self.reconcile_primary_workspace_roots(roots).await? {
+                        self.resume_deferred_auto_index_if_needed();
+                        return Ok(());
+                    }
+
+                    self.reconcile_primary_workspace_to_startup_hint().await?;
+                    self.resume_deferred_auto_index_if_needed();
+                    return Ok(());
+                }
+                Err(err) => {
+                    warn!(
+                        "Failed to query client roots during request-time primary resolution: {err}"
+                    );
+                    if self.roots_dirty() {
+                        return Err(err);
+                    }
+
+                    if existing_binding.is_none() {
+                        if let Some(roots) = self.last_roots_snapshot().filter(|roots| !roots.is_empty())
+                        {
+                            if self.reconcile_primary_workspace_roots(roots).await? {
+                                self.resume_deferred_auto_index_if_needed();
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let binding = self.primary_binding_for_root(self.workspace_startup_hint().path)?;
+        self.attach_daemon_primary_binding_if_needed(&binding)
+            .await?;
+        self.activate_primary_binding(&binding);
+        self.resume_deferred_auto_index_if_needed();
+        Ok(())
+    }
+
+    fn query_metrics_request_targets_primary(
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> bool {
+        let workspace_is_primary = arguments
+            .and_then(|args| args.get("workspace"))
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(|workspace| workspace == "primary");
+        let category = arguments
+            .and_then(|args| args.get("category"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("session");
+
+        workspace_is_primary && matches!(category, "history" | "doc_coverage" | "dead_code")
+    }
+
+    fn manage_workspace_request_targets_primary(
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> bool {
+        let Some(arguments) = arguments else {
+            return false;
+        };
+
+        let operation = arguments
+            .get("operation")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        match operation {
+            "list" | "add" | "remove" | "health" => true,
+            "stats" => arguments
+                .get("workspace_id")
+                .and_then(serde_json::Value::as_str)
+                .is_none_or(|workspace_id| workspace_id == "primary"),
+            "index" => arguments.get("path").is_none_or(serde_json::Value::is_null),
+            _ => false,
+        }
+    }
+
+    fn tool_request_targets_primary(
+        tool_name: &str,
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> bool {
+        let workspace_is_primary = arguments
+            .and_then(|args| args.get("workspace"))
+            .and_then(serde_json::Value::as_str)
+            .is_none_or(|workspace| workspace == "primary");
+
+        match tool_name {
+            "fast_search" | "fast_refs" | "get_symbols" | "deep_dive" | "get_context"
+            | "rename_symbol" => workspace_is_primary,
+            "query_metrics" => Self::query_metrics_request_targets_primary(arguments),
+            "manage_workspace" => Self::manage_workspace_request_targets_primary(arguments),
+            "edit_file" | "edit_symbol" => true,
+            _ => false,
+        }
+    }
+
+    async fn teardown_loaded_workspace(&self, release_shared_only: bool) {
+        let mut workspace_guard = self.workspace.write().await;
+        if let Some(ref mut old_workspace) = *workspace_guard {
+            if release_shared_only {
+                info!("Releasing pooled loaded workspace reference before replacement");
+            } else {
+                info!("Tearing down loaded workspace before replacement");
+            }
+
+            if release_shared_only {
+                *workspace_guard = None;
+                self.set_loaded_workspace_id(None);
+                return;
+            }
+
+            if let Err(e) = old_workspace.stop_file_watching().await {
+                warn!("Failed to stop file watching during teardown: {}", e);
+            }
+
+            if let Some(ref search_index) = old_workspace.search_index {
+                match search_index.lock() {
+                    Ok(idx) => {
+                        if let Err(e) = idx.shutdown() {
+                            warn!("Failed to shut down search index: {}", e);
+                        } else {
+                            info!("Old search index shut down, file lock released");
+                        }
+                    }
+                    Err(poisoned) => {
+                        let idx = poisoned.into_inner();
+                        let _ = idx.shutdown();
+                        warn!("Recovered from poisoned search index mutex during teardown");
+                    }
+                }
+            }
+        }
+        *workspace_guard = None;
+        self.set_loaded_workspace_id(None);
+    }
+
     /// Create a new Julie server handler with all components initialized.
     ///
     /// `workspace_root` is the resolved root path for this server session,
@@ -216,8 +809,15 @@ impl JulieServerHandler {
         let (metrics_tx, metrics_rx) = tokio::sync::mpsc::channel::<MetricsTask>(512);
         tokio::spawn(run_metrics_writer(metrics_rx));
 
+        let workspace_startup_hint = WorkspaceStartupHint {
+            path: workspace_root.clone(),
+            source: None,
+        };
+        let session_workspace = SessionWorkspaceState::new(workspace_startup_hint);
+
         Ok(Self {
             workspace_root,
+            session_workspace: Arc::new(StdRwLock::new(session_workspace)),
             workspace: Arc::new(RwLock::new(None)),
             is_indexed: Arc::new(RwLock::new(false)),
             indexing_status: Arc::new(IndexingStatus::new()),
@@ -226,11 +826,11 @@ impl JulieServerHandler {
             tool_router: Self::tool_router(),
             project_log: None,
             daemon_db: None,
-            workspace_id: None,
-            active_workspaces: Arc::new(RwLock::new(HashSet::new())),
+            workspace_id: Arc::new(StdRwLock::new(None)),
             embedding_service: None,
             restart_pending: None,
             catchup_in_progress: Arc::new(AtomicBool::new(false)),
+            deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             watcher_pool: None,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -261,6 +861,35 @@ impl JulieServerHandler {
         watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
         workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
     ) -> Result<Self> {
+        Self::new_with_shared_workspace_startup_hint(
+            workspace,
+            WorkspaceStartupHint {
+                path: workspace_root,
+                source: None,
+            },
+            daemon_db,
+            workspace_id,
+            embedding_service,
+            restart_pending,
+            dashboard_tx,
+            watcher_pool,
+            workspace_pool,
+        )
+        .await
+    }
+
+    pub async fn new_with_shared_workspace_startup_hint(
+        workspace: Arc<JulieWorkspace>,
+        workspace_startup_hint: WorkspaceStartupHint,
+        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+        workspace_id: Option<String>,
+        embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
+        restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+        dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
+        watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
+        workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
+    ) -> Result<Self> {
+        let workspace_root = workspace_startup_hint.path.clone();
         info!(
             "Creating daemon-mode handler (workspace_root: {:?})",
             workspace_root
@@ -280,10 +909,14 @@ impl JulieServerHandler {
             false
         };
 
-        let active_workspaces = Arc::new(RwLock::new(HashSet::new()));
+        let prefer_request_roots =
+            crate::startup::startup_source_prefers_request_roots(workspace_startup_hint.source);
+        let mut session_workspace = SessionWorkspaceState::new(workspace_startup_hint.clone());
         if let Some(ref id) = workspace_id {
-            let mut guard = active_workspaces.write().await;
-            guard.insert(id.clone());
+            if !prefer_request_roots {
+                session_workspace.bind_primary(id.clone(), workspace_root.clone());
+            }
+            session_workspace.mark_workspace_attached(id.clone());
         }
 
         // Create per-project logger for daemon mode
@@ -296,6 +929,7 @@ impl JulieServerHandler {
 
         Ok(Self {
             workspace_root,
+            session_workspace: Arc::new(StdRwLock::new(session_workspace)),
             workspace: Arc::new(RwLock::new(Some(ws_clone))),
             is_indexed: Arc::new(RwLock::new(already_indexed)),
             indexing_status: Arc::new(IndexingStatus::new()),
@@ -304,11 +938,57 @@ impl JulieServerHandler {
             tool_router: Self::tool_router(),
             project_log,
             daemon_db,
-            workspace_id,
-            active_workspaces,
+            workspace_id: Arc::new(StdRwLock::new(workspace_id)),
             embedding_service,
             restart_pending,
             catchup_in_progress: Arc::new(AtomicBool::new(false)),
+            deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
+            watcher_pool,
+            metrics_tx,
+            ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
+            workspace_pool,
+            dashboard_tx,
+        })
+    }
+
+    pub async fn new_deferred_daemon_startup_hint(
+        workspace_startup_hint: WorkspaceStartupHint,
+        daemon_db: Option<Arc<crate::daemon::database::DaemonDatabase>>,
+        embedding_service: Option<Arc<crate::daemon::embedding_service::EmbeddingService>>,
+        restart_pending: Option<Arc<std::sync::atomic::AtomicBool>>,
+        dashboard_tx: Option<broadcast::Sender<DashboardEvent>>,
+        watcher_pool: Option<Arc<crate::daemon::watcher_pool::WatcherPool>>,
+        workspace_pool: Option<Arc<crate::daemon::workspace_pool::WorkspacePool>>,
+    ) -> Result<Self> {
+        let workspace_root = workspace_startup_hint.path.clone();
+        info!(
+            "Creating deferred daemon-mode handler (workspace_root: {:?})",
+            workspace_root
+        );
+
+        let (metrics_tx, metrics_rx) = tokio::sync::mpsc::channel::<MetricsTask>(512);
+        tokio::spawn(run_metrics_writer(metrics_rx));
+
+        Ok(Self {
+            workspace_root: workspace_root.clone(),
+            session_workspace: Arc::new(StdRwLock::new(SessionWorkspaceState::new(
+                workspace_startup_hint,
+            ))),
+            workspace: Arc::new(RwLock::new(None)),
+            is_indexed: Arc::new(RwLock::new(false)),
+            indexing_status: Arc::new(IndexingStatus::new()),
+            session_metrics: Arc::new(SessionMetrics::new()),
+            embedding_tasks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            tool_router: Self::tool_router(),
+            project_log: Some(Arc::new(crate::daemon::project_log::ProjectLog::new(
+                &workspace_root,
+            ))),
+            daemon_db,
+            workspace_id: Arc::new(StdRwLock::new(None)),
+            embedding_service,
+            restart_pending,
+            catchup_in_progress: Arc::new(AtomicBool::new(false)),
+            deferred_auto_index_pending: Arc::new(AtomicBool::new(false)),
             watcher_pool,
             metrics_tx,
             ref_db_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -327,13 +1007,225 @@ impl JulieServerHandler {
         Self::new(cwd).await
     }
 
+    pub fn workspace_startup_hint(&self) -> WorkspaceStartupHint {
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .startup_hint
+            .clone()
+    }
+
+    pub fn current_workspace_root(&self) -> PathBuf {
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .current_workspace_root()
+    }
+
+    pub fn current_workspace_id(&self) -> Option<String> {
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .current_workspace_id()
+    }
+
+    pub fn is_primary_workspace_swap_in_progress(&self) -> bool {
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .primary_swap_in_progress()
+    }
+
+    fn require_primary_binding(&self) -> Result<PrimaryWorkspaceBinding> {
+        let session_workspace = self
+            .session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner());
+
+        if session_workspace.primary_swap_in_progress() {
+            return Err(anyhow::anyhow!(
+                "Primary workspace identity unavailable during swap"
+            ));
+        }
+
+        session_workspace.primary_binding().ok_or_else(|| {
+            anyhow::anyhow!(
+                "No workspace initialized. Run manage_workspace(operation=\"index\") first."
+            )
+        })
+    }
+
+    pub fn require_primary_workspace_identity(&self) -> Result<String> {
+        Ok(self.require_primary_binding()?.workspace_id)
+    }
+
+    pub fn require_primary_workspace_binding(&self) -> Result<PrimaryWorkspaceBinding> {
+        self.require_primary_binding()
+    }
+
+    pub fn require_primary_workspace_root(&self) -> Result<PathBuf> {
+        Ok(self.require_primary_binding()?.workspace_root)
+    }
+
+    pub fn loaded_workspace_id(&self) -> Option<String> {
+        if self.is_primary_workspace_swap_in_progress() {
+            return None;
+        }
+
+        self.workspace_id
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+
+    fn set_loaded_workspace_id(&self, workspace_id: Option<String>) {
+        *self.workspace_id.write().unwrap_or_else(|p| p.into_inner()) = workspace_id;
+    }
+
+    pub async fn attached_workspace_id(&self) -> Option<String> {
+        let state = self
+            .session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner());
+        if let Some(current_id) = state.current_workspace_id() {
+            if state.was_workspace_attached_in_session(&current_id) {
+                return Some(current_id);
+            }
+        }
+
+        let loaded_id = self.loaded_workspace_id()?;
+        if state.was_workspace_attached_in_session(&loaded_id) {
+            Some(loaded_id)
+        } else {
+            None
+        }
+    }
+
+    /// Returns whether the workspace was attached at any point during this
+    /// session. This is session-lifetime bookkeeping for pool/session-count
+    /// cleanup, not a guarantee about the currently loaded workspace.
+    pub async fn was_workspace_attached_in_session(&self, workspace_id: &str) -> bool {
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .was_workspace_attached_in_session(workspace_id)
+    }
+
+    fn rebind_current_primary(&self, workspace_id: impl Into<String>, workspace_root: PathBuf) {
+        let mut session_workspace = self
+            .session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner());
+        session_workspace.bind_primary(workspace_id, workspace_root);
+    }
+
+    fn clear_current_primary_binding(&self) {
+        let mut session_workspace = self
+            .session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner());
+        session_workspace.clear_primary_binding();
+    }
+
+    fn publish_loaded_workspace_swap_intent(&self) {
+        self.session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner())
+            .begin_primary_swap();
+        self.set_loaded_workspace_id(None);
+        self.clear_current_primary_binding();
+    }
+
+    async fn publish_loaded_workspace_swap(
+        &self,
+        workspace: JulieWorkspace,
+        workspace_id: Option<String>,
+        mark_attached: bool,
+    ) {
+        let workspace_root = workspace.root.clone();
+        let mut workspace_guard = self.workspace.write().await;
+        *workspace_guard = Some(workspace);
+
+        *self.workspace_id.write().unwrap_or_else(|p| p.into_inner()) = workspace_id.clone();
+
+        let mut session_workspace = self
+            .session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner());
+
+        if let Some(workspace_id) = workspace_id {
+            session_workspace.bind_primary(workspace_id.clone(), workspace_root);
+            if mark_attached {
+                session_workspace.mark_workspace_attached(workspace_id);
+            }
+        }
+
+        session_workspace.complete_primary_swap();
+    }
+
+    async fn acquire_pooled_workspace_for_rebind(
+        &self,
+        workspace_id: &str,
+        workspace_root: PathBuf,
+    ) -> Result<JulieWorkspace> {
+        let pool = self.workspace_pool.as_ref().expect("pool checked above");
+        let pooled_workspace = if self.was_workspace_attached_in_session(workspace_id).await {
+            pool.get(workspace_id).await.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Workspace '{}' was marked attached but is missing from the workspace pool",
+                    workspace_id
+                )
+            })?
+        } else {
+            pool.get_or_init(workspace_id, workspace_root).await?
+        };
+
+        let mut workspace = (*pooled_workspace).clone();
+        workspace.embedding_provider = None;
+        Ok(workspace)
+    }
+
+    #[cfg(test)]
+    pub fn set_current_primary_binding(
+        &self,
+        workspace_id: impl Into<String>,
+        workspace_root: PathBuf,
+    ) {
+        self.rebind_current_primary(workspace_id, workspace_root);
+    }
+
+    #[cfg(test)]
+    pub fn set_client_supports_workspace_roots_for_test(&self, supported: bool) {
+        self.record_client_roots_capability(supported);
+    }
+
+    #[cfg(test)]
+    pub fn publish_loaded_workspace_swap_intent_for_test(&self) {
+        self.publish_loaded_workspace_swap_intent();
+    }
+
+    #[cfg(test)]
+    pub async fn publish_loaded_workspace_swap_teardown_gap_for_test(&self) {
+        self.publish_loaded_workspace_swap_intent();
+        self.teardown_loaded_workspace(false).await;
+    }
+
+    #[cfg(test)]
+    pub async fn loaded_workspace_file_watcher_running_for_test(&self) -> bool {
+        let workspace_guard = self.workspace.read().await;
+        workspace_guard
+            .as_ref()
+            .and_then(|workspace| workspace.watcher.as_ref())
+            .is_some_and(|watcher| watcher.is_running_for_test())
+    }
+
     /// Get the workspace root path for workspace operations.
     ///
     /// Returns the resolved workspace root that was passed to `new()`.
     /// This replaces the old `current_dir()` fallback, ensuring the handler
     /// always uses the path determined by main.rs (CLI > env var > cwd).
     fn get_workspace_path(&self) -> PathBuf {
-        self.workspace_root.clone()
+        self.current_workspace_root()
     }
 
     /// Get the embedding provider, preferring daemon shared service over per-workspace.
@@ -391,128 +1283,159 @@ impl JulieServerHandler {
             target_path.display()
         );
 
+        let target_canonical = target_path
+            .canonicalize()
+            .unwrap_or_else(|_| target_path.clone());
+        let loaded_workspace_root_changed = {
+            let workspace_guard = self.workspace.read().await;
+            workspace_guard.as_ref().is_some_and(|workspace| {
+                workspace
+                    .root
+                    .canonicalize()
+                    .unwrap_or_else(|_| workspace.root.clone())
+                    != target_canonical
+            })
+        };
+        let target_workspace_id =
+            crate::workspace::registry::generate_workspace_id(&target_canonical.to_string_lossy())
+                .ok();
+        let use_pooled_rebind = self.workspace_pool.is_some()
+            && self.daemon_db.is_some()
+            && target_workspace_id.is_some()
+            && (loaded_workspace_root_changed || force);
+        let rollback = if loaded_workspace_root_changed {
+            Some(PrimarySwapRollback::capture(self).await)
+        } else {
+            None
+        };
+
         // Handle force reinitialization vs normal initialization
-        let mut workspace = if force {
+        let workspace_result: Result<JulieWorkspace> = if force {
             info!("🔄 Force reinitialization requested - clearing derived data only");
 
-            // Teardown old workspace: stop watcher tasks, shut down search index to
-            // release the Tantivy file lock. Without this, the new SearchIndex will
-            // get LockBusy errors because the old writer is still held by background tasks.
-            {
-                let mut workspace_guard = self.workspace.write().await;
-                if let Some(ref mut old_workspace) = *workspace_guard {
-                    info!("Tearing down old workspace before force re-index");
-
-                    // 1. Stop file watcher (signals spawned tasks to exit)
-                    if let Err(e) = old_workspace.stop_file_watching().await {
-                        warn!("Failed to stop file watching during teardown: {}", e);
-                    }
-
-                    // 2. Shut down search index (commits + releases Tantivy file lock)
-                    if let Some(ref search_index) = old_workspace.search_index {
-                        match search_index.lock() {
-                            Ok(idx) => {
-                                if let Err(e) = idx.shutdown() {
-                                    warn!("Failed to shut down search index: {}", e);
-                                } else {
-                                    info!("Old search index shut down, file lock released");
-                                }
-                            }
-                            Err(poisoned) => {
-                                // Recover from poisoned mutex — we still need to release the lock
-                                let idx = poisoned.into_inner();
-                                let _ = idx.shutdown();
-                                warn!("Recovered from poisoned search index mutex during teardown");
-                            }
-                        }
-                    }
-                }
-                // Drop the old workspace reference
-                *workspace_guard = None;
+            if loaded_workspace_root_changed {
+                self.publish_loaded_workspace_swap_intent();
             }
 
-            // For force reindex, we only clear derived data, NOT the database (source of truth)
-            let julie_dir = target_path.join(".julie");
-            if julie_dir.exists() {
-                info!("🗑️ Clearing search index and cache for force reindex (preserving database)");
+            self.teardown_loaded_workspace(use_pooled_rebind).await;
 
-                // 🔴 CRITICAL FIX: Only clear the PRIMARY workspace's index, NOT all workspaces!
-                // Reference workspaces must be preserved during force reindex
+            if use_pooled_rebind {
+                let workspace_id = target_workspace_id.as_ref().expect("id checked above");
+                Ok(self
+                    .acquire_pooled_workspace_for_rebind(workspace_id, target_canonical.clone())
+                    .await?)
+            } else {
+                // For force reindex, we only clear derived data, NOT the database (source of truth)
+                let julie_dir = target_path.join(".julie");
+                if julie_dir.exists() {
+                    info!(
+                        "🗑️ Clearing search index and cache for force reindex (preserving database)"
+                    );
 
-                // Determine the primary workspace ID so we only clear its directory
-                use crate::workspace::registry::generate_workspace_id;
-                let workspace_path_str = target_path.to_string_lossy().to_string();
+                    // 🔴 CRITICAL FIX: Only clear the PRIMARY workspace's index, NOT all workspaces!
+                    // Reference workspaces must be preserved during force reindex
 
-                let primary_workspace_index_dir = match generate_workspace_id(&workspace_path_str) {
-                    Ok(workspace_id) => {
-                        // workspace_id is already the full formatted ID (e.g., "julie_c02eb2d9").
-                        // Use it directly — do NOT re-format with the name prefix, which would
-                        // produce a double-prefixed result like "julie_julie_c0".
-                        Some(julie_dir.join("indexes").join(workspace_id))
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to generate workspace ID: {} - will skip index clearing",
-                            e
-                        );
-                        None
-                    }
-                };
+                    // Determine the primary workspace ID so we only clear its directory
+                    use crate::workspace::registry::generate_workspace_id;
+                    let workspace_path_str = target_path.to_string_lossy().to_string();
 
-                // Clear primary workspace's index directory (NOT the entire indexes/ directory)
-                if let Some(primary_index_dir) = primary_workspace_index_dir {
-                    if primary_index_dir.exists() {
-                        if let Err(e) = std::fs::remove_dir_all(&primary_index_dir) {
+                    let primary_workspace_index_dir = match generate_workspace_id(
+                        &workspace_path_str,
+                    ) {
+                        Ok(workspace_id) => Some(julie_dir.join("indexes").join(workspace_id)),
+                        Err(e) => {
                             warn!(
-                                "Failed to clear primary workspace index {}: {}",
-                                primary_index_dir.display(),
+                                "Failed to generate workspace ID: {} - will skip index clearing",
                                 e
                             );
-                        } else {
-                            info!(
-                                "✅ Cleared primary workspace index: {}",
-                                primary_index_dir.display()
-                            );
-                            info!(
-                                "✅ Reference workspaces preserved (workspace isolation maintained)"
-                            );
+                            None
+                        }
+                    };
+
+                    // Clear primary workspace's index directory (NOT the entire indexes/ directory)
+                    if let Some(primary_index_dir) = primary_workspace_index_dir {
+                        if primary_index_dir.exists() {
+                            if let Err(e) = std::fs::remove_dir_all(&primary_index_dir) {
+                                warn!(
+                                    "Failed to clear primary workspace index {}: {}",
+                                    primary_index_dir.display(),
+                                    e
+                                );
+                            } else {
+                                info!(
+                                    "✅ Cleared primary workspace index: {}",
+                                    primary_index_dir.display()
+                                );
+                                info!(
+                                    "✅ Reference workspaces preserved (workspace isolation maintained)"
+                                );
+                            }
                         }
                     }
-                }
 
-                // Clear shared cache (applies to all workspaces, can be rebuilt)
-                let cache_path = julie_dir.join("cache");
-                if cache_path.exists() {
-                    if let Err(e) = std::fs::remove_dir_all(&cache_path) {
-                        warn!("Failed to clear cache {}: {}", cache_path.display(), e);
-                    } else {
-                        info!("Cleared shared cache: {}", cache_path.display());
+                    // Clear shared cache (applies to all workspaces, can be rebuilt)
+                    let cache_path = julie_dir.join("cache");
+                    if cache_path.exists() {
+                        if let Err(e) = std::fs::remove_dir_all(&cache_path) {
+                            warn!("Failed to clear cache {}: {}", cache_path.display(), e);
+                        } else {
+                            info!("Cleared shared cache: {}", cache_path.display());
+                        }
+                    }
+
+                    // Database directory is explicitly preserved for incremental updates
+                    let db_path = julie_dir.join("db");
+                    if db_path.exists() {
+                        info!(
+                            "✅ Database preserved at: {} (contains source of truth)",
+                            db_path.display()
+                        );
                     }
                 }
 
-                // Database directory is explicitly preserved for incremental updates
-                let db_path = julie_dir.join("db");
-                if db_path.exists() {
-                    info!(
-                        "✅ Database preserved at: {} (contains source of truth)",
-                        db_path.display()
-                    );
-                }
+                // Initialize workspace (will reuse existing database if present)
+                JulieWorkspace::initialize(target_path).await
+            }
+        } else {
+            if loaded_workspace_root_changed {
+                self.publish_loaded_workspace_swap_intent();
+                info!(
+                    "Loaded workspace root changed - tearing down old workspace before replacement"
+                );
+                self.teardown_loaded_workspace(use_pooled_rebind).await;
             }
 
-            // Initialize workspace (will reuse existing database if present)
-            JulieWorkspace::initialize(target_path).await?
-        } else {
-            // Try to load existing workspace first
-            match JulieWorkspace::detect_and_load(target_path.clone()).await? {
-                Some(existing_workspace) => {
-                    info!("Loaded existing workspace");
-                    existing_workspace
+            if use_pooled_rebind {
+                let workspace_id = target_workspace_id.as_ref().expect("id checked above");
+                Ok(self
+                    .acquire_pooled_workspace_for_rebind(workspace_id, target_canonical.clone())
+                    .await?)
+            } else {
+                // Try to load existing workspace first
+                match JulieWorkspace::detect_and_load(target_path.clone()).await? {
+                    Some(existing_workspace) => {
+                        info!("Loaded existing workspace");
+                        Ok(existing_workspace)
+                    }
+                    None => {
+                        info!("Creating new workspace");
+                        JulieWorkspace::initialize(target_path).await
+                    }
                 }
-                None => {
-                    info!("Creating new workspace");
-                    JulieWorkspace::initialize(target_path).await?
+            }
+        };
+
+        let mut workspace: JulieWorkspace = match workspace_result {
+            Ok(workspace) => workspace,
+            Err(err) => {
+                if let Some(rollback) = rollback {
+                    if let Err(restore_err) = rollback.restore(self).await {
+                        return Err(
+                            err.context(format!("primary swap rollback failed: {restore_err:#}"))
+                        );
+                    }
                 }
+                return Err(err);
             }
         };
 
@@ -521,11 +1444,11 @@ impl JulieServerHandler {
             warn!("Failed to start file watching: {}", e);
         }
 
-        // Store the initialized workspace
-        {
-            let mut workspace_guard = self.workspace.write().await;
-            *workspace_guard = Some(workspace);
-        }
+        let workspace_id =
+            crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
+                .ok();
+        self.publish_loaded_workspace_swap(workspace, workspace_id, self.workspace_pool.is_some())
+            .await;
 
         info!("Workspace initialization complete");
         Ok(())
@@ -574,7 +1497,8 @@ impl JulieServerHandler {
     /// Backfill vector_count and embedding_model in daemon.db if missing.
     /// Handles workspaces embedded before the daemon tracked these stats.
     async fn backfill_vector_count(&self) {
-        let (Some(db), Some(ws_id)) = (&self.daemon_db, &self.workspace_id) else {
+        let current_workspace_id = self.current_workspace_id();
+        let (Some(db), Some(ws_id)) = (&self.daemon_db, current_workspace_id.as_deref()) else {
             return;
         };
         let row = match db.get_workspace(ws_id) {
@@ -623,9 +1547,16 @@ impl JulieServerHandler {
         tool_name: &str,
         duration: std::time::Duration,
         report: &ToolCallReport,
+        workspace_snapshot: Option<&PrimaryWorkspaceBinding>,
     ) {
         let duration_us = duration.as_micros() as u64;
         let output_bytes = report.output_bytes;
+        let workspace_id = workspace_snapshot
+            .map(|binding| binding.workspace_id.clone())
+            .or_else(|| self.current_workspace_id());
+        let workspace_root = workspace_snapshot
+            .map(|binding| binding.workspace_root.clone())
+            .unwrap_or_else(|| self.current_workspace_root());
 
         // Bump in-memory atomics synchronously (source_bytes=0 for now, updated async)
         if let Some(kind) = ToolKind::from_name(tool_name) {
@@ -642,7 +1573,7 @@ impl JulieServerHandler {
         if let Some(ref tx) = self.dashboard_tx {
             let _ = tx.send(DashboardEvent::ToolCall {
                 tool_name: tool_name.to_string(),
-                workspace: self.workspace_id.clone().unwrap_or_default(),
+                workspace: workspace_id.clone().unwrap_or_default(),
                 duration_ms: duration.as_secs_f64() * 1000.0,
             });
         }
@@ -652,6 +1583,8 @@ impl JulieServerHandler {
         let metadata = report.metadata.to_string();
         let _ = self.metrics_tx.try_send(MetricsTask {
             workspace: self.workspace.clone(),
+            workspace_pool: self.workspace_pool.clone(),
+            current_workspace_root: workspace_root,
             session_metrics: self.session_metrics.clone(),
             session_id: self.session_metrics.session_id.clone(),
             tool_name: tool_name.to_string(),
@@ -665,7 +1598,7 @@ impl JulieServerHandler {
                 Some(metadata)
             },
             daemon_db: self.daemon_db.clone(),
-            workspace_id: self.workspace_id.clone(),
+            workspace_id,
         });
     }
 
@@ -717,8 +1650,8 @@ impl JulieServerHandler {
         // In daemon mode, workspace.watcher is None (watchers live in WatcherPool),
         // so pause_watcher() is a no-op. Use the shared WatcherPool instead.
         if let Some(ref pool) = self.watcher_pool {
-            if let Some(ref ws_id) = self.workspace_id {
-                pool.pause_workspace(ws_id).await;
+            if let Some(ws_id) = self.current_workspace_id() {
+                pool.pause_workspace(&ws_id).await;
             }
         } else {
             self.pause_watcher().await;
@@ -759,8 +1692,8 @@ impl JulieServerHandler {
         // Any events that arrived while paused are still in the queue and will
         // be dispatched on the next queue processor tick.
         if let Some(ref pool) = self.watcher_pool {
-            if let Some(ref ws_id) = self.workspace_id {
-                pool.resume_workspace(ws_id).await;
+            if let Some(ws_id) = self.current_workspace_id() {
+                pool.resume_workspace(&ws_id).await;
             }
         } else {
             self.resume_watcher().await;
@@ -772,34 +1705,233 @@ impl JulieServerHandler {
 
     // ========== Workspace Access Helpers ==========
 
+    fn primary_workspace_db_path_from_binding(&self, binding: &PrimaryWorkspaceBinding) -> PathBuf {
+        binding
+            .workspace_root
+            .join(".julie")
+            .join("indexes")
+            .join(&binding.workspace_id)
+            .join("db")
+            .join("symbols.db")
+    }
+
+    fn primary_workspace_tantivy_path_from_binding(
+        &self,
+        binding: &PrimaryWorkspaceBinding,
+    ) -> PathBuf {
+        binding
+            .workspace_root
+            .join(".julie")
+            .join("indexes")
+            .join(&binding.workspace_id)
+            .join("tantivy")
+    }
+
+    async fn primary_workspace_snapshot_from_loaded_workspace(
+        &self,
+        binding: &PrimaryWorkspaceBinding,
+    ) -> Result<Option<PrimaryWorkspaceSnapshot>> {
+        let workspace = self.get_workspace().await?;
+        let loaded_workspace_id_after = self.loaded_workspace_id();
+        let workspace = workspace.ok_or_else(|| {
+            anyhow::anyhow!(
+                "No workspace initialized. Run manage_workspace(operation=\"index\") first."
+            )
+        })?;
+        if loaded_workspace_id_after.as_deref() != Some(binding.workspace_id.as_str())
+            || workspace.root != binding.workspace_root
+        {
+            return Ok(None);
+        }
+        let database = workspace.db.as_ref().cloned().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Database not available. Run manage_workspace(operation=\"index\") first."
+            )
+        })?;
+
+        Ok(Some(PrimaryWorkspaceSnapshot {
+            binding: binding.clone(),
+            database,
+            search_index: workspace.search_index.as_ref().cloned(),
+            index_root_override: workspace.index_root_override.clone(),
+        }))
+    }
+
+    async fn primary_workspace_snapshot_from_pool(
+        &self,
+        binding: &PrimaryWorkspaceBinding,
+    ) -> Result<Option<PrimaryWorkspaceSnapshot>> {
+        let Some(pool) = &self.workspace_pool else {
+            return Ok(None);
+        };
+        let Some(workspace) = pool.get(&binding.workspace_id).await else {
+            return Ok(None);
+        };
+        let database = workspace.db.as_ref().cloned().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Database not available. Run manage_workspace(operation=\"index\") first."
+            )
+        })?;
+
+        Ok(Some(PrimaryWorkspaceSnapshot {
+            binding: binding.clone(),
+            database,
+            search_index: workspace.search_index.as_ref().cloned(),
+            index_root_override: workspace.index_root_override.clone(),
+        }))
+    }
+
+    async fn primary_workspace_snapshot_from_binding_paths(
+        &self,
+        binding: &PrimaryWorkspaceBinding,
+    ) -> Result<PrimaryWorkspaceSnapshot> {
+        let db_path = self.primary_workspace_db_path_from_binding(binding);
+        if !db_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Database not found for workspace '{}' at {}",
+                binding.workspace_id,
+                db_path.display()
+            ));
+        }
+
+        let database = {
+            let cache = self.ref_db_cache.read().await;
+            cache
+                .get(&binding.workspace_id)
+                .filter(|(cached_path, _)| *cached_path == db_path)
+                .map(|(_, db)| Arc::clone(db))
+        };
+
+        let database = if let Some(database) = database {
+            database
+        } else {
+            let db_path_for_open = db_path.clone();
+            let database = tokio::task::spawn_blocking(move || {
+                let db = SymbolDatabase::new(&db_path_for_open)?;
+                Ok::<_, anyhow::Error>(Arc::new(std::sync::Mutex::new(db)))
+            })
+            .await??;
+
+            let mut cache = self.ref_db_cache.write().await;
+            cache.insert(
+                binding.workspace_id.clone(),
+                (db_path.clone(), Arc::clone(&database)),
+            );
+            database
+        };
+
+        let tantivy_path = self.primary_workspace_tantivy_path_from_binding(binding);
+        let search_index = if tantivy_path.join("meta.json").exists() {
+            Some(
+                tokio::task::spawn_blocking(move || {
+                    let configs = crate::search::LanguageConfigs::load_embedded();
+                    let index = SearchIndex::open_with_language_configs(&tantivy_path, &configs)?;
+                    Ok::<_, anyhow::Error>(Arc::new(std::sync::Mutex::new(index)))
+                })
+                .await??,
+            )
+        } else {
+            None
+        };
+
+        Ok(PrimaryWorkspaceSnapshot {
+            binding: binding.clone(),
+            database,
+            search_index,
+            index_root_override: None,
+        })
+    }
+
+    pub(crate) async fn primary_workspace_snapshot(&self) -> Result<PrimaryWorkspaceSnapshot> {
+        let binding = self.require_primary_workspace_binding()?;
+        let prefers_loaded_workspace =
+            self.loaded_workspace_id().as_deref() == Some(binding.workspace_id.as_str());
+
+        if prefers_loaded_workspace {
+            if let Some(snapshot) = self
+                .primary_workspace_snapshot_from_loaded_workspace(&binding)
+                .await?
+            {
+                return Ok(snapshot);
+            }
+        }
+
+        if let Some(snapshot) = self.primary_workspace_snapshot_from_pool(&binding).await? {
+            return Ok(snapshot);
+        }
+
+        return if self.workspace_pool.is_some() {
+            Err(anyhow::anyhow!(
+                "Primary workspace '{}' is not attached in the daemon workspace pool",
+                binding.workspace_id
+            ))
+        } else {
+            self.primary_workspace_snapshot_from_binding_paths(&binding)
+                .await
+        };
+    }
+
+    pub(crate) async fn primary_database(&self) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
+        Ok(self.primary_workspace_snapshot().await?.database)
+    }
+
+    pub(crate) async fn primary_database_and_search_index(
+        &self,
+    ) -> Result<(
+        Arc<std::sync::Mutex<SymbolDatabase>>,
+        Arc<std::sync::Mutex<SearchIndex>>,
+    )> {
+        let snapshot = self.primary_workspace_snapshot().await?;
+        let search_index = snapshot.search_index.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Search index not initialized. Run manage_workspace(operation=\"index\") first."
+            )
+        })?;
+
+        Ok((snapshot.database, search_index))
+    }
+
     /// Active workspace IDs for this session, sorted for stable output.
     pub async fn active_workspace_ids(&self) -> Vec<String> {
-        let mut ids: Vec<String> = self
-            .active_workspaces
+        self.session_workspace
             .read()
-            .await
-            .iter()
-            .cloned()
-            .collect();
-        ids.sort();
-        ids
+            .unwrap_or_else(|p| p.into_inner())
+            .active_workspace_ids()
+    }
+
+    pub async fn session_attached_workspace_ids(&self) -> Vec<String> {
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .session_attached_workspace_ids()
     }
 
     /// Check whether a workspace ID is currently active for this session.
     pub async fn is_workspace_active(&self, workspace_id: &str) -> bool {
-        self.active_workspaces.read().await.contains(workspace_id)
+        self.session_workspace
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_workspace_active(workspace_id)
+    }
+
+    fn mark_workspace_active_internal(&self, workspace_id: &str) -> bool {
+        let mut guard = self
+            .session_workspace
+            .write()
+            .unwrap_or_else(|p| p.into_inner());
+        guard.mark_workspace_active(workspace_id)
     }
 
     /// Add a workspace ID to this session's active set.
+    #[cfg(test)]
     pub async fn mark_workspace_active(&self, workspace_id: &str) {
-        let mut guard = self.active_workspaces.write().await;
-        guard.insert(workspace_id.to_string());
+        self.mark_workspace_active_internal(workspace_id);
     }
 
     /// Activate a workspace for this session. Returns `true` if this was a new activation.
+    #[cfg(test)]
     pub async fn activate_workspace(&self, workspace_id: &str) -> bool {
-        let mut guard = self.active_workspaces.write().await;
-        guard.insert(workspace_id.to_string())
+        self.mark_workspace_active_internal(workspace_id)
     }
 
     /// Load a workspace through the daemon pool, then mark it active for this session.
@@ -808,18 +1940,152 @@ impl JulieServerHandler {
         workspace_id: &str,
         workspace_root: PathBuf,
     ) -> Result<bool> {
-        if self.is_workspace_active(workspace_id).await {
-            return Ok(false);
-        }
+        let attached_matches_target = self.was_workspace_attached_in_session(workspace_id).await;
+        let already_active = self.is_workspace_active(workspace_id).await;
 
         if let Some(pool) = &self.workspace_pool {
-            if self.workspace_id.as_deref() != Some(workspace_id) {
+            if !attached_matches_target {
                 pool.get_or_init(workspace_id, workspace_root).await?;
                 pool.sync_indexed_from_db(workspace_id).await;
+                self.session_workspace
+                    .write()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .mark_workspace_attached(workspace_id.to_string());
             }
         }
 
-        Ok(self.activate_workspace(workspace_id).await)
+        if already_active {
+            return Ok(false);
+        }
+
+        Ok(self.mark_workspace_active_internal(workspace_id))
+    }
+
+    pub(crate) async fn workspace_storage_anchor(&self) -> Result<(PathBuf, Option<PathBuf>)> {
+        let loaded_workspace = self.get_workspace().await?;
+        let loaded_workspace_id = self.loaded_workspace_id();
+        let current_workspace_id = self.current_workspace_id();
+
+        if let Some(pool) = &self.workspace_pool {
+            if let Some(current_id) = current_workspace_id.as_ref() {
+                if let Some(anchor_workspace) = pool.get(current_id).await {
+                    return Ok((
+                        anchor_workspace.root.clone(),
+                        anchor_workspace.index_root_override.clone(),
+                    ));
+                }
+
+                if loaded_workspace_id.as_deref() != Some(current_id.as_str()) {
+                    return Ok((
+                        self.current_workspace_root(),
+                        loaded_workspace
+                            .as_ref()
+                            .and_then(|workspace| workspace.index_root_override.clone()),
+                    ));
+                }
+
+                return Err(anyhow::anyhow!(
+                    "Current primary workspace '{}' is not attached in the daemon workspace pool",
+                    current_id
+                ));
+            }
+
+            if let Some(loaded_id) = loaded_workspace_id.as_ref() {
+                if let Some(anchor_workspace) = pool.get(loaded_id).await {
+                    return Ok((
+                        anchor_workspace.root.clone(),
+                        anchor_workspace.index_root_override.clone(),
+                    ));
+                }
+
+                return Err(anyhow::anyhow!(
+                    "Current primary workspace '{}' is not attached in the daemon workspace pool",
+                    loaded_id
+                ));
+            }
+
+            if let Some(loaded_workspace) = loaded_workspace.as_ref() {
+                return Ok((
+                    self.current_workspace_root(),
+                    loaded_workspace.index_root_override.clone(),
+                ));
+            }
+
+            return Err(anyhow::anyhow!(
+                "Primary workspace not initialized"
+            ));
+        }
+
+        let loaded_workspace = loaded_workspace
+            .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
+
+        if let Some(ref current_id) = current_workspace_id {
+            if loaded_workspace_id.as_deref() != Some(current_id.as_str()) {
+                return Ok((self.current_workspace_root(), None));
+            }
+        }
+
+        if loaded_workspace_id.is_none() {
+            return Err(anyhow::anyhow!(
+                "Primary workspace identity unavailable during swap"
+            ));
+        }
+
+        Ok((
+            loaded_workspace.root.clone(),
+            loaded_workspace.index_root_override.clone(),
+        ))
+    }
+
+    pub(crate) async fn workspace_db_file_path_for(&self, workspace_id: &str) -> Result<PathBuf> {
+        let (anchor_root, anchor_override) = self.workspace_storage_anchor().await?;
+        Ok(if let Some(ref override_root) = anchor_override {
+            override_root
+                .parent()
+                .map(|shared_indexes| {
+                    shared_indexes
+                        .join(workspace_id)
+                        .join("db")
+                        .join("symbols.db")
+                })
+                .unwrap_or_else(|| {
+                    anchor_root
+                        .join(".julie")
+                        .join("indexes")
+                        .join(workspace_id)
+                        .join("db")
+                        .join("symbols.db")
+                })
+        } else {
+            anchor_root
+                .join(".julie")
+                .join("indexes")
+                .join(workspace_id)
+                .join("db")
+                .join("symbols.db")
+        })
+    }
+
+    pub(crate) async fn workspace_tantivy_dir_for(&self, workspace_id: &str) -> Result<PathBuf> {
+        let (anchor_root, anchor_override) = self.workspace_storage_anchor().await?;
+        Ok(if let Some(ref override_root) = anchor_override {
+            override_root
+                .parent()
+                .map(|shared_indexes| shared_indexes.join(workspace_id).join("tantivy"))
+                .unwrap_or_else(|| {
+                    anchor_root
+                        .join(".julie")
+                        .join("indexes")
+                        .join(workspace_id)
+                        .join("tantivy")
+                })
+        } else {
+            anchor_root
+                .join(".julie")
+                .join("indexes")
+                .join(workspace_id)
+                .join("tantivy")
+        })
     }
 
     /// Get the database for a specific workspace by ID.
@@ -831,34 +2097,20 @@ impl JulieServerHandler {
         &self,
         workspace_id: &str,
     ) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
+        let db_path = self.workspace_db_file_path_for(workspace_id).await?;
+
         // Fast path: return cached connection for this session (M22).
         {
             let cache = self.ref_db_cache.read().await;
-            if let Some(db) = cache.get(workspace_id) {
-                return Ok(Arc::clone(db));
+            if let Some((cached_path, db)) = cache.get(workspace_id) {
+                if *cached_path == db_path {
+                    return Ok(Arc::clone(db));
+                }
             }
         }
 
-        let primary = self
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
-
         // In daemon mode, index_root_override points to ~/.julie/indexes/{primary_id}.
         // Reference workspaces are siblings: ~/.julie/indexes/{ref_id}/, not nested.
-        let db_path = if let Some(ref override_root) = primary.index_root_override {
-            override_root
-                .parent()
-                .map(|shared_indexes| {
-                    shared_indexes
-                        .join(workspace_id)
-                        .join("db")
-                        .join("symbols.db")
-                })
-                .unwrap_or_else(|| primary.workspace_db_path(workspace_id))
-        } else {
-            primary.workspace_db_path(workspace_id)
-        };
         if !db_path.exists() {
             return Err(anyhow::anyhow!(
                 "Database not found for workspace '{}' at {}",
@@ -867,8 +2119,9 @@ impl JulieServerHandler {
             ));
         }
 
+        let db_path_for_open = db_path.clone();
         let db = tokio::task::spawn_blocking(move || {
-            let db = SymbolDatabase::new(&db_path)?;
+            let db = SymbolDatabase::new(&db_path_for_open)?;
             Ok::<_, anyhow::Error>(Arc::new(std::sync::Mutex::new(db)))
         })
         .await??;
@@ -876,9 +2129,7 @@ impl JulieServerHandler {
         // Populate cache for subsequent calls within this session.
         {
             let mut cache = self.ref_db_cache.write().await;
-            cache
-                .entry(workspace_id.to_string())
-                .or_insert_with(|| Arc::clone(&db));
+            cache.insert(workspace_id.to_string(), (db_path.clone(), Arc::clone(&db)));
         }
 
         Ok(db)
@@ -893,20 +2144,7 @@ impl JulieServerHandler {
         &self,
         workspace_id: &str,
     ) -> Result<Option<Arc<std::sync::Mutex<SearchIndex>>>> {
-        let primary = self
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
-
-        // Mirror the daemon-mode path fix from get_database_for_workspace.
-        let tantivy_path = if let Some(ref override_root) = primary.index_root_override {
-            override_root
-                .parent()
-                .map(|shared_indexes| shared_indexes.join(workspace_id).join("tantivy"))
-                .unwrap_or_else(|| primary.workspace_tantivy_path(workspace_id))
-        } else {
-            primary.workspace_tantivy_path(workspace_id)
-        };
+        let tantivy_path = self.workspace_tantivy_dir_for(workspace_id).await?;
         if !tantivy_path.join("meta.json").exists() {
             return Ok(None);
         }
@@ -924,11 +2162,6 @@ impl JulieServerHandler {
     /// Looks up the workspace entry in the primary workspace's
     /// registry and returns `WorkspaceEntry.original_path`.
     pub async fn get_workspace_root_for_target(&self, workspace_id: &str) -> Result<PathBuf> {
-        let primary = self
-            .get_workspace()
-            .await?
-            .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
-
         // Daemon mode: look up in DaemonDatabase
         if let Some(ref db) = self.daemon_db {
             let row = db
@@ -937,8 +2170,32 @@ impl JulieServerHandler {
             return Ok(PathBuf::from(row.path));
         }
 
-        // Stdio mode: only primary workspace exists
-        Ok(primary.root.clone())
+        let primary = self.require_primary_binding()?;
+
+        // Stdio mode: a rebound current primary may be queried through the non-primary path,
+        // and reference workspaces resolve through workspace_registry.json rooted at the
+        // current primary workspace.
+        if primary.workspace_id == workspace_id {
+            Ok(primary.workspace_root)
+        } else {
+            let registry_path = primary
+                .workspace_root
+                .join(".julie")
+                .join("workspace_registry.json");
+            if registry_path.exists() {
+                let registry_text = std::fs::read_to_string(&registry_path)?;
+                let registry: crate::workspace::registry::WorkspaceRegistry =
+                    serde_json::from_str(&registry_text)?;
+                if let Some(entry) = registry.reference_workspaces.get(workspace_id) {
+                    return Ok(PathBuf::from(&entry.original_path));
+                }
+            }
+
+            Err(anyhow::anyhow!(
+                "Workspace '{}' not found in current primary workspace registry",
+                workspace_id
+            ))
+        }
     }
 
     /// Returns the agent instructions embedded at compile time.
@@ -979,6 +2236,7 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast search: {:?}", params);
         let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({
             "query": params.query,
             "target": params.search_target,
@@ -996,7 +2254,12 @@ impl JulieServerHandler {
             metadata,
             source_file_paths,
         };
-        self.record_tool_call("fast_search", start.elapsed(), &report);
+        self.record_tool_call(
+            "fast_search",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
         Ok(result)
     }
 
@@ -1017,6 +2280,7 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("⚡ Fast find references: {:?}", params);
         let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({ "symbol": params.symbol });
         let result = params
             .call_tool(self)
@@ -1031,7 +2295,12 @@ impl JulieServerHandler {
             metadata,
             source_file_paths,
         };
-        self.record_tool_call("fast_refs", start.elapsed(), &report);
+        self.record_tool_call(
+            "fast_refs",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
         Ok(result)
     }
 
@@ -1052,6 +2321,7 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("📋 Get symbols for file: {:?}", params);
         let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({
             "file": params.file_path,
             "mode": params.mode,
@@ -1069,7 +2339,12 @@ impl JulieServerHandler {
             metadata,
             source_file_paths,
         };
-        self.record_tool_call("get_symbols", start.elapsed(), &report);
+        self.record_tool_call(
+            "get_symbols",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
         Ok(result)
     }
 
@@ -1090,6 +2365,7 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("🔍 Deep dive: {:?}", params);
         let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({
             "symbol": params.symbol,
             "depth": params.depth,
@@ -1107,7 +2383,12 @@ impl JulieServerHandler {
             metadata,
             source_file_paths,
         };
-        self.record_tool_call("deep_dive", start.elapsed(), &report);
+        self.record_tool_call(
+            "deep_dive",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
         Ok(result)
     }
 
@@ -1130,6 +2411,7 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("📦 Get context: {:?}", params);
         let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({ "query": params.query });
         let result = params
             .call_tool(self)
@@ -1144,7 +2426,12 @@ impl JulieServerHandler {
             metadata,
             source_file_paths,
         };
-        self.record_tool_call("get_context", start.elapsed(), &report);
+        self.record_tool_call(
+            "get_context",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
         Ok(result)
     }
 
@@ -1167,6 +2454,7 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("✏️ Rename symbol: {:?}", params);
         let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({
             "old": params.old_name,
             "new": params.new_name,
@@ -1185,7 +2473,12 @@ impl JulieServerHandler {
             metadata,
             source_file_paths,
         };
-        self.record_tool_call("rename_symbol", start.elapsed(), &report);
+        self.record_tool_call(
+            "rename_symbol",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
         Ok(result)
     }
 
@@ -1208,6 +2501,7 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         info!("🏗️ Managing workspace: {}", params.operation);
         let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({ "operation": params.operation });
         let result = params.call_tool(self).await.map_err(|e| {
             McpError::internal_error(format!("manage_workspace failed: {}", e), None)
@@ -1219,7 +2513,12 @@ impl JulieServerHandler {
             metadata,
             source_file_paths: Vec::new(),
         };
-        self.record_tool_call("manage_workspace", start.elapsed(), &report);
+        self.record_tool_call(
+            "manage_workspace",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
         Ok(result)
     }
 
@@ -1242,6 +2541,7 @@ impl JulieServerHandler {
     ) -> Result<CallToolResult, McpError> {
         debug!("📊 Query metrics: {:?}", params);
         let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({ "category": params.category });
         let result = params
             .call_tool(self)
@@ -1254,7 +2554,12 @@ impl JulieServerHandler {
             metadata,
             source_file_paths: Vec::new(),
         };
-        self.record_tool_call("query_metrics", start.elapsed(), &report);
+        self.record_tool_call(
+            "query_metrics",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
         Ok(result)
     }
 
@@ -1280,6 +2585,7 @@ impl JulieServerHandler {
             params.file_path, params.dry_run
         );
         let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({
             "file": params.file_path,
             "occurrence": params.occurrence,
@@ -1298,7 +2604,12 @@ impl JulieServerHandler {
             metadata,
             source_file_paths,
         };
-        self.record_tool_call("edit_file", start.elapsed(), &report);
+        self.record_tool_call(
+            "edit_file",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
         Ok(result)
     }
 
@@ -1322,6 +2633,7 @@ impl JulieServerHandler {
             params.operation, params.symbol, params.dry_run
         );
         let start = std::time::Instant::now();
+        let workspace_snapshot = self.require_primary_workspace_binding().ok();
         let metadata = serde_json::json!({
             "symbol": params.symbol,
             "operation": params.operation,
@@ -1340,13 +2652,17 @@ impl JulieServerHandler {
             metadata,
             source_file_paths,
         };
-        self.record_tool_call("edit_symbol", start.elapsed(), &report);
+        self.record_tool_call(
+            "edit_symbol",
+            start.elapsed(),
+            &report,
+            workspace_snapshot.as_ref(),
+        );
         Ok(result)
     }
 }
 
-/// ServerHandler implementation with tool_handler macro
-#[tool_handler]
+/// ServerHandler implementation
 impl ServerHandler for JulieServerHandler {
     fn get_info(&self) -> ServerInfo {
         let server_info = Implementation::new("Julie", env!("CARGO_PKG_VERSION"))
@@ -1362,8 +2678,82 @@ impl ServerHandler for JulieServerHandler {
         info
     }
 
-    async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ServerInfo, McpError> {
+        self.record_client_roots_capability(request.capabilities.roots.is_some());
+        if context.peer.peer_info().is_none() {
+            context.peer.set_peer_info(request);
+        }
+        Ok(self.get_info())
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        if Self::tool_request_targets_primary(request.name.as_ref(), request.arguments.as_ref()) {
+            self.ensure_primary_workspace_for_request(&context.peer)
+                .await
+                .map_err(|err| McpError::internal_error(err.to_string(), None))?;
+        }
+
+        self.tool_router
+            .call(ToolCallContext::new(self, request, context))
+            .await
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        Ok(ListToolsResult::with_all_items(self.tool_router.list_all()))
+    }
+
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        self.tool_router.get(name).cloned()
+    }
+
+    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
         info!("MCP connection established - client initialized");
+
+        let startup_hint = self.workspace_startup_hint();
+        if crate::startup::startup_source_prefers_request_roots(startup_hint.source)
+            && self.client_supports_workspace_roots()
+        {
+            self.mark_deferred_auto_index_pending(true);
+            match self.list_roots_from_peer(&context.peer).await {
+                Ok(roots) if !roots.is_empty() => {
+                    info!(
+                        root_count = roots.len(),
+                        startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
+                        "Deferring auto-indexing until a request resolves the primary workspace from client roots"
+                    );
+                    return;
+                }
+                Ok(_) => {
+                    info!(
+                        startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
+                        "Initialization roots probe returned no roots, keeping primary resolution deferred until the first request"
+                    );
+                    return;
+                }
+                Err(err) => {
+                    warn!("Failed to query client roots during initialization: {err}");
+                    info!(
+                        startup_source = ?startup_hint.source.unwrap_or(WorkspaceStartupSource::Cwd),
+                        "Keeping primary resolution deferred so the first primary-scoped request can retry roots discovery"
+                    );
+                    return;
+                }
+            }
+        }
+
+        self.mark_deferred_auto_index_pending(false);
 
         // Atomically claim the indexing slot. Two concurrent on_initialized calls on
         // a shared handler clone would both see is_indexed=false with a read lock;
@@ -1398,5 +2788,9 @@ impl ServerHandler for JulieServerHandler {
         tokio::spawn(async move {
             handler.run_auto_indexing().await;
         });
+    }
+
+    async fn on_roots_list_changed(&self, _context: NotificationContext<RoleServer>) {
+        self.mark_roots_dirty();
     }
 }

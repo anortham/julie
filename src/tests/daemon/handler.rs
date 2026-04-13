@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::daemon::workspace_pool::WorkspacePool;
 use crate::handler::JulieServerHandler;
+use crate::workspace::startup_hint::{WorkspaceStartupHint, WorkspaceStartupSource};
 
 fn temp_indexes_dir() -> tempfile::TempDir {
     tempfile::tempdir().expect("Failed to create temp dir")
@@ -41,6 +42,60 @@ async fn test_new_with_shared_workspace_creates_handler() {
     // Handler should have the workspace set
     let ws_guard = handler.workspace.read().await;
     assert!(ws_guard.is_some(), "workspace should be set");
+}
+
+#[tokio::test]
+async fn handler_construction_uses_startup_hint_for_current_root() {
+    let workspace_root = temp_workspace_root();
+
+    let handler = JulieServerHandler::new(workspace_root.path().to_path_buf())
+        .await
+        .expect("new should succeed");
+
+    assert_eq!(
+        handler.workspace_startup_hint().path,
+        workspace_root.path().to_path_buf()
+    );
+    assert_eq!(handler.workspace_startup_hint().source, None);
+    assert_eq!(handler.current_workspace_root(), workspace_root.path());
+    assert_eq!(handler.current_workspace_id(), None);
+}
+
+#[tokio::test]
+async fn test_new_with_shared_workspace_preserves_startup_hint() {
+    let indexes_dir = temp_indexes_dir();
+    let workspace_root = temp_workspace_root();
+    let pool = WorkspacePool::new(indexes_dir.path().to_path_buf(), None, None, None);
+    let startup_hint = WorkspaceStartupHint {
+        path: workspace_root.path().to_path_buf(),
+        source: Some(WorkspaceStartupSource::Cli),
+    };
+
+    let ws = pool
+        .get_or_init("primary_ws", workspace_root.path().to_path_buf())
+        .await
+        .expect("get_or_init should succeed");
+
+    let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
+        ws,
+        startup_hint.clone(),
+        None,
+        Some("primary_ws".to_string()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("new_with_shared_workspace_startup_hint should succeed");
+
+    assert_eq!(handler.workspace_startup_hint(), startup_hint);
+    assert_eq!(
+        handler.current_workspace_id(),
+        Some("primary_ws".to_string())
+    );
+    assert_eq!(handler.current_workspace_root(), workspace_root.path());
 }
 
 #[tokio::test]

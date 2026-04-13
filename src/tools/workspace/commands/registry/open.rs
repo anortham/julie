@@ -35,6 +35,7 @@ impl ManageWorkspaceTool {
                 "Workspace open requires daemon mode. Start the daemon with `julie daemon`.";
             return Ok(CallToolResult::text_content(vec![Content::text(message)]));
         };
+        let current_primary_id = handler.current_workspace_id();
 
         let target = if let Some(path) = self.path.as_ref() {
             if self.workspace_id.is_some() {
@@ -52,7 +53,7 @@ impl ManageWorkspaceTool {
             if let Some(row) = db.get_workspace_by_path(&canonical_path_str)? {
                 let workspace_id = row.workspace_id;
                 let status = row.status;
-                let is_primary = handler.workspace_id.as_deref() == Some(workspace_id.as_str());
+                let is_primary = current_primary_id.as_deref() == Some(workspace_id.as_str());
                 OpenTarget {
                     is_primary,
                     workspace_id,
@@ -64,7 +65,7 @@ impl ManageWorkspaceTool {
                 let workspace_id = generate_workspace_id(&canonical_path_str)?;
                 db.upsert_workspace(&workspace_id, &canonical_path_str, "pending")?;
                 OpenTarget {
-                    is_primary: handler.workspace_id.as_deref() == Some(workspace_id.as_str()),
+                    is_primary: current_primary_id.as_deref() == Some(workspace_id.as_str()),
                     workspace_id,
                     workspace_path: canonical_path,
                     canonical_path: canonical_path_str,
@@ -79,7 +80,7 @@ impl ManageWorkspaceTool {
             let row_path = row.path;
             let status = row.status;
             OpenTarget {
-                is_primary: handler.workspace_id.as_deref() == Some(workspace_id.as_str()),
+                is_primary: current_primary_id.as_deref() == Some(workspace_id.as_str()),
                 workspace_id,
                 workspace_path: PathBuf::from(&row_path),
                 canonical_path: row_path,
@@ -99,18 +100,16 @@ impl ManageWorkspaceTool {
 
         let force = self.force.unwrap_or(false);
         let already_active = handler.is_workspace_active(&target.workspace_id).await;
-        if already_active && !force {
+        let attached_matches_target = handler
+            .was_workspace_attached_in_session(&target.workspace_id)
+            .await;
+        if already_active && !force && (!target.is_primary || attached_matches_target) {
             return Ok(Self::opened_message(&target));
         }
 
         if target.status != "ready" {
             let result = self
-                .handle_index_command(
-                    handler,
-                    Some(target.canonical_path.clone()),
-                    force,
-                    false,
-                )
+                .handle_index_command(handler, Some(target.canonical_path.clone()), force, false)
                 .await?;
 
             let indexed_ready = handler

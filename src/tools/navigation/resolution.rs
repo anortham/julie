@@ -86,7 +86,15 @@ pub async fn resolve_workspace_filter(
             if let Some(ref db) = handler.daemon_db {
                 return match db.get_workspace(workspace_id)? {
                     Some(_) => {
-                        if handler.is_workspace_active(workspace_id).await {
+                        let startup_workspace_loaded_for_session =
+                            handler.loaded_workspace_id().as_deref() == Some(workspace_id)
+                                && handler
+                                    .was_workspace_attached_in_session(workspace_id)
+                                    .await;
+
+                        if handler.is_workspace_active(workspace_id).await
+                            || startup_workspace_loaded_for_session
+                        {
                             Ok(WorkspaceTarget::Reference(workspace_id.to_string()))
                         } else {
                             Err(anyhow::anyhow!(

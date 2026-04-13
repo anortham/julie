@@ -25,14 +25,9 @@ pub async fn get_symbols_from_primary(
         file_path, max_depth
     );
 
-    let workspace = handler.get_workspace().await?.ok_or_else(|| {
-        anyhow::anyhow!("No workspace initialized. Run 'manage_workspace index' first")
-    })?;
-
-    let db = workspace
-        .db
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("No database available"))?;
+    let binding = handler.require_primary_workspace_binding()?;
+    let current_workspace_root = binding.workspace_root;
+    let db_arc = handler.primary_database().await?;
 
     // Phase 2: Database stores relative Unix-style paths for token efficiency
     // We need TWO paths:
@@ -45,28 +40,29 @@ pub async fn get_symbols_from_primary(
             .canonicalize()
             .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
 
-        let relative = crate::utils::paths::to_relative_unix_style(&canonical, &workspace.root)
-            .unwrap_or_else(|_| {
-                warn!("Failed to convert absolute path to relative: {}", file_path);
-                file_path.to_string()
-            });
+        let relative =
+            crate::utils::paths::to_relative_unix_style(&canonical, &current_workspace_root)
+                .unwrap_or_else(|_| {
+                    warn!("Failed to convert absolute path to relative: {}", file_path);
+                    file_path.to_string()
+                });
 
         (relative, canonical.to_string_lossy().to_string())
     } else {
         // Relative path input - need to normalize (handle ./ and ../)
         // Join with workspace root, canonicalize, then convert back to relative
-        let absolute = workspace
-            .root
+        let absolute = current_workspace_root
             .join(file_path)
             .canonicalize()
-            .unwrap_or_else(|_| workspace.root.join(file_path));
+            .unwrap_or_else(|_| current_workspace_root.join(file_path));
 
         // Convert canonicalized path back to relative Unix-style for database query
-        let relative_unix = crate::utils::paths::to_relative_unix_style(&absolute, &workspace.root)
-            .unwrap_or_else(|_| {
-                warn!("Failed to convert path to relative: {}", file_path);
-                file_path.replace('\\', "/")
-            });
+        let relative_unix =
+            crate::utils::paths::to_relative_unix_style(&absolute, &current_workspace_root)
+                .unwrap_or_else(|_| {
+                    warn!("Failed to convert path to relative: {}", file_path);
+                    file_path.replace('\\', "/")
+                });
 
         (relative_unix, absolute.to_string_lossy().to_string())
     };
@@ -75,7 +71,7 @@ pub async fn get_symbols_from_primary(
         "🔍 Path normalization: '{}' -> query='{}', absolute='{}'",
         file_path, query_path, absolute_path
     );
-    debug!("🔍 Workspace root: '{}'", workspace.root.display());
+    debug!("🔍 Workspace root: '{}'", current_workspace_root.display());
 
     // Check if file exists before querying database
     if !std::path::Path::new(&absolute_path).exists() {
@@ -104,7 +100,7 @@ pub async fn get_symbols_from_primary(
     // In structure mode, use lightweight query that skips expensive columns
     // (code_context, metadata, semantic_group, confidence, content_type).
     let symbols = {
-        let db_lock = match db.lock() {
+        let db_lock = match db_arc.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
                 warn!(
