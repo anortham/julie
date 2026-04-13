@@ -266,7 +266,11 @@ Scope: `workspace/commands/{index,registry/*}`, `workspace/indexing/*`, `editing
 
 **Verdict:** Zero 🔴. Five 🟡 (one user-visible UX regression, two future-race hazards), three 🟢, two ⚪ positives. Metrics attribution during swap is confirmed correct (C-9).
 
-#### Finding #27 🟡 `list` / `add` / `remove` hard-fail when no primary is bound — misleading error
+#### Finding #27 ✅ FIXED — `list` / `add` / `remove` no longer mislead in deferred sessions
+
+Implemented in Commit 2. `list` and `remove` switched from `require_primary_workspace_identity()` to `current_workspace_id()` (Option), with sensible fallbacks — `list` shows registered workspaces with no `CURRENT`/`PAIRED` labels, `remove` skips the pairing-cleanup step when no primary is bound. `add` keeps the hard fail but with a new error pointing at `manage_workspace(operation="open", path=...)` or client roots instead of the irrelevant `index` operation. Three regression tests in `global_targeting.rs` cover the three surfaces.
+
+**Original description:**
 
 **Where:** `registry/list_clean.rs:17`, `registry/add_remove.rs:21, 164`.
 
@@ -300,7 +304,11 @@ When `target.is_primary == true` and `target.status != "ready"`, we call `handle
 
 **Fix:** guard `handle_open_command` top with `is_primary_workspace_swap_in_progress()`, or funnel all "become-primary" transitions through the swap machinery.
 
-#### Finding #30 🟡 Editing tools silently ignore `workspace` arg (pre-existing footgun, easy close)
+#### Finding #30 ✅ FIXED — Editing tools reject unknown fields loudly
+
+Implemented in Commit 2. Added `#[serde(deny_unknown_fields)]` to both `EditFileTool` and `EditSymbolTool`. `edit_file(workspace="x")` now returns a serde error naming the offending field instead of silently ignoring it and editing primary. Two regression tests cover both tools (plus sanity tests that known fields still parse).
+
+**Original description:**
 
 **Where:** `editing/edit_file.rs:39-59`, `edit_symbol.rs:24-44`.
 

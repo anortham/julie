@@ -14,7 +14,10 @@ impl ManageWorkspaceTool {
 
         // Daemon mode: use DaemonDatabase
         if let Some(ref db) = handler.daemon_db {
-            let primary_workspace_id = handler.require_primary_workspace_identity()?;
+            // list is orthogonal to having a primary bound — show registered
+            // workspaces regardless of session state. CURRENT/PAIRED labels
+            // require a primary; without one we fall back to KNOWN for all.
+            let primary_workspace_id = handler.current_workspace_id();
 
             let all_workspaces = match db.list_workspaces() {
                 Ok(workspaces) => workspaces,
@@ -24,12 +27,16 @@ impl ManageWorkspaceTool {
                 }
             };
             let paired_ids: std::collections::HashSet<String> =
-                match db.list_references(&primary_workspace_id) {
-                    Ok(references) => references.into_iter().map(|ws| ws.workspace_id).collect(),
-                    Err(e) => {
-                        let message = format!("Failed to list workspace pairings: {}", e);
-                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                if let Some(ref primary_id) = primary_workspace_id {
+                    match db.list_references(primary_id) {
+                        Ok(references) => references.into_iter().map(|ws| ws.workspace_id).collect(),
+                        Err(e) => {
+                            let message = format!("Failed to list workspace pairings: {}", e);
+                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
+                        }
                     }
+                } else {
+                    std::collections::HashSet::new()
                 };
 
             if all_workspaces.is_empty() {
@@ -43,7 +50,7 @@ impl ManageWorkspaceTool {
                 let path_exists = std::path::Path::new(&ws.path).exists();
                 let status_str = if !path_exists { "MISSING" } else { &ws.status };
                 let mut labels = Vec::new();
-                if ws.workspace_id == primary_workspace_id {
+                if Some(ws.workspace_id.as_str()) == primary_workspace_id.as_deref() {
                     labels.push("CURRENT");
                 }
                 if paired_ids.contains(&ws.workspace_id) {

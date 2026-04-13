@@ -36,6 +36,7 @@ fn default_occurrence() -> String {
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EditFileTool {
     /// File path relative to workspace root
     pub file_path: String,

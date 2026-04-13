@@ -224,3 +224,38 @@ fn test_dmp_loop_forward_progress_match_near_tail() {
     let result = apply_edit(content, "xy", "AB", "first").unwrap();
     assert_eq!(result, "long prefix text then AB");
 }
+
+// Finding #30: editing tools have no `workspace` field but serde silently
+// accepts unknown fields by default, so `edit_file(..., workspace="x")`
+// silently ignores `workspace` and edits against primary. Tighten with
+// #[serde(deny_unknown_fields)] so the silent-ignore becomes a loud error.
+#[test]
+fn test_edit_file_rejects_unknown_workspace_field() {
+    let json = serde_json::json!({
+        "file_path": "src/foo.rs",
+        "old_text": "old",
+        "new_text": "new",
+        "workspace": "secondary-id",
+    });
+    let result: Result<crate::tools::editing::edit_file::EditFileTool, _> =
+        serde_json::from_value(json);
+    let err = result.expect_err("unknown `workspace` field should be rejected");
+    assert!(
+        err.to_string().contains("workspace"),
+        "error should mention the offending field name, got: {err}"
+    );
+}
+
+#[test]
+fn test_edit_file_accepts_known_fields() {
+    // Sanity: deny_unknown_fields must not reject known fields.
+    let json = serde_json::json!({
+        "file_path": "src/foo.rs",
+        "old_text": "old",
+        "new_text": "new",
+        "dry_run": true,
+        "occurrence": "first",
+    });
+    serde_json::from_value::<crate::tools::editing::edit_file::EditFileTool>(json)
+        .expect("known fields must still parse");
+}

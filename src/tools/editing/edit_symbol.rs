@@ -21,6 +21,7 @@ fn default_dry_run() -> bool {
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EditSymbolTool {
     /// Symbol name to edit (supports qualified names like `MyClass::method`)
     pub symbol: String,

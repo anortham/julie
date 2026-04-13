@@ -2287,3 +2287,231 @@ async fn test_manage_workspace_open_rebound_primary_still_attaches_pool() {
         "reopening an already-attached rebound primary must not increment session_count again"
     );
 }
+
+// Finding #27: list/remove should not hard-fail with the misleading "run
+// index" error when no primary is bound (e.g., a deferred Cwd session before
+// the client has advertised roots). add legitimately needs a primary, but
+// should at least say so clearly instead of pointing at the wrong fix.
+
+fn make_deferred_handler_no_primary(
+    indexes_dir: &std::path::Path,
+    daemon_db: Arc<DaemonDatabase>,
+    pool: Arc<WorkspacePool>,
+    startup_root: &std::path::Path,
+) -> impl std::future::Future<Output = JulieServerHandler> {
+    let _ = indexes_dir;
+    let startup_path = startup_root.canonicalize().unwrap();
+    let startup_id = generate_workspace_id(&startup_path.to_string_lossy()).unwrap();
+    async move {
+        let startup_ws = pool
+            .get_or_init(&startup_id, startup_path.clone())
+            .await
+            .expect("startup workspace should initialize");
+        let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
+            startup_ws,
+            crate::workspace::startup_hint::WorkspaceStartupHint {
+                path: startup_path,
+                source: Some(crate::workspace::startup_hint::WorkspaceStartupSource::Cwd),
+            },
+            Some(daemon_db),
+            Some(startup_id),
+            None,
+            None,
+            None,
+            None,
+            Some(pool),
+        )
+        .await
+        .expect("handler should initialize");
+        assert_eq!(
+            handler.current_workspace_id(),
+            None,
+            "deferred Cwd session should leave current_workspace_id unset"
+        );
+        handler
+    }
+}
+
+#[tokio::test]
+async fn test_manage_workspace_list_succeeds_in_deferred_session_without_primary() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir).unwrap();
+    let startup_root = temp_dir.path().join("startup");
+    fs::create_dir_all(&startup_root).unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.clone(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    // Pre-register two workspaces so list has something to show.
+    let registered_path = temp_dir.path().join("registered").canonicalize().ok();
+    let registered_id = registered_path
+        .as_ref()
+        .map(|p| generate_workspace_id(&p.to_string_lossy()).unwrap());
+    if let (Some(path), Some(id)) = (registered_path.as_ref(), registered_id.as_ref()) {
+        daemon_db
+            .upsert_workspace(id, &path.to_string_lossy(), "ready")
+            .unwrap();
+    } else {
+        // Use the startup root for the second workspace if `registered` isn't a real path.
+        let startup_path = startup_root.canonicalize().unwrap();
+        let startup_id = generate_workspace_id(&startup_path.to_string_lossy()).unwrap();
+        daemon_db
+            .upsert_workspace(&startup_id, &startup_path.to_string_lossy(), "ready")
+            .unwrap();
+    }
+
+    let handler = make_deferred_handler_no_primary(
+        &indexes_dir,
+        Arc::clone(&daemon_db),
+        Arc::clone(&pool),
+        &startup_root,
+    )
+    .await;
+
+    let result = ManageWorkspaceTool {
+        operation: "list".to_string(),
+        path: None,
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .expect("list should succeed in a deferred session without primary");
+
+    let text = extract_text_from_result(&result);
+    assert!(
+        !text.contains("Run manage_workspace(operation=\"index\")"),
+        "list should not direct the user to run index in a deferred session: {text}"
+    );
+    // Should either be an empty-list message or include workspace metadata —
+    // both are valid; what matters is that we don't short-circuit with the
+    // wrong error.
+    assert!(
+        text.contains("Registered Workspaces") || text.contains("No workspaces registered"),
+        "list should produce a real listing, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_remove_succeeds_in_deferred_session_without_primary() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir).unwrap();
+    let startup_root = temp_dir.path().join("startup");
+    let removable_root = temp_dir.path().join("removable");
+    fs::create_dir_all(&startup_root).unwrap();
+    fs::create_dir_all(&removable_root).unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.clone(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let removable_path = removable_root.canonicalize().unwrap();
+    let removable_id = generate_workspace_id(&removable_path.to_string_lossy()).unwrap();
+    daemon_db
+        .upsert_workspace(&removable_id, &removable_path.to_string_lossy(), "ready")
+        .unwrap();
+
+    let handler = make_deferred_handler_no_primary(
+        &indexes_dir,
+        Arc::clone(&daemon_db),
+        Arc::clone(&pool),
+        &startup_root,
+    )
+    .await;
+
+    let result = ManageWorkspaceTool {
+        operation: "remove".to_string(),
+        path: None,
+        force: Some(false),
+        name: None,
+        workspace_id: Some(removable_id.clone()),
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await
+    .expect("remove should succeed in a deferred session without primary");
+
+    let text = extract_text_from_result(&result);
+    assert!(
+        !text.contains("Run manage_workspace(operation=\"index\")"),
+        "remove should not direct the user to run index in a deferred session: {text}"
+    );
+    assert!(
+        text.contains("Workspace Removed Successfully"),
+        "remove should report success even without a bound primary, got: {text}"
+    );
+    assert!(
+        daemon_db
+            .get_workspace(&removable_id)
+            .unwrap()
+            .is_none(),
+        "removable workspace should be gone from the daemon database"
+    );
+}
+
+#[tokio::test]
+async fn test_manage_workspace_add_returns_actionable_error_without_primary() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir).unwrap();
+    let startup_root = temp_dir.path().join("startup");
+    let candidate_root = temp_dir.path().join("candidate");
+    fs::create_dir_all(&startup_root).unwrap();
+    fs::create_dir_all(&candidate_root).unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.clone(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let handler = make_deferred_handler_no_primary(
+        &indexes_dir,
+        Arc::clone(&daemon_db),
+        Arc::clone(&pool),
+        &startup_root,
+    )
+    .await;
+
+    let candidate_path_str = candidate_root.canonicalize().unwrap().to_string_lossy().to_string();
+    let result = ManageWorkspaceTool {
+        operation: "add".to_string(),
+        path: Some(candidate_path_str),
+        force: Some(false),
+        name: None,
+        workspace_id: None,
+        detailed: None,
+    }
+    .call_tool(&handler)
+    .await;
+
+    let err = result.expect_err("add should fail when no primary is bound");
+    let message = err.to_string();
+    assert!(
+        !message.contains("Run manage_workspace(operation=\"index\")"),
+        "add should not point at the index operation when the real fix is opening a primary: {message}"
+    );
+    assert!(
+        message.contains("primary"),
+        "add error should mention the missing primary: {message}"
+    );
+    assert!(
+        message.contains("open") || message.contains("roots"),
+        "add error should suggest opening a primary or relying on client roots: {message}"
+    );
+}

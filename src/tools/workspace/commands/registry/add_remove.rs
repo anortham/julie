@@ -18,7 +18,16 @@ impl ManageWorkspaceTool {
 
         // Daemon mode: use DaemonDatabase for registry operations
         if let Some(ref db) = handler.daemon_db {
-            let primary_workspace_id = handler.require_primary_workspace_identity()?;
+            // add legitimately needs a primary (references pair against it),
+            // but the generic "run index" message misdirects users in a
+            // deferred session where they have nothing to index yet.
+            let primary_workspace_id = handler.current_workspace_id().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Cannot add a reference workspace before a primary is bound. \
+                     Open a primary first via client roots or \
+                     manage_workspace(operation=\"open\", path=...)."
+                )
+            })?;
             let workspace_path = std::path::PathBuf::from(path);
             let path_str = workspace_path
                 .canonicalize()
@@ -161,7 +170,10 @@ impl ManageWorkspaceTool {
 
         // Daemon mode: use DaemonDatabase
         if let Some(ref db) = handler.daemon_db {
-            let primary_workspace_id = handler.require_primary_workspace_identity()?;
+            // remove only needs the primary id to clean up pairing metadata.
+            // Without a primary bound (deferred session), simply skip the
+            // pairing cleanup — the workspace removal itself doesn't require it.
+            let primary_workspace_id = handler.current_workspace_id();
 
             match db.get_workspace(workspace_id) {
                 Ok(Some(ws_row)) => {
@@ -189,8 +201,10 @@ impl ManageWorkspaceTool {
                     }
 
                     // Remove pairing metadata for the current workspace if present.
-                    if let Err(e) = db.remove_reference(&primary_workspace_id, workspace_id) {
-                        warn!("Failed to remove reference relationship: {}", e);
+                    if let Some(ref primary_id) = primary_workspace_id {
+                        if let Err(e) = db.remove_reference(primary_id, workspace_id) {
+                            warn!("Failed to remove reference relationship: {}", e);
+                        }
                     }
 
                     // Remove from daemon.db

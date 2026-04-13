@@ -156,6 +156,41 @@ fn test_balanced_edit_no_warning() {
     assert!(result.is_none(), "Balanced edit should produce no warning");
 }
 
+// Finding #30: editing tools have no `workspace` field but serde silently
+// accepts unknown fields by default, so `edit_symbol(..., workspace="x")`
+// silently ignores `workspace` and edits against primary. Tighten with
+// #[serde(deny_unknown_fields)] so the silent-ignore becomes a loud error.
+#[test]
+fn test_edit_symbol_rejects_unknown_workspace_field() {
+    let json = serde_json::json!({
+        "symbol": "foo",
+        "operation": "replace",
+        "content": "fn foo() {}",
+        "workspace": "secondary-id",
+    });
+    let result: Result<crate::tools::editing::edit_symbol::EditSymbolTool, _> =
+        serde_json::from_value(json);
+    let err = result.expect_err("unknown `workspace` field should be rejected");
+    assert!(
+        err.to_string().contains("workspace"),
+        "error should mention the offending field name, got: {err}"
+    );
+}
+
+#[test]
+fn test_edit_symbol_accepts_known_fields() {
+    // Sanity: deny_unknown_fields must not reject known fields.
+    let json = serde_json::json!({
+        "symbol": "foo",
+        "operation": "replace",
+        "content": "fn foo() {}",
+        "file_path": "src/foo.rs",
+        "dry_run": true,
+    });
+    serde_json::from_value::<crate::tools::editing::edit_symbol::EditSymbolTool>(json)
+        .expect("known fields must still parse");
+}
+
 #[cfg(test)]
 mod integration {
     use crate::handler::JulieServerHandler;
