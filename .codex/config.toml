@@ -1,0 +1,3 @@
+[mcp_servers.julie]
+command = "/Users/murphy/source/julie/target/release/julie-server"
+env = { JULIE_WORKSPACE = "/Users/murphy/source/julie" }
