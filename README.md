@@ -132,6 +132,18 @@ This is optional. All other Julie features work without it.
 
 ### Connect Your AI Tool
 
+**Client workspace-resolution support:**
+
+| Client | Sends MCP roots? | Needs `JULIE_WORKSPACE`? |
+|--------|------------------|--------------------------|
+| Claude Code | Yes (on first request) | No (uses cwd / roots) |
+| VS Code + GitHub Copilot | Yes | No |
+| Codex CLI | No — uses cwd | Only if cwd is wrong |
+| Codex Desktop | **No** | **Yes — required** |
+| Cursor / Windsurf / others | Varies | Safe default: set it |
+
+Julie prefers client roots when the startup hint is weak (`cwd`). Explicit CLI `--workspace` or `JULIE_WORKSPACE` always wins regardless of client support.
+
 **Claude Code** (user-level, available in all projects):
 
 ```bash
@@ -164,18 +176,16 @@ For project-level only, use `--scope project` or omit the scope flag. When using
   "servers": {
     "julie": {
       "type": "stdio",
-      "command": "/path/to/julie/target/release/julie-server",
-      "env": {
-        "JULIE_WORKSPACE": "${workspaceFolder}"
-      }
+      "command": "/path/to/julie/target/release/julie-server"
     }
   }
 }
 ```
 
+> VS Code's MCP client sends workspace folders as [MCP roots](https://modelcontextprotocol.io/specification/server/utilities/roots), so Julie resolves the project root automatically on the first tool call. No `JULIE_WORKSPACE` env is needed — set one only to override VS Code's open folder.
+>
 > **Windows?** Use backslashes in the command path: `"command": "C:\\path\\to\\julie-server.exe"`
 >
-> `${workspaceFolder}` is a VS Code variable that resolves to the root of your open project.
 > All `env` values are optional — see the [env options table](#available-env-options) below for defaults.
 
 **Codex CLI** (`~/.codex/config.toml` or `.codex/config.toml`):
@@ -196,10 +206,9 @@ command = "/path/to/julie-server"
 env = { JULIE_WORKSPACE = "/absolute/path/to/your/project" }
 ```
 
-> Put this file at `.codex/config.toml` in the project root if you want a project-scoped Codex Desktop setup.
-> Codex loads project config only for trusted projects, and project config overrides `~/.codex/config.toml`.
-> Codex Desktop may start Julie with an unreliable working directory, so set `JULIE_WORKSPACE` explicitly here.
-> Use an absolute path for `JULIE_WORKSPACE`. Codex does not document `${workspaceFolder}`-style interpolation for this config.
+> **Codex Desktop does not implement MCP roots** (as of this writing), so Julie cannot resolve the project from client-side workspace folders. You must set `JULIE_WORKSPACE` explicitly or Julie will fall back to whatever `cwd` the Desktop app happens to launch the server with — often `/` or the app bundle. Use an absolute path; `${workspaceFolder}`-style interpolation is not documented for Codex.
+>
+> Put this file at `.codex/config.toml` in the project root if you want a project-scoped Codex Desktop setup. Codex loads project config only for trusted projects, and project config overrides `~/.codex/config.toml`.
 
 **Cursor / Windsurf / Other MCP Clients:**
 
@@ -223,7 +232,7 @@ All `env` values are optional — see the table below for defaults.
 
 | Variable | Values | Default | Notes |
 |----------|--------|---------|-------|
-| `JULIE_WORKSPACE` | Absolute path to project root | Current working directory | Tells Julie which project to index. Set explicitly if cwd is unreliable. |
+| `JULIE_WORKSPACE` | Absolute path to project root | Client roots (if supported), else `cwd` | Overrides workspace detection. Required for clients that don't send MCP roots and launch Julie with an unreliable `cwd` (e.g., Codex Desktop). |
 | `JULIE_EMBEDDING_PROVIDER` | `auto`, `sidecar` | `auto` | Selects embedding backend. `auto` resolves to `sidecar` on all platforms. |
 | `JULIE_EMBEDDING_SIDECAR_MODEL_ID` | Any HuggingFace model ID | `nomic-ai/CodeRankEmbed` | Sidecar model. CodeRankEmbed (768d) is code-optimized. |
 | `JULIE_EMBEDDING_STRICT_ACCEL` | `1` | unset | Disable embeddings entirely when no GPU is available. |
