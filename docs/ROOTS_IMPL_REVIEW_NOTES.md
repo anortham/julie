@@ -502,6 +502,59 @@ Claude Code does not respond to a `roots/list` request until it has finished pro
 
 **Discovered during:** live-test of Claude Code integration after all prior fixes landed. Misdiagnosed by lead for ~30 minutes before user redirected to `/codex-cli`.
 
+### Finding #40 🔴 FIXED — Daemon-mode primary init bypassed the WorkspacePool on deferred/non-force path
+
+Shipped and yanked as part of the initial v6.8.0 tag; caught post-push when a user's cross-repo session reported `"Current primary workspace 'miller_816288f4' is not attached in the daemon workspace pool"` on every primary-scoped tool call. The tag was yanked before any consumer picked up the GitHub release. Fix landed as the retag of v6.8.0.
+
+**Where:** `src/handler.rs:1310` (the `use_pooled_rebind` gate in `initialize_workspace_with_force`).
+
+**Symptom:** Finding #38's pool-membership guard fires with 100% reliability for sessions that land on the deferred-cwd path and have `force=false` on the first primary init. The guard is correct; the bug is that the primary workspace was genuinely not in the pool.
+
+**Root cause:** The old gate was too narrow:
+
+```rust
+let use_pooled_rebind = self.workspace_pool.is_some()
+    && self.daemon_db.is_some()
+    && target_workspace_id.is_some()
+    && (loaded_workspace_root_changed || force);
+```
+
+A deferred daemon session starts with `self.workspace == None`, so `loaded_workspace_root_changed == false`. The first primary init (what `run_auto_indexing` does on the first request) runs with `force == false`, so the gate evaluated to `false` and the code fell through to `JulieWorkspace::detect_and_load` / `JulieWorkspace::initialize` — the project-local path at `{project}/.julie/indexes/`. The `WorkspacePool` never got a corresponding entry because those constructors don't route through it.
+
+Then `publish_loaded_workspace_swap(workspace, id, self.workspace_pool.is_some())` marked the workspace as session-attached regardless of which path the init actually took. That marker poisoned all downstream attach checks (`attach_daemon_primary_binding_if_needed`, `activate_workspace_with_root`) into early-returning without inserting into the pool. Every primary-scoped tool call from that session then hit Finding #38's guard.
+
+**Smoking gun in the daemon log from the broken session:**
+
+```
+2026-04-13T20:57:27 Opening workspace for current session workspace_id=miller_816288f4 path=/Users/murphy/source/miller
+2026-04-13T20:57:27 Initializing SQLite database at: /Users/murphy/source/miller/.julie/indexes/miller_816288f4/db/symbols.db
+```
+
+That `/Users/murphy/source/miller/.julie/indexes/...` path is project-local; the pool uses `~/.julie/indexes/`. Two DBs, one workspace ID.
+
+**Fix:**
+
+1. Drop the `(loaded_workspace_root_changed || force)` clause so daemon-mode init ALWAYS routes through `acquire_pooled_workspace_for_rebind` when pool + daemon_db + workspace_id are all available.
+2. Change `publish_loaded_workspace_swap(..., self.workspace_pool.is_some())` to `publish_loaded_workspace_swap(..., use_pooled_rebind)`. The `mark_attached` argument must encode "this workspace came from the pool", not "a pool exists"; passing the broader condition silently lies when the narrow gate wasn't taken.
+
+**Regression tests:** two new tests in `src/tests/daemon/handler.rs`.
+
+- `test_deferred_primary_init_without_force_populates_pool` — fresh deferred Cwd session, asserts pool is empty before init, calls `initialize_workspace_with_force(path, false)`, asserts pool has the entry AND `get_database_for_workspace(id)` succeeds (exercises the Finding #38 guard path end-to-end).
+- `test_same_root_reinit_reuses_pool_entry_without_double_attach` — two consecutive `initialize_workspace_with_force(path, false)` calls on the same root, asserts `daemon_db.session_count` stays at 1 across both calls. Proves the fast-path (`pool.get`) is taken on the second call instead of a redundant `pool.get_or_init` that would double-attach.
+
+**Diagnostic lessons:**
+
+- The lead's first attempt at reproduction (inside this live session) did NOT reproduce the bug because the session's primary binding was already established at startup. Reproducing the deferred-cwd-first-tool-call scenario required reading the daemon log from the actually-broken session to find the project-local path.
+- First-pass diagnosis was "the bug is in `publish_loaded_workspace_swap` marking attached without pool insert"; Codex's review correctly sharpened this to "the real bug is that the wrong init path was taken in the first place — patching the mark is a band-aid over split-brain state (wrong `JulieWorkspace` in `self.workspace`, watcher on wrong directory)". Fix went at the gate instead.
+- Should have had a daemon-mode-only test that exercises the deferred first-init path end-to-end. Review gap; this test now exists.
+
+**Audit of `mark_workspace_attached` call sites** (Codex's D recommendation):
+
+- `handler.rs:578` in `attach_daemon_primary_binding_if_needed` — pool-insert precedes mark. Safe.
+- `handler.rs:927` in `new_with_shared_workspace_startup_hint` constructor — caller at `ipc_session.rs:334` does `pool.get_or_init` before constructor runs. Safe.
+- `handler.rs:1167` in `publish_loaded_workspace_swap` — now gated on `use_pooled_rebind`, so only marked when pool was actually used. Safe post-fix.
+- `handler.rs:1961` in `activate_workspace_with_root` — pool.get_or_init precedes mark. Safe.
+
 ---
 
 ## Pass 4 — Consolidated Punch List

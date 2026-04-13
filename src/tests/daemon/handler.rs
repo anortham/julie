@@ -349,3 +349,196 @@ async fn test_active_workspace_set_tracks_secondary_activation() {
     assert_eq!(active_workspaces.len(), 2);
     assert!(handler.is_workspace_active("secondary_ws").await);
 }
+
+/// Regression guard for the v6.8.0-yank bug: a deferred daemon session that
+/// performs a non-force primary initialization (what `run_auto_indexing` does
+/// on the first request) must land its primary workspace in the shared
+/// `WorkspacePool`, not in the project-local `.julie/indexes/` directory.
+///
+/// Prior to the fix, `initialize_workspace_with_force(..., false)` in a
+/// deferred session took the `JulieWorkspace::initialize` / `detect_and_load`
+/// branch because `use_pooled_rebind` required either a loaded-root change or
+/// a force flag. A fresh deferred session has `self.workspace == None`, so
+/// `loaded_workspace_root_changed` was false; with `force == false` the gate
+/// bypassed the pool entirely. Subsequent primary-scoped tool calls then hit
+/// Finding #38's pool-membership guard and returned
+/// "Current primary workspace ... is not attached in the daemon workspace
+/// pool" to the user.
+#[tokio::test]
+async fn test_deferred_primary_init_without_force_populates_pool() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::embedding_service::EmbeddingService;
+    use std::sync::atomic::AtomicBool;
+
+    let indexes_dir = temp_indexes_dir();
+    let workspace_root = temp_workspace_root();
+    let canonical_root = workspace_root.path().canonicalize().expect("canonicalize root");
+
+    // Compute the workspace id the way the handler will when it normalizes
+    // the target path inside `initialize_workspace_with_force`.
+    let workspace_id = crate::workspace::registry::generate_workspace_id(
+        &canonical_root.to_string_lossy(),
+    )
+    .expect("generate_workspace_id");
+
+    let daemon_db_path = indexes_dir.path().join("daemon.db");
+    let daemon_db = Arc::new(
+        DaemonDatabase::open(&daemon_db_path).expect("open daemon.db"),
+    );
+    let embedding_service = Arc::new(EmbeddingService::initializing());
+    embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.path().to_path_buf(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        Some(Arc::clone(&embedding_service)),
+    ));
+    let restart_pending = Arc::new(AtomicBool::new(false));
+
+    let handler = JulieServerHandler::new_deferred_daemon_startup_hint(
+        WorkspaceStartupHint {
+            path: canonical_root.clone(),
+            source: Some(WorkspaceStartupSource::Cwd),
+        },
+        Some(Arc::clone(&daemon_db)),
+        Some(Arc::clone(&embedding_service)),
+        Some(Arc::clone(&restart_pending)),
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await
+    .expect("deferred handler construction");
+
+    // Sanity: deferred session starts with no loaded workspace and the pool empty.
+    assert!(
+        handler.get_workspace().await.expect("read workspace").is_none(),
+        "deferred session should start with no loaded workspace"
+    );
+    assert!(
+        pool.get(&workspace_id).await.is_none(),
+        "pool should start empty for this workspace"
+    );
+
+    // Simulate what `run_auto_indexing` does on the first request in a
+    // deferred session: init the primary at the startup root without force.
+    handler
+        .initialize_workspace_with_force(Some(canonical_root.to_string_lossy().to_string()), false)
+        .await
+        .expect("initialize_workspace_with_force should succeed");
+
+    // The bug: the init routed through the project-local JulieWorkspace::initialize
+    // path instead of the WorkspacePool, leaving the pool empty while session
+    // state ended up marking the workspace as attached. This is the exact
+    // precondition that made Finding #38's guard trip on the next primary call.
+    assert!(
+        pool.get(&workspace_id).await.is_some(),
+        "pool must contain the primary workspace after a non-force deferred init in daemon mode"
+    );
+
+    // Exercise the user-facing guard that was firing: get_database_for_workspace
+    // walks through ensure_primary_pool_membership_for and must succeed for the
+    // current primary now that the pool has the entry.
+    handler
+        .set_current_primary_binding(workspace_id.clone(), canonical_root.clone());
+    handler
+        .get_database_for_workspace(&workspace_id)
+        .await
+        .expect("primary DB acquisition must succeed after pool-routed init");
+}
+
+/// Same bug class, different angle: a daemon session with an already-pooled
+/// primary that calls `initialize_workspace_with_force(same_root, false)` must
+/// reuse the existing pool entry via `pool.get`, not re-init via `get_or_init`.
+/// This guards against two regressions:
+///   (a) double-incrementing the daemon.db `session_count` for one session
+///   (b) drifting the loaded workspace from its pooled arcs on a no-op reinit
+///
+/// Before the widened gate, same-root non-force hit the `detect_and_load`
+/// branch which is a different kind of wrong; after the fix it routes through
+/// `acquire_pooled_workspace_for_rebind`, and the session-attached fast path
+/// there takes `pool.get` (no count bump).
+#[tokio::test]
+async fn test_same_root_reinit_reuses_pool_entry_without_double_attach() {
+    use crate::daemon::database::DaemonDatabase;
+    use crate::daemon::embedding_service::EmbeddingService;
+    use std::sync::atomic::AtomicBool;
+
+    let indexes_dir = temp_indexes_dir();
+    let workspace_root = temp_workspace_root();
+    let canonical_root = workspace_root.path().canonicalize().expect("canonicalize root");
+
+    let workspace_id = crate::workspace::registry::generate_workspace_id(
+        &canonical_root.to_string_lossy(),
+    )
+    .expect("generate_workspace_id");
+
+    let daemon_db_path = indexes_dir.path().join("daemon.db");
+    let daemon_db = Arc::new(
+        DaemonDatabase::open(&daemon_db_path).expect("open daemon.db"),
+    );
+    let embedding_service = Arc::new(EmbeddingService::initializing());
+    embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir.path().to_path_buf(),
+        Some(Arc::clone(&daemon_db)),
+        None,
+        Some(Arc::clone(&embedding_service)),
+    ));
+    let restart_pending = Arc::new(AtomicBool::new(false));
+
+    let handler = JulieServerHandler::new_deferred_daemon_startup_hint(
+        WorkspaceStartupHint {
+            path: canonical_root.clone(),
+            source: Some(WorkspaceStartupSource::Cwd),
+        },
+        Some(Arc::clone(&daemon_db)),
+        Some(Arc::clone(&embedding_service)),
+        Some(Arc::clone(&restart_pending)),
+        None,
+        None,
+        Some(Arc::clone(&pool)),
+    )
+    .await
+    .expect("deferred handler construction");
+
+    // First init: fresh session takes pool.get_or_init, bumping session_count to 1.
+    handler
+        .initialize_workspace_with_force(Some(canonical_root.to_string_lossy().to_string()), false)
+        .await
+        .expect("first init");
+
+    let count_after_first = daemon_db
+        .get_workspace(&workspace_id)
+        .expect("read workspace row")
+        .expect("workspace registered after first init")
+        .session_count;
+    assert_eq!(
+        count_after_first, 1,
+        "first init must register exactly one session attach"
+    );
+
+    // Second init for the same root, still no force: session state now says
+    // "attached", so `acquire_pooled_workspace_for_rebind` should take the
+    // `pool.get` branch and MUST NOT increment session_count again.
+    handler
+        .initialize_workspace_with_force(Some(canonical_root.to_string_lossy().to_string()), false)
+        .await
+        .expect("second init");
+
+    let count_after_second = daemon_db
+        .get_workspace(&workspace_id)
+        .expect("read workspace row")
+        .expect("workspace still registered")
+        .session_count;
+    assert_eq!(
+        count_after_second, 1,
+        "same-root non-force reinit must not double-attach the session"
+    );
+
+    // And the pool entry is still there and reusable.
+    assert!(
+        pool.get(&workspace_id).await.is_some(),
+        "pool entry must survive a same-root non-force reinit"
+    );
+}

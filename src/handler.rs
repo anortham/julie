@@ -1307,10 +1307,19 @@ impl JulieServerHandler {
         let target_workspace_id =
             crate::workspace::registry::generate_workspace_id(&target_canonical.to_string_lossy())
                 .ok();
+        // In daemon mode, the primary workspace MUST be sourced from the
+        // shared `WorkspacePool` so its index ends up under the daemon-shared
+        // `~/.julie/indexes/` path and stays in the pool's membership set.
+        // The old gate also required `(loaded_workspace_root_changed || force)`,
+        // which meant a deferred session's first non-force primary init (what
+        // `run_auto_indexing` does on the first request) fell through to the
+        // project-local `JulieWorkspace::initialize` / `detect_and_load`
+        // branch, leaving the pool empty while session state later marked the
+        // workspace as attached. That pre-staged Finding #38's guard to trip
+        // on every subsequent primary-scoped tool call.
         let use_pooled_rebind = self.workspace_pool.is_some()
             && self.daemon_db.is_some()
-            && target_workspace_id.is_some()
-            && (loaded_workspace_root_changed || force);
+            && target_workspace_id.is_some();
         let rollback = if loaded_workspace_root_changed {
             Some(PrimarySwapRollback::capture(self).await)
         } else {
@@ -1455,7 +1464,13 @@ impl JulieServerHandler {
         let workspace_id =
             crate::workspace::registry::generate_workspace_id(&workspace.root.to_string_lossy())
                 .ok();
-        self.publish_loaded_workspace_swap(workspace, workspace_id, self.workspace_pool.is_some())
+        // `mark_attached` must reflect "this workspace came from the pool",
+        // not "a pool exists". The old `self.workspace_pool.is_some()` form
+        // silently lied when `use_pooled_rebind` was false — the workspace
+        // went through `JulieWorkspace::initialize` (project-local path) but
+        // session state still marked the id as attached, wedging later
+        // primary-scoped calls with Finding #38's guard.
+        self.publish_loaded_workspace_swap(workspace, workspace_id, use_pooled_rebind)
             .await;
 
         info!("Workspace initialization complete");

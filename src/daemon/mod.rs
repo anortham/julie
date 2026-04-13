@@ -39,7 +39,7 @@ use self::database::DaemonDatabase;
 use self::embedding_service::EmbeddingService;
 use self::ipc::IpcListener;
 pub(crate) use self::ipc_session::{
-    PrefixedIpcStream, handle_ipc_session, read_ipc_headers,
+    PrefixedIpcStream, handle_ipc_session, parse_ipc_headers_block, read_ipc_headers,
 };
 use self::pid::PidFile;
 use self::session::SessionTracker;
