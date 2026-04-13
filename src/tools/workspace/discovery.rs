@@ -5,7 +5,6 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
@@ -146,44 +145,15 @@ impl ManageWorkspaceTool {
         Ok(true)
     }
 
-    /// Heuristic to determine if a file without extension is likely a text file
+    /// Heuristic: does this file look like a text file by content?
+    ///
+    /// Thin wrapper around the shared `crate::utils::file_utils::is_likely_text_file`
+    /// so the indexer and the startup freshness scan use identical logic for
+    /// extensionless files. Errors from the underlying probe are intentionally
+    /// swallowed into `Ok(false)` here to preserve the previous `Result`-based
+    /// signature without changing behavior.
     pub(crate) fn is_likely_text_file(&self, file_path: &Path) -> Result<bool> {
-        // Read first 512 bytes to check for binary content
-        let mut file = match fs::File::open(file_path) {
-            Ok(f) => f,
-            Err(e) => {
-                debug!("⏭️  Skipping inaccessible file {:?}: {}", file_path, e);
-                return Ok(false);
-            }
-        };
-
-        let mut buffer = [0; 512];
-        let bytes_read = match file.read(&mut buffer) {
-            Ok(n) => n,
-            Err(e) => {
-                debug!("⏭️  Skipping unreadable file {:?}: {}", file_path, e);
-                return Ok(false);
-            }
-        };
-
-        if bytes_read == 0 {
-            return Ok(false); // Empty file
-        }
-
-        // Check for null bytes (common in binary files)
-        let has_null_bytes = buffer[..bytes_read].contains(&0);
-        if has_null_bytes {
-            return Ok(false);
-        }
-
-        // Check if most bytes are printable ASCII/UTF-8
-        let printable_count = buffer[..bytes_read]
-            .iter()
-            .filter(|&&b| (32..=126).contains(&b) || b == 9 || b == 10 || b == 13 || b >= 128)
-            .count();
-
-        let text_ratio = printable_count as f64 / bytes_read as f64;
-        Ok(text_ratio > 0.8) // At least 80% printable characters
+        Ok(crate::utils::file_utils::is_likely_text_file(file_path))
     }
 
     /// Check if a file is minified (generated code we should skip)

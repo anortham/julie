@@ -28,4 +28,67 @@ mod tests {
         write_daemon_state(&state_path, "stopping");
         assert_eq!(std::fs::read_to_string(&state_path).unwrap(), "stopping");
     }
+
+    /// Finding #1 regression: when the daemon rejects a version-mismatched
+    /// session while other sessions are active, daemon_state must transition
+    /// to "stopping" on the first rejection so the adapter's
+    /// `ensure_daemon_ready` path waits for PID exit instead of burning
+    /// its short retry budget against a daemon still advertising "ready".
+    #[test]
+    fn test_flag_restart_pending_after_version_reject_writes_stopping_on_first_call() {
+        use crate::daemon::flag_restart_pending_after_version_reject;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let state_path = dir.path().join("daemon.state");
+        // Pre-existing state: "ready" (as set by a running daemon).
+        write_daemon_state(&state_path, "ready");
+
+        let restart_pending = AtomicBool::new(false);
+        let is_first = flag_restart_pending_after_version_reject(&restart_pending, &state_path);
+
+        assert!(is_first, "first rejection must report as first-time");
+        assert!(
+            restart_pending.load(Ordering::Relaxed),
+            "restart_pending must be set"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&state_path).unwrap(),
+            "stopping",
+            "daemon_state must transition to 'stopping' so adapters wait for PID exit"
+        );
+    }
+
+    #[test]
+    fn test_flag_restart_pending_after_version_reject_idempotent_on_subsequent_calls() {
+        use crate::daemon::flag_restart_pending_after_version_reject;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let state_path = dir.path().join("daemon.state");
+        write_daemon_state(&state_path, "ready");
+
+        let restart_pending = AtomicBool::new(false);
+        let _ = flag_restart_pending_after_version_reject(&restart_pending, &state_path);
+
+        // Simulate a third-party writer overwriting the state after we set it.
+        // This mirrors what happens if the shutdown path later writes "stopping"
+        // again — the second call must not corrupt state back to an earlier
+        // value. Write a DIFFERENT value here to prove the second call is a
+        // no-op, not an overwrite.
+        write_daemon_state(&state_path, "custom-marker");
+        let is_first_again =
+            flag_restart_pending_after_version_reject(&restart_pending, &state_path);
+
+        assert!(
+            !is_first_again,
+            "subsequent rejection must NOT report as first-time"
+        );
+        assert!(restart_pending.load(Ordering::Relaxed));
+        assert_eq!(
+            std::fs::read_to_string(&state_path).unwrap(),
+            "custom-marker",
+            "subsequent rejections must not re-write daemon_state"
+        );
+    }
 }

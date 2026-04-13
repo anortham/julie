@@ -59,6 +59,53 @@ async fn test_fresh_index_no_reindex_needed() -> Result<()> {
     Ok(())
 }
 
+/// Finding #3 regression: an indexed workspace containing extensionless text
+/// files (Dockerfile, Makefile, etc.) must not flag phantom "deleted file"
+/// signals on reconnection. Before the fix, the indexer accepted those files
+/// via `is_likely_text_file` but `scan_workspace_files` rejected them (its
+/// `is_code_file` filter requires a matching extension), so every freshness
+/// check reported extensionless files as "indexed but missing" and forced an
+/// unnecessary re-index on session reconnect.
+#[tokio::test]
+async fn test_fresh_index_with_extensionless_text_files_needs_no_reindex() -> Result<()> {
+    use std::fs::File;
+    use std::time::{Duration, SystemTime};
+
+    unsafe {
+        std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
+    }
+
+    let temp_dir = TempDir::new()?;
+    let workspace_path = temp_dir.path();
+
+    // A regular code file and two extensionless text files the indexer accepts.
+    let rust_file = workspace_path.join("main.rs");
+    fs::write(&rust_file, "fn main() {}\n")?;
+
+    let dockerfile = workspace_path.join("Dockerfile");
+    fs::write(&dockerfile, "FROM alpine:latest\nRUN echo hello\n")?;
+
+    let makefile = workspace_path.join("Makefile");
+    fs::write(&makefile, ".PHONY: all\nall:\n\techo hello\n")?;
+
+    let handler = create_test_handler(workspace_path).await?;
+    index_workspace(&handler, workspace_path).await?;
+
+    // Backdate every file so `db_mtime > max(file_mtime)` regardless of FS clock resolution.
+    let backdated = SystemTime::now() - Duration::from_secs(10);
+    for path in [&rust_file, &dockerfile, &makefile] {
+        File::options().write(true).open(path)?.set_modified(backdated)?;
+    }
+
+    let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;
+    assert!(
+        !needs_indexing,
+        "Fresh index with Dockerfile + Makefile must not trigger re-indexing (scan/index asymmetry)"
+    );
+
+    Ok(())
+}
+
 /// Test 2: Stale index - file modified after last index
 /// Given: File is modified AFTER database was last updated
 /// When: check_if_indexing_needed() is called

@@ -25,6 +25,40 @@ pub mod file_utils {
         Ok(fs::read_to_string(path)?)
     }
 
+    /// Heuristic: does this file look like a text file by content?
+    ///
+    /// Reads the first 512 bytes. Rejects files with null bytes or fewer than
+    /// 80% printable ASCII/UTF-8 bytes. Returns false for unreadable or empty
+    /// files. Shared between workspace discovery (deciding what to index) and
+    /// the startup freshness scan (deciding what is still present on disk), so
+    /// both sides agree on whether an extensionless file like `Dockerfile` or
+    /// `Makefile` belongs in the tracked set. See Finding #3 in
+    /// `docs/ROOTS_IMPL_REVIEW_NOTES.md`.
+    pub fn is_likely_text_file(file_path: &Path) -> bool {
+        use std::io::Read;
+
+        let mut file = match fs::File::open(file_path) {
+            Ok(f) => f,
+            Err(_) => return false,
+        };
+        let mut buffer = [0u8; 512];
+        let bytes_read = match file.read(&mut buffer) {
+            Ok(n) => n,
+            Err(_) => return false,
+        };
+        if bytes_read == 0 {
+            return false;
+        }
+        if buffer[..bytes_read].contains(&0) {
+            return false;
+        }
+        let printable = buffer[..bytes_read]
+            .iter()
+            .filter(|&&b| (32..=126).contains(&b) || b == 9 || b == 10 || b == 13 || b >= 128)
+            .count();
+        (printable as f64 / bytes_read as f64) > 0.8
+    }
+
     /// Secure path resolution that prevents directory traversal attacks
     ///
     /// This function resolves a file path relative to a workspace root and ensures

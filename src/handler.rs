@@ -727,7 +727,12 @@ impl JulieServerHandler {
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default();
         match operation {
-            "list" | "add" | "remove" | "health" => true,
+            // `add` is intentionally excluded: it needs a primary to pair
+            // against, but we refuse to silently bind the startup-hint/CWD as
+            // primary on the user's behalf. The tool body hard-fails with an
+            // actionable message that points at `open` or client roots.
+            // See Finding #2 in docs/ROOTS_IMPL_REVIEW_NOTES.md.
+            "list" | "remove" | "health" => true,
             "stats" => arguments
                 .get("workspace_id")
                 .and_then(serde_json::Value::as_str)

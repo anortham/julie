@@ -111,6 +111,25 @@ fn binary_mtime() -> Option<SystemTime> {
 /// Write the daemon lifecycle state to the state file.
 /// Best-effort: logs a warning if the write fails but does not propagate the error.
 /// The state file is advisory; failure to write should not crash the daemon.
+/// Record the restart-pending signal from a version-mismatch rejection and
+/// transition `daemon_state` to "stopping" on the first rejection so adapters
+/// can wait for PID exit instead of burning their retry budget.
+///
+/// Returns `true` if this is the first rejection in the current daemon run
+/// (the caller uses this to decide whether to log the verbose first-time
+/// message vs the quieter follow-up).
+pub(crate) fn flag_restart_pending_after_version_reject(
+    restart_pending: &AtomicBool,
+    daemon_state_path: &std::path::Path,
+) -> bool {
+    let first = !restart_pending.load(Ordering::Relaxed);
+    restart_pending.store(true, Ordering::Relaxed);
+    if first {
+        write_daemon_state(daemon_state_path, "stopping");
+    }
+    first
+}
+
 pub(crate) fn write_daemon_state(path: &std::path::Path, state: &str) {
     if let Err(e) = std::fs::write(path, state) {
         warn!("Failed to write daemon state '{}': {}", state, e);
@@ -606,8 +625,9 @@ pub async fn run_daemon(paths: DaemonPaths, port: u16, no_dashboard: bool) -> Re
     }
 
     // Accept loop with graceful shutdown
+    let daemon_state_path = paths.daemon_state();
     let result = tokio::select! {
-        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify, dashboard_tx, watcher_pool_for_handlers) => res,
+        res = accept_loop(&listener, &pool, &sessions, &daemon_db, &embedding_service, startup_binary_mtime, &restart_pending, &restart_notify, dashboard_tx, watcher_pool_for_handlers, &daemon_state_path) => res,
         res = shutdown_signal() => {
             if let Err(e) = res {
                 warn!("Signal handler setup failed: {}", e);
@@ -687,6 +707,7 @@ async fn accept_loop(
     restart_notify: &Arc<Notify>,
     dashboard_tx: broadcast::Sender<DashboardEvent>,
     watcher_pool: Arc<WatcherPool>,
+    daemon_state_path: &std::path::Path,
 ) -> Result<()> {
     loop {
         let stream = match listener.accept().await {
@@ -789,13 +810,22 @@ async fn accept_loop(
                 return Ok(());
             }
             crate::daemon::ipc_session::VersionGateOutcome::RejectAndFlagForRestart => {
-                // Reject this new session cleanly. Closing the stream triggers
-                // the adapter's ImmediateDaemonDisconnect retry (see
-                // `adapter::forward_streams_inner`) once existing sessions
-                // drain and the daemon restarts. Previously fell through and
-                // served the mismatched session — see Finding #1 in
-                // ROOTS_IMPL_REVIEW_NOTES.md.
-                if !restart_pending.load(Ordering::Relaxed) {
+                // Reject this new session cleanly. On the FIRST rejection we
+                // also flip daemon_state to "stopping" (via
+                // `flag_restart_pending_after_version_reject`) so the
+                // adapter's `ensure_daemon_ready` path waits for this daemon
+                // to exit via `wait_for_pid_exit` (up to 60s) and respawns a
+                // fresh daemon, instead of blindly burning its 3-retry budget
+                // against a daemon still advertising "ready". Without the
+                // state transition, new adapters fail within ~4s while any
+                // old session is still alive — exactly the upgrade window
+                // this fix is supposed to cover. See Finding #1 in
+                // ROOTS_IMPL_REVIEW_NOTES.md and Codex's follow-up review.
+                let first_rejection = flag_restart_pending_after_version_reject(
+                    &restart_pending,
+                    daemon_state_path,
+                );
+                if first_rejection {
                     warn!(
                         adapter_version = headers.version.as_deref().unwrap_or("<none>"),
                         daemon_version,
@@ -809,7 +839,6 @@ async fn accept_loop(
                         "Rejecting adapter session while daemon waits to restart."
                     );
                 }
-                restart_pending.store(true, Ordering::Relaxed);
                 drop(stream);
                 continue;
             }

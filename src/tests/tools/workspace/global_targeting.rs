@@ -2642,3 +2642,128 @@ async fn test_manage_workspace_refresh_refuses_primary_mutation_while_swap_in_pr
         "error should name the in-flight swap and suggest retry: {message}"
     );
 }
+
+/// Finding #2 regression: on the real RMCP `ServerHandler::call_tool` path,
+/// `manage_workspace(add)` in a deferred Cwd session without client-provided
+/// roots must NOT silently pair the new reference against the CWD fallback.
+///
+/// Before this fix, `add` was classified as primary-targeting by
+/// `manage_workspace_request_targets_primary`, so the request-time preflight
+/// bound the startup-hint workspace as primary before the tool body ran —
+/// which silently paired the reference with CWD and bypassed the
+/// actionable "open a primary first" error that exists in `handle_add_command`.
+#[tokio::test]
+async fn test_manage_workspace_add_in_deferred_cwd_session_via_server_handler_rejects_without_primary_binding()
+ {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let indexes_dir = temp_dir.path().join("indexes");
+    fs::create_dir_all(&indexes_dir).unwrap();
+
+    let startup_root = temp_dir.path().join("startup-cwd");
+    fs::create_dir_all(startup_root.join("src")).unwrap();
+    fs::write(
+        startup_root.join("src/lib.rs"),
+        "pub fn cwd_marker() {}\n",
+    )
+    .unwrap();
+
+    let candidate_root = temp_dir.path().join("reference-candidate");
+    fs::create_dir_all(candidate_root.join("src")).unwrap();
+    fs::write(
+        candidate_root.join("src/lib.rs"),
+        "pub fn candidate_marker() {}\n",
+    )
+    .unwrap();
+
+    let daemon_db = Arc::new(DaemonDatabase::open(&temp_dir.path().join("daemon.db")).unwrap());
+    let pool = Arc::new(WorkspacePool::new(
+        indexes_dir,
+        Some(Arc::clone(&daemon_db)),
+        None,
+        None,
+    ));
+
+    let startup_path = startup_root.canonicalize().unwrap();
+    let startup_path_str = startup_path.to_string_lossy().to_string();
+    let startup_id = generate_workspace_id(&startup_path_str).unwrap();
+    let startup_ws = pool
+        .get_or_init(&startup_id, startup_path.clone())
+        .await
+        .expect("startup workspace should initialize");
+
+    let handler = JulieServerHandler::new_with_shared_workspace_startup_hint(
+        startup_ws,
+        crate::workspace::startup_hint::WorkspaceStartupHint {
+            path: startup_path.clone(),
+            source: Some(crate::workspace::startup_hint::WorkspaceStartupSource::Cwd),
+        },
+        Some(Arc::clone(&daemon_db)),
+        Some(startup_id.clone()),
+        None,
+        None,
+        None,
+        None,
+        Some(pool),
+    )
+    .await
+    .expect("handler should initialize");
+
+    // Client did NOT declare roots support. Under the *old* classification
+    // this still triggered the primary-binding fallback in the preflight
+    // (startup-hint → CWD), silently giving `add` a primary to pair against.
+    assert_eq!(
+        handler.current_workspace_id(),
+        None,
+        "cwd startup hint should start without a bound current primary"
+    );
+
+    let (server_transport, client_transport) = tokio::io::duplex(64);
+    drop(client_transport);
+    let service =
+        serve_directly::<rmcp::RoleServer, _, _, _, _>(handler.clone(), server_transport, None);
+
+    let candidate_path_str = candidate_root
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+
+    let result = <JulieServerHandler as ServerHandler>::call_tool(
+        &handler,
+        CallToolRequestParams::new("manage_workspace").with_arguments(
+            serde_json::json!({
+                "operation": "add",
+                "path": candidate_path_str,
+            })
+            .as_object()
+            .expect("manage_workspace add args")
+            .clone(),
+        ),
+        RequestContext::new(NumberOrString::Number(1), service.peer().clone()),
+    )
+    .await;
+
+    let err = result.expect_err(
+        "add via ServerHandler in a deferred Cwd session must refuse to silently pair against the CWD fallback",
+    );
+    let message = err.to_string();
+    assert!(
+        message.to_lowercase().contains("primary"),
+        "add error should name the missing primary: {message}"
+    );
+    assert!(
+        message.contains("open") || message.contains("roots"),
+        "add error should point at `open` or client roots: {message}"
+    );
+
+    assert_eq!(
+        handler.current_workspace_id(),
+        None,
+        "add via deferred Cwd session must NOT silently bind the startup-hint as primary"
+    );
+    assert_eq!(
+        handler.loaded_workspace_id(),
+        Some(startup_id),
+        "the loaded-workspace handle stays on the startup workspace; nothing should have swapped primary binding"
+    );
+}

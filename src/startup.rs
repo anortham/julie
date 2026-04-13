@@ -259,21 +259,32 @@ pub(crate) fn scan_workspace_files(workspace_root: &Path) -> Result<HashSet<Stri
     Ok(files)
 }
 
-/// Check if a file is a supported code file based on extension.
+/// Check if a file is a supported code file.
 ///
-/// Fix D: delegates to `build_supported_extensions()` so this function and
-/// the file watcher share a single canonical list (julie_extractors).
-/// Previously maintained a hardcoded duplicate that was missing .scala, .ex,
-/// .exs, .regex, and any extension added to the extractors in the future.
+/// Accepts files by extension (delegates to `build_supported_extensions()` so
+/// this function and the file watcher share a single canonical list from
+/// julie_extractors), plus extensionless files that pass the shared
+/// `is_likely_text_file` heuristic. Files whose name is in
+/// `BLACKLISTED_FILENAMES` are rejected in either branch. The goal is to stay
+/// in sync with `ManageWorkspaceTool::should_index_file()` — otherwise the
+/// freshness scan and the indexer disagree on what belongs in the tracked
+/// set, causing phantom "new/deleted file" signals on every reconnect. See
+/// Finding #3 in `docs/ROOTS_IMPL_REVIEW_NOTES.md`.
 fn is_code_file(path: &Path) -> bool {
     use std::sync::OnceLock;
     static SUPPORTED: OnceLock<HashSet<String>> = OnceLock::new();
     let supported = SUPPORTED.get_or_init(crate::watcher::filtering::build_supported_extensions);
 
-    let extension = match path.extension() {
-        Some(ext) => ext.to_string_lossy().to_lowercase(),
-        None => return false,
-    };
+    // Match the indexer's filename blacklist so extensionless files like
+    // `.julieignore` stay out of both sides of the freshness diff.
+    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        if crate::tools::shared::BLACKLISTED_FILENAMES.contains(&file_name) {
+            return false;
+        }
+    }
 
-    supported.contains(extension.as_str())
+    match path.extension() {
+        Some(ext) => supported.contains(ext.to_string_lossy().to_lowercase().as_str()),
+        None => crate::utils::file_utils::is_likely_text_file(path),
+    }
 }
