@@ -330,8 +330,11 @@ impl Default for IndexingStatus {
 /// - Cross-language relationship detection
 #[derive(Clone)]
 pub struct JulieServerHandler {
-    /// Resolved workspace root path (single source of truth).
-    /// Set once at construction from CLI args / JULIE_WORKSPACE / cwd.
+    /// Original workspace root captured at handler construction. Production
+    /// code should read `current_workspace_root()` instead, which reflects
+    /// rebind state. This field is retained for tests that need to compare
+    /// against the pre-rebind root.
+    #[allow(dead_code)]
     pub(crate) workspace_root: PathBuf,
     /// Session-owned workspace state. This is the mutable source of truth for
     /// startup hint, root tracking, primary binding, and secondary activations.

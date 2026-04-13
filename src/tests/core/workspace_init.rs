@@ -696,7 +696,7 @@ async fn test_loaded_workspace_swap_intent_invalidates_loaded_and_current_state_
         .expect("Failed to initialize first workspace");
 
     let second_root = second_workspace.path().canonicalize().unwrap();
-    let second_id =
+    let _second_id =
         crate::workspace::registry::generate_workspace_id(&second_root.to_string_lossy())
             .expect("Should generate second workspace id");
 
