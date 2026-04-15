@@ -5,7 +5,7 @@
 //!
 //! Adapted from TypeScript extractor (JavaScript and TypeScript share AST structure)
 
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use crate::javascript::JavaScriptExtractor;
 use tree_sitter::{Node, Tree};
 
@@ -84,11 +84,11 @@ fn extract_inheritance_relationships(
 
     // Phase 2: Create relationships (may need &mut extractor for pending)
     if let Some((class_symbol_id, base_types, file_path)) = heritage_data {
-        for (base_type_name, line_number) in base_types {
+        for (target, line_number) in base_types {
+            let lookup_name = target.terminal_name.clone();
             // JS only has extends, check for Class (JS has no Interface kind)
             if let Some(base_symbol) = symbols.iter().find(|s| {
-                s.name == base_type_name
-                    && matches!(s.kind, SymbolKind::Class | SymbolKind::Interface)
+                s.name == lookup_name && matches!(s.kind, SymbolKind::Class | SymbolKind::Interface)
             }) {
                 relationships.push(Relationship {
                     id: format!(
@@ -108,14 +108,17 @@ fn extract_inheritance_relationships(
                 });
             } else {
                 // Cross-file: superclass is defined in another file
-                extractor.add_pending_relationship(PendingRelationship {
-                    from_symbol_id: class_symbol_id.clone(),
-                    callee_name: base_type_name,
-                    kind: RelationshipKind::Extends,
-                    file_path: file_path.clone(),
-                    line_number,
-                    confidence: 0.9,
-                });
+                let mut pending = extractor.base().create_pending_relationship(
+                    class_symbol_id.clone(),
+                    target.clone(),
+                    RelationshipKind::Extends,
+                    &node,
+                    Some(class_symbol_id.clone()),
+                    Some(0.9),
+                );
+                pending.pending.callee_name = target.terminal_name;
+                pending.pending.line_number = line_number;
+                extractor.add_structured_pending_relationship(pending);
             }
         }
     }
@@ -132,7 +135,7 @@ fn collect_heritage_data(
     extractor: &JavaScriptExtractor,
     node: Node,
     symbols: &[Symbol],
-) -> Option<(String, Vec<(String, u32)>, String)> {
+) -> Option<(String, Vec<(UnresolvedTarget, u32)>, String)> {
     let mut parent = node.parent()?;
     while parent.kind() != "class_declaration" {
         parent = parent.parent()?;
@@ -176,12 +179,12 @@ fn collect_heritage_data(
 fn extract_terminal_heritage_identifier(
     extractor: &JavaScriptExtractor,
     node: Node,
-) -> Option<(String, u32)> {
+) -> Option<(UnresolvedTarget, u32)> {
     match node.kind() {
         "identifier" | "type_identifier" | "property_identifier" => {
             let name = extractor.base().get_node_text(&node);
             let line = (node.start_position().row + 1) as u32;
-            Some((name, line))
+            Some((UnresolvedTarget::simple(name), line))
         }
         "member_expression" => {
             let object = node
@@ -193,7 +196,29 @@ fn extract_terminal_heritage_identifier(
 
             // Restrict to explicit identifier/member chains.
             extract_terminal_heritage_identifier(extractor, object)?;
-            extract_terminal_heritage_identifier(extractor, property)
+            let (_, line) = extract_terminal_heritage_identifier(extractor, property)?;
+            let display_name = extractor.base().get_node_text(&node).replace(' ', "");
+            let segments: Vec<String> = display_name
+                .split('.')
+                .filter(|segment| !segment.is_empty())
+                .map(|segment| segment.to_string())
+                .collect();
+            let terminal_name = segments.last()?.clone();
+            let namespace_path = if segments.len() > 1 {
+                segments[..segments.len() - 1].to_vec()
+            } else {
+                Vec::new()
+            };
+            Some((
+                UnresolvedTarget {
+                    display_name,
+                    terminal_name,
+                    receiver: None,
+                    namespace_path,
+                    import_context: None,
+                },
+                line,
+            ))
         }
         "parenthesized_expression" => {
             let expression = node.child_by_field_name("expression")?;
@@ -215,7 +240,7 @@ fn extract_terminal_heritage_identifier(
 fn collect_explicit_superclass_targets(
     extractor: &JavaScriptExtractor,
     node: Node,
-    base_types: &mut Vec<(String, u32)>,
+    base_types: &mut Vec<(UnresolvedTarget, u32)>,
 ) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {

@@ -1,5 +1,5 @@
 use crate::base::{BaseExtractor, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
-use crate::lua::{helpers, LuaExtractor};
+use crate::lua::{LuaExtractor, helpers};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 

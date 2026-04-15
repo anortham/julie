@@ -29,16 +29,22 @@ class Derived(Base):
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
-    assert!(
-        !relationships.is_empty(),
-        "Should extract inheritance relationships"
-    );
-    assert!(
-        relationships
-            .iter()
-            .any(|r| r.kind == RelationshipKind::Extends),
-        "Should have at least one extends relationship"
-    );
+    let base = symbols
+        .iter()
+        .find(|symbol| symbol.name == "Base")
+        .expect("Should extract Base class");
+    let derived = symbols
+        .iter()
+        .find(|symbol| symbol.name == "Derived")
+        .expect("Should extract Derived class");
+
+    let extends: Vec<_> = relationships
+        .iter()
+        .filter(|relationship| relationship.kind == RelationshipKind::Extends)
+        .collect();
+    assert_eq!(extends.len(), 1);
+    assert_eq!(extends[0].from_symbol_id, derived.id);
+    assert_eq!(extends[0].to_symbol_id, base.id);
 }
 
 #[test]
@@ -68,9 +74,31 @@ class Derived(Base1, Base2):
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
-    // Multiple inheritance should produce relationships or be empty (depending on parser)
-    // Just verify it doesn't panic
-    let _ = relationships.len();
+    let base1 = symbols
+        .iter()
+        .find(|symbol| symbol.name == "Base1")
+        .expect("Should extract Base1");
+    let base2 = symbols
+        .iter()
+        .find(|symbol| symbol.name == "Base2")
+        .expect("Should extract Base2");
+    let derived = symbols
+        .iter()
+        .find(|symbol| symbol.name == "Derived")
+        .expect("Should extract Derived");
+
+    let extends_targets: std::collections::HashSet<_> = relationships
+        .iter()
+        .filter(|relationship| {
+            relationship.kind == RelationshipKind::Extends
+                && relationship.from_symbol_id == derived.id
+        })
+        .map(|relationship| relationship.to_symbol_id.as_str())
+        .collect();
+
+    assert_eq!(extends_targets.len(), 2);
+    assert!(extends_targets.contains(base1.id.as_str()));
+    assert!(extends_targets.contains(base2.id.as_str()));
 }
 
 #[test]
@@ -97,19 +125,22 @@ def callee():
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
-    // Call relationships may or may not be found depending on symbol matching
-    // Just verify the relationships structure is valid
-    for rel in &relationships {
-        assert!(!rel.id.is_empty(), "Relationship ID should not be empty");
-        assert!(
-            !rel.from_symbol_id.is_empty(),
-            "from_symbol_id should not be empty"
-        );
-        assert!(
-            !rel.to_symbol_id.is_empty(),
-            "to_symbol_id should not be empty"
-        );
-    }
+    let caller = symbols
+        .iter()
+        .find(|symbol| symbol.name == "caller")
+        .expect("Should extract caller");
+    let callee = symbols
+        .iter()
+        .find(|symbol| symbol.name == "callee")
+        .expect("Should extract callee");
+
+    let calls: Vec<_> = relationships
+        .iter()
+        .filter(|relationship| relationship.kind == RelationshipKind::Calls)
+        .collect();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].from_symbol_id, caller.id);
+    assert_eq!(calls[0].to_symbol_id, callee.id);
 }
 
 #[test]

@@ -116,8 +116,14 @@ async fn test_initialized_weak_cwd_does_not_probe_roots_before_first_request() -
     let roots_root = tempfile::tempdir()?;
     std::fs::create_dir_all(startup_root.path().join("src"))?;
     std::fs::create_dir_all(roots_root.path().join("src"))?;
-    std::fs::write(startup_root.path().join("src/lib.rs"), "pub fn from_startup() {}\n")?;
-    std::fs::write(roots_root.path().join("src/lib.rs"), "pub fn from_roots() {}\n")?;
+    std::fs::write(
+        startup_root.path().join("src/lib.rs"),
+        "pub fn from_startup() {}\n",
+    )?;
+    std::fs::write(
+        roots_root.path().join("src/lib.rs"),
+        "pub fn from_roots() {}\n",
+    )?;
 
     let daemon_db_path = indexes_dir.path().join("daemon.db");
     let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path)?);
@@ -220,7 +226,10 @@ async fn test_initialized_weak_cwd_does_not_probe_roots_before_first_request() -
         Some(roots_workspace_id.as_str()),
         "the first primary-scoped request should bind the real roots workspace"
     );
-    assert_eq!(handler.current_workspace_root(), roots_root.path().canonicalize()?);
+    assert_eq!(
+        handler.current_workspace_root(),
+        roots_root.path().canonicalize()?
+    );
     assert!(
         extract_text(&result).contains(&roots_workspace_id),
         "manage_workspace list should report the roots-bound primary"

@@ -1,7 +1,7 @@
 //! Enum extraction for GDScript
 
 use crate::base::{
-    find_child_by_type, BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, Symbol, SymbolKind, SymbolOptions, Visibility, find_child_by_type,
 };
 use tree_sitter::Node;
 

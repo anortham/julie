@@ -821,10 +821,8 @@ async fn accept_loop(
                 // old session is still alive — exactly the upgrade window
                 // this fix is supposed to cover. See Finding #1 in
                 // ROOTS_IMPL_REVIEW_NOTES.md and Codex's follow-up review.
-                let first_rejection = flag_restart_pending_after_version_reject(
-                    &restart_pending,
-                    daemon_state_path,
-                );
+                let first_rejection =
+                    flag_restart_pending_after_version_reject(&restart_pending, daemon_state_path);
                 if first_rejection {
                     warn!(
                         adapter_version = headers.version.as_deref().unwrap_or("<none>"),
@@ -835,8 +833,7 @@ async fn accept_loop(
                 } else {
                     warn!(
                         adapter_version = headers.version.as_deref().unwrap_or("<none>"),
-                        daemon_version,
-                        "Rejecting adapter session while daemon waits to restart."
+                        daemon_version, "Rejecting adapter session while daemon waits to restart."
                     );
                 }
                 drop(stream);

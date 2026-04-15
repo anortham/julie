@@ -35,23 +35,21 @@ func GetUserScores() map[string]int {
             extract_symbols_and_relationships(&tree, "test.go", code, "go", &workspace_root)
                 .expect("Extraction failed");
 
-        assert!(
-            !results.types.is_empty(),
-            "Go type extraction returned EMPTY types HashMap!"
-        );
+        let type_map: std::collections::HashMap<_, _> = results
+            .types
+            .values()
+            .filter_map(|type_info| {
+                results
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.id == type_info.symbol_id)
+                    .map(|symbol| (symbol.name.as_str(), type_info.resolved_type.as_str()))
+            })
+            .collect();
 
-        println!("Extracted {} types from Go code", results.types.len());
-        for (symbol_id, type_info) in &results.types {
-            println!(
-                "  {} -> {} (inferred: {})",
-                symbol_id, type_info.resolved_type, type_info.is_inferred
-            );
-        }
-
-        assert!(results.types.len() >= 1);
-        for type_info in results.types.values() {
-            assert_eq!(type_info.language, "go");
-            assert!(type_info.is_inferred);
-        }
+        assert_eq!(type_map.len(), 2);
+        assert_eq!(type_map.get("GetUserName"), Some(&"string"));
+        assert_eq!(type_map.get("GetUserScores"), Some(&"map[string]int"));
+        assert!(!type_map.contains_key("GetAllUsers"));
     }
 }

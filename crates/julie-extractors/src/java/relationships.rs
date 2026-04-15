@@ -162,6 +162,16 @@ fn walk_tree_for_calls(
         extract_method_call_relationship(extractor, node, symbol_map, all_symbols, relationships);
     }
 
+    if node.kind() == "object_creation_expression" {
+        extract_constructor_call_relationship(
+            extractor,
+            node,
+            symbol_map,
+            all_symbols,
+            relationships,
+        );
+    }
+
     // Recursively process children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -250,6 +260,99 @@ fn extract_method_call_relationship(
             let pending = extractor.base().create_pending_relationship(
                 caller.id.clone(),
                 unresolved_call_target(extractor, node, &method_name),
+                RelationshipKind::Calls,
+                &node,
+                Some(caller.id.clone()),
+                Some(0.7),
+            );
+            extractor.add_structured_pending_relationship(pending);
+        }
+    }
+}
+
+/// Extract constructor call relationship from `new ClassName(args)` expressions.
+fn extract_constructor_call_relationship(
+    extractor: &mut JavaExtractor,
+    node: Node,
+    symbol_map: &HashMap<String, &Symbol>,
+    all_symbols: &[Symbol],
+    relationships: &mut Vec<Relationship>,
+) {
+    let base = extractor.base();
+
+    // In an object_creation_expression, find the type name
+    let type_name = {
+        let mut found = None;
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "identifier" {
+                found = Some(base.get_node_text(&child));
+                break;
+            }
+            // type_identifier: simple type like "Calculator"
+            // scoped_type_identifier: qualified type like "com.utils.Calculator"
+            if child.kind() == "type_identifier" || child.kind() == "scoped_type_identifier" {
+                found = Some(base.get_node_text(&child));
+                break;
+            }
+        }
+        found
+    };
+
+    let Some(type_name) = type_name else {
+        return;
+    };
+
+    // Find the calling function context
+    let calling_function = find_containing_function(extractor, node, all_symbols);
+    let caller_symbol = calling_function
+        .as_ref()
+        .and_then(|name| symbol_map.get(name));
+
+    let Some(caller) = caller_symbol else {
+        return;
+    };
+
+    let line_number = node.start_position().row as u32 + 1;
+    let file_path = extractor.base().file_path.clone();
+
+    // Check if we can resolve the constructor locally
+    match symbol_map.get(type_name.as_str()) {
+        Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
+            let pending = extractor.base().create_pending_relationship(
+                caller.id.clone(),
+                UnresolvedTarget::simple(type_name),
+                RelationshipKind::Calls,
+                &node,
+                Some(caller.id.clone()),
+                Some(0.8),
+            );
+            extractor.add_structured_pending_relationship(pending);
+        }
+        Some(called_symbol) => {
+            // Local class - create resolved Relationship
+            relationships.push(Relationship {
+                id: format!(
+                    "{}_{}_{:?}_{}",
+                    caller.id,
+                    called_symbol.id,
+                    RelationshipKind::Calls,
+                    node.start_position().row
+                ),
+                from_symbol_id: caller.id.clone(),
+                to_symbol_id: called_symbol.id.clone(),
+                kind: RelationshipKind::Calls,
+                file_path,
+                line_number,
+                confidence: 0.9,
+                metadata: None,
+            });
+        }
+        None => {
+            // Cross-file constructor call
+            let pending = extractor.base().create_pending_relationship(
+                caller.id.clone(),
+                UnresolvedTarget::simple(type_name),
                 RelationshipKind::Calls,
                 &node,
                 Some(caller.id.clone()),

@@ -356,6 +356,28 @@ public class Startup {
                 .map(|p| &p.callee_name)
                 .collect::<Vec<_>>()
         );
+
+        let structured_pending: Vec<_> = results
+            .structured_pending_relationships
+            .iter()
+            .filter(|p| {
+                p.pending.from_symbol_id == startup.id
+                    && p.pending.kind == RelationshipKind::Instantiates
+            })
+            .collect();
+
+        assert!(
+            structured_pending
+                .iter()
+                .any(|p| p.target.display_name == "IOrderService"),
+            "Should preserve structured pending Instantiates for IOrderService"
+        );
+        assert!(
+            structured_pending
+                .iter()
+                .any(|p| p.target.display_name == "OrderService"),
+            "Should preserve structured pending Instantiates for OrderService"
+        );
     }
 
     // ========================================================================

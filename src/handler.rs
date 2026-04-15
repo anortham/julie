@@ -683,7 +683,8 @@ impl JulieServerHandler {
                     }
 
                     if existing_binding.is_none() {
-                        if let Some(roots) = self.last_roots_snapshot().filter(|roots| !roots.is_empty())
+                        if let Some(roots) =
+                            self.last_roots_snapshot().filter(|roots| !roots.is_empty())
                         {
                             if self.reconcile_primary_workspace_roots(roots).await? {
                                 self.resume_deferred_auto_index_if_needed();
@@ -2040,13 +2041,11 @@ impl JulieServerHandler {
                 ));
             }
 
-            return Err(anyhow::anyhow!(
-                "Primary workspace not initialized"
-            ));
+            return Err(anyhow::anyhow!("Primary workspace not initialized"));
         }
 
-        let loaded_workspace = loaded_workspace
-            .ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
+        let loaded_workspace =
+            loaded_workspace.ok_or_else(|| anyhow::anyhow!("Primary workspace not initialized"))?;
 
         if let Some(ref current_id) = current_workspace_id {
             if loaded_workspace_id.as_deref() != Some(current_id.as_str()) {
@@ -2157,7 +2156,8 @@ impl JulieServerHandler {
         &self,
         workspace_id: &str,
     ) -> Result<Arc<std::sync::Mutex<SymbolDatabase>>> {
-        self.ensure_primary_pool_membership_for(workspace_id).await?;
+        self.ensure_primary_pool_membership_for(workspace_id)
+            .await?;
         let db_path = self.workspace_db_file_path_for(workspace_id).await?;
 
         // Fast path: return cached connection for this session (M22).
@@ -2205,7 +2205,8 @@ impl JulieServerHandler {
         &self,
         workspace_id: &str,
     ) -> Result<Option<Arc<std::sync::Mutex<SearchIndex>>>> {
-        self.ensure_primary_pool_membership_for(workspace_id).await?;
+        self.ensure_primary_pool_membership_for(workspace_id)
+            .await?;
         let tantivy_path = self.workspace_tantivy_dir_for(workspace_id).await?;
         if !tantivy_path.join("meta.json").exists() {
             return Ok(None);

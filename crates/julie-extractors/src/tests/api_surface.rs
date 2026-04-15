@@ -230,8 +230,7 @@ int mainFunction() {
             "manager extract_all should match canonical structured pending output for {file_path}"
         );
         assert_eq!(
-            all_results.pending_relationships,
-            canonical.pending_relationships,
+            all_results.pending_relationships, canonical.pending_relationships,
             "manager extract_all should match canonical compatibility pending output for {file_path}"
         );
     }

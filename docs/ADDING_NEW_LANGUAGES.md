@@ -112,71 +112,59 @@ Also add `"mylang"` to the `supported_languages()` list and its extensions to `s
 
 **Note**: `src/tools/workspace/language.rs` delegates directly to `detect_language_from_extension` from this module. You do NOT need to edit the workspace language.rs file.
 
-**CRITICAL**: The language string returned here MUST match the factory match arm (step 4).
+**CRITICAL**: The language string returned here MUST match the registry entry in step 4.
 
-### 4. Register in Extractor Factory
+### 4. Register in the Canonical Registry
 
-**Location**: `crates/julie-extractors/src/factory.rs`
+**Location**: `crates/julie-extractors/src/registry.rs`
 
-Add a match arm in `extract_symbols_and_relationships()`. The function returns `ExtractionResults`:
+Add a registry entry that constructs the language extractor through the canonical parse-and-dispatch pipeline. The registry entry returns `ExtractionResults`:
 
 ```rust
-pub fn extract_symbols_and_relationships(
+fn extract_mylang(
     tree: &tree_sitter::Tree,
     file_path: &str,
     content: &str,
-    language: &str,
     workspace_root: &Path,
 ) -> Result<ExtractionResults, anyhow::Error> {
-    match language {
-        // ... existing cases ...
+    let mut extractor = crate::mylang::MyLangExtractor::new(
+        "mylang".to_string(),
+        file_path.to_string(),
+        content.to_string(),
+        workspace_root,
+    );
+    let symbols = extractor.extract_symbols(tree);
+    let relationships = extractor.extract_relationships(tree, &symbols);
+    let identifiers = extractor.extract_identifiers(tree, &symbols);
+    let pending_relationships = extractor.get_pending_relationships();
+    let structured_pending_relationships = extractor.get_structured_pending_relationships();
+    let types = convert_types_map(extractor.infer_types(&symbols), "mylang");
 
-        "mylang" => {
-            let mut extractor = crate::mylang::MyLangExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let relationships = extractor.extract_relationships(tree, &symbols);
-            let identifiers = extractor.extract_identifiers(tree, &symbols);
-            let types = convert_types_map(extractor.infer_types(&symbols), language);
-            let pending = extractor.get_pending_relationships();
-            Ok(ExtractionResults {
-                symbols,
-                relationships,
-                pending_relationships: pending,
-                identifiers,
-                types,
-            })
-        }
-
-        // For documentation/config languages (markdown, json, toml, yaml, css):
-        "mylang" => {
-            let mut extractor = crate::mylang::MyLangExtractor::new(
-                language.to_string(),
-                file_path.to_string(),
-                content.to_string(),
-                workspace_root,
-            );
-            let symbols = extractor.extract_symbols(tree);
-            let identifiers = extractor.extract_identifiers(tree, &symbols);
-            Ok(ExtractionResults {
-                symbols,
-                relationships: Vec::new(),
-                pending_relationships: Vec::new(),
-                identifiers,
-                types: HashMap::new(),
-            })
-        }
-
-        // ... default case ...
-    }
+    Ok(ExtractionResults {
+        symbols,
+        relationships,
+        pending_relationships,
+        structured_pending_relationships,
+        identifiers,
+        types,
+    })
 }
+
+register_language!(
+    entry_mylang,
+    "mylang",
+    LanguageCapabilities {
+        symbols: true,
+        relationships: true,
+        pending_relationships: true,
+        identifiers: true,
+        types: true,
+    },
+    extract_mylang
+);
 ```
 
-**Pattern to follow**: Look at existing full-extraction languages (rust, typescript) for code languages, or markdown/json/css for documentation/config languages.
+**Pattern to follow**: Look at existing registry entries plus their `extract_<language>()` helpers. `extract_canonical()` and `ExtractorManager::extract_all()` are the supported public entrypoints; the old parsed-tree factory helper is test-only.
 
 ### 5. Add Tree-Sitter Parser
 

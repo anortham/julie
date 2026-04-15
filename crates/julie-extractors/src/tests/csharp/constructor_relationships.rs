@@ -293,6 +293,113 @@ public class OrderController {
                 .any(|p| p.callee_name == "IPaymentGateway"),
             "Should have pending Uses for IPaymentGateway"
         );
+
+        let structured_pending_uses: Vec<_> = results
+            .structured_pending_relationships
+            .iter()
+            .filter(|p| {
+                p.pending.from_symbol_id == controller.id
+                    && p.pending.kind == RelationshipKind::Uses
+            })
+            .collect();
+
+        assert!(
+            structured_pending_uses
+                .iter()
+                .any(|p| p.target.display_name == "IOrderService"),
+            "Should preserve structured pending Uses for IOrderService"
+        );
+        assert!(
+            structured_pending_uses
+                .iter()
+                .any(|p| p.target.display_name == "IPaymentGateway"),
+            "Should preserve structured pending Uses for IPaymentGateway"
+        );
+    }
+
+    #[test]
+    fn test_csharp_primary_constructor_creates_uses_relationships() {
+        let code = r#"
+public interface ILogger { }
+public interface IClock { }
+
+public class Worker(ILogger logger, IClock clock) {
+}
+"#;
+
+        let results = extract_full("src/Worker.cs", code);
+
+        let worker = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "Worker" && s.kind == SymbolKind::Class)
+            .expect("Should find Worker class");
+        let ilogger = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "ILogger")
+            .expect("Should find ILogger");
+        let iclock = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "IClock")
+            .expect("Should find IClock");
+
+        let uses_targets: std::collections::HashSet<_> = results
+            .relationships
+            .iter()
+            .filter(|relationship| {
+                relationship.from_symbol_id == worker.id
+                    && relationship.kind == RelationshipKind::Uses
+            })
+            .map(|relationship| relationship.to_symbol_id.as_str())
+            .collect();
+
+        assert_eq!(uses_targets.len(), 2);
+        assert!(uses_targets.contains(ilogger.id.as_str()));
+        assert!(uses_targets.contains(iclock.id.as_str()));
+    }
+
+    #[test]
+    fn test_csharp_record_primary_constructor_creates_uses_relationships() {
+        let code = r#"
+public interface ILogger { }
+public interface IClock { }
+
+public record WorkerRecord(ILogger logger, IClock clock);
+"#;
+
+        let results = extract_full("src/WorkerRecord.cs", code);
+
+        let worker = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "WorkerRecord" && s.kind == SymbolKind::Class)
+            .expect("Should find WorkerRecord class");
+        let ilogger = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "ILogger")
+            .expect("Should find ILogger");
+        let iclock = results
+            .symbols
+            .iter()
+            .find(|s| s.name == "IClock")
+            .expect("Should find IClock");
+
+        let uses_targets: std::collections::HashSet<_> = results
+            .relationships
+            .iter()
+            .filter(|relationship| {
+                relationship.from_symbol_id == worker.id
+                    && relationship.kind == RelationshipKind::Uses
+            })
+            .map(|relationship| relationship.to_symbol_id.as_str())
+            .collect();
+
+        assert_eq!(uses_targets.len(), 2);
+        assert!(uses_targets.contains(ilogger.id.as_str()));
+        assert!(uses_targets.contains(iclock.id.as_str()));
     }
 
     // ========================================================================

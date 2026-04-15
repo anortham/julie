@@ -1,10 +1,13 @@
 //! Shared extractor factory wrappers.
 //!
-//! Dispatch now lives in `registry.rs`. This module keeps the legacy public API stable while
-//! routing callers through the canonical registry-owned extraction path.
+//! Dispatch now lives in `registry.rs`. This module exists for in-crate tests and helpers that
+//! still need direct registry dispatch against a pre-parsed tree.
 
-use crate::base::{ExtractionResults, TypeInfo};
+#[cfg(test)]
+use crate::base::ExtractionResults;
+use crate::base::TypeInfo;
 use std::collections::HashMap;
+#[cfg(test)]
 use std::path::Path;
 
 /// Convert a raw type map from `infer_types()` into the richer `TypeInfo` structure.
@@ -31,7 +34,8 @@ pub(crate) fn convert_types_map(
         .collect()
 }
 
-pub fn extract_symbols_and_relationships(
+#[cfg(test)]
+pub(crate) fn extract_symbols_and_relationships(
     tree: &tree_sitter::Tree,
     file_path: &str,
     content: &str,

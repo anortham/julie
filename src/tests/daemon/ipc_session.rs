@@ -459,8 +459,7 @@ mod tests {
         wait_for_session_count(&daemon_db, &startup_id, 1).await;
         wait_for_session_count(&daemon_db, &rebound_id, 1).await;
 
-        for workspace_id in
-            workspace_ids_to_disconnect(&startup_id, vec![rebound_id.clone()], true)
+        for workspace_id in workspace_ids_to_disconnect(&startup_id, vec![rebound_id.clone()], true)
         {
             pool.disconnect_session(&workspace_id).await;
         }

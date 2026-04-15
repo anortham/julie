@@ -10,6 +10,7 @@ mod json_extractor_tests {
     #![allow(unused_variables)]
 
     use crate::base::{Symbol, SymbolKind};
+    use crate::extract_canonical;
     use crate::json::JsonExtractor;
     use std::path::PathBuf;
     use tree_sitter::Parser;
@@ -710,38 +711,9 @@ mod json_extractor_tests {
 
     fn extract_symbols_jsonl(code: &str, file_name: &str) -> Vec<Symbol> {
         let workspace_root = PathBuf::from("/tmp/test");
-        let mut parser = init_parser();
-
-        // For JSONL, we need to parse line by line
-        let mut all_symbols = Vec::new();
-        for (line_num, line) in code.lines().enumerate() {
-            if line.trim().is_empty() {
-                continue; // Skip empty lines
-            }
-
-            // Create a new extractor for THIS line (so byte positions match)
-            let mut extractor = JsonExtractor::new(
-                "json".to_string(),
-                file_name.to_string(),
-                line.to_string(), // Use the single line as source_code
-                &workspace_root,
-            );
-
-            let tree = parser
-                .parse(line, None)
-                .expect("Failed to parse JSONL line");
-            let mut symbols = extractor.extract_symbols(&tree);
-
-            // Adjust line numbers for each symbol based on which line of JSONL it came from
-            for symbol in &mut symbols {
-                symbol.start_line += line_num as u32;
-                symbol.end_line += line_num as u32;
-            }
-
-            all_symbols.extend(symbols);
-        }
-
-        all_symbols
+        extract_canonical(file_name, code, &workspace_root)
+            .expect("JSONL extraction should succeed")
+            .symbols
     }
 
     #[test]
@@ -752,32 +724,25 @@ mod json_extractor_tests {
 
         let symbols = extract_symbols_jsonl(jsonl, "memories.jsonl");
 
-        // Should extract symbols from all three lines
-        assert!(
-            symbols.len() >= 6,
-            "Should extract at least 2 keys per line (type, content) × 3 lines"
-        );
-
-        // Check that we extracted "type" keys from each line
         let type_symbols: Vec<&Symbol> = symbols.iter().filter(|s| s.name == "type").collect();
-        assert_eq!(
-            type_symbols.len(),
-            3,
-            "Should find 'type' key from each of 3 lines"
-        );
+        let content_symbols: Vec<&Symbol> =
+            symbols.iter().filter(|s| s.name == "content").collect();
 
-        // Check line numbers are correct (1-based: 1, 2, 3)
+        assert_eq!(type_symbols.len(), 3);
+        assert_eq!(content_symbols.len(), 3);
         assert_eq!(
-            type_symbols[0].start_line, 1,
-            "First object should be on line 1"
+            type_symbols
+                .iter()
+                .map(|symbol| symbol.start_line)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
         );
         assert_eq!(
-            type_symbols[1].start_line, 2,
-            "Second object should be on line 2"
-        );
-        assert_eq!(
-            type_symbols[2].start_line, 3,
-            "Third object should be on line 3"
+            content_symbols
+                .iter()
+                .map(|symbol| symbol.start_line)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
         );
     }
 

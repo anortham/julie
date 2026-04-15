@@ -2454,10 +2454,7 @@ async fn test_manage_workspace_remove_succeeds_in_deferred_session_without_prima
         "remove should report success even without a bound primary, got: {text}"
     );
     assert!(
-        daemon_db
-            .get_workspace(&removable_id)
-            .unwrap()
-            .is_none(),
+        daemon_db.get_workspace(&removable_id).unwrap().is_none(),
         "removable workspace should be gone from the daemon database"
     );
 }
@@ -2488,7 +2485,11 @@ async fn test_manage_workspace_add_returns_actionable_error_without_primary() {
     )
     .await;
 
-    let candidate_path_str = candidate_root.canonicalize().unwrap().to_string_lossy().to_string();
+    let candidate_path_str = candidate_root
+        .canonicalize()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
     let result = ManageWorkspaceTool {
         operation: "add".to_string(),
         path: Some(candidate_path_str),
@@ -2661,11 +2662,7 @@ async fn test_manage_workspace_add_in_deferred_cwd_session_via_server_handler_re
 
     let startup_root = temp_dir.path().join("startup-cwd");
     fs::create_dir_all(startup_root.join("src")).unwrap();
-    fs::write(
-        startup_root.join("src/lib.rs"),
-        "pub fn cwd_marker() {}\n",
-    )
-    .unwrap();
+    fs::write(startup_root.join("src/lib.rs"), "pub fn cwd_marker() {}\n").unwrap();
 
     let candidate_root = temp_dir.path().join("reference-candidate");
     fs::create_dir_all(candidate_root.join("src")).unwrap();

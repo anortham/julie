@@ -134,10 +134,9 @@ fn metrics_db_path_helper_uses_current_workspace_root_for_local_storage() {
 
 #[test]
 fn workspace_root_uri_helper_parses_local_file_uri() {
-    let path = JulieServerHandler::workspace_path_from_root_uri_for_test(
-        "file:///tmp/workspace-root",
-    )
-    .expect("file uri should parse");
+    let path =
+        JulieServerHandler::workspace_path_from_root_uri_for_test("file:///tmp/workspace-root")
+            .expect("file uri should parse");
 
     assert_eq!(path, PathBuf::from("/tmp/workspace-root"));
 }
@@ -145,10 +144,9 @@ fn workspace_root_uri_helper_parses_local_file_uri() {
 #[cfg(windows)]
 #[test]
 fn workspace_root_uri_helper_parses_unc_file_uri() {
-    let path = JulieServerHandler::workspace_path_from_root_uri_for_test(
-        "file://server/share/project",
-    )
-    .expect("UNC file uri should parse");
+    let path =
+        JulieServerHandler::workspace_path_from_root_uri_for_test("file://server/share/project")
+            .expect("UNC file uri should parse");
 
     assert_eq!(path, PathBuf::from(r"\\server\share\project"));
 }

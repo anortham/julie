@@ -94,7 +94,10 @@ async fn test_fresh_index_with_extensionless_text_files_needs_no_reindex() -> Re
     // Backdate every file so `db_mtime > max(file_mtime)` regardless of FS clock resolution.
     let backdated = SystemTime::now() - Duration::from_secs(10);
     for path in [&rust_file, &dockerfile, &makefile] {
-        File::options().write(true).open(path)?.set_modified(backdated)?;
+        File::options()
+            .write(true)
+            .open(path)?
+            .set_modified(backdated)?;
     }
 
     let needs_indexing = crate::startup::check_if_indexing_needed(&handler).await?;

@@ -379,6 +379,15 @@ class MyWidget extends Namespace.BaseComponent {
             .find(|s| s.name == "MyWidget")
             .expect("Should extract MyWidget class");
         assert_eq!(base_pending.unwrap().from_symbol_id, my_widget.id);
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "Namespace.BaseComponent")
+            .expect("structured pending relationship should preserve namespace-qualified extends target");
+        assert_eq!(structured_pending.target.terminal_name, "BaseComponent");
+        assert_eq!(structured_pending.target.namespace_path, vec!["Namespace"]);
+        assert_eq!(structured_pending.pending.from_symbol_id, my_widget.id);
     }
 
     #[test]

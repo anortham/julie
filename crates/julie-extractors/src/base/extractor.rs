@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use tracing::debug;
 use tree_sitter::Node;
 
-use super::span::{normalize_file_path, NormalizedSpan};
+use super::span::{NormalizedSpan, normalize_file_path};
 use super::types::{ContextConfig, Identifier, Relationship, Symbol, TypeInfo};
 
 /// Base implementation for language extractors
@@ -78,21 +78,47 @@ impl BaseExtractor {
         let is_doc_comment = |text: &str| {
             let trimmed = text.trim_start();
             let lang_lower = self.language.to_lowercase();
+            let is_go = lang_lower == "go";
             let is_sql = lang_lower.contains("sql");
             let is_lua = lang_lower.contains("lua");
+            let is_rust = lang_lower.contains("rust");
+            let is_csharp = lang_lower.contains("csharp");
+            let is_swift = lang_lower.contains("swift");
+            let is_kotlin = lang_lower.contains("kotlin");
+            let is_java = lang_lower.contains("java");
+            let is_c_family = lang_lower == "c" || lang_lower.contains("cpp");
+            let is_html_family = lang_lower.contains("html") || lang_lower.contains("vue");
+            let is_bash = lang_lower.contains("bash");
+            let is_ruby = lang_lower.contains("ruby");
+            let is_r = lang_lower == "r";
             let is_razor = lang_lower.contains("razor");
+            let is_dart = lang_lower.contains("dart");
+            let is_gdscript = lang_lower.contains("gdscript");
+            let is_zig = lang_lower.contains("zig");
+            let is_css = lang_lower.contains("css");
 
             trimmed.starts_with("/**")
-                || trimmed.starts_with("/*") // CSS/HTML/SQL block comments
-                || trimmed.starts_with("<!--") // HTML comments
-                || trimmed.starts_with("///")
-                || trimmed.starts_with("##") // Python docstrings
-                || trimmed.starts_with("//") // Go style comments
+                || (trimmed.starts_with("/*") && (is_go || is_sql || is_lua || is_css))
+                || (trimmed.starts_with("<!--") && is_html_family)
+                || (trimmed.starts_with("///")
+                    && (is_rust
+                        || is_csharp
+                        || is_swift
+                        || is_kotlin
+                        || is_java
+                        || is_c_family
+                        || is_dart
+                        || is_razor
+                        || is_zig))
+                || (trimmed.starts_with("//") && is_go)
                 || trimmed.starts_with("---") // Lua LuaDoc
+                || (trimmed.starts_with("--") && is_lua) // Lua -- continuation lines in LuaDoc
                 || trimmed.starts_with("--[[") // Lua block comment
-                || ((is_sql || is_lua) && trimmed.starts_with("--")) // SQL/Lua dash comments
-                || trimmed.starts_with("#") // Ruby RDoc/YARD comments
+                || (is_sql && trimmed.starts_with("--"))
+                || (is_r && trimmed.starts_with("#'"))
+                || ((is_ruby || is_bash) && trimmed.starts_with("#"))
                 || (is_razor && trimmed.starts_with("@*")) // Razor doc comments
+                || (is_gdscript && trimmed.starts_with("##")) // GDScript doc comments
         };
 
         // First try to find comments as siblings of this node

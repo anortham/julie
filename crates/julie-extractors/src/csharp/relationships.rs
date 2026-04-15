@@ -1,13 +1,11 @@
 // C# Relationship Extraction
 
-use crate::base::{
-    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
-};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::csharp::CSharpExtractor;
 use crate::csharp::member_type_relationships::{
     extract_field_type_relationships, extract_parameter_type_name,
     extract_property_type_relationships, find_containing_class,
 };
-use crate::csharp::CSharpExtractor;
 use tree_sitter::Tree;
 
 /// Extract relationships from the tree
@@ -28,11 +26,13 @@ fn visit_relationships(
     relationships: &mut Vec<Relationship>,
 ) {
     match node.kind() {
-        "class_declaration" | "interface_declaration" | "struct_declaration" => {
+        "class_declaration" | "struct_declaration" | "record_declaration" => {
+            extract_inheritance_relationships(extractor, node, symbols, relationships);
+            extract_constructor_parameter_relationships(extractor, node, symbols, relationships);
+        }
+        "interface_declaration" => {
             extract_inheritance_relationships(extractor, node, symbols, relationships);
         }
-        // TODO: C# 12 primary constructors (e.g. `class Foo(IBar bar) {}`) put params
-        // on class_declaration, not constructor_declaration. Known gap for future work.
         "constructor_declaration" => {
             extract_constructor_parameter_relationships(extractor, node, symbols, relationships);
         }
@@ -262,14 +262,16 @@ fn extract_constructor_parameter_relationships(
             Some(_) => {} // Already seen this resolved type
             None => {
                 seen.insert(type_name.clone());
-                extractor.add_pending_relationship(PendingRelationship {
-                    from_symbol_id: class_symbol_id.clone(),
-                    callee_name: type_name,
-                    kind: RelationshipKind::Uses,
-                    file_path: file_path.clone(),
-                    line_number,
-                    confidence: 0.8,
-                });
+                let mut pending = extractor.get_base().create_pending_relationship(
+                    class_symbol_id.clone(),
+                    UnresolvedTarget::simple(type_name),
+                    RelationshipKind::Uses,
+                    &node,
+                    Some(class_symbol_id.clone()),
+                    Some(0.8),
+                );
+                pending.pending.line_number = line_number;
+                extractor.add_structured_pending_relationship(pending);
             }
         }
     }

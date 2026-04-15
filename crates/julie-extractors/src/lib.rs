@@ -1,6 +1,6 @@
 //! Julie's Language Extractors Library
 //!
-//! Cross-platform code intelligence extractors for 31 programming languages.
+//! Cross-platform code intelligence extractors for 33 languages, plus JSX and TSX aliases.
 //! Each extractor is responsible for parsing source code and extracting symbols, relationships,
 //! and type information using tree-sitter parsers.
 //!
@@ -14,18 +14,19 @@
 //! let symbols = results.symbols;
 //! ```
 //!
-//! # Supported Languages (31 total)
+//! # Supported Languages (33 concrete extractors, plus JSX and TSX aliases)
 //!
 //! **Systems**: Rust, C, C++, Go, Zig
 //! **Web**: TypeScript, JavaScript, HTML, CSS, Vue, QML
 //! **Backend**: Python, Java, C#, PHP, Ruby, Swift, Kotlin, Dart
+//! **Functional**: Elixir, Scala
 //! **Scripting**: Lua, R, Bash, PowerShell
 //! **Specialized**: GDScript, Razor, SQL, Regex
 //! **Documentation**: Markdown, JSON, TOML, YAML
 
 // Core infrastructure
 pub mod base;
-pub mod factory;
+mod factory;
 pub mod language;
 pub mod manager;
 pub mod pipeline;
@@ -40,7 +41,7 @@ pub mod test_calls;
 pub mod test_detection;
 pub mod utils;
 
-// Language extractors (31 total - including documentation/config languages)
+// Language extractors (33 concrete extractors, plus JSX/TSX aliases in the registry)
 pub mod bash;
 pub mod c;
 pub mod cpp;
@@ -82,7 +83,6 @@ pub use base::{
 };
 
 // Re-export the public API - canonical extraction functions
-pub use factory::extract_symbols_and_relationships;
 pub use manager::ExtractorManager;
 pub use pipeline::extract_canonical;
 pub use registry::{LanguageCapabilities, LanguageRegistryEntry};

@@ -22,7 +22,7 @@ pub mod types;
 // Re-export key types for external use
 pub use extractor::BaseExtractor;
 pub use relationship_resolution::{StructuredPendingRelationship, UnresolvedTarget};
-pub use span::{normalize_file_path, NormalizedSpan, RecordOffset};
+pub use span::{NormalizedSpan, RecordOffset, normalize_file_path};
 pub use tree_methods::{find_child_by_type, find_child_by_types};
 pub use types::{
     ContextConfig, ExtractionResults, Identifier, IdentifierKind, PendingRelationship,

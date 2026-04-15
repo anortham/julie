@@ -378,6 +378,15 @@ fn unresolved_call_target(
         if child.kind() == "identifier" || child.kind() == "simple_identifier" {
             identifiers.push(extractor.base().get_node_text(&child));
         }
+        // Descend into navigation_expression to collect receiver and method identifiers
+        if child.kind() == "navigation_expression" {
+            let mut nav_cursor = child.walk();
+            for nav_child in child.children(&mut nav_cursor) {
+                if nav_child.kind() == "identifier" || nav_child.kind() == "simple_identifier" {
+                    identifiers.push(extractor.base().get_node_text(&nav_child));
+                }
+            }
+        }
     }
 
     if identifiers.len() >= 2 {

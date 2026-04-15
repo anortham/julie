@@ -16,7 +16,5 @@ pub use julie_extractors::{
 // Re-export base module for code that uses `crate::extractors::base::*`
 pub use julie_extractors::base;
 
-// Re-export factory and manager
-pub use julie_extractors::{
-    factory, manager, routing_identifiers, routing_relationships, routing_symbols,
-};
+// Re-export manager and compatibility projection modules.
+pub use julie_extractors::{manager, routing_identifiers, routing_relationships, routing_symbols};

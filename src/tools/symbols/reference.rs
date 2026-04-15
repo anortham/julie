@@ -38,12 +38,14 @@ pub async fn get_symbols_from_reference(
             .canonicalize()
             .unwrap_or_else(|_| std::path::PathBuf::from(file_path));
 
-        let query_path = match handler.get_workspace_root_for_target(&ref_workspace_id).await {
-            Ok(ref_workspace_root) => crate::utils::paths::to_relative_unix_style(
-                &canonical,
-                &ref_workspace_root,
-            )
-            .unwrap_or_else(|_| file_path.to_string()),
+        let query_path = match handler
+            .get_workspace_root_for_target(&ref_workspace_id)
+            .await
+        {
+            Ok(ref_workspace_root) => {
+                crate::utils::paths::to_relative_unix_style(&canonical, &ref_workspace_root)
+                    .unwrap_or_else(|_| file_path.to_string())
+            }
             Err(_) => file_path.to_string(),
         };
 

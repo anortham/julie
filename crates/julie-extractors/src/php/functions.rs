@@ -1,6 +1,6 @@
 // PHP Extractor - Function/method extraction
 
-use super::{determine_visibility, extract_modifiers, find_child, find_child_text, PhpExtractor};
+use super::{PhpExtractor, determine_visibility, extract_modifiers, find_child, find_child_text};
 use crate::base::{Symbol, SymbolKind, SymbolOptions};
 use crate::test_detection::is_test_symbol;
 use std::collections::HashMap;

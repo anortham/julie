@@ -4,7 +4,6 @@
 // Verifies that extracted symbols store relative Unix-style paths instead of absolute paths
 
 use crate::typescript::TypeScriptExtractor;
-use std::path::PathBuf;
 use tree_sitter::Parser;
 
 /// Initialize JavaScript parser for TypeScript files
@@ -55,8 +54,10 @@ mod relative_path_tests {
 
         let symbols = extractor.extract_symbols(&tree);
 
-        // CONTRACT VERIFICATION: Symbols must store relative Unix-style paths
-        assert!(symbols.len() >= 2, "Should extract function and class");
+        let symbol_names: std::collections::HashSet<_> =
+            symbols.iter().map(|symbol| symbol.name.as_str()).collect();
+        assert!(symbol_names.contains("getUserData"));
+        assert!(symbol_names.contains("UserService"));
 
         for symbol in &symbols {
             // 1. Path must be relative (no leading / or drive letter)
@@ -124,16 +125,18 @@ mod relative_path_tests {
 
         let symbols = extractor.extract_symbols(&tree);
 
-        if let Some(symbol) = symbols.first() {
-            assert_eq!(
-                symbol.file_path, "index.ts",
-                "Root-level file should have no directory separator"
-            );
-            assert!(
-                !symbol.file_path.contains('/'),
-                "Root-level file path should not contain /"
-            );
-        }
+        let version = symbols
+            .iter()
+            .find(|symbol| symbol.name == "VERSION")
+            .expect("Should extract VERSION");
+        assert_eq!(
+            version.file_path, "index.ts",
+            "Root-level file should have no directory separator"
+        );
+        assert!(
+            !version.file_path.contains('/'),
+            "Root-level file path should not contain /"
+        );
     }
 
     #[test]
@@ -160,16 +163,17 @@ mod relative_path_tests {
 
         let symbols = extractor.extract_symbols(&tree);
 
-        if let Some(symbol) = symbols.first() {
-            assert_eq!(
-                symbol.file_path, "src/extractors/typescript/symbols.ts",
-                "Nested path should use Unix separators"
-            );
+        let extract_symbols_fn = symbols
+            .iter()
+            .find(|symbol| symbol.name == "extractSymbols")
+            .expect("Should extract extractSymbols");
+        assert_eq!(
+            extract_symbols_fn.file_path, "src/extractors/typescript/symbols.ts",
+            "Nested path should use Unix separators"
+        );
 
-            // Count separators (should be 3 for src/extractors/typescript/symbols.ts)
-            let separator_count = symbol.file_path.matches('/').count();
-            assert_eq!(separator_count, 3, "Should have 3 directory separators");
-        }
+        let separator_count = extract_symbols_fn.file_path.matches('/').count();
+        assert_eq!(separator_count, 3, "Should have 3 directory separators");
     }
 
     #[test]

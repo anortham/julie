@@ -380,6 +380,15 @@ class MyComponent extends Namespace.BaseComponent {
             .find(|s| s.name == "MyComponent")
             .expect("Should extract MyComponent class");
         assert_eq!(base_pending.unwrap().from_symbol_id, my_component.id);
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "Namespace.BaseComponent")
+            .expect("structured pending relationship should preserve namespace-qualified extends target");
+        assert_eq!(structured_pending.target.terminal_name, "BaseComponent");
+        assert_eq!(structured_pending.target.namespace_path, vec!["Namespace"]);
+        assert_eq!(structured_pending.pending.from_symbol_id, my_component.id);
     }
 
     #[test]
@@ -420,6 +429,14 @@ class ServiceImpl implements Api.IService<Response> {
             response_pending.is_none(),
             "Should not extract type argument Response from Api.IService<Response>"
         );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "Api.IService")
+            .expect("structured pending relationship should preserve implements namespace context without generic arguments");
+        assert_eq!(structured_pending.target.terminal_name, "IService");
+        assert_eq!(structured_pending.target.namespace_path, vec!["Api"]);
     }
 
     #[test]

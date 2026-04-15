@@ -399,8 +399,9 @@ incremental_updates = true
         *workspace_guard = Some(workspace);
     }
 
-    let workspace_id = crate::workspace::registry::generate_workspace_id(&temp_root.to_string_lossy())
-        .expect("fixture workspace id should generate");
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&temp_root.to_string_lossy())
+            .expect("fixture workspace id should generate");
     *handler
         .workspace_id
         .write()

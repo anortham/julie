@@ -3,7 +3,7 @@
 //! Tests that pending relationships are created when methods/functions are called
 //! but not defined in the local file (indicating cross-file resolution needed).
 
-use crate::base::{PendingRelationship, RelationshipKind, SymbolKind};
+use crate::base::{RelationshipKind, SymbolKind};
 use crate::kotlin::KotlinExtractor;
 use std::path::PathBuf;
 use tree_sitter::Parser;
@@ -144,20 +144,21 @@ class Service {
 
         let symbols = extractor.extract_symbols(&tree);
         let _relationships = extractor.extract_relationships(&tree, &symbols);
-        let pending = extractor.get_pending_relationships();
+        let structured = extractor.get_structured_pending_relationships();
 
         // Should create pending relationship for compute method call
-        let pending_method = pending
-            .iter()
-            .find(|p| p.callee_name == "compute" && p.kind == RelationshipKind::Calls);
+        // Use structured pending: callee_name is display_name (receiver-qualified),
+        // so check terminal_name for the bare method name
+        let pending_method = structured.iter().find(|p| {
+            p.target.terminal_name == "compute" && p.pending.kind == RelationshipKind::Calls
+        });
 
         assert!(
             pending_method.is_some(),
             "Should create pending relationship for method call on external type"
         );
 
-        let structured_pending = extractor
-            .get_structured_pending_relationships()
+        let structured_pending = structured
             .into_iter()
             .find(|pending| pending.target.display_name == "helper.compute")
             .expect(

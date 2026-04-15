@@ -413,6 +413,28 @@ public class OrderController {
                 .any(|p| p.callee_name == "IPaymentGateway"),
             "Should have pending Uses for IPaymentGateway"
         );
+
+        let structured_pending_uses: Vec<_> = results
+            .structured_pending_relationships
+            .iter()
+            .filter(|p| {
+                p.pending.from_symbol_id == controller.id
+                    && p.pending.kind == RelationshipKind::Uses
+            })
+            .collect();
+
+        assert!(
+            structured_pending_uses
+                .iter()
+                .any(|p| p.target.display_name == "IOrderService"),
+            "Should preserve structured pending Uses for IOrderService"
+        );
+        assert!(
+            structured_pending_uses
+                .iter()
+                .any(|p| p.target.display_name == "IPaymentGateway"),
+            "Should preserve structured pending Uses for IPaymentGateway"
+        );
     }
 
     // ========================================================================

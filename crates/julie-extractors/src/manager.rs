@@ -1,7 +1,7 @@
 //! ExtractorManager - Public API for symbol/identifier/relationship extraction.
 
-use crate::base::{Identifier, Relationship, Symbol};
 use crate::ExtractionResults;
+use crate::base::{Identifier, Relationship, Symbol};
 use std::path::Path;
 
 /// Manager for all language extractors.

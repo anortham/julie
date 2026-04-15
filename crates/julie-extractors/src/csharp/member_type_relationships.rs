@@ -3,7 +3,7 @@
 // Extracts `Uses` relationships from field and property type declarations,
 // and provides shared type-name resolution used by constructor params too.
 
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use crate::csharp::CSharpExtractor;
 
 /// Extract field type relationships.
@@ -55,6 +55,7 @@ pub(crate) fn extract_field_type_relationships(
 
     emit_uses_relationship(
         extractor,
+        node,
         &class_symbol_id,
         &type_name,
         line_number,
@@ -115,6 +116,7 @@ pub(crate) fn extract_property_type_relationships(
 
     emit_uses_relationship(
         extractor,
+        node,
         &class_symbol_id,
         &type_name,
         line_number,
@@ -130,16 +132,19 @@ pub(crate) fn find_containing_class<'a>(
     node: tree_sitter::Node,
     symbols: &'a [Symbol],
 ) -> Option<&'a Symbol> {
-    let mut parent = node.parent();
-    while let Some(p) = parent {
-        if p.kind() == "class_declaration"
-            || p.kind() == "struct_declaration"
-            || p.kind() == "record_declaration"
+    let mut current = Some(node);
+    while let Some(candidate) = current {
+        if candidate.kind() == "class_declaration"
+            || candidate.kind() == "struct_declaration"
+            || candidate.kind() == "record_declaration"
         {
-            let mut p_cursor = p.walk();
-            if let Some(name_node) = p.children(&mut p_cursor).find(|c| c.kind() == "identifier") {
+            let mut candidate_cursor = candidate.walk();
+            if let Some(name_node) = candidate
+                .children(&mut candidate_cursor)
+                .find(|c| c.kind() == "identifier")
+            {
                 let class_name = base.get_node_text(&name_node);
-                let declaration_start_line = p.start_position().row as u32 + 1;
+                let declaration_start_line = candidate.start_position().row as u32 + 1;
 
                 let exact_match = symbols.iter().find(|s| {
                     s.name == class_name
@@ -166,7 +171,7 @@ pub(crate) fn find_containing_class<'a>(
             }
             break;
         }
-        parent = p.parent();
+        current = candidate.parent();
     }
     None
 }
@@ -178,6 +183,7 @@ pub(crate) fn find_containing_class<'a>(
 /// Skips if a Uses relationship from this class to this type already exists.
 fn emit_uses_relationship(
     extractor: &mut CSharpExtractor,
+    node: tree_sitter::Node,
     class_symbol_id: &str,
     type_name: &str,
     line_number: u32,
@@ -251,14 +257,16 @@ fn emit_uses_relationship(
             });
         }
         None => {
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: class_symbol_id.to_string(),
-                callee_name: type_name.to_string(),
-                kind: RelationshipKind::Uses,
-                file_path,
-                line_number,
-                confidence: 0.8,
-            });
+            let mut pending = extractor.get_base().create_pending_relationship(
+                class_symbol_id.to_string(),
+                UnresolvedTarget::simple(type_name),
+                RelationshipKind::Uses,
+                &node,
+                Some(class_symbol_id.to_string()),
+                Some(0.8),
+            );
+            pending.pending.line_number = line_number;
+            extractor.add_structured_pending_relationship(pending);
         }
     }
 }

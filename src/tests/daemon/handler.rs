@@ -372,19 +372,19 @@ async fn test_deferred_primary_init_without_force_populates_pool() {
 
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let canonical_root = workspace_root.path().canonicalize().expect("canonicalize root");
+    let canonical_root = workspace_root
+        .path()
+        .canonicalize()
+        .expect("canonicalize root");
 
     // Compute the workspace id the way the handler will when it normalizes
     // the target path inside `initialize_workspace_with_force`.
-    let workspace_id = crate::workspace::registry::generate_workspace_id(
-        &canonical_root.to_string_lossy(),
-    )
-    .expect("generate_workspace_id");
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&canonical_root.to_string_lossy())
+            .expect("generate_workspace_id");
 
     let daemon_db_path = indexes_dir.path().join("daemon.db");
-    let daemon_db = Arc::new(
-        DaemonDatabase::open(&daemon_db_path).expect("open daemon.db"),
-    );
+    let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path).expect("open daemon.db"));
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
     let pool = Arc::new(WorkspacePool::new(
@@ -412,7 +412,11 @@ async fn test_deferred_primary_init_without_force_populates_pool() {
 
     // Sanity: deferred session starts with no loaded workspace and the pool empty.
     assert!(
-        handler.get_workspace().await.expect("read workspace").is_none(),
+        handler
+            .get_workspace()
+            .await
+            .expect("read workspace")
+            .is_none(),
         "deferred session should start with no loaded workspace"
     );
     assert!(
@@ -439,8 +443,7 @@ async fn test_deferred_primary_init_without_force_populates_pool() {
     // Exercise the user-facing guard that was firing: get_database_for_workspace
     // walks through ensure_primary_pool_membership_for and must succeed for the
     // current primary now that the pool has the entry.
-    handler
-        .set_current_primary_binding(workspace_id.clone(), canonical_root.clone());
+    handler.set_current_primary_binding(workspace_id.clone(), canonical_root.clone());
     handler
         .get_database_for_workspace(&workspace_id)
         .await
@@ -466,17 +469,17 @@ async fn test_same_root_reinit_reuses_pool_entry_without_double_attach() {
 
     let indexes_dir = temp_indexes_dir();
     let workspace_root = temp_workspace_root();
-    let canonical_root = workspace_root.path().canonicalize().expect("canonicalize root");
+    let canonical_root = workspace_root
+        .path()
+        .canonicalize()
+        .expect("canonicalize root");
 
-    let workspace_id = crate::workspace::registry::generate_workspace_id(
-        &canonical_root.to_string_lossy(),
-    )
-    .expect("generate_workspace_id");
+    let workspace_id =
+        crate::workspace::registry::generate_workspace_id(&canonical_root.to_string_lossy())
+            .expect("generate_workspace_id");
 
     let daemon_db_path = indexes_dir.path().join("daemon.db");
-    let daemon_db = Arc::new(
-        DaemonDatabase::open(&daemon_db_path).expect("open daemon.db"),
-    );
+    let daemon_db = Arc::new(DaemonDatabase::open(&daemon_db_path).expect("open daemon.db"));
     let embedding_service = Arc::new(EmbeddingService::initializing());
     embedding_service.publish_unavailable("test: embeddings disabled".to_string(), None);
     let pool = Arc::new(WorkspacePool::new(

@@ -3,7 +3,7 @@
 //! This module handles extraction of relationships between symbols such as
 //! function calls and class inheritance relationships.
 
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use crate::typescript::TypeScriptExtractor;
 use tree_sitter::{Node, Tree};
 
@@ -86,9 +86,10 @@ fn extract_inheritance_relationships(
 
     // Phase 2: Create relationships (may need &mut extractor for pending)
     if let Some((class_symbol_id, base_types, file_path)) = heritage_data {
-        for (base_type_name, line_number, pending_kind) in base_types {
+        for (target, line_number, pending_kind) in base_types {
+            let lookup_name = target.terminal_name.clone();
             if let Some(base_symbol) = symbols.iter().find(|s| {
-                s.name == base_type_name
+                s.name == lookup_name
                     && matches!(
                         s.kind,
                         SymbolKind::Class | SymbolKind::Interface | SymbolKind::Struct
@@ -118,14 +119,17 @@ fn extract_inheritance_relationships(
                 });
             } else {
                 // Cross-file: base type is defined in another file
-                extractor.add_pending_relationship(PendingRelationship {
-                    from_symbol_id: class_symbol_id.clone(),
-                    callee_name: base_type_name,
-                    kind: pending_kind,
-                    file_path: file_path.clone(),
-                    line_number,
-                    confidence: 0.9,
-                });
+                let mut pending = extractor.base().create_pending_relationship(
+                    class_symbol_id.clone(),
+                    target.clone(),
+                    pending_kind,
+                    &node,
+                    Some(class_symbol_id.clone()),
+                    Some(0.9),
+                );
+                pending.pending.callee_name = target.terminal_name;
+                pending.pending.line_number = line_number;
+                extractor.add_structured_pending_relationship(pending);
             }
         }
     }
@@ -142,7 +146,11 @@ fn collect_heritage_data(
     extractor: &TypeScriptExtractor,
     node: Node,
     symbols: &[Symbol],
-) -> Option<(String, Vec<(String, u32, RelationshipKind)>, String)> {
+) -> Option<(
+    String,
+    Vec<(UnresolvedTarget, u32, RelationshipKind)>,
+    String,
+)> {
     let mut parent = node.parent()?;
     while parent.kind() != "class_declaration" {
         parent = parent.parent()?;
@@ -207,36 +215,79 @@ fn collect_heritage_data(
 fn extract_terminal_heritage_identifier(
     extractor: &TypeScriptExtractor,
     node: Node,
-) -> Option<(String, u32)> {
+) -> Option<(UnresolvedTarget, u32)> {
     match node.kind() {
         "identifier" | "type_identifier" | "property_identifier" => {
             let name = extractor.base().get_node_text(&node);
             let line = (node.start_position().row + 1) as u32;
-            Some((name, line))
+            Some((UnresolvedTarget::simple(name), line))
         }
         "generic_type" => {
-            if let Some(name_node) = node.child_by_field_name("name") {
-                return extract_terminal_heritage_identifier(extractor, name_node);
-            }
-
-            let mut cursor = node.walk();
-            for child in node.named_children(&mut cursor) {
-                if child.kind() == "type_arguments" {
-                    continue;
-                }
-                if let Some(target) = extract_terminal_heritage_identifier(extractor, child) {
-                    return Some(target);
-                }
-            }
-            None
+            let display_name = extractor
+                .base()
+                .get_node_text(&node)
+                .replace(' ', "")
+                .split('<')
+                .next()?
+                .to_string();
+            let segments: Vec<String> = display_name
+                .split('.')
+                .filter(|segment| !segment.is_empty())
+                .map(|segment| segment.to_string())
+                .collect();
+            let terminal_name = segments.last()?.clone();
+            let namespace_path = if segments.len() > 1 {
+                segments[..segments.len() - 1].to_vec()
+            } else {
+                Vec::new()
+            };
+            let line = (node.start_position().row + 1) as u32;
+            Some((
+                UnresolvedTarget {
+                    display_name,
+                    terminal_name,
+                    receiver: None,
+                    namespace_path,
+                    import_context: None,
+                },
+                line,
+            ))
         }
         "nested_type_identifier" | "member_expression" | "qualified_name" => {
-            if let Some(property_node) = node
+            let left = node
+                .child_by_field_name("object")
+                .or_else(|| node.child_by_field_name("left"))
+                .or_else(|| node.child_by_field_name("qualifier"));
+            let right = node
                 .child_by_field_name("name")
                 .or_else(|| node.child_by_field_name("property"))
-                .or_else(|| node.child_by_field_name("right"))
-            {
-                return extract_terminal_heritage_identifier(extractor, property_node);
+                .or_else(|| node.child_by_field_name("right"));
+
+            if let (Some(left), Some(right)) = (left, right) {
+                extract_terminal_heritage_identifier(extractor, left)?;
+                let (_, line) = extract_terminal_heritage_identifier(extractor, right)?;
+                let display_name = extractor.base().get_node_text(&node).replace(' ', "");
+                let segments: Vec<String> = display_name
+                    .split('.')
+                    .filter(|segment| !segment.is_empty())
+                    .map(|segment| segment.to_string())
+                    .collect();
+                let terminal_name = segments.last()?.clone();
+                let namespace_path = if segments.len() > 1 {
+                    segments[..segments.len() - 1].to_vec()
+                } else {
+                    Vec::new()
+                };
+                return Some((
+                    UnresolvedTarget {
+                        display_name,
+                        terminal_name,
+                        receiver: None,
+                        namespace_path,
+                        import_context: None,
+                    },
+                    line,
+                ));
             }
 
             let mut cursor = node.walk();
@@ -257,7 +308,7 @@ fn collect_clause_targets(
     extractor: &TypeScriptExtractor,
     node: Node,
     relationship_kind: RelationshipKind,
-    base_types: &mut Vec<(String, u32, RelationshipKind)>,
+    base_types: &mut Vec<(UnresolvedTarget, u32, RelationshipKind)>,
 ) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {

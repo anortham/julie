@@ -10,11 +10,11 @@
 //! because no source code references them directly — the container resolves them
 //! at runtime.
 
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::csharp::CSharpExtractor;
 use crate::csharp::member_type_relationships::{
     extract_type_name_from_node, find_containing_class,
 };
-use crate::csharp::CSharpExtractor;
 
 /// DI registration method names that we recognize.
 /// These are the standard Microsoft.Extensions.DependencyInjection methods.
@@ -142,14 +142,16 @@ pub(crate) fn extract_di_registration_relationships(
                 metadata: None,
             });
         } else {
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: from_id.clone(),
-                callee_name: type_name,
-                kind: RelationshipKind::Instantiates,
-                file_path: file_path.clone(),
-                line_number,
-                confidence: 0.9,
-            });
+            let mut pending = extractor.get_base().create_pending_relationship(
+                from_id.clone(),
+                UnresolvedTarget::simple(type_name),
+                RelationshipKind::Instantiates,
+                &node,
+                Some(from_id.clone()),
+                Some(0.9),
+            );
+            pending.pending.line_number = line_number;
+            extractor.add_structured_pending_relationship(pending);
         }
     }
 }

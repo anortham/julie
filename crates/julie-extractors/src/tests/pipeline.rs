@@ -1,6 +1,6 @@
+use crate::ExtractionResults;
 use crate::factory::extract_symbols_and_relationships;
 use crate::tests::helpers::init_parser;
-use crate::ExtractionResults;
 use std::path::{Path, PathBuf};
 
 fn extract_legacy(

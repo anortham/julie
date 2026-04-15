@@ -189,8 +189,6 @@ pub enum IdentifierKind {
     TypeUsage,
     /// Member access (object.property, object.method)
     MemberAccess,
-    /// Import/use statement
-    Import,
 }
 
 impl std::fmt::Display for IdentifierKind {
@@ -200,7 +198,6 @@ impl std::fmt::Display for IdentifierKind {
             IdentifierKind::VariableRef => write!(f, "variable_ref"),
             IdentifierKind::TypeUsage => write!(f, "type_usage"),
             IdentifierKind::MemberAccess => write!(f, "member_access"),
-            IdentifierKind::Import => write!(f, "import"),
         }
     }
 }
@@ -213,7 +210,6 @@ impl IdentifierKind {
             "variable_ref" => IdentifierKind::VariableRef,
             "type_usage" => IdentifierKind::TypeUsage,
             "member_access" => IdentifierKind::MemberAccess,
-            "import" => IdentifierKind::Import,
             _ => IdentifierKind::VariableRef, // Default fallback
         }
     }

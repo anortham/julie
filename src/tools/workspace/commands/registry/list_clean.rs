@@ -26,18 +26,19 @@ impl ManageWorkspaceTool {
                     return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                 }
             };
-            let paired_ids: std::collections::HashSet<String> =
-                if let Some(ref primary_id) = primary_workspace_id {
-                    match db.list_references(primary_id) {
-                        Ok(references) => references.into_iter().map(|ws| ws.workspace_id).collect(),
-                        Err(e) => {
-                            let message = format!("Failed to list workspace pairings: {}", e);
-                            return Ok(CallToolResult::text_content(vec![Content::text(message)]));
-                        }
+            let paired_ids: std::collections::HashSet<String> = if let Some(ref primary_id) =
+                primary_workspace_id
+            {
+                match db.list_references(primary_id) {
+                    Ok(references) => references.into_iter().map(|ws| ws.workspace_id).collect(),
+                    Err(e) => {
+                        let message = format!("Failed to list workspace pairings: {}", e);
+                        return Ok(CallToolResult::text_content(vec![Content::text(message)]));
                     }
-                } else {
-                    std::collections::HashSet::new()
-                };
+                }
+            } else {
+                std::collections::HashSet::new()
+            };
 
             if all_workspaces.is_empty() {
                 let message = "No workspaces registered.";

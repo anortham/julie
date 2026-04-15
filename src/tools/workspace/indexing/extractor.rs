@@ -1,9 +1,5 @@
-//! Symbol extraction from parsed ASTs
-//! Handles language-specific symbol extraction using all 27 tree-sitter extractors
-//!
-//! 🔥 REFACTORED 2025-11-02: This file now uses the centralized factory function
-//! `crate::extractors::extract_symbols_and_relationships()` to eliminate duplicate
-//! match statements that caused the R/QML/PHP bug.
+//! Symbol extraction for workspace indexing.
+//! Uses the canonical extractor pipeline so workspace indexing matches the supported public API.
 
 use crate::extractors::ExtractionResults;
 use crate::tools::workspace::commands::ManageWorkspaceTool;
@@ -14,31 +10,25 @@ use tree_sitter::Tree;
 impl ManageWorkspaceTool {
     /// Static version for use in spawn_blocking (where self is not available)
     ///
-    /// This method extracts symbols from an already-parsed tree without requiring &self,
-    /// making it suitable for use inside spawn_blocking closures. It delegates to the
-    /// centralized factory function which is the single source of truth for all language extractors.
+    /// This method extracts symbols without requiring `&self`, making it suitable for use inside
+    /// `spawn_blocking` closures. It delegates to the canonical extractor pipeline so indexing,
+    /// JSONL handling, and path normalization all follow the same production path.
     pub(crate) fn extract_symbols_static(
-        tree: &Tree,
+        _tree: &Tree,
         file_path: &str,
         content: &str,
-        language: &str,
+        _language: &str,
         workspace_root_path: &std::path::Path,
     ) -> Result<ExtractionResults> {
         debug!(
             "Extracting symbols (static): language={}, file={}",
-            language, file_path
+            _language, file_path
         );
-        debug!("    Tree root node: {:?}", tree.root_node().kind());
+        debug!("    Tree root node: {:?}", _tree.root_node().kind());
         debug!("    Content length: {} chars", content.len());
 
-        // Use centralized factory function (single source of truth)
-        let results = crate::extractors::extract_symbols_and_relationships(
-            tree,
-            file_path,
-            content,
-            language,
-            workspace_root_path,
-        )?;
+        let results =
+            crate::extractors::extract_canonical(file_path, content, workspace_root_path)?;
 
         debug!(
             "🎯 extract_symbols_static returning: {} symbols, {} relationships, {} identifiers, {} types for {} file: {}",
@@ -46,7 +36,7 @@ impl ManageWorkspaceTool {
             results.relationships.len(),
             results.identifiers.len(),
             results.types.len(),
-            language,
+            _language,
             file_path
         );
 

@@ -18,9 +18,11 @@ pub fn find_parent_class_id(extractor: &PythonExtractor, node: &Node) -> Option<
             };
 
             let start_pos = parent.start_position();
+            // NormalizedSpan::from_node converts row to 1-based (row + 1),
+            // so we must match that here for the ID to align with the class's actual ID.
             let parent_id = extractor.base().generate_id(
                 &class_name,
-                start_pos.row as u32,
+                start_pos.row as u32 + 1,
                 start_pos.column as u32,
             );
 
