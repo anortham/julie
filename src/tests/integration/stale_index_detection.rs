@@ -24,6 +24,7 @@ use tempfile::TempDir;
 /// We now explicitly backdate the source file's mtime after indexing so the comparison
 /// has a deterministic >1s gap regardless of host filesystem resolution.
 #[tokio::test]
+#[serial_test::serial(embedding_env)]
 async fn test_fresh_index_no_reindex_needed() -> Result<()> {
     use std::fs::File;
     use std::time::{Duration, SystemTime};
@@ -67,6 +68,7 @@ async fn test_fresh_index_no_reindex_needed() -> Result<()> {
 /// check reported extensionless files as "indexed but missing" and forced an
 /// unnecessary re-index on session reconnect.
 #[tokio::test]
+#[serial_test::serial(embedding_env)]
 async fn test_fresh_index_with_extensionless_text_files_needs_no_reindex() -> Result<()> {
     use std::fs::File;
     use std::time::{Duration, SystemTime};

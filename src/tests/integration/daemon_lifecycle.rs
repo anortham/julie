@@ -171,15 +171,15 @@ mod tests {
     /// test will fail because `ready` will be written after the 2s sleep
     /// instead of within ~1s of PID file creation.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[serial_test::serial(embedding_env)]
     async fn test_daemon_reaches_ready_before_slow_embedding_init_completes() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let paths = DaemonPaths::with_home(tmp.path().to_path_buf());
         paths.ensure_dirs().expect("ensure_dirs");
 
-        // SAFETY: env vars are not thread-safe in Rust 2024. This test sets
-        // them just before spawning the daemon and removes them on cleanup.
-        // Other tests in this module use serial_test or env_guard patterns;
-        // we rely on cargo test's per-test thread isolation here.
+        // SAFETY: env vars are not thread-safe in Rust 2024. Serialize this
+        // test on the shared embedding_env lock so it cannot race other tests
+        // that toggle embedding-related process environment.
         unsafe {
             // Force the embedding service to use a no-provider path so we
             // skip the real Python sidecar machinery.

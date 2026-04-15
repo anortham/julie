@@ -18,6 +18,7 @@ use crate::tools::workspace::ManageWorkspaceTool;
 /// When: Indexing is performed
 /// Expected: Documentation symbols appear in symbols table WHERE content_type='documentation'
 #[tokio::test]
+#[serial_test::serial(embedding_env)]
 async fn test_documentation_indexing_basic() -> Result<()> {
     // Skip embedding generation for faster test execution
     unsafe {
@@ -201,6 +202,7 @@ async fn test_documentation_indexing_basic() -> Result<()> {
 /// When: Second indexing occurs
 /// Expected: Duplicate prevention via file_hash (INSERT OR REPLACE with same hash)
 #[tokio::test]
+#[serial_test::serial(embedding_env)]
 async fn test_documentation_deduplication() -> Result<()> {
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
@@ -275,6 +277,7 @@ async fn test_documentation_deduplication() -> Result<()> {
 /// When: Re-indexing occurs
 /// Expected: Existing entry updated (not duplicated) and doc_comment reflects new content
 #[tokio::test]
+#[serial_test::serial(embedding_env)]
 async fn test_documentation_update_on_change() -> Result<()> {
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
@@ -382,6 +385,7 @@ async fn test_documentation_update_on_change() -> Result<()> {
 /// When: Indexing occurs
 /// Expected: Multiple symbol entries in symbols table, one per section (markdown extractor behavior)
 #[tokio::test]
+#[serial_test::serial(embedding_env)]
 async fn test_multiple_sections_from_single_file() -> Result<()> {
     unsafe {
         std::env::set_var("JULIE_SKIP_EMBEDDINGS", "1");
