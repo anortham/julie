@@ -1,6 +1,6 @@
 // PHP Extractor - Namespace and import declarations, variable assignments
 
-use super::{PhpExtractor, find_child};
+use super::{find_child, PhpExtractor};
 use crate::base::{Symbol, SymbolKind, SymbolOptions, Visibility};
 use std::collections::HashMap;
 use tree_sitter::Node;

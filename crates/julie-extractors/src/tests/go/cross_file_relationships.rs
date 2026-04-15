@@ -9,6 +9,7 @@
 
 use crate::base::{PendingRelationship, RelationshipKind};
 use crate::factory::extract_symbols_and_relationships;
+use crate::go::GoExtractor;
 use crate::{ExtractionResults, Relationship, Symbol};
 use std::path::PathBuf;
 use tree_sitter::Parser;
@@ -39,6 +40,24 @@ mod tests {
     fn extract_from_file(filename: &str, code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
         let results = extract_full(filename, code);
         (results.symbols, results.relationships)
+    }
+
+    fn extract_structured_pending(
+        filename: &str,
+        code: &str,
+    ) -> Vec<crate::base::StructuredPendingRelationship> {
+        let mut parser = init_go_parser();
+        let tree = parser.parse(code, None).expect("Failed to parse");
+        let workspace_root = PathBuf::from("/test/workspace");
+        let mut extractor = GoExtractor::new(
+            "go".to_string(),
+            filename.to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        extractor.extract_relationships(&tree, &symbols);
+        extractor.get_structured_pending_relationships()
     }
 
     // ========================================================================
@@ -139,11 +158,11 @@ func MainFunction() int {
         // Verify the pending relationship has the correct callee name
         let helper_pending = pending_calls
             .iter()
-            .find(|p| p.callee_name == "HelperFunction");
+            .find(|p| p.callee_name == "HelperFunction" || p.callee_name == "utils.HelperFunction");
 
         assert!(
             helper_pending.is_some(),
-            "PendingRelationship should have callee_name='HelperFunction'.\n\
+            "PendingRelationship should have callee_name='HelperFunction' or 'utils.HelperFunction'.\n\
              Found: {:?}",
             pending_calls
                 .iter()
@@ -158,41 +177,36 @@ func MainFunction() int {
             pending.from_symbol_id, main_fn_id,
             "PendingRelationship should be from MainFunction"
         );
+
+        let structured_pending = extract_structured_pending("main.go", file_b_code);
+        let structured_pending = structured_pending
+            .iter()
+            .find(|pending| pending.target.display_name == "utils.HelperFunction")
+            .expect("structured pending relationship should preserve Go package-qualified calls");
+        assert_eq!(structured_pending.target.terminal_name, "HelperFunction");
+        assert_eq!(structured_pending.target.receiver.as_deref(), Some("utils"));
     }
 
     #[test]
-    fn test_builtin_function_call_creates_pending_relationship() {
-        // Go code that calls builtin functions from other packages
+    fn test_stdlib_package_call_does_not_create_pending_relationship() {
+        // Go code that calls a stdlib package function
         let code = r#"
 package main
 
 import "fmt"
 
 func main() {
-    fmt.Println("Hello")  // Cross-package builtin call!
+    fmt.Println("Hello")
 }
 "#;
 
         let results = extract_full("main.go", code);
 
-        // Debug output
-        println!("=== Symbols ===");
-        for s in &results.symbols {
-            println!("  {} ({:?})", s.name, s.kind);
-        }
-        println!("=== Pending relationships ===");
-        for p in &results.pending_relationships {
-            println!(
-                "  {:?}: {} -> '{}'",
-                p.kind, p.from_symbol_id, p.callee_name
-            );
-        }
-
         // Should have extracted main function
         let main_fn = results.symbols.iter().find(|s| s.name == "main");
         assert!(main_fn.is_some(), "Should extract main function");
 
-        // Cross-package builtin calls should create PendingRelationship
+        // Stdlib package calls should not create unresolved pending edges.
         let pending_calls: Vec<_> = results
             .pending_relationships
             .iter()
@@ -200,22 +214,28 @@ func main() {
             .collect();
 
         assert!(
-            !pending_calls.is_empty(),
-            "fmt.Println() should create PendingRelationship.\n\
-             Found {} pending relationships, expected at least 1.",
-            pending_calls.len()
-        );
-
-        // Verify we captured Println
-        let println_pending = pending_calls.iter().find(|p| p.callee_name == "Println");
-
-        assert!(
-            println_pending.is_some(),
-            "PendingRelationship should have callee_name='Println'.\n\
+            pending_calls.is_empty(),
+            "fmt.Println() should not create legacy PendingRelationship entries.\n\
              Found: {:?}",
             pending_calls
                 .iter()
                 .map(|p| &p.callee_name)
+                .collect::<Vec<_>>()
+        );
+
+        let structured_pending = extract_structured_pending("main.go", code);
+        let structured_calls: Vec<_> = structured_pending
+            .iter()
+            .filter(|pending| pending.pending.kind == RelationshipKind::Calls)
+            .collect();
+
+        assert!(
+            structured_calls.is_empty(),
+            "fmt.Println() should not create structured pending relationships.\n\
+             Found: {:?}",
+            structured_calls
+                .iter()
+                .map(|pending| pending.target.display_name.as_str())
                 .collect::<Vec<_>>()
         );
     }

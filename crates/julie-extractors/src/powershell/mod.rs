@@ -24,7 +24,10 @@ pub mod relationships;
 pub mod types;
 pub mod variables;
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol,
+};
 use tree_sitter::Tree;
 
 /// PowerShell language extractor that handles PowerShell-specific constructs for Windows/Azure DevOps
@@ -32,6 +35,7 @@ pub struct PowerShellExtractor {
     pub base: BaseExtractor,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl PowerShellExtractor {
@@ -44,6 +48,7 @@ impl PowerShellExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -232,9 +237,16 @@ impl PowerShellExtractor {
         self.pending_relationships.clone()
     }
 
-    /// Add a pending relationship for cross-file resolution
-    pub(crate) fn add_pending_relationship(&mut self, pending: PendingRelationship) {
-        self.pending_relationships.push(pending);
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
+    }
+
+    pub(crate) fn add_structured_pending_relationship(
+        &mut self,
+        pending: StructuredPendingRelationship,
+    ) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
     }
 
     /// Infer types for symbols

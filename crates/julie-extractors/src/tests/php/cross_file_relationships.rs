@@ -229,14 +229,24 @@ function process() {
 
         // We should have captured either 'Calculator', 'double', or both
         let has_constructor = callee_names.iter().any(|n| *n == "Calculator");
-        let has_double = callee_names.iter().any(|n| *n == "double");
+        let has_double = callee_names
+            .iter()
+            .any(|n| *n == "double" || *n == "calc.double");
 
         assert!(
             has_constructor || has_double,
-            "Should capture at least 'Calculator' or 'double' method calls.\n\
+            "Should capture at least 'Calculator' or the member call target.\n\
              Found: {:?}",
             callee_names
         );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "calc.double")
+            .expect("structured pending relationship should preserve receiver-qualified PHP method calls");
+        assert_eq!(structured_pending.target.terminal_name, "double");
+        assert_eq!(structured_pending.target.receiver.as_deref(), Some("calc"));
     }
 
     // ========================================================================
@@ -526,6 +536,13 @@ class Controller extends BaseController {
                 .map(|p| &p.callee_name)
                 .collect::<Vec<_>>()
         );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "BaseController")
+            .expect("structured pending relationship should preserve PHP extends targets");
+        assert_eq!(structured_pending.target.terminal_name, "BaseController");
     }
 
     /// Test that `class Foo implements RouterInterface` creates a PendingRelationship

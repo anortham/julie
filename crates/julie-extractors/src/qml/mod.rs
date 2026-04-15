@@ -5,7 +5,10 @@
 mod identifiers;
 mod relationships;
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol, UnresolvedTarget,
+};
 use crate::test_detection::is_test_symbol;
 use tree_sitter::Tree;
 
@@ -14,6 +17,7 @@ pub struct QmlExtractor {
     symbols: Vec<Symbol>,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl QmlExtractor {
@@ -27,6 +31,7 @@ impl QmlExtractor {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             symbols: Vec::new(),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -291,15 +296,15 @@ impl QmlExtractor {
                         if let Some(caller_symbol) =
                             self.find_containing_function_in_symbols(node, symbol_map)
                         {
-                            let line_number = node.start_position().row as u32 + 1;
-                            self.add_pending_relationship(PendingRelationship {
-                                from_symbol_id: caller_symbol.id.clone(),
-                                callee_name: function_name.clone(),
-                                kind: crate::base::RelationshipKind::Calls,
-                                file_path: self.base.file_path.clone(),
-                                line_number,
-                                confidence: 0.7,
-                            });
+                            let pending = self.base.create_pending_relationship(
+                                caller_symbol.id.clone(),
+                                self.build_unresolved_target(function_node, &function_name),
+                                crate::base::RelationshipKind::Calls,
+                                &node,
+                                Some(caller_symbol.id.clone()),
+                                Some(0.7),
+                            );
+                            self.add_structured_pending_relationship(pending);
                         }
                     }
                     _ => {}
@@ -353,6 +358,44 @@ impl QmlExtractor {
     /// Add a pending relationship (used during extraction)
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.pending_relationships.push(pending);
+    }
+
+    pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
+    }
+
+    fn build_unresolved_target(
+        &self,
+        function_node: tree_sitter::Node,
+        fallback_name: &str,
+    ) -> UnresolvedTarget {
+        if function_node.kind() == "member_expression" {
+            let receiver = function_node
+                .child_by_field_name("object")
+                .map(|node| self.base.get_node_text(&node));
+            let property = function_node
+                .child_by_field_name("property")
+                .map(|node| self.base.get_node_text(&node))
+                .unwrap_or_else(|| fallback_name.to_string());
+            let display_name = receiver
+                .as_ref()
+                .map(|receiver| format!("{receiver}.{property}"))
+                .unwrap_or_else(|| property.clone());
+            return UnresolvedTarget {
+                display_name,
+                terminal_name: property,
+                receiver,
+                namespace_path: Vec::new(),
+                import_context: None,
+            };
+        }
+
+        UnresolvedTarget::simple(fallback_name.to_string())
     }
 
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {

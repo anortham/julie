@@ -7,7 +7,8 @@
 ///
 /// Implementation of comprehensive Rust extractor
 use crate::base::{
-    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol, SymbolKind,
 };
 use regex::Regex;
 use std::sync::LazyLock;
@@ -40,6 +41,7 @@ pub struct RustExtractor {
     is_processing_impl_blocks: bool,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl RustExtractor {
@@ -54,6 +56,7 @@ impl RustExtractor {
             impl_blocks: Vec::new(),
             is_processing_impl_blocks: false,
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -62,7 +65,16 @@ impl RustExtractor {
         self.pending_relationships.clone()
     }
 
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
+    }
+
     /// Add a pending relationship (used during extraction)
+    pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
+    }
+
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.pending_relationships.push(pending);
     }

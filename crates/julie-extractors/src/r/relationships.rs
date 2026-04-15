@@ -1,7 +1,7 @@
 // R Relationship Extraction
 // Extracts relationships between R symbols: function calls, library usage, pipes
 
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use crate::r::RExtractor;
 use tree_sitter::{Node, Tree};
 
@@ -77,15 +77,15 @@ fn extract_call_relationships(
                 } else if !is_builtin_function(&function_name) {
                     // Unknown non-builtin function - create PendingRelationship
                     // for cross-file resolution
-                    let pending = PendingRelationship {
-                        from_symbol_id: caller_symbol.id.clone(),
-                        callee_name: function_name.clone(),
-                        kind: RelationshipKind::Calls,
-                        file_path: extractor.base.file_path.clone(),
-                        line_number: (node.start_position().row + 1) as u32,
-                        confidence: 0.7,
-                    };
-                    extractor.add_pending_relationship(pending);
+                    let pending = extractor.base.create_pending_relationship(
+                        caller_symbol.id.clone(),
+                        unresolved_call_target(extractor, function_node, &function_name),
+                        RelationshipKind::Calls,
+                        &node,
+                        Some(caller_symbol.id.clone()),
+                        Some(0.7),
+                    );
+                    extractor.add_structured_pending_relationship(pending);
                 }
                 // Built-in functions (print, mean, length, etc.) are silently
                 // dropped - they're known base R functions that don't need resolution
@@ -148,15 +148,15 @@ fn extract_pipe_relationships(
                                     relationships.push(relationship);
                                 } else {
                                     // Not found locally - create PendingRelationship
-                                    let pending = PendingRelationship {
-                                        from_symbol_id: containing_symbol.id.clone(),
-                                        callee_name: function_name.clone(),
-                                        kind: RelationshipKind::Calls,
-                                        file_path: extractor.base.file_path.clone(),
-                                        line_number: (node.start_position().row + 1) as u32,
-                                        confidence: 0.7,
-                                    };
-                                    extractor.add_pending_relationship(pending);
+                                    let pending = extractor.base.create_pending_relationship(
+                                        containing_symbol.id.clone(),
+                                        UnresolvedTarget::simple(function_name.clone()),
+                                        RelationshipKind::Calls,
+                                        &node,
+                                        Some(containing_symbol.id.clone()),
+                                        Some(0.7),
+                                    );
+                                    extractor.add_structured_pending_relationship(pending);
                                 }
                             }
                         }
@@ -190,15 +190,28 @@ fn extract_member_access_relationships(
             if let Some(containing_symbol) = find_containing_function(extractor, node, symbols) {
                 // Member access targets can't be resolved locally (they're dynamic)
                 // Use PendingRelationship for cross-file resolution
-                let pending = PendingRelationship {
-                    from_symbol_id: containing_symbol.id.clone(),
-                    callee_name: member_name.clone(),
-                    kind: RelationshipKind::Uses,
-                    file_path: extractor.base.file_path.clone(),
-                    line_number: (node.start_position().row + 1) as u32,
-                    confidence: 0.6,
-                };
-                extractor.add_pending_relationship(pending);
+                let receiver = node
+                    .child(0)
+                    .map(|object| extractor.base.get_node_text(&object));
+                let display_name = receiver
+                    .as_ref()
+                    .map(|receiver| format!("{receiver}.{member_name}"))
+                    .unwrap_or_else(|| member_name.clone());
+                let pending = extractor.base.create_pending_relationship(
+                    containing_symbol.id.clone(),
+                    UnresolvedTarget {
+                        display_name,
+                        terminal_name: member_name.clone(),
+                        receiver,
+                        namespace_path: Vec::new(),
+                        import_context: None,
+                    },
+                    RelationshipKind::Uses,
+                    &node,
+                    Some(containing_symbol.id.clone()),
+                    Some(0.6),
+                );
+                extractor.add_structured_pending_relationship(pending);
             }
         }
     }
@@ -281,4 +294,54 @@ fn is_builtin_function(name: &str) -> bool {
         "filter" | "select" | "mutate" | "arrange" | "group_by" | "summarize" | "summarise" |
         "join" | "left_join" | "right_join" | "inner_join" | "full_join" | "ggplot" | "aes"
     )
+}
+
+fn unresolved_call_target(
+    extractor: &RExtractor,
+    function_node: Node,
+    fallback_name: &str,
+) -> UnresolvedTarget {
+    match function_node.kind() {
+        "namespace_operator" => {
+            let namespace = function_node
+                .child(0)
+                .map(|node| extractor.base.get_node_text(&node));
+            let terminal_name = function_node
+                .child(2)
+                .map(|node| extractor.base.get_node_text(&node))
+                .unwrap_or_else(|| fallback_name.to_string());
+            let display_name = namespace
+                .as_ref()
+                .map(|namespace| format!("{namespace}::{terminal_name}"))
+                .unwrap_or_else(|| terminal_name.clone());
+            UnresolvedTarget {
+                display_name,
+                terminal_name,
+                receiver: None,
+                namespace_path: namespace.into_iter().collect(),
+                import_context: None,
+            }
+        }
+        "extract_operator" => {
+            let receiver = function_node
+                .child(0)
+                .map(|node| extractor.base.get_node_text(&node));
+            let terminal_name = function_node
+                .child(2)
+                .map(|node| extractor.base.get_node_text(&node))
+                .unwrap_or_else(|| fallback_name.to_string());
+            let display_name = receiver
+                .as_ref()
+                .map(|receiver| format!("{receiver}.{terminal_name}"))
+                .unwrap_or_else(|| terminal_name.clone());
+            UnresolvedTarget {
+                display_name,
+                terminal_name,
+                receiver,
+                namespace_path: Vec::new(),
+                import_context: None,
+            }
+        }
+        _ => UnresolvedTarget::simple(fallback_name.to_string()),
+    }
 }

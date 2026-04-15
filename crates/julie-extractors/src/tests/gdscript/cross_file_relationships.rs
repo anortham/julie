@@ -9,6 +9,7 @@
 
 use crate::base::{PendingRelationship, RelationshipKind};
 use crate::factory::extract_symbols_and_relationships;
+use crate::gdscript::GDScriptExtractor;
 use crate::{ExtractionResults, Relationship, Symbol};
 use std::path::PathBuf;
 use tree_sitter::Parser;
@@ -39,6 +40,24 @@ mod tests {
     fn extract_from_file(filename: &str, code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
         let results = extract_full(filename, code);
         (results.symbols, results.relationships)
+    }
+
+    fn extract_structured_pending(
+        filename: &str,
+        code: &str,
+    ) -> Vec<crate::base::StructuredPendingRelationship> {
+        let mut parser = init_gdscript_parser();
+        let tree = parser.parse(code, None).expect("Failed to parse");
+        let workspace_root = PathBuf::from("/test/workspace");
+        let mut extractor = GDScriptExtractor::new(
+            "gdscript".to_string(),
+            filename.to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        extractor.extract_relationships(&tree, &symbols);
+        extractor.get_structured_pending_relationships()
     }
 
     // ========================================================================
@@ -229,6 +248,16 @@ func process():
              Found: {:?}",
             callee_names
         );
+
+        let structured_pending = extract_structured_pending("lib/processor.gd", file_b_code);
+        let structured_pending = structured_pending
+            .iter()
+            .find(|pending| pending.target.display_name == "external_helper")
+            .expect(
+                "structured pending relationship should preserve GDScript unresolved call targets",
+            );
+        assert_eq!(structured_pending.target.terminal_name, "external_helper");
+        assert_eq!(structured_pending.target.receiver, None);
     }
 
     // ========================================================================

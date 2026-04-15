@@ -3,7 +3,7 @@ use super::helpers::find_containing_function;
 /// - Trait implementations
 /// - Type references in fields
 /// - Function calls
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use crate::rust::RustExtractor;
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -190,13 +190,39 @@ fn extract_call_relationships(
             let method_node = func_node.child_by_field_name("field");
             if let Some(method_node) = method_node {
                 let method_name = extractor.get_base_mut().get_node_text(&method_node);
-                handle_call_target(extractor, node, &method_name, symbol_map, relationships);
+                let target = if let Some(receiver_node) = func_node.child_by_field_name("value") {
+                    let receiver = extractor.get_base_mut().get_node_text(&receiver_node);
+                    UnresolvedTarget {
+                        display_name: format!("{receiver}.{method_name}"),
+                        terminal_name: method_name.clone(),
+                        receiver: Some(receiver),
+                        namespace_path: Vec::new(),
+                        import_context: None,
+                    }
+                } else {
+                    UnresolvedTarget::simple(method_name.clone())
+                };
+                handle_call_target(
+                    extractor,
+                    node,
+                    &method_name,
+                    target,
+                    symbol_map,
+                    relationships,
+                );
             }
         }
         // Handle direct function calls
         else if func_node.kind() == "identifier" {
             let function_name = extractor.get_base_mut().get_node_text(&func_node);
-            handle_call_target(extractor, node, &function_name, symbol_map, relationships);
+            handle_call_target(
+                extractor,
+                node,
+                &function_name,
+                UnresolvedTarget::simple(function_name.clone()),
+                symbol_map,
+                relationships,
+            );
         }
         // Handle qualified/scoped calls: crate::module::function()
         else if func_node.kind() == "scoped_identifier" {
@@ -205,7 +231,14 @@ fn extract_call_relationships(
             } else {
                 extractor.get_base_mut().get_node_text(&func_node)
             };
-            handle_call_target(extractor, node, &function_name, symbol_map, relationships);
+            handle_call_target(
+                extractor,
+                node,
+                &function_name,
+                UnresolvedTarget::simple(function_name.clone()),
+                symbol_map,
+                relationships,
+            );
         }
     }
 }
@@ -215,6 +248,7 @@ fn handle_call_target(
     extractor: &mut RustExtractor,
     call_node: Node,
     callee_name: &str,
+    unresolved_target: UnresolvedTarget,
     symbol_map: &HashMap<String, &Symbol>,
     relationships: &mut Vec<Relationship>,
 ) {
@@ -238,14 +272,15 @@ fn handle_call_target(
             // Target is an Import symbol - need cross-file resolution
             // Don't create relationship pointing to Import (useless for trace_call_path)
             // Instead, create a PendingRelationship with the callee name
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: caller.id.clone(),
-                callee_name: callee_name.to_string(),
-                kind: RelationshipKind::Calls,
-                file_path,
-                line_number,
-                confidence: 0.8, // Lower confidence - needs resolution
-            });
+            let pending = extractor.get_base_mut().create_pending_relationship(
+                caller.id.clone(),
+                unresolved_target,
+                RelationshipKind::Calls,
+                &call_node,
+                Some(caller.id.clone()),
+                Some(0.8),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
         Some(called_symbol) => {
             // Target is a local function/method - create resolved Relationship
@@ -269,14 +304,15 @@ fn handle_call_target(
         None => {
             // Target not found in local symbols - likely a method on imported type
             // Create PendingRelationship for cross-file resolution
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: caller.id.clone(),
-                callee_name: callee_name.to_string(),
-                kind: RelationshipKind::Calls,
-                file_path,
-                line_number,
-                confidence: 0.7, // Lower confidence - unknown target
-            });
+            let pending = extractor.get_base_mut().create_pending_relationship(
+                caller.id.clone(),
+                unresolved_target,
+                RelationshipKind::Calls,
+                &call_node,
+                Some(caller.id.clone()),
+                Some(0.7),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
     }
 }

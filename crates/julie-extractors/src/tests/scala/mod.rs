@@ -522,7 +522,6 @@ case class Dog(name: String) extends Animal {
     let symbols = extractor.extract_symbols(&tree);
     let relationships = extractor.extract_relationships(&tree, &symbols);
 
-    // Dog extends Animal — since Animal is a Trait, this should be Implements
     assert!(
         !relationships.is_empty(),
         "Expected at least 1 relationship, got 0. Symbols: {:?}",
@@ -541,6 +540,66 @@ case class Dog(name: String) extends Animal {
         "Expected Dog->Animal relationship. Relationships: {:?}",
         relationships
     );
+}
+
+#[test]
+fn test_scala_structured_pending_call_preserves_receiver_context() {
+    let code = r#"
+object Main {
+  def run(): Unit = {
+    helper.compute()
+  }
+}
+"#;
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = ScalaExtractor::new(
+        "scala".to_string(),
+        "test.scala".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let _relationships = extractor.extract_relationships(&tree, &symbols);
+
+    let pending = extractor
+        .get_structured_pending_relationships()
+        .into_iter()
+        .find(|pending| pending.target.display_name == "helper.compute")
+        .expect("structured pending relationship should preserve receiver-qualified Scala calls");
+
+    assert_eq!(pending.target.terminal_name, "compute");
+    assert_eq!(pending.target.receiver.as_deref(), Some("helper"));
+}
+
+#[test]
+fn test_scala_structured_pending_inheritance_preserves_target() {
+    let code = r#"
+class Worker extends ExternalService {
+  def run(): Unit = {}
+}
+"#;
+    let mut parser = init_parser();
+    let tree = parser.parse(code, None).unwrap();
+    let workspace_root = PathBuf::from("/tmp/test");
+    let mut extractor = ScalaExtractor::new(
+        "scala".to_string(),
+        "test.scala".to_string(),
+        code.to_string(),
+        &workspace_root,
+    );
+    let symbols = extractor.extract_symbols(&tree);
+    let _relationships = extractor.extract_relationships(&tree, &symbols);
+
+    let pending = extractor
+        .get_structured_pending_relationships()
+        .into_iter()
+        .find(|pending| pending.target.display_name == "ExternalService")
+        .expect("structured pending relationship should preserve Scala inheritance targets");
+
+    assert_eq!(pending.target.terminal_name, "ExternalService");
+    assert_eq!(pending.target.receiver, None);
 }
 
 // ========================================================================

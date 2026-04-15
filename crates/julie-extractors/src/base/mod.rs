@@ -13,11 +13,16 @@
 
 pub mod creation_methods;
 pub mod extractor;
+pub mod relationship_resolution;
+mod results_normalization;
+pub mod span;
 pub mod tree_methods;
 pub mod types;
 
 // Re-export key types for external use
 pub use extractor::BaseExtractor;
+pub use relationship_resolution::{StructuredPendingRelationship, UnresolvedTarget};
+pub use span::{normalize_file_path, NormalizedSpan, RecordOffset};
 pub use tree_methods::{find_child_by_type, find_child_by_types};
 pub use types::{
     ContextConfig, ExtractionResults, Identifier, IdentifierKind, PendingRelationship,

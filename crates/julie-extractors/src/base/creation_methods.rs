@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use tree_sitter::Node;
 
 use super::extractor::BaseExtractor;
+use super::relationship_resolution::{StructuredPendingRelationship, UnresolvedTarget};
+use super::span::NormalizedSpan;
 use super::types::IdentifierKind;
 use super::types::{
     Identifier, Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, Visibility,
@@ -20,13 +22,15 @@ impl BaseExtractor {
         kind: SymbolKind,
         options: SymbolOptions,
     ) -> Symbol {
-        let start_pos = node.start_position();
-        let end_pos = node.end_position();
+        let span = NormalizedSpan::from_node(node);
 
-        let id = self.generate_id(&name, start_pos.row as u32, start_pos.column as u32);
+        let id = self.generate_id_for_span(&name, &span);
 
         // Extract code context around the symbol
-        let code_context = self.extract_code_context(start_pos.row, end_pos.row);
+        let code_context = self.extract_code_context(
+            span.start_line.saturating_sub(1) as usize,
+            span.end_line.saturating_sub(1) as usize,
+        );
 
         // Mark markdown symbols as documentation
         let content_type = if self.language == "markdown" {
@@ -41,12 +45,12 @@ impl BaseExtractor {
             kind,
             language: self.language.clone(),
             file_path: self.file_path.clone(),
-            start_line: (start_pos.row + 1) as u32, // Uses 1-based line numbers
-            start_column: start_pos.column as u32,  // Uses 0-based column numbers
-            end_line: (end_pos.row + 1) as u32,
-            end_column: end_pos.column as u32,
-            start_byte: node.start_byte() as u32,
-            end_byte: node.end_byte() as u32,
+            start_line: span.start_line,
+            start_column: span.start_column,
+            end_line: span.end_line,
+            end_column: span.end_column,
+            start_byte: span.start_byte,
+            end_byte: span.end_byte,
             signature: options.signature,
             doc_comment: options.doc_comment.or_else(|| self.find_doc_comment(node)),
             visibility: options.visibility,
@@ -74,14 +78,16 @@ impl BaseExtractor {
         kind: IdentifierKind,
         containing_symbol_id: Option<String>,
     ) -> Identifier {
-        let start_pos = node.start_position();
-        let end_pos = node.end_position();
+        let span = NormalizedSpan::from_node(node);
 
         // Generate unique ID for this identifier
-        let id = self.generate_id(&name, start_pos.row as u32, start_pos.column as u32);
+        let id = self.generate_id_for_span(&name, &span);
 
         // Extract code context around the identifier (lighter context for identifiers)
-        let code_context = self.extract_code_context(start_pos.row, end_pos.row);
+        let code_context = self.extract_code_context(
+            span.start_line.saturating_sub(1) as usize,
+            span.end_line.saturating_sub(1) as usize,
+        );
 
         let identifier = Identifier {
             id,
@@ -89,12 +95,12 @@ impl BaseExtractor {
             kind,
             language: self.language.clone(),
             file_path: self.file_path.clone(),
-            start_line: (start_pos.row + 1) as u32, // 1-based line numbers
-            start_column: start_pos.column as u32,  // 0-based column numbers
-            end_line: (end_pos.row + 1) as u32,
-            end_column: end_pos.column as u32,
-            start_byte: node.start_byte() as u32,
-            end_byte: node.end_byte() as u32,
+            start_line: span.start_line,
+            start_column: span.start_column,
+            end_line: span.end_line,
+            end_column: span.end_column,
+            start_byte: span.start_byte,
+            end_byte: span.end_byte,
             containing_symbol_id,
             target_symbol_id: None, // Unresolved - will be resolved on-demand in C#
             confidence: 1.0,        // Default high confidence for tree-sitter extractions
@@ -131,6 +137,26 @@ impl BaseExtractor {
             confidence: confidence.unwrap_or(1.0),
             metadata,
         }
+    }
+
+    pub fn create_pending_relationship(
+        &self,
+        from_symbol_id: String,
+        target: UnresolvedTarget,
+        kind: RelationshipKind,
+        node: &Node,
+        caller_scope_symbol_id: Option<String>,
+        confidence: Option<f32>,
+    ) -> StructuredPendingRelationship {
+        StructuredPendingRelationship::new(
+            from_symbol_id,
+            target,
+            caller_scope_symbol_id,
+            kind,
+            self.file_path.clone(),
+            node.start_position().row as u32 + 1,
+            confidence.unwrap_or(1.0),
+        )
     }
 
     /// Find containing symbol - exact port of findContainingSymbol

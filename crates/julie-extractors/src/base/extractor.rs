@@ -5,9 +5,10 @@
 
 use md5;
 use std::collections::HashMap;
-use tracing::{debug, warn};
+use tracing::debug;
 use tree_sitter::Node;
 
+use super::span::{normalize_file_path, NormalizedSpan};
 use super::types::{ContextConfig, Identifier, Relationship, Symbol, TypeInfo};
 
 /// Base implementation for language extractors
@@ -36,48 +37,7 @@ impl BaseExtractor {
         content: String,
         workspace_root: &std::path::Path,
     ) -> Self {
-        // CRITICAL FIX: Canonicalize file_path to resolve symlinks (macOS /var vs /private/var)
-        // This ensures database queries match during get_symbols (which also canonicalizes)
-        // Without this: indexing stores /var/..., queries use /private/var/... → zero results
-        //
-        // 🔥 BUG FIX: Handle relative paths correctly
-        // If file_path is relative (e.g., "COA.CodeSearch.McpServer/Services/FileIndexingService.cs"),
-        // we must join it to workspace_root BEFORE canonicalizing.
-        // canonicalize() only works with absolute paths or CWD-relative paths.
-        let path_to_canonicalize = if std::path::Path::new(&file_path).is_absolute() {
-            std::path::PathBuf::from(&file_path)
-        } else {
-            workspace_root.join(&file_path)
-        };
-
-        let canonical_path = path_to_canonicalize.canonicalize().unwrap_or_else(|e| {
-            warn!(
-                "⚠️  Failed to canonicalize path '{}': {} - using joined path",
-                path_to_canonicalize.display(),
-                e
-            );
-            path_to_canonicalize.clone()
-        });
-
-        // Phase 2: Convert absolute path to relative Unix-style path for storage
-        // File paths might be absolute OR relative - handle both
-        let relative_unix_path = if canonical_path.is_absolute() {
-            crate::utils::paths::to_relative_unix_style(
-                &canonical_path,
-                workspace_root,
-            )
-            .unwrap_or_else(|e| {
-                warn!(
-                    "⚠️  Failed to convert to relative path '{}': {} - using absolute as fallback",
-                    canonical_path.display(),
-                    e
-                );
-                canonical_path.to_string_lossy().to_string()
-            })
-        } else {
-            // Already relative - use as-is (just normalize to Unix-style)
-            canonical_path.to_string_lossy().replace('\\', "/")
-        };
+        let relative_unix_path = normalize_file_path(&file_path, workspace_root);
 
         debug!(
             "BaseExtractor path: '{}' -> '{}' (relative)",
@@ -215,6 +175,10 @@ impl BaseExtractor {
         let input = format!("{}:{}:{}:{}", self.file_path, name, line, column);
         let digest = md5::compute(input.as_bytes());
         format!("{:x}", digest)
+    }
+
+    pub fn generate_id_for_span(&self, name: &str, span: &NormalizedSpan) -> String {
+        self.generate_id(name, span.start_line, span.start_column)
     }
 
     /// Extract code context around a symbol using configurable parameters

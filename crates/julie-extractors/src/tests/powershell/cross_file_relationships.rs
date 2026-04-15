@@ -148,6 +148,14 @@ function Process-Data {
             pending.from_symbol_id, process_data_fn_id,
             "PendingRelationship should be from Process-Data"
         );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "Get-Data")
+            .expect("structured pending relationship should preserve PowerShell cross-file call targets");
+        assert_eq!(structured_pending.target.terminal_name, "Get-Data");
+        assert_eq!(structured_pending.target.receiver, None);
     }
 
     // ========================================================================
@@ -302,11 +310,31 @@ function MyFunction {
             .filter(|p| p.callee_name == "Write-Output" || p.callee_name == "Get-ChildItem")
             .collect();
 
-        // This might be empty (preferred) or non-empty depending on implementation
-        // But we document the behavior
-        println!(
-            "Built-in cmdlet pending relationships: {}",
-            pending_for_builtin.len()
+        assert!(
+            pending_for_builtin.is_empty(),
+            "Built-in cmdlets should not create legacy pending relationships. Found: {:?}",
+            pending_for_builtin
+                .iter()
+                .map(|pending| &pending.callee_name)
+                .collect::<Vec<_>>()
+        );
+
+        let structured_pending_for_builtin: Vec<_> = results
+            .structured_pending_relationships
+            .iter()
+            .filter(|pending| {
+                pending.target.display_name == "Write-Output"
+                    || pending.target.display_name == "Get-ChildItem"
+            })
+            .collect();
+
+        assert!(
+            structured_pending_for_builtin.is_empty(),
+            "Built-in cmdlets should not create structured pending relationships. Found: {:?}",
+            structured_pending_for_builtin
+                .iter()
+                .map(|pending| &pending.target.display_name)
+                .collect::<Vec<_>>()
         );
     }
 }

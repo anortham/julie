@@ -1,6 +1,18 @@
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use std::collections::HashMap;
 use tree_sitter::Node;
+
+fn import_path_from_signature(signature: &str) -> Option<&str> {
+    signature
+        .strip_prefix("import ")?
+        .split_whitespace()
+        .next_back()
+        .map(|path| path.trim_matches('"'))
+}
+
+fn is_stdlib_import_path(import_path: &str) -> bool {
+    matches!(import_path, "fmt")
+}
 
 /// Relationship extraction for Go (method receivers, interface implementations, embedding, function calls)
 impl super::GoExtractor {
@@ -106,27 +118,42 @@ impl super::GoExtractor {
         // For package calls like fmt.Println, we need the Println part
         // For direct calls like helper, we need helper
         if let Some(func_node) = children.first() {
-            let callee_name = match func_node.kind() {
+            let target = match func_node.kind() {
                 // Direct call: helper()
-                "identifier" => self.base.get_node_text(func_node).to_string(),
+                "identifier" => UnresolvedTarget::simple(self.base.get_node_text(func_node)),
                 // Package call: fmt.Println() or package method calls
                 "selector_expression" => {
-                    // Get the field name (rightmost part) of the selector
-                    // In Go, selector_expression has structure: operand . field
-                    // The field can be a field_identifier or identifier
                     let selector_children: Vec<_> = func_node
                         .children(&mut func_node.walk())
                         .filter(|c| c.kind() == "field_identifier" || c.kind() == "identifier")
                         .collect();
-                    // Get the last identifier/field_identifier which is the method/function name
-                    if let Some(last) = selector_children.last() {
-                        self.base.get_node_text(last).to_string()
-                    } else {
+                    let Some(last) = selector_children.last() else {
                         return;
+                    };
+                    let terminal_name = self.base.get_node_text(last);
+                    let receiver = selector_children.first().and_then(|first| {
+                        if first.id() == last.id() {
+                            None
+                        } else {
+                            Some(self.base.get_node_text(first))
+                        }
+                    });
+
+                    if let Some(receiver) = receiver {
+                        UnresolvedTarget {
+                            display_name: format!("{receiver}.{terminal_name}"),
+                            terminal_name,
+                            receiver: Some(receiver),
+                            namespace_path: Vec::new(),
+                            import_context: None,
+                        }
+                    } else {
+                        UnresolvedTarget::simple(terminal_name)
                     }
                 }
                 _ => return,
             };
+            let callee_name = target.terminal_name.clone();
 
             // Find the containing function to know who is calling
             let caller_symbol = self.find_containing_function(symbol_map, node);
@@ -135,21 +162,19 @@ impl super::GoExtractor {
             }
             let caller = caller_symbol.unwrap();
 
-            let line_number = node.start_position().row as u32 + 1;
-            let file_path = self.base.file_path.clone();
-
             // Check if we can resolve the callee locally
             match symbol_map.get(&callee_name) {
                 Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
                     // Target is an Import symbol - need cross-file resolution
-                    self.add_pending_relationship(PendingRelationship {
-                        from_symbol_id: caller.id.clone(),
-                        callee_name: callee_name.clone(),
-                        kind: RelationshipKind::Calls,
-                        file_path,
-                        line_number,
-                        confidence: 0.8, // Lower confidence - needs resolution
-                    });
+                    let pending = self.base.create_pending_relationship(
+                        caller.id.clone(),
+                        target.clone(),
+                        RelationshipKind::Calls,
+                        &node,
+                        Some(caller.id.clone()),
+                        Some(0.8),
+                    );
+                    self.add_structured_pending_relationship(pending);
                 }
                 Some(called_symbol) => {
                     // Target is a local function/method - create resolved Relationship
@@ -163,16 +188,31 @@ impl super::GoExtractor {
                     ));
                 }
                 None => {
-                    // Target not found in local symbols - likely a method on imported package
-                    // Create PendingRelationship for cross-file resolution
-                    self.add_pending_relationship(PendingRelationship {
-                        from_symbol_id: caller.id.clone(),
-                        callee_name,
-                        kind: RelationshipKind::Calls,
-                        file_path,
-                        line_number,
-                        confidence: 0.7, // Lower confidence - unknown target
-                    });
+                    // Target not found in local symbols. Package-qualified calls may still be
+                    // methods on imported packages, so keep those pending unless the import is
+                    // an obvious stdlib package.
+                    if let Some(receiver) = target.receiver.as_deref() {
+                        let is_stdlib_package = symbol_map
+                            .get(receiver)
+                            .filter(|symbol| symbol.kind == SymbolKind::Import)
+                            .and_then(|symbol| symbol.signature.as_deref())
+                            .and_then(import_path_from_signature)
+                            .is_some_and(is_stdlib_import_path);
+
+                        if is_stdlib_package {
+                            return;
+                        }
+                    }
+
+                    let pending = self.base.create_pending_relationship(
+                        caller.id.clone(),
+                        target,
+                        RelationshipKind::Calls,
+                        &node,
+                        Some(caller.id.clone()),
+                        Some(0.7),
+                    );
+                    self.add_structured_pending_relationship(pending);
                 }
             }
         }

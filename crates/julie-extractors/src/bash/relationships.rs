@@ -2,7 +2,7 @@
 //!
 //! Handles extraction of relationships between symbols (calls, definitions, usages).
 
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use tree_sitter::Node;
 
 impl super::BashExtractor {
@@ -49,15 +49,15 @@ impl super::BashExtractor {
                             } else if !is_builtin_command(&command_name) {
                                 // Cross-file function call - create PendingRelationship
                                 // (but skip built-in shell commands like echo, cd, etc.)
-                                let pending = PendingRelationship {
-                                    from_symbol_id: func_sym.id.clone(),
-                                    callee_name: command_name.clone(),
-                                    kind: RelationshipKind::Calls,
-                                    file_path: self.base.file_path.clone(),
-                                    line_number: (node.start_position().row + 1) as u32,
-                                    confidence: 0.8,
-                                };
-                                self.add_pending_relationship(pending);
+                                let pending = self.base.create_pending_relationship(
+                                    func_sym.id.clone(),
+                                    UnresolvedTarget::simple(command_name.clone()),
+                                    RelationshipKind::Calls,
+                                    &node,
+                                    Some(func_sym.id.clone()),
+                                    Some(0.8),
+                                );
+                                self.add_structured_pending_relationship(pending);
                             }
                         }
                     }

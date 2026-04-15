@@ -21,7 +21,8 @@ mod types;
 mod variables;
 
 use crate::base::{
-    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol, SymbolKind,
 };
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
@@ -32,6 +33,7 @@ pub struct GDScriptExtractor {
     processed_positions: HashSet<String>,         // Track processed node positions
     current_class_context: Option<String>,        // Current class ID for scope tracking
     pending_relationships: Vec<PendingRelationship>, // Cross-file relationships needing resolution
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl GDScriptExtractor {
@@ -47,6 +49,7 @@ impl GDScriptExtractor {
             processed_positions: HashSet::new(),
             current_class_context: None,
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -360,13 +363,20 @@ impl GDScriptExtractor {
     // Pending Relationships Management
     // ========================================================================
 
-    /// Add a pending relationship that needs cross-file resolution
-    pub(crate) fn add_pending_relationship(&mut self, pending: PendingRelationship) {
-        self.pending_relationships.push(pending);
+    pub(crate) fn add_structured_pending_relationship(
+        &mut self,
+        pending: StructuredPendingRelationship,
+    ) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
         self.pending_relationships.clone()
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
     }
 }

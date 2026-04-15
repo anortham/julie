@@ -156,6 +156,14 @@ main_function
             pending.from_symbol_id, main_fn_id,
             "PendingRelationship should be from main_function"
         );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "helper_function")
+            .expect("structured pending relationship should preserve Bash cross-file call targets");
+        assert_eq!(structured_pending.target.terminal_name, "helper_function");
+        assert_eq!(structured_pending.target.receiver, None);
     }
 
     // ========================================================================
@@ -267,6 +275,59 @@ main
         assert!(
             !cross_file_pending.is_empty(),
             "Should create PendingRelationship for cross-file call to external_helper"
+        );
+    }
+
+    #[test]
+    fn test_builtin_and_common_external_commands_do_not_create_pending_relationships() {
+        let code = r#"#!/bin/bash
+
+helper() {
+    echo "helper"
+}
+
+main() {
+    echo "hello"
+    git status
+    helper
+}
+
+main
+"#;
+
+        let results = extract_full("app.sh", code);
+
+        let call_relationships: Vec<_> = results
+            .relationships
+            .iter()
+            .filter(|r| r.kind == RelationshipKind::Calls)
+            .collect();
+
+        let helper_call = call_relationships.iter().any(|r| {
+            let from_sym = results.symbols.iter().find(|s| s.id == r.from_symbol_id);
+            let to_sym = results.symbols.iter().find(|s| s.id == r.to_symbol_id);
+            from_sym.map(|s| s.name.as_str()) == Some("main")
+                && to_sym.map(|s| s.name.as_str()) == Some("helper")
+        });
+
+        assert!(
+            helper_call,
+            "Should have a resolved call from main() to helper()"
+        );
+
+        let pending_calls: Vec<_> = results
+            .pending_relationships
+            .iter()
+            .filter(|p| p.kind == RelationshipKind::Calls)
+            .collect();
+
+        assert!(
+            pending_calls.is_empty(),
+            "Builtin and common external commands should not create pending call edges. Found: {:?}",
+            pending_calls
+                .iter()
+                .map(|p| p.callee_name.as_str())
+                .collect::<Vec<_>>()
         );
     }
 }

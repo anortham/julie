@@ -1,7 +1,7 @@
 //! Relationship extraction for C++
 //! Handles inheritance and function call relationships
 
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol};
+use crate::base::{Relationship, RelationshipKind, Symbol, UnresolvedTarget};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -236,14 +236,15 @@ fn handle_call_target(
     } else {
         // Target not found in local symbols - likely a function from included header
         // Create PendingRelationship for cross-file resolution
-        extractor.add_pending_relationship(PendingRelationship {
-            from_symbol_id: caller_id,
-            callee_name: callee_name.to_string(),
-            kind: RelationshipKind::Calls,
-            file_path,
-            line_number: call_node.start_position().row as u32 + 1,
-            confidence: 0.7, // Lower confidence - unknown target
-        });
+        let pending = extractor.get_base_mut().create_pending_relationship(
+            caller_id.clone(),
+            UnresolvedTarget::simple(callee_name.to_string()),
+            RelationshipKind::Calls,
+            &call_node,
+            Some(caller_id),
+            Some(0.7),
+        );
+        extractor.add_structured_pending_relationship(pending);
     }
 }
 

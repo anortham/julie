@@ -155,6 +155,14 @@ main_function <- function() {
             pending.from_symbol_id, main_fn_id,
             "PendingRelationship should be from main_function"
         );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "helper_function")
+            .expect("structured pending relationship should preserve R cross-file call targets");
+        assert_eq!(structured_pending.target.terminal_name, "helper_function");
+        assert_eq!(structured_pending.target.receiver, None);
     }
 
     #[test]
@@ -286,28 +294,50 @@ process_data <- function(x) {
     }
 
     #[test]
-    fn test_builtin_functions_can_still_create_relationships() {
-        // Some built-in functions can still appear in relationships (just not pending)
+    fn test_builtin_functions_do_not_create_pending_or_synthetic_relationships() {
         let code = r#"
 process_data <- function(x) {
-    result <- mean(x)  # Built-in: mean
+    result <- mean(x)         # Built-in: mean
+    printed <- print(result)  # Built-in: print
     return(result)
 }
 "#;
 
         let results = extract_full("lib/processor.R", code);
 
-        // Built-in function calls might appear in relationships (with builtin_ prefix)
-        // or might not appear at all, but they should NEVER appear as pending
         let pending_builtin_calls: Vec<_> = results
             .pending_relationships
             .iter()
-            .filter(|p| p.kind == RelationshipKind::Calls && p.callee_name == "mean")
+            .filter(|p| {
+                p.kind == RelationshipKind::Calls
+                    && (p.callee_name == "mean" || p.callee_name == "print")
+            })
             .collect();
 
         assert!(
             pending_builtin_calls.is_empty(),
             "Built-in functions should NOT create PendingRelationship"
+        );
+
+        let synthetic_builtin_relationships: Vec<_> = results
+            .relationships
+            .iter()
+            .filter(|r| {
+                r.kind == RelationshipKind::Calls
+                    && (r.id.contains("_resolved")
+                        || r.to_symbol_id.contains("builtin_")
+                        || r.to_symbol_id == "mean"
+                        || r.to_symbol_id == "print")
+            })
+            .collect();
+
+        assert!(
+            synthetic_builtin_relationships.is_empty(),
+            "Built-in functions should not create synthetic or resolved call relationships: {:?}",
+            synthetic_builtin_relationships
+                .iter()
+                .map(|r| (&r.id, &r.to_symbol_id))
+                .collect::<Vec<_>>()
         );
     }
 

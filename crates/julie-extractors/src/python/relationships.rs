@@ -1,7 +1,7 @@
 /// Relationship extraction
 /// Handles inheritance relationships and function call relationships
-use super::super::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
-use super::{PythonExtractor, helpers};
+use super::super::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use super::{helpers, PythonExtractor};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -115,7 +115,8 @@ fn extract_call_relationships(
 
     // For a call node, extract the function/method being called
     if let Some(function_node) = node.child_by_field_name("function") {
-        let called_method_name = extract_method_name_from_call(base, &function_node);
+        let target = extract_target_from_call(base, &function_node);
+        let called_method_name = target.terminal_name.clone();
 
         if !called_method_name.is_empty() {
             // Find the enclosing function/method that contains this call
@@ -129,14 +130,15 @@ fn extract_call_relationships(
                         // Target is an Import symbol - need cross-file resolution
                         // Don't create relationship pointing to Import (useless for trace_call_path)
                         // Instead, create a PendingRelationship with the callee name
-                        extractor.add_pending_relationship(PendingRelationship {
-                            from_symbol_id: caller_symbol.id.clone(),
-                            callee_name: called_method_name.clone(),
-                            kind: RelationshipKind::Calls,
-                            file_path,
-                            line_number,
-                            confidence: 0.8, // Lower confidence - needs resolution
-                        });
+                        let pending = base.create_pending_relationship(
+                            caller_symbol.id.clone(),
+                            target.clone(),
+                            RelationshipKind::Calls,
+                            &node,
+                            Some(caller_symbol.id.clone()),
+                            Some(0.8),
+                        );
+                        extractor.add_structured_pending_relationship(pending);
                     }
                     Some(called_symbol) => {
                         // Target is a local function/method - create resolved Relationship
@@ -162,14 +164,15 @@ fn extract_call_relationships(
                     None => {
                         // Target not found in local symbols - likely a method on imported type
                         // Create PendingRelationship for cross-file resolution
-                        extractor.add_pending_relationship(PendingRelationship {
-                            from_symbol_id: caller_symbol.id.clone(),
-                            callee_name: called_method_name.clone(),
-                            kind: RelationshipKind::Calls,
-                            file_path,
-                            line_number,
-                            confidence: 0.7, // Lower confidence - unknown target
-                        });
+                        let pending = base.create_pending_relationship(
+                            caller_symbol.id.clone(),
+                            target,
+                            RelationshipKind::Calls,
+                            &node,
+                            Some(caller_symbol.id.clone()),
+                            Some(0.7),
+                        );
+                        extractor.add_structured_pending_relationship(pending);
                     }
                 }
             }
@@ -178,24 +181,38 @@ fn extract_call_relationships(
 }
 
 /// Extract method name from a call node
-fn extract_method_name_from_call(
+fn extract_target_from_call(
     base: &crate::base::BaseExtractor,
     function_node: &Node,
-) -> String {
+) -> UnresolvedTarget {
     match function_node.kind() {
         "identifier" => {
             // Simple function call: foo()
-            base.get_node_text(function_node)
+            UnresolvedTarget::simple(base.get_node_text(function_node))
         }
         "attribute" => {
             // Method call: obj.method() or self.db.connect()
             if let Some(attribute_node) = function_node.child_by_field_name("attribute") {
-                base.get_node_text(&attribute_node)
+                let terminal_name = base.get_node_text(&attribute_node);
+                let receiver = function_node
+                    .child_by_field_name("object")
+                    .map(|node| base.get_node_text(&node));
+                if let Some(receiver) = receiver {
+                    UnresolvedTarget {
+                        display_name: format!("{receiver}.{terminal_name}"),
+                        terminal_name,
+                        receiver: Some(receiver),
+                        namespace_path: Vec::new(),
+                        import_context: None,
+                    }
+                } else {
+                    UnresolvedTarget::simple(terminal_name)
+                }
             } else {
-                String::new()
+                UnresolvedTarget::simple(String::new())
             }
         }
-        _ => String::new(),
+        _ => UnresolvedTarget::simple(String::new()),
     }
 }
 

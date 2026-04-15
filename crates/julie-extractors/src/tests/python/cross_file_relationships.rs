@@ -9,6 +9,7 @@
 
 use crate::base::{PendingRelationship, RelationshipKind};
 use crate::factory::extract_symbols_and_relationships;
+use crate::python::PythonExtractor;
 use crate::{ExtractionResults, Relationship, Symbol};
 use std::path::PathBuf;
 use tree_sitter::Parser;
@@ -39,6 +40,20 @@ mod tests {
     fn extract_from_file(filename: &str, code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
         let results = extract_full(filename, code);
         (results.symbols, results.relationships)
+    }
+
+    fn extract_structured_pending(
+        filename: &str,
+        code: &str,
+    ) -> Vec<crate::base::StructuredPendingRelationship> {
+        let mut parser = init_python_parser();
+        let tree = parser.parse(code, None).expect("Failed to parse");
+        let workspace_root = PathBuf::from("/test/workspace");
+        let mut extractor =
+            PythonExtractor::new(filename.to_string(), code.to_string(), &workspace_root);
+        let symbols = extractor.extract_symbols(&tree);
+        extractor.extract_relationships(&tree, &symbols);
+        extractor.get_structured_pending_relationships()
     }
 
     // ========================================================================
@@ -221,14 +236,34 @@ def process():
 
         // We should have captured either 'Calculator', 'double', or both
         let has_constructor = callee_names.iter().any(|n| *n == "Calculator");
-        let has_double = callee_names.iter().any(|n| *n == "double");
+        let has_double = callee_names
+            .iter()
+            .any(|n| *n == "double" || *n == "calc.double");
 
         assert!(
             has_constructor || has_double,
-            "Should capture at least 'Calculator' or 'double' method calls.\n\
+            "Should capture at least 'Calculator' or the member call target.\n\
              Found: {:?}",
             callee_names
         );
+
+        let structured_double = extract_structured_pending("lib/processor.py", file_b_code);
+        let structured_double = structured_double
+            .iter()
+            .find(|pending| pending.target.display_name == "calc.double");
+        assert!(
+            structured_double.is_some(),
+            "Cross-file method calls should retain structured unresolved target context. Got: {:?}",
+            results_b
+                .structured_pending_relationships
+                .iter()
+                .map(|pending| pending.target.display_name.as_str())
+                .collect::<Vec<_>>()
+        );
+
+        let structured_double = structured_double.unwrap();
+        assert_eq!(structured_double.target.terminal_name, "double");
+        assert_eq!(structured_double.target.receiver.as_deref(), Some("calc"));
     }
 
     // ========================================================================

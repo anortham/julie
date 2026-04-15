@@ -144,6 +144,17 @@ namespace Main
             !pending.from_symbol_id.is_empty(),
             "PendingRelationship should have a valid from_symbol_id"
         );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "Helper.Process")
+            .expect("structured pending relationship should preserve receiver-qualified C# method calls");
+        assert_eq!(structured_pending.target.terminal_name, "Process");
+        assert_eq!(
+            structured_pending.target.receiver.as_deref(),
+            Some("Helper")
+        );
     }
 
     // ========================================================================
@@ -198,6 +209,16 @@ namespace Services
         assert_eq!(
             pending.from_symbol_id, class_symbol.id,
             "PendingRelationship should reference the implementing class"
+        );
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "ILuceneIndexService")
+            .expect("structured pending relationship should preserve C# interface targets");
+        assert_eq!(
+            structured_pending.target.terminal_name,
+            "ILuceneIndexService"
         );
     }
 

@@ -1,4 +1,4 @@
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use serde_json;
 use std::collections::HashMap;
 use tree_sitter::Node;
@@ -171,14 +171,15 @@ impl SwiftExtractor {
                 _ => RelationshipKind::Extends,
             };
 
-            self.add_pending_relationship(PendingRelationship {
-                from_symbol_id: type_symbol.id.clone(),
-                callee_name: base_type_name.to_string(),
-                kind: pending_kind,
-                file_path: self.base.file_path.clone(),
-                line_number: (node.start_position().row + 1) as u32,
-                confidence: 0.9,
-            });
+            let pending = self.base.create_pending_relationship(
+                type_symbol.id.clone(),
+                UnresolvedTarget::simple(base_type_name.to_string()),
+                pending_kind,
+                &node,
+                Some(type_symbol.id.clone()),
+                Some(0.9),
+            );
+            self.add_structured_pending_relationship(pending);
         }
     }
 
@@ -318,16 +319,49 @@ impl SwiftExtractor {
             None => {
                 // Target not found in local symbols - likely a method on imported type or cross-file call
                 // Create PendingRelationship for cross-file resolution
-                self.add_pending_relationship(PendingRelationship {
-                    from_symbol_id: caller.id.clone(),
-                    callee_name: function_name,
-                    kind: RelationshipKind::Calls,
-                    file_path,
-                    line_number,
-                    confidence: 0.7,
-                });
+                let pending = self.base.create_pending_relationship(
+                    caller.id.clone(),
+                    self.unresolved_call_target(node, &function_name),
+                    RelationshipKind::Calls,
+                    &node,
+                    Some(caller.id.clone()),
+                    Some(0.7),
+                );
+                self.add_structured_pending_relationship(pending);
             }
         }
+    }
+
+    fn unresolved_call_target(&self, node: Node, fallback_name: &str) -> UnresolvedTarget {
+        let mut identifiers = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "simple_identifier" || child.kind() == "identifier" {
+                identifiers.push(self.base.get_node_text(&child));
+            }
+        }
+
+        if identifiers.len() >= 2 {
+            let terminal_name = identifiers
+                .pop()
+                .unwrap_or_else(|| fallback_name.to_string());
+            let receiver = identifiers.pop();
+            let namespace_path = identifiers;
+            let mut display_parts = namespace_path.clone();
+            if let Some(receiver_name) = receiver.as_ref() {
+                display_parts.push(receiver_name.clone());
+            }
+            display_parts.push(terminal_name.clone());
+            return UnresolvedTarget {
+                display_name: display_parts.join("."),
+                terminal_name,
+                receiver,
+                namespace_path,
+                import_context: None,
+            };
+        }
+
+        UnresolvedTarget::simple(fallback_name.to_string())
     }
 
     /// Extract the name of the function/method being called

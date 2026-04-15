@@ -1,5 +1,5 @@
-use crate::base::{BaseExtractor, PendingRelationship, RelationshipKind, Symbol, SymbolKind};
-use crate::lua::{LuaExtractor, helpers};
+use crate::base::{BaseExtractor, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
+use crate::lua::{helpers, LuaExtractor};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -24,7 +24,7 @@ fn traverse_tree_for_relationships<'a>(
         // Handle simple function calls: foo()
         if let Some(identifier) = helpers::find_child_by_type(&node, "identifier") {
             let callee_name = extractor.base().get_node_text(&identifier);
-            process_function_call(extractor, node, &callee_name, symbol_map);
+            process_function_call(extractor, node, &callee_name, None, symbol_map);
         }
         // Handle method calls: obj:method() or obj.method()
         else if let Some(method_expr) =
@@ -40,7 +40,7 @@ fn traverse_tree_for_relationships<'a>(
             } else {
                 &full_expr
             };
-            process_function_call(extractor, node, method_name, symbol_map);
+            process_function_call(extractor, node, method_name, Some(&full_expr), symbol_map);
         }
     }
 
@@ -54,6 +54,7 @@ fn process_function_call(
     extractor: &mut LuaExtractor,
     node: Node,
     callee_name: &str,
+    full_expr: Option<&str>,
     symbol_map: &HashMap<&str, &Symbol>,
 ) {
     if let Some(caller_symbol) = find_enclosing_function(node, extractor.base(), symbol_map) {
@@ -75,16 +76,30 @@ fn process_function_call(
             None => {
                 // Target not found in local symbols - likely a cross-file call
                 // Create PendingRelationship for cross-file resolution
-                let file_path = extractor.base().file_path.clone();
-                let pending = PendingRelationship {
-                    from_symbol_id: caller_symbol.id.clone(),
-                    callee_name: callee_name.to_string(),
-                    kind: RelationshipKind::Calls,
-                    file_path,
-                    line_number: (node.start_position().row + 1) as u32,
-                    confidence: 0.7,
+                let target = if let Some(full_expr) = full_expr {
+                    let normalized = full_expr.replace(':', ".");
+                    let receiver = normalized
+                        .rsplit_once('.')
+                        .map(|(receiver, _)| receiver.to_string());
+                    UnresolvedTarget {
+                        display_name: normalized,
+                        terminal_name: callee_name.to_string(),
+                        receiver,
+                        namespace_path: Vec::new(),
+                        import_context: None,
+                    }
+                } else {
+                    UnresolvedTarget::simple(callee_name.to_string())
                 };
-                extractor.add_pending_relationship(pending);
+                let pending = extractor.base().create_pending_relationship(
+                    caller_symbol.id.clone(),
+                    target,
+                    RelationshipKind::Calls,
+                    &node,
+                    Some(caller_symbol.id.clone()),
+                    Some(0.7),
+                );
+                extractor.add_structured_pending_relationship(pending);
             }
         }
     }

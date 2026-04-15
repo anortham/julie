@@ -163,6 +163,17 @@ export function mainFunction(): number {
             pending.from_symbol_id,
             main_fn_ids
         );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "helperFunction")
+            .expect("structured pending relationship should preserve imported call target");
+        assert_eq!(structured_pending.target.terminal_name, "helperFunction");
+        assert_eq!(
+            structured_pending.target.import_context.as_deref(),
+            Some("helperFunction")
+        );
     }
 
     #[test]
@@ -237,13 +248,37 @@ export function process(): number {
 
         // We should have captured either 'Calculator', 'double', or both
         let has_constructor = callee_names.iter().any(|n| *n == "Calculator");
-        let has_double = callee_names.iter().any(|n| *n == "double");
+        let has_double = callee_names
+            .iter()
+            .any(|n| *n == "double" || *n == "calc.double");
 
         assert!(
             has_constructor || has_double,
-            "Should capture at least 'Calculator' or 'double' method calls.\n\
+            "Should capture at least 'Calculator' or the member call target.\n\
              Found: {:?}",
             callee_names
+        );
+
+        let structured_double = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "calc.double");
+        assert!(
+            structured_double.is_some(),
+            "Cross-file method calls should retain structured unresolved target context. Got: {:?}",
+            results_b
+                .structured_pending_relationships
+                .iter()
+                .map(|pending| pending.target.display_name.as_str())
+                .collect::<Vec<_>>()
+        );
+
+        let structured_double = structured_double.unwrap();
+        assert_eq!(structured_double.target.terminal_name, "double");
+        assert_eq!(structured_double.target.receiver.as_deref(), Some("calc"));
+        assert_eq!(
+            structured_double.target.import_context.as_deref(),
+            Some("Calculator")
         );
     }
 

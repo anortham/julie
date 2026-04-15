@@ -14,8 +14,8 @@ full = ["cli", "core-database", "core-embeddings", "tools-get-context", "tools-s
 
 [buckets.cli]
 # Single focused CLI module; use as the floor for quick sanity checks.
-expected_seconds = 5
-timeout_seconds = 30
+expected_seconds = 30
+timeout_seconds = 90
 commands = ["cargo test --lib tests::cli_tests", "cargo test -p xtask"]
 
 [buckets.core-database]

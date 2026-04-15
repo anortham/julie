@@ -1,7 +1,7 @@
 use super::helpers::{extract_method_name_from_call, extract_name_from_node};
 /// Relationship extraction for Ruby symbols
 /// Handles inheritance, module inclusion, and other symbol relationships
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol};
+use crate::base::{Relationship, RelationshipKind, Symbol, UnresolvedTarget};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -222,6 +222,7 @@ fn extract_call_relationships(
     // For a call node, extract the method being called
     if let Some(method_name_opt) = extract_method_name_from_call(node, |n| base.get_node_text(n)) {
         if !method_name_opt.is_empty() {
+            let target = extract_pending_target(base, node, &method_name_opt);
             // Find the enclosing function/method that contains this call
             if let Some(caller_symbol) = find_containing_function(base, node, symbol_map) {
                 let line_number = (node.start_position().row + 1) as u32;
@@ -254,14 +255,15 @@ fn extract_call_relationships(
                     }
                     None => {
                         // Callee not found locally - create pending relationship
-                        extractor.add_pending_relationship(PendingRelationship {
-                            from_symbol_id: caller_symbol.id.clone(),
-                            callee_name: method_name_opt.clone(),
-                            kind: RelationshipKind::Calls,
-                            file_path,
-                            line_number,
-                            confidence: 0.7, // Lower confidence - needs resolution
-                        });
+                        let pending = base.create_pending_relationship(
+                            caller_symbol.id.clone(),
+                            target,
+                            RelationshipKind::Calls,
+                            &node,
+                            Some(caller_symbol.id.clone()),
+                            Some(0.7),
+                        );
+                        extractor.add_structured_pending_relationship(pending);
                     }
                 }
             }
@@ -292,4 +294,27 @@ fn find_containing_function(
     }
 
     None
+}
+
+fn extract_pending_target(
+    base: &crate::base::BaseExtractor,
+    node: Node,
+    method_name: &str,
+) -> UnresolvedTarget {
+    let call_text = base.get_node_text(&node);
+    let call_head = call_text.split('(').next().unwrap_or(call_text.as_str());
+
+    if let Some((receiver, _)) = call_head.rsplit_once('.') {
+        if !receiver.is_empty() {
+            return UnresolvedTarget {
+                display_name: call_head.to_string(),
+                terminal_name: method_name.to_string(),
+                receiver: Some(receiver.to_string()),
+                namespace_path: Vec::new(),
+                import_context: None,
+            };
+        }
+    }
+
+    UnresolvedTarget::simple(method_name.to_string())
 }

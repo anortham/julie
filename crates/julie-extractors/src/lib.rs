@@ -10,7 +10,8 @@
 //! use julie_extractors::{ExtractorManager, Symbol, SymbolKind};
 //!
 //! let manager = ExtractorManager::new();
-//! let symbols = manager.extract_symbols("src/main.rs", content, workspace_root)?;
+//! let results = manager.extract_all("src/main.rs", content, workspace_root)?;
+//! let symbols = results.symbols;
 //! ```
 //!
 //! # Supported Languages (31 total)
@@ -27,6 +28,11 @@ pub mod base;
 pub mod factory;
 pub mod language;
 pub mod manager;
+pub mod pipeline;
+pub mod registry;
+// Compatibility surface for the main crate re-export layer.
+// These modules are thin projections over canonical extraction results,
+// not separate production dispatch paths.
 pub mod routing_identifiers;
 pub mod routing_relationships;
 pub mod routing_symbols;
@@ -75,9 +81,11 @@ pub use base::{
     Relationship, RelationshipKind, Symbol, SymbolKind, SymbolOptions, TypeInfo, Visibility,
 };
 
-// Re-export the public API - Extraction functions
+// Re-export the public API - canonical extraction functions
 pub use factory::extract_symbols_and_relationships;
 pub use manager::ExtractorManager;
+pub use pipeline::extract_canonical;
+pub use registry::{LanguageCapabilities, LanguageRegistryEntry};
 
 // Re-export BaseExtractor for language implementors
 pub use base::BaseExtractor;

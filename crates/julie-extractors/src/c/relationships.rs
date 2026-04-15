@@ -3,7 +3,7 @@
 //! This module handles extraction of relationships between symbols, such as function calls
 //! and header file imports.
 
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use crate::c::CExtractor;
 use std::collections::HashMap;
 
@@ -62,16 +62,15 @@ fn extract_function_call_relationships(
                 // Target not found in local symbols - likely a function from included header
                 // Create PendingRelationship for cross-file resolution
                 if let Some(containing_symbol) = find_containing_symbol(extractor, node, symbols) {
-                    let file_path = extractor.get_base_mut().file_path.clone();
-                    let line_number = node.start_position().row as u32 + 1;
-                    extractor.add_pending_relationship(PendingRelationship {
-                        from_symbol_id: containing_symbol.id.clone(),
-                        callee_name: function_name,
-                        kind: RelationshipKind::Calls,
-                        file_path,
-                        line_number,
-                        confidence: 0.7, // Lower confidence - unknown target
-                    });
+                    let pending = extractor.get_base_mut().create_pending_relationship(
+                        containing_symbol.id.clone(),
+                        UnresolvedTarget::simple(function_name),
+                        RelationshipKind::Calls,
+                        &node,
+                        Some(containing_symbol.id.clone()),
+                        Some(0.7),
+                    );
+                    extractor.add_structured_pending_relationship(pending);
                 }
             }
         }

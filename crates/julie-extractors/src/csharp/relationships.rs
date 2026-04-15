@@ -1,11 +1,13 @@
 // C# Relationship Extraction
 
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
-use crate::csharp::CSharpExtractor;
+use crate::base::{
+    PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
+};
 use crate::csharp::member_type_relationships::{
     extract_field_type_relationships, extract_parameter_type_name,
     extract_property_type_relationships, find_containing_class,
 };
+use crate::csharp::CSharpExtractor;
 use tree_sitter::Tree;
 
 /// Extract relationships from the tree
@@ -142,14 +144,15 @@ fn extract_inheritance_relationships(
                 RelationshipKind::Extends
             };
 
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: current_symbol_id.clone(),
-                callee_name: base_type_name,
-                kind: relationship_kind,
-                file_path: file_path.clone(),
-                line_number,
-                confidence: 0.9,
-            });
+            let pending = extractor.get_base().create_pending_relationship(
+                current_symbol_id.clone(),
+                UnresolvedTarget::simple(base_type_name),
+                relationship_kind,
+                &node,
+                Some(current_symbol_id.clone()),
+                Some(0.9),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
     }
 }
@@ -380,14 +383,15 @@ fn handle_call_target(
             // Target is an Import symbol - need cross-file resolution
             // Don't create relationship pointing to Import (useless for trace_call_path)
             // Instead, create a PendingRelationship with the callee name
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: caller.id.clone(),
-                callee_name: callee_name.to_string(),
-                kind: RelationshipKind::Calls,
-                file_path,
-                line_number,
-                confidence: 0.8, // Lower confidence - needs resolution
-            });
+            let pending = extractor.get_base().create_pending_relationship(
+                caller.id.clone(),
+                unresolved_call_target(extractor, call_node, callee_name),
+                RelationshipKind::Calls,
+                &call_node,
+                Some(caller.id.clone()),
+                Some(0.8),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
         Some(called_symbol) => {
             // Target is a local method - create resolved Relationship
@@ -411,14 +415,51 @@ fn handle_call_target(
         None => {
             // Target not found in local symbols - likely a method on imported type
             // Create PendingRelationship for cross-file resolution
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: caller.id.clone(),
-                callee_name: callee_name.to_string(),
-                kind: RelationshipKind::Calls,
-                file_path,
-                line_number,
-                confidence: 0.7, // Lower confidence - unknown target
-            });
+            let pending = extractor.get_base().create_pending_relationship(
+                caller.id.clone(),
+                unresolved_call_target(extractor, call_node, callee_name),
+                RelationshipKind::Calls,
+                &call_node,
+                Some(caller.id.clone()),
+                Some(0.7),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
     }
+}
+
+fn unresolved_call_target(
+    extractor: &CSharpExtractor,
+    node: tree_sitter::Node,
+    fallback_name: &str,
+) -> UnresolvedTarget {
+    let mut identifiers = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "identifier" {
+            identifiers.push(extractor.get_base().get_node_text(&child));
+        }
+    }
+
+    if identifiers.len() >= 2 {
+        let terminal_name = identifiers
+            .pop()
+            .unwrap_or_else(|| fallback_name.to_string());
+        let receiver = identifiers.pop();
+        let namespace_path = identifiers;
+        let mut display_parts = namespace_path.clone();
+        if let Some(receiver_name) = receiver.as_ref() {
+            display_parts.push(receiver_name.clone());
+        }
+        display_parts.push(terminal_name.clone());
+        return UnresolvedTarget {
+            display_name: display_parts.join("."),
+            terminal_name,
+            receiver,
+            namespace_path,
+            import_context: None,
+        };
+    }
+
+    UnresolvedTarget::simple(fallback_name.to_string())
 }

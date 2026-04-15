@@ -9,6 +9,7 @@
 
 use crate::base::{PendingRelationship, RelationshipKind};
 use crate::factory::extract_symbols_and_relationships;
+use crate::ruby::RubyExtractor;
 use crate::{ExtractionResults, Relationship, Symbol};
 use std::path::PathBuf;
 use tree_sitter::Parser;
@@ -39,6 +40,20 @@ mod tests {
     fn extract_from_file(filename: &str, code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
         let results = extract_full(filename, code);
         (results.symbols, results.relationships)
+    }
+
+    fn extract_structured_pending(
+        filename: &str,
+        code: &str,
+    ) -> Vec<crate::base::StructuredPendingRelationship> {
+        let mut parser = init_ruby_parser();
+        let tree = parser.parse(code, None).expect("Failed to parse");
+        let workspace_root = PathBuf::from("/test/workspace");
+        let mut extractor =
+            RubyExtractor::new(filename.to_string(), code.to_string(), &workspace_root);
+        let symbols = extractor.extract_symbols(&tree);
+        extractor.extract_relationships(&tree, &symbols);
+        extractor.get_structured_pending_relationships()
     }
 
     // ========================================================================
@@ -218,11 +233,40 @@ end
         let callee_names: Vec<_> = pending_calls.iter().map(|p| &p.callee_name).collect();
         println!("Captured callee names: {:?}", callee_names);
 
-        // We should have captured either 'Calculator', 'double', 'new', or other call names
+        let has_constructor = callee_names
+            .iter()
+            .any(|n| *n == "Calculator" || *n == "Calculator.new" || *n == "new");
+        let has_double = callee_names
+            .iter()
+            .any(|n| *n == "double" || *n == "calc.double");
+
         assert!(
-            callee_names.len() > 0,
-            "Should capture at least some method call names"
+            has_constructor || has_double,
+            "Should capture at least 'Calculator' or the member call target.\n\
+             Found: {:?}",
+            callee_names
         );
+
+        let structured_pending = extract_structured_pending("lib/processor.rb", file_b_code);
+        let structured_double = structured_pending
+            .iter()
+            .find(|pending| pending.target.display_name == "calc.double");
+        if let Some(structured_double) = structured_double {
+            assert_eq!(structured_double.target.terminal_name, "double");
+            assert_eq!(structured_double.target.receiver.as_deref(), Some("calc"));
+        } else {
+            let structured_constructor = structured_pending
+                .iter()
+                .find(|pending| pending.target.display_name == "Calculator.new")
+                .expect(
+                    "Cross-file method calls should retain structured unresolved target context. Got: {:?}",
+                );
+            assert_eq!(structured_constructor.target.terminal_name, "new");
+            assert_eq!(
+                structured_constructor.target.receiver.as_deref(),
+                Some("Calculator")
+            );
+        }
     }
 
     // ========================================================================

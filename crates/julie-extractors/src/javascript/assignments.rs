@@ -35,12 +35,10 @@ impl super::JavaScriptExtractor {
                         metadata.insert("isPrototypeMethod".to_string(), json!(true));
                         metadata.insert(
                             "isFunction".to_string(),
-                            json!(
-                                right_node
-                                    .map(|r| r.kind() == "function_expression"
-                                        || r.kind() == "arrow_function")
-                                    .unwrap_or(false)
-                            ),
+                            json!(right_node
+                                .map(|r| r.kind() == "function_expression"
+                                    || r.kind() == "arrow_function")
+                                .unwrap_or(false)),
                         );
 
                         // Extract JSDoc comment

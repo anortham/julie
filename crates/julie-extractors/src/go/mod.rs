@@ -7,7 +7,8 @@ mod specs;
 mod types;
 
 use crate::base::{
-    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol, SymbolKind,
 };
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
@@ -23,6 +24,7 @@ pub struct GoExtractor {
     base: BaseExtractor,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl GoExtractor {
@@ -35,6 +37,7 @@ impl GoExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -46,6 +49,15 @@ impl GoExtractor {
     /// Add a pending relationship (used during extraction)
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.pending_relationships.push(pending);
+    }
+
+    pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
     }
 
     /// Extract symbols from Go source code - direct port from reference logic

@@ -8,8 +8,9 @@
 //! - Cross-file calls → PendingRelationship (resolved after workspace indexing)
 
 use crate::base::{PendingRelationship, RelationshipKind};
-use crate::factory::extract_symbols_and_relationships;
+use crate::zig::ZigExtractor;
 use crate::{ExtractionResults, Relationship, Symbol};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tree_sitter::Parser;
 
@@ -30,9 +31,26 @@ mod tests {
         let mut parser = init_zig_parser();
         let tree = parser.parse(code, None).expect("Failed to parse");
         let workspace_root = PathBuf::from("/test/workspace");
+        let mut extractor = ZigExtractor::new(
+            "zig".to_string(),
+            filename.to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        let relationships = extractor.extract_relationships(&tree, &symbols);
+        let identifiers = extractor.extract_identifiers(&tree, &symbols);
+        let pending_relationships = extractor.get_pending_relationships();
+        let structured_pending_relationships = extractor.get_structured_pending_relationships();
 
-        extract_symbols_and_relationships(&tree, filename, code, "zig", &workspace_root)
-            .expect("Failed to extract")
+        ExtractionResults {
+            symbols,
+            relationships,
+            pending_relationships,
+            structured_pending_relationships,
+            types: HashMap::new(),
+            identifiers,
+        }
     }
 
     /// Helper to extract just symbols and relationships (for backward compat)
@@ -131,13 +149,13 @@ fn main_function() i32 {
         );
 
         // Verify the pending relationship has the correct callee name
-        let helper_pending = pending_calls
-            .iter()
-            .find(|p| p.callee_name == "helper_function");
+        let helper_pending = pending_calls.iter().find(|p| {
+            p.callee_name == "helper_function" || p.callee_name == "util.helper_function"
+        });
 
         assert!(
             helper_pending.is_some(),
-            "PendingRelationship should have callee_name='helper_function'.\n\
+            "PendingRelationship should preserve a degraded callee name for helper_function.\n\
              Found: {:?}",
             pending_calls
                 .iter()
@@ -152,6 +170,14 @@ fn main_function() i32 {
             pending.from_symbol_id, main_fn_id,
             "PendingRelationship should be from main_function"
         );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "util.helper_function")
+            .expect("structured pending relationship should preserve Zig receiver-qualified calls");
+        assert_eq!(structured_pending.target.terminal_name, "helper_function");
+        assert_eq!(structured_pending.target.receiver.as_deref(), Some("util"));
     }
 
     // ========================================================================

@@ -1,5 +1,5 @@
 use crate::base::{
-    BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
 };
 use crate::zig::ZigExtractor;
 use tree_sitter::{Node, Tree};
@@ -156,21 +156,30 @@ fn extract_function_call_relationships(
     relationships: &mut Vec<Relationship>,
 ) {
     let base = extractor.get_base_mut();
-    let mut called_func_name: Option<String> = None;
+    let mut unresolved_target: Option<UnresolvedTarget> = None;
 
     // Check for direct function call (identifier + arguments)
     if let Some(func_name_node) = base.find_child_by_type(&node, "identifier") {
-        called_func_name = Some(base.get_node_text(&func_name_node));
+        let called_func_name = base.get_node_text(&func_name_node);
+        unresolved_target = Some(UnresolvedTarget::simple(called_func_name));
     } else if let Some(field_expr_node) = base.find_child_by_type(&node, "field_expression") {
         // Check for method call (field_expression + arguments)
         let identifiers = base.find_children_by_type(&field_expr_node, "identifier");
         if identifiers.len() >= 2 {
-            called_func_name = Some(base.get_node_text(&identifiers[1]));
-            // Second identifier is the method name
+            let receiver = base.get_node_text(&identifiers[0]);
+            let terminal_name = base.get_node_text(&identifiers[1]);
+            unresolved_target = Some(UnresolvedTarget {
+                display_name: format!("{receiver}.{terminal_name}"),
+                terminal_name,
+                receiver: Some(receiver),
+                namespace_path: Vec::new(),
+                import_context: None,
+            });
         }
     }
 
-    if let Some(called_func_name) = called_func_name {
+    if let Some(unresolved_target) = unresolved_target {
+        let called_func_name = unresolved_target.terminal_name.clone();
         // Find the calling function first
         let mut current = node.parent();
         let caller_symbol = loop {
@@ -228,14 +237,15 @@ fn extract_function_call_relationships(
                 None => {
                     // Called function not found locally - likely from another file
                     // Create pending relationship for cross-file resolution
-                    extractor.add_pending_relationship(PendingRelationship {
-                        from_symbol_id: caller_symbol.id.clone(),
-                        callee_name: called_func_name.clone(),
-                        kind: RelationshipKind::Calls,
-                        file_path,
-                        line_number,
-                        confidence: 0.7,
-                    });
+                    let pending = extractor.get_base_mut().create_pending_relationship(
+                        caller_symbol.id.clone(),
+                        unresolved_target,
+                        RelationshipKind::Calls,
+                        &node,
+                        Some(caller_symbol.id.clone()),
+                        Some(0.7),
+                    );
+                    extractor.add_structured_pending_relationship(pending);
                 }
             }
         }

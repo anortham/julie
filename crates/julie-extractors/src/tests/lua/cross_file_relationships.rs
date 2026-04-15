@@ -270,14 +270,26 @@ end
         println!("Captured callee names: {:?}", callee_names);
 
         // We should have captured either 'new', 'double', or both
-        let has_new = callee_names.iter().any(|n| *n == "new");
-        let has_double = callee_names.iter().any(|n| *n == "double");
+        let has_new = callee_names
+            .iter()
+            .any(|n| *n == "new" || *n == "Calculator.new");
+        let has_double = callee_names
+            .iter()
+            .any(|n| *n == "double" || *n == "calc.double");
 
         assert!(
             has_new || has_double,
-            "Should capture at least 'new' or 'double' method calls.\n\
+            "Should capture at least the constructor or member call target.\n\
              Found: {:?}",
             callee_names
         );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "calc.double")
+            .expect("structured pending relationship should preserve Lua receiver-qualified calls");
+        assert_eq!(structured_pending.target.terminal_name, "double");
+        assert_eq!(structured_pending.target.receiver.as_deref(), Some("calc"));
     }
 }

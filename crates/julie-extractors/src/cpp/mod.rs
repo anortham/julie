@@ -20,7 +20,8 @@ mod types;
 mod visibility;
 
 use crate::base::{
-    BaseExtractor, PendingRelationship, Relationship, Symbol, SymbolKind, SymbolOptions, Visibility,
+    BaseExtractor, PendingRelationship, Relationship, StructuredPendingRelationship, Symbol,
+    SymbolKind, SymbolOptions, Visibility,
 };
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Node, Tree};
@@ -33,6 +34,7 @@ pub struct CppExtractor {
     additional_symbols: Vec<Symbol>,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl CppExtractor {
@@ -42,6 +44,7 @@ impl CppExtractor {
             processed_nodes: HashSet::new(),
             additional_symbols: Vec::new(),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -50,7 +53,16 @@ impl CppExtractor {
         self.pending_relationships.clone()
     }
 
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
+    }
+
     /// Add a pending relationship (used during extraction)
+    pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
+    }
+
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.pending_relationships.push(pending);
     }

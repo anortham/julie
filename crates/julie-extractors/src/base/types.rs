@@ -3,8 +3,12 @@
 // All data structures for symbol extraction, identifiers, relationships, and types.
 // Lines 15-394 from original base.rs
 
+use md5;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use super::relationship_resolution::StructuredPendingRelationship;
+use super::span::NormalizedSpan;
 
 /// Configuration for code context extraction
 #[derive(Debug, Clone)]
@@ -87,6 +91,28 @@ pub struct Symbol {
     pub content_type: Option<String>,
 }
 
+impl Symbol {
+    pub fn apply_normalized_span(&mut self, span: NormalizedSpan) {
+        self.start_line = span.start_line;
+        self.start_column = span.start_column;
+        self.end_line = span.end_line;
+        self.end_column = span.end_column;
+        self.start_byte = span.start_byte;
+        self.end_byte = span.end_byte;
+    }
+
+    pub fn refresh_id(&mut self) -> String {
+        let previous_id = self.id.clone();
+        self.id = stable_location_id(
+            self.file_path.as_str(),
+            self.name.as_str(),
+            self.start_line,
+            self.start_column,
+        );
+        previous_id
+    }
+}
+
 /// An identifier (reference/usage) extracted from source code
 ///
 /// Unlike Symbols (definitions), Identifiers represent usage sites like function calls,
@@ -124,6 +150,31 @@ pub struct Identifier {
     pub confidence: f32,
     /// Code context around the identifier
     pub code_context: Option<String>,
+}
+
+impl Identifier {
+    pub fn apply_normalized_span(&mut self, span: NormalizedSpan) {
+        self.start_line = span.start_line;
+        self.start_column = span.start_column;
+        self.end_line = span.end_line;
+        self.end_column = span.end_column;
+        self.start_byte = span.start_byte;
+        self.end_byte = span.end_byte;
+    }
+
+    pub fn refresh_id(&mut self) {
+        self.id = stable_location_id(
+            self.file_path.as_str(),
+            self.name.as_str(),
+            self.start_line,
+            self.start_column,
+        );
+    }
+}
+
+fn stable_location_id(file_path: &str, name: &str, start_line: u32, start_column: u32) -> String {
+    let input = format!("{file_path}:{name}:{start_line}:{start_column}");
+    format!("{:x}", md5::compute(input.as_bytes()))
 }
 
 /// Identifier kinds - types of references/usages in code
@@ -310,28 +361,17 @@ pub struct Relationship {
 }
 
 /// A pending relationship that needs cross-file resolution after indexing.
-///
-/// During extraction, when a call target cannot be resolved within the current file
-/// (e.g., calling an imported function), we create a PendingRelationship with the
-/// callee's NAME. After all files are indexed, a resolution pass matches these names
-/// to actual symbol IDs and creates real Relationship records.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PendingRelationship {
-    /// Source symbol ID (the caller - this IS known during extraction)
     #[serde(rename = "fromSymbolId")]
     pub from_symbol_id: String,
-    /// Target symbol NAME (not ID - we don't know which file defines this yet)
     #[serde(rename = "calleeName")]
     pub callee_name: String,
-    /// Type of relationship (typically Calls for function calls)
     pub kind: RelationshipKind,
-    /// File where this call occurs
     #[serde(rename = "filePath")]
     pub file_path: String,
-    /// Line number where the call occurs (1-based)
     #[serde(rename = "lineNumber")]
     pub line_number: u32,
-    /// Confidence level (0.0 to 1.0)
     pub confidence: f32,
 }
 
@@ -442,6 +482,8 @@ pub struct ExtractionResults {
     pub relationships: Vec<Relationship>,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pub pending_relationships: Vec<PendingRelationship>,
+    /// Structured pending relationships preserve unresolved call context.
+    pub structured_pending_relationships: Vec<StructuredPendingRelationship>,
     pub types: HashMap<String, TypeInfo>,
     pub identifiers: Vec<Identifier>, // Include identifiers for LSP-quality tools
 }

@@ -136,11 +136,13 @@ public class Main {
         );
 
         // Verify the pending relationship has the correct callee name
-        let process_pending = pending_calls.iter().find(|p| p.callee_name == "process");
+        let process_pending = pending_calls
+            .iter()
+            .find(|p| p.callee_name == "process" || p.callee_name == "Helper.process");
 
         assert!(
             process_pending.is_some(),
-            "PendingRelationship should have callee_name='process'.\n\
+            "PendingRelationship should have a degraded callee name for process.\n\
              Found: {:?}",
             pending_calls
                 .iter()
@@ -154,6 +156,17 @@ public class Main {
         assert_eq!(
             pending.from_symbol_id, main_fn_id,
             "PendingRelationship should be from main method"
+        );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "Helper.process")
+            .expect("structured pending relationship should preserve receiver-qualified Java method calls");
+        assert_eq!(structured_pending.target.terminal_name, "process");
+        assert_eq!(
+            structured_pending.target.receiver.as_deref(),
+            Some("Helper")
         );
     }
 
@@ -351,6 +364,14 @@ public class Foo extends Bar {
             .find(|s| s.name == "Foo")
             .expect("Should extract Foo class");
         assert_eq!(bar_pending.unwrap().from_symbol_id, foo_class.id);
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "Bar")
+            .expect("structured pending relationship should preserve Java extends targets");
+        assert_eq!(structured_pending.target.terminal_name, "Bar");
+        assert_eq!(structured_pending.target.receiver, None);
     }
 
     #[test]

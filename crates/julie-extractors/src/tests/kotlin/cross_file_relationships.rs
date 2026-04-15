@@ -155,6 +155,19 @@ class Service {
             pending_method.is_some(),
             "Should create pending relationship for method call on external type"
         );
+
+        let structured_pending = extractor
+            .get_structured_pending_relationships()
+            .into_iter()
+            .find(|pending| pending.target.display_name == "helper.compute")
+            .expect(
+                "structured pending relationship should preserve receiver-qualified Kotlin calls",
+            );
+        assert_eq!(structured_pending.target.terminal_name, "compute");
+        assert_eq!(
+            structured_pending.target.receiver.as_deref(),
+            Some("helper")
+        );
     }
 
     #[test]
@@ -384,6 +397,13 @@ class MyService : BaseService() {
             .find(|s| s.name == "MyService")
             .expect("Should extract MyService class");
         assert_eq!(pending_inheritance.unwrap().from_symbol_id, my_service.id);
+
+        let structured_pending = extractor
+            .get_structured_pending_relationships()
+            .into_iter()
+            .find(|pending| pending.target.display_name == "BaseService")
+            .expect("structured pending relationship should preserve Kotlin inheritance targets");
+        assert_eq!(structured_pending.target.terminal_name, "BaseService");
     }
 
     #[test]

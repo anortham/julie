@@ -8,6 +8,7 @@
 //! - Cross-file calls → PendingRelationship (resolved after workspace indexing)
 
 use crate::base::{PendingRelationship, RelationshipKind};
+use crate::dart::DartExtractor;
 use crate::factory::extract_symbols_and_relationships;
 use crate::{ExtractionResults, Relationship, Symbol};
 use std::path::PathBuf;
@@ -39,6 +40,24 @@ mod tests {
     fn extract_from_file(filename: &str, code: &str) -> (Vec<Symbol>, Vec<Relationship>) {
         let results = extract_full(filename, code);
         (results.symbols, results.relationships)
+    }
+
+    fn extract_structured_pending(
+        filename: &str,
+        code: &str,
+    ) -> Vec<crate::base::StructuredPendingRelationship> {
+        let mut parser = init_dart_parser();
+        let tree = parser.parse(code, None).expect("Failed to parse");
+        let workspace_root = PathBuf::from("/test/workspace");
+        let mut extractor = DartExtractor::new(
+            "dart".to_string(),
+            filename.to_string(),
+            code.to_string(),
+            &workspace_root,
+        );
+        let symbols = extractor.extract_symbols(&tree);
+        extractor.extract_relationships(&tree, &symbols);
+        extractor.get_structured_pending_relationships()
     }
 
     // ========================================================================
@@ -145,6 +164,16 @@ int mainFunction() {
                 .collect::<Vec<_>>()
         );
 
+        let structured_pending = extract_structured_pending("lib/main.dart", file_b_code);
+        let structured_pending = structured_pending
+            .iter()
+            .find(|pending| pending.target.display_name == "helperFunction")
+            .expect(
+                "structured pending relationship should preserve Dart unresolved function targets",
+            );
+        assert_eq!(structured_pending.target.terminal_name, "helperFunction");
+        assert_eq!(structured_pending.target.receiver, None);
+
         // Verify the pending relationship has the correct caller
         let main_fn_ids: Vec<_> = results_b
             .symbols
@@ -237,14 +266,32 @@ int process() {
 
         // We should have captured either 'Calculator', 'double', or both
         let has_constructor = callee_names.iter().any(|n| *n == "Calculator");
-        let has_double = callee_names.iter().any(|n| *n == "double");
+        let has_double = callee_names
+            .iter()
+            .any(|n| *n == "double" || *n == "calc.double");
 
         assert!(
             has_constructor || has_double,
-            "Should capture at least 'Calculator' or 'double' method calls.\n\
+            "Should capture at least 'Calculator' or the member call target.\n\
              Found: {:?}",
             callee_names
         );
+
+        let structured_pending = extract_structured_pending("lib/processor.dart", file_b_code);
+        let structured_double = structured_pending
+            .iter()
+            .find(|pending| pending.target.display_name == "calc.double");
+        if let Some(structured_double) = structured_double {
+            assert_eq!(structured_double.target.terminal_name, "double");
+            assert_eq!(structured_double.target.receiver.as_deref(), Some("calc"));
+        } else {
+            let structured_constructor = structured_pending
+                .iter()
+                .find(|pending| pending.target.display_name == "Calculator")
+                .expect("Dart cross-file calls should emit at least one structured pending target");
+            assert_eq!(structured_constructor.target.terminal_name, "Calculator");
+            assert_eq!(structured_constructor.target.receiver, None);
+        }
     }
 
     // ========================================================================

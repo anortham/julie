@@ -229,6 +229,16 @@ func process(x: Int) -> Int {
              Found: {:?}",
             callee_names
         );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "Helper")
+            .expect(
+                "structured pending relationship should preserve unresolved Swift constructor targets",
+            );
+        assert_eq!(structured_pending.target.terminal_name, "Helper");
+        assert_eq!(structured_pending.target.receiver, None);
     }
 
     // ========================================================================
@@ -385,6 +395,13 @@ class UserModel: Codable {
             .expect("Should extract UserModel class");
         assert_eq!(codable_pending.unwrap().kind, RelationshipKind::Extends);
         assert_eq!(codable_pending.unwrap().from_symbol_id, user_model.id);
+
+        let structured_pending = results
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "Codable")
+            .expect("structured pending relationship should preserve Swift conformance targets");
+        assert_eq!(structured_pending.target.terminal_name, "Codable");
     }
 
     #[test]

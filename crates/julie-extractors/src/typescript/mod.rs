@@ -24,8 +24,8 @@ pub(crate) mod relationships;
 mod symbols;
 
 use crate::base::{
-    BaseExtractor, Identifier, PendingRelationship, Relationship, RelationshipKind, Symbol,
-    SymbolKind,
+    BaseExtractor, Identifier, PendingRelationship, Relationship, RelationshipKind,
+    StructuredPendingRelationship, Symbol, SymbolKind, UnresolvedTarget,
 };
 use std::collections::HashMap;
 use tree_sitter::Tree;
@@ -35,6 +35,7 @@ pub struct TypeScriptExtractor {
     base: BaseExtractor,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl TypeScriptExtractor {
@@ -51,6 +52,7 @@ impl TypeScriptExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -85,17 +87,8 @@ impl TypeScriptExtractor {
         // Look for call expressions
         if node.kind() == "call_expression" {
             if let Some(function_node) = node.child_by_field_name("function") {
-                // Extract function name - handle both direct calls and member access
-                let function_name = if function_node.kind() == "member_expression" {
-                    // For obj.method(), get just "method"
-                    if let Some(property) = function_node.child_by_field_name("property") {
-                        self.base.get_node_text(&property)
-                    } else {
-                        self.base.get_node_text(&function_node)
-                    }
-                } else {
-                    self.base.get_node_text(&function_node)
-                };
+                let target = self.build_unresolved_target(node, function_node, symbol_map);
+                let function_name = target.terminal_name.clone();
 
                 // Check if this is a call to an import or unknown function
                 match symbol_map.get(function_name.as_str()) {
@@ -105,15 +98,15 @@ impl TypeScriptExtractor {
                         if let Some(caller_symbol) =
                             self.find_containing_function_in_symbols(node, symbol_map)
                         {
-                            let line_number = node.start_position().row as u32 + 1;
-                            self.add_pending_relationship(PendingRelationship {
-                                from_symbol_id: caller_symbol.id.clone(),
-                                callee_name: function_name.clone(),
-                                kind: RelationshipKind::Calls,
-                                file_path: self.base.file_path.clone(),
-                                line_number,
-                                confidence: 0.8,
-                            });
+                            let pending = self.base.create_pending_relationship(
+                                caller_symbol.id.clone(),
+                                target.clone(),
+                                RelationshipKind::Calls,
+                                &node,
+                                Some(caller_symbol.id.clone()),
+                                Some(0.8),
+                            );
+                            self.add_structured_pending_relationship(pending);
                         }
                     }
                     None => {
@@ -122,15 +115,15 @@ impl TypeScriptExtractor {
                         if let Some(caller_symbol) =
                             self.find_containing_function_in_symbols(node, symbol_map)
                         {
-                            let line_number = node.start_position().row as u32 + 1;
-                            self.add_pending_relationship(PendingRelationship {
-                                from_symbol_id: caller_symbol.id.clone(),
-                                callee_name: function_name.clone(),
-                                kind: RelationshipKind::Calls,
-                                file_path: self.base.file_path.clone(),
-                                line_number,
-                                confidence: 0.7,
-                            });
+                            let pending = self.base.create_pending_relationship(
+                                caller_symbol.id.clone(),
+                                target,
+                                RelationshipKind::Calls,
+                                &node,
+                                Some(caller_symbol.id.clone()),
+                                Some(0.7),
+                            );
+                            self.add_structured_pending_relationship(pending);
                         }
                     }
                     _ => {}
@@ -220,6 +213,155 @@ impl TypeScriptExtractor {
         None
     }
 
+    fn build_unresolved_target(
+        &self,
+        call_node: tree_sitter::Node,
+        function_node: tree_sitter::Node,
+        symbol_map: &std::collections::HashMap<String, &Symbol>,
+    ) -> UnresolvedTarget {
+        if function_node.kind() == "member_expression" {
+            let receiver = function_node
+                .child_by_field_name("object")
+                .map(|node| self.base.get_node_text(&node));
+            let property = function_node
+                .child_by_field_name("property")
+                .map(|node| self.base.get_node_text(&node))
+                .unwrap_or_else(|| self.base.get_node_text(&function_node));
+            let display_name = receiver
+                .as_ref()
+                .map(|receiver| format!("{receiver}.{property}"))
+                .unwrap_or_else(|| property.clone());
+            let import_context = receiver.as_deref().and_then(|receiver| {
+                self.find_receiver_import_context(call_node, receiver, symbol_map)
+            });
+
+            return UnresolvedTarget {
+                display_name,
+                terminal_name: property,
+                receiver,
+                namespace_path: Vec::new(),
+                import_context,
+            };
+        }
+
+        let function_name = self.base.get_node_text(&function_node);
+        let import_context = symbol_map
+            .get(&function_name)
+            .and_then(|symbol| (symbol.kind == SymbolKind::Import).then(|| symbol.name.clone()))
+            .or_else(|| {
+                self.file_imports_binding(call_node, &function_name)
+                    .then_some(function_name.clone())
+            });
+        UnresolvedTarget {
+            display_name: function_name.clone(),
+            terminal_name: function_name,
+            receiver: None,
+            namespace_path: Vec::new(),
+            import_context,
+        }
+    }
+
+    fn find_receiver_import_context(
+        &self,
+        call_node: tree_sitter::Node,
+        receiver_name: &str,
+        symbol_map: &std::collections::HashMap<String, &Symbol>,
+    ) -> Option<String> {
+        let caller_scope = self.find_containing_scope_node(call_node)?;
+        let mut stack = vec![caller_scope];
+        while let Some(candidate) = stack.pop() {
+            let mut cursor = candidate.walk();
+            for child in candidate.children(&mut cursor) {
+                stack.push(child);
+            }
+
+            if candidate.kind() != "variable_declarator" {
+                continue;
+            }
+
+            let Some(name_node) = candidate.child_by_field_name("name") else {
+                continue;
+            };
+            if self.base.get_node_text(&name_node) != receiver_name {
+                continue;
+            }
+
+            let Some(value_node) = candidate.child_by_field_name("value") else {
+                continue;
+            };
+            if value_node.kind() != "new_expression" {
+                continue;
+            }
+
+            let constructor_node = value_node
+                .child_by_field_name("constructor")
+                .or_else(|| value_node.child_by_field_name("callee"))
+                .or_else(|| {
+                    let mut cursor = value_node.walk();
+                    value_node
+                        .named_children(&mut cursor)
+                        .find(|child| !matches!(child.kind(), "arguments" | "type_arguments"))
+                });
+            let Some(constructor_node) = constructor_node else {
+                continue;
+            };
+            let constructor_name = self.base.get_node_text(&constructor_node);
+            if symbol_map
+                .get(&constructor_name)
+                .is_some_and(|symbol| symbol.kind == SymbolKind::Import)
+                || self.file_imports_binding(call_node, &constructor_name)
+            {
+                return Some(constructor_name);
+            }
+        }
+
+        None
+    }
+
+    fn find_containing_scope_node<'a>(
+        &self,
+        node: tree_sitter::Node<'a>,
+    ) -> Option<tree_sitter::Node<'a>> {
+        let mut current = node.parent();
+        while let Some(current_node) = current {
+            if matches!(
+                current_node.kind(),
+                "function_declaration" | "method_definition" | "arrow_function"
+            ) {
+                return Some(current_node);
+            }
+            current = current_node.parent();
+        }
+        None
+    }
+
+    fn file_imports_binding(&self, node: tree_sitter::Node, binding_name: &str) -> bool {
+        let mut current = Some(node);
+        let mut root = node;
+        while let Some(candidate) = current {
+            root = candidate;
+            current = candidate.parent();
+        }
+
+        let mut stack = vec![root];
+        while let Some(candidate) = stack.pop() {
+            let mut cursor = candidate.walk();
+            for child in candidate.children(&mut cursor) {
+                stack.push(child);
+            }
+
+            if !matches!(candidate.kind(), "import_statement" | "import_declaration") {
+                continue;
+            }
+
+            if self.base.get_node_text(&candidate).contains(binding_name) {
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Extract all identifiers (function calls, member access, etc.)
     pub fn extract_identifiers(&mut self, tree: &Tree, symbols: &[Symbol]) -> Vec<Identifier> {
         identifiers::extract_identifiers(self, tree, symbols)
@@ -235,9 +377,18 @@ impl TypeScriptExtractor {
         self.pending_relationships.clone()
     }
 
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
+    }
+
     /// Add a pending relationship (used during extraction)
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.pending_relationships.push(pending);
+    }
+
+    pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
     }
 
     // ========================================================================

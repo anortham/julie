@@ -18,7 +18,10 @@ mod properties;
 mod relationships;
 mod types;
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol,
+};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -26,6 +29,7 @@ pub struct KotlinExtractor {
     base: BaseExtractor,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl KotlinExtractor {
@@ -38,6 +42,7 @@ impl KotlinExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -46,9 +51,18 @@ impl KotlinExtractor {
         self.pending_relationships.clone()
     }
 
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
+    }
+
     /// Add a pending relationship (used during extraction)
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.pending_relationships.push(pending);
+    }
+
+    pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
     }
 
     pub fn extract_symbols(&mut self, tree: &Tree) -> Vec<Symbol> {

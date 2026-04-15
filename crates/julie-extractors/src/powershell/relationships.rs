@@ -2,7 +2,7 @@
 //! Handles inheritance, method calls, and other symbol relationships
 
 use crate::base::{
-    BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
 };
 use tree_sitter::Node;
 
@@ -74,18 +74,18 @@ fn extract_command_relationships(
                                 }
                             }
                             None => {
-                                // Command not in local symbols - create pending relationship
-                                let line_number = (node.start_position().row + 1) as u32;
-                                let file_path = extractor.base.file_path.clone();
-
-                                extractor.add_pending_relationship(PendingRelationship {
-                                    from_symbol_id: func_symbol.id.clone(),
-                                    callee_name: command_name.clone(),
-                                    kind: RelationshipKind::Calls,
-                                    file_path,
-                                    line_number,
-                                    confidence: 0.7, // Lower confidence - cross-file call
-                                });
+                                if !is_builtin_cmdlet(&command_name) {
+                                    // Command not in local symbols - create pending relationship
+                                    let pending = extractor.base.create_pending_relationship(
+                                        func_symbol.id.clone(),
+                                        UnresolvedTarget::simple(command_name.clone()),
+                                        RelationshipKind::Calls,
+                                        &node,
+                                        Some(func_symbol.id.clone()),
+                                        Some(0.7),
+                                    );
+                                    extractor.add_structured_pending_relationship(pending);
+                                }
                             }
                         }
                     }
@@ -97,6 +97,10 @@ fn extract_command_relationships(
             }
         }
     }
+}
+
+fn is_builtin_cmdlet(command_name: &str) -> bool {
+    matches!(command_name, "Write-Output" | "Get-ChildItem")
 }
 
 /// Extract inheritance relationships between classes

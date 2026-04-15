@@ -1,7 +1,7 @@
 // PHP Extractor - Relationship extraction (inheritance, implementation, function calls)
 
-use super::{PhpExtractor, find_child};
-use crate::base::{PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind};
+use super::{find_child, PhpExtractor};
+use crate::base::{Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -68,14 +68,15 @@ pub(super) fn extract_class_relationships(
             });
         } else {
             // Bug 2: base class not found in same file — emit PendingRelationship for cross-file resolution
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: class_symbol.id.clone(),
-                callee_name: base_class_name,
-                kind: RelationshipKind::Extends,
-                file_path: extractor.get_base().file_path.clone(),
-                line_number: node.start_position().row as u32 + 1,
-                confidence: 0.9,
-            });
+            let pending = extractor.get_base().create_pending_relationship(
+                class_symbol.id.clone(),
+                UnresolvedTarget::simple(base_class_name),
+                RelationshipKind::Extends,
+                &node,
+                Some(class_symbol.id.clone()),
+                Some(0.9),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
     }
 
@@ -124,14 +125,15 @@ pub(super) fn extract_class_relationships(
                 });
             } else {
                 // Bug 3: interface not found in symbols — emit PendingRelationship instead of fabricating an ID
-                extractor.add_pending_relationship(PendingRelationship {
-                    from_symbol_id: class_symbol.id.clone(),
-                    callee_name: interface_name,
-                    kind: RelationshipKind::Implements,
-                    file_path: extractor.get_base().file_path.clone(),
-                    line_number: node.start_position().row as u32 + 1,
-                    confidence: 0.9,
-                });
+                let pending = extractor.get_base().create_pending_relationship(
+                    class_symbol.id.clone(),
+                    UnresolvedTarget::simple(interface_name),
+                    RelationshipKind::Implements,
+                    &node,
+                    Some(class_symbol.id.clone()),
+                    Some(0.9),
+                );
+                extractor.add_structured_pending_relationship(pending);
             }
         }
     }
@@ -195,14 +197,15 @@ pub(super) fn extract_interface_relationships(
                 });
             } else {
                 // Cross-file: emit PendingRelationship instead of fabricating an ID
-                extractor.add_pending_relationship(PendingRelationship {
-                    from_symbol_id: interface_symbol.id.clone(),
-                    callee_name: base_interface_name,
-                    kind: RelationshipKind::Extends,
-                    file_path: extractor.get_base().file_path.clone(),
-                    line_number: node.start_position().row as u32 + 1,
-                    confidence: 0.9,
-                });
+                let pending = extractor.get_base().create_pending_relationship(
+                    interface_symbol.id.clone(),
+                    UnresolvedTarget::simple(base_interface_name),
+                    RelationshipKind::Extends,
+                    &node,
+                    Some(interface_symbol.id.clone()),
+                    Some(0.9),
+                );
+                extractor.add_structured_pending_relationship(pending);
             }
         }
     }
@@ -324,27 +327,29 @@ pub(super) fn extract_call_relationships(
                             | SymbolKind::Enum
                     ) =>
             {
-                extractor.add_pending_relationship(PendingRelationship {
-                    from_symbol_id: caller_symbol.id.clone(),
-                    callee_name: called_function_name.clone(),
-                    kind: rel_kind,
-                    file_path,
-                    line_number,
-                    confidence: 0.7,
-                });
+                let pending = extractor.get_base().create_pending_relationship(
+                    caller_symbol.id.clone(),
+                    unresolved_call_target(extractor, node, &called_function_name),
+                    rel_kind,
+                    &node,
+                    Some(caller_symbol.id.clone()),
+                    Some(0.7),
+                );
+                extractor.add_structured_pending_relationship(pending);
             }
             Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
                 // Target is an Import symbol - need cross-file resolution
                 // Don't create relationship pointing to Import (useless for trace_call_path)
                 // Instead, create a PendingRelationship with the callee name
-                extractor.add_pending_relationship(PendingRelationship {
-                    from_symbol_id: caller_symbol.id.clone(),
-                    callee_name: called_function_name.clone(),
-                    kind: rel_kind,
-                    file_path,
-                    line_number,
-                    confidence: 0.8, // Lower confidence - needs resolution
-                });
+                let pending = extractor.get_base().create_pending_relationship(
+                    caller_symbol.id.clone(),
+                    unresolved_call_target(extractor, node, &called_function_name),
+                    rel_kind,
+                    &node,
+                    Some(caller_symbol.id.clone()),
+                    Some(0.8),
+                );
+                extractor.add_structured_pending_relationship(pending);
             }
             Some(called_symbol) => {
                 // Target is a local function/method - create resolved Relationship
@@ -370,16 +375,48 @@ pub(super) fn extract_call_relationships(
             None => {
                 // Target not found in local symbols - likely a method on imported type
                 // Create PendingRelationship for cross-file resolution
-                extractor.add_pending_relationship(PendingRelationship {
-                    from_symbol_id: caller_symbol.id.clone(),
-                    callee_name: called_function_name.clone(),
-                    kind: rel_kind,
-                    file_path,
-                    line_number,
-                    confidence: 0.7, // Lower confidence - unknown target
-                });
+                let pending = extractor.get_base().create_pending_relationship(
+                    caller_symbol.id.clone(),
+                    unresolved_call_target(extractor, node, &called_function_name),
+                    rel_kind,
+                    &node,
+                    Some(caller_symbol.id.clone()),
+                    Some(0.7),
+                );
+                extractor.add_structured_pending_relationship(pending);
             }
         }
+    }
+}
+
+fn unresolved_call_target(
+    extractor: &PhpExtractor,
+    node: Node,
+    fallback_name: &str,
+) -> UnresolvedTarget {
+    match node.kind() {
+        "member_call_expression" => {
+            let receiver = node
+                .child_by_field_name("object")
+                .map(|object| extractor.get_base().get_node_text(&object))
+                .map(|name| name.trim_start_matches('$').to_string());
+            let terminal_name = node
+                .child_by_field_name("name")
+                .map(|name| extractor.get_base().get_node_text(&name))
+                .unwrap_or_else(|| fallback_name.to_string());
+            let display_name = receiver
+                .as_ref()
+                .map(|receiver| format!("{receiver}.{terminal_name}"))
+                .unwrap_or_else(|| terminal_name.clone());
+            UnresolvedTarget {
+                display_name,
+                terminal_name,
+                receiver,
+                namespace_path: Vec::new(),
+                import_context: None,
+            }
+        }
+        _ => UnresolvedTarget::simple(fallback_name.to_string()),
     }
 }
 

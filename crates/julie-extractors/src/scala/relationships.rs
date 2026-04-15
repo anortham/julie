@@ -3,7 +3,7 @@
 //! Handles extends/implements relationships and function call relationships.
 
 use crate::base::{
-    BaseExtractor, PendingRelationship, Relationship, RelationshipKind, Symbol, SymbolKind,
+    BaseExtractor, Relationship, RelationshipKind, Symbol, SymbolKind, UnresolvedTarget,
 };
 use crate::scala::ScalaExtractor;
 use serde_json::Value;
@@ -71,14 +71,15 @@ pub(super) fn extract_inheritance_relationships(
                 RelationshipKind::Implements
             };
 
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: class_symbol.id.clone(),
-                callee_name: base_type_name,
-                kind: pending_kind,
-                file_path: file_path.clone(),
-                line_number,
-                confidence: 0.9,
-            });
+            let pending = extractor.base().create_pending_relationship(
+                class_symbol.id.clone(),
+                UnresolvedTarget::simple(base_type_name),
+                pending_kind,
+                node,
+                Some(class_symbol.id.clone()),
+                Some(0.9),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
     }
 }
@@ -216,14 +217,15 @@ fn extract_single_call(
 
     match symbol_map.get(function_name.as_str()) {
         Some(called_symbol) if called_symbol.kind == SymbolKind::Import => {
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: caller.id.clone(),
-                callee_name: function_name,
-                kind: RelationshipKind::Calls,
-                file_path,
-                line_number,
-                confidence: 0.8,
-            });
+            let pending = extractor.base().create_pending_relationship(
+                caller.id.clone(),
+                unresolved_call_target(extractor, node, &function_name),
+                RelationshipKind::Calls,
+                &node,
+                Some(caller.id.clone()),
+                Some(0.8),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
         Some(called_symbol) => {
             relationships.push(Relationship {
@@ -244,15 +246,58 @@ fn extract_single_call(
             });
         }
         None => {
-            extractor.add_pending_relationship(PendingRelationship {
-                from_symbol_id: caller.id.clone(),
-                callee_name: function_name,
-                kind: RelationshipKind::Calls,
-                file_path,
-                line_number,
-                confidence: 0.7,
-            });
+            let pending = extractor.base().create_pending_relationship(
+                caller.id.clone(),
+                unresolved_call_target(extractor, node, &function_name),
+                RelationshipKind::Calls,
+                &node,
+                Some(caller.id.clone()),
+                Some(0.7),
+            );
+            extractor.add_structured_pending_relationship(pending);
         }
+    }
+}
+
+fn unresolved_call_target(
+    extractor: &ScalaExtractor,
+    node: Node,
+    fallback_name: &str,
+) -> UnresolvedTarget {
+    let mut identifiers = Vec::new();
+    collect_identifiers(extractor, node, &mut identifiers);
+
+    if identifiers.len() >= 2 {
+        let terminal_name = identifiers
+            .pop()
+            .unwrap_or_else(|| fallback_name.to_string());
+        let receiver = identifiers.pop();
+        let namespace_path = identifiers;
+        let mut display_parts = namespace_path.clone();
+        if let Some(receiver_name) = receiver.as_ref() {
+            display_parts.push(receiver_name.clone());
+        }
+        display_parts.push(terminal_name.clone());
+        return UnresolvedTarget {
+            display_name: display_parts.join("."),
+            terminal_name,
+            receiver,
+            namespace_path,
+            import_context: None,
+        };
+    }
+
+    UnresolvedTarget::simple(fallback_name.to_string())
+}
+
+fn collect_identifiers(extractor: &ScalaExtractor, node: Node, identifiers: &mut Vec<String>) {
+    if node.kind() == "identifier" {
+        identifiers.push(extractor.base().get_node_text(&node));
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_identifiers(extractor, child, identifiers);
     }
 }
 

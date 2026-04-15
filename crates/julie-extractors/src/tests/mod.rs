@@ -2,6 +2,7 @@
 //!
 //! All extractor tests organized by language.
 
+pub mod api_surface;
 pub mod base;
 pub mod bash;
 pub mod c;
@@ -17,16 +18,20 @@ pub mod html;
 pub mod java;
 pub mod javascript;
 pub mod json;
+pub mod jsonl_pipeline;
 pub mod kotlin;
 pub mod lua;
 pub mod markdown;
+pub mod path_identity;
 pub mod php;
+pub mod pipeline;
 pub mod powershell;
 pub mod python;
 pub mod qml;
 pub mod r;
 pub mod razor;
 pub mod regex;
+pub mod relationship_precision;
 pub mod ruby;
 pub mod rust;
 pub mod scala;

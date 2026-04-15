@@ -8,7 +8,10 @@
 /// - Identifier extraction for LSP-quality find_references
 ///
 /// Implementation of comprehensive Ruby extractor
-use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind, Visibility};
+use crate::base::{
+    BaseExtractor, Identifier, Relationship, StructuredPendingRelationship, Symbol, SymbolKind,
+    Visibility,
+};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -27,6 +30,7 @@ pub struct RubyExtractor {
     current_visibility: Visibility,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pending_relationships: Vec<crate::base::PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl RubyExtractor {
@@ -35,6 +39,7 @@ impl RubyExtractor {
             base: BaseExtractor::new("ruby".to_string(), file_path, content, workspace_root),
             current_visibility: Visibility::Public,
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -297,13 +302,20 @@ impl RubyExtractor {
     // Pending Relationship Management
     // ========================================================================
 
-    /// Add a pending relationship that needs cross-file resolution
-    pub(crate) fn add_pending_relationship(&mut self, pending: crate::base::PendingRelationship) {
-        self.pending_relationships.push(pending);
+    pub(crate) fn add_structured_pending_relationship(
+        &mut self,
+        pending: StructuredPendingRelationship,
+    ) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<crate::base::PendingRelationship> {
         self.pending_relationships.clone()
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
     }
 }

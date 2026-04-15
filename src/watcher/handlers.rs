@@ -67,7 +67,7 @@ pub async fn handle_file_created_or_modified_static(
     }
 
     // 4. Detect language and extract ALL data (symbols + identifiers + types + relationships)
-    let language = path
+    let language = Path::new(&relative_path)
         .extension()
         .and_then(|ext| ext.to_str())
         .and_then(|ext| language::detect_language_from_extension(ext))

@@ -21,7 +21,9 @@ pub(crate) mod relationships;
 pub(crate) mod signatures;
 pub(crate) mod types;
 
-use crate::base::{BaseExtractor, Identifier, Relationship, Symbol, SymbolKind};
+use crate::base::{
+    BaseExtractor, Identifier, Relationship, StructuredPendingRelationship, Symbol, SymbolKind,
+};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -43,6 +45,7 @@ pub struct PythonExtractor {
     base: BaseExtractor,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pending_relationships: Vec<crate::base::PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl PythonExtractor {
@@ -50,6 +53,7 @@ impl PythonExtractor {
         Self {
             base: BaseExtractor::new("python".to_string(), file_path, content, workspace_root),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -164,13 +168,20 @@ impl PythonExtractor {
     // Pending Relationship Management
     // ========================================================================
 
-    /// Add a pending relationship that needs cross-file resolution
-    pub(crate) fn add_pending_relationship(&mut self, pending: crate::base::PendingRelationship) {
-        self.pending_relationships.push(pending);
+    pub(crate) fn add_structured_pending_relationship(
+        &mut self,
+        pending: StructuredPendingRelationship,
+    ) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<crate::base::PendingRelationship> {
         self.pending_relationships.clone()
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
     }
 }

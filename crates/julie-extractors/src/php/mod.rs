@@ -9,7 +9,10 @@ mod namespaces;
 mod relationships;
 mod types;
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol,
+};
 use std::collections::HashMap;
 use tree_sitter::{Node, Tree};
 
@@ -31,6 +34,7 @@ pub struct PhpExtractor {
     base: BaseExtractor,
     /// Pending relationships that need cross-file resolution after workspace indexing
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl PhpExtractor {
@@ -43,6 +47,7 @@ impl PhpExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -197,13 +202,20 @@ impl PhpExtractor {
     // Pending Relationship Management
     // ========================================================================
 
-    /// Add a pending relationship that needs cross-file resolution
-    pub(crate) fn add_pending_relationship(&mut self, pending: PendingRelationship) {
-        self.pending_relationships.push(pending);
+    pub(crate) fn add_structured_pending_relationship(
+        &mut self,
+        pending: StructuredPendingRelationship,
+    ) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
         self.pending_relationships.clone()
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
     }
 }

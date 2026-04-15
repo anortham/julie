@@ -136,11 +136,11 @@ Item {
         // Verify the pending relationship has the correct callee name
         let helper_pending = pending_calls
             .iter()
-            .find(|p| p.callee_name == "helperFunction");
+            .find(|p| p.callee_name == "helperFunction" || p.callee_name == "Utils.helperFunction");
 
         assert!(
             helper_pending.is_some(),
-            "PendingRelationship should have callee_name='helperFunction'.\n\
+            "PendingRelationship should have a degraded callee name for helperFunction.\n\
              Found: {:?}",
             pending_calls
                 .iter()
@@ -164,6 +164,14 @@ Item {
             pending.from_symbol_id,
             main_fn_ids
         );
+
+        let structured_pending = results_b
+            .structured_pending_relationships
+            .iter()
+            .find(|pending| pending.target.display_name == "Utils.helperFunction")
+            .expect("structured pending relationship should preserve QML receiver-qualified calls");
+        assert_eq!(structured_pending.target.terminal_name, "helperFunction");
+        assert_eq!(structured_pending.target.receiver.as_deref(), Some("Utils"));
     }
 
     // ========================================================================

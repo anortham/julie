@@ -16,8 +16,8 @@ mod signatures;
 mod types;
 
 use crate::base::{
-    BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol, SymbolKind,
-    SymbolOptions, Visibility,
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol, SymbolKind, SymbolOptions, Visibility,
 };
 use helpers::{find_child_by_type, get_node_text};
 use regex::Regex;
@@ -32,6 +32,7 @@ static TYPE_SIGNATURE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\w+)
 pub struct DartExtractor {
     pub(crate) base: BaseExtractor,
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
     same_file_calls: Vec<(String, String, u32)>,
     /// Byte offsets of `block` nodes already consumed as Dart 3 modifier class bodies.
     /// Prevents double-visiting when the program-level iteration hits the same block.
@@ -48,6 +49,7 @@ impl DartExtractor {
         Self {
             base: BaseExtractor::new(language, file_path, content, workspace_root),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
             same_file_calls: Vec::new(),
             consumed_blocks: HashSet::new(),
         }
@@ -381,6 +383,15 @@ impl DartExtractor {
 
     pub fn add_pending_relationship(&mut self, pending: PendingRelationship) {
         self.pending_relationships.push(pending);
+    }
+
+    pub fn add_structured_pending_relationship(&mut self, pending: StructuredPendingRelationship) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
     }
 }
 

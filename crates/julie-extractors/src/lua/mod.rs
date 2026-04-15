@@ -19,7 +19,10 @@ mod relationships;
 mod tables;
 mod variables;
 
-use crate::base::{BaseExtractor, Identifier, PendingRelationship, Relationship, Symbol};
+use crate::base::{
+    BaseExtractor, Identifier, PendingRelationship, Relationship, StructuredPendingRelationship,
+    Symbol,
+};
 use tree_sitter::Tree;
 
 pub struct LuaExtractor {
@@ -27,6 +30,7 @@ pub struct LuaExtractor {
     symbols: Vec<Symbol>,
     pub(crate) relationships: Vec<Relationship>,
     pending_relationships: Vec<PendingRelationship>,
+    structured_pending_relationships: Vec<StructuredPendingRelationship>,
 }
 
 impl LuaExtractor {
@@ -41,6 +45,7 @@ impl LuaExtractor {
             symbols: Vec::new(),
             relationships: Vec::new(),
             pending_relationships: Vec::new(),
+            structured_pending_relationships: Vec::new(),
         }
     }
 
@@ -48,6 +53,7 @@ impl LuaExtractor {
         self.symbols.clear();
         self.relationships.clear();
         self.pending_relationships.clear();
+        self.structured_pending_relationships.clear();
 
         // Use core module to traverse and extract symbols
         core::traverse_tree(&mut self.symbols, &mut self.base, tree.root_node(), None);
@@ -86,13 +92,20 @@ impl LuaExtractor {
     // Pending Relationship Management
     // ========================================================================
 
-    /// Add a pending relationship that needs cross-file resolution
-    pub(crate) fn add_pending_relationship(&mut self, pending: PendingRelationship) {
-        self.pending_relationships.push(pending);
+    pub(crate) fn add_structured_pending_relationship(
+        &mut self,
+        pending: StructuredPendingRelationship,
+    ) {
+        self.pending_relationships.push(pending.pending.clone());
+        self.structured_pending_relationships.push(pending);
     }
 
     /// Get all pending relationships collected during extraction
     pub fn get_pending_relationships(&self) -> Vec<PendingRelationship> {
         self.pending_relationships.clone()
+    }
+
+    pub fn get_structured_pending_relationships(&self) -> Vec<StructuredPendingRelationship> {
+        self.structured_pending_relationships.clone()
     }
 }

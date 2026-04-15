@@ -1,6 +1,6 @@
 use super::helpers::{
-    ImplBlockInfo, extract_extern_modifier, extract_visibility, find_doc_comment,
-    get_preceding_attributes, has_async_keyword, has_unsafe_keyword, is_inside_impl,
+    extract_extern_modifier, extract_visibility, find_doc_comment, get_preceding_attributes,
+    has_async_keyword, has_unsafe_keyword, is_inside_impl, ImplBlockInfo,
 };
 use super::signatures::extract_return_type;
 /// Rust function and method extraction
