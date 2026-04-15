@@ -430,6 +430,119 @@ fn test_bulk_store_fresh_atomic_inserts_all_types() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn test_bulk_store_fresh_atomic_skips_relationships_with_missing_symbols() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path)?;
+
+    let file = create_simple_file_info("/test/file1.rs");
+    let sym1 = create_test_symbol("fn_one", "/test/file1.rs");
+    let sym2 = create_test_symbol("fn_two", "/test/file1.rs");
+    let valid = create_test_relationship(&sym1.id, &sym2.id, RelationshipKind::Calls);
+    let invalid = create_test_relationship(&sym1.id, "missing_symbol", RelationshipKind::Calls);
+
+    db.bulk_store_fresh_atomic(
+        &[file],
+        &[sym1.clone(), sym2.clone()],
+        &[valid, invalid],
+        &[],
+        &[],
+        "test_workspace",
+    )?;
+
+    let rel_count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM relationships", [], |r| r.get(0))?;
+    assert_eq!(rel_count, 1, "dangling relationships must be skipped");
+
+    let dangling_count: i64 = db.conn.query_row(
+        "SELECT COUNT(*) FROM relationships WHERE to_symbol_id = 'missing_symbol'",
+        [],
+        |r| r.get(0),
+    )?;
+    assert_eq!(
+        dangling_count, 0,
+        "dangling relationship must not be stored"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_bulk_store_fresh_atomic_nulls_invalid_identifier_refs() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path)?;
+
+    let file = create_simple_file_info("/test/file1.rs");
+    let sym1 = create_test_symbol("fn_one", "/test/file1.rs");
+    let mut identifier = create_test_identifier("fn_one", "/test/file1.rs");
+    identifier.containing_symbol_id = Some("missing_containing".to_string());
+    identifier.target_symbol_id = Some("missing_target".to_string());
+
+    db.bulk_store_fresh_atomic(
+        &[file],
+        &[sym1],
+        &[],
+        &[identifier.clone()],
+        &[],
+        "test_workspace",
+    )?;
+
+    let (containing, target): (Option<String>, Option<String>) = db.conn.query_row(
+        "SELECT containing_symbol_id, target_symbol_id FROM identifiers WHERE id = ?1",
+        [&identifier.id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+
+    assert_eq!(
+        containing, None,
+        "invalid containing_symbol_id must be normalized to NULL"
+    );
+    assert_eq!(
+        target, None,
+        "invalid target_symbol_id must be normalized to NULL"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_bulk_store_fresh_atomic_skips_types_with_missing_symbols() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let db_path = temp_dir.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path)?;
+
+    let file = create_simple_file_info("/test/file1.rs");
+    let sym1 = create_test_symbol("fn_one", "/test/file1.rs");
+    let valid = create_test_type_info(&sym1.id, "Result<(), Error>");
+    let invalid = create_test_type_info("missing_symbol", "String");
+
+    db.bulk_store_fresh_atomic(
+        &[file],
+        &[sym1],
+        &[],
+        &[],
+        &[valid, invalid],
+        "test_workspace",
+    )?;
+
+    let type_count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM types", [], |r| r.get(0))?;
+    assert_eq!(type_count, 1, "dangling type rows must be skipped");
+
+    let dangling_count: i64 = db.conn.query_row(
+        "SELECT COUNT(*) FROM types WHERE symbol_id = 'missing_symbol'",
+        [],
+        |r| r.get(0),
+    )?;
+    assert_eq!(dangling_count, 0, "dangling type row must not be stored");
+
+    Ok(())
+}
+
 // ============================================================================
 // [I-C2] bulk_store_identifiers / bulk_store_types: indexes inside transaction
 // ============================================================================

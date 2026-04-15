@@ -12,6 +12,14 @@ fn get_unix_timestamp() -> Result<i64> {
         .map_err(|e| anyhow!("System time error: {}", e))
 }
 
+fn symbol_exists(
+    symbol_exists_stmt: &mut rusqlite::Statement<'_>,
+    symbol_id: &str,
+) -> Result<bool> {
+    let mut rows = symbol_exists_stmt.query(params![symbol_id])?;
+    Ok(rows.next()?.is_some())
+}
+
 impl SymbolDatabase {
     pub fn bulk_store_identifiers(
         &mut self,
@@ -697,10 +705,7 @@ impl SymbolDatabase {
 
             // STEP 3: Bulk insert new symbols (if any)
             if !new_symbols.is_empty() {
-                debug!(
-                    "🔤 Inserting {} new symbols (FK checks are ON)",
-                    new_symbols.len()
-                );
+                debug!("🔤 Inserting {} new symbols", new_symbols.len());
 
                 let mut stmt = outer_tx.prepare(
                     "INSERT OR REPLACE INTO symbols
@@ -758,16 +763,27 @@ impl SymbolDatabase {
                      (id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;
+                let mut symbol_exists_stmt =
+                    outer_tx.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
 
                 for rel in new_relationships {
+                    let from_exists = symbol_exists(&mut symbol_exists_stmt, &rel.from_symbol_id)?;
+                    let to_exists = symbol_exists(&mut symbol_exists_stmt, &rel.to_symbol_id)?;
+                    if !from_exists || !to_exists {
+                        debug!(
+                            "Skipping relationship {} -> {} (missing symbol reference)",
+                            rel.from_symbol_id, rel.to_symbol_id
+                        );
+                        continue;
+                    }
+
                     let metadata_json = rel
                         .metadata
                         .as_ref()
                         .map(serde_json::to_string)
                         .transpose()?;
 
-                    // Skip relationships with missing symbol references (foreign key constraint)
-                    match stmt.execute(params![
+                    stmt.execute(params![
                         rel.id,
                         rel.from_symbol_id,
                         rel.to_symbol_id,
@@ -776,19 +792,9 @@ impl SymbolDatabase {
                         rel.line_number,
                         rel.confidence,
                         metadata_json
-                    ]) {
-                        Ok(_) => {}
-                        Err(rusqlite::Error::SqliteFailure(err, _))
-                            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-                        {
-                            debug!(
-                                "Skipping relationship {} -> {} (missing symbol reference)",
-                                rel.from_symbol_id, rel.to_symbol_id
-                            );
-                        }
-                        Err(e) => return Err(e.into()),
-                    }
+                    ])?;
                 }
+                drop(symbol_exists_stmt);
                 drop(stmt);
             }
 
@@ -799,12 +805,41 @@ impl SymbolDatabase {
                 let mut stmt = outer_tx.prepare(
                     "INSERT OR REPLACE INTO identifiers
                      (id, name, kind, language, file_path, start_line, start_col,
-                      end_line, end_col, start_byte, end_byte, containing_symbol_id,
-                      target_symbol_id, confidence, code_context)
+                     end_line, end_col, start_byte, end_byte, containing_symbol_id,
+                     target_symbol_id, confidence, code_context)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 )?;
+                let mut symbol_exists_stmt =
+                    outer_tx.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
 
                 for identifier in new_identifiers {
+                    let containing_symbol_id = match identifier.containing_symbol_id.as_deref() {
+                        Some(symbol_id) if symbol_exists(&mut symbol_exists_stmt, symbol_id)? => {
+                            Some(symbol_id.to_string())
+                        }
+                        Some(symbol_id) => {
+                            debug!(
+                                "Normalizing identifier {} containing_symbol_id={} to NULL (missing symbol)",
+                                identifier.id, symbol_id
+                            );
+                            None
+                        }
+                        None => None,
+                    };
+                    let target_symbol_id = match identifier.target_symbol_id.as_deref() {
+                        Some(symbol_id) if symbol_exists(&mut symbol_exists_stmt, symbol_id)? => {
+                            Some(symbol_id.to_string())
+                        }
+                        Some(symbol_id) => {
+                            debug!(
+                                "Normalizing identifier {} target_symbol_id={} to NULL (missing symbol)",
+                                identifier.id, symbol_id
+                            );
+                            None
+                        }
+                        None => None,
+                    };
+
                     stmt.execute(params![
                         identifier.id,
                         identifier.name,
@@ -817,12 +852,13 @@ impl SymbolDatabase {
                         identifier.end_column,
                         identifier.start_byte,
                         identifier.end_byte,
-                        identifier.containing_symbol_id,
-                        identifier.target_symbol_id,
+                        containing_symbol_id,
+                        target_symbol_id,
                         identifier.confidence,
                         identifier.code_context
                     ])?;
                 }
+                drop(symbol_exists_stmt);
                 drop(stmt);
             }
 
@@ -835,8 +871,18 @@ impl SymbolDatabase {
                      (symbol_id, resolved_type, generic_params, constraints, is_inferred, language, metadata, last_indexed)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;
+                let mut symbol_exists_stmt =
+                    outer_tx.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
 
                 for type_info in new_types {
+                    if !symbol_exists(&mut symbol_exists_stmt, &type_info.symbol_id)? {
+                        debug!(
+                            "Skipping type row for missing symbol reference {}",
+                            type_info.symbol_id
+                        );
+                        continue;
+                    }
+
                     let generic_params_json = type_info
                         .generic_params
                         .as_ref()
@@ -864,6 +910,7 @@ impl SymbolDatabase {
                         now
                     ])?;
                 }
+                drop(symbol_exists_stmt);
                 drop(stmt);
             }
 
@@ -1105,13 +1152,24 @@ impl SymbolDatabase {
                      (id, from_symbol_id, to_symbol_id, kind, file_path, line_number, confidence, metadata)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;
+                let mut symbol_exists_stmt =
+                    sp.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
                 for rel in relationships {
+                    let from_exists = symbol_exists(&mut symbol_exists_stmt, &rel.from_symbol_id)?;
+                    let to_exists = symbol_exists(&mut symbol_exists_stmt, &rel.to_symbol_id)?;
+                    if !from_exists || !to_exists {
+                        debug!(
+                            "Skipping relationship {} -> {} (missing symbol reference)",
+                            rel.from_symbol_id, rel.to_symbol_id
+                        );
+                        continue;
+                    }
                     let metadata_json = rel
                         .metadata
                         .as_ref()
                         .map(serde_json::to_string)
                         .transpose()?;
-                    match stmt.execute(params![
+                    stmt.execute(params![
                         rel.id,
                         rel.from_symbol_id,
                         rel.to_symbol_id,
@@ -1120,19 +1178,9 @@ impl SymbolDatabase {
                         rel.line_number,
                         rel.confidence,
                         metadata_json
-                    ]) {
-                        Ok(_) => {}
-                        Err(rusqlite::Error::SqliteFailure(err, _))
-                            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-                        {
-                            debug!(
-                                "Skipping relationship {} -> {} (missing symbol reference)",
-                                rel.from_symbol_id, rel.to_symbol_id
-                            );
-                        }
-                        Err(e) => return Err(e.into()),
-                    }
+                    ])?;
                 }
+                drop(symbol_exists_stmt);
                 drop(stmt);
                 sp.commit()?;
             }
@@ -1144,11 +1192,40 @@ impl SymbolDatabase {
                 let mut stmt = sp.prepare(
                     "INSERT OR REPLACE INTO identifiers
                      (id, name, kind, language, file_path, start_line, start_col,
-                      end_line, end_col, start_byte, end_byte, containing_symbol_id,
-                      target_symbol_id, confidence, code_context)
+                     end_line, end_col, start_byte, end_byte, containing_symbol_id,
+                     target_symbol_id, confidence, code_context)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 )?;
+                let mut symbol_exists_stmt =
+                    sp.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
                 for id in identifiers {
+                    let containing_symbol_id = match id.containing_symbol_id.as_deref() {
+                        Some(symbol_id) if symbol_exists(&mut symbol_exists_stmt, symbol_id)? => {
+                            Some(symbol_id.to_string())
+                        }
+                        Some(symbol_id) => {
+                            debug!(
+                                "Normalizing identifier {} containing_symbol_id={} to NULL (missing symbol)",
+                                id.id, symbol_id
+                            );
+                            None
+                        }
+                        None => None,
+                    };
+                    let target_symbol_id = match id.target_symbol_id.as_deref() {
+                        Some(symbol_id) if symbol_exists(&mut symbol_exists_stmt, symbol_id)? => {
+                            Some(symbol_id.to_string())
+                        }
+                        Some(symbol_id) => {
+                            debug!(
+                                "Normalizing identifier {} target_symbol_id={} to NULL (missing symbol)",
+                                id.id, symbol_id
+                            );
+                            None
+                        }
+                        None => None,
+                    };
+
                     stmt.execute(params![
                         id.id,
                         id.name,
@@ -1161,12 +1238,13 @@ impl SymbolDatabase {
                         id.end_column,
                         id.start_byte,
                         id.end_byte,
-                        id.containing_symbol_id,
-                        id.target_symbol_id,
+                        containing_symbol_id,
+                        target_symbol_id,
                         id.confidence,
                         id.code_context
                     ])?;
                 }
+                drop(symbol_exists_stmt);
                 drop(stmt);
                 sp.commit()?;
             }
@@ -1180,7 +1258,16 @@ impl SymbolDatabase {
                      (symbol_id, resolved_type, generic_params, constraints, is_inferred, language, metadata, last_indexed)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;
+                let mut symbol_exists_stmt =
+                    sp.prepare("SELECT 1 FROM symbols WHERE id = ?1 LIMIT 1")?;
                 for t in types {
+                    if !symbol_exists(&mut symbol_exists_stmt, &t.symbol_id)? {
+                        debug!(
+                            "Skipping type row for missing symbol reference {}",
+                            t.symbol_id
+                        );
+                        continue;
+                    }
                     let gp_json = t
                         .generic_params
                         .as_ref()
@@ -1203,6 +1290,7 @@ impl SymbolDatabase {
                         now
                     ])?;
                 }
+                drop(symbol_exists_stmt);
                 drop(stmt);
                 sp.commit()?;
             }

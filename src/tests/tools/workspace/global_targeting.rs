@@ -159,13 +159,47 @@ async fn setup_known_reference_search_workspace() -> (tempfile::TempDir, JulieSe
 }
 
 #[tokio::test]
-async fn test_known_workspace_requires_open_before_fast_search() {
+async fn test_known_ready_workspace_auto_activates_for_fast_search() {
     let (_temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;
 
     assert!(
         !handler.is_workspace_active(&target_id).await,
-        "fresh session should not auto-activate known reference workspace"
+        "fresh session should start with inactive reference workspace"
     );
+
+    let result = FastSearchTool {
+        query: "target_search_marker".to_string(),
+        limit: 10,
+        search_target: "content".to_string(),
+        workspace: Some(target_id.clone()),
+        ..Default::default()
+    }
+    .call_tool(&handler)
+    .await
+    .expect("known ready workspace should auto-activate on first query");
+
+    let message = extract_text_from_result(&result);
+    assert!(
+        message.contains("target_search_marker"),
+        "search should return data from the target workspace: {message}"
+    );
+    assert!(
+        handler.is_workspace_active(&target_id).await,
+        "reference workspace should be active after first targeted query"
+    );
+}
+
+#[tokio::test]
+async fn test_known_pending_workspace_requires_open_before_fast_search() {
+    let (_temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;
+    let daemon_db = handler
+        .daemon_db
+        .as_ref()
+        .expect("test handler should expose daemon db")
+        .clone();
+    daemon_db
+        .update_workspace_status(&target_id, "pending")
+        .expect("workspace status should update for test");
 
     let result = FastSearchTool {
         query: "target_search_marker".to_string(),
@@ -177,11 +211,11 @@ async fn test_known_workspace_requires_open_before_fast_search() {
     .call_tool(&handler)
     .await;
 
-    let error = result.expect_err("known but inactive workspace should be rejected");
+    let error = result.expect_err("pending workspace should not auto-activate");
     let message = error.to_string();
     assert!(
-        message.contains(&target_id),
-        "error should name workspace: {message}"
+        message.contains("status 'pending'"),
+        "error should include workspace status: {message}"
     );
     assert!(
         message.contains("manage_workspace(operation=\"open\", workspace_id=\"")
@@ -191,7 +225,7 @@ async fn test_known_workspace_requires_open_before_fast_search() {
 }
 
 #[tokio::test]
-async fn test_persisted_pairing_metadata_does_not_imply_known_workspace_activation() {
+async fn test_persisted_pairing_metadata_does_not_preactivate_known_workspace() {
     let (temp_dir, handler, target_id) = setup_known_reference_search_workspace().await;
     let daemon_db = handler
         .daemon_db
@@ -231,7 +265,7 @@ async fn test_persisted_pairing_metadata_does_not_imply_known_workspace_activati
 
     assert!(
         !fresh_handler.is_workspace_active(&target_id).await,
-        "persisted pairing must not auto-activate on a new session"
+        "persisted pairing should not pre-activate on a new session"
     );
 
     let result = FastSearchTool {
@@ -242,18 +276,17 @@ async fn test_persisted_pairing_metadata_does_not_imply_known_workspace_activati
         ..Default::default()
     }
     .call_tool(&fresh_handler)
-    .await;
+    .await
+    .expect("first query should lazily activate the paired workspace");
 
-    let error = result.expect_err("paired but unopened workspace should be rejected");
-    let message = error.to_string();
+    let message = extract_text_from_result(&result);
     assert!(
-        message.contains(&target_id),
-        "error should name workspace: {message}"
+        message.contains("target_search_marker"),
+        "search should return data from paired workspace after lazy activation: {message}"
     );
     assert!(
-        message.contains("manage_workspace(operation=\"open\", workspace_id=\"")
-            && message.contains(&target_id),
-        "error should explain how to open the paired workspace first: {message}"
+        fresh_handler.is_workspace_active(&target_id).await,
+        "paired workspace should become active after first targeted query"
     );
 }
 

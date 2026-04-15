@@ -90,6 +90,7 @@ pub mod tools {
         pub mod isolation; // Workspace isolation tests
         pub mod management_token; // ManageWorkspaceTool token optimization tests
         pub mod mod_tests; // Workspace module functionality tests
+        pub mod processor; // Indexing processor parser-failure handling tests
         pub mod refresh_routing; // Primary force-refresh should reuse full index path
         pub mod registry; // Workspace registry tests
         pub mod resolver; // Cross-file relationship resolution tests

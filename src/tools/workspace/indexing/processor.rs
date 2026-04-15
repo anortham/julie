@@ -157,6 +157,14 @@ impl ManageWorkspaceTool {
                         }
                         Err(e) => {
                             warn!("Failed to process file {:?}: {}", file_path, e);
+                            self.queue_failed_parser_file_for_cleanup(
+                                &file_path,
+                                &language,
+                                &workspace_root,
+                                &mut files_to_clean,
+                                &mut all_file_infos,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -295,6 +303,7 @@ impl ManageWorkspaceTool {
                     &workspace_id,
                 ) {
                     warn!("Failed to atomically bulk store fresh indexing data: {}", e);
+                    return Err(e);
                 }
 
                 // Count documentation symbols for logging
@@ -501,6 +510,46 @@ impl ManageWorkspaceTool {
         Ok(())
     }
 
+    /// Queue cleanup and file metadata refresh after parser extraction fails.
+    ///
+    /// This prevents stale symbol/identifier/type rows from surviving when a file
+    /// changed but extraction failed for that indexing pass.
+    pub(crate) async fn queue_failed_parser_file_for_cleanup(
+        &self,
+        file_path: &Path,
+        language: &str,
+        workspace_root: &Path,
+        files_to_clean: &mut Vec<String>,
+        all_file_infos: &mut Vec<crate::database::FileInfo>,
+    ) {
+        let relative_path = if file_path.is_absolute() {
+            crate::utils::paths::to_relative_unix_style(file_path, workspace_root)
+                .unwrap_or_else(|_| file_path.to_string_lossy().replace('\\', "/"))
+        } else {
+            file_path.to_string_lossy().replace('\\', "/")
+        };
+        files_to_clean.push(relative_path.clone());
+
+        let file_path_buf = file_path.to_path_buf();
+        let language_owned = language.to_string();
+        let workspace_root_buf = workspace_root.to_path_buf();
+        match tokio::task::spawn_blocking(move || {
+            crate::database::create_file_info(&file_path_buf, &language_owned, &workspace_root_buf)
+        })
+        .await
+        {
+            Ok(Ok(file_info)) => all_file_infos.push(file_info),
+            Ok(Err(e)) => warn!(
+                "Failed to refresh file metadata after parser failure for {}: {}",
+                relative_path, e
+            ),
+            Err(e) => warn!(
+                "File metadata refresh task panicked for {}: {}",
+                relative_path, e
+            ),
+        }
+    }
+
     /// Process a single file with symbol extraction
     ///
     /// Returns (symbols, relationships, file_info) for bulk storage.
@@ -615,77 +664,33 @@ impl ManageWorkspaceTool {
             file_path.to_string_lossy().replace('\\', "/")
         };
 
-        // 🚨 CRITICAL FIX: Tree-sitter parsing is CPU-intensive and blocks the runtime
-        // Must wrap in spawn_blocking for large files (discovered with 158KB demo-data.js)
-        let language_clone2 = language.to_string();
+        // Parsing and extraction are CPU-heavy. Run canonical extraction on the
+        // blocking pool and await completion to avoid detached long-running jobs.
         let relative_path_clone = relative_path.clone();
         let content_clone = content.clone();
         let workspace_root_clone2 = workspace_root.to_path_buf();
 
-        let results = {
-            use std::time::Duration;
-            let parse_start = std::time::Instant::now();
+        let extract_start = std::time::Instant::now();
+        let task = tokio::task::spawn_blocking(move || {
+            crate::tools::workspace::ManageWorkspaceTool::extract_symbols_static(
+                &relative_path_clone,
+                &content_clone,
+                &workspace_root_clone2,
+            )
+        });
 
-            // Spawn with a timeout for very large files
-            let task = tokio::task::spawn_blocking(move || {
-                // Create a new parser inside spawn_blocking (Parser isn't Send, so we can't move it in)
-                let mut local_parser = tree_sitter::Parser::new();
-                let tree_sitter_lang = crate::language::get_tree_sitter_language(&language_clone2)?;
-                local_parser
-                    .set_language(&tree_sitter_lang)
-                    .map_err(|e| anyhow::anyhow!("Failed to set parser language: {}", e))?;
-
-                let tree = local_parser.parse(&content_clone, None).ok_or_else(|| {
-                    anyhow::anyhow!("Failed to parse file: {}", relative_path_clone)
-                })?;
-
-                let parse_elapsed = parse_start.elapsed();
-
-                // Extract symbols - this is also CPU-intensive and can take minutes for large data files
-                let extract_start = std::time::Instant::now();
-                let result = crate::tools::workspace::ManageWorkspaceTool::extract_symbols_static(
-                    &tree,
-                    &relative_path_clone,
-                    &content_clone,
-                    &language_clone2,
-                    &workspace_root_clone2,
-                )?;
-
-                let extract_elapsed = extract_start.elapsed();
-
-                // Log timing for slow files (useful for performance analysis)
-                if parse_elapsed.as_millis() > 50 || extract_elapsed.as_millis() > 100 {
-                    debug!(
-                        "Slow file processing: {} - parse: {:?}, extraction: {:?}",
-                        relative_path_clone, parse_elapsed, extract_elapsed
-                    );
-                }
-
-                Ok::<_, anyhow::Error>(result)
-            });
-
-            // Wait with a 30-second timeout for extraction
-            match tokio::time::timeout(Duration::from_secs(30), task).await {
-                Ok(Ok(result)) => result?,
-                Ok(Err(e)) => {
-                    return Err(anyhow::anyhow!("Spawn blocking task panicked: {}", e));
-                }
-                Err(_) => {
-                    warn!(
-                        "⏱️  Symbol extraction timed out after 30s for file: {} - skipping",
-                        relative_path
-                    );
-                    return Ok((
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                        HashMap::new(),
-                        file_info,
-                    ));
-                }
-            }
+        let results = match task.await {
+            Ok(result) => result?,
+            Err(e) => return Err(anyhow::anyhow!("Spawn blocking task panicked: {}", e)),
         };
+
+        let extract_elapsed = extract_start.elapsed();
+        if extract_elapsed.as_millis() > 100 {
+            debug!(
+                "Slow file processing: {} - extraction: {:?}",
+                relative_path, extract_elapsed
+            );
+        }
 
         // Destructure ExtractionResults into all fields
         let symbols = results.symbols;

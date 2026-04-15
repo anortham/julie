@@ -6,6 +6,7 @@
 use crate::extractors::Symbol;
 use crate::handler::JulieServerHandler;
 use anyhow::Result;
+use std::path::PathBuf;
 
 /// Parse a qualified symbol name like "MyClass::method" or "MyClass.method"
 /// into (parent_name, child_name), splitting on the LAST separator.
@@ -85,7 +86,7 @@ pub async fn resolve_workspace_filter(
             // Daemon mode: validate against DaemonDatabase and suggest closest match
             if let Some(ref db) = handler.daemon_db {
                 return match db.get_workspace(workspace_id)? {
-                    Some(_) => {
+                    Some(workspace_row) => {
                         let startup_workspace_loaded_for_session =
                             handler.loaded_workspace_id().as_deref() == Some(workspace_id)
                                 && handler
@@ -96,12 +97,31 @@ pub async fn resolve_workspace_filter(
                             || startup_workspace_loaded_for_session
                         {
                             Ok(WorkspaceTarget::Reference(workspace_id.to_string()))
-                        } else {
+                        } else if workspace_row.status != "ready" {
                             Err(anyhow::anyhow!(
-                                "Workspace '{}' is known but not active in this session. Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
+                                "Workspace '{}' is known but has status '{}' (not ready). Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
                                 workspace_id,
+                                workspace_row.status,
                                 workspace_id
                             ))
+                        } else if handler.is_primary_workspace_swap_in_progress() {
+                            Err(anyhow::anyhow!(
+                                "Primary workspace swap in progress; retry workspace-scoped query after the swap completes."
+                            ))
+                        } else {
+                            let workspace_root = PathBuf::from(&workspace_row.path);
+                            match handler
+                                .activate_workspace_with_root(workspace_id, workspace_root)
+                                .await
+                            {
+                                Ok(_) => Ok(WorkspaceTarget::Reference(workspace_id.to_string())),
+                                Err(error) => Err(anyhow::anyhow!(
+                                    "Workspace '{}' is known but auto-activation failed: {}. Run manage_workspace(operation=\"open\", workspace_id=\"{}\") first.",
+                                    workspace_id,
+                                    error,
+                                    workspace_id
+                                )),
+                            }
                         }
                     }
                     None => {

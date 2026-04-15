@@ -87,6 +87,20 @@ fn make_identifier(id: &str, name: &str, file_path: &str) -> Identifier {
     }
 }
 
+/// Helper: build a minimal Identifier with explicit symbol references.
+fn make_identifier_with_refs(
+    id: &str,
+    name: &str,
+    file_path: &str,
+    containing_symbol_id: Option<&str>,
+    target_symbol_id: Option<&str>,
+) -> Identifier {
+    let mut identifier = make_identifier(id, name, file_path);
+    identifier.containing_symbol_id = containing_symbol_id.map(str::to_string);
+    identifier.target_symbol_id = target_symbol_id.map(str::to_string);
+    identifier
+}
+
 /// Helper: build a minimal TypeInfo.
 fn make_type_info(symbol_id: &str, resolved_type: &str) -> TypeInfo {
     TypeInfo {
@@ -379,4 +393,133 @@ fn test_incremental_update_atomic_clean_nonexistent_file() {
     .expect("cleaning non-existent file should not error");
 
     assert_eq!(count_rows(&db, "symbols"), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Test 6: Invalid relationships should be skipped when symbols are missing
+// ---------------------------------------------------------------------------
+#[test]
+fn test_incremental_update_atomic_skips_relationships_with_missing_symbols() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let files = vec![make_file("src/main.rs")];
+    let symbols = vec![
+        make_symbol("sym_a", "do_stuff", "src/main.rs"),
+        make_symbol("sym_b", "helper", "src/main.rs"),
+    ];
+
+    let valid = make_relationship("rel_valid", "sym_a", "sym_b", "src/main.rs");
+    let invalid = make_relationship("rel_invalid", "sym_a", "missing_symbol", "src/main.rs");
+
+    db.incremental_update_atomic(
+        &[],
+        &files,
+        &symbols,
+        &[valid, invalid],
+        &[],
+        &[],
+        "ws_test",
+    )
+    .expect("incremental_update_atomic should succeed");
+
+    let relationship_count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM relationships", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        relationship_count, 1,
+        "invalid relationship should be skipped"
+    );
+
+    let dangling_count: i64 = db
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM relationships WHERE to_symbol_id = 'missing_symbol'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(dangling_count, 0, "must not persist dangling relationship");
+}
+
+// ---------------------------------------------------------------------------
+// Test 7: Invalid identifier refs should be normalized to NULL
+// ---------------------------------------------------------------------------
+#[test]
+fn test_incremental_update_atomic_nulls_invalid_identifier_refs() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let files = vec![make_file("src/main.rs")];
+    let symbols = vec![make_symbol("sym_a", "do_stuff", "src/main.rs")];
+    let identifiers = vec![make_identifier_with_refs(
+        "ident_1",
+        "helper",
+        "src/main.rs",
+        Some("missing_containing"),
+        Some("missing_target"),
+    )];
+
+    db.incremental_update_atomic(&[], &files, &symbols, &[], &identifiers, &[], "ws_test")
+        .expect("incremental_update_atomic should succeed");
+
+    let (containing, target): (Option<String>, Option<String>) = db
+        .conn
+        .query_row(
+            "SELECT containing_symbol_id, target_symbol_id FROM identifiers WHERE id = ?1",
+            ["ident_1"],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+
+    assert_eq!(
+        containing, None,
+        "invalid containing_symbol_id must be normalized to NULL"
+    );
+    assert_eq!(
+        target, None,
+        "invalid target_symbol_id must be normalized to NULL"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 8: Type rows must reference existing symbols
+// ---------------------------------------------------------------------------
+#[test]
+fn test_incremental_update_atomic_skips_types_with_missing_symbols() {
+    let tmp = TempDir::new().unwrap();
+    let db_path = tmp.path().join("test.db");
+    let mut db = SymbolDatabase::new(&db_path).unwrap();
+
+    let files = vec![make_file("src/main.rs")];
+    let symbols = vec![make_symbol("sym_a", "do_stuff", "src/main.rs")];
+    let types = vec![
+        make_type_info("sym_a", "Result<(), Error>"),
+        make_type_info("missing_symbol", "String"),
+    ];
+
+    db.incremental_update_atomic(&[], &files, &symbols, &[], &[], &types, "ws_test")
+        .expect("incremental_update_atomic should succeed");
+
+    let type_count: i64 = db
+        .conn
+        .query_row("SELECT COUNT(*) FROM types", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(
+        type_count, 1,
+        "type rows with missing symbols must be skipped"
+    );
+
+    let missing_count: i64 = db
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM types WHERE symbol_id = 'missing_symbol'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(missing_count, 0, "must not persist dangling type rows");
 }
