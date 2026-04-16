@@ -417,4 +417,4 @@ These are project knowledge, not ephemeral. If you create a checkpoint or plan, 
 
 ---
 
-**Last Updated:** 2026-04-13 | **Status:** Production Ready (v6.8.0, adds MCP client roots support for request-time primary binding)
+**Last Updated:** 2026-04-16 | **Status:** Production Ready (v6.9.0, world-class systems hardening)
